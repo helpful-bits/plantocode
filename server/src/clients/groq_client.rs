@@ -2,6 +2,7 @@ use reqwest::{Client, multipart::{Form, Part}};
 use reqwest::header::HeaderMap;
 use crate::config::settings::AppSettings;
 use crate::error::AppError;
+use crate::utils::mime_utils;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -53,9 +54,10 @@ impl GroqClient {
         };
 
         // Create multipart form
+        let mime_type = mime_utils::get_mime_type_from_filename(filename)?;
         let audio_part = Part::bytes(audio_data.to_vec())
             .file_name(filename.to_string())
-            .mime_str("audio/mpeg")
+            .mime_str(mime_type)
             .map_err(|e| AppError::Validation(format!("Invalid audio mime type: {}", e)))?;
 
         let form = Form::new()

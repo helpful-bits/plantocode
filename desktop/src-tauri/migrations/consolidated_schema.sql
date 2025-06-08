@@ -47,7 +47,6 @@ CREATE TABLE IF NOT EXISTS sessions (
   negative_content_regex_description TEXT DEFAULT NULL,
   regex_summary_explanation TEXT DEFAULT NULL,
   is_regex_active INTEGER DEFAULT 1 CHECK(is_regex_active IN (0, 1)),
-  codebase_structure TEXT DEFAULT NULL,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
   model_used TEXT DEFAULT NULL,
@@ -113,41 +112,26 @@ CREATE INDEX IF NOT EXISTS idx_key_value_store_key ON key_value_store(key);
 CREATE TABLE IF NOT EXISTS background_jobs (
   id TEXT PRIMARY KEY,
   session_id TEXT NOT NULL,
-  prompt TEXT NOT NULL,
-  status TEXT DEFAULT 'created' NOT NULL CHECK(status IN ('idle', 'running', 'completed', 'failed', 'canceled', 'preparing', 'created', 'queued', 'acknowledged_by_worker', 'preparing_input', 'generating_stream', 'processing_stream', 'completed_by_tag')),
-  start_time INTEGER,
-  end_time INTEGER,
-  -- output_file_path column has been removed, all content is now stored in response field
-  status_message TEXT,
-  tokens_received INTEGER DEFAULT 0,
-  tokens_sent INTEGER DEFAULT 0,
-  chars_received INTEGER DEFAULT 0,
-  last_update INTEGER,
-  created_at INTEGER DEFAULT (strftime('%s', 'now')) NOT NULL,
-  updated_at INTEGER DEFAULT (strftime('%s', 'now')),
-  api_type TEXT DEFAULT 'gemini' NOT NULL,
   task_type TEXT DEFAULT 'unknown' NOT NULL,
-  model_used TEXT,
-  max_output_tokens INTEGER,
+  status TEXT DEFAULT 'created' NOT NULL CHECK(status IN ('idle', 'running', 'completed', 'failed', 'canceled', 'preparing', 'created', 'queued', 'acknowledged_by_worker', 'preparing_input', 'generating_stream', 'processing_stream', 'completed_by_tag')),
+  prompt TEXT NOT NULL,
   response TEXT,
   error_message TEXT,
+  tokens_sent INTEGER DEFAULT 0,
+  tokens_received INTEGER DEFAULT 0,
+  model_used TEXT,
   metadata TEXT,
-  project_directory TEXT,
-  temperature REAL,
-  include_syntax INTEGER DEFAULT 0,
-  total_tokens INTEGER DEFAULT 0,
-  system_prompt_id TEXT, -- Track which system prompt was used for this job
+  created_at INTEGER DEFAULT (strftime('%s', 'now')) NOT NULL,
+  updated_at INTEGER DEFAULT (strftime('%s', 'now')),
+  start_time INTEGER,
+  end_time INTEGER,
   FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
 );
 
 -- Create indexes for background_jobs table
 CREATE INDEX IF NOT EXISTS idx_background_jobs_session_id ON background_jobs(session_id);
 CREATE INDEX IF NOT EXISTS idx_background_jobs_status ON background_jobs(status);
-CREATE INDEX IF NOT EXISTS idx_background_jobs_api_type ON background_jobs(api_type);
 CREATE INDEX IF NOT EXISTS idx_background_jobs_task_type ON background_jobs(task_type);
--- index on output_file_path has been removed
-CREATE INDEX IF NOT EXISTS idx_background_jobs_project_directory ON background_jobs(project_directory);
-CREATE INDEX IF NOT EXISTS idx_background_jobs_system_prompt_id ON background_jobs(system_prompt_id);
 
 -- Create task_settings table
 CREATE TABLE IF NOT EXISTS task_settings (
@@ -178,16 +162,9 @@ CREATE TABLE IF NOT EXISTS system_prompts (
 CREATE INDEX IF NOT EXISTS idx_system_prompts_session_task ON system_prompts(session_id, task_type);
 CREATE INDEX IF NOT EXISTS idx_system_prompts_task_type ON system_prompts(task_type);
 
--- Create default_system_prompts table to store server-provided defaults
-CREATE TABLE IF NOT EXISTS default_system_prompts (
-  id TEXT PRIMARY KEY,
-  task_type TEXT NOT NULL UNIQUE,
-  system_prompt TEXT NOT NULL,
-  description TEXT,
-  version TEXT DEFAULT '1.0',
-  created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
-  updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
-);
+-- Note: Default system prompts are stored ONLY on the server (PostgreSQL)
+-- Desktop SQLite database contains ONLY user-defined custom system prompts
+-- Default prompts are fetched from server and cached in memory with 5-minute TTL
 
 -- Insert default 2025 model configurations
 INSERT OR REPLACE INTO key_value_store (key, value, updated_at)
@@ -201,298 +178,6 @@ VALUES
 ('available_gemini_models_2025', '["google/gemini-2.5-flash-preview-05-20", "google/gemini-2.5-flash-preview-05-20:thinking", "google/gemini-2.5-pro-preview"]', strftime('%s', 'now')),
 ('available_reasoning_models_2025', '["deepseek/deepseek-r1", "deepseek/deepseek-r1-distill-qwen-32b", "deepseek/deepseek-r1-distill-qwen-14b"]', strftime('%s', 'now'));
 
--- Insert enhanced default system prompts with sophisticated templating
-INSERT OR REPLACE INTO default_system_prompts (id, task_type, system_prompt, description, version) VALUES
-('default_path_finder', 'path_finder', 'You are a code path finder. Your task is to identify the most relevant files for implementing or fixing a specific task in a codebase.
-
-{{DIRECTORY_TREE}}
-
-{{FILE_CONTENTS}}
-
-Return ONLY file paths and no other commentary, with one file path per line.
-
-For example:
-src/components/Button.tsx
-src/hooks/useAPI.ts
-src/styles/theme.css
-
-DO NOT include ANY text, explanations, or commentary. The response must consist ONLY of file paths, one per line.
-
-All returned file paths must be relative to the project root.
-
-Guidance on file selection:
-- Focus on truly relevant files - be selective and prioritize quality over quantity
-- Prioritize files that will need direct modification (typically 3-10 files)
-- Include both implementation files and test files when appropriate
-- Consider configuration files only if they are directly relevant to the task
-- If uncertain about exact paths, make educated guesses based on typical project structures
-- Order files by relevance, with most important files first
-
-To control inference cost, you **MUST** keep the resulting list as concise as possible **while still providing enough information** for the downstream model to succeed.
-
-• Start with the highest-impact files (entry points, shared data models, core logic).
-• Add further paths only when omitting them would risk an incorrect or incomplete implementation.
-• Each extra file increases context size and cost, so favor brevity while safeguarding completeness.
-
-Return the final list using the same formatting rules described above.', 'Enhanced system prompt for finding relevant files in a codebase', '2.0'),
-
-('default_text_improvement', 'text_improvement', 'Please improve the following text to make it clearer and grammatically correct while EXACTLY preserving its formatting style, including:
-- All line breaks
-- All indentation  
-- All bullet points and numbering
-- All blank lines
-- All special characters and symbols
-
-Do not change the formatting structure at all.
-
-IMPORTANT: Keep the original language of the text.
-
-Return only the improved text without any additional commentary or XML formatting.', 'Simple system prompt for text improvement with formatting preservation', '2.0'),
-
-('default_guidance_generation', 'guidance_generation', 'You are an AI assistant that provides helpful guidance and recommendations based on code analysis and task requirements.
-
-## Project Context:
-{{PROJECT_CONTEXT}}
-
-{{FILE_CONTENTS}}
-
-{{RELEVANT_FILES}}
-
-Your role is to:
-- Analyze the provided code context and task requirements
-- Provide clear, actionable guidance
-- Suggest best practices and implementation approaches
-- Help developers understand the codebase structure
-- Offer specific recommendations for the task at hand
-
-Always structure your response clearly and provide practical, implementable advice.
-
-Create a concise narrative in Markdown that directly explains the data flow and architecture.
-
-Your response must be brief and focused primarily on:
-
-1. The specific path data takes through the system
-2. How data is transformed between components
-3. The key function calls in sequence
-4. Clear, actionable implementation guidance
-5. No introduction, just the story
-
-Avoid lengthy, philosophical, or overly metaphorical explanations. The reader needs a clear, direct understanding of how data moves through the code. It has to be in engaging Andrew Huberman style (but without the science, just style of talking). The story has to be very short. Use simple English.', 'Enhanced system prompt for generating AI guidance', '2.0'),
-
-('default_text_correction', 'text_correction', '<role>
-You are a professional text editor and proofreader specializing in {{LANGUAGE}} language corrections.
-</role>
-
-<identity>
-- Expert in grammar, spelling, punctuation, and style for {{LANGUAGE}}
-- Maintains original meaning and intent of all texts
-- Provides clean, corrected output without explanations
-- Works efficiently with any type of text content
-</identity>
-
-<instructions>
-When the user provides text within <text_to_correct> tags:
-1. Correct all grammar, spelling, and punctuation errors
-2. Improve sentence structure while preserving original meaning and tone
-3. Maintain original formatting (line breaks, spacing, lists, etc.)
-4. Fix capitalization and punctuation inconsistencies
-5. Ensure proper word usage and clarity
-6. Do not add explanations, comments, or meta-commentary
-</instructions>
-
-<output_format>
-Respond with only the corrected text. Do not include XML tags, explanations, or any other content in your response.
-</output_format>', 'Complete XML-structured system prompt with all instructions for text correction', '6.0'),
-
-('default_implementation_plan', 'implementation_plan', 'You are a software development planning assistant. Your task is to create detailed, actionable implementation plans for software development tasks.
-
-## Project Context:
-{{PROJECT_CONTEXT}}
-
-{{FILE_CONTENTS}}
-
-{{DIRECTORY_TREE}}
-
-Your implementation plans should:
-- Break down complex tasks into clear, manageable steps
-- Provide specific technical details and approaches
-- Consider dependencies between different parts of the implementation
-- Include testing considerations
-- Suggest best practices and potential pitfalls to avoid
-- Be practical and implementable by developers
-
-Structure your response clearly with numbered steps and detailed explanations.
-
-Please provide your response in XML format:
-<implementation_plan>
-  <agent_instructions>Brief instructions for the implementing agent</agent_instructions>
-  <steps>
-    <step number="1">
-      <title>Step title</title>
-      <description>Detailed description of what to do</description>
-      <file_operations>
-        <operation type="create|modify|delete">
-          <path>file/path</path>
-          <description>What to do with this file</description>
-        </operation>
-      </file_operations>
-    </step>
-  </steps>
-</implementation_plan>', 'Enhanced system prompt for creating implementation plans', '2.0'),
-
-('default_path_correction', 'path_correction', 'You are a path correction assistant for file system paths.
-
-{{DIRECTORY_TREE}}
-
-## Project Context:
-{{PROJECT_CONTEXT}}
-
-Your task is to:
-- Analyze provided file paths that may contain errors
-- Suggest corrected paths based on the project structure and context
-- Consider common file naming conventions and project organization patterns
-- Provide the most likely correct paths for the given context
-- Focus on accuracy and practical usefulness
-
-Return corrected paths with brief explanations of the changes made.', 'Enhanced system prompt for correcting file paths', '2.0'),
-
-('default_task_enhancement', 'task_enhancement', 'You are a task enhancement assistant that helps improve and clarify user requirements.
-
-## Project Context:
-{{PROJECT_CONTEXT}}
-
-Your role is to:
-- Analyze provided requirements and requests
-- Identify areas for improvement and clarification
-- Suggest more specific and actionable language
-- Consider project context and constraints
-- Provide enhanced, clear, and implementable requirements
-
-Please provide your response in XML format:
-<task_enhancement>
-  <original_task>Original requirement</original_task>
-  <enhanced_task>Enhanced and improved requirement</enhanced_task>
-  <analysis>Brief explanation of improvements made</analysis>
-  <considerations>
-    <consideration>Important consideration 1</consideration>
-    <consideration>Important consideration 2</consideration>
-  </considerations>
-  <acceptance_criteria>
-    <criterion>Acceptance criterion 1</criterion>
-    <criterion>Acceptance criterion 2</criterion>
-  </acceptance_criteria>
-</task_enhancement>', 'Enhanced system prompt for enhancing requirements', '2.0'),
-
-('default_regex_pattern_generation', 'regex_pattern_generation', 'You are a regex pattern generation assistant that creates regular expressions for file filtering and text matching.
-
-{{DIRECTORY_TREE}}
-
-Your role is to:
-- Analyze the task requirements for pattern matching
-- Generate appropriate regular expressions
-- Consider file structures and naming conventions
-- Provide patterns that are both accurate and efficient
-- Include both positive and negative patterns when appropriate
-
-Generate regex patterns that will help filter and identify relevant files or text based on the provided requirements.
-
-CRITICAL: Your entire response must be ONLY the raw JSON object. Do NOT include any surrounding text, explanations, or markdown code fences. The response must start with ''{'' and end with ''}''.
-
-Provide the output with these keys:
-- "titleRegex": Pattern to match file paths to INCLUDE
-- "contentRegex": Pattern to match file content to INCLUDE  
-- "negativeTitleRegex": Pattern to match file paths to EXCLUDE
-- "negativeContentRegex": Pattern to match file content to EXCLUDE
-
-If a pattern is not applicable, omit the key or set its value to an empty string.', 'Enhanced system prompt for generating regex patterns', '2.0'),
-
-('default_regex_summary_generation', 'regex_summary_generation', 'You are a regex summary assistant that explains regular expression patterns in plain language.
-
-Your role is to:
-- Analyze the provided regular expression patterns
-- Explain what each pattern matches in clear, understandable language
-- Describe the purpose and functionality of the patterns
-- Provide examples of what would and would not match
-- Help users understand how the patterns work
-
-Provide clear, non-technical explanations that help users understand the regex patterns.', 'Enhanced system prompt for generating regex summaries', '2.0'),
-
-('default_generic_llm_stream', 'generic_llm_stream', 'You are a helpful AI assistant that provides responses based on user requests.
-
-## Project Context:
-{{PROJECT_CONTEXT}}
-
-## Additional Instructions:
-{{CUSTOM_INSTRUCTIONS}}
-
-Your role is to:
-- Understand and respond to the user''s request
-- Provide helpful, accurate, and relevant information
-- Consider any provided context or instructions
-- Give clear and actionable responses
-- Be concise yet comprehensive in your answers
-
-Respond directly to the user''s request with helpful and accurate information.', 'Enhanced system prompt for generic LLM streaming tasks', '2.0'),
-
--- Workflow stage-specific system prompts
-
-('default_local_file_filtering', 'local_file_filtering', 'You are a local file filtering assistant that identifies and filters relevant files based on specified criteria.
-
-{{FILE_CONTENTS}}
-
-{{DIRECTORY_TREE}}
-
-Your role is to:
-- Analyze file paths and contents to determine relevance
-- Apply filtering criteria to include/exclude files appropriately  
-- Focus on files that are directly related to the task requirements
-- Consider file types, naming patterns, and content relevance
-- Provide a focused list of files that will be most useful
-
-Filter files effectively to reduce noise and focus on task-relevant content.', 'System prompt for local file filtering workflow stage', '1.0'),
-
-('default_extended_path_finder', 'extended_path_finder', 'You are an enhanced path finder that identifies comprehensive file paths for complex implementation tasks.
-
-{{DIRECTORY_TREE}}
-
-{{FILE_CONTENTS}}
-
-Your role is to:
-- Identify a broader set of relevant files for complex tasks
-- Consider dependencies, imports, and interconnected components
-- Include supporting files like utilities, types, and configurations
-- Balance thoroughness with relevance to avoid information overload
-- Provide file paths ordered by implementation priority
-
-Return ONLY file paths, one per line, with no additional commentary.', 'System prompt for extended path finder workflow stage', '1.0'),
-
-('default_extended_path_correction', 'extended_path_correction', 'You are a path correction assistant that refines and validates file path selections.
-
-{{DIRECTORY_TREE}}
-
-{{FILE_CONTENTS}}
-
-Your role is to:
-- Review and correct previously identified file paths
-- Validate that paths exist and are accessible
-- Remove duplicates and irrelevant files
-- Add missing critical files that were overlooked
-- Ensure the final path list is optimized for the task
-
-Return ONLY the corrected file paths, one per line, with no additional commentary.', 'System prompt for extended path correction workflow stage', '1.0'),
-
-('default_file_relevance_assessment', 'file_relevance_assessment', 'You are an AI assistant helping to refine a list of files for a software development task.
-Given the task description and the content of several potentially relevant files, identify which of these files are *actually* relevant and necessary for completing the task.
-Return ONLY the file paths of the relevant files, one path per line. Do not include any other text, explanations, or commentary.
-Be very selective. Prioritize files that will require direct modification or are core to understanding the task.
-
-Task Description:
-{{TASK_DESCRIPTION}}
-
-File Contents:
-{{FILE_CONTENTS}}
-
-Respond ONLY with the list of relevant file paths from the provided list, one per line. If no files are relevant, return an empty response.', 'System prompt for AI-powered file relevance assessment', '1.0');
 
 -- Store application-wide configurations, especially those managed dynamically
 CREATE TABLE IF NOT EXISTS application_configurations (
@@ -518,7 +203,7 @@ VALUES
   "regex_summary_generation": {"model": "anthropic/claude-sonnet-4", "max_tokens": 2048, "temperature": 0.3},
   "guidance_generation": {"model": "google/gemini-2.5-pro-preview", "max_tokens": 8192, "temperature": 0.7},
   "task_enhancement": {"model": "google/gemini-2.5-pro-preview", "max_tokens": 4096, "temperature": 0.7},
-  "file_finder_workflow": {"model": "google/gemini-2.5-pro-preview", "max_tokens": 8192, "temperature": 0.5},
+  "file_finder_workflow": {"model": "google/gemini-2.5-flash-preview-05-20", "max_tokens": 2048, "temperature": 0.3},
   "generic_llm_stream": {"model": "google/gemini-2.5-pro-preview", "max_tokens": 16384, "temperature": 0.7},
   "streaming": {"model": "google/gemini-2.5-pro-preview", "max_tokens": 16384, "temperature": 0.7},
   "local_file_filtering": {},
@@ -546,9 +231,39 @@ ON CONFLICT (config_key) DO UPDATE SET
   description = EXCLUDED.description,
   updated_at = strftime('%s', 'now');
 
+-- User credits balance tracking (local cache from server)
+CREATE TABLE IF NOT EXISTS user_credits (
+    user_id TEXT PRIMARY KEY,
+    balance TEXT NOT NULL DEFAULT '0.0000', -- Store as TEXT for precise decimal handling
+    currency TEXT NOT NULL DEFAULT 'USD',
+    created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+    updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+);
+
+-- Credit transaction history (local cache from server)
+CREATE TABLE IF NOT EXISTS credit_transactions (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    transaction_type TEXT NOT NULL, -- 'purchase', 'consumption', 'refund', 'adjustment', 'expiry'
+    amount TEXT NOT NULL, -- Store as TEXT for precise decimal handling
+    currency TEXT NOT NULL DEFAULT 'USD',
+    description TEXT,
+    stripe_charge_id TEXT, -- For purchases
+    related_api_usage_id TEXT, -- For consumptions
+    metadata TEXT, -- JSON string
+    created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+);
+
+-- Create indexes for performance
+CREATE INDEX IF NOT EXISTS idx_user_credits_user_id ON user_credits(user_id);
+CREATE INDEX IF NOT EXISTS idx_credit_transactions_user_id ON credit_transactions(user_id);
+CREATE INDEX IF NOT EXISTS idx_credit_transactions_type ON credit_transactions(transaction_type);
+CREATE INDEX IF NOT EXISTS idx_credit_transactions_stripe_charge ON credit_transactions(stripe_charge_id);
+CREATE INDEX IF NOT EXISTS idx_credit_transactions_created ON credit_transactions(created_at DESC);
+
 -- Record this consolidated schema in the key_value_store table
 INSERT OR REPLACE INTO key_value_store (key, value, updated_at)
-VALUES ('schema_version', '2025-05-29-enhanced-system-prompts', strftime('%s', 'now')),
+VALUES ('schema_version', '2025-05-29-enhanced-system-prompts-with-credits', strftime('%s', 'now')),
        ('last_model_update', strftime('%s', 'now'), strftime('%s', 'now')),
        ('initial_setup_with_2025_models', 'true', strftime('%s', 'now')),
        ('enhanced_system_prompts_migration_applied', strftime('%s', 'now'), strftime('%s', 'now'));

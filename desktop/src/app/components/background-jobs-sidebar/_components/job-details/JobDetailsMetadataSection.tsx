@@ -28,8 +28,8 @@ export function JobDetailsMetadataSection() {
     : formattedMetadata.substring(0, PREVIEW_CHARS) + "...";
 
   // Access parsed JSON data from regex pattern generation
-  const parsedJsonData = parsedMeta?.additionalParams?.parsedJsonData;
-  const jsonValid = parsedMeta?.additionalParams?.jsonValid;
+  const parsedJsonData = parsedMeta?.taskData?.parsedJsonData;
+  const jsonValid = parsedMeta?.taskData?.jsonValid;
   
   const formattedRegex = parsedJsonData ? formatRegexPatterns(parsedJsonData) : null;
   const isLongRegex = formattedRegex ? formattedRegex.length > PREVIEW_CHARS : false;
@@ -38,7 +38,7 @@ export function JobDetailsMetadataSection() {
     : formattedRegex.substring(0, PREVIEW_CHARS) + "...";
 
   // Access implementation plan data
-  const planData = parsedMeta?.additionalParams?.planData;
+  const planData = parsedMeta?.taskData?.planData;
   const formattedPlanData = planData ? JSON.stringify(planData, null, 2) : null;
   const isLongPlanData = formattedPlanData ? formattedPlanData.length > PREVIEW_CHARS : false;
   const displayPlanData = showFullPlanData || !isLongPlanData || !formattedPlanData
@@ -63,10 +63,10 @@ export function JobDetailsMetadataSection() {
         </CollapsibleTrigger>
         <CollapsibleContent>
           <CardContent className="pt-0 space-y-3">
-            {parsedMeta?.additionalParams?.targetField ? (
+            {parsedMeta?.taskData?.targetField ? (
               <div>
                 <div className="text-xs text-muted-foreground mb-1">Target Field</div>
-                <div className="text-sm font-medium text-foreground">{String(parsedMeta.additionalParams.targetField || '')}</div>
+                <div className="text-sm font-medium text-foreground">{String(parsedMeta.taskData.targetField || '')}</div>
               </div>
             ) : null}
 

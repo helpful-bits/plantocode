@@ -6,7 +6,7 @@ use tauri::AppHandle;
 
 use crate::error::{AppError, AppResult};
 use crate::jobs::processor_trait::JobProcessor;
-use crate::jobs::types::{Job, JobPayload, JobProcessResult, StructuredImplementationPlan, StructuredImplementationPlanStep, JobWorkerMetadata};
+use crate::jobs::types::{Job, JobPayload, JobProcessResult, StructuredImplementationPlan, StructuredImplementationPlanStep};
 use crate::models::{JobStatus, TaskType, OpenRouterRequestMessage, OpenRouterContent};
 use crate::utils::{get_timestamp, fs_utils, path_utils};
 use crate::utils::xml_utils::extract_xml_from_markdown;
@@ -101,6 +101,8 @@ impl ImplementationPlanProcessor {
                         title: step_title.clone(),
                         description: current_description.trim().to_string(),
                         file_operations: None,
+                        bash_commands: None,
+                        exploration_commands: None,
                     });
                     current_step += 1;
                     current_description.clear();
@@ -137,6 +139,8 @@ impl ImplementationPlanProcessor {
                 title: step_title,
                 description: current_description.trim().to_string(),
                 file_operations: None,
+                bash_commands: None,
+                exploration_commands: None,
             });
         }
         
@@ -147,6 +151,8 @@ impl ImplementationPlanProcessor {
                 title: "Implementation Plan".to_string(),
                 description: text_content.trim().to_string(),
                 file_operations: None,
+                bash_commands: None,
+                exploration_commands: None,
             });
         }
         
@@ -161,26 +167,6 @@ impl ImplementationPlanProcessor {
         Ok((fallback_plan, summary))
     }
     
-    // Parse implementation plan and create response content for database storage
-    fn create_response_content(&self, structured_plan: &StructuredImplementationPlan, clean_xml_content: &str) -> String {
-        // If we have valid structured data, serialize it as JSON for better database storage
-        // But also include the original content for fallback
-        let mut response_content = String::new();
-        
-        // Add structured JSON for programmatic access
-        if let Ok(json_str) = serde_json::to_string_pretty(structured_plan) {
-            response_content.push_str("<!-- STRUCTURED_DATA -->\n");
-            response_content.push_str(&json_str);
-            response_content.push_str("\n<!-- /STRUCTURED_DATA -->\n\n");
-        }
-        
-        // Add original content for human readability
-        response_content.push_str("<!-- ORIGINAL_CONTENT -->\n");
-        response_content.push_str(clean_xml_content);
-        response_content.push_str("\n<!-- /ORIGINAL_CONTENT -->");
-        
-        response_content
-    }
 }
 
 #[async_trait::async_trait]
@@ -201,19 +187,28 @@ impl JobProcessor for ImplementationPlanProcessor {
         };
         
         // Setup job processing
-        let (repo, settings_repo, mut db_job) = job_processor_utils::setup_job_processing(&payload.background_job_id, &app_handle).await?;
+        let (repo, settings_repo, mut db_job) = job_processor_utils::setup_job_processing(&job.id, &app_handle).await?;
         
-        // Extract model settings from BackgroundJob
-        let model_used = db_job.model_used.clone().unwrap_or_else(|| "gpt-3.5-turbo".to_string());
-        let temperature = db_job.temperature.unwrap_or(0.7);
-        let max_output_tokens = db_job.max_output_tokens.unwrap_or(4000) as u32;
+        // Get task settings from database
+        let task_settings = settings_repo.get_task_settings(&job.session_id, &job.job_type.to_string()).await?
+            .ok_or_else(|| AppError::JobError(format!("No task settings found for session {} and task type {}", job.session_id, job.job_type.to_string())))?;
+        let model_used = task_settings.model;
+        let temperature = task_settings.temperature
+            .ok_or_else(|| AppError::JobError("Temperature not set in task settings".to_string()))?;
+        let max_output_tokens = task_settings.max_tokens as u32;
         let llm_client = crate::jobs::processors::utils::llm_api_utils::get_api_client(&app_handle)?;
-        let job_id = payload.background_job_id.clone();
+        let job_id = job.id.clone();
         
         job_processor_utils::log_job_start(&job_id, "implementation plan");
         
-        let project_directory = job.project_directory.as_ref()
-            .ok_or_else(|| AppError::JobError("Project directory not found in job".to_string()))?;
+        // Get project directory from session
+        let session = {
+            use crate::db_utils::SessionRepository;
+            let session_repo = SessionRepository::new(repo.get_pool());
+            session_repo.get_session_by_id(&job.session_id).await?
+                .ok_or_else(|| AppError::JobError(format!("Session {} not found", job.session_id)))?
+        };
+        let project_directory = &session.project_directory;
             
         // Load file contents and generate directory tree - FULL CONTENT WITHOUT TRUNCATION
         let file_contents = Some(fs_context_utils::load_file_contents(&payload.relevant_files, project_directory).await);
@@ -224,14 +219,13 @@ impl JobProcessor for ImplementationPlanProcessor {
             &job,
             &app_handle,
             payload.task_description.clone(),
-            payload.project_structure.clone(),
             file_contents,
             directory_tree,
             &settings_repo,
             &model_used,
         ).await?;
 
-        info!("Enhanced Implementation Plan prompt composition for job {}", payload.background_job_id);
+        info!("Enhanced Implementation Plan prompt composition for job {}", job.id);
         info!("System prompt ID: {}", composed_prompt.system_prompt_id);
         info!("Context sections: {:?}", composed_prompt.context_sections);
         if let Some(tokens) = composed_prompt.estimated_tokens {
@@ -240,10 +234,10 @@ impl JobProcessor for ImplementationPlanProcessor {
             // Log warning if estimated tokens exceed typical model limits
             if tokens > 100000 {
                 warn!("Implementation plan job {} estimated tokens ({}) exceeds typical model limits but proceeding with full content", 
-                    payload.background_job_id, tokens);
+                    job.id, tokens);
                 
                 // Store warning in job metadata for visibility
-                if let Ok(mut job_for_metadata) = repo.get_job_by_id(&payload.background_job_id).await {
+                if let Ok(mut job_for_metadata) = repo.get_job_by_id(&job.id).await {
                     if let Some(existing_job) = job_for_metadata {
                         let metadata = match existing_job.metadata {
                             Some(ref metadata_str) => {
@@ -303,14 +297,13 @@ impl JobProcessor for ImplementationPlanProcessor {
             task_description: payload.task_description.clone(),
             file_contents: Some(fs_context_utils::load_file_contents(&payload.relevant_files, project_directory).await),
             directory_tree: fs_context_utils::generate_directory_tree_for_context(project_directory).await,
-            codebase_structure: payload.project_structure.clone(),
             system_prompt_override: None,
         };
         
         // Check if job has been canceled before calling the LLM
-        if job_processor_utils::check_job_canceled(&repo, &payload.background_job_id).await? {
-            info!("Job {} has been canceled before processing", payload.background_job_id);
-            return Ok(JobProcessResult::canceled(payload.background_job_id.clone(), "Job was canceled by user".to_string()));
+        if job_processor_utils::check_job_canceled(&repo, &job.id).await? {
+            info!("Job {} has been canceled before processing", job.id);
+            return Ok(JobProcessResult::canceled(job.id.clone(), "Job was canceled by user".to_string()));
         }
         
         // Execute streaming LLM task using the task runner
@@ -319,14 +312,14 @@ impl JobProcessor for ImplementationPlanProcessor {
             prompt_context,
             &settings_repo,
             &repo,
-            &payload.background_job_id,
+            &job.id,
         ).await {
             Ok(result) => result,
             Err(e) => {
                 error!("Streaming LLM task execution failed: {}", e);
                 let error_msg = format!("Streaming LLM task execution failed: {}", e);
-                task_runner.finalize_failure(&repo, &payload.background_job_id, &error_msg).await?;
-                return Ok(JobProcessResult::failure(payload.background_job_id.clone(), error_msg));
+                task_runner.finalize_failure(&repo, &job.id, &error_msg, Some(&e)).await?;
+                return Ok(JobProcessResult::failure(job.id.clone(), error_msg));
             }
         };
         
@@ -339,15 +332,15 @@ impl JobProcessor for ImplementationPlanProcessor {
         // Continue with regular processing using the collected response
         if response_content.is_empty() {
             let error_msg = "No content received from LLM stream";
-            error!("Implementation plan job {} failed: {}", payload.background_job_id, error_msg);
-            task_runner.finalize_failure(&repo, &payload.background_job_id, &error_msg).await?;
-            return Ok(JobProcessResult::failure(payload.background_job_id.clone(), error_msg.to_string()));
+            error!("Implementation plan job {} failed: {}", job.id, error_msg);
+            task_runner.finalize_failure(&repo, &job.id, &error_msg, None).await?;
+            return Ok(JobProcessResult::failure(job.id.clone(), error_msg.to_string()));
         }
         
         // Check if job has been canceled after LLM call but before further processing using helper
-        if job_processor_utils::check_job_canceled(&repo, &payload.background_job_id).await? {
-            info!("Job {} has been canceled after LLM call", payload.background_job_id);
-            return Ok(JobProcessResult::canceled(payload.background_job_id.clone(), "Job was canceled by user".to_string()));
+        if job_processor_utils::check_job_canceled(&repo, &job.id).await? {
+            info!("Job {} has been canceled after LLM call", job.id);
+            return Ok(JobProcessResult::canceled(job.id.clone(), "Job was canceled by user".to_string()));
         }
         
         // Extract clean XML content from the response
@@ -357,13 +350,13 @@ impl JobProcessor for ImplementationPlanProcessor {
         let (structured_plan, human_readable_summary) = match self.parse_implementation_plan(&clean_xml_content) {
             Ok(result) => result,
             Err(e) => {
-                error!("Failed to parse implementation plan for job {}: {}", payload.background_job_id, e);
+                error!("Failed to parse implementation plan for job {}: {}", job.id, e);
                 let error_msg = format!("Failed to parse implementation plan: {}", e);
                 
                 // Update job to failed using helper
-                job_processor_utils::finalize_job_failure(&payload.background_job_id, &repo, &error_msg).await?;
+                job_processor_utils::finalize_job_failure(&job.id, &repo, &error_msg, None).await?;
                 
-                return Ok(JobProcessResult::failure(payload.background_job_id.clone(), error_msg));
+                return Ok(JobProcessResult::failure(job.id.clone(), error_msg));
             }
         };
         
@@ -395,11 +388,11 @@ impl JobProcessor for ImplementationPlanProcessor {
         let timestamp = get_timestamp();
         
         // Get the job and update it with all results at once
-        let mut job = repo.get_job_by_id(&payload.background_job_id).await?
-            .ok_or_else(|| AppError::JobError(format!("Job not found: {}", payload.background_job_id)))?;
+        let mut job = repo.get_job_by_id(&job.id).await?
+            .ok_or_else(|| AppError::JobError(format!("Job not found: {}", job.id)))?;
         
         // Get session name for better UI display
-        let session_name = crate::jobs::processors::utils::prompt_utils::get_session_name(&payload.session_id, &app_handle).await.unwrap_or_else(|_| Some("Untitled Session".to_string())).unwrap_or_else(|| "Untitled Session".to_string());
+        let session_name = crate::jobs::processors::utils::prompt_utils::get_session_name(&job.session_id, &app_handle).await.unwrap_or_else(|_| Some("Untitled Session".to_string())).unwrap_or_else(|| "Untitled Session".to_string());
             
         // Construct the additional_params specific to the implementation plan
         let mut impl_plan_additional_params = json!({
@@ -423,7 +416,7 @@ impl JobProcessor for ImplementationPlanProcessor {
         
         // Finalize job success with clean XML content stored in database response field
         job_processor_utils::finalize_job_success(
-            &payload.background_job_id,
+            &job.id,
             &repo,
             &clean_xml_content, // Store only clean XML content in job.response
             llm_result.usage,
@@ -434,6 +427,6 @@ impl JobProcessor for ImplementationPlanProcessor {
         
         // Return success result with the actual clean XML content
         let success_message = format!("Implementation plan '{}' generated successfully", generated_title);
-        Ok(JobProcessResult::success(payload.background_job_id.clone(), clean_xml_content))
+        Ok(JobProcessResult::success(job.id.clone(), clean_xml_content))
     }
 }

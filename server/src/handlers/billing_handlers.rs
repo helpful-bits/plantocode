@@ -3,19 +3,30 @@ use serde::{Deserialize, Serialize};
 use crate::error::AppError;
 use crate::services::billing_service::BillingService;
 use crate::db::repositories::subscription_plan_repository::{SubscriptionPlanRepository, PlanFeatures, SpendingDetails, SupportLevel, OveragePolicy};
+use crate::db::repositories::user_credit_repository::UserCreditRepository;
+use crate::db::repositories::credit_transaction_repository::{CreditTransactionRepository, CreditTransaction};
+use crate::db::repositories::billing_configuration_repository::BillingConfigurationRepository;
+use crate::db::repositories::webhook_idempotency_repository::WebhookIdempotencyRepository;
 use crate::models::runtime_config::AppState;
 use crate::utils::stripe_currency_utils::{stripe_cents_to_decimal, validate_stripe_amount_matches};
 use sqlx::PgPool;
-use log::{debug, error, info};
+use log::{debug, error, info, warn};
 use crate::middleware::secure_auth::UserId;
 use chrono::{DateTime, Utc, Duration};
 use bigdecimal::{BigDecimal, ToPrimitive};
 use uuid::Uuid;
 use std::collections::HashMap;
 
+use stripe::{Event, EventObject, Webhook, Client, Subscription as StripeSubscription, Expandable};
+
 #[derive(Debug, Deserialize)]
 pub struct CheckoutRequest {
     pub plan: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreditCheckoutRequest {
+    pub stripe_price_id: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -86,11 +97,7 @@ pub async fn create_checkout_session(
     debug!("Creating checkout session for user: {} with plan: {}", user_id.0, checkout_request.plan);
     
     // Create the checkout session
-    #[cfg(feature = "stripe")]
     let url = billing_service.create_checkout_session(&user_id.0, &checkout_request.plan).await?;
-    
-    #[cfg(not(feature = "stripe"))]
-    let url = "https://example.com/checkout-placeholder".to_string();
     
     // Return the checkout session URL
     Ok(HttpResponse::Ok().json(CheckoutResponse { url }))
@@ -105,11 +112,7 @@ pub async fn create_billing_portal(
     debug!("Creating billing portal for user: {}", user_id.0);
     
     // Create the billing portal session
-    #[cfg(feature = "stripe")]
     let url = billing_service.create_billing_portal_session(&user_id.0).await?;
-    
-    #[cfg(not(feature = "stripe"))]
-    let url = "https://example.com/portal-placeholder".to_string();
     
     // Return the billing portal URL
     Ok(HttpResponse::Ok().json(PortalResponse { url }))
@@ -255,6 +258,99 @@ pub async fn get_invoice_history(
     Ok(HttpResponse::Ok().json(response))
 }
 
+/// Create a checkout session for purchasing credits
+#[post("/credits/checkout")]
+pub async fn create_credit_checkout_session(
+    user_id: UserId,
+    billing_service: web::Data<BillingService>,
+    checkout_request: web::Json<CreditCheckoutRequest>,
+) -> Result<HttpResponse, AppError> {
+    debug!("Creating credit checkout session for user: {} with price ID: {}", user_id.0, checkout_request.stripe_price_id);
+    
+    // Get credit pack configuration
+    let credit_pack_repo = crate::db::repositories::CreditPackRepository::new(billing_service.get_db_pool());
+    let selected_pack = credit_pack_repo.get_pack_by_stripe_price_id(&checkout_request.stripe_price_id).await?
+        .ok_or_else(|| AppError::InvalidArgument(format!("Invalid credit pack price ID: {}", checkout_request.stripe_price_id)))?;
+    
+    // Create the checkout session
+    let url = billing_service.create_credit_purchase_checkout_session(
+        &user_id.0,
+        &checkout_request.stripe_price_id,
+    ).await?;
+    
+    // Return the checkout session URL
+    Ok(HttpResponse::Ok().json(CheckoutResponse { url }))
+}
+
+/// Get available credit packs
+#[get("/credits/packs")]
+pub async fn get_credit_packs(
+    billing_service: web::Data<BillingService>,
+) -> Result<HttpResponse, AppError> {
+    debug!("Getting available credit packs");
+    
+    let credit_pack_repo = crate::db::repositories::CreditPackRepository::new(billing_service.get_db_pool());
+    let credit_packs = credit_pack_repo.get_active_packs().await?;
+    
+    Ok(HttpResponse::Ok().json(credit_packs))
+}
+
+/// Get user's current credit balance
+#[get("/credits/balance")]
+pub async fn get_credit_balance(
+    user_id: UserId,
+    billing_service: web::Data<BillingService>,
+) -> Result<HttpResponse, AppError> {
+    debug!("Getting credit balance for user: {}", user_id.0);
+    
+    let credit_repo = UserCreditRepository::new(billing_service.get_system_db_pool());
+    let balance = credit_repo.get_balance(&user_id.0).await?;
+    
+    let response = match balance {
+        Some(credit) => serde_json::json!({
+            "balance": credit.balance,
+            "currency": credit.currency,
+            "lastUpdated": credit.updated_at
+        }),
+        None => serde_json::json!({
+            "balance": 0,
+            "currency": "USD",
+            "lastUpdated": null
+        })
+    };
+    
+    Ok(HttpResponse::Ok().json(response))
+}
+
+/// Get user's credit transaction history  
+pub async fn get_credit_history(
+    user_id: UserId,
+    billing_service: web::Data<BillingService>,
+    pagination: web::Query<PaginationQuery>,
+) -> Result<HttpResponse, AppError> {
+    debug!("Getting credit history for user: {}", user_id.0);
+    
+    let credit_repo = CreditTransactionRepository::new(billing_service.get_db_pool());
+    let transactions = credit_repo.get_history(&user_id.0, pagination.limit as i64, pagination.offset as i64).await?;
+    let total_count = credit_repo.count_transactions(&user_id.0).await?;
+    
+    #[derive(Debug, Serialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct CreditHistoryResponse {
+        pub transactions: Vec<CreditTransaction>,
+        pub total_count: i64,
+        pub has_more: bool,
+    }
+    
+    let response = CreditHistoryResponse {
+        transactions,
+        total_count,
+        has_more: total_count > (pagination.limit + pagination.offset) as i64,
+    };
+    
+    Ok(HttpResponse::Ok().json(response))
+}
+
 /// Get payment methods for user
 #[get("/payment-methods")]
 pub async fn get_payment_methods(
@@ -332,7 +428,6 @@ pub async fn stripe_webhook(
         .map_err(|_| AppError::InvalidArgument("Invalid Stripe-Signature header".to_string()))?;
     
     // Verify and process the webhook
-    #[cfg(feature = "stripe")]
     {
         // Get webhook secret from app_state
         let webhook_secret = &app_state.settings.stripe.webhook_secret;
@@ -347,20 +442,165 @@ pub async fn stripe_webhook(
                 error!("Stripe webhook signature verification or parsing failed: {}", e);
                 AppError::Auth(format!("Invalid Stripe webhook signature or payload: {}", e))
             })?;
-        
-        // Get repositories for webhook processing
-        let db_pool = billing_service.get_db_pool();
-        let invoice_repo = crate::db::repositories::InvoiceRepository::new(db_pool.clone());
-        let payment_method_repo = crate::db::repositories::PaymentMethodRepository::new(db_pool.clone());
-        let user_repo = crate::db::repositories::UserRepository::new(db_pool.clone());
-        let sub_repo = crate::db::repositories::SubscriptionRepository::new(db_pool.clone());
-        let email_service = crate::services::email_notification_service::EmailNotificationService::new(db_pool.clone())?;
 
-        // Handle different event types
-        match event.type_.as_str() {
+        // Initialize webhook idempotency repository
+        let webhook_repo = WebhookIdempotencyRepository::new(billing_service.get_db_pool().clone());
+        
+        // Check if this event has already been processed
+        if webhook_repo.is_already_processed(&event.id).await? {
+            info!("Webhook event {} has already been processed, skipping", event.id);
+            return Ok(HttpResponse::Ok().finish());
+        }
+
+        // Mark webhook processing as started
+        let _record_id = webhook_repo.mark_processing_started(
+            &event.id,
+            "stripe",
+            &event.type_.to_string(),
+            Some(serde_json::json!({
+                "stripe_event_id": event.id,
+                "stripe_event_type": event.type_,
+                "created": event.created,
+                "livemode": event.livemode,
+                "api_version": event.api_version
+            }))
+        ).await.map_err(|e| {
+            error!("Failed to mark webhook processing as started for event {}: {}", event.id, e);
+            AppError::Database(format!("Failed to mark webhook processing as started: {}", e))
+        })?;
+        
+        // Process the webhook event with error handling for idempotency tracking
+        let processing_result = process_stripe_webhook_event(&event, &billing_service, &app_state).await;
+        
+        // Mark webhook processing as completed or failed based on result
+        match &processing_result {
+            Ok(_) => {
+                if let Err(e) = webhook_repo.mark_processing_completed(
+                    &event.id,
+                    Some(serde_json::json!({
+                        "completed_at": Utc::now().to_rfc3339(),
+                        "status": "success"
+                    }))
+                ).await {
+                    warn!("Failed to mark webhook processing as completed for event {}: {}", event.id, e);
+                }
+            }
+            Err(e) => {
+                let error_message = format!("{}", e);
+                if let Err(mark_error) = webhook_repo.mark_processing_failed(
+                    &event.id,
+                    &error_message,
+                    Some(serde_json::json!({
+                        "failed_at": Utc::now().to_rfc3339(),
+                        "error": error_message
+                    }))
+                ).await {
+                    warn!("Failed to mark webhook processing as failed for event {}: {}", event.id, mark_error);
+                }
+            }
+        }
+
+        processing_result
+    }
+}
+
+/// Process a Stripe webhook event (extracted for better error handling and idempotency)
+async fn process_stripe_webhook_event(
+    event: &stripe::Event,
+    billing_service: &BillingService,
+    app_state: &crate::models::runtime_config::AppState,
+) -> Result<HttpResponse, AppError> {
+    // Get repositories for webhook processing
+    let db_pool = billing_service.get_db_pool();
+    let invoice_repo = crate::db::repositories::InvoiceRepository::new(db_pool.clone());
+    let payment_method_repo = crate::db::repositories::PaymentMethodRepository::new(db_pool.clone());
+    let user_repo = crate::db::repositories::UserRepository::new(db_pool.clone());
+    let sub_repo = crate::db::repositories::SubscriptionRepository::new(db_pool.clone());
+    let email_service = crate::services::email_notification_service::EmailNotificationService::new(db_pool.clone())?;
+
+    // Handle different event types
+    match event.type_.to_string().as_str() {
             "checkout.session.completed" => {
                 info!("Checkout session completed: {}", event.id);
-                if let stripe::EventObject::CheckoutSession(session) = event.data.object {
+                if let stripe::EventObject::CheckoutSession(session) = &event.data.object {
+                    // Check if this is a credit purchase
+                    if let Some(metadata) = &session.metadata {
+                        if metadata.get("type").map(|t| t.as_str()) == Some("credit_purchase") {
+                            // Handle credit purchase
+                            if let (Some(user_id_str), Some(credit_value_str), Some(currency), Some(stripe_price_id_internal)) = (
+                                metadata.get("user_id").map(|v| v.as_str()),
+                                metadata.get("credit_value").map(|v| v.as_str()),
+                                metadata.get("currency").map(|v| v.as_str()),
+                                metadata.get("stripe_price_id_internal").map(|v| v.as_str())
+                            ) {
+                                if let Ok(user_uuid) = Uuid::parse_str(user_id_str) {
+                                    if let Ok(credit_value) = credit_value_str.parse::<BigDecimal>() {
+                                        // Verify amount matches by getting the credit pack configuration
+                                        let credit_pack_repo = crate::db::repositories::CreditPackRepository::new(billing_service.get_db_pool().clone());
+                                        let selected_pack = credit_pack_repo.get_pack_by_stripe_price_id(stripe_price_id_internal).await?
+                                            .ok_or_else(|| AppError::InvalidArgument(format!("Invalid credit pack price ID: {}", stripe_price_id_internal)))?;
+                                        
+                                        // Validate that the session amount matches our expected price
+                                        if let Some(amount_total) = session.amount_total {
+                                            validate_stripe_amount_matches(amount_total, &selected_pack.price_amount, currency)?;
+                                        }
+                                        
+                                        let mut tx = billing_service.get_system_db_pool().begin().await
+                                            .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
+                                        
+                                        // Add credits to user balance
+                                        let credit_repo = UserCreditRepository::new(billing_service.get_system_db_pool());
+                                        let _updated_balance = credit_repo.increment_balance_with_executor(
+                                            &user_uuid,
+                                            &credit_value,
+                                            &mut tx
+                                        ).await?;
+                                        
+                                        // Create credit transaction record
+                                        let transaction_repo = CreditTransactionRepository::new(billing_service.get_system_db_pool());
+                                        let stripe_charge_id = session.payment_intent.as_ref()
+                                            .map(|pi| pi.id().to_string())
+                                            .unwrap_or_else(|| format!("checkout_{}", session.id.as_ref()));
+                                        
+                                        let transaction = CreditTransaction {
+                                            id: Uuid::new_v4(),
+                                            user_id: user_uuid,
+                                            transaction_type: "purchase".to_string(),
+                                            amount: credit_value.clone(),
+                                            currency: currency.to_string(),
+                                            description: Some(format!("Credit purchase via Stripe")),
+                                            stripe_charge_id: Some(stripe_charge_id),
+                                            related_api_usage_id: None,
+                                            metadata: Some(serde_json::to_value(&session.metadata).unwrap_or_default()),
+                                            created_at: Some(Utc::now()),
+                                        };
+                                        
+                                        transaction_repo.create_transaction_with_executor(&transaction, &mut tx).await?;
+                                        
+                                        // Commit transaction
+                                        tx.commit().await.map_err(|e| AppError::Database(format!("Failed to commit transaction: {}", e)))?;
+                                        info!("Successfully processed credit purchase for user: {} amount: {}", user_uuid, credit_value);
+                                        
+                                        // Send success email notification
+                                        if let Ok(user) = user_repo.get_by_id(&user_uuid).await {
+                                            email_service.queue_credit_purchase_notification(
+                                                &user_uuid,
+                                                &user.email,
+                                                &credit_value,
+                                                currency,
+                                            ).await.unwrap_or_else(|e| {
+                                                error!("Failed to queue credit purchase notification: {}", e);
+                                            });
+                                        }
+                                        
+                                        return Ok(HttpResponse::Ok().finish());
+                                    }
+                                }
+                            }
+                            error!("Invalid credit purchase metadata in checkout session: {:?}", session.metadata);
+                            return Ok(HttpResponse::Ok().finish());
+                        }
+                    }
                     let mut tx = billing_service.get_db_pool().begin().await
                         .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
                     
@@ -369,7 +609,7 @@ pub async fn stripe_webhook(
                     let user_repo = crate::db::repositories::UserRepository::new(db_pool);
 
                     // Primary path: Use user_id from metadata
-                    if let Some(user_id_str) = session.metadata.as_ref().and_then(|m| m.get("user_id").and_then(|v| v.as_str())) {
+                    if let Some(user_id_str) = session.metadata.as_ref().and_then(|m| m.get("user_id").map(|v| v.as_str())) {
                         if let Ok(user_uuid) = Uuid::parse_str(user_id_str) {
                             let user_option = user_repo.get_by_id_with_executor(&user_uuid, &mut tx).await.ok();
                             if let Some(user) = user_option {
@@ -396,11 +636,11 @@ pub async fn stripe_webhook(
                                         .and_then(|m| m.get("plan_id").map(|s| s.as_str().to_string()));
 
                                     // If no plan_id in metadata, this is now a hard error
-                                    let final_plan_id = if let Some(pid) = plan_id_from_metadata {
+                                    let final_plan_id: String = if let Some(pid) = plan_id_from_metadata {
                                         pid
                                     } else {
                                         // Hard error: plan_id is now mandatory in checkout session metadata
-                                        let session_id = session.id.as_ref().map(|id| id.to_string()).unwrap_or_else(|| "Unknown".to_string());
+                                        let session_id = session.id.as_ref();
                                         let error_msg = format!(
                                             "CRITICAL: Missing required plan_id in Stripe checkout session metadata. Session ID: {}, User: {}, Stripe Customer: {:?}, Stripe Subscription: {:?}. plan_id is mandatory for processing checkout sessions.",
                                             session_id,
@@ -417,7 +657,8 @@ pub async fn stripe_webhook(
                                         match subscription_ref {
                                             stripe::Expandable::Object(subscription) => {
                                                 // Subscription is already expanded
-                                                if let Some(period_end) = subscription.current_period_end {
+                                                let period_end = subscription.current_period_end;
+                                                if period_end != 0 {
                                                     DateTime::<Utc>::from_timestamp(period_end as i64, 0)
                                                         .unwrap_or(Utc::now() + Duration::days(30))
                                                 } else {
@@ -427,14 +668,11 @@ pub async fn stripe_webhook(
                                             stripe::Expandable::Id(subscription_id) => {
                                                 // Need to fetch the subscription
                                                 let client = stripe::Client::new(app_state.settings.stripe.secret_key.clone());
-                                                match stripe::Subscription::retrieve(&client, subscription_id, &[]).await {
+                                                match StripeSubscription::retrieve(&client, subscription_id, &[]).await {
                                                     Ok(subscription) => {
-                                                        if let Some(period_end) = subscription.current_period_end {
-                                                            DateTime::<Utc>::from_timestamp(period_end as i64, 0)
-                                                                .unwrap_or(Utc::now() + Duration::days(30))
-                                                        } else {
-                                                            Utc::now() + Duration::days(30)
-                                                        }
+                                                        let period_end = subscription.current_period_end;
+                                                        DateTime::<Utc>::from_timestamp(period_end as i64, 0)
+                                                            .unwrap_or(Utc::now() + Duration::days(30))
                                                     },
                                                     Err(e) => {
                                                         return Err(AppError::External(format!("Failed to fetch Stripe subscription {}: {}", subscription_id, e)));
@@ -451,8 +689,8 @@ pub async fn stripe_webhook(
                                         &user.id,
                                         &final_plan_id,
                                         "active",
-                                        session.customer.as_ref().map(|c| c.id().as_str()),
-                                        session.subscription.as_ref().map(|s| s.id().as_str()),
+                                        session.customer.as_ref().map(|c| c.id()).as_deref(),
+                                        session.subscription.as_ref().map(|s| s.id()).as_deref(),
                                         None, // No trial for new paid subscriptions from checkout
                                         current_period_ends_at,
                                         &mut tx,
@@ -474,7 +712,7 @@ pub async fn stripe_webhook(
                         if let Some(customer_ref) = &session.customer {
                             let stripe_customer_id_str = customer_ref.id().to_string();
                             let subscription_id = session.subscription.as_ref().map(|s| s.id().to_string()).unwrap_or_else(|| "None".to_string());
-                            let session_id = session.id.as_ref().map(|id| id.to_string()).unwrap_or_else(|| "Unknown".to_string());
+                            let session_id = session.id.as_ref();
                             let metadata_keys: Vec<String> = session.metadata.as_ref()
                                 .map(|m| m.keys().cloned().collect())
                                 .unwrap_or_default();
@@ -484,7 +722,7 @@ pub async fn stripe_webhook(
                                 session_id, stripe_customer_id_str, subscription_id, metadata_keys, event.id
                             );
                         } else {
-                            let session_id = session.id.as_ref().map(|id| id.to_string()).unwrap_or_else(|| "Unknown".to_string());
+                            let session_id = session.id.as_ref();
                             let metadata_keys: Vec<String> = session.metadata.as_ref()
                                 .map(|m| m.keys().cloned().collect())
                                 .unwrap_or_default();
@@ -499,8 +737,9 @@ pub async fn stripe_webhook(
             },
             "customer.subscription.updated" => {
                 info!("Subscription updated: {}", event.id);
-                if let stripe::EventObject::Subscription(subscription) = event.data.object {
-                    if let Some(customer) = subscription.customer {
+                if let stripe::EventObject::Subscription(subscription) = &event.data.object {
+                    let customer = &subscription.customer;
+                    if !customer.id().is_empty() {
                         let mut tx = billing_service.get_db_pool().begin().await
                             .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
                         
@@ -509,17 +748,17 @@ pub async fn stripe_webhook(
                         let user_repo = crate::db::repositories::UserRepository::new(db_pool);
                         
                         // Find users with this Stripe customer ID
-                        let users = user_repo.find_by_stripe_customer_id_with_executor(&customer.to_string(), &mut tx).await?;
+                        let users = user_repo.find_by_stripe_customer_id_with_executor(&customer.id(), &mut tx).await?;
                         
                         let user = match users.as_slice() {
                             [] => {
-                                error!("No user found for Stripe Customer ID: {} during event: {}", customer.to_string(), event.type_);
+                                error!("No user found for Stripe Customer ID: {} during event: {}", customer.id(), event.type_.to_string());
                                 // Log and skip processing for this event
                                 return Ok(HttpResponse::Ok().finish()); // Acknowledge to Stripe
                             }
                             [user] => user, // Exactly one user found, proceed
                             _ => { // More than one user found
-                                error!("CRITICAL: Multiple users found for Stripe Customer ID: {}. Found {} users. Event: {}. This requires manual data reconciliation.", customer.to_string(), users.len(), event.type_);
+                                error!("CRITICAL: Multiple users found for Stripe Customer ID: {}. Found {} users. Event: {}. This requires manual data reconciliation.", customer.id(), users.len(), event.type_.to_string());
                                 // This indicates a data integrity issue. Acknowledge to Stripe to stop retries, but alert admins.
                                 // TODO: Implement admin alerting mechanism.
                                 return Ok(HttpResponse::InternalServerError().body("Multiple users found for Stripe Customer ID"));
@@ -532,7 +771,8 @@ pub async fn stripe_webhook(
                                 db_subscription.status = subscription.status.to_string();
                                 
                                 // Update end date if available
-                                if let Some(current_period_end) = subscription.current_period_end {
+                                let current_period_end = subscription.current_period_end;
+                                if current_period_end != 0 {
                                     let end_date = DateTime::<Utc>::from_timestamp(current_period_end as i64, 0)
                                         .unwrap_or(Utc::now() + Duration::days(30));
                                     db_subscription.current_period_ends_at = Some(end_date);
@@ -551,8 +791,9 @@ pub async fn stripe_webhook(
             },
             "customer.subscription.deleted" => {
                 info!("Subscription deleted: {}", event.id);
-                if let stripe::EventObject::Subscription(subscription) = event.data.object {
-                    if let Some(customer) = subscription.customer {
+                if let stripe::EventObject::Subscription(subscription) = &event.data.object {
+                    let customer = &subscription.customer;
+                    if let Some(customer_id) = customer.as_object().map(|c| &c.id) {
                         let mut tx = billing_service.get_db_pool().begin().await
                             .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
                         
@@ -561,17 +802,17 @@ pub async fn stripe_webhook(
                         let user_repo = crate::db::repositories::UserRepository::new(db_pool);
                         
                         // Find users with this Stripe customer ID
-                        let users = user_repo.find_by_stripe_customer_id_with_executor(&customer.to_string(), &mut tx).await?;
+                        let users = user_repo.find_by_stripe_customer_id_with_executor(&customer.id(), &mut tx).await?;
                         
                         let user = match users.as_slice() {
                             [] => {
-                                error!("No user found for Stripe Customer ID: {} during event: {}", customer.to_string(), event.type_);
+                                error!("No user found for Stripe Customer ID: {} during event: {}", customer.id(), event.type_.to_string());
                                 // Log and skip processing for this event
                                 return Ok(HttpResponse::Ok().finish()); // Acknowledge to Stripe
                             }
                             [user] => user, // Exactly one user found, proceed
                             _ => { // More than one user found
-                                error!("CRITICAL: Multiple users found for Stripe Customer ID: {}. Found {} users. Event: {}. This requires manual data reconciliation.", customer.to_string(), users.len(), event.type_);
+                                error!("CRITICAL: Multiple users found for Stripe Customer ID: {}. Found {} users. Event: {}. This requires manual data reconciliation.", customer.id(), users.len(), event.type_.to_string());
                                 // This indicates a data integrity issue. Acknowledge to Stripe to stop retries, but alert admins.
                                 // TODO: Implement admin alerting mechanism.
                                 return Ok(HttpResponse::InternalServerError().body("Multiple users found for Stripe Customer ID"));
@@ -596,7 +837,7 @@ pub async fn stripe_webhook(
             },
             "invoice.created" => {
                 info!("Invoice created: {}", event.id);
-                if let stripe::EventObject::Invoice(invoice) = event.data.object {
+                if let stripe::EventObject::Invoice(invoice) = &event.data.object {
                     if let Some(customer) = &invoice.customer {
                         let mut tx = billing_service.get_db_pool().begin().await
                             .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
@@ -625,21 +866,21 @@ pub async fn stripe_webhook(
                             user_id: user.id,
                             stripe_customer_id: customer_id,
                             stripe_subscription_id: invoice.subscription.as_ref().map(|s| s.id().to_string()),
-                            amount_due: stripe_cents_to_decimal(invoice.amount_due, &invoice.currency.to_string().to_uppercase())?,
-                            amount_paid: stripe_cents_to_decimal(invoice.amount_paid, &invoice.currency.to_string().to_uppercase())?,
-                            currency: invoice.currency.to_string().to_uppercase(),
+                            amount_due: stripe_cents_to_decimal(invoice.amount_due.unwrap_or(0), &invoice.currency.as_ref().map(|c| c.to_string().to_uppercase()).unwrap_or_else(|| "USD".to_string()))?,
+                            amount_paid: stripe_cents_to_decimal(invoice.amount_paid.unwrap_or(0), &invoice.currency.as_ref().map(|c| c.to_string().to_uppercase()).unwrap_or_else(|| "USD".to_string()))?,
+                            currency: invoice.currency.as_ref().map(|c| c.to_string().to_uppercase()).unwrap_or_else(|| "USD".to_string()),
                             status: invoice.status.as_ref().map(|s| s.as_str()).unwrap_or("unknown").to_string(),
                             invoice_pdf_url: invoice.invoice_pdf.clone(),
                             hosted_invoice_url: invoice.hosted_invoice_url.clone(),
                             billing_reason: invoice.billing_reason.as_ref().map(|r| r.as_str().to_string()),
                             description: invoice.description.clone(),
-                            period_start: invoice.period_start.map(|ts| chrono::DateTime::from_timestamp(ts as i64, 0).unwrap_or_default()).flatten(),
-                            period_end: invoice.period_end.map(|ts| chrono::DateTime::from_timestamp(ts as i64, 0).unwrap_or_default()).flatten(),
-                            due_date: invoice.due_date.map(|ts| chrono::DateTime::from_timestamp(ts as i64, 0).unwrap_or_default()).flatten(),
-                            created_at: chrono::DateTime::from_timestamp(invoice.created as i64, 0).unwrap_or_default(),
-                            finalized_at: invoice.status_transitions.finalized_at.map(|ts| chrono::DateTime::from_timestamp(ts as i64, 0).unwrap_or_default()).flatten(),
-                            paid_at: invoice.status_transitions.paid_at.map(|ts| chrono::DateTime::from_timestamp(ts as i64, 0).unwrap_or_default()).flatten(),
-                            voided_at: invoice.status_transitions.voided_at.map(|ts| chrono::DateTime::from_timestamp(ts as i64, 0).unwrap_or_default()).flatten(),
+                            period_start: invoice.period_start.and_then(|ts| chrono::DateTime::from_timestamp(ts as i64, 0)),
+                            period_end: invoice.period_end.and_then(|ts| chrono::DateTime::from_timestamp(ts as i64, 0)),
+                            due_date: invoice.due_date.and_then(|ts| chrono::DateTime::from_timestamp(ts as i64, 0)),
+                            created_at: invoice.created.and_then(|ts| chrono::DateTime::from_timestamp(ts as i64, 0)).unwrap_or_else(|| chrono::Utc::now()),
+                            finalized_at: invoice.status_transitions.as_ref().and_then(|st| st.finalized_at).and_then(|ts| chrono::DateTime::from_timestamp(ts as i64, 0)),
+                            paid_at: invoice.status_transitions.as_ref().and_then(|st| st.paid_at).and_then(|ts| chrono::DateTime::from_timestamp(ts as i64, 0)),
+                            voided_at: invoice.status_transitions.as_ref().and_then(|st| st.voided_at).and_then(|ts| chrono::DateTime::from_timestamp(ts as i64, 0)),
                             updated_at: chrono::Utc::now(),
                         };
                         
@@ -666,18 +907,18 @@ pub async fn stripe_webhook(
             },
             "invoice.payment_succeeded" => {
                 info!("Invoice payment succeeded: {}", event.id);
-                if let stripe::EventObject::Invoice(invoice) = event.data.object {
+                if let stripe::EventObject::Invoice(invoice) = &event.data.object {
                     invoice_repo.update_status(
                         &invoice.id,
                         "paid",
-                        invoice.status_transitions.paid_at.map(|ts| chrono::DateTime::from_timestamp(ts as i64, 0).unwrap_or_default()).flatten(),
+                        invoice.status_transitions.as_ref().and_then(|st| st.paid_at).and_then(|ts| chrono::DateTime::from_timestamp(ts as i64, 0)),
                         None,
                     ).await?;
                 }
             },
             "invoice.payment_failed" => {
                 info!("Invoice payment failed: {}", event.id);
-                if let stripe::EventObject::Invoice(invoice) = event.data.object {
+                if let stripe::EventObject::Invoice(invoice) = &event.data.object {
                     if let Some(customer) = &invoice.customer {
                         // Find user and send payment failure notification
                         let users = user_repo.find_by_stripe_customer_id(&customer.id().to_string()).await?;
@@ -695,15 +936,15 @@ pub async fn stripe_webhook(
                                 return Ok(HttpResponse::InternalServerError().body("Multiple users found for Stripe Customer ID"));
                             }
                         };
-                        let amount = stripe_cents_to_decimal(invoice.amount_due, &invoice.currency.to_string().to_uppercase())?;
-                        let retry_date = invoice.next_payment_attempt.map(|ts| chrono::DateTime::from_timestamp(ts as i64, 0).unwrap_or_default()).flatten();
+                        let amount = stripe_cents_to_decimal(invoice.amount_due.unwrap_or(0), &invoice.currency.as_ref().map(|c| c.to_string().to_uppercase()).unwrap_or_else(|| "USD".to_string()))?;
+                        let retry_date = invoice.next_payment_attempt.and_then(|ts| chrono::DateTime::from_timestamp(ts as i64, 0));
                         
                         email_service.queue_payment_failed_notification(
                             &user.id,
                             &user.email,
                             &invoice.id,
                             &amount,
-                            &invoice.currency.to_string().to_uppercase(),
+                            &invoice.currency.as_ref().map(|c| c.to_string().to_uppercase()).unwrap_or_else(|| "USD".to_string()),
                             retry_date.as_ref(),
                         ).await?;
                     }
@@ -711,7 +952,7 @@ pub async fn stripe_webhook(
             },
             "payment_method.attached" => {
                 info!("Payment method attached: {}", event.id);
-                if let stripe::EventObject::PaymentMethod(payment_method) = event.data.object {
+                if let stripe::EventObject::PaymentMethod(payment_method) = &event.data.object {
                     if let Some(customer) = &payment_method.customer {
                         let mut tx = billing_service.get_db_pool().begin().await
                             .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
@@ -747,7 +988,7 @@ pub async fn stripe_webhook(
                             card_country: payment_method.card.as_ref().and_then(|c| c.country.clone()),
                             card_funding: payment_method.card.as_ref().map(|c| c.funding.as_str().to_string()),
                             is_default: false, // Will be updated if it becomes default
-                            created_at: chrono::DateTime::from_timestamp(payment_method.created as i64, 0).unwrap_or_default(),
+                            created_at: chrono::DateTime::from_timestamp(payment_method.created as i64, 0).unwrap_or_else(|| chrono::Utc::now()),
                             updated_at: chrono::Utc::now(),
                         };
                         
@@ -761,7 +1002,7 @@ pub async fn stripe_webhook(
             },
             "payment_method.detached" => {
                 info!("Payment method detached: {}", event.id);
-                if let stripe::EventObject::PaymentMethod(payment_method) = event.data.object {
+                if let stripe::EventObject::PaymentMethod(payment_method) = &event.data.object {
                     if let Some(customer) = &payment_method.customer {
                         let mut tx = billing_service.get_db_pool().begin().await
                             .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
@@ -794,7 +1035,6 @@ pub async fn stripe_webhook(
                 info!("Received unhandled Stripe event type: {}", event.type_);
             }
         }
-    }
     
     // Return success
     Ok(HttpResponse::Ok().finish())

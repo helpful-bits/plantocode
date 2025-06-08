@@ -125,11 +125,30 @@ interface InvoiceHistoryResponse {
   hasMore: boolean;
 }
 
+interface CreditTransaction {
+  id: string;
+  amount: number;
+  currency: string;
+  transactionType: "credit_added" | "credit_used" | "credit_expired" | "credit_refunded";
+  description: string;
+  createdDate: string;
+  relatedInvoiceId?: string;
+  balanceAfter: number;
+}
+
+interface CreditHistoryResponse {
+  transactions: CreditTransaction[];
+  currentBalance: number;
+  totalCount: number;
+  hasMore: boolean;
+}
+
 export function ComprehensiveBillingDashboard() {
   const [analytics, setAnalytics] = useState<SpendingAnalytics | null>(null);
   const [forecast, setForecast] = useState<SpendingForecast | null>(null);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodsResponse | null>(null);
   const [invoiceHistory, setInvoiceHistory] = useState<InvoiceHistoryResponse | null>(null);
+  const [creditHistory, setCreditHistory] = useState<CreditHistoryResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { showNotification } = useNotification();
@@ -149,9 +168,10 @@ export function ComprehensiveBillingDashboard() {
         invoke<SpendingForecast>("get_spending_forecast_command"),
         invoke<PaymentMethodsResponse>("get_payment_methods_command"),
         invoke<InvoiceHistoryResponse>("get_invoice_history_command"),
+        invoke<CreditHistoryResponse>("get_credit_history_command"),
       ]);
 
-      const [analyticsResult, forecastResult, paymentMethodsResult, invoiceResult] = results;
+      const [analyticsResult, forecastResult, paymentMethodsResult, invoiceResult, creditHistoryResult] = results;
       
       // Handle analytics data
       if (analyticsResult.status === 'fulfilled') {
@@ -179,6 +199,13 @@ export function ComprehensiveBillingDashboard() {
         setInvoiceHistory(invoiceResult.value);
       } else {
         console.error('Failed to load invoice history:', invoiceResult.reason);
+      }
+      
+      // Handle credit history data
+      if (creditHistoryResult.status === 'fulfilled') {
+        setCreditHistory(creditHistoryResult.value);
+      } else {
+        console.error('Failed to load credit history:', creditHistoryResult.reason);
       }
       
       // Check if any critical data failed to load
@@ -439,6 +466,7 @@ export function ComprehensiveBillingDashboard() {
           <TabsTrigger value="forecast">Forecast</TabsTrigger>
           <TabsTrigger value="payment-methods">Payment Methods</TabsTrigger>
           <TabsTrigger value="invoices">Invoice History</TabsTrigger>
+          <TabsTrigger value="credit-history">Credit History</TabsTrigger>
         </TabsList>
 
         <TabsContent value="trends" className="space-y-4">
@@ -650,6 +678,90 @@ export function ComprehensiveBillingDashboard() {
                     ))}
                   </div>
                 )}
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+
+        <TabsContent value="credit-history" className="space-y-4">
+          {creditHistory ? (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <CreditCard className="h-5 w-5" />
+                  Credit Transaction History
+                </CardTitle>
+                <div className="text-sm text-muted-foreground">
+                  Current balance: {formatCurrency(creditHistory.currentBalance || 0, analytics?.currentStatus?.currency || "USD")}
+                </div>
+              </CardHeader>
+              <CardContent>
+                {!creditHistory?.transactions || creditHistory.transactions.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    No credit transactions found
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {creditHistory.transactions.map((transaction) => (
+                      <div key={transaction.id} className="flex items-center justify-between p-3 border border-border/60 rounded-lg">
+                        <div>
+                          <div className="font-medium">
+                            {transaction.description || "Credit Transaction"}
+                          </div>
+                          <div className="text-sm text-muted-foreground">
+                            {transaction.createdDate ? new Date(transaction.createdDate).toLocaleDateString() : "Date not available"}
+                            {transaction.relatedInvoiceId && (
+                              <span> • Invoice: {transaction.relatedInvoiceId}</span>
+                            )}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            Balance after: {formatCurrency(transaction.balanceAfter || 0, transaction.currency || "USD")}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <div className="text-right">
+                            <div className={`font-bold ${
+                              transaction.transactionType === 'credit_added' ? 'text-green-600' :
+                              transaction.transactionType === 'credit_used' ? 'text-red-600' :
+                              transaction.transactionType === 'credit_expired' ? 'text-orange-600' :
+                              'text-blue-600'
+                            }`}>
+                              {transaction.transactionType === 'credit_added' ? '+' : 
+                               transaction.transactionType === 'credit_used' ? '-' : ''}
+                              {formatCurrency(Math.abs(transaction.amount || 0), transaction.currency || "USD")}
+                            </div>
+                            <Badge 
+                              variant="outline" 
+                              className={`text-xs ${
+                                transaction.transactionType === 'credit_added' ? 'bg-green-50 text-green-700 border-green-200' :
+                                transaction.transactionType === 'credit_used' ? 'bg-red-50 text-red-700 border-red-200' :
+                                transaction.transactionType === 'credit_expired' ? 'bg-orange-50 text-orange-700 border-orange-200' :
+                                'bg-blue-50 text-blue-700 border-blue-200'
+                              }`}
+                            >
+                              {transaction.transactionType?.replace('_', ' ') || 'Unknown'}
+                            </Badge>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                    {creditHistory.hasMore && (
+                      <div className="text-center pt-4">
+                        <Button variant="outline" size="sm">
+                          Load More Transactions
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          ) : (
+            <Card>
+              <CardContent className="pt-6">
+                <div className="text-center py-8 text-muted-foreground">
+                  Credit history could not be loaded
+                </div>
               </CardContent>
             </Card>
           )}

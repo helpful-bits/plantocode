@@ -70,7 +70,7 @@ export function useJobFiltering(jobs: BackgroundJob[], isLoading: boolean) {
 
       // Sort all jobs by most recent activity (endTime for completed jobs, updatedAt for others)
       const sortedJobs = [...jobsToUse].sort((a: BackgroundJob, b: BackgroundJob) =>
-        safeCompare(a, b, ["endTime", "updatedAt", "startTime", "lastUpdate"])
+        safeCompare(a, b, ["endTime", "updatedAt", "startTime", "createdAt"])
       );
 
       const duration = performance.now() - startTime;

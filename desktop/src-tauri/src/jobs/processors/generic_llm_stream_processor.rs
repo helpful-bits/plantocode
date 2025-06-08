@@ -37,12 +37,15 @@ impl JobProcessor for GenericLlmStreamProcessor {
         };
         
         // Setup job processing
-        let (repo, _settings_repo, db_job) = job_processor_utils::setup_job_processing(&job.id, &app_handle).await?;
+        let (repo, settings_repo, db_job) = job_processor_utils::setup_job_processing(&job.id, &app_handle).await?;
         
-        // Extract model settings from BackgroundJob
-        let model_used = db_job.model_used.clone().unwrap_or_else(|| "gpt-3.5-turbo".to_string());
-        let temperature = db_job.temperature.unwrap_or(0.7);
-        let max_output_tokens = db_job.max_output_tokens.unwrap_or(4000) as u32;
+        // Get task settings from database
+        let task_settings = settings_repo.get_task_settings(&job.session_id, &job.job_type.to_string()).await?
+            .ok_or_else(|| AppError::JobError(format!("No task settings found for session {} and task type {}", job.session_id, job.job_type.to_string())))?;
+        let model_used = task_settings.model;
+        let temperature = task_settings.temperature
+            .ok_or_else(|| AppError::JobError("Temperature not set in task settings".to_string()))?;
+        let max_output_tokens = task_settings.max_tokens as u32;
         
         job_processor_utils::log_job_start(&job.id, "generic LLM stream");
         
@@ -92,7 +95,7 @@ impl JobProcessor for GenericLlmStreamProcessor {
                 error!("{}", error_message);
                 
                 // Finalize job failure
-                job_processor_utils::finalize_job_failure(&job.id, &repo, &error_message).await?;
+                job_processor_utils::finalize_job_failure(&job.id, &repo, &error_message, None).await?;
                 
                 // Return failure result
                 return Ok(JobProcessResult::failure(job.id.to_string(), error_message));
@@ -130,7 +133,7 @@ impl JobProcessor for GenericLlmStreamProcessor {
             error!("{}", error_message);
             
             // Finalize job failure
-            job_processor_utils::finalize_job_failure(&job.id, &repo, &error_message).await?;
+            job_processor_utils::finalize_job_failure(&job.id, &repo, &error_message, None).await?;
             
             // Return failure result
             JobProcessResult::failure(job.id.to_string(), error_message)

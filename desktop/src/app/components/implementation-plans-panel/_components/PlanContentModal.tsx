@@ -1,7 +1,8 @@
 "use client";
 
-import { Loader2, RefreshCw } from "lucide-react";
+import { Loader2, RefreshCw, Copy } from "lucide-react";
 import React from "react";
+import { useNotification } from "@/contexts/notification-context";
 
 import { type BackgroundJob, JOB_STATUSES } from "@/types/session-types";
 import { Button } from "@/ui/button";
@@ -9,8 +10,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/ui/dialog";
 import { Progress } from "@/ui/progress";
 import { VirtualizedCodeViewer } from "@/ui/virtualized-code-viewer";
 
-import { getStreamingProgressValue, getParsedMetadata } from "../../background-jobs-sidebar/utils";
-import { parsePlanResponseContent } from "../_utils/plan-content-parser";
+import { getStreamingProgressValue } from "../../background-jobs-sidebar/utils";
+import { getJobDisplaySessionName } from "../../background-jobs-sidebar/_utils/job-display-utils";
+import { parsePlanResponseContent, extractStepsFromPlan, createPlanWithOnlyStep } from "../_utils/plan-content-parser";
 
 interface PlanContentModalProps {
   plan?: BackgroundJob;
@@ -26,22 +28,22 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
   onRefreshContent,
 }) => {
   const [isRefreshing, setIsRefreshing] = React.useState(false);
+  const { showNotification } = useNotification();
 
   if (!plan) return null;
 
   const isStreaming = JOB_STATUSES.ACTIVE.includes(plan.status) &&
-                     (plan.status === "running" || plan.status === "processing_stream" || plan.status === "generating_stream");
+                     (plan.status === "running" || plan.status === "processingStream" || plan.status === "generatingStream");
   const progress = getStreamingProgressValue(
     plan.metadata,
-    plan.startTime,
-    plan.maxOutputTokens
+    plan.startTime
   );
 
   let displayContent = "No content available yet.";
   let viewerLanguage = "xml"; // Default to XML for implementation plans
 
   if (plan) {
-    if (isStreaming) { // isStreaming is already defined in the component
+    if (isStreaming) { 
       displayContent = plan.response || "Streaming content...";
       // viewerLanguage remains "xml" as LLM is instructed to output XML
     } else if (plan.status === "completed") {
@@ -54,38 +56,12 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
     }
   }
 
-  const parsedMetadata = getParsedMetadata(plan.metadata);
-  const sessionName = (() => {
-    // Priority 1: Check additionalParams.sessionName
-    if (parsedMetadata?.additionalParams?.sessionName && typeof parsedMetadata.additionalParams.sessionName === 'string') {
-      return parsedMetadata.additionalParams.sessionName;
-    }
-    
-    // Priority 2: Check nested payload data
-    if (parsedMetadata?.sessionName && typeof parsedMetadata.sessionName === 'string') {
-      return parsedMetadata.sessionName;
-    }
-    
-    // Priority 3: Check job payload for session name
-    if (parsedMetadata?.parsedJobPayload?.data?.sessionName && typeof parsedMetadata.parsedJobPayload.data.sessionName === 'string') {
-      return parsedMetadata.parsedJobPayload.data.sessionName;
-    }
-    
-    // Priority 4: Use plan title if available
-    if (parsedMetadata?.additionalParams?.planTitle && typeof parsedMetadata.additionalParams.planTitle === 'string') {
-      return parsedMetadata.additionalParams.planTitle;
-    }
-    
-    // Priority 5: Extract meaningful content from the first line of the prompt
-    if (plan.prompt && typeof plan.prompt === 'string' && plan.prompt.trim()) {
-      const firstLine = plan.prompt.trim().split('\n')[0].trim();
-      if (firstLine.length > 0) {
-        return firstLine.length > 60 ? firstLine.substring(0, 60) + '...' : firstLine;
-      }
-    }
-    
-    return "Untitled Session";
-  })();
+  // Determine if we should show the loading indicator
+  // Only show loading when streaming AND no content has arrived yet
+  const showLoadingIndicator = isStreaming && (!plan.response || plan.response.trim() === "");
+
+  // Use centralized utility function for consistent sessionName logic
+  const sessionName = getJobDisplaySessionName(plan);
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
@@ -96,9 +72,35 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
     }
   };
 
+  // Extract steps from the plan for step-specific copy buttons
+  const steps = React.useMemo(() => {
+    return extractStepsFromPlan(plan.response);
+  }, [plan.response]);
+
+  const handleCopyPlanWithOnlyStep = async (stepNumber: string, stepTitle: string) => {
+    try {
+      const planWithOnlyStep = createPlanWithOnlyStep(displayContent, stepNumber);
+      await navigator.clipboard.writeText(planWithOnlyStep);
+      showNotification({
+        title: "Copied to clipboard",
+        message: `Plan copied with only "${stepTitle}" + context`,
+        type: "success",
+        duration: 2000,
+      });
+    } catch (err) {
+      console.error("Failed to copy plan:", err);
+      showNotification({
+        title: "Copy failed",
+        message: "Failed to copy plan to clipboard",
+        type: "error",
+        duration: 3000,
+      });
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-6xl max-h-[90vh] !flex !flex-col !gap-0 text-foreground !bg-card rounded-xl shadow-lg !backdrop-blur-none">
+      <DialogContent className="max-w-6xl h-[95vh] !flex !flex-col !gap-0 text-foreground !bg-card rounded-xl shadow-lg !backdrop-blur-none">
         <DialogHeader>
           <DialogTitle className="text-lg">
             Implementation Plan: {sessionName}
@@ -133,6 +135,28 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
           </div>
         </div>
 
+        {/* Step Copy Buttons */}
+        {steps.length > 0 && !isStreaming && (
+          <div className="mb-3">
+            <div className="text-xs text-muted-foreground mb-2">Copy plan with only specific step:</div>
+            <div className="flex flex-wrap gap-2">
+              {steps.map((step) => (
+                <Button
+                  key={step.number}
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleCopyPlanWithOnlyStep(step.number, step.title)}
+                  className="text-xs h-7"
+                  title={`Copy plan with only: ${step.title}`}
+                >
+                  <Copy className="h-3 w-3 mr-1" />
+                  Step {step.number}
+                </Button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Progress bar for streaming jobs */}
         {isStreaming && (
           <div className="mb-4">
@@ -148,11 +172,11 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
         {/* Content */}
         <VirtualizedCodeViewer
           content={displayContent}
-          height="60vh"
+          height="calc(100% - 8rem)"
           showCopy={true}
           copyText="Copy Plan"
           showContentSize={true}
-          isLoading={isStreaming}
+          isLoading={showLoadingIndicator}
           placeholder="No implementation plan content available yet"
           language={viewerLanguage}
           className="mt-2"

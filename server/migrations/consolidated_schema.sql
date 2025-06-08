@@ -377,6 +377,326 @@ INSERT INTO subscription_plans (
 ON CONFLICT (id) DO NOTHING;
 
 
+-- Default system prompts table for centralized prompt management
+CREATE TABLE IF NOT EXISTS default_system_prompts (
+    id TEXT PRIMARY KEY,
+    task_type TEXT NOT NULL UNIQUE,
+    system_prompt TEXT NOT NULL,
+    description TEXT,
+    version TEXT DEFAULT '1.0',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_default_system_prompts_task_type ON default_system_prompts(task_type);
+
+-- Insert all default system prompts - server as source of truth
+INSERT INTO default_system_prompts (id, task_type, system_prompt, description, version) VALUES
+('default_path_finder', 'path_finder', 'You are a code path finder. Your task is to identify the most relevant files for implementing or fixing a specific task in a codebase.
+
+{{DIRECTORY_TREE}}
+
+{{FILE_CONTENTS}}
+
+Return ONLY file paths and no other commentary, with one file path per line.
+
+For example:
+src/components/Button.tsx
+src/hooks/useAPI.ts
+src/styles/theme.css
+
+DO NOT include ANY text, explanations, or commentary. The response must consist ONLY of file paths, one per line.
+
+All returned file paths must be relative to the project root.
+
+Guidance on file selection:
+- Focus on truly relevant files - be selective and prioritize quality over quantity
+- Prioritize files that will need direct modification (typically 3-10 files)
+- Include both implementation files and test files when appropriate
+- Consider configuration files only if they are directly relevant to the task
+- If uncertain about exact paths, make educated guesses based on typical project structures
+- Order files by relevance, with most important files first
+
+To control inference cost, you **MUST** keep the resulting list as concise as possible **while still providing enough information** for the downstream model to succeed.
+
+• Start with the highest-impact files (entry points, shared data models, core logic).
+• Add further paths only when omitting them would risk an incorrect or incomplete implementation.
+• Each extra file increases context size and cost, so favor brevity while safeguarding completeness.
+
+Return the final list using the same formatting rules described above.', 'Enhanced system prompt for finding relevant files in a codebase', '2.0'),
+
+('default_text_improvement', 'text_improvement', 'Please improve the following text to make it clearer and grammatically correct while EXACTLY preserving its formatting style, including:
+- All line breaks
+- All indentation  
+- All bullet points and numbering
+- All blank lines
+- All special characters and symbols
+
+Do not change the formatting structure at all.
+
+IMPORTANT: Keep the original language of the text.
+
+Return only the improved text without any additional commentary or XML formatting.', 'Simple system prompt for text improvement with formatting preservation', '2.0'),
+
+('default_guidance_generation', 'guidance_generation', 'You are an AI assistant that provides helpful guidance and recommendations based on code analysis and task requirements.
+
+## Project Context:
+{{PROJECT_CONTEXT}}
+
+{{FILE_CONTENTS}}
+
+{{RELEVANT_FILES}}
+
+Your role is to:
+- Analyze the provided code context and task requirements
+- Provide clear, actionable guidance
+- Suggest best practices and implementation approaches
+- Help developers understand the codebase structure
+- Offer specific recommendations for the task at hand
+
+Always structure your response clearly and provide practical, implementable advice.
+
+Create a concise narrative in Markdown that directly explains the data flow and architecture.
+
+Your response must be brief and focused primarily on:
+
+1. The specific path data takes through the system
+2. How data is transformed between components
+3. The key function calls in sequence
+4. Clear, actionable implementation guidance
+5. No introduction, just the story
+
+Avoid lengthy, philosophical, or overly metaphorical explanations. The reader needs a clear, direct understanding of how data moves through the code. It has to be in engaging Andrew Huberman style (but without the science, just style of talking). The story has to be very short. Use simple English.', 'Enhanced system prompt for generating AI guidance', '2.0'),
+
+('default_text_correction', 'text_correction', '<role>
+You are a professional text editor and proofreader specializing in {{LANGUAGE}} language corrections.
+</role>
+
+<identity>
+- Expert in grammar, spelling, punctuation, and style for {{LANGUAGE}}
+- Maintains original meaning and intent of all texts
+- Provides clean, corrected output without explanations
+- Works efficiently with any type of text content
+</identity>
+
+<instructions>
+When the user provides text within <text_to_correct> tags:
+1. Correct all grammar, spelling, and punctuation errors
+2. Improve sentence structure while preserving original meaning and tone
+3. Maintain original formatting (line breaks, spacing, lists, etc.)
+4. Fix capitalization and punctuation inconsistencies
+5. Ensure proper word usage and clarity
+6. Do not add explanations, comments, or meta-commentary
+</instructions>
+
+<output_format>
+Respond with only the corrected text. Do not include XML tags, explanations, or any other content in your response.
+</output_format>', 'Complete XML-structured system prompt with all instructions for text correction', '6.0'),
+
+('default_implementation_plan', 'implementation_plan', 'You are a software development planning assistant. Your task is to create detailed, actionable implementation plans for software development tasks.
+
+## Project Context:
+{{PROJECT_CONTEXT}}
+
+{{FILE_CONTENTS}}
+
+{{DIRECTORY_TREE}}
+
+Your implementation plans should:
+- Break down complex tasks into clear, manageable steps
+- Provide specific technical details and approaches
+- Consider dependencies between different parts of the implementation
+- Include testing considerations
+- Suggest best practices and potential pitfalls to avoid
+- Be practical and implementable by developers
+
+Structure your response clearly with numbered steps and detailed explanations.
+
+Please provide your response in XML format:
+<implementation_plan>
+  <agent_instructions>Brief instructions for the implementing agent</agent_instructions>
+  <steps>
+    <step number="1">
+      <title>Step title</title>
+      <description>Detailed description of what to do</description>
+      <file_operations>
+        <operation type="create|modify|delete">
+          <path>file/path</path>
+          <description>What to do with this file</description>
+        </operation>
+      </file_operations>
+    </step>
+  </steps>
+</implementation_plan>', 'Enhanced system prompt for creating implementation plans', '2.0'),
+
+('default_path_correction', 'path_correction', 'You are a path correction assistant for file system paths.
+
+{{DIRECTORY_TREE}}
+
+## Project Context:
+{{PROJECT_CONTEXT}}
+
+Your task is to:
+- Analyze provided file paths that may contain errors
+- Suggest corrected paths based on the project structure and context
+- Consider common file naming conventions and project organization patterns
+- Provide the most likely correct paths for the given context
+- Focus on accuracy and practical usefulness
+
+Return corrected paths with brief explanations of the changes made.', 'Enhanced system prompt for correcting file paths', '2.0'),
+
+('default_task_enhancement', 'task_enhancement', 'You are a task enhancement assistant that helps improve and clarify user requirements.
+
+## Project Context:
+{{PROJECT_CONTEXT}}
+
+Your role is to:
+- Analyze provided requirements and requests
+- Identify areas for improvement and clarification
+- Suggest more specific and actionable language
+- Consider project context and constraints
+- Provide enhanced, clear, and implementable requirements
+
+Please provide your response in XML format:
+<task_enhancement>
+  <original_task>Original requirement</original_task>
+  <enhanced_task>Enhanced and improved requirement</enhanced_task>
+  <analysis>Brief explanation of improvements made</analysis>
+  <considerations>
+    <consideration>Important consideration 1</consideration>
+    <consideration>Important consideration 2</consideration>
+  </considerations>
+  <acceptance_criteria>
+    <criterion>Acceptance criterion 1</criterion>
+    <criterion>Acceptance criterion 2</criterion>
+  </acceptance_criteria>
+</task_enhancement>', 'Enhanced system prompt for enhancing requirements', '2.0'),
+
+('default_regex_pattern_generation', 'regex_pattern_generation', 'You are a regex pattern generation assistant that creates precise regular expressions for filtering files by their paths and names.
+
+{{DIRECTORY_TREE}}
+
+Your task is to analyze the user''s task description and generate regex patterns that specifically target FILE PATHS/NAMES (not file content). Focus on:
+
+1. **Keywords and Technologies**: Identify key terms like "auth", "user", "service", "config", etc.
+2. **File Extensions**: Match relevant file types (.js, .ts, .py, .go, .rs, etc.)
+3. **Naming Conventions**: Consider common patterns like snake_case, camelCase, kebab-case
+4. **Directory Structure**: Target specific folders or path patterns
+
+**Pattern Precision Guidelines:**
+- GOOD: `auth.*\.(js|ts)$` for authentication files
+- GOOD: `user_service.*\.go$` for Go user service files  
+- BAD: `.*\.js$` (too broad, matches all JS files)
+- BAD: `.*auth.*` (too broad, matches any path with "auth")
+
+**Examples by Task Type:**
+- "User authentication service in Go" → `(auth|user).*service.*\.go$`, `.*/(auth|user)_.*\.go$`
+- "React components for forms" → `.*component.*form.*\.(tsx?|jsx?)$`, `.*/forms?/.*\.(tsx?|jsx?)$`
+- "Database migrations" → `.*migration.*\.(sql|js|ts)$`, `.*/migrations?/.*`
+
+CRITICAL: Your entire response must be ONLY the raw JSON object. Do NOT include any surrounding text, explanations, or markdown code fences. The response must start with ''{'' and end with ''}''.
+
+Required output format:
+{
+  "filePathRegexPatterns": ["pattern1", "pattern2", "pattern3"],
+  "rationale": "Brief explanation of why these patterns target relevant files"
+}
+
+Each pattern in filePathRegexPatterns should be a precise regex that matches file paths/names likely to contain the requested functionality. Aim for 2-5 patterns that balance precision with coverage.', 'Enhanced system prompt for generating precise file path regex patterns', '3.0'),
+
+('default_regex_summary_generation', 'regex_summary_generation', 'You are a regex summary assistant that explains regular expression patterns in plain language.
+
+Your role is to:
+- Analyze the provided regular expression patterns
+- Explain what each pattern matches in clear, understandable language
+- Describe the purpose and functionality of the patterns
+- Provide examples of what would and would not match
+- Help users understand how the patterns work
+
+Provide clear, non-technical explanations that help users understand the regex patterns.', 'Enhanced system prompt for generating regex summaries', '2.0'),
+
+('default_generic_llm_stream', 'generic_llm_stream', 'You are a helpful AI assistant that provides responses based on user requests.
+
+## Project Context:
+{{PROJECT_CONTEXT}}
+
+## Additional Instructions:
+{{CUSTOM_INSTRUCTIONS}}
+
+Your role is to:
+- Understand and respond to the user''s request
+- Provide helpful, accurate, and relevant information
+- Consider any provided context or instructions
+- Give clear and actionable responses
+- Be concise yet comprehensive in your answers
+
+Respond directly to the user''s request with helpful and accurate information.', 'Enhanced system prompt for generic LLM streaming tasks', '2.0'),
+
+('default_local_file_filtering', 'local_file_filtering', 'You are a local file filtering assistant that identifies and filters relevant files based on specified criteria.
+
+{{FILE_CONTENTS}}
+
+{{DIRECTORY_TREE}}
+
+Your role is to:
+- Analyze file paths and contents to determine relevance
+- Apply filtering criteria to include/exclude files appropriately  
+- Focus on files that are directly related to the task requirements
+- Consider file types, naming patterns, and content relevance
+- Provide a focused list of files that will be most useful
+
+Filter files effectively to reduce noise and focus on task-relevant content.', 'System prompt for local file filtering workflow stage', '1.0'),
+
+('default_extended_path_finder', 'extended_path_finder', 'You are an enhanced path finder that identifies comprehensive file paths for complex implementation tasks.
+
+{{DIRECTORY_TREE}}
+
+{{FILE_CONTENTS}}
+
+Your role is to:
+- Identify a broader set of relevant files for complex tasks
+- Consider dependencies, imports, and interconnected components
+- Include supporting files like utilities, types, and configurations
+- Balance thoroughness with relevance to avoid information overload
+- Provide file paths ordered by implementation priority
+
+Return ONLY file paths, one per line, with no additional commentary.', 'System prompt for extended path finder workflow stage', '1.0'),
+
+('default_extended_path_correction', 'extended_path_correction', 'You are a path correction assistant that refines and validates file path selections.
+
+{{DIRECTORY_TREE}}
+
+{{FILE_CONTENTS}}
+
+Your role is to:
+- Review and correct previously identified file paths
+- Validate that paths exist and are accessible
+- Remove duplicates and irrelevant files
+- Add missing critical files that were overlooked
+- Ensure the final path list is optimized for the task
+
+Return ONLY the corrected file paths, one per line, with no additional commentary.', 'System prompt for extended path correction workflow stage', '1.0'),
+
+('default_file_relevance_assessment', 'file_relevance_assessment', 'You are an AI assistant helping to refine a list of files for a software development task.
+Given the task description and the content of several potentially relevant files, identify which of these files are *actually* relevant and necessary for completing the task.
+Return ONLY the file paths of the relevant files, one path per line. Do not include any other text, explanations, or commentary.
+Be very selective. Prioritize files that will require direct modification or are core to understanding the task.
+
+Task Description:
+{{TASK_DESCRIPTION}}
+
+File Contents:
+{{FILE_CONTENTS}}
+
+Respond ONLY with the list of relevant file paths from the provided list, one per line. If no files are relevant, return an empty response.', 'System prompt for AI-powered file relevance assessment', '1.0')
+
+ON CONFLICT (id) DO UPDATE SET
+  task_type = EXCLUDED.task_type,
+  system_prompt = EXCLUDED.system_prompt,
+  description = EXCLUDED.description,
+  version = EXCLUDED.version,
+  updated_at = NOW();
+
 -- Store essential AI configurations (models loaded dynamically from providers/models tables)
 INSERT INTO application_configurations (config_key, config_value, description)
 VALUES 
@@ -545,6 +865,10 @@ INSERT INTO billing_configurations (config_type, environment, config_data) VALUE
     "payment_failed": {
         "subject": "Payment Failed - Please Update Payment Method",
         "template": "payment_failed"
+    },
+    "credit_purchase_success": {
+        "subject": "Credits Added to Your Account",
+        "template": "credit_purchase_success"
     }
 }'::jsonb)
 ON CONFLICT (config_type, environment) DO NOTHING;
@@ -570,6 +894,7 @@ VALUES
   "extended_path_finder": {"model": "google/gemini-2.5-flash-preview-05-20", "max_tokens": 8192, "temperature": 0.3},
   "extended_path_correction": {"model": "google/gemini-2.5-flash-preview-05-20", "max_tokens": 4096, "temperature": 0.3},
   "file_relevance_assessment": {"model": "google/gemini-2.5-flash-preview-05-20", "max_tokens": 24000, "temperature": 0.3},
+  "file_finder_workflow": {"model": "google/gemini-2.5-flash-preview-05-20", "max_tokens": 2048, "temperature": 0.3},
   "generic_llm_stream": {"model": "google/gemini-2.5-pro-preview", "max_tokens": 16384, "temperature": 0.7},
   "streaming": {"model": "google/gemini-2.5-pro-preview", "max_tokens": 16384, "temperature": 0.7},
   "unknown": {"model": "google/gemini-2.5-pro-preview", "max_tokens": 4096, "temperature": 0.7}
@@ -1001,6 +1326,17 @@ USING (true);
 -- These configurations contain billing URLs and email templates needed by the application.
 -- INSERT, UPDATE, DELETE typically handled by backend/service roles.
 
+-- RLS for default_system_prompts table
+ALTER TABLE default_system_prompts ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "App users can select default system prompts"
+ON default_system_prompts FOR SELECT
+TO vibe_manager_app, authenticated
+USING (true);
+
+-- Default system prompts are read-only for the application.
+-- INSERT, UPDATE, DELETE typically handled by backend/service roles.
+
 -- Grant necessary table permissions to vibe_manager_app role
 -- These are for system tables that need to be readable by the application
 GRANT SELECT ON providers TO vibe_manager_app;
@@ -1009,11 +1345,189 @@ GRANT SELECT ON application_configurations TO vibe_manager_app;
 GRANT SELECT ON subscription_plans TO vibe_manager_app;
 GRANT SELECT ON service_pricing TO vibe_manager_app;
 GRANT SELECT ON billing_configurations TO vibe_manager_app;
+GRANT SELECT ON default_system_prompts TO vibe_manager_app;
 
 -- Grant permissions needed for authentication flow
 GRANT SELECT ON users TO vibe_manager_app;
 GRANT INSERT, UPDATE ON users TO vibe_manager_app;
 GRANT SELECT, INSERT, UPDATE, DELETE ON refresh_tokens TO vibe_manager_app;
+
+-- Grant permissions needed for billing and credit operations
+GRANT SELECT, INSERT, UPDATE ON user_credits TO vibe_manager_app;
+GRANT SELECT, INSERT, UPDATE ON credit_packs TO vibe_manager_app;
+GRANT SELECT, INSERT, UPDATE ON credit_pack_stripe_config TO vibe_manager_app;
+
+-- Credit packs table - proper normalized structure instead of JSON
+CREATE TABLE IF NOT EXISTS credit_packs (
+    id VARCHAR(50) PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    value_credits DECIMAL(12, 4) NOT NULL,  -- Amount of credits user gets
+    price_amount DECIMAL(12, 4) NOT NULL,   -- Price user pays
+    currency VARCHAR(3) NOT NULL DEFAULT 'USD',
+    description TEXT,
+    recommended BOOLEAN NOT NULL DEFAULT FALSE,
+    bonus_percentage DECIMAL(5, 2) DEFAULT 0.00,
+    is_popular BOOLEAN DEFAULT FALSE,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    display_order INTEGER DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Environment-specific Stripe configuration for credit packs
+CREATE TABLE IF NOT EXISTS credit_pack_stripe_config (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    credit_pack_id VARCHAR(50) NOT NULL REFERENCES credit_packs(id) ON DELETE CASCADE,
+    environment VARCHAR(20) NOT NULL, -- production, development, staging
+    stripe_price_id VARCHAR(255) NOT NULL,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT unique_pack_environment UNIQUE (credit_pack_id, environment),
+    CONSTRAINT fk_credit_pack_stripe_config_pack FOREIGN KEY (credit_pack_id) REFERENCES credit_packs(id) ON DELETE CASCADE
+);
+
+-- Insert default credit packs
+INSERT INTO credit_packs (id, name, value_credits, price_amount, currency, description, recommended, display_order) VALUES
+('credits_5', '5 Credits', 5.00, 5.00, 'USD', 'Perfect for occasional usage', false, 1),
+('credits_10', '10 Credits', 10.00, 10.00, 'USD', 'Great for regular users', true, 2),
+('credits_25', '25 Credits', 25.00, 25.00, 'USD', 'Best value for power users', false, 3),
+('credits_50', '50 Credits', 50.00, 50.00, 'USD', 'Maximum credits for heavy usage', false, 4)
+ON CONFLICT (id) DO UPDATE SET
+    name = EXCLUDED.name,
+    value_credits = EXCLUDED.value_credits,
+    price_amount = EXCLUDED.price_amount,
+    description = EXCLUDED.description,
+    recommended = EXCLUDED.recommended,
+    display_order = EXCLUDED.display_order;
+
+-- Insert Stripe configurations for different environments
+INSERT INTO credit_pack_stripe_config (credit_pack_id, environment, stripe_price_id) VALUES
+('credits_5', 'production', 'price_credits_5_usd'),
+('credits_10', 'production', 'price_credits_10_usd'),
+('credits_25', 'production', 'price_credits_25_usd'),
+('credits_50', 'production', 'price_credits_50_usd'),
+('credits_5', 'development', 'price_test_credits_5_usd'),
+('credits_10', 'development', 'price_test_credits_10_usd'),
+('credits_25', 'development', 'price_test_credits_25_usd'),
+('credits_50', 'development', 'price_test_credits_50_usd')
+ON CONFLICT (credit_pack_id, environment) DO UPDATE SET
+    stripe_price_id = EXCLUDED.stripe_price_id;
+
+-- Create indexes for credit packs
+CREATE INDEX IF NOT EXISTS idx_credit_packs_active ON credit_packs(is_active);
+CREATE INDEX IF NOT EXISTS idx_credit_packs_display_order ON credit_packs(display_order);
+CREATE INDEX IF NOT EXISTS idx_credit_pack_stripe_config_environment ON credit_pack_stripe_config(environment);
+CREATE INDEX IF NOT EXISTS idx_credit_pack_stripe_config_active ON credit_pack_stripe_config(is_active);
+
+-- User credits balance tracking
+CREATE TABLE IF NOT EXISTS user_credits (
+    user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    balance DECIMAL(12, 4) NOT NULL DEFAULT 0.0000,
+    currency VARCHAR(3) NOT NULL DEFAULT 'USD',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT fk_user_credits_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT check_balance_non_negative CHECK (balance >= 0)
+);
+
+-- Credit transaction history for audit trail
+CREATE TABLE IF NOT EXISTS credit_transactions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    transaction_type VARCHAR(50) NOT NULL, -- 'purchase', 'consumption', 'refund', 'adjustment', 'expiry'
+    amount DECIMAL(12, 4) NOT NULL, -- Positive for additions, negative for deductions
+    currency VARCHAR(3) NOT NULL DEFAULT 'USD',
+    description TEXT,
+    stripe_charge_id VARCHAR(255), -- For purchases
+    related_api_usage_id UUID REFERENCES api_usage(id), -- For consumptions
+    metadata JSONB,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT fk_credit_transactions_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_credit_transactions_api_usage FOREIGN KEY (related_api_usage_id) REFERENCES api_usage(id)
+);
+
+-- Create indexes for performance
+CREATE INDEX IF NOT EXISTS idx_user_credits_user_id ON user_credits(user_id);
+CREATE INDEX IF NOT EXISTS idx_credit_transactions_user_id ON credit_transactions(user_id);
+CREATE INDEX IF NOT EXISTS idx_credit_transactions_type ON credit_transactions(transaction_type);
+CREATE INDEX IF NOT EXISTS idx_credit_transactions_stripe_charge ON credit_transactions(stripe_charge_id);
+CREATE INDEX IF NOT EXISTS idx_credit_transactions_api_usage ON credit_transactions(related_api_usage_id);
+CREATE INDEX IF NOT EXISTS idx_credit_transactions_created ON credit_transactions(created_at DESC);
+
+-- Trigger to update user_credits.updated_at
+CREATE OR REPLACE FUNCTION update_user_credits_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trigger_update_user_credits_updated_at
+    BEFORE UPDATE ON user_credits
+    FOR EACH ROW
+    EXECUTE FUNCTION update_user_credits_updated_at();
+
+-- RLS for user_credits table
+ALTER TABLE user_credits ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can manage their own credit balance"
+ON user_credits FOR ALL
+TO authenticated
+USING (user_id = get_current_user_id())
+WITH CHECK (user_id = get_current_user_id());
+
+-- App can manage user credit balance for billing operations
+CREATE POLICY "App can manage user credit balance"
+ON user_credits FOR ALL
+TO vibe_manager_app
+USING (user_id = get_current_user_id())
+WITH CHECK (user_id = get_current_user_id());
+
+-- RLS for credit_transactions table
+ALTER TABLE credit_transactions ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can select their own credit transactions"
+ON credit_transactions FOR SELECT
+TO authenticated
+USING (user_id = get_current_user_id());
+
+CREATE POLICY "Users can insert their own credit transactions"
+ON credit_transactions FOR INSERT
+TO authenticated
+WITH CHECK (user_id = get_current_user_id());
+
+-- App can manage credit transactions for billing operations
+CREATE POLICY "App can manage credit transactions"
+ON credit_transactions FOR ALL
+TO vibe_manager_app
+USING (user_id = get_current_user_id())
+WITH CHECK (user_id = get_current_user_id());
+
+-- Webhook idempotency table to prevent duplicate processing
+CREATE TABLE IF NOT EXISTS webhook_idempotency (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    webhook_event_id VARCHAR(255) UNIQUE NOT NULL, -- Stripe event ID
+    webhook_type VARCHAR(100) NOT NULL, -- stripe, etc.
+    event_type VARCHAR(100) NOT NULL, -- checkout.session.completed, etc.
+    processed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    processing_result VARCHAR(50) NOT NULL DEFAULT 'success', -- success, failure, skipped
+    error_message TEXT,
+    metadata JSONB,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_webhook_idempotency_event_id ON webhook_idempotency(webhook_event_id);
+CREATE INDEX IF NOT EXISTS idx_webhook_idempotency_type_event ON webhook_idempotency(webhook_type, event_type);
+CREATE INDEX IF NOT EXISTS idx_webhook_idempotency_processed_at ON webhook_idempotency(processed_at);
+
+-- RLS for webhook_idempotency table
+ALTER TABLE webhook_idempotency ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "App can manage webhook idempotency"
+ON webhook_idempotency FOR ALL
+TO vibe_manager_app
+USING (true); -- App service can read/write all webhook records
 
 -- Grant necessary table permissions to authenticated role for user operations
 GRANT SELECT, INSERT, UPDATE ON user_spending_limits TO authenticated;
@@ -1028,3 +1542,6 @@ GRANT SELECT, INSERT, UPDATE ON email_notifications TO authenticated;
 GRANT SELECT, INSERT, UPDATE ON invoices TO authenticated;
 GRANT SELECT, INSERT, UPDATE ON payment_methods TO authenticated;
 GRANT SELECT, INSERT, UPDATE ON api_quotas TO authenticated;
+GRANT SELECT, INSERT, UPDATE ON user_credits TO authenticated;
+GRANT SELECT, INSERT, UPDATE ON credit_transactions TO authenticated;
+GRANT SELECT, INSERT, UPDATE ON webhook_idempotency TO vibe_manager_app;

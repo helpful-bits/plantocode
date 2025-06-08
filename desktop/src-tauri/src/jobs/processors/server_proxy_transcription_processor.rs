@@ -95,7 +95,7 @@ impl JobProcessor for ServerProxyTranscriptionProcessor {
                 
                 // Update job status to failed using standardized utility
                 let error_message = format!("Transcription failed: {}", e);
-                job_processor_utils::finalize_job_failure(&job_id, &repo, &error_message).await?;
+                job_processor_utils::finalize_job_failure(&job_id, &repo, &error_message, None).await?;
                 
                 Ok(JobProcessResult::failure(job_id, error_message))
             }

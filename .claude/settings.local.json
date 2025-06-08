@@ -135,7 +135,10 @@
       "Bash(brew services:*)",
       "Bash(/opt/homebrew/Cellar/ripgrep/14.1.1/bin/rg -n \"get_workflow_status|get_workflow_results|get_active_workflows|get_all_workflow_states|get_workflow_state_by_id\" \"/Users/kirylkazlovich/dev/vibe-manager/desktop/src-tauri/src/jobs/workflow_orchestrator/mod.rs\")",
       "WebFetch(domain:openrouter.ai)",
-      "Bash(/opt/homebrew/bin/rg \"fn finalize_job_success\" --type rust)"
+      "Bash(/opt/homebrew/bin/rg \"fn finalize_job_success\" --type rust)",
+      "Bash(PGPASSWORD='' psql -h localhost -p 5432 -U kirylkazlovich -d vibe_manager -c \"\\d default_system_prompts;\")",
+      "Bash(PGPASSWORD='' psql -h localhost -p 5432 -U kirylkazlovich -d vibe_manager -c \"SELECT task_type, substr(system_prompt, 1, 300) || '...' as prompt_preview FROM default_system_prompts WHERE task_type = 'regex_pattern_generation';\")",
+      "Bash(PGPASSWORD='' psql -h localhost -p 5432 -U kirylkazlovich -d vibe_manager -c \"SELECT system_prompt FROM default_system_prompts WHERE task_type = 'regex_pattern_generation';\" -t)"
     ],
     "deny": []
   },

@@ -22,7 +22,7 @@ use crate::auth_stores::{PollingStore, Auth0StateStore};
 use crate::auth_stores::store_utils;
 use crate::config::AppSettings;
 use crate::db::connection::{create_dual_pools, verify_connection, DatabasePools};
-use crate::db::{ApiUsageRepository, SubscriptionRepository, UserRepository, SettingsRepository, ModelRepository, SubscriptionPlanRepository};
+use crate::db::{ApiUsageRepository, SubscriptionRepository, UserRepository, SettingsRepository, ModelRepository, SubscriptionPlanRepository, SystemPromptsRepository, BillingConfigurationRepository, CreditPackRepository};
 use crate::middleware::{
     SecureAuthentication, 
     create_rate_limit_storage,
@@ -36,6 +36,7 @@ use crate::services::auth::jwt;
 use crate::services::auth::oauth::Auth0OAuthService;
 use crate::services::billing_service::BillingService;
 use crate::services::proxy_service::ProxyService;
+use crate::services::credit_service::CreditService;
 use crate::routes::{configure_routes, configure_public_api_routes, configure_public_auth_routes, configure_webhook_routes};
 
 /// Validates AI model configurations at startup to catch misconfigurations early
@@ -272,6 +273,7 @@ async fn main() -> std::io::Result<()> {
         // Initialize services with dual pools
         let billing_service = BillingService::new(db_pools.clone(), app_settings.clone());
         let cost_based_billing_service = billing_service.get_cost_based_billing_service().clone();
+        let credit_service = CreditService::new(db_pools.user_pool.clone(), db_pools.system_pool.clone());
         let api_usage_repository = std::sync::Arc::new(api_usage_repository);
         let proxy_service = match ProxyService::new(
             std::sync::Arc::new(billing_service.clone()),
@@ -317,6 +319,9 @@ async fn main() -> std::io::Result<()> {
         let model_repository = std::sync::Arc::new(ModelRepository::new(std::sync::Arc::new(db_pools.system_pool.clone())));
         let settings_repository = std::sync::Arc::new(SettingsRepository::new(db_pools.system_pool.clone()));
         let subscription_plan_repository = std::sync::Arc::new(SubscriptionPlanRepository::new(db_pools.system_pool.clone()));
+        let system_prompts_repository = std::sync::Arc::new(SystemPromptsRepository::new(db_pools.system_pool.clone()));
+        let billing_configuration_repository = std::sync::Arc::new(BillingConfigurationRepository::new(db_pools.system_pool.clone()));
+        let credit_pack_repository = std::sync::Arc::new(CreditPackRepository::new(db_pools.system_pool.clone()));
         
         // User-specific operations - use user pool  
         let subscription_repository = std::sync::Arc::new(SubscriptionRepository::new(db_pools.user_pool.clone()));
@@ -350,6 +355,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(auth0_oauth_service)
             .app_data(web::Data::new(billing_service.clone()))
             .app_data(web::Data::new(cost_based_billing_service.as_ref().clone()))
+            .app_data(web::Data::new(credit_service))
             .app_data(proxy_service.clone())
             .app_data(app_state.clone())
             .app_data(tera.clone())
@@ -358,6 +364,9 @@ async fn main() -> std::io::Result<()> {
             .app_data(http_client.clone())
             .app_data(web::Data::new(user_repository.clone()))
             .app_data(web::Data::new(app_state.model_repository.clone()))
+            .app_data(web::Data::new(system_prompts_repository.clone()))
+            .app_data(web::Data::new(billing_configuration_repository.clone()))
+            .app_data(web::Data::new(credit_pack_repository.clone()))
             
             // Register health check endpoint with IP-based rate limiting
             .service(

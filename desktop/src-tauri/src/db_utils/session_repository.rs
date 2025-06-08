@@ -34,7 +34,6 @@ impl SessionRepository {
         let regex_summary_explanation: Option<String> = row.try_get("regex_summary_explanation")?;
         
         let is_regex_active: bool = row.try_get::<'_, i64, _>("is_regex_active").unwrap_or(0) == 1;
-        let codebase_structure: Option<String> = row.try_get("codebase_structure")?;
         let search_selected_files_only = row.try_get::<'_, i64, _>("search_selected_files_only").unwrap_or(0) == 1;
         let model_used: Option<String> = row.try_get("model_used")?;
         
@@ -62,7 +61,6 @@ impl SessionRepository {
             negative_content_regex_description,
             regex_summary_explanation,
             is_regex_active,
-            codebase_structure,
             search_selected_files_only,
             model_used,
             created_at,
@@ -169,9 +167,9 @@ impl SessionRepository {
                 title_regex_description, content_regex_description,
                 negative_title_regex_description, negative_content_regex_description,
                 regex_summary_explanation, is_regex_active,
-                codebase_structure, search_selected_files_only, model_used,
+                search_selected_files_only, model_used,
                 created_at, updated_at
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
             "#)
             .bind(&session.id)
             .bind(&session.name)
@@ -189,7 +187,6 @@ impl SessionRepository {
             .bind(&session.negative_content_regex_description)
             .bind(&session.regex_summary_explanation)
             .bind(if session.is_regex_active { 1i64 } else { 0i64 })
-            .bind(&session.codebase_structure)
             .bind(if session.search_selected_files_only { 1i64 } else { 0i64 })
             .bind(&session.model_used)
             .bind(session.created_at)
@@ -274,7 +271,6 @@ impl SessionRepository {
                 negative_content_regex_description = $13,
                 regex_summary_explanation = $14,
                 is_regex_active = $15,
-                codebase_structure = $16,
                 search_selected_files_only = $17,
                 model_used = $18,
                 updated_at = $19
@@ -295,7 +291,6 @@ impl SessionRepository {
             .bind(&session.negative_content_regex_description)
             .bind(&session.regex_summary_explanation)
             .bind(if session.is_regex_active { 1i64 } else { 0i64 })
-            .bind(&session.codebase_structure)
             .bind(if session.search_selected_files_only { 1i64 } else { 0i64 })
             .bind(&session.model_used)
             .bind(session.updated_at)

@@ -63,20 +63,22 @@ export async function resetSystemPrompt(
 }
 
 /**
- * Get all default system prompts
+ * Get all default system prompts from cache
+ * Note: System prompts are automatically loaded from server after authentication
  */
 export async function getDefaultSystemPrompts(): Promise<DefaultSystemPrompt[]> {
   try {
     const response = await invoke<DefaultSystemPrompt[]>('get_default_system_prompts_command');
     return response;
   } catch (error) {
-    console.error('Failed to get default system prompts:', error);
-    throw error;
+    console.error('Failed to get default system prompts from cache:', error);
+    throw new Error('System prompts not available. Please ensure you are authenticated and the application has initialized properly.');
   }
 }
 
 /**
- * Get default system prompt for a specific task type
+ * Get default system prompt for a specific task type from cache
+ * Note: System prompts are automatically loaded from server after authentication
  */
 export async function getDefaultSystemPrompt(taskType: TaskType): Promise<DefaultSystemPrompt | null> {
   try {
@@ -85,8 +87,8 @@ export async function getDefaultSystemPrompt(taskType: TaskType): Promise<Defaul
     });
     return response;
   } catch (error) {
-    console.error('Failed to get default system prompt:', error);
-    throw error;
+    console.error('Failed to get default system prompt from cache:', error);
+    throw new Error(`System prompt for task type '${taskType}' not available. Please ensure you are authenticated and the application has initialized properly.`);
   }
 }
 

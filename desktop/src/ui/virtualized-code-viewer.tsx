@@ -341,7 +341,7 @@ const VirtualizedCodeViewer = forwardRef<HTMLDivElement, VirtualizedCodeViewerPr
         <div 
           className="flex-1" 
           style={{ 
-            height: `calc(${height} - 40px)`,
+            height: `calc(100% - 40px)`,
             position: 'relative',
             overflow: 'hidden'
           }}

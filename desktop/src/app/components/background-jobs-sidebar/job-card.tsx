@@ -116,10 +116,11 @@ const getResponsePreview = (job: BackgroundJob) => {
   // SECONDARY PATH: Generic workflow stage messages (fallback for unknown task types)
   const parsedMeta = getParsedMetadata(job.metadata);
   if (parsedMeta?.workflowId && parsedMeta?.workflowStage) {
+    const stageName = WorkflowUtils.getStageName(String(parsedMeta.workflowStage));
     if (JOB_STATUSES.COMPLETED.includes(job.status as JobStatus)) {
-      return `Stage ${parsedMeta.workflowStage} completed`;
-    } else if (job.status === "running" || job.status === "processing_stream") {
-      return `Running stage: ${parsedMeta.workflowStage}`;
+      return `Stage ${stageName} completed`;
+    } else if (job.status === "running" || job.status === "processingStream") {
+      return `Running stage: ${stageName}`;
     }
   }
 
@@ -142,8 +143,8 @@ export const JobCard = React.memo(
   ({ job, handleCancel, handleDelete, isCancelling, isDeleting, onSelect }: JobCardProps) => {
 
     // Choose best timestamp for display
-    // Priority: startTime > lastUpdate > createdAt
-    const displayTime = job.startTime || job.lastUpdate || job.createdAt;
+    // Priority: startTime > updatedAt > createdAt
+    const displayTime = job.startTime || job.updatedAt || job.createdAt;
 
     // Format relative time with fallback for invalid date
     const timeAgo =
@@ -170,7 +171,7 @@ export const JobCard = React.memo(
       if (status === "failed") {
         return <AlertCircle className={getStatusIconClass(status)} />;
       }
-      if (status === "running" || status === "processing_stream") {
+      if (status === "running" || status === "processingStream") {
         return <Loader2 className={getStatusIconClass(status)} />;
       }
       if (status === "canceled") {
@@ -185,7 +186,7 @@ export const JobCard = React.memo(
     // Get user-friendly status display
     const getStatusDisplay = () => {
       // Use constants for all status checks
-      if (job.status === "running" || job.status === "processing_stream") {
+      if (job.status === "running" || job.status === "processingStream") {
         return "Processing";
       } else if (
         ["preparing", "created", "queued", "preparing_input", "generating_stream"].includes(job.status)
@@ -266,46 +267,17 @@ export const JobCard = React.memo(
           </div>
         </div>
 
-        {/* Workflow context in header for better visibility */}
-        {(() => {
-          const parsedMeta = getParsedMetadata(job.metadata);
-          if (parsedMeta?.workflowId) {
-            // Use workflowStage from parsedMeta if available, with consistent fallback handling
-            let displayStageName = parsedMeta.workflowStage || formatTaskType(job.taskType);
-            
-            // Use WorkflowUtils to get proper display name if it's a workflow stage
-            if (parsedMeta.workflowStage) {
-              const stageEnum = WorkflowUtils.mapStageNameToEnum(parsedMeta.workflowStage);
-              if (stageEnum) {
-                displayStageName = WorkflowUtils.getStageName(stageEnum);
-              }
-            }
-            
-            const displayWorkflowId = parsedMeta.workflowId.length > 12
-              ? `${parsedMeta.workflowId.substring(0, 8)}...`
-              : parsedMeta.workflowId;
-            return (
-              <div className="text-[10px] text-muted-foreground mt-1 w-full min-w-0 overflow-hidden">
-                <span className="font-medium">Workflow:</span> {displayWorkflowId}
-                <br />
-                <span className="font-medium">Stage:</span> <span className="truncate">{displayStageName}</span>
-              </div>
-            );
-          }
-          return null;
-        })()}
 
         <div className="text-muted-foreground text-[10px] mt-2">{timeAgo}</div>
 
         {/* Progress bar for running jobs */}
-        {(job.status === "running" || job.status === "processing_stream") && (
+        {(job.status === "running" || job.status === "processingStream") && (
           <div className="mt-2 mb-1">
             {(() => {
               // Use the centralized progress calculation for consistency
               const progressValue = getStreamingProgressValue(
                 job.metadata,
-                job.startTime,
-                job.maxOutputTokens
+                job.startTime
               );
               
               return (
@@ -315,14 +287,6 @@ export const JobCard = React.memo(
                     className="h-0.5"
                   />
                   <div className="flex justify-between items-center min-w-0 overflow-hidden">
-                    {job.statusMessage && (
-                      <p
-                        className="text-[11px] text-primary mt-0.5 truncate flex-1 min-w-0"
-                        title={job.statusMessage}
-                      >
-                        {job.statusMessage}
-                      </p>
-                    )}
                     {progressValue !== undefined && (
                       <p className="text-[9px] text-muted-foreground mt-0.5 text-right">
                         {Math.floor(progressValue)}%
@@ -336,18 +300,15 @@ export const JobCard = React.memo(
           </div>
         )}
 
-        {/* Token count and model display - only for LLM jobs */}
-        {job.apiType !== "filesystem" && (!job.taskType || TaskTypeDetails[job.taskType as TaskType]?.requiresLlm !== false) && (
+        {(!job.taskType || TaskTypeDetails[job.taskType as TaskType]?.requiresLlm !== false) && (
           <div className="text-muted-foreground text-[10px] mt-2 flex items-center justify-between min-h-[24px] w-full min-w-0">
             <div className="flex flex-col gap-0.5 max-w-[90%] overflow-hidden min-w-0 flex-1">
-              {/* Display token counts with better formatting and fallback to metadata */}
               {(() => {
                 const parsedMeta = getParsedMetadata(job.metadata);
                 
-                // Priority order: job fields > parsed metadata fields
-                const tokensSent = Number(job.tokensSent || parsedMeta?.additionalParams?.tokensSent || 0);
-                const tokensReceived = Number(job.tokensReceived || parsedMeta?.additionalParams?.tokensReceived || 0);
-                const totalTokens = Number(job.totalTokens || parsedMeta?.additionalParams?.totalTokens || parsedMeta?.additionalParams?.tokensUsed || 0);
+                const tokensSent = Number(job.tokensSent || parsedMeta?.taskData?.tokensSent || 0);
+                const tokensReceived = Number(job.tokensReceived || parsedMeta?.taskData?.tokensReceived || 0);
+                const totalTokens = Number((tokensSent + tokensReceived) || parsedMeta?.taskData?.totalTokens || parsedMeta?.taskData?.tokensUsed || 0);
                 
                 return (tokensSent > 0 || tokensReceived > 0 || totalTokens > 0) ? (
                   <span className="flex items-center gap-1 overflow-hidden min-w-0">
@@ -368,13 +329,13 @@ export const JobCard = React.memo(
                     )}
                   </span>
                 ) : (
-                  <span className="h-3"></span> /* Empty placeholder to maintain height */
+                  <span className="h-3"></span>
                 );
               })()}
               
               {(() => {
                 const parsedMeta = getParsedMetadata(job.metadata);
-                const modelUsed = job.modelUsed ?? parsedMeta?.additionalParams?.modelUsed;
+                const modelUsed = job.modelUsed ?? parsedMeta?.taskData?.modelUsed;
                 
                 return modelUsed ? (
                   <span
@@ -388,23 +349,21 @@ export const JobCard = React.memo(
                         : modelUsed}
                   </span>
                 ) : (
-                  <span className="h-3"></span> /* Empty placeholder to maintain height */
+                  <span className="h-3"></span>
                 );
               })()}
             </div>
 
-            {/* Show duration for completed jobs or empty placeholder */}
             {job.endTime && job.startTime ? (
               <span className="text-[9px] text-muted-foreground flex-shrink-0 ml-1">
                 {Math.round((job.endTime - job.startTime) / 1000)}s
               </span>
             ) : (
-              <span className="h-3 flex-shrink-0"></span> /* Empty placeholder to maintain height */
+              <span className="h-3 flex-shrink-0"></span>
             )}
           </div>
         )}
 
-        {/* Info section container with flexible height */}
         <div className="flex-1 flex flex-col justify-end">
           {JOB_STATUSES.COMPLETED.includes(job.status as JobStatus) &&
             job.taskType === "implementation_plan" && (
@@ -413,45 +372,32 @@ export const JobCard = React.memo(
                 <span className="font-medium text-foreground">
                   {(() => {
                     const parsedMeta = getParsedMetadata(job.metadata);
-                    return parsedMeta?.additionalParams?.sessionName
-                      ? `Plan: ${parsedMeta.additionalParams.sessionName}`
+                    return parsedMeta?.taskData?.sessionName
+                      ? `Plan: ${parsedMeta.taskData.sessionName}`
                       : "Implementation plan in database";
                   })()}
                 </span>
               </div>
             )}
 
-          {/* File output handling deprecated */}
 
-          {/* Workflow context display - prominently show workflow information */}
           {(() => {
             const parsedMeta = getParsedMetadata(job.metadata);
             
-            // Display workflow context if job is part of a workflow
             if (parsedMeta?.workflowId) {
               return (
                 <div className="text-[10px] mt-2 border-t border-primary/20 pt-2 flex items-center gap-1.5 text-muted-foreground bg-primary/5 rounded-md p-2">
                   <div className="w-2 h-2 bg-primary rounded-full flex-shrink-0"></div>
                   <div className="flex flex-col gap-0.5 min-w-0 flex-1">
                     <span className="font-medium text-primary text-[11px]">
-                      Workflow: {parsedMeta.workflowId}
+                      File Finder Workflow
                     </span>
-                    <span className="text-foreground text-[10px]">
-                      Stage: {(() => {
-                        let stageName = parsedMeta.workflowStage || formatTaskType(job.taskType);
-                        if (parsedMeta.workflowStage) {
-                          const stageEnum = WorkflowUtils.mapStageNameToEnum(parsedMeta.workflowStage);
-                          if (stageEnum) {
-                            stageName = WorkflowUtils.getStageName(stageEnum);
-                          }
-                        }
-                        return stageName;
-                      })()}
+                    <span className="text-[9px] text-muted-foreground font-mono truncate">
+                      {parsedMeta.workflowId}
                     </span>
-                    {/* Show additional workflow context if available */}
-                    {parsedMeta?.additionalParams?.outputPath && (
+                    {parsedMeta?.taskData?.outputPath && (
                       <span className="text-[9px] text-muted-foreground truncate">
-                        Output: {parsedMeta.additionalParams.outputPath}
+                        Output: {parsedMeta.taskData.outputPath}
                       </span>
                     )}
                   </div>
@@ -462,7 +408,6 @@ export const JobCard = React.memo(
             return null;
           })()}
 
-          {/* Enhanced display for workflow stage jobs and path finder jobs */}
           {(job.taskType === "path_finder" || 
             job.taskType === "extended_path_finder" ||
             job.taskType === "file_finder_workflow") && 
@@ -471,18 +416,15 @@ export const JobCard = React.memo(
               {(() => {
                 const parsedMeta = getParsedMetadata(job.metadata);
                 
-                // Skip workflow display here since it's handled above
                 if (parsedMeta?.workflowId) {
                   return null;
                 }
                 
-                // Primary source: Parse job.response for final paths
                 let displayText = "";
                 if (job.response) {
                   try {
                     const parsed = JSON.parse(job.response);
                     
-                    // For path_finder tasks, try PathFinderResult format first
                     if (job.taskType === "path_finder" && parsed && typeof parsed === 'object' && 'paths' in parsed && 'unverified_paths' in parsed) {
                       const verifiedCount = Array.isArray(parsed.paths) ? parsed.paths.length : 0;
                       const unverifiedCount = Array.isArray(parsed.unverified_paths) ? parsed.unverified_paths.length : 0;
@@ -494,15 +436,13 @@ export const JobCard = React.memo(
                         displayText = "Path finder completed";
                       }
                     }
-                    // For other path-related tasks, use Vec<String> format
                     else if (Array.isArray(parsed)) {
                       const count = parsed.length;
                       displayText = count > 0 ? `Found ${count} file${count !== 1 ? "s" : ""}` : "Path finder completed";
                     }
                   } catch {
-                    // Fallback to metadata if job.response isn't valid JSON
                     const parsedMeta = getParsedMetadata(job.metadata);
-                    const count = (typeof parsedMeta?.additionalParams?.pathCount === 'number') ? parsedMeta.additionalParams.pathCount : 0;
+                    const count = (typeof parsedMeta?.taskData?.pathCount === 'number') ? parsedMeta.taskData.pathCount : 0;
                     displayText = count > 0 ? `Found ${count} file${count !== 1 ? "s" : ""}` : "Path finder completed";
                   }
                 }
@@ -520,7 +460,6 @@ export const JobCard = React.memo(
             </div>
           )}
 
-          {/* For regular jobs or those without special indicators, show response preview */}
           {job.response &&
             !((job.taskType === "path_finder" || 
                job.taskType === "extended_path_finder" ||
@@ -534,7 +473,6 @@ export const JobCard = React.memo(
               </div>
             )}
 
-          {/* Show error message if job failed or canceled */}
           {JOB_STATUSES.FAILED.includes(job.status as JobStatus) &&
             job.errorMessage && (
               <div className="text-[10px] mt-2 border-t border-border/60 pt-2 text-destructive break-words text-balance overflow-hidden">
@@ -546,8 +484,6 @@ export const JobCard = React.memo(
               </div>
             )}
 
-          {/* Empty placeholder element when no special content is present, to maintain consistent height */}
-          {/* All jobs now store output in the response field */}
           {!(job.taskType === "path_finder" && JOB_STATUSES.COMPLETED.includes(job.status as JobStatus)) &&
             !job.response &&
             !JOB_STATUSES.FAILED.includes(job.status as JobStatus) && (

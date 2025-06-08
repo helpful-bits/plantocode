@@ -5,8 +5,7 @@ import { TaskTypeDetails, type TaskType } from "@/types/task-type-defs";
 
 export function JobDetailsCostUsageSection() {
   const { job } = useJobDetailsContext();
-  // Don't render for filesystem/local jobs
-  const isLocalTask = job.apiType === "filesystem" || (job.taskType && TaskTypeDetails[job.taskType as TaskType]?.requiresLlm === false);
+  const isLocalTask = (job.taskType && TaskTypeDetails[job.taskType as TaskType]?.requiresLlm === false);
   
   if (isLocalTask) {
     return (
@@ -26,16 +25,14 @@ export function JobDetailsCostUsageSection() {
     );
   }
 
-  // Use actual cost data from job if available, otherwise show token counts only
-  const inputCost = job.inputCost || 0;
-  const outputCost = job.outputCost || 0;
-  const totalCost = job.totalCost || (inputCost + outputCost);
+  const inputCost = 0;
+  const outputCost = 0;
+  const totalCost = 0;
   
   const inputTokens = job.tokensSent || 0;
   const outputTokens = job.tokensReceived || 0;
-  const totalTokens = (job.totalTokens && job.totalTokens > 0) ? job.totalTokens : (inputTokens + outputTokens);
+  const totalTokens = (inputTokens + outputTokens);
   
-  // Show cost data only if we have actual costs, not estimates
   const hasCostData = totalCost > 0;
 
   return (

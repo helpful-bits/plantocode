@@ -10,6 +10,7 @@ import { open } from "@tauri-apps/plugin-shell";
 import { useAuth } from "@/contexts/auth-context";
 import { extractErrorInfo, createUserFriendlyErrorMessage, logError } from "@/utils/error-handling";
 import { useNotification } from "@/contexts/notification-context";
+import { useSpendingData } from "@/hooks/use-spending-data";
 import { invoke } from "@tauri-apps/api/core";
 
 import {
@@ -19,17 +20,21 @@ import {
 } from "./components/loading-and-error-states";
 import { PollingBillingManager } from "./polling-billing-manager";
 import { ComprehensiveBillingDashboard } from "./comprehensive-billing-dashboard";
+import { CostBasedSpendingOverview } from "./components/cost-based-spending-overview";
+import { CreditPurchaseModal } from "./components/credit-purchase-modal";
 import type { SubscriptionDetails, CheckoutSessionResponse, BillingPortalResponse } from "@/types/tauri-commands";
 
 export default function SubscriptionManager() {
   const { user } = useAuth();
   const { showNotification } = useNotification();
+  const { creditBalance, refreshSpendingData } = useSpendingData();
   const [subscription, setSubscription] = useState<SubscriptionDetails | null>(
     null
   );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshCounter, setRefreshCounter] = useState(0);
+  const [isCreditModalOpen, setIsCreditModalOpen] = useState(false);
 
 
   // Load subscription info when user is available or refresh counter changes
@@ -73,6 +78,19 @@ export default function SubscriptionManager() {
       void fetchSubscription();
     }
   }, [user, refreshCounter, showNotification]);
+
+  /**
+   * Handle credit purchase modal
+   */
+  const handleBuyCredits = () => {
+    setIsCreditModalOpen(true);
+  };
+
+  const handleCreditPurchaseComplete = async () => {
+    // Refresh both subscription data and spending data after credit purchase
+    setRefreshCounter(prev => prev + 1);
+    await refreshSpendingData();
+  };
 
   /**
    * Handle subscription upgrade
@@ -189,7 +207,18 @@ export default function SubscriptionManager() {
           subscription={subscription}
           onRefresh={handleRetry}
         />
+        <CostBasedSpendingOverview 
+          onUpgrade={handleUpgrade}
+          onManageSpending={handleManageSubscription}
+          onBuyCredits={handleBuyCredits}
+        />
         <ComprehensiveBillingDashboard />
+        <CreditPurchaseModal
+          isOpen={isCreditModalOpen}
+          onClose={() => setIsCreditModalOpen(false)}
+          currentBalance={creditBalance || 0}
+          onPurchaseComplete={handleCreditPurchaseComplete}
+        />
       </div>
     );
   };

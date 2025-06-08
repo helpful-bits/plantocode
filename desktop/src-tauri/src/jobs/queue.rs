@@ -362,21 +362,20 @@ impl JobQueueProcessor {
         
         for (priority_level, queue) in self.queues.iter().enumerate() {
             for job in queue.iter() {
-                // Parse created_at timestamp to check age
-                if let Ok(created_at_ms) = job.created_at.parse::<i64>() {
-                    let age_ms = current_timestamp - created_at_ms;
+                // Use created_at timestamp to check age
+                let created_at_ms = job.created_at;
+                let age_ms = current_timestamp - created_at_ms;
+                
+                if age_ms > stuck_threshold_ms {
+                    let priority_name = match priority_level {
+                        0 => "Low",
+                        1 => "Normal", 
+                        2 => "High",
+                        _ => "Unknown"
+                    };
                     
-                    if age_ms > stuck_threshold_ms {
-                        let priority_name = match priority_level {
-                            0 => "Low",
-                            1 => "Normal", 
-                            2 => "High",
-                            _ => "Unknown"
-                        };
-                        
-                        warn!("Job {} has been stuck in {} priority queue for {} minutes. Consider investigating.", 
-                            job.id(), priority_name, age_ms / (60 * 1000));
-                    }
+                    warn!("Job {} has been stuck in {} priority queue for {} minutes. Consider investigating.", 
+                        job.id(), priority_name, age_ms / (60 * 1000));
                 }
             }
         }

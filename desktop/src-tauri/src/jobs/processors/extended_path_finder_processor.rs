@@ -39,33 +39,37 @@ impl JobProcessor for ExtendedPathFinderProcessor {
         
         // Setup job processing using standardized utility
         let (repo, settings_repo, db_job) = job_processor_utils::setup_job_processing(
-            &payload.background_job_id,
+            &job.id,
             &app_handle,
         ).await?;
         
-        // Extract model settings from BackgroundJob
-        let model_used = db_job.model_used.clone().unwrap_or_else(|| "gpt-3.5-turbo".to_string());
-        let temperature = db_job.temperature.unwrap_or(0.7);
-        let max_output_tokens = db_job.max_output_tokens.unwrap_or(4000) as u32;
+        // Get task settings from database
+        let task_settings = settings_repo.get_task_settings(&job.session_id, &job.job_type.to_string()).await?
+            .ok_or_else(|| AppError::JobError(format!("No task settings found for session {} and task type {}", job.session_id, job.job_type.to_string())))?;
+        let model_used = task_settings.model;
+        let temperature = task_settings.temperature
+            .ok_or_else(|| AppError::JobError("Temperature not set in task settings".to_string()))?;
+        let max_output_tokens = task_settings.max_tokens as u32;
         
-        job_processor_utils::log_job_start(&payload.background_job_id, "Extended Path Finding");
-        info!("Starting extended path finding for workflow {} with {} AI-filtered initial paths", 
-            payload.workflow_id, payload.initial_paths.len());
+        job_processor_utils::log_job_start(&job.id, "Extended Path Finding");
+        info!("Starting extended path finding with {} AI-filtered initial paths", 
+            payload.initial_paths.len());
         
         // Check if job has been canceled using standardized utility
-        if job_processor_utils::check_job_canceled(&repo, &payload.background_job_id).await? {
-            info!("Job {} has been canceled before processing", payload.background_job_id);
-            return Ok(JobProcessResult::canceled(payload.background_job_id.clone(), "Job was canceled by user".to_string()));
+        if job_processor_utils::check_job_canceled(&repo, &job.id).await? {
+            info!("Job {} has been canceled before processing", job.id);
+            return Ok(JobProcessResult::canceled(job.id.clone(), "Job was canceled by user".to_string()));
         }
         
-        // Generate directory tree on-demand
-        let directory_tree = match get_directory_tree_with_defaults(&payload.project_directory).await {
+        // Get project directory and directory tree using session-based utilities
+        let project_directory = crate::utils::get_project_directory_from_session(&job.session_id, &app_handle).await?;
+        let directory_tree = match crate::utils::get_directory_tree_from_session(&job.session_id, &app_handle).await {
             Ok(tree) => {
-                info!("Generated directory tree on-demand for extended path finder ({} lines)", tree.lines().count());
+                info!("Generated directory tree using session-based utility for extended path finder ({} lines)", tree.lines().count());
                 tree
             }
             Err(e) => {
-                warn!("Failed to generate directory tree on-demand: {}. Using empty fallback.", e);
+                warn!("Failed to generate directory tree using session-based utility: {}. Using empty fallback.", e);
                 "No directory structure available".to_string()
             }
         };
@@ -73,7 +77,7 @@ impl JobProcessor for ExtendedPathFinderProcessor {
         // Read file contents for all initial paths to provide complete context
         let mut file_contents = std::collections::HashMap::new();
         for path in &payload.initial_paths {
-            let absolute_path = Path::new(&payload.project_directory).join(path);
+            let absolute_path = Path::new(&project_directory).join(path);
             match tokio::fs::read_to_string(&absolute_path).await {
                 Ok(content) => {
                     info!("Read file content for AI context: {} ({} bytes)", path, content.len());
@@ -93,7 +97,6 @@ impl JobProcessor for ExtendedPathFinderProcessor {
             &job,
             &app_handle,
             payload.task_description.clone(),
-            Some(directory_tree.clone()),
             Some(file_contents),
             Some(directory_tree.clone()),
             &settings_repo,
@@ -114,8 +117,9 @@ impl JobProcessor for ExtendedPathFinderProcessor {
                 payload.initial_paths.iter().map(|p| format!("- {}", p)).collect::<Vec<_>>().join("\n"))
         };
         
-        let enhanced_user_prompt = format!("{}\n\n{}\n\nPlease find additional relevant files that might be needed for this task, considering the initial paths above and the complete directory structure.", 
-            user_prompt,
+        let enhanced_user_prompt = format!(
+            "The primary task is: '{}'.\nBased on prior analysis, the following files are considered highly relevant: \n{}.\n\nYour specific goal is to identify any OTHER CRITICALLY IMPORTANT files that were missed AND are directly related to or utilized by the files listed above, or are essential auxiliary files (e.g. test files, configuration for these specific files). Do NOT re-list files from the list above. Be conservative; only add files if they are truly necessary additions. Provide the additions as a JSON list like [\"path/to/new_file1.ext\"]. If no additional files are critical, return an empty list.", 
+            payload.task_description, 
             initial_paths_text
         );
 
@@ -131,9 +135,9 @@ impl JobProcessor for ExtendedPathFinderProcessor {
         )?;
         
         // Check for cancellation before LLM call using standardized utility
-        if job_processor_utils::check_job_canceled(&repo, &payload.background_job_id).await? {
-            info!("Job {} has been canceled before LLM call", payload.background_job_id);
-            return Ok(JobProcessResult::canceled(payload.background_job_id.clone(), "Job was canceled by user".to_string()));
+        if job_processor_utils::check_job_canceled(&repo, &job.id).await? {
+            info!("Job {} has been canceled before LLM call", job.id);
+            return Ok(JobProcessResult::canceled(job.id.clone(), "Job was canceled by user".to_string()));
         }
         
         // Call LLM using standardized utility
@@ -145,23 +149,23 @@ impl JobProcessor for ExtendedPathFinderProcessor {
         let response_content = llm_response.choices[0].message.content.clone();
         
         // Parse paths from the LLM response using standardized utility
-        let extended_paths = match response_parser_utils::parse_paths_from_text_response(&response_content, &payload.project_directory) {
+        let extended_paths = match response_parser_utils::parse_paths_from_text_response(&response_content, &project_directory) {
             Ok(paths) => paths,
             Err(e) => {
                 let error_msg = format!("Failed to parse paths from LLM response: {}", e);
                 error!("{}", error_msg);
                 
                 // Finalize job failure using standardized utility
-                job_processor_utils::finalize_job_failure(&payload.background_job_id, &repo, &error_msg).await?;
+                job_processor_utils::finalize_job_failure(&job.id, &repo, &error_msg, None).await?;
                 
-                return Ok(JobProcessResult::failure(payload.background_job_id.clone(), error_msg));
+                return Ok(JobProcessResult::failure(job.id.clone(), error_msg));
             }
         };
         
-        // Validate extended paths found by LLM
+        // Validate extended paths found by LLM using centralized utility
         let (validated_extended_paths, unverified_extended_paths) = fs_context_utils::validate_paths_against_filesystem(
             &extended_paths, 
-            &payload.project_directory
+            &project_directory
         ).await;
         
         info!("Extended paths validation: {} valid, {} invalid paths", 
@@ -176,12 +180,12 @@ impl JobProcessor for ExtendedPathFinderProcessor {
         }
         
         info!("Extended path finding completed for workflow {}: {} AI-filtered initial + {} validated = {} total verified paths", 
-            payload.workflow_id, payload.initial_paths.len(), validated_extended_paths.len(), combined_validated_paths.len());
+            job.id, payload.initial_paths.len(), validated_extended_paths.len(), combined_validated_paths.len());
         
         // Check for cancellation after LLM processing using standardized utility
-        if job_processor_utils::check_job_canceled(&repo, &payload.background_job_id).await? {
-            info!("Job {} has been canceled after LLM processing", payload.background_job_id);
-            return Ok(JobProcessResult::canceled(payload.background_job_id.clone(), "Job was canceled by user".to_string()));
+        if job_processor_utils::check_job_canceled(&repo, &job.id).await? {
+            info!("Job {} has been canceled after LLM processing", job.id);
+            return Ok(JobProcessResult::canceled(job.id.clone(), "Job was canceled by user".to_string()));
         }
         
         // Store results in job metadata (supplementary info only)
@@ -196,9 +200,9 @@ impl JobProcessor for ExtendedPathFinderProcessor {
             "validatedExtendedPaths": validated_extended_paths,
             "unverifiedExtendedPaths": unverified_extended_paths,
             "llmResponse": response_content,
-            "workflowId": payload.workflow_id,
+            "workflowId": job.id,
             "taskDescription": payload.task_description,
-            "projectDirectory": payload.project_directory,
+            "projectDirectory": project_directory,
             "modelUsed": api_options_clone.model,
             "summary": format!("Extended path finding: {} AI-filtered initial + {} validated = {} total verified paths", 
                 payload.initial_paths.len(), 
@@ -219,7 +223,7 @@ impl JobProcessor for ExtendedPathFinderProcessor {
         
         // Finalize job success using standardized utility
         job_processor_utils::finalize_job_success(
-            &payload.background_job_id,
+            &job.id,
             &repo,
             &response_json_content,
             llm_response.usage,
@@ -228,13 +232,13 @@ impl JobProcessor for ExtendedPathFinderProcessor {
             Some(result_metadata),
         ).await?;
         
-        debug!("Extended path finding completed for workflow {}", payload.workflow_id);
+        debug!("Extended path finding completed for workflow {}", job.id);
         
         // NOTE: No longer handling internal chaining - WorkflowOrchestrator manages transitions
         
         // Return success result
         Ok(JobProcessResult::success(
-            payload.background_job_id.clone(), 
+            job.id.clone(), 
             response_json_content
         ))
     }

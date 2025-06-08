@@ -30,7 +30,7 @@ export function JobDetailsPromptSection() {
           <CardContent className="pt-0">
             <VirtualizedCodeViewer
               content={promptContent}
-              height="50vh"
+              height="60vh"
               showCopy={true}
               copyText="Copy Prompt"
               showContentSize={true}

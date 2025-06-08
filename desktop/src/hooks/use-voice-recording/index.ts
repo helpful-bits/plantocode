@@ -12,4 +12,3 @@ export { useAudioInputDevices } from "./use-audio-input-devices";
 // Note: These handlers are not hooks themselves, but they're used by the hooks
 // and exported here for convenience
 export * as VoiceMediaHandler from "./voice-media-handler";
-export * as VoiceTranscriptionHandler from "./voice-transcription-handler";

@@ -105,7 +105,6 @@ export function useSessionMutations({
         includedFiles: [] as string[],
         forceExcludedFiles: [] as string[],
         searchSelectedFilesOnly: false,
-        codebaseStructure: "",
         createdAt: Date.now(),
       };
 

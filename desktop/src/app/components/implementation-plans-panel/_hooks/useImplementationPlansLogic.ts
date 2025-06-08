@@ -31,18 +31,11 @@ export function useImplementationPlansLogic({
   const implementationPlans = useMemo(() => {
     if (!jobs) return [];
 
-    // Filter for implementation plan jobs
     return jobs
       .filter((job: BackgroundJob) => {
-        // Must be implementation_plan task type
         if (job.taskType !== "implementation_plan") return false;
 
-        // If project directory is specified, filter by it
-        if (projectDirectory && job.projectDirectory !== projectDirectory) {
-          return false;
-        }
 
-        // If sessionId is specified, filter by it
         if (sessionId && job.sessionId !== sessionId) {
           return false;
         }
@@ -50,19 +43,16 @@ export function useImplementationPlansLogic({
         return true;
       })
       .sort((a: BackgroundJob, b: BackgroundJob) => {
-        // Active jobs first
         const aIsActive = JOB_STATUSES.ACTIVE.includes(a.status);
         const bIsActive = JOB_STATUSES.ACTIVE.includes(b.status);
 
         if (aIsActive && !bIsActive) return -1;
         if (!aIsActive && bIsActive) return 1;
 
-        // Then sort by creation date (newest first)
         return (b.createdAt || 0) - (a.createdAt || 0);
       });
   }, [jobs, projectDirectory, sessionId]);
 
-  // Copy implementation plan content to clipboard
   const handleCopyToClipboard = useCallback(
     async (text: string, jobId: string) => {
       try {

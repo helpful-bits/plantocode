@@ -1,4 +1,4 @@
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
 use std::collections::HashMap;
 use serde_json::Value as JsonValue;
 use crate::error::AppResult;
@@ -49,4 +49,18 @@ pub async fn refresh_server_config_cache_command(
 ) -> AppResult<()> {
     info!("Command: refresh_server_config_cache_command");
     refresh_server_config_cache(&app_handle).await
+}
+
+/// Get the server URL from runtime configuration
+#[tauri::command]
+#[instrument(skip(app_handle))]
+pub async fn get_server_url_command(
+    app_handle: AppHandle,
+) -> AppResult<String> {
+    info!("Command: get_server_url_command");
+    
+    let runtime_config = app_handle.try_state::<crate::config::RuntimeConfig>()
+        .ok_or_else(|| crate::error::AppError::ConfigError("Runtime configuration not available".to_string()))?;
+    
+    Ok(runtime_config.server_url.clone())
 }

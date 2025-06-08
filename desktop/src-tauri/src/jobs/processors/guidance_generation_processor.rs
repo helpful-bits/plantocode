@@ -44,23 +44,36 @@ impl JobProcessor for GuidanceGenerationProcessor {
         let (repo, settings_repo, db_job) = job_processor_utils::setup_job_processing(&job.id, &app_handle).await?;
         
         // Extract model settings from BackgroundJob
-        let model_used = db_job.model_used.clone().unwrap_or_else(|| "gpt-3.5-turbo".to_string());
-        let temperature = db_job.temperature.unwrap_or(0.7);
-        let max_output_tokens = db_job.max_output_tokens.unwrap_or(4000) as u32;
+        // Get task settings from database
+        let task_settings = settings_repo.get_task_settings(&job.session_id, &job.job_type.to_string()).await?
+            .ok_or_else(|| AppError::JobError(format!("No task settings found for session {} and task type {}", job.session_id, job.job_type.to_string())))?;
+        let model_used = task_settings.model;
+        let temperature = task_settings.temperature
+            .ok_or_else(|| AppError::JobError("Temperature not set in task settings".to_string()))?;
+        let max_output_tokens = task_settings.max_tokens as u32;
+        
+        // Get project directory from session
+        let session = {
+            use crate::db_utils::SessionRepository;
+            let session_repo = SessionRepository::new(repo.get_pool());
+            session_repo.get_session_by_id(&job.session_id).await?
+                .ok_or_else(|| AppError::JobError(format!("Session {} not found", job.session_id)))?
+        };
+        let project_directory = &session.project_directory;
         
         job_processor_utils::log_job_start(&job.id, "guidance generation");
         debug!("Task description: {}", payload.task_description);
         
         // Load file contents if paths are provided
         let file_contents = if let Some(paths) = &payload.paths {
-            Some(fs_context_utils::load_file_contents(paths, &payload.project_directory).await)
+            Some(fs_context_utils::load_file_contents(paths, project_directory).await)
         } else {
             None
         };
         
         // Generate directory tree for enhanced context
         let directory_tree = fs_context_utils::generate_directory_tree_for_context(
-            &payload.project_directory
+            project_directory
         ).await;
         
         // Setup LLM task configuration
@@ -79,8 +92,7 @@ impl JobProcessor for GuidanceGenerationProcessor {
             task_description: payload.task_description.clone(),
             file_contents,
             directory_tree,
-            codebase_structure: payload.file_contents_summary.clone(),
-            system_prompt_override: payload.system_prompt_override.clone(),
+            system_prompt_override: None,
         };
         
         debug!("Sending guidance generation request with model: {}", model_used);
@@ -110,7 +122,7 @@ impl JobProcessor for GuidanceGenerationProcessor {
             Err(e) => {
                 let error_msg = format!("LLM task execution failed: {}", e);
                 error!("{}", error_msg);
-                task_runner.finalize_failure(&repo, &job.id, &error_msg).await?;
+                task_runner.finalize_failure(&repo, &job.id, &error_msg, Some(&e)).await?;
                 
                 Ok(JobProcessResult::failure(job.id.clone(), error_msg))
             }

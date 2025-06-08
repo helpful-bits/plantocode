@@ -38,7 +38,6 @@ pub async fn create_session_command(app_handle: AppHandle, session_data: CreateS
         negative_content_regex_description: session_data.negative_content_regex_description,
         regex_summary_explanation: None,
         is_regex_active: session_data.is_regex_active.unwrap_or(true),
-        codebase_structure: session_data.codebase_structure,
         search_selected_files_only: session_data.search_selected_files_only.unwrap_or(false),
         model_used: session_data.model_used.filter(|s| !s.is_empty()),
         created_at: session_data.created_at.unwrap_or(now),
@@ -283,15 +282,6 @@ pub async fn update_session_fields_command(app_handle: AppHandle, session_id: St
         if fields.contains_key("isRegexActive") {
             if let Some(is_regex_active) = fields["isRegexActive"].as_bool() {
                 updated_session.is_regex_active = is_regex_active;
-            }
-        }
-
-        // Handle codebase_structure
-        if fields.contains_key("codebaseStructure") {
-            if let Some(codebase_structure) = fields["codebaseStructure"].as_str() {
-                updated_session.codebase_structure = Some(codebase_structure.to_string());
-            } else if fields["codebaseStructure"].is_null() {
-                updated_session.codebase_structure = None;
             }
         }
 

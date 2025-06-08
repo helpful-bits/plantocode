@@ -14,67 +14,29 @@ export type ApiType = "openrouter" | "filesystem";
 import { type TaskType, TaskTypeDetails } from './task-type-defs';
 export { type TaskType, TaskTypeDetails };
 
-/**
- * Interface defining structured job metadata
- * Aligned with backend JobWorkerMetadata structure from desktop/src-tauri/src/jobs/types.rs
- */
 export interface JobMetadata {
-  // Core fields from JobWorkerMetadata - top level workflow metadata
-  jobTypeForWorker?: string; // e.g., "PATH_FINDER", "TEXT_IMPROVEMENT"
-  jobPayloadForWorker?: any; // The full JobPayload enum from backend - task-specific payload data nested
-  jobPriorityForWorker?: number;
+  jobPayloadForWorker?: any;
   workflowId?: string;
-  workflowStage?: string; // e.g., "DirectoryTreeGeneration", "PathFinding", "ResultProcessing"
-  
-  // Additional parameters from backend - contains dynamic/custom metadata
-  additionalParams?: Record<string, any>;
-
-  // New field: Parsed jobPayloadForWorker for easier UI access
-  parsedJobPayload?: any; // Deserialized jobPayloadForWorker content for easier component access
-
-  // Common extracted fields for UI convenience - extracted from jobPayloadForWorker
-  backgroundJobId?: string;
-  sessionId?: string;
-  taskDescription?: string;
-  projectDirectory?: string;
-
-  // Allow additional dynamic fields for extensibility
+  taskData?: Record<string, any>;
   [key: string]: unknown;
 }
 
-/**
- * Background Job interface matching the Rust BackgroundJob struct
- * All properties use camelCase for UI consumption, Tauri handles snake_case conversion automatically
- */
 export interface BackgroundJob {
   id: string;
   sessionId: string;
-  apiType: ApiType;
   taskType: TaskType;
   status: JobStatus;
+  prompt: string;
+  response?: string;
+  errorMessage?: string;
+  tokensSent?: number;
+  tokensReceived?: number;
+  modelUsed?: string;
+  metadata?: JobMetadata | string | null;
   createdAt: number;
   updatedAt?: number;
   startTime?: number;
   endTime?: number;
-  lastUpdate?: number;
-  prompt: string;
-  response?: string;
-  projectDirectory?: string;
-  tokensSent?: number;
-  tokensReceived?: number;
-  totalTokens?: number;
-  inputCost?: number;
-  outputCost?: number;
-  totalCost?: number;
-  charsReceived?: number;
-  statusMessage?: string;
-  errorMessage?: string;
-  modelUsed?: string;
-  maxOutputTokens?: number;
-  temperature?: number;
-  includeSyntax?: boolean;
-  metadata?: JobMetadata | string | null;
-  systemPromptId?: string; // ID of the system prompt used for this job
 }
 
 // Session structure including background jobs and task settings
@@ -100,7 +62,6 @@ export type Session = {
   includedFiles: string[]; // Array of comparablePath strings (normalized, project-relative paths) that are selected
   forceExcludedFiles: string[]; // Array of comparablePath strings (normalized, project-relative paths) forced excluded even if they match inclusion criteria
   backgroundJobs?: BackgroundJob[]; // Associated background jobs
-  codebaseStructure?: string; // ASCII structure of codebase
   searchSelectedFilesOnly: boolean; // Whether to search only in selected files
   modelUsed?: string; // The model used for this session
 };

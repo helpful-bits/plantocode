@@ -744,10 +744,10 @@ export function createUserFriendlyErrorMessage(
         let stageGuidance = '';
         if (stageEnum) {
           switch (stageEnum) {
-            case 'GENERATING_REGEX':
+            case 'REGEX_PATTERN_GENERATION':
               stageGuidance = ' Consider simplifying your search criteria or providing more specific terms.';
               break;
-            case 'LOCAL_FILTERING':
+            case 'LOCAL_FILE_FILTERING':
               stageGuidance = ' Check if the specified files exist and are accessible.';
               break;
             case 'FILE_RELEVANCE_ASSESSMENT':
