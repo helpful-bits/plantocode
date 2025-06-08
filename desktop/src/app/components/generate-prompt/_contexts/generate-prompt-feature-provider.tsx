@@ -210,10 +210,18 @@ export function GeneratePromptFeatureProvider({
     ]
   );
 
+  // Add flush pending task changes action
+  const flushPendingTaskChanges = useCallback(() => {
+    if (taskDescriptionRef.current?.flushPendingChanges) {
+      return taskDescriptionRef.current.flushPendingChanges();
+    }
+    return null;
+  }, []);
+
   const taskContextValue = useMemo<TaskContextValue>(
     () => ({
       state: {
-        // Task UI state only
+        // Task UI state
         taskDescriptionRef: taskState.taskDescriptionRef,
         isGeneratingGuidance: taskState.isGeneratingGuidance,
         isImprovingText: taskState.isImprovingText,
@@ -223,12 +231,14 @@ export function GeneratePromptFeatureProvider({
         // Task description actions
         handleGenerateGuidance: taskState.handleGenerateGuidance,
         handleImproveSelection: taskState.handleImproveSelection,
+        flushPendingTaskChanges,
         reset: taskState.resetTaskState,
       },
     }),
     [
       // The taskState object is already memoized from the hook
       taskState,
+      flushPendingTaskChanges,
     ]
   );
 

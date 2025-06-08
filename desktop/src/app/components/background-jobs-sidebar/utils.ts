@@ -175,6 +175,29 @@ export function formatTaskType(taskType: TaskType): string {
 }
 
 /**
+ * Returns human-readable status text
+ */
+export function formatStatus(status: string): string {
+  const statusMap: Record<string, string> = {
+    idle: "Idle",
+    created: "Created", 
+    queued: "Queued",
+    acknowledgedByWorker: "Acknowledged",
+    preparing: "Preparing",
+    preparingInput: "Preparing Input",
+    generatingStream: "Generating",
+    processingStream: "Processing Stream",
+    running: "Running",
+    completedByTag: "Completed",
+    completed: "Completed",
+    failed: "Failed",
+    canceled: "Canceled",
+  };
+  
+  return statusMap[status] || status;
+}
+
+/**
  * Format timestamp to relative time using the utility function from date-utils
  */
 export function formatTimeAgo(timestamp: number): string {

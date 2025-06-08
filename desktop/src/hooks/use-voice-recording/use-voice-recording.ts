@@ -30,7 +30,6 @@ interface UseVoiceRecordingResult {
   startRecording: () => Promise<void>;
   stopRecording: () => void;
   reset: () => void;
-  retryLastRecording: () => Promise<void>;
   requestPermissionAndRefreshDevices: () => Promise<boolean>;
   textStatus?: "loading" | "done" | "error";
   availableAudioInputs: MediaDeviceInfo[];
@@ -41,6 +40,7 @@ interface UseVoiceRecordingResult {
 
 export function useVoiceRecording({
   sessionId = null,
+  languageCode = "en",
   autoCorrect = true,
   onStateChange,
   onTranscribed,
@@ -114,7 +114,6 @@ export function useVoiceRecording({
 
   const {
     activeAudioInputLabel,
-    lastRecordingRef,
     startMediaRecording,
     stopMediaRecording,
     resetMediaState,
@@ -128,12 +127,12 @@ export function useVoiceRecording({
     correctedText,
     textStatus,
     startTranscriptionStream,
-    retryTranscription,
     resetTranscriptionState,
   } = useVoiceTranscriptionProcessing({
     sessionId,
     projectDirectory,
     autoCorrect,
+    languageCode,
     onTranscribed,
     onCorrectionComplete,
     onError: handleError,
@@ -143,6 +142,7 @@ export function useVoiceRecording({
   const recordingStartTimeRef = useRef<number | null>(null);
   
   const writableStreamRef = useRef<WritableStream<Uint8Array> | null>(null);
+  const writerRef = useRef<WritableStreamDefaultWriter<Uint8Array> | null>(null);
   const resultPromiseRef = useRef<Promise<void> | null>(null);
 
   const startRecording = useCallback(async () => {
@@ -156,6 +156,7 @@ export function useVoiceRecording({
       resultPromiseRef.current = resultPromise;
       
       const writer = writableStream.getWriter();
+      writerRef.current = writer;
       
       recordingStartTimeRef.current = Date.now();
       const media = await startMediaRecording(async (chunk: Blob) => {
@@ -175,6 +176,7 @@ export function useVoiceRecording({
       } else {
         await writer.close();
         writableStreamRef.current = null;
+        writerRef.current = null;
         resultPromiseRef.current = null;
         updateState({ isRecording: false });
       }
@@ -200,9 +202,12 @@ export function useVoiceRecording({
 
       await stopMediaRecording();
       
+      if (writerRef.current) {
+        await writerRef.current.close();
+        writerRef.current = null;
+      }
+      
       if (writableStreamRef.current) {
-        const writer = writableStreamRef.current.getWriter();
-        await writer.close();
         writableStreamRef.current = null;
       }
       
@@ -232,42 +237,6 @@ export function useVoiceRecording({
     setError(null);
   }, [resetMediaState, resetTranscriptionState]);
 
-  const retryLastRecording = useCallback(async () => {
-    try {
-      if (!lastRecordingRef.current) {
-        console.error(
-          "[VoiceRecording] No previous recording available to retry"
-        );
-        updateState({ error: "No previous recording available to retry" });
-        return;
-      }
-
-      updateState({ isProcessing: true, error: null });
-
-      const { writableStream, resultPromise } = await retryTranscription();
-      writableStreamRef.current = writableStream;
-      resultPromiseRef.current = resultPromise;
-      
-      const writer = writableStream.getWriter();
-      const arrayBuffer = await lastRecordingRef.current.blob.arrayBuffer();
-      const uint8Array = new Uint8Array(arrayBuffer);
-      await writer.write(uint8Array);
-      await writer.close();
-      
-      await resultPromise;
-      
-      writableStreamRef.current = null;
-      resultPromiseRef.current = null;
-      updateState({ isProcessing: false });
-    } catch (error) {
-      console.error("[VoiceRecording] Unexpected error in retryLastRecording:", error);
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      updateState({ 
-        error: `Failed to retry recording: ${errorMessage}`,
-        isProcessing: false 
-      });
-    }
-  }, [updateState, retryTranscription]);
 
   const handleSelectAudioInput = useCallback(
     (deviceId: string) => {
@@ -292,7 +261,6 @@ export function useVoiceRecording({
     startRecording,
     stopRecording,
     reset,
-    retryLastRecording,
     requestPermissionAndRefreshDevices,
     textStatus,
     availableAudioInputs,

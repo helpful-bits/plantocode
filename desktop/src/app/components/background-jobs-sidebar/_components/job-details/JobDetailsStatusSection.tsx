@@ -1,5 +1,6 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card";
 import { useJobDetailsContext } from "../../_contexts/job-details-context";
+import { formatTaskType, formatStatus } from "../../utils";
 
 export function JobDetailsStatusSection() {
   const { job } = useJobDetailsContext();
@@ -15,11 +16,11 @@ export function JobDetailsStatusSection() {
         <div className="grid grid-cols-2 gap-4">
           <div>
             <div className="text-xs text-muted-foreground mb-1">Status</div>
-            <div className="text-sm font-medium text-foreground">{job.status}</div>
+            <div className="text-sm font-medium text-foreground">{formatStatus(job.status)}</div>
           </div>
           <div>
             <div className="text-xs text-muted-foreground mb-1">Task</div>
-            <div className="text-sm font-medium text-foreground">{job.taskType}</div>
+            <div className="text-sm font-medium text-foreground">{formatTaskType(job.taskType as any)}</div>
           </div>
         </div>
       </CardContent>
