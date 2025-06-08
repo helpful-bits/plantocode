@@ -119,7 +119,8 @@ pub async fn audio_transcriptions_proxy(
         &multipart_data.audio_data, 
         &multipart_data.filename, 
         model_from_payload,
-        multipart_data.duration_ms
+        multipart_data.duration_ms,
+        multipart_data.language.as_deref()
     ).await?;
     
     // Log request duration
@@ -170,6 +171,11 @@ pub async fn audio_transcriptions_stream_proxy(
         .and_then(|v| v.to_str().ok())
         .map(|s| s.to_string());
     
+    let language = req.headers()
+        .get("X-Language")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string());
+    
     // Read the streaming payload into a buffer
     let mut buffer = web::BytesMut::new();
     while let Some(chunk) = payload.next().await {
@@ -191,7 +197,8 @@ pub async fn audio_transcriptions_stream_proxy(
         &audio_data,
         &filename,
         model_from_payload,
-        duration_ms.unwrap_or(0)
+        duration_ms.unwrap_or(0),
+        language.as_deref()
     ).await?;
     
     // Log request duration

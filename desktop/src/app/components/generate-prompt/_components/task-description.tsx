@@ -7,11 +7,11 @@ import {
   useRef,
   useImperativeHandle,
   forwardRef,
+  useEffect,
 } from "react";
 import type { ChangeEvent } from "react";
 
 import { useNotification } from "@/contexts/notification-context";
-import { useSessionActionsContext } from "@/contexts/session";
 import { useTextareaResize } from "@/hooks/use-textarea-resize";
 import { Button } from "@/ui/button";
 import { Textarea } from "@/ui/textarea";
@@ -22,6 +22,7 @@ export interface TaskDescriptionHandle {
   appendText: (text: string) => void;
   replaceSelection: (newText: string) => void;
   replaceText: (oldText: string, newText: string) => void;
+  flushPendingChanges: () => string; // Immediately flush any pending debounced changes and return current value
   // Add properties that use-task-description-state.ts expects
   value: string;
   selectionStart: number;
@@ -58,13 +59,34 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
       ref: React.ForwardedRef<TaskDescriptionHandle>
     ) {
       // Keep ref parameter
+      // Local state for responsive input handling
+      const [internalValue, setInternalValue] = useState(value);
+      const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+      
       // Minimal state for selection tracking
       const { showNotification } = useNotification();
-      const sessionActions = useSessionActionsContext();
       // Create an internal ref for the textarea element
       const internalTextareaRef = useRef<HTMLTextAreaElement>(null);
       const [hasActiveSelection, setHasActiveSelection] = useState(false);
+      
+      // Sync internal value with prop value when it changes externally
+      useEffect(() => {
+        setInternalValue(value);
+      }, [value]);
 
+      // Debounced onChange for performance, with immediate flush capability
+      const debouncedOnChange = useCallback(
+        (newValue: string) => {
+          if (debounceTimeoutRef.current) {
+            clearTimeout(debounceTimeoutRef.current);
+          }
+          debounceTimeoutRef.current = setTimeout(() => {
+            onChange(newValue);
+          }, 1000); // Longer debounce to prevent lag during active typing, with immediate flush on blur
+        },
+        [onChange]
+      );
+      
       // Insert or replace text at the stored cursor or selection range
       const insertTextAtCursor = useCallback(
         (newText: string, start: number, end: number) => {
@@ -79,13 +101,14 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
           }
 
           // Calculate the new value directly
-          const originalText = value;
+          const originalText = internalValue;
           const before = originalText.slice(0, start);
           const after = originalText.slice(end);
           const newValue = before + newText + after;
 
-          // Update state via the onChange prop
-          onChange(newValue);
+          // Update local state and debounce parent update
+          setInternalValue(newValue);
+          debouncedOnChange(newValue);
           onInteraction(); // Notify parent
 
           // Calculate new cursor position
@@ -102,7 +125,7 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
             }
           }, 0);
         },
-        [onChange, onInteraction, value]
+        [internalValue, debouncedOnChange, onInteraction]
       );
 
       // No local storage effects - moved to useTaskDescriptionState hook
@@ -118,8 +141,8 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
           insertTextAtCursor(text, textarea.selectionStart, textarea.selectionEnd);
         },
         appendText: (text: string) => {
-          const separator = value.trim() ? "\n\n" : "";
-          insertTextAtCursor(separator + text, value.length, value.length);
+          const separator = internalValue.trim() ? "\n\n" : "";
+          insertTextAtCursor(separator + text, internalValue.length, internalValue.length);
         },
         replaceSelection: (newText: string) => {
           const textarea = internalTextareaRef.current;
@@ -127,17 +150,29 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
           insertTextAtCursor(newText, textarea.selectionStart, textarea.selectionEnd);
         },
         replaceText: (oldText: string, newText: string) => {
-          const updatedText = value.replace(oldText, newText);
-          if (updatedText !== value) {
-            onChange(updatedText);
+          const updatedText = internalValue.replace(oldText, newText);
+          if (updatedText !== internalValue) {
+            setInternalValue(updatedText);
+            debouncedOnChange(updatedText);
             onInteraction();
           }
         },
-        get value() { return value; },
+        flushPendingChanges: () => {
+          // Immediately flush any pending debounced changes
+          if (debounceTimeoutRef.current) {
+            clearTimeout(debounceTimeoutRef.current);
+            debounceTimeoutRef.current = null;
+          }
+          // Call onChange with current internal value to ensure it's saved
+          onChange(internalValue);
+          // Return the current value so caller can use it immediately
+          return internalValue;
+        },
+        get value() { return internalValue; },
         get selectionStart() { return internalTextareaRef.current?.selectionStart ?? 0; },
         get selectionEnd() { return internalTextareaRef.current?.selectionEnd ?? 0; },
         focus: () => internalTextareaRef.current?.focus(),
-      }), [insertTextAtCursor, value, onChange, onInteraction]);
+      }), [insertTextAtCursor, internalValue, debouncedOnChange, onInteraction, onChange]);
 
       // Simplified selection tracking
       const handleSelect = () => {
@@ -156,7 +191,7 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
           return;
         }
 
-        const selectedText = value.slice(selectionStart, selectionEnd).trim();
+        const selectedText = internalValue.slice(selectionStart, selectionEnd).trim();
         if (!selectedText) {
           showNotification({ title: "No text selected", message: "Please select some non-empty text to improve", type: "warning" });
           return;
@@ -173,19 +208,21 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
 
       // Simplified change handler
       const handleChange = useCallback((e: ChangeEvent<HTMLTextAreaElement>) => {
-        onChange(e.target.value);
+        const newValue = e.target.value;
+        setInternalValue(newValue);
+        debouncedOnChange(newValue);
         onInteraction();
-      }, [onChange, onInteraction]);
+      }, [setInternalValue, debouncedOnChange, onInteraction]);
 
       // Use the auto-resize hook to handle textarea height adjustments
-      useTextareaResize(internalTextareaRef, value, {
+      useTextareaResize(internalTextareaRef, internalValue, {
         minHeight: 200,
         maxHeight: 600,
         extraHeight: 50,
       });
 
       // Simple empty check
-      const effectiveIsEmpty = !value?.trim();
+      const effectiveIsEmpty = !internalValue?.trim();
 
       return (
         <div className="flex flex-col gap-2">
@@ -230,16 +267,20 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
               ref={internalTextareaRef}
               id="taskDescArea"
               className={`border border-border/60 rounded-xl bg-background backdrop-blur-sm text-foreground p-4 w-full resize-y font-normal shadow-soft ${effectiveIsEmpty ? "border-destructive/20 bg-destructive/5" : ""}`}
-              value={value}
+              value={internalValue}
               onChange={handleChange}
               onSelect={handleSelect}
               onBlur={(_e) => {
+                // Immediately flush any pending changes to prevent data loss
+                if (debounceTimeoutRef.current) {
+                  clearTimeout(debounceTimeoutRef.current);
+                  onChange(internalValue);
+                }
+                
                 // Call the original onBlur handler if provided
                 if (onBlur) {
                   onBlur();
                 }
-                // Flush any pending saves to ensure data is persisted immediately
-                void sessionActions.flushSaves?.();
               }}
               placeholder="Clearly describe the changes or features you want the AI to implement. You can use the voice recorder below or type directly."
               aria-required="true"

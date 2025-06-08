@@ -22,6 +22,7 @@ pub struct TranscribeAudioArgs {
     pub duration_ms: i64,
     pub filename: Option<String>,
     pub project_directory: Option<String>,
+    pub language: Option<String>,
 }
 
 
@@ -33,6 +34,7 @@ pub async fn create_transcription_job_command(
     duration_ms: i64,
     filename: Option<String>,
     project_directory: Option<String>,
+    language: Option<String>,
     app_handle: AppHandle,
 ) -> AppResult<JobCommandResponse> {
     let args = TranscribeAudioArgs {
@@ -41,6 +43,7 @@ pub async fn create_transcription_job_command(
         duration_ms,
         filename,
         project_directory,
+        language,
     };
     info!("Creating audio transcription job");
     
@@ -96,6 +99,7 @@ pub async fn create_transcription_job_command(
         filename: filename.clone(),
         model: transcription_model.clone(),
         duration_ms: args.duration_ms,
+        language: args.language,
     };
     
     // Use the job creation utility to create and queue the job

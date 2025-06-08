@@ -41,13 +41,7 @@ export function useTextareaResize(
 
   // Adjust height whenever content changes
   useEffect(() => {
-    const timerId = setTimeout(() => {
-      adjustHeight();
-    }, 300);
-
-    return () => {
-      clearTimeout(timerId);
-    };
+    adjustHeight();
   }, [content, adjustHeight]);
 
   // Also adjust when window resizes (which affects text wrapping)

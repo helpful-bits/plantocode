@@ -65,8 +65,8 @@ impl SessionRepository {
             model_used,
             created_at,
             updated_at,
-            included_files: Some(included_files),
-            force_excluded_files: Some(force_excluded_files),
+            included_files,
+            force_excluded_files,
         })
     }
     
@@ -202,26 +202,23 @@ impl SessionRepository {
         }
         
         // Insert included files
-        if let Some(included_files) = &session.included_files {
-            for path in included_files {
-                let result = sqlx::query("INSERT INTO included_files (session_id, path) VALUES ($1, $2)")
-                    .bind(&session.id)
-                    .bind(path)
-                    .execute(&mut *tx)
-                    .await;
-                    
-                if let Err(e) = result {
-                    // Rollback transaction on error
-                    let _ = tx.rollback().await;
-                    log::error!("Repository: Failed to insert included file {} for session {}: {}", path, session.id, e);
-                    return Err(AppError::DatabaseError(format!("Failed to insert included file: {}", e)));
-                }
+        for path in &session.included_files {
+            let result = sqlx::query("INSERT INTO included_files (session_id, path) VALUES ($1, $2)")
+                .bind(&session.id)
+                .bind(path)
+                .execute(&mut *tx)
+                .await;
+                
+            if let Err(e) = result {
+                // Rollback transaction on error
+                let _ = tx.rollback().await;
+                log::error!("Repository: Failed to insert included file {} for session {}: {}", path, session.id, e);
+                return Err(AppError::DatabaseError(format!("Failed to insert included file: {}", e)));
             }
         }
         
         // Insert excluded files
-        if let Some(excluded_files) = &session.force_excluded_files {
-            for path in excluded_files {
+        for path in &session.force_excluded_files {
                 let result = sqlx::query("INSERT INTO excluded_files (session_id, path) VALUES ($1, $2)")
                     .bind(&session.id)
                     .bind(path)
@@ -234,7 +231,6 @@ impl SessionRepository {
                     return Err(AppError::DatabaseError(format!("Failed to insert excluded file: {}", e)));
                 }
             }
-        }
         
         // Commit transaction
         tx.commit().await
@@ -271,10 +267,10 @@ impl SessionRepository {
                 negative_content_regex_description = $13,
                 regex_summary_explanation = $14,
                 is_regex_active = $15,
-                search_selected_files_only = $17,
-                model_used = $18,
-                updated_at = $19
-            WHERE id = $20
+                search_selected_files_only = $16,
+                model_used = $17,
+                updated_at = $18
+            WHERE id = $19
             "#)
             .bind(&session.name)
             .bind(&session.project_directory)
@@ -330,25 +326,22 @@ impl SessionRepository {
         }
         
         // Insert included files
-        if let Some(included_files) = &session.included_files {
-            for path in included_files {
-                let result = sqlx::query("INSERT INTO included_files (session_id, path) VALUES ($1, $2)")
-                    .bind(&session.id)
-                    .bind(path)
-                    .execute(&mut *tx)
-                    .await;
-                    
-                if let Err(e) = result {
-                    // Rollback transaction on error
-                    let _ = tx.rollback().await;
-                    return Err(AppError::DatabaseError(format!("Failed to insert included file: {}", e)));
-                }
+        for path in &session.included_files {
+            let result = sqlx::query("INSERT INTO included_files (session_id, path) VALUES ($1, $2)")
+                .bind(&session.id)
+                .bind(path)
+                .execute(&mut *tx)
+                .await;
+                
+            if let Err(e) = result {
+                // Rollback transaction on error
+                let _ = tx.rollback().await;
+                return Err(AppError::DatabaseError(format!("Failed to insert included file: {}", e)));
             }
         }
         
         // Insert excluded files
-        if let Some(excluded_files) = &session.force_excluded_files {
-            for path in excluded_files {
+        for path in &session.force_excluded_files {
                 let result = sqlx::query("INSERT INTO excluded_files (session_id, path) VALUES ($1, $2)")
                     .bind(&session.id)
                     .bind(path)
@@ -361,7 +354,6 @@ impl SessionRepository {
                     return Err(AppError::DatabaseError(format!("Failed to insert excluded file: {}", e)));
                 }
             }
-        }
         
         // Commit transaction
         tx.commit().await

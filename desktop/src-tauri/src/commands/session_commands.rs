@@ -311,9 +311,9 @@ pub async fn update_session_fields_command(app_handle: AppHandle, session_id: St
                         included_files.push(file_str.to_string());
                     }
                 }
-                updated_session.included_files = Some(included_files);
+                updated_session.included_files = included_files;
             } else if fields[key].is_null() {
-                updated_session.included_files = None;
+                updated_session.included_files = vec![];
             }
         }
 
@@ -326,9 +326,9 @@ pub async fn update_session_fields_command(app_handle: AppHandle, session_id: St
                         force_excluded_files.push(file_str.to_string());
                     }
                 }
-                updated_session.force_excluded_files = Some(force_excluded_files);
+                updated_session.force_excluded_files = force_excluded_files;
             } else if fields["forceExcludedFiles"].is_null() {
-                updated_session.force_excluded_files = None;
+                updated_session.force_excluded_files = vec![];
             }
         }
 

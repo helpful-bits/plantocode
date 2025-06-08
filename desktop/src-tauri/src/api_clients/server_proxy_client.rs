@@ -297,7 +297,7 @@ impl ServerProxyClient {
 
 #[async_trait]
 impl TranscriptionClient for ServerProxyClient {
-    async fn transcribe(&self, audio_data: &[u8], filename: &str, model: &str, duration_ms: i64) -> AppResult<String> {
+    async fn transcribe(&self, audio_data: &[u8], filename: &str, model: &str, duration_ms: i64, language: Option<&str>) -> AppResult<String> {
         info!("Sending transcription request through server proxy with model: {}", model);
         debug!("Audio file: {}, size: {} bytes", filename, audio_data.len());
 
@@ -309,12 +309,17 @@ impl TranscriptionClient for ServerProxyClient {
 
         let mime_type_str = Self::get_mime_type_from_filename(filename)?;
 
-        let form = multipart::Form::new()
+        let mut form = multipart::Form::new()
             .text("model", model.to_string())
             .text("duration_ms", duration_ms.to_string())
             .part("file", multipart::Part::bytes(audio_data.to_vec())
                 .file_name(filename.to_string())
                 .mime_str(mime_type_str).map_err(|e| AppError::InternalError(format!("Invalid mime type: {}", e)))?); 
+
+        // Add language parameter if provided
+        if let Some(lang) = language {
+            form = form.text("language", lang.to_string());
+        }
 
         let response = self.http_client
             .post(&transcription_url)

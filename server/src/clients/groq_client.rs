@@ -43,6 +43,7 @@ impl GroqClient {
         model: &str,
         user_id: &str,
         duration_ms: i64,
+        language: Option<&str>,
     ) -> Result<(String, HeaderMap), AppError> {
         let url = format!("{}/audio/transcriptions", self.base_url);
 
@@ -60,10 +61,15 @@ impl GroqClient {
             .mime_str(mime_type)
             .map_err(|e| AppError::Validation(format!("Invalid audio mime type: {}", e)))?;
 
-        let form = Form::new()
+        let mut form = Form::new()
             .part("file", audio_part)
             .text("model", groq_model.to_string())
             .text("response_format", "text");
+
+        // Add language parameter if provided
+        if let Some(lang) = language {
+            form = form.text("language", lang.to_string());
+        }
 
         let response = self
             .client

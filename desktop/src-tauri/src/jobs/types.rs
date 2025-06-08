@@ -52,6 +52,7 @@ pub struct VoiceTranscriptionPayload {
     pub filename: String,
     pub model: String,
     pub duration_ms: i64,
+    pub language: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

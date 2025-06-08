@@ -441,6 +441,7 @@ impl ProxyService {
         filename: &str,
         model_override: Option<String>,
         duration_ms: i64,
+        language: Option<&str>,
     ) -> Result<Value, AppError> {
         // Determine model ID: override or database default (NO FALLBACKS!)
         let model_id = match model_override {
@@ -452,7 +453,7 @@ impl ProxyService {
         self.billing_service.check_service_access(user_id, &model_id).await?;
         
         // Make the transcription request to Groq
-        let (transcribed_text, headers) = self.groq_client.transcribe(audio_data, filename, &model_id, &user_id.to_string(), duration_ms).await?;
+        let (transcribed_text, headers) = self.groq_client.transcribe(audio_data, filename, &model_id, &user_id.to_string(), duration_ms, language).await?;
         
         // Extract processing_ms and request_id from headers
         let processing_ms = headers.get("openai-processing-ms")

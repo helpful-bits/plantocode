@@ -8,6 +8,7 @@ pub struct TranscriptionMultipartData {
     pub filename: String,
     pub model: String,
     pub duration_ms: i64,
+    pub language: Option<String>,
 }
 
 pub async fn process_transcription_multipart(mut payload: Multipart) -> Result<TranscriptionMultipartData, AppError> {
@@ -15,6 +16,7 @@ pub async fn process_transcription_multipart(mut payload: Multipart) -> Result<T
     let mut filename = String::from("audio.webm");
     let mut model = String::new(); // Default to empty, service will use default
     let mut duration_ms: i64 = 0;
+    let mut language: Option<String> = None;
 
     while let Some(item) = payload.next().await {
         let mut field = item?;
@@ -53,6 +55,17 @@ pub async fn process_transcription_multipart(mut payload: Multipart) -> Result<T
                     .parse::<i64>()
                     .map_err(|_| AppError::InvalidArgument("Invalid duration_ms value".to_string()))?;
             },
+            "language" => {
+                let mut language_data = Vec::new();
+                while let Some(chunk) = field.next().await {
+                    language_data.extend_from_slice(&chunk?);
+                }
+                let language_str = String::from_utf8(language_data)
+                    .map_err(|_| AppError::InvalidArgument("Invalid language encoding".to_string()))?;
+                if !language_str.trim().is_empty() {
+                    language = Some(language_str.trim().to_string());
+                }
+            },
             _ => {
                 // Skip other fields
             }
@@ -72,5 +85,6 @@ pub async fn process_transcription_multipart(mut payload: Multipart) -> Result<T
         filename,
         model,
         duration_ms,
+        language,
     })
 }

@@ -4,6 +4,7 @@ import { RefreshCw } from "lucide-react";
 import { memo } from "react";
 
 import { useSessionStateContext } from "@/contexts/session";
+import { type Session } from "@/types/session-types";
 import {
   AlertDialogCancel,
   AlertDialogContent,
@@ -23,11 +24,13 @@ import SessionList from "./session-manager/SessionList";
 export interface SessionManagerProps {
   projectDirectory: string;
   disabled?: boolean;
+  onLoadSession?: (session: Session) => Promise<void>; // Optional custom session loader
 }
 
 const SessionManager = ({
   projectDirectory,
   disabled = false,
+  onLoadSession,
 }: SessionManagerProps) => {
   // Get contexts
   const { activeSessionId, isSessionLoading: globalIsSwitching } =
@@ -113,7 +116,7 @@ const SessionManager = ({
           activeSessionId={activeSessionId}
           editingSessionId={editingSessionId}
           editSessionNameInput={editSessionNameInput}
-          onLoadSession={handleLoadSessionWrapper}
+          onLoadSession={onLoadSession || handleLoadSessionWrapper}
           onStartEdit={startEditingSessionWrapper}
           onCloneSession={handleCloneSessionWrapper}
           onSaveEdit={handleUpdateSessionName}

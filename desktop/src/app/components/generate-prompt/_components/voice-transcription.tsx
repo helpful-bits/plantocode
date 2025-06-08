@@ -17,6 +17,7 @@ import {
   SelectValue,
   Label,
 } from "@/ui";
+import { Switch } from "@/ui/switch";
 import { useNotification } from "@/contexts/notification-context";
 import { getErrorMessage } from "@/utils/error-handling"; // Import error handling utility
 
@@ -39,6 +40,7 @@ const VoiceTranscription = function VoiceTranscription({
 }: VoiceTranscriptionProps) {
   const [showRevertOption, setShowRevertOption] = useState(false);
   const [languageCode, setLanguageCode] = useState<string>("en");
+  const [autoImproveText, setAutoImproveText] = useState<boolean>(true);
   const [defaultDeviceLabel, setDefaultDeviceLabel] = useState<string | null>(
     null
   );
@@ -50,40 +52,35 @@ const VoiceTranscription = function VoiceTranscription({
   
   const { showNotification } = useNotification();
 
-  // Track active session ID
+  // Track active session ID and auto-improve setting changes
   useEffect(() => {
     // No-op, dependency for other effects
   }, [activeSessionId]);
 
+  // Clear revert option when auto-improve setting changes
+  useEffect(() => {
+    setShowRevertOption(false);
+  }, [autoImproveText]);
+
   const handleCorrectionComplete = useCallback(
     (raw: string, corrected: string) => {
-      // Check if raw and corrected text are different
-      if (raw !== corrected) {
+      // Check if raw and corrected text are different and auto-improve is enabled
+      if (raw !== corrected && autoImproveText) {
         // Replace the raw text with corrected text if textarea ref is available
         if (textareaRef?.current && textareaRef.current.replaceText) {
           try {
             textareaRef.current.replaceText(raw, corrected);
             
-            // Provide feedback that the text was replaced
-            showNotification({
-              title: "Text Corrected",
-              message: "Raw transcription has been replaced with the improved version.",
-              type: "success",
-            });
+            // Text was replaced successfully
           } catch (error) {
-            console.warn("[VoiceTranscription] Error replacing raw text with corrected text:", error);
-            showNotification({
-              title: "Correction Error",
-              message: "Could not replace raw text with corrected version.",
-              type: "warning",
-            });
+            console.warn("[VoiceTranscription] Error replacing raw text with improved text:", error);
           }
         }
         
         setShowRevertOption(true);
       }
     },
-    [textareaRef, showNotification]
+    [textareaRef, showNotification, autoImproveText]
   );
 
   // Create a wrapper for onTranscribed that inserts at cursor position if ref is available
@@ -98,23 +95,14 @@ const VoiceTranscription = function VoiceTranscription({
       // The transcription should have been validated by voice-transcription-handler.ts
       // but we'll add extra validation here for better stability
       if (!text || typeof text !== "string") {
-        showNotification({
-          title: "Transcription Error",
-          message: "No valid transcription result received.",
-          type: "error",
-        });
+        console.warn("[VoiceTranscription] No valid transcription result received");
         return;
       }
 
       // Check for meaningful content
       const trimmedText = text.trim();
       if (!trimmedText) {
-        showNotification({
-          title: "Empty Transcription",
-          message:
-            "The transcription result was empty. Please try speaking more clearly.",
-          type: "warning",
-        });
+        console.warn("[VoiceTranscription] Empty transcription result");
         return;
       }
 
@@ -148,12 +136,7 @@ const VoiceTranscription = function VoiceTranscription({
             onInteraction();
           }
 
-          // Provide feedback that transcription was inserted
-          showNotification({
-            title: "Transcription Added",
-            message: "Your transcribed text has been inserted.",
-            type: "success",
-          });
+          // Transcription was inserted successfully
         } catch (_error) {
 
           // Fall back to the original method if insertion fails
@@ -165,19 +148,9 @@ const VoiceTranscription = function VoiceTranscription({
               onInteraction();
             }
 
-            showNotification({
-              title: "Insertion Fallback",
-              message:
-                "Couldn't insert at cursor position. Text has been added at the end instead.",
-              type: "warning",
-            });
+            // Text was added at the end as fallback
           } catch (_fallbackError) {
-            showNotification({
-              title: "Insertion Failed",
-              message:
-                "Could not insert transcription text. Please try again or type manually.",
-              type: "error",
-            });
+            console.warn("[VoiceTranscription] Could not insert transcription text");
           }
         }
       } else {
@@ -200,7 +173,6 @@ const VoiceTranscription = function VoiceTranscription({
     rawText,
     startRecording, // Function to start recording
     stopRecording, // Function to stop recording
-    retryLastRecording, // Extract the retry function
     requestPermissionAndRefreshDevices, // Function to request permission early
     availableAudioInputs, // Available microphones
     selectedAudioInputId, // Currently selected microphone ID
@@ -213,7 +185,7 @@ const VoiceTranscription = function VoiceTranscription({
     languageCode, // Pass the current language code to the hook
     sessionId: activeSessionId, // Pass the active session ID for background job tracking
     projectDirectory: projectDirectory || undefined, // Convert null to undefined for projectDirectory
-    autoCorrect: true, // Explicitly set to true to ensure Claude improves Groq transcription
+    autoCorrect: autoImproveText, // Use the checkbox state
   });
 
   // Request microphone permission early to populate device labels
@@ -322,44 +294,13 @@ const VoiceTranscription = function VoiceTranscription({
     }
   };
 
-  // Handle retrying the last recording with improved error handling
+  // Retry functionality removed - users should just record again
   const handleRetry = async () => {
-    // Skip if component is disabled
-    if (disabled) {
-      return;
-    }
-
-    // Skip if we're in the middle of processing
-    if (isProcessing) {
-      return;
-    }
-
-    // Skip if there's no active session
-    if (!activeSessionId) {
-      showNotification({
-        title: "Session Error",
-        message: "Cannot retry - no active session.",
-        type: "error",
-      });
-      return;
-    }
-
-    try {
-      await retryLastRecording();
-
-      // Provide feedback that retry has started
-      showNotification({
-        title: "Retrying Transcription",
-        message: "Processing your previous recording again...",
-        type: "success",
-      });
-    } catch (_error) {
-      showNotification({
-        title: "Retry Failed",
-        message: "Unable to retry the last recording. Please try recording again.",
-        type: "error",
-      });
-    }
+    showNotification({
+      title: "Please Record Again", 
+      message: "For best results, please record your message again.",
+      type: "info",
+    });
   };
 
   // Enhanced revert handler with improved error handling and session state awareness
@@ -438,23 +379,12 @@ const VoiceTranscription = function VoiceTranscription({
             onInteraction();
           }
 
-          // Provide feedback about the fallback with clearer explanation
-          showNotification({
-            title: "Original Groq Transcription Used",
-            message:
-              "Using direct transcription without improvements. Added at document end (couldn&apos;t insert at cursor).",
-            type: "warning",
-          });
+          // Using original transcription as fallback
 
           // Hide the revert option since we've now used it
           setShowRevertOption(false);
         } catch (_fallbackError) {
-          showNotification({
-            title: "Transcription Switch Failed",
-            message:
-              "Could not switch to original Groq transcription. Please try again or type manually.",
-            type: "error",
-          });
+          console.warn("[VoiceTranscription] Could not switch to original transcription");
         }
       }
     } else {
@@ -519,11 +449,31 @@ const VoiceTranscription = function VoiceTranscription({
       </div>
 
       <p className="text-xs text-muted-foreground text-balance">
-        Record your task description using your microphone. Groq transcribes and
-        Claude automatically improves the text.
+        Record your task description using your microphone. 
+        {autoImproveText 
+          ? "Groq transcribes and AI automatically improves the text." 
+          : "Groq transcribes your speech directly without improvements."
+        }
       </p>
 
       <div className="flex flex-row gap-4 items-start mt-2">
+        <div className="flex flex-col">
+          <Label htmlFor="auto-improve-toggle" className="text-xs mb-1 text-foreground">
+            Auto-improve
+          </Label>
+          <div className="h-9 flex items-center">
+            <Switch
+              id="auto-improve-toggle"
+              checked={autoImproveText}
+              onCheckedChange={setAutoImproveText}
+              disabled={isRecording || isProcessing || !activeSessionId || disabled}
+            />
+          </div>
+          <p className="text-xs text-muted-foreground mt-1 text-balance">
+            {autoImproveText ? "AI enhances transcription" : "Raw transcription only"}
+          </p>
+        </div>
+
         <div className="flex flex-col">
           <Label htmlFor="language-select" className="text-xs mb-1 text-foreground">
             Language
@@ -627,7 +577,7 @@ const VoiceTranscription = function VoiceTranscription({
         </div>
       )}
 
-      {showRevertOption && rawText && (
+      {showRevertOption && rawText && autoImproveText && (
         <div className="mt-2">
           <Button
             type="button"
@@ -637,8 +587,7 @@ const VoiceTranscription = function VoiceTranscription({
             className="justify-start p-0 h-auto text-muted-foreground"
             disabled={disabled}
           >
-            Switch to original Groq transcription (without Claude&apos;s
-            improvements)
+            Switch to original transcription (without AI improvements)
           </Button>
         </div>
       )}

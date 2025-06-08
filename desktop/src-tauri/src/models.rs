@@ -52,8 +52,8 @@ pub struct Session {
     pub model_used: Option<String>,
     pub created_at: i64,
     pub updated_at: i64,
-    pub included_files: Option<Vec<String>>,
-    pub force_excluded_files: Option<Vec<String>>,
+    pub included_files: Vec<String>,
+    pub force_excluded_files: Vec<String>,
 }
 
 // Request struct for creating a session - only requires essential fields
@@ -78,8 +78,8 @@ pub struct CreateSessionRequest {
     pub search_selected_files_only: Option<bool>,
     pub model_used: Option<String>,
     pub created_at: Option<i64>,
-    pub included_files: Option<Vec<String>>,
-    pub force_excluded_files: Option<Vec<String>>,
+    pub included_files: Vec<String>,
+    pub force_excluded_files: Vec<String>,
 }
 
 // Job status enum that matches the SQL schema CHECK constraint

@@ -54,7 +54,8 @@ export async function transcribeAudioStream(
 
 export async function transcribeAudioBlob(
   audioBlob: Blob,
-  durationMs?: number
+  durationMs?: number,
+  language?: string
 ): Promise<{ text: string }> {
   try {
     if (!audioBlob) {
@@ -83,6 +84,10 @@ export async function transcribeAudioBlob(
     formData.append("file", audioBlob, `recording_${Date.now()}.webm`);
     formData.append("model", "groq/whisper-large-v3-turbo");
     formData.append("duration_ms", String(durationMs && durationMs > 0 ? durationMs : Math.max(Math.round(audioBlob.size / 10), 1000)));
+    
+    if (language) {
+      formData.append("language", language);
+    }
 
     const response = await fetch(`${serverUrl}/api/proxy/audio/transcriptions`, {
       method: "POST",
@@ -109,7 +114,8 @@ export async function createTranscriptionJobFromBlobAction(
   audioBlob: Blob,
   sessionId: string,
   projectDirectory?: string,
-  durationMs?: number
+  durationMs?: number,
+  language?: string
 ): Promise<ActionState<{ jobId: string }>> {
   try {
     if (!audioBlob) {
@@ -148,6 +154,7 @@ export async function createTranscriptionJobFromBlobAction(
         filename,
         projectDirectory: projectDirectory ?? null,
         durationMs: durationMs && durationMs > 0 ? durationMs : Math.max(Math.round(uint8Array.length / 10), 1000),
+        language: language ?? null,
       }
     );
 

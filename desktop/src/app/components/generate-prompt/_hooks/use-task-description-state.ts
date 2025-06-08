@@ -30,13 +30,10 @@ export function useTaskDescriptionState({
   const sessionActions = useSessionActionsContext();
   const sessionState = useSessionStateContext();
   
-  // Local state for task description to avoid expensive global state updates on every keystroke
-  const [localTaskDescription, setLocalTaskDescription] = useState("");
-  
-  // Get taskDescription from session context for reference
+  // Get taskDescription from session context 
   const sessionTaskDescription = sessionState.currentSession?.taskDescription || "";
 
-  // State for UI feedback and improvement features
+  // State for UI feedback and improvement features only
   const [taskCopySuccess, setTaskCopySuccess] = useState(false);
   const [isImprovingText, setIsImprovingText] = useState(false);
   const [textImprovementJobId, setTextImprovementJobId] = useState<
@@ -47,24 +44,6 @@ export function useTaskDescriptionState({
   const { showNotification } = useNotification();
   // Fetch the background job using typed hook
   const textImprovementJob = useBackgroundJob(textImprovementJobId ?? null);
-
-  // Initialize and sync local state with session context
-  useEffect(() => {
-    setLocalTaskDescription(sessionTaskDescription);
-  }, [activeSessionId, sessionTaskDescription]);
-
-  // Simplified debounced update
-  useEffect(() => {
-    if (localTaskDescription === sessionTaskDescription) return;
-
-    const timeoutId = setTimeout(() => {
-      sessionActions.updateCurrentSessionFields({ taskDescription: localTaskDescription });
-      sessionActions.setSessionModified(true);
-      onInteraction?.();
-    }, 500);
-
-    return () => clearTimeout(timeoutId);
-  }, [localTaskDescription, sessionTaskDescription, sessionActions, onInteraction]);
   
 
 
@@ -94,7 +73,9 @@ export function useTaskDescriptionState({
       const improvedText = String(job.response).trim();
       if (improvedText) {
         const { start, end, originalTaskDescription } = selectionRangeRef.current;
-        setLocalTaskDescription(originalTaskDescription.substring(0, start) + improvedText + originalTaskDescription.substring(end));
+        const newTaskDescription = originalTaskDescription.substring(0, start) + improvedText + originalTaskDescription.substring(end);
+        sessionActions.updateCurrentSessionFields({ taskDescription: newTaskDescription });
+        sessionActions.setSessionModified(true);
         onInteraction?.();
         showNotification({ title: "Text improved", message: "Selected text improved.", type: "success" });
       }
@@ -151,23 +132,23 @@ export function useTaskDescriptionState({
           start: selectionStart,
           end: selectionEnd,
           text: selectedText,
-          originalTaskDescription: localTaskDescription,
+          originalTaskDescription: sessionTaskDescription,
         };
       } else if (taskDescriptionRef.current) {
         const start = taskDescriptionRef.current.selectionStart;
         const end = taskDescriptionRef.current.selectionEnd;
 
         if (typeof start === "number" && typeof end === "number") {
-          selectionRangeRef.current = { start, end, text: selectedText, originalTaskDescription: localTaskDescription };
+          selectionRangeRef.current = { start, end, text: selectedText, originalTaskDescription: sessionTaskDescription };
         } else {
           // Fallback: find text in description
-          const index = localTaskDescription.indexOf(selectedText);
+          const index = sessionTaskDescription.indexOf(selectedText);
           if (index >= 0) {
             selectionRangeRef.current = {
               start: index,
               end: index + selectedText.length,
               text: selectedText,
-              originalTaskDescription: localTaskDescription,
+              originalTaskDescription: sessionTaskDescription,
             };
           } else {
             selectionRangeRef.current = null;
@@ -216,14 +197,14 @@ export function useTaskDescriptionState({
       activeSessionId,
       taskDescriptionRef,
       projectDirectory,
-      localTaskDescription,
+      sessionTaskDescription,
     ]
   );
 
   // Function to copy task description to clipboard
   const copyTaskDescription = useCallback(async () => {
     try {
-      await navigator.clipboard.writeText(localTaskDescription);
+      await navigator.clipboard.writeText(sessionTaskDescription);
       setTaskCopySuccess(true);
       setTimeout(() => setTaskCopySuccess(false), 2000);
       return true;
@@ -231,7 +212,7 @@ export function useTaskDescriptionState({
       console.error("Error copying task description:", error);
       return false;
     }
-  }, [localTaskDescription]);
+  }, [sessionTaskDescription]);
 
   return useMemo(
     () => ({
@@ -239,8 +220,6 @@ export function useTaskDescriptionState({
       textImprovementJobId,
       taskCopySuccess,
       taskDescriptionRef,
-      taskDescription: localTaskDescription,
-      setTaskDescription: setLocalTaskDescription,
 
       // Actions
       handleImproveSelection,
@@ -252,7 +231,6 @@ export function useTaskDescriptionState({
       textImprovementJobId,
       taskCopySuccess,
       taskDescriptionRef,
-      localTaskDescription,
       handleImproveSelection,
       copyTaskDescription,
       reset,

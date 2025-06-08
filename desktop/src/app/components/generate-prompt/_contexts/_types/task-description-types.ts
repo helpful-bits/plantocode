@@ -13,6 +13,7 @@ export interface TaskContextActions {
   // Task description actions
   handleGenerateGuidance: (selectedPaths?: string[]) => Promise<void>;
   handleImproveSelection: (selection: string) => Promise<void>;
+  flushPendingTaskChanges: () => string | null; // Immediately flush any pending task description changes and return current value
   reset: () => void;
 }
 

@@ -178,6 +178,7 @@ interface UseVoiceTranscriptionProcessingProps {
   sessionId?: string | null;
   projectDirectory?: string | null;
   autoCorrect?: boolean;
+  languageCode?: string;
   onTranscribed?: (text: string) => void;
   onCorrectionComplete?: (rawText: string, correctedText: string) => void;
   onError: (error: string) => void;
@@ -188,6 +189,7 @@ export function useVoiceTranscriptionProcessing({
   sessionId = null,
   projectDirectory = null,
   autoCorrect = true,
+  languageCode = "en",
   onTranscribed,
   onCorrectionComplete,
   onError,
@@ -239,20 +241,37 @@ export function useVoiceTranscriptionProcessing({
     
     const processStream = async () => {
       try {
-        const { transcribeAudioStream } = await import(
+        // Collect all chunks from the stream first
+        const chunks: Uint8Array[] = [];
+        const reader = stream.readable.getReader();
+        
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            chunks.push(value);
+          }
+        } finally {
+          reader.releaseLock();
+        }
+        
+        // Convert chunks to blob
+        const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+        const combined = new Uint8Array(totalLength);
+        let offset = 0;
+        for (const chunk of chunks) {
+          combined.set(chunk, offset);
+          offset += chunk.length;
+        }
+        
+        const audioBlob = new Blob([combined], { type: "audio/webm" });
+        
+        // Use blob-based transcription (which uses FormData, not ReadableStream)
+        const { transcribeAudioBlob } = await import(
           "@/actions/voice-transcription/transcribe"
         );
         
-        const filename = `recording_${Date.now()}.webm`;
-        const model = "groq/whisper-large-v3-turbo";
-        const durationMs = Date.now(); // This will be updated when recording stops
-        
-        const result = await transcribeAudioStream(
-          stream.readable,
-          filename,
-          durationMs,
-          model
-        );
+        const result = await transcribeAudioBlob(audioBlob, Date.now(), languageCode);
         
         if (isMountedRef.current) {
           setRawText(result.text);
@@ -262,6 +281,9 @@ export function useVoiceTranscriptionProcessing({
             setTextStatus("done");
             updateState({ isProcessing: false });
           } else {
+            // Insert raw text first, then start correction
+            callbacksRef.current.onTranscribed?.(result.text);
+            
             // Handle correction logic here
             const { createTextCorrectionJobAction } = await import(
               "@/actions/voice-transcription/index"
@@ -282,7 +304,6 @@ export function useVoiceTranscriptionProcessing({
             ) {
               setCorrectionJobId(correctionResult.data.jobId);
             } else {
-              callbacksRef.current.onTranscribed?.(result.text);
               setTextStatus("done");
               updateState({
                 isProcessing: false,
@@ -307,21 +328,6 @@ export function useVoiceTranscriptionProcessing({
   }, [sessionId, projectDirectory, autoCorrect, updateState]);
 
   
-  const retryTranscription = useCallback(
-    async (): Promise<{ writableStream: WritableStream<Uint8Array>; resultPromise: Promise<void> }> => {
-      updateState({ error: null, isProcessing: true });
-      setTextStatus("loading");
-      if (isMountedRef.current) {
-        processedJobsRef.current.clear();
-        setCorrectionJobId(null);
-        setRawText(null);
-        setCorrectedText(null);
-      }
-      
-      return startTranscriptionStream();
-    },
-    [updateState, startTranscriptionStream]
-  );
 
   const resetTranscriptionState = useCallback(() => {
     setRawText(null);
@@ -409,7 +415,6 @@ export function useVoiceTranscriptionProcessing({
     correctedText,
     textStatus,
     startTranscriptionStream,
-    retryTranscription,
     resetTranscriptionState,
   };
 }

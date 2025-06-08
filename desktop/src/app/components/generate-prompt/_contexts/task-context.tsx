@@ -19,6 +19,7 @@ const defaultValue: TaskContextValue = {
     // These default implementations will be replaced by actual implementations
     handleGenerateGuidance: async () => Promise.resolve(),
     handleImproveSelection: async () => Promise.resolve(),
+    flushPendingTaskChanges: () => null,
     reset: () => {},
   },
 };
