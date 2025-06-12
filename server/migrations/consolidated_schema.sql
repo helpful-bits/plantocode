@@ -41,10 +41,14 @@ CREATE TABLE IF NOT EXISTS subscriptions (
     status VARCHAR(50) NOT NULL, -- 'trialing', 'active', 'canceled', 'past_due'
     trial_ends_at TIMESTAMP WITH TIME ZONE,
     current_period_ends_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    pending_plan_id VARCHAR(255),
+    cancel_at_period_end BOOLEAN NOT NULL DEFAULT false,
+    services_blocked BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
     CONSTRAINT fk_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
+
 
 -- API usage tracking
 CREATE TABLE IF NOT EXISTS api_usage (
@@ -96,7 +100,7 @@ CREATE TABLE IF NOT EXISTS service_pricing (
 
 CREATE INDEX IF NOT EXISTS idx_service_pricing_service_name ON service_pricing(service_name);
 
--- Subscription plans (must come before user_spending_limits due to foreign key)
+-- Subscription plans
 CREATE TABLE IF NOT EXISTS subscription_plans (
     id VARCHAR(50) PRIMARY KEY,
     name VARCHAR(100) NOT NULL,
@@ -112,32 +116,12 @@ CREATE TABLE IF NOT EXISTS subscription_plans (
     stripe_price_id_weekly VARCHAR(100),
     stripe_price_id_monthly VARCHAR(100),
     stripe_price_id_yearly VARCHAR(100),
+    plan_tier INTEGER NOT NULL DEFAULT 0,
     features JSONB NOT NULL DEFAULT '{}',
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
 );
 
--- User spending limits and real-time tracking
-CREATE TABLE IF NOT EXISTS user_spending_limits (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    plan_id VARCHAR(50) NOT NULL REFERENCES subscription_plans(id),
-    billing_period_start TIMESTAMPTZ NOT NULL,
-    billing_period_end TIMESTAMPTZ NOT NULL,
-    included_allowance DECIMAL(10, 4) NOT NULL,
-    current_spending DECIMAL(10, 4) NOT NULL DEFAULT 0.0000,
-    hard_limit DECIMAL(10, 4) NOT NULL,
-    services_blocked BOOLEAN NOT NULL DEFAULT FALSE,
-    currency VARCHAR(3) NOT NULL DEFAULT 'USD',
-    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-    CONSTRAINT fk_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    CONSTRAINT fk_plan FOREIGN KEY (plan_id) REFERENCES subscription_plans(id),
-    CONSTRAINT unique_user_billing_period UNIQUE (user_id, billing_period_start)
-);
-
-CREATE INDEX IF NOT EXISTS idx_user_spending_limits_user_period ON user_spending_limits(user_id, billing_period_start, billing_period_end);
-CREATE INDEX IF NOT EXISTS idx_user_spending_limits_blocked ON user_spending_limits(services_blocked);
 
 -- Projects that users can manage
 CREATE TABLE IF NOT EXISTS projects (
@@ -168,22 +152,9 @@ CREATE INDEX IF NOT EXISTS idx_users_auth0_user_id ON users(auth0_user_id);
 CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user_id ON refresh_tokens(user_id);
 CREATE INDEX IF NOT EXISTS idx_subscriptions_user_id ON subscriptions(user_id);
 CREATE INDEX IF NOT EXISTS idx_subscriptions_status ON subscriptions(status);
+CREATE INDEX IF NOT EXISTS idx_subscriptions_services_blocked ON subscriptions(services_blocked) WHERE services_blocked = TRUE;
 CREATE INDEX IF NOT EXISTS idx_projects_owner_id ON projects(owner_id);
 -- Spending alerts and notifications
-CREATE TABLE IF NOT EXISTS spending_alerts (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    alert_type VARCHAR(50) NOT NULL, -- '75_percent', '90_percent', 'limit_reached', 'services_blocked'
-    threshold_amount DECIMAL(10, 4) NOT NULL,
-    current_spending DECIMAL(10, 4) NOT NULL,
-    alert_sent_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    billing_period_start TIMESTAMPTZ NOT NULL,
-    acknowledged BOOLEAN NOT NULL DEFAULT FALSE,
-    CONSTRAINT fk_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-);
-
-CREATE INDEX IF NOT EXISTS idx_spending_alerts_user_period ON spending_alerts(user_id, billing_period_start);
-CREATE INDEX IF NOT EXISTS idx_spending_alerts_type ON spending_alerts(alert_type, acknowledged);
 
 -- User preferences for currency and notifications
 CREATE TABLE IF NOT EXISTS user_preferences (
@@ -328,11 +299,11 @@ INSERT INTO subscription_plans (
     id, name, description, 
     base_price_weekly, base_price_monthly, base_price_yearly,
     included_spending_weekly, included_spending_monthly, overage_rate, hard_limit_multiplier,
-    currency, stripe_price_id_weekly, stripe_price_id_monthly, stripe_price_id_yearly, features
+    currency, stripe_price_id_weekly, stripe_price_id_monthly, stripe_price_id_yearly, plan_tier, features
 ) VALUES 
 ('free', 'Free', 'Perfect for trying out AI features', 
  0.00, 0.00, 0.00, 1.25, 5.00, 1.0000, 2.00, 'USD',
- NULL, NULL, NULL,
+ NULL, NULL, NULL, 0,
  '{
    "coreFeatures": ["Basic AI models", "Community support", "Usage analytics"],
    "allowedModels": ["anthropic/claude-sonnet-4", "openai/gpt-4.1-mini"],
@@ -347,7 +318,7 @@ INSERT INTO subscription_plans (
  
 ('pro', 'Pro', 'For power users and small teams', 
  5.00, 20.00, 200.00, 12.50, 50.00, 1.0000, 3.00, 'USD',
- NULL, NULL, NULL,
+ NULL, NULL, NULL, 1,
  '{
    "coreFeatures": ["All AI models", "Priority support", "Advanced analytics", "API access"],
    "allowedModels": ["all"],
@@ -362,7 +333,7 @@ INSERT INTO subscription_plans (
  
 ('enterprise', 'Enterprise', 'For organizations with high AI usage', 
  25.00, 100.00, 1000.00, 50.00, 200.00, 0.9000, 5.00, 'USD',
- NULL, NULL, NULL,
+ NULL, NULL, NULL, 2,
  '{
    "coreFeatures": ["All AI models", "Dedicated support", "Custom integrations", "Advanced analytics", "Team management", "SLA guarantee"],
    "allowedModels": ["all"],
@@ -509,12 +480,16 @@ Your implementation plans should:
 - Include testing considerations
 - Suggest best practices and potential pitfalls to avoid
 - Be practical and implementable by developers
+- Enable parallel execution by providing precise, unambiguous instructions for each coding agent
+
+## Critical Planning Requirements:
+Think deeply about the implementation approach. After creating your initial plan, evaluate it critically and refine it further. Consider how multiple coding agents could work simultaneously on different parts of this implementation without conflicts or dependencies blocking progress.
 
 Structure your response clearly with numbered steps and detailed explanations.
 
 Please provide your response in XML format:
 <implementation_plan>
-  <agent_instructions>Brief instructions for the implementing agent</agent_instructions>
+  <agent_instructions>Provide EXACT, unambiguous instructions for coding agents to work in parallel. Each agent should have crystal-clear direction on what to implement, which files to modify/create, and how their work integrates with other agents. Think critically about the approach, then refine and optimize the instructions for maximum clarity and parallel execution efficiency.</agent_instructions>
   <steps>
     <step number="1">
       <title>Step title</title>
@@ -527,23 +502,29 @@ Please provide your response in XML format:
       </file_operations>
     </step>
   </steps>
-</implementation_plan>', 'Enhanced system prompt for creating implementation plans', '2.0'),
+</implementation_plan>', 'Enhanced system prompt for creating implementation plans with parallel agent coordination', '3.0'),
 
-('default_path_correction', 'path_correction', 'You are a path correction assistant for file system paths.
+('default_path_correction', 'path_correction', 'You are a path correction assistant that validates and corrects file paths against the actual filesystem structure.
 
 {{DIRECTORY_TREE}}
 
-## Project Context:
-{{PROJECT_CONTEXT}}
-
 Your task is to:
-- Analyze provided file paths that may contain errors
-- Suggest corrected paths based on the project structure and context
-- Consider common file naming conventions and project organization patterns
-- Provide the most likely correct paths for the given context
-- Focus on accuracy and practical usefulness
+- Take provided file paths that may contain errors or be invalid
+- Validate them against the actual project directory structure
+- Correct any invalid paths to their most likely intended paths
+- Return ONLY the corrected, valid file paths
+- Focus purely on path correction, not finding additional files
 
-Return corrected paths with brief explanations of the changes made.', 'Enhanced system prompt for correcting file paths', '2.0'),
+Return ONLY file paths, one per line, with no additional commentary.
+
+For example:
+src/components/Button.tsx
+src/hooks/useAPI.ts
+src/styles/theme.css
+
+DO NOT include ANY text, explanations, or commentary. The response must consist ONLY of corrected file paths, one per line.
+
+All returned file paths must be relative to the project root and must exist in the filesystem.', 'Enhanced system prompt for correcting file paths', '3.0'),
 
 ('default_task_enhancement', 'task_enhancement', 'You are a task enhancement assistant that helps improve and clarify user requirements.
 
@@ -662,20 +643,6 @@ Your role is to:
 
 Return ONLY file paths, one per line, with no additional commentary.', 'System prompt for extended path finder workflow stage', '1.0'),
 
-('default_extended_path_correction', 'extended_path_correction', 'You are a path correction assistant that refines and validates file path selections.
-
-{{DIRECTORY_TREE}}
-
-{{FILE_CONTENTS}}
-
-Your role is to:
-- Review and correct previously identified file paths
-- Validate that paths exist and are accessible
-- Remove duplicates and irrelevant files
-- Add missing critical files that were overlooked
-- Ensure the final path list is optimized for the task
-
-Return ONLY the corrected file paths, one per line, with no additional commentary.', 'System prompt for extended path correction workflow stage', '1.0'),
 
 ('default_file_relevance_assessment', 'file_relevance_assessment', 'You are an AI assistant helping to refine a list of files for a software development task.
 Given the task description and the content of several potentially relevant files, identify which of these files are *actually* relevant and necessary for completing the task.
@@ -710,6 +677,36 @@ ON CONFLICT (config_key) DO UPDATE SET
 
 -- Enhanced billing tables for 100% implementation
 
+-- Audit logs table for tracking subscription management operations
+CREATE TABLE IF NOT EXISTS audit_logs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    action_type VARCHAR(100) NOT NULL, -- 'subscription_created', 'plan_changed', 'subscription_canceled', etc.
+    entity_type VARCHAR(50) NOT NULL, -- 'subscription', 'payment_method', 'invoice', etc.
+    entity_id VARCHAR(255), -- ID of the entity being acted upon (subscription ID, payment method ID, etc.)
+    old_values JSONB, -- Previous state before the action
+    new_values JSONB, -- New state after the action
+    metadata JSONB, -- Additional context like Stripe IDs, reason for change, etc.
+    performed_by VARCHAR(100) NOT NULL, -- 'user', 'stripe_webhook', 'admin', 'system'
+    ip_address INET, -- IP address if action performed by user
+    user_agent TEXT, -- User agent if action performed by user
+    session_id VARCHAR(255), -- Session ID if applicable
+    request_id VARCHAR(255), -- Request ID for tracing
+    status VARCHAR(20) NOT NULL DEFAULT 'completed', -- 'completed', 'failed', 'pending'
+    error_message TEXT, -- Error message if status is 'failed'
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT fk_audit_logs_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- Create indexes for audit logs performance
+CREATE INDEX IF NOT EXISTS idx_audit_logs_user_id ON audit_logs(user_id);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_action_type ON audit_logs(action_type);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_entity_type ON audit_logs(entity_type);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_entity_id ON audit_logs(entity_id);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_performed_by ON audit_logs(performed_by);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_status ON audit_logs(status);
+
 -- Invoice cache table for Stripe invoice data
 CREATE TABLE IF NOT EXISTS invoices (
     id VARCHAR(255) PRIMARY KEY, -- Stripe invoice ID
@@ -717,16 +714,8 @@ CREATE TABLE IF NOT EXISTS invoices (
     stripe_customer_id VARCHAR(255) NOT NULL,
     stripe_subscription_id VARCHAR(255),
     amount_due DECIMAL(12, 4) NOT NULL,
-    amount_paid DECIMAL(12, 4) NOT NULL DEFAULT 0,
-    currency VARCHAR(3) NOT NULL DEFAULT 'USD',
     status VARCHAR(50) NOT NULL, -- draft, open, paid, void, uncollectible
     invoice_pdf_url TEXT,
-    hosted_invoice_url TEXT,
-    billing_reason VARCHAR(100), -- subscription_create, subscription_cycle, manual, etc.
-    description TEXT,
-    period_start TIMESTAMPTZ,
-    period_end TIMESTAMPTZ,
-    due_date TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL,
     finalized_at TIMESTAMPTZ,
     paid_at TIMESTAMPTZ,
@@ -745,16 +734,9 @@ CREATE TABLE IF NOT EXISTS payment_methods (
     id VARCHAR(255) PRIMARY KEY, -- Stripe payment method ID
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     stripe_customer_id VARCHAR(255) NOT NULL,
-    type VARCHAR(50) NOT NULL, -- card, bank_account, etc.
     card_brand VARCHAR(50), -- visa, mastercard, amex, etc.
     card_last_four VARCHAR(4),
-    card_exp_month INTEGER,
-    card_exp_year INTEGER,
-    card_country VARCHAR(2),
-    card_funding VARCHAR(20), -- credit, debit, prepaid
     is_default BOOLEAN NOT NULL DEFAULT FALSE,
-    created_at TIMESTAMPTZ NOT NULL,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CONSTRAINT fk_payment_method_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
@@ -763,119 +745,96 @@ CREATE INDEX IF NOT EXISTS idx_payment_methods_stripe_customer ON payment_method
 CREATE INDEX IF NOT EXISTS idx_payment_methods_default ON payment_methods(is_default);
 
 -- Email notification queue for reliable delivery
-CREATE TABLE IF NOT EXISTS email_notifications (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    email_address VARCHAR(255) NOT NULL,
-    notification_type VARCHAR(50) NOT NULL, -- spending_alert, invoice_reminder, payment_failed, etc.
-    subject VARCHAR(255) NOT NULL,
-    template_name VARCHAR(100) NOT NULL,
-    template_data JSONB NOT NULL,
-    status VARCHAR(20) NOT NULL DEFAULT 'pending', -- pending, sent, failed, retrying
-    attempts INTEGER NOT NULL DEFAULT 0,
-    max_attempts INTEGER NOT NULL DEFAULT 3,
-    last_attempt_at TIMESTAMPTZ,
-    sent_at TIMESTAMPTZ,
-    error_message TEXT,
-    priority INTEGER NOT NULL DEFAULT 1, -- 1=high, 2=medium, 3=low
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT fk_email_notification_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-);
 
-CREATE INDEX IF NOT EXISTS idx_email_notifications_user_id ON email_notifications(user_id);
-CREATE INDEX IF NOT EXISTS idx_email_notifications_status ON email_notifications(status);
-CREATE INDEX IF NOT EXISTS idx_email_notifications_created ON email_notifications(created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_email_notifications_queue ON email_notifications(status, priority, created_at) WHERE status = 'pending';
 
--- Enhanced spending history for analytics
-CREATE TABLE IF NOT EXISTS spending_periods (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    plan_id VARCHAR(50) NOT NULL,
-    period_start TIMESTAMPTZ NOT NULL,
-    period_end TIMESTAMPTZ NOT NULL,
-    included_allowance DECIMAL(10, 4) NOT NULL,
-    total_spending DECIMAL(10, 4) NOT NULL DEFAULT 0,
-    overage_amount DECIMAL(10, 4) NOT NULL DEFAULT 0,
-    total_requests INTEGER NOT NULL DEFAULT 0,
-    total_tokens_input BIGINT NOT NULL DEFAULT 0,
-    total_tokens_output BIGINT NOT NULL DEFAULT 0,
-    services_used JSONB NOT NULL DEFAULT '[]',
-    currency VARCHAR(3) NOT NULL DEFAULT 'USD',
-    invoice_id VARCHAR(255), -- Link to Stripe invoice if applicable
-    archived BOOLEAN NOT NULL DEFAULT FALSE,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT fk_spending_period_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    CONSTRAINT unique_user_spending_period UNIQUE (user_id, period_start)
-);
-
-CREATE INDEX IF NOT EXISTS idx_spending_periods_user_period ON spending_periods(user_id, period_start DESC);
-CREATE INDEX IF NOT EXISTS idx_spending_periods_archived ON spending_periods(archived);
-
--- Billing configuration table for dynamic settings
-CREATE TABLE IF NOT EXISTS billing_configurations (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    config_type VARCHAR(50) NOT NULL, -- stripe_urls, email_templates, etc.
-    environment VARCHAR(20) NOT NULL DEFAULT 'production', -- production, staging, development
-    config_data JSONB NOT NULL,
-    is_active BOOLEAN NOT NULL DEFAULT TRUE,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT unique_billing_config UNIQUE (config_type, environment)
-);
-
-CREATE INDEX IF NOT EXISTS idx_billing_configurations_type ON billing_configurations(config_type);
-CREATE INDEX IF NOT EXISTS idx_billing_configurations_active ON billing_configurations(is_active);
-
--- Insert default billing configurations
-INSERT INTO billing_configurations (config_type, environment, config_data) VALUES 
-('stripe_urls', 'production', '{
-    "success_url": "https://app.vibemanager.com/account?checkout=success",
-    "cancel_url": "https://app.vibemanager.com/account?checkout=canceled",
-    "portal_return_url": "https://app.vibemanager.com/account"
-}'::jsonb),
-('stripe_urls', 'development', '{
-    "success_url": "http://localhost:1420/account?checkout=success",
-    "cancel_url": "http://localhost:1420/account?checkout=canceled", 
-    "portal_return_url": "http://localhost:1420/account"
-}'::jsonb),
-('email_templates', 'production', '{
-    "spending_alert_75": {
-        "subject": "AI Usage Alert: 75% of Monthly Allowance Used",
-        "template": "spending_alert_75"
-    },
-    "spending_alert_90": {
-        "subject": "AI Usage Warning: 90% of Monthly Allowance Used",
-        "template": "spending_alert_90"
-    },
-    "spending_limit_reached": {
-        "subject": "AI Usage Limit Reached - Overage Charges Apply",
-        "template": "spending_limit_reached"
-    },
-    "services_blocked": {
-        "subject": "AI Services Temporarily Blocked - Action Required",
-        "template": "services_blocked"
-    },
-    "invoice_created": {
-        "subject": "Your Vibe Manager Invoice is Ready",
-        "template": "invoice_created"
-    },
-    "payment_failed": {
-        "subject": "Payment Failed - Please Update Payment Method",
-        "template": "payment_failed"
-    },
-    "credit_purchase_success": {
-        "subject": "Credits Added to Your Account",
-        "template": "credit_purchase_success"
-    }
-}'::jsonb)
-ON CONFLICT (config_type, environment) DO NOTHING;
 
 -- Insert comprehensive AI task configurations into application_configurations
 -- Migration: 003_insert_ai_task_configurations.sql
 -- All AI defaults come from the database
+
+-- =========================================================================
+-- Transcription Configuration Tables
+-- =========================================================================
+
+-- Comprehensive transcription settings table for user preferences
+CREATE TABLE IF NOT EXISTS transcription_settings (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    session_id TEXT, -- For desktop session-specific settings
+    setting_type VARCHAR(20) NOT NULL CHECK(setting_type IN ('global', 'session', 'project')),
+    model_id VARCHAR(255) NOT NULL DEFAULT 'groq/whisper-large-v3-turbo',
+    prompt TEXT,
+    language_code VARCHAR(10) DEFAULT 'auto',
+    temperature DECIMAL(3,2) DEFAULT 0.0 CHECK(temperature >= 0.0 AND temperature <= 1.0),
+    max_tokens INTEGER DEFAULT 4096,
+    voice_activity_detection BOOLEAN DEFAULT TRUE,
+    timestamp_format VARCHAR(20) DEFAULT 'none' CHECK(timestamp_format IN ('none', 'word', 'segment')),
+    response_format VARCHAR(20) DEFAULT 'text' CHECK(response_format IN ('text', 'json', 'verbose_json')),
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT fk_transcription_settings_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- Create indexes for transcription_settings table
+CREATE INDEX IF NOT EXISTS idx_transcription_settings_user ON transcription_settings(user_id);
+CREATE INDEX IF NOT EXISTS idx_transcription_settings_session ON transcription_settings(session_id);
+CREATE INDEX IF NOT EXISTS idx_transcription_settings_type ON transcription_settings(setting_type);
+CREATE INDEX IF NOT EXISTS idx_transcription_settings_active ON transcription_settings(is_active);
+
+-- Language preferences and configurations
+CREATE TABLE IF NOT EXISTS transcription_language_preferences (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    language_code VARCHAR(10) NOT NULL UNIQUE,
+    language_name VARCHAR(100) NOT NULL,
+    is_supported BOOLEAN DEFAULT TRUE,
+    default_prompt TEXT,
+    recommended_temperature DECIMAL(3,2) DEFAULT 0.0,
+    display_order INTEGER DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Create index for language preferences
+CREATE INDEX IF NOT EXISTS idx_transcription_language_preferences_supported ON transcription_language_preferences(is_supported);
+CREATE INDEX IF NOT EXISTS idx_transcription_language_preferences_order ON transcription_language_preferences(display_order);
+
+-- Transcription model preferences and configurations
+CREATE TABLE IF NOT EXISTS transcription_model_preferences (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    model_id VARCHAR(255) NOT NULL UNIQUE,
+    model_name VARCHAR(255) NOT NULL,
+    provider_name VARCHAR(100) NOT NULL,
+    is_available BOOLEAN DEFAULT TRUE,
+    supports_prompt BOOLEAN DEFAULT TRUE,
+    supports_temperature BOOLEAN DEFAULT TRUE,
+    supports_language_detection BOOLEAN DEFAULT TRUE,
+    max_audio_duration_seconds INTEGER DEFAULT 600,
+    supported_formats TEXT DEFAULT 'mp3,wav,m4a,webm,ogg',
+    pricing_type VARCHAR(20) DEFAULT 'duration_based' CHECK(pricing_type IN ('token_based', 'duration_based', 'fixed')),
+    cost_per_minute DECIMAL(8,4) DEFAULT 0.0,
+    display_order INTEGER DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Create index for model preferences
+CREATE INDEX IF NOT EXISTS idx_transcription_model_preferences_available ON transcription_model_preferences(is_available);
+CREATE INDEX IF NOT EXISTS idx_transcription_model_preferences_provider ON transcription_model_preferences(provider_name);
+CREATE INDEX IF NOT EXISTS idx_transcription_model_preferences_order ON transcription_model_preferences(display_order);
+
+-- Temperature range configurations for different use cases
+CREATE TABLE IF NOT EXISTS transcription_temperature_presets (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    preset_name VARCHAR(100) NOT NULL UNIQUE,
+    temperature DECIMAL(3,2) NOT NULL CHECK(temperature >= 0.0 AND temperature <= 1.0),
+    description TEXT,
+    use_case TEXT,
+    is_recommended BOOLEAN DEFAULT FALSE,
+    display_order INTEGER DEFAULT 0
+);
+
+-- Create index for temperature presets
+CREATE INDEX IF NOT EXISTS idx_transcription_temperature_presets_recommended ON transcription_temperature_presets(is_recommended);
+CREATE INDEX IF NOT EXISTS idx_transcription_temperature_presets_order ON transcription_temperature_presets(display_order);
 
 -- Insert comprehensive task-specific model configurations
 INSERT INTO application_configurations (config_key, config_value, description)
@@ -892,7 +851,6 @@ VALUES
   "guidance_generation": {"model": "google/gemini-2.5-pro-preview", "max_tokens": 8192, "temperature": 0.7},
   "task_enhancement": {"model": "google/gemini-2.5-pro-preview", "max_tokens": 4096, "temperature": 0.7},
   "extended_path_finder": {"model": "google/gemini-2.5-flash-preview-05-20", "max_tokens": 8192, "temperature": 0.3},
-  "extended_path_correction": {"model": "google/gemini-2.5-flash-preview-05-20", "max_tokens": 4096, "temperature": 0.3},
   "file_relevance_assessment": {"model": "google/gemini-2.5-flash-preview-05-20", "max_tokens": 24000, "temperature": 0.3},
   "file_finder_workflow": {"model": "google/gemini-2.5-flash-preview-05-20", "max_tokens": 2048, "temperature": 0.3},
   "generic_llm_stream": {"model": "google/gemini-2.5-pro-preview", "max_tokens": 16384, "temperature": 0.7},
@@ -907,7 +865,13 @@ VALUES
   "max_file_count": 50,
   "file_content_truncation_chars": 2000,
   "token_limit_buffer": 1000
-}'::jsonb, 'Settings for the PathFinder agent functionality')
+}'::jsonb, 'Settings for the PathFinder agent functionality'),
+
+('ai_settings_transcription_prompt', '"Please transcribe this audio accurately, preserving the original meaning and context. Focus on clarity and proper punctuation."'::jsonb, 'Default prompt for audio transcription requests to guide the model style and accuracy'),
+('ai_settings_transcription_language_preference', '"auto"'::jsonb, 'Default language preference for transcription (auto-detect or specific language code)'),
+('ai_settings_transcription_temperature', '0.0'::jsonb, 'Default temperature setting for transcription models'),
+('ai_settings_transcription_enable_timestamps', 'false'::jsonb, 'Enable word-level timestamps in transcription output'),
+('ai_settings_transcription_voice_activity_detection', 'true'::jsonb, 'Enable voice activity detection to filter out silence')
 
 ON CONFLICT (config_key) DO UPDATE SET
   config_value = EXCLUDED.config_value,
@@ -1044,37 +1008,6 @@ USING (true);
 -- Could also be TO anon, authenticated if plans are shown to non-logged-in users.
 -- INSERT, UPDATE, DELETE typically handled by backend/service roles.
 
--- RLS for user_spending_limits table
-ALTER TABLE user_spending_limits ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Users can select their own spending limits"
-ON user_spending_limits FOR SELECT
-TO authenticated
-USING (user_id = get_current_user_id());
-
-CREATE POLICY "Users can insert their own spending limits"
-ON user_spending_limits FOR INSERT
-TO authenticated
-WITH CHECK (user_id = get_current_user_id());
-
--- App can manage user spending limits for billing operations
-CREATE POLICY "App can select user spending limits"
-ON user_spending_limits FOR SELECT
-TO vibe_manager_app
-USING (user_id = get_current_user_id());
-
-CREATE POLICY "App can insert user spending limits"
-ON user_spending_limits FOR INSERT
-TO vibe_manager_app
-WITH CHECK (user_id = get_current_user_id());
-
-CREATE POLICY "App can update user spending limits"
-ON user_spending_limits FOR UPDATE
-TO vibe_manager_app
-USING (user_id = get_current_user_id())
-WITH CHECK (user_id = get_current_user_id());
-
--- Index idx_user_spending_limits_user_period already exists.
 
 -- RLS for projects table
 ALTER TABLE projects ENABLE ROW LEVEL SECURITY;
@@ -1167,27 +1100,6 @@ USING (
 
 -- project_members.project_id and project_members.user_id are part of PK, indexed.
 
--- RLS for spending_alerts table
-ALTER TABLE spending_alerts ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Users can select their own spending alerts"
-ON spending_alerts FOR SELECT
-TO authenticated
-USING (user_id = get_current_user_id());
-
-CREATE POLICY "Users can acknowledge their own spending alerts"
-ON spending_alerts FOR UPDATE
-TO authenticated
-USING (user_id = get_current_user_id())
-WITH CHECK (user_id = get_current_user_id() AND acknowledged = true); -- Only allow update to acknowledge
-
-CREATE POLICY "Users can insert their own spending alerts"
-ON spending_alerts FOR INSERT
-TO authenticated
-WITH CHECK (user_id = get_current_user_id());
-
--- DELETE typically handled by backend/service roles.
--- Index idx_spending_alerts_user_period already exists.
 
 -- RLS for user_preferences table
 ALTER TABLE user_preferences ENABLE ROW LEVEL SECURITY;
@@ -1257,37 +1169,7 @@ WITH CHECK (user_id = get_current_user_id());
 
 -- Index idx_payment_methods_user_id already exists.
 
--- RLS for email_notifications table
-ALTER TABLE email_notifications ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Users can select their own email notifications"
-ON email_notifications FOR SELECT
-TO authenticated
-USING (user_id = get_current_user_id());
-
-CREATE POLICY "Users can insert their own email notifications"
-ON email_notifications FOR INSERT
-TO authenticated
-WITH CHECK (user_id = get_current_user_id());
-
--- UPDATE, DELETE typically handled by backend/service roles.
--- Index idx_email_notifications_user_id already exists.
-
--- RLS for spending_periods table
-ALTER TABLE spending_periods ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Users can select their own spending periods"
-ON spending_periods FOR SELECT
-TO authenticated
-USING (user_id = get_current_user_id());
-
-CREATE POLICY "Users can insert their own spending periods"
-ON spending_periods FOR INSERT
-TO authenticated
-WITH CHECK (user_id = get_current_user_id());
-
--- UPDATE, DELETE typically handled by backend/service roles.
--- Index idx_spending_periods_user_period already exists.
 
 -- RLS for api_quotas table
 ALTER TABLE api_quotas ENABLE ROW LEVEL SECURITY;
@@ -1315,16 +1197,6 @@ USING (true);
 
 -- INSERT, UPDATE, DELETE typically handled by backend/service roles.
 
--- RLS for billing_configurations table
-ALTER TABLE billing_configurations ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "App users can select billing configurations"
-ON billing_configurations FOR SELECT
-TO vibe_manager_app, authenticated
-USING (true);
-
--- These configurations contain billing URLs and email templates needed by the application.
--- INSERT, UPDATE, DELETE typically handled by backend/service roles.
 
 -- RLS for default_system_prompts table
 ALTER TABLE default_system_prompts ENABLE ROW LEVEL SECURITY;
@@ -1337,6 +1209,20 @@ USING (true);
 -- Default system prompts are read-only for the application.
 -- INSERT, UPDATE, DELETE typically handled by backend/service roles.
 
+-- RLS for audit_logs table
+ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can select their own audit logs"
+ON audit_logs FOR SELECT
+TO authenticated
+USING (user_id = get_current_user_id());
+
+CREATE POLICY "App can manage audit logs"
+ON audit_logs FOR ALL
+TO vibe_manager_app
+USING (true); -- System-level table managed by application for auditing purposes
+
+
 -- Grant necessary table permissions to vibe_manager_app role
 -- These are for system tables that need to be readable by the application
 GRANT SELECT ON providers TO vibe_manager_app;
@@ -1344,7 +1230,6 @@ GRANT SELECT ON models TO vibe_manager_app;
 GRANT SELECT ON application_configurations TO vibe_manager_app;
 GRANT SELECT ON subscription_plans TO vibe_manager_app;
 GRANT SELECT ON service_pricing TO vibe_manager_app;
-GRANT SELECT ON billing_configurations TO vibe_manager_app;
 GRANT SELECT ON default_system_prompts TO vibe_manager_app;
 
 -- Grant permissions needed for authentication flow
@@ -1356,6 +1241,7 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON refresh_tokens TO vibe_manager_app;
 GRANT SELECT, INSERT, UPDATE ON user_credits TO vibe_manager_app;
 GRANT SELECT, INSERT, UPDATE ON credit_packs TO vibe_manager_app;
 GRANT SELECT, INSERT, UPDATE ON credit_pack_stripe_config TO vibe_manager_app;
+GRANT SELECT, INSERT ON credit_transactions TO vibe_manager_app;
 
 -- Credit packs table - proper normalized structure instead of JSON
 CREATE TABLE IF NOT EXISTS credit_packs (
@@ -1365,11 +1251,7 @@ CREATE TABLE IF NOT EXISTS credit_packs (
     price_amount DECIMAL(12, 4) NOT NULL,   -- Price user pays
     currency VARCHAR(3) NOT NULL DEFAULT 'USD',
     description TEXT,
-    recommended BOOLEAN NOT NULL DEFAULT FALSE,
-    bonus_percentage DECIMAL(5, 2) DEFAULT 0.00,
-    is_popular BOOLEAN DEFAULT FALSE,
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
-    display_order INTEGER DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -1387,18 +1269,16 @@ CREATE TABLE IF NOT EXISTS credit_pack_stripe_config (
 );
 
 -- Insert default credit packs
-INSERT INTO credit_packs (id, name, value_credits, price_amount, currency, description, recommended, display_order) VALUES
-('credits_5', '5 Credits', 5.00, 5.00, 'USD', 'Perfect for occasional usage', false, 1),
-('credits_10', '10 Credits', 10.00, 10.00, 'USD', 'Great for regular users', true, 2),
-('credits_25', '25 Credits', 25.00, 25.00, 'USD', 'Best value for power users', false, 3),
-('credits_50', '50 Credits', 50.00, 50.00, 'USD', 'Maximum credits for heavy usage', false, 4)
+INSERT INTO credit_packs (id, name, value_credits, price_amount, currency, description) VALUES
+('credits_5', '5 Credits', 5.00, 5.00, 'USD', 'Perfect for occasional usage'),
+('credits_10', '10 Credits', 10.00, 10.00, 'USD', 'Great for regular users'),
+('credits_25', '25 Credits', 25.00, 25.00, 'USD', 'Best value for power users'),
+('credits_50', '50 Credits', 50.00, 50.00, 'USD', 'Maximum credits for heavy usage')
 ON CONFLICT (id) DO UPDATE SET
     name = EXCLUDED.name,
     value_credits = EXCLUDED.value_credits,
     price_amount = EXCLUDED.price_amount,
-    description = EXCLUDED.description,
-    recommended = EXCLUDED.recommended,
-    display_order = EXCLUDED.display_order;
+    description = EXCLUDED.description;
 
 -- Insert Stripe configurations for different environments
 INSERT INTO credit_pack_stripe_config (credit_pack_id, environment, stripe_price_id) VALUES
@@ -1504,22 +1384,91 @@ TO vibe_manager_app
 USING (user_id = get_current_user_id())
 WITH CHECK (user_id = get_current_user_id());
 
--- Webhook idempotency table to prevent duplicate processing
+-- Enhanced webhook idempotency table with locking, retries, and detailed status tracking
 CREATE TABLE IF NOT EXISTS webhook_idempotency (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    webhook_event_id VARCHAR(255) UNIQUE NOT NULL, -- Stripe event ID
-    webhook_type VARCHAR(100) NOT NULL, -- stripe, etc.
-    event_type VARCHAR(100) NOT NULL, -- checkout.session.completed, etc.
-    processed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    processing_result VARCHAR(50) NOT NULL DEFAULT 'success', -- success, failure, skipped
+    webhook_event_id VARCHAR(255) UNIQUE NOT NULL, -- Stripe event ID or external webhook ID
+    webhook_type VARCHAR(100) NOT NULL, -- stripe, paypal, custom, etc.
+    event_type VARCHAR(100) NOT NULL, -- checkout.session.completed, payment.failed, etc.
+    
+    -- Processing status and lifecycle
+    status VARCHAR(50) NOT NULL DEFAULT 'pending', -- pending, processing, completed, failed, skipped
+    processing_result VARCHAR(50), -- success, failure, skipped, partial
+    processed_at TIMESTAMPTZ,
+    
+    -- Locking mechanism for concurrent webhook handling
+    locked_at TIMESTAMPTZ,
+    locked_by VARCHAR(255), -- Instance ID or worker ID that acquired the lock
+    lock_expires_at TIMESTAMPTZ,
+    
+    -- Retry mechanism for failed webhooks
+    retry_count INTEGER NOT NULL DEFAULT 0,
+    max_retries INTEGER NOT NULL DEFAULT 3,
+    next_retry_at TIMESTAMPTZ,
+    
+    -- Error tracking and debugging
     error_message TEXT,
-    metadata JSONB,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    error_details JSONB, -- Stack trace, error codes, etc.
+    last_error_at TIMESTAMPTZ,
+    
+    -- Webhook payload and metadata
+    webhook_payload JSONB, -- Original webhook payload for debugging/replay
+    metadata JSONB, -- Additional processing metadata
+    
+    -- Audit and timing
+    first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    
+    -- Performance and monitoring
+    processing_duration_ms INTEGER, -- How long processing took
+    payload_size_bytes INTEGER, -- Size of webhook payload
+    
+    -- Constraint to ensure lock consistency
+    CONSTRAINT webhook_lock_consistency CHECK (
+        (locked_at IS NULL) = (locked_by IS NULL AND lock_expires_at IS NULL)
+    ),
+    
+    -- Constraint to ensure retry logic consistency
+    CONSTRAINT webhook_retry_consistency CHECK (
+        retry_count >= 0 AND retry_count <= max_retries
+    )
 );
 
+-- Outbox events table for reliable event publishing (transactional outbox pattern)
+CREATE TABLE IF NOT EXISTS outbox_events (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    aggregate_type VARCHAR(100) NOT NULL, -- subscription, payment, user, etc.
+    aggregate_id VARCHAR(255) NOT NULL, -- ID of the entity that changed
+    event_type VARCHAR(100) NOT NULL, -- subscription.plan_changed, payment.failed, etc.
+    event_data JSONB NOT NULL, -- Event payload
+    metadata JSONB, -- Additional context like user_id, request_id, etc.
+    published BOOLEAN NOT NULL DEFAULT FALSE,
+    published_at TIMESTAMPTZ,
+    retry_count INTEGER NOT NULL DEFAULT 0,
+    max_retries INTEGER NOT NULL DEFAULT 5,
+    next_retry_at TIMESTAMPTZ,
+    error_message TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Enhanced indexes for the new webhook_idempotency table structure
 CREATE INDEX IF NOT EXISTS idx_webhook_idempotency_event_id ON webhook_idempotency(webhook_event_id);
 CREATE INDEX IF NOT EXISTS idx_webhook_idempotency_type_event ON webhook_idempotency(webhook_type, event_type);
+CREATE INDEX IF NOT EXISTS idx_webhook_idempotency_status ON webhook_idempotency(status);
 CREATE INDEX IF NOT EXISTS idx_webhook_idempotency_processed_at ON webhook_idempotency(processed_at);
+CREATE INDEX IF NOT EXISTS idx_webhook_idempotency_locked_at ON webhook_idempotency(locked_at) WHERE locked_at IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_webhook_idempotency_lock_expires ON webhook_idempotency(lock_expires_at) WHERE lock_expires_at IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_webhook_idempotency_retry_schedule ON webhook_idempotency(next_retry_at) WHERE status = 'failed' AND retry_count < max_retries;
+CREATE INDEX IF NOT EXISTS idx_webhook_idempotency_error_tracking ON webhook_idempotency(last_error_at) WHERE error_message IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_webhook_idempotency_first_seen ON webhook_idempotency(first_seen_at);
+CREATE INDEX IF NOT EXISTS idx_webhook_idempotency_updated_at ON webhook_idempotency(updated_at);
+
+CREATE INDEX IF NOT EXISTS idx_outbox_events_published ON outbox_events(published);
+CREATE INDEX IF NOT EXISTS idx_outbox_events_next_retry ON outbox_events(next_retry_at) WHERE published = FALSE;
+CREATE INDEX IF NOT EXISTS idx_outbox_events_aggregate ON outbox_events(aggregate_type, aggregate_id);
+CREATE INDEX IF NOT EXISTS idx_outbox_events_created_at ON outbox_events(created_at);
 
 -- RLS for webhook_idempotency table
 ALTER TABLE webhook_idempotency ENABLE ROW LEVEL SECURITY;
@@ -1529,19 +1478,140 @@ ON webhook_idempotency FOR ALL
 TO vibe_manager_app
 USING (true); -- App service can read/write all webhook records
 
+-- RLS for outbox_events table
+ALTER TABLE outbox_events ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "App can manage outbox events"
+ON outbox_events FOR ALL
+TO vibe_manager_app
+USING (true); -- System-level table managed by application
+
 -- Grant necessary table permissions to authenticated role for user operations
-GRANT SELECT, INSERT, UPDATE ON user_spending_limits TO authenticated;
+GRANT SELECT, INSERT, UPDATE ON users TO authenticated;
 GRANT SELECT, INSERT, UPDATE ON api_usage TO authenticated;
-GRANT SELECT, INSERT, UPDATE ON spending_alerts TO authenticated;
 GRANT SELECT, INSERT, UPDATE ON subscriptions TO authenticated;
-GRANT SELECT ON subscription_plans TO authenticated;
+GRANT SELECT, UPDATE ON subscription_plans TO authenticated;
 GRANT SELECT, INSERT, UPDATE ON user_settings TO authenticated;
 GRANT SELECT, INSERT, UPDATE ON user_preferences TO authenticated;
-GRANT SELECT, INSERT, UPDATE ON spending_periods TO authenticated;
-GRANT SELECT, INSERT, UPDATE ON email_notifications TO authenticated;
 GRANT SELECT, INSERT, UPDATE ON invoices TO authenticated;
 GRANT SELECT, INSERT, UPDATE ON payment_methods TO authenticated;
 GRANT SELECT, INSERT, UPDATE ON api_quotas TO authenticated;
 GRANT SELECT, INSERT, UPDATE ON user_credits TO authenticated;
-GRANT SELECT, INSERT, UPDATE ON credit_transactions TO authenticated;
+GRANT SELECT, INSERT ON credit_transactions TO authenticated;
+GRANT SELECT ON audit_logs TO authenticated;
 GRANT SELECT, INSERT, UPDATE ON webhook_idempotency TO vibe_manager_app;
+GRANT SELECT, INSERT, UPDATE ON audit_logs TO vibe_manager_app;
+
+-- User billing details table for invoice customization
+
+-- =========================================================================
+-- Insert Default Transcription Configuration Data
+-- =========================================================================
+
+-- Insert supported language preferences
+INSERT INTO transcription_language_preferences (language_code, language_name, is_supported, default_prompt, recommended_temperature, display_order)
+VALUES 
+('auto', 'Auto-detect', TRUE, 'Please transcribe this audio accurately in the detected language, preserving the original meaning and context.', 0.0, 0),
+('en', 'English', TRUE, 'Please transcribe this English audio accurately, preserving the original meaning and context. Focus on clarity and proper punctuation.', 0.0, 1),
+('es', 'Spanish', TRUE, 'Por favor, transcribe este audio en español con precisión, conservando el significado y contexto originales.', 0.0, 2),
+('fr', 'French', TRUE, 'Veuillez transcrire cet audio français avec précision, en préservant le sens et le contexte originaux.', 0.0, 3),
+('de', 'German', TRUE, 'Bitte transkribieren Sie dieses deutsche Audio genau und bewahren Sie die ursprüngliche Bedeutung und den Kontext.', 0.0, 4),
+('it', 'Italian', TRUE, 'Si prega di trascrivere questo audio italiano con precisione, preservando il significato e il contesto originali.', 0.0, 5),
+('pt', 'Portuguese', TRUE, 'Por favor, transcreva este áudio em português com precisão, preservando o significado e contexto originais.', 0.0, 6),
+('ru', 'Russian', TRUE, 'Пожалуйста, точно транскрибируйте это русское аудио, сохраняя первоначальный смысл и контекст.', 0.0, 7),
+('ja', 'Japanese', TRUE, 'この日本語音声を正確に書き起こし、元の意味と文脈を保持してください。', 0.0, 8),
+('ko', 'Korean', TRUE, '이 한국어 오디오를 정확하게 전사하여 원래의 의미와 맥락을 보존해 주세요.', 0.0, 9),
+('zh', 'Chinese', TRUE, '请准确转录此中文音频，保留原始含义和上下文。', 0.0, 10)
+ON CONFLICT (language_code) DO UPDATE SET
+    language_name = EXCLUDED.language_name,
+    default_prompt = EXCLUDED.default_prompt,
+    recommended_temperature = EXCLUDED.recommended_temperature,
+    display_order = EXCLUDED.display_order;
+
+-- Insert available transcription models
+INSERT INTO transcription_model_preferences (model_id, model_name, provider_name, is_available, supports_prompt, supports_temperature, supports_language_detection, max_audio_duration_seconds, supported_formats, pricing_type, cost_per_minute, display_order)
+VALUES 
+('groq/whisper-large-v3-turbo', 'Whisper Large V3 Turbo', 'Groq', TRUE, TRUE, TRUE, TRUE, 600, 'mp3,wav,m4a,webm,ogg,flac', 'duration_based', 0.040, 1),
+('groq/whisper-large-v3', 'Whisper Large V3', 'Groq', TRUE, TRUE, TRUE, TRUE, 600, 'mp3,wav,m4a,webm,ogg,flac', 'duration_based', 0.111, 2),
+('groq/distil-whisper-large-v3-en', 'Distil-Whisper Large V3 (English)', 'Groq', TRUE, TRUE, TRUE, FALSE, 600, 'mp3,wav,m4a,webm,ogg,flac', 'duration_based', 0.020, 3)
+ON CONFLICT (model_id) DO UPDATE SET
+    model_name = EXCLUDED.model_name,
+    provider_name = EXCLUDED.provider_name,
+    is_available = EXCLUDED.is_available,
+    supports_prompt = EXCLUDED.supports_prompt,
+    supports_temperature = EXCLUDED.supports_temperature,
+    supports_language_detection = EXCLUDED.supports_language_detection,
+    max_audio_duration_seconds = EXCLUDED.max_audio_duration_seconds,
+    supported_formats = EXCLUDED.supported_formats,
+    pricing_type = EXCLUDED.pricing_type,
+    cost_per_minute = EXCLUDED.cost_per_minute,
+    display_order = EXCLUDED.display_order;
+
+-- Insert temperature presets for different use cases
+INSERT INTO transcription_temperature_presets (preset_name, temperature, description, use_case, is_recommended, display_order)
+VALUES 
+('Precise (0.0)', 0.0, 'Most accurate transcription with minimal creativity', 'Technical content, lectures, meetings', TRUE, 1),
+('Balanced (0.2)', 0.2, 'Good balance between accuracy and natural language flow', 'General conversations, interviews', FALSE, 2),
+('Creative (0.4)', 0.4, 'More creative interpretation, better for unclear audio', 'Noisy environments, artistic content', FALSE, 3),
+('Flexible (0.6)', 0.6, 'Higher creativity for difficult audio conditions', 'Low-quality recordings, multiple speakers', FALSE, 4)
+ON CONFLICT (preset_name) DO UPDATE SET
+    temperature = EXCLUDED.temperature,
+    description = EXCLUDED.description,
+    use_case = EXCLUDED.use_case,
+    is_recommended = EXCLUDED.is_recommended,
+    display_order = EXCLUDED.display_order;
+
+-- =========================================================================
+-- Row Level Security for Transcription Tables
+-- =========================================================================
+
+-- RLS for transcription_settings table
+ALTER TABLE transcription_settings ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can manage their own transcription settings"
+ON transcription_settings FOR ALL
+TO authenticated
+USING (user_id = get_current_user_id())
+WITH CHECK (user_id = get_current_user_id());
+
+-- App can manage transcription settings for server operations
+CREATE POLICY "App can manage transcription settings"
+ON transcription_settings FOR ALL
+TO vibe_manager_app
+USING (user_id = get_current_user_id())
+WITH CHECK (user_id = get_current_user_id());
+
+-- RLS for transcription_language_preferences table (read-only for users)
+ALTER TABLE transcription_language_preferences ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "App users can select language preferences"
+ON transcription_language_preferences FOR SELECT
+TO vibe_manager_app, authenticated
+USING (true);
+
+-- RLS for transcription_model_preferences table (read-only for users)
+ALTER TABLE transcription_model_preferences ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "App users can select model preferences"
+ON transcription_model_preferences FOR SELECT
+TO vibe_manager_app, authenticated
+USING (true);
+
+-- RLS for transcription_temperature_presets table (read-only for users)
+ALTER TABLE transcription_temperature_presets ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "App users can select temperature presets"
+ON transcription_temperature_presets FOR SELECT
+TO vibe_manager_app, authenticated
+USING (true);
+
+-- Grant permissions for transcription configuration tables
+GRANT SELECT, INSERT, UPDATE ON transcription_settings TO authenticated;
+GRANT SELECT ON transcription_language_preferences TO authenticated;
+GRANT SELECT ON transcription_model_preferences TO authenticated;
+GRANT SELECT ON transcription_temperature_presets TO authenticated;
+
+GRANT SELECT, INSERT, UPDATE ON transcription_settings TO vibe_manager_app;
+GRANT SELECT ON transcription_language_preferences TO vibe_manager_app;
+GRANT SELECT ON transcription_model_preferences TO vibe_manager_app;
+GRANT SELECT ON transcription_temperature_presets TO vibe_manager_app;

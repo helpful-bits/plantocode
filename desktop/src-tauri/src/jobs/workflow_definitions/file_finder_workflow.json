@@ -31,8 +31,8 @@
       "allow_parallel_execution": false
     },
     {
-      "stage_name": "ExtendedPathCorrection",
-      "task_type": "extended_path_correction",
+      "stage_name": "PathCorrection",
+      "task_type": "path_correction",
       "processor_name": null,
       "dependencies": ["ExtendedPathFinder"],
       "allow_parallel_execution": false

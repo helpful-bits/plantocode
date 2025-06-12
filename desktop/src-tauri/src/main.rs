@@ -77,7 +77,7 @@ fn main() {
         .manage(AppState {
             config_load_error: Mutex::new(None),
             client: reqwest::Client::new(),
-            settings: config::RuntimeConfig::default(),
+            settings: config::RuntimeConfig::default(), // Now called AFTER dotenv
             auth0_state_store: Auth0StateStore::default(),
         })
         .manage(ServerConfigCache::new(Mutex::new(HashMap::new())))
@@ -135,7 +135,7 @@ fn main() {
             
             // Billing commands
             commands::billing_commands::get_subscription_details_command,
-            commands::billing_commands::create_checkout_session_command,
+            commands::billing_commands::get_subscription_plans_command,
             commands::billing_commands::create_billing_portal_command,
             commands::billing_commands::get_spending_status_command,
             commands::billing_commands::acknowledge_spending_alert_command,
@@ -146,13 +146,30 @@ fn main() {
             commands::billing_commands::get_spending_analytics_command,
             commands::billing_commands::get_spending_forecast_command,
             commands::billing_commands::get_payment_methods_command,
+            commands::billing_commands::delete_payment_method_command,
+            commands::billing_commands::set_default_payment_method_command,
             
             // Credit system commands
-            commands::billing_commands::purchase_credits_command,
             commands::billing_commands::get_credit_balance_command,
             commands::billing_commands::get_credit_history_command,
             commands::billing_commands::get_credit_packs_command,
             commands::billing_commands::get_credit_stats_command,
+            
+            // Modern PaymentIntent-based commands (2024)
+            commands::billing_commands::create_credit_payment_intent_command,
+            commands::billing_commands::create_subscription_intent_command,
+            commands::billing_commands::create_setup_intent_command,
+            commands::billing_commands::confirm_payment_status_command,
+            commands::billing_commands::get_stripe_publishable_key_command,
+            
+            // Billing health monitoring
+            commands::billing_health_commands::check_billing_health_command,
+            commands::billing_health_commands::ping_billing_service_command,
+            
+            // Subscription lifecycle management
+            commands::billing_commands::cancel_subscription_command,
+            commands::billing_commands::resume_subscription_command,
+            commands::billing_commands::create_billing_portal_session_command,
             
             // Config commands
             commands::config_commands::get_available_ai_models,
@@ -217,7 +234,14 @@ fn main() {
             commands::file_finder_workflow_commands::retry_workflow_stage_command,
             
             // Voice commands
-            commands::voice_commands::create_transcription_job_command,
+            commands::voice_commands::transcribe_audio_batch_command,
+            commands::voice_commands::get_transcription_settings_command,
+            commands::voice_commands::set_transcription_settings_command,
+            commands::voice_commands::get_project_transcription_settings_command,
+            commands::voice_commands::set_project_transcription_settings_command,
+            commands::voice_commands::reset_transcription_settings_command,
+            commands::voice_commands::get_effective_transcription_settings_command,
+            commands::voice_commands::validate_transcription_settings_command,
             
             // Generic task commands
             commands::generic_task_commands::generic_llm_stream_command,

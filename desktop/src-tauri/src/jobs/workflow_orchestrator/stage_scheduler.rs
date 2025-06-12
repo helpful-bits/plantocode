@@ -165,7 +165,7 @@ pub(super) fn stage_to_task_type_internal(stage: &WorkflowStage) -> TaskType {
         WorkflowStage::LocalFileFiltering => TaskType::LocalFileFiltering,
         WorkflowStage::FileRelevanceAssessment => TaskType::FileRelevanceAssessment,
         WorkflowStage::ExtendedPathFinder => TaskType::ExtendedPathFinder,
-        WorkflowStage::ExtendedPathCorrection => TaskType::ExtendedPathCorrection,
+        WorkflowStage::PathCorrection => TaskType::PathCorrection,
     }
 }
 

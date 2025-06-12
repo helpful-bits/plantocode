@@ -2,7 +2,7 @@ use crate::error::AppError;
 use bytes::Bytes;
 use actix_web::{web, HttpResponse};
 use futures_util::{Stream, StreamExt, TryStreamExt};
-use reqwest::{Client, Body, multipart, Response, header::HeaderMap};
+use reqwest::{Client, Body, multipart::{Form, Part}, Response, header::HeaderMap};
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
 use serde_json::{json, Value};
@@ -302,10 +302,6 @@ impl OpenRouterClient {
     pub fn extract_cost_from_response(&self, response: &OpenRouterChatResponse) -> Option<f64> {
         response.usage.cost
     }
-    
-    
-    
-    
 }
 
 impl Clone for OpenRouterClient {

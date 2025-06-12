@@ -1,12 +1,8 @@
 use crate::error::AppError;
-use crate::db::repositories::{
-    EmailNotificationRepository, EmailNotification, BillingConfigurationRepository, EmailTemplates
-};
 use uuid::Uuid;
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use serde_json::{json, Value as JsonValue};
 use log::{debug, error, info, warn};
-use std::sync::Arc;
 use sqlx::PgPool;
 use bigdecimal::BigDecimal;
 use mailgun_v3::{Credentials, EmailAddress};
@@ -14,8 +10,6 @@ use mailgun_v3::email::{Message, MessageBody, send_email};
 
 #[derive(Debug)]
 pub struct EmailNotificationService {
-    email_repository: Arc<EmailNotificationRepository>,
-    config_repository: Arc<BillingConfigurationRepository>,
     mailgun_config: MailgunConfig,
     mailgun_credentials: Credentials,
 }
@@ -46,24 +40,20 @@ impl MailgunConfig {
 }
 
 impl EmailNotificationService {
-    pub fn new(db_pool: PgPool) -> Result<Self, AppError> {
-        let email_repository = Arc::new(EmailNotificationRepository::new(db_pool.clone()));
-        let config_repository = Arc::new(BillingConfigurationRepository::new(db_pool));
+    pub fn new(_db_pool: PgPool) -> Result<Self, AppError> {
         let mailgun_config = MailgunConfig::from_env()?;
         
         // Initialize Mailgun credentials
         let mailgun_credentials = Credentials::new(&mailgun_config.api_key, &mailgun_config.domain);
 
         Ok(Self {
-            email_repository,
-            config_repository,
             mailgun_config,
             mailgun_credentials,
         })
     }
 
-    /// Queue a spending alert email notification
-    pub async fn queue_spending_alert(
+    /// Send a spending alert email notification directly
+    pub async fn send_spending_alert(
         &self,
         user_id: &Uuid,
         user_email: &str,
@@ -73,30 +63,22 @@ impl EmailNotificationService {
         usage_percentage: f64,
         currency: &str,
     ) -> Result<(), AppError> {
-        // Check if we've sent this type of alert recently to prevent spam
-        if self.email_repository.has_recent_notification(user_id, alert_type, 24).await? {
-            debug!("Skipping duplicate spending alert {} for user {}", alert_type, user_id);
-            return Ok(());
-        }
-
-        let templates = self.config_repository.get_email_templates().await?;
-        
         let (subject, template_name) = match alert_type {
             "75_percent" => (
-                templates.spending_alert_75.subject.clone(),
-                templates.spending_alert_75.template.clone(),
+                "75% of your monthly AI allowance used".to_string(),
+                "spending_alert_75".to_string(),
             ),
             "90_percent" => (
-                templates.spending_alert_90.subject.clone(),
-                templates.spending_alert_90.template.clone(),
+                "90% of your monthly AI allowance used".to_string(),
+                "spending_alert_90".to_string(),
             ),
             "limit_reached" => (
-                templates.spending_limit_reached.subject.clone(),
-                templates.spending_limit_reached.template.clone(),
+                "Monthly spending allowance reached".to_string(),
+                "spending_limit_reached".to_string(),
             ),
             "services_blocked" => (
-                templates.services_blocked.subject.clone(),
-                templates.services_blocked.template.clone(),
+                "AI services blocked - spending limit exceeded".to_string(),
+                "services_blocked".to_string(),
             ),
             _ => return Err(AppError::InvalidArgument(format!("Unknown alert type: {}", alert_type))),
         };
@@ -113,33 +95,14 @@ impl EmailNotificationService {
             "billing_url": format!("{}/account", self.get_app_base_url().await?),
         });
 
-        let notification = EmailNotification {
-            id: Uuid::new_v4(),
-            user_id: *user_id,
-            email_address: user_email.to_string(),
-            notification_type: format!("spending_alert_{}", alert_type),
-            subject,
-            template_name,
-            template_data,
-            status: "pending".to_string(),
-            attempts: 0,
-            max_attempts: 3,
-            last_attempt_at: None,
-            sent_at: None,
-            error_message: None,
-            priority: 1, // High priority for spending alerts
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-        };
-
-        self.email_repository.create(&notification).await?;
-        info!("Queued spending alert email {} for user {}", alert_type, user_id);
+        self.send_email_directly(&subject, &template_name, &template_data, user_email).await?;
+        info!("Sent spending alert email {} for user {}", alert_type, user_id);
 
         Ok(())
     }
 
-    /// Queue an invoice notification
-    pub async fn queue_invoice_notification(
+    /// Send an invoice notification directly
+    pub async fn send_invoice_notification(
         &self,
         user_id: &Uuid,
         user_email: &str,
@@ -149,7 +112,7 @@ impl EmailNotificationService {
         currency: &str,
         invoice_url: Option<&str>,
     ) -> Result<(), AppError> {
-        let templates = self.config_repository.get_email_templates().await?;
+        // Use hardcoded template instead of database lookup
 
         let template_data = json!({
             "user_id": user_id,
@@ -162,33 +125,17 @@ impl EmailNotificationService {
             "pay_url": format!("{}/account", self.get_app_base_url().await?),
         });
 
-        let notification = EmailNotification {
-            id: Uuid::new_v4(),
-            user_id: *user_id,
-            email_address: user_email.to_string(),
-            notification_type: "invoice_created".to_string(),
-            subject: templates.invoice_created.subject.clone(),
-            template_name: templates.invoice_created.template.clone(),
-            template_data,
-            status: "pending".to_string(),
-            attempts: 0,
-            max_attempts: 3,
-            last_attempt_at: None,
-            sent_at: None,
-            error_message: None,
-            priority: 2, // Medium priority for invoices
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-        };
+        let subject = "New Invoice Created".to_string();
+        let template_name = "invoice_created".to_string();
 
-        self.email_repository.create(&notification).await?;
-        info!("Queued invoice notification email for user {} (invoice: {})", user_id, invoice_id);
+        self.send_email_directly(&subject, &template_name, &template_data, user_email).await?;
+        info!("Sent invoice notification email for user {} (invoice: {})", user_id, invoice_id);
 
         Ok(())
     }
 
-    /// Queue a payment failed notification
-    pub async fn queue_payment_failed_notification(
+    /// Send a payment failed notification directly
+    pub async fn send_payment_failed_notification(
         &self,
         user_id: &Uuid,
         user_email: &str,
@@ -197,7 +144,8 @@ impl EmailNotificationService {
         currency: &str,
         retry_date: Option<&chrono::DateTime<chrono::Utc>>,
     ) -> Result<(), AppError> {
-        let templates = self.config_repository.get_email_templates().await?;
+        let subject = "Payment Failed - Action Required".to_string();
+        let template_name = "payment_failed".to_string();
 
         let template_data = json!({
             "user_id": user_id,
@@ -209,139 +157,78 @@ impl EmailNotificationService {
             "update_payment_url": format!("{}/account", self.get_app_base_url().await?),
         });
 
-        let notification = EmailNotification {
-            id: Uuid::new_v4(),
-            user_id: *user_id,
-            email_address: user_email.to_string(),
-            notification_type: "payment_failed".to_string(),
-            subject: templates.payment_failed.subject.clone(),
-            template_name: templates.payment_failed.template.clone(),
-            template_data,
-            status: "pending".to_string(),
-            attempts: 0,
-            max_attempts: 3,
-            last_attempt_at: None,
-            sent_at: None,
-            error_message: None,
-            priority: 1, // High priority for payment failures
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-        };
-
-        self.email_repository.create(&notification).await?;
-        info!("Queued payment failed notification email for user {} (invoice: {})", user_id, invoice_id);
+        self.send_email_directly(&subject, &template_name, &template_data, user_email).await?;
+        info!("Sent payment failed notification email for user {} (invoice: {})", user_id, invoice_id);
 
         Ok(())
     }
 
-    /// Process pending email notifications
-    pub async fn process_pending_notifications(&self, batch_size: i32) -> Result<ProcessingStats, AppError> {
-        let mut stats = ProcessingStats::default();
+    /// Send a plan change failed notification directly (for failed proration charges)
+    pub async fn send_plan_change_failed_notification(
+        &self,
+        user_id: &Uuid,
+        user_email: &str,
+        invoice_id: &str,
+        amount: &BigDecimal,
+        currency: &str,
+    ) -> Result<(), AppError> {
+        let subject = "Plan Change Failed - Payment Issue".to_string();
+        let template_name = "plan_change_failed".to_string();
 
-        // Get pending notifications
-        let pending = self.email_repository.get_pending(batch_size).await?;
-        stats.total_processed = pending.len() as i32;
+        let template_data = json!({
+            "user_id": user_id,
+            "invoice_id": invoice_id,
+            "amount": amount.to_string(),
+            "currency": currency,
+            "currency_symbol": if currency == "USD" { "$" } else { currency },
+            "billing_portal_url": format!("{}/account", self.get_app_base_url().await?),
+            "support_url": format!("{}/support", self.get_app_base_url().await?),
+        });
 
-        for notification in pending {
-            match self.send_notification(&notification).await {
-                Ok(_) => {
-                    self.email_repository.mark_sent(&notification.id).await?;
-                    stats.successful += 1;
-                    debug!("Successfully sent notification {}", notification.id);
-                }
-                Err(e) => {
-                    let error_msg = format!("Failed to send notification: {}", e);
-                    self.email_repository.mark_failed(&notification.id, &error_msg).await?;
-                    stats.failed += 1;
-                    error!("Failed to send notification {}: {}", notification.id, error_msg);
-                }
-            }
-        }
+        self.send_email_directly(&subject, &template_name, &template_data, user_email).await?;
+        info!("Sent plan change failed notification email for user {} (invoice: {})", user_id, invoice_id);
 
-        // Process retryable notifications
-        let retryable = self.email_repository.get_retryable(batch_size / 2).await?;
+        Ok(())
+    }
+
+    /// Send email directly without database queuing
+    async fn send_email_directly(
+        &self,
+        subject: &str,
+        template_name: &str,
+        template_data: &JsonValue,
+        email_address: &str,
+    ) -> Result<(), AppError> {
+        debug!("Sending email directly to {}: {}", email_address, subject);
         
-        for notification in retryable {
-            self.email_repository.mark_processing(&notification.id).await?;
-            
-            match self.send_notification(&notification).await {
-                Ok(_) => {
-                    self.email_repository.mark_sent(&notification.id).await?;
-                    stats.successful += 1;
-                    stats.retries_successful += 1;
-                    debug!("Successfully sent retry notification {}", notification.id);
-                }
-                Err(e) => {
-                    let error_msg = format!("Retry failed: {}", e);
-                    self.email_repository.mark_failed(&notification.id, &error_msg).await?;
-                    stats.failed += 1;
-                    stats.retries_failed += 1;
-                    error!("Retry failed for notification {}: {}", notification.id, error_msg);
-                }
-            }
-        }
-
-        if stats.total_processed > 0 {
-            info!(
-                "Email processing complete: {} total, {} successful, {} failed, {} retry successes, {} retry failures",
-                stats.total_processed, stats.successful, stats.failed, stats.retries_successful, stats.retries_failed
-            );
-        }
-
-        Ok(stats)
+        // Render email content from template data
+        let html_content = self.render_email_template(template_name, template_data).await?;
+        
+        // Send via Mailgun
+        self.send_via_mailgun_direct(subject, &html_content, email_address).await
     }
 
-    /// Send individual notification (this would integrate with actual email service)
-    async fn send_notification(&self, notification: &EmailNotification) -> Result<(), AppError> {
-        // In a real implementation, this would integrate with:
-        // - AWS SES
-        // - SendGrid 
-        // - Mailgun
-        // - SMTP server
-        // etc.
-
-        debug!("Sending email notification: {}", notification.id);
-        debug!("To: {}", notification.email_address);
-        debug!("Subject: {}", notification.subject);
-        debug!("Template: {}", notification.template_name);
-
-        // Simulate email sending for now
-        // In production, replace this with actual email service integration
-
-        #[cfg(feature = "mock_email")]
-        {
-            // Mock implementation for testing
-            info!("MOCK EMAIL SENT: {} to {}", notification.subject, notification.email_address);
-            return Ok(());
-        }
-
-        // Send email via Mailgun API
-        self.send_via_mailgun(notification).await
-    }
-
-    /// Send email via Mailgun API
-    async fn send_via_mailgun(&self, notification: &EmailNotification) -> Result<(), AppError> {
+    /// Send email via Mailgun API (direct version)
+    async fn send_via_mailgun_direct(
+        &self, 
+        subject: &str, 
+        html_content: &str, 
+        email_address: &str
+    ) -> Result<(), AppError> {
         debug!("Sending email via Mailgun API:");
         debug!("  From: {} <{}>", self.mailgun_config.from_name, self.mailgun_config.from_email);
-        debug!("  To: {}", notification.email_address);
-        debug!("  Subject: {}", notification.subject);
-        debug!("  Template: {}", notification.template_name);
-
-        // Render email content from template data
-        let html_content = self.render_email_template(
-            &notification.template_name, 
-            &notification.template_data
-        ).await?;
+        debug!("  To: {}", email_address);
+        debug!("  Subject: {}", subject);
 
         // Create email addresses
         let from_address = EmailAddress::name_address(&self.mailgun_config.from_name, &self.mailgun_config.from_email);
-        let to_address = EmailAddress::address(&notification.email_address);
+        let to_address = EmailAddress::address(email_address);
 
         // Build Mailgun message
         let message = Message {
             to: vec![to_address],
-            subject: notification.subject.clone(),
-            body: MessageBody::Html(html_content),
+            subject: subject.to_string(),
+            body: MessageBody::Html(html_content.to_string()),
             ..Default::default()
         };
 
@@ -349,7 +236,7 @@ impl EmailNotificationService {
         match send_email(&self.mailgun_credentials, &from_address, message) {
             Ok(response) => {
                 info!("Email sent successfully via Mailgun: {} (ID: {})", 
-                      notification.email_address, 
+                      email_address, 
                       response.id);
                 Ok(())
             }
@@ -359,6 +246,7 @@ impl EmailNotificationService {
             }
         }
     }
+
 
     /// Render email template with data
     async fn render_email_template(&self, template_name: &str, template_data: &JsonValue) -> Result<String, AppError> {
@@ -372,6 +260,11 @@ impl EmailNotificationService {
             "invoice_created" => self.create_invoice_html(template_data),
             "payment_failed" => self.create_payment_failed_html(template_data),
             "credit_purchase_success" => self.create_credit_purchase_html(template_data),
+            "plan_change" => self.create_plan_change_html(template_data),
+            "subscription_cancel_at_period_end" => self.create_subscription_cancellation_html(template_data, true),
+            "subscription_canceled_immediately" => self.create_subscription_cancellation_html(template_data, false),
+            "subscription_reactivated" => self.create_subscription_reactivation_html(template_data),
+            "subscription_resumed" => self.create_subscription_resumed_html(template_data),
             _ => return Err(AppError::InvalidArgument(format!("Unknown template: {}", template_name))),
         };
 
@@ -545,6 +438,228 @@ impl EmailNotificationService {
         "#, currency_symbol, credit_amount, account_url, support_url)
     }
 
+    fn create_plan_change_html(&self, data: &JsonValue) -> String {
+        let old_plan_id = data.get("old_plan_id").and_then(|v| v.as_str()).unwrap_or("previous plan");
+        let new_plan_name = data.get("new_plan_name").and_then(|v| v.as_str()).unwrap_or("new plan");
+        let changed_at = data.get("changed_at").and_then(|v| v.as_str()).unwrap_or("recently");
+        let account_url = data.get("account_url").and_then(|v| v.as_str()).unwrap_or("#");
+
+        format!(r#"
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Subscription Plan Updated</title>
+    <style>
+        body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+        .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+        .success {{ background: #d4edda; border-left: 4px solid #28a745; padding: 15px; margin: 20px 0; border-radius: 5px; }}
+        .btn {{ background: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block; margin: 5px; }}
+        .plan-info {{ background: #e9ecef; padding: 15px; border-radius: 5px; margin: 15px 0; }}
+        .highlight {{ color: #28a745; font-weight: bold; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Your Subscription Plan Has Been Updated</h1>
+        <div class="success">
+            <p>Great news! Your subscription plan has been successfully updated.</p>
+        </div>
+        <div class="plan-info">
+            <p><strong>Previous Plan:</strong> {}</p>
+            <p><strong>New Plan:</strong> <span class="highlight">{}</span></p>
+            <p><strong>Changed:</strong> {}</p>
+        </div>
+        <p>Your new plan features are now active and ready to use. You can view your current subscription details and usage in your account dashboard.</p>
+        <div style="text-align: center; margin: 30px 0;">
+            <a href="{}" class="btn">View Account Dashboard</a>
+        </div>
+        <p><strong>Thank you for your continued trust in Vibe Manager!</strong></p>
+        <p><small>This is an automated notification from Vibe Manager. If you have any questions about your subscription, please contact our support team.</small></p>
+    </div>
+</body>
+</html>
+        "#, old_plan_id, new_plan_name, changed_at, account_url)
+    }
+
+    fn create_subscription_cancellation_html(&self, data: &JsonValue, at_period_end: bool) -> String {
+        let canceled_at = data.get("canceled_at").and_then(|v| v.as_str()).unwrap_or("recently");
+        let period_ends_at = data.get("period_ends_at").and_then(|v| v.as_str()).unwrap_or("the end of your current billing period");
+        let account_url = data.get("account_url").and_then(|v| v.as_str()).unwrap_or("#");
+        let reactivate_url = data.get("reactivate_url").and_then(|v| v.as_str()).unwrap_or("#");
+        let cancellation_reason = data.get("cancellation_reason").and_then(|v| v.as_str());
+
+        let (title, main_message, status_color) = if at_period_end {
+            (
+                "Subscription Cancellation Scheduled",
+                format!("Your subscription will be canceled on <strong>{}</strong>. You'll continue to have access to all features until then.", period_ends_at),
+                "#ffc107" // Warning yellow
+            )
+        } else {
+            (
+                "Subscription Canceled",
+                "Your subscription has been canceled immediately. Your access to premium features has ended.".to_string(),
+                "#dc3545" // Danger red
+            )
+        };
+
+        let reason_section = if let Some(reason) = cancellation_reason {
+            format!("<p><strong>Reason:</strong> {}</p>", reason)
+        } else {
+            String::new()
+        };
+
+        format!(r#"
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{}</title>
+    <style>
+        body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+        .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+        .alert {{ background: #f8f9fa; border-left: 4px solid {}; padding: 15px; margin: 20px 0; border-radius: 5px; }}
+        .btn {{ background: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block; margin: 5px; }}
+        .btn-secondary {{ background: #6c757d; }}
+        .cancellation-info {{ background: #e9ecef; padding: 15px; border-radius: 5px; margin: 15px 0; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>{}</h1>
+        <div class="alert">
+            <p>{}</p>
+        </div>
+        <div class="cancellation-info">
+            <p><strong>Canceled:</strong> {}</p>
+            {}
+        </div>
+        <p>We're sorry to see you go! If you change your mind, you can reactivate your subscription at any time.</p>
+        <div style="text-align: center; margin: 30px 0;">
+            <a href="{}" class="btn">View Account Dashboard</a>
+            <a href="{}" class="btn btn-secondary">Reactivate Subscription</a>
+        </div>
+        <p>If you have any feedback about your experience or need assistance, please don't hesitate to reach out to our support team.</p>
+        <p><small>This is an automated notification from Vibe Manager.</small></p>
+    </div>
+</body>
+</html>
+        "#, title, status_color, title, main_message, canceled_at, reason_section, account_url, reactivate_url)
+    }
+
+    fn create_subscription_reactivation_html(&self, data: &JsonValue) -> String {
+        let plan_name = data.get("plan_name").and_then(|v| v.as_str()).unwrap_or("subscription plan");
+        let reactivated_at = data.get("reactivated_at").and_then(|v| v.as_str()).unwrap_or("recently");
+        let account_url = data.get("account_url").and_then(|v| v.as_str()).unwrap_or("#");
+
+        format!(r#"
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Welcome Back! Your Subscription is Active</title>
+    <style>
+        body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+        .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+        .success {{ background: #d4edda; border-left: 4px solid #28a745; padding: 15px; margin: 20px 0; border-radius: 5px; }}
+        .btn {{ background: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block; margin: 5px; }}
+        .reactivation-info {{ background: #e9ecef; padding: 15px; border-radius: 5px; margin: 15px 0; }}
+        .highlight {{ color: #28a745; font-weight: bold; }}
+        .welcome {{ text-align: center; padding: 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 10px; margin: 20px 0; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="welcome">
+            <h1 style="margin: 0; color: white;">🎉 Welcome Back!</h1>
+            <p style="margin: 10px 0 0 0; color: white;">Your subscription has been successfully reactivated</p>
+        </div>
+        <div class="success">
+            <p>Great news! Your subscription is now active and all premium features are available to you again.</p>
+        </div>
+        <div class="reactivation-info">
+            <p><strong>Plan:</strong> <span class="highlight">{}</span></p>
+            <p><strong>Reactivated:</strong> {}</p>
+            <p><strong>Status:</strong> <span class="highlight">Active</span></p>
+        </div>
+        <p>You now have full access to:</p>
+        <ul>
+            <li>All AI services and models</li>
+            <li>Unlimited voice transcription</li>
+            <li>Advanced project management features</li>
+            <li>Priority customer support</li>
+        </ul>
+        <p>We're excited to have you back! If you have any questions or need assistance getting started again, our support team is here to help.</p>
+        <div style="text-align: center; margin: 30px 0;">
+            <a href="{}" class="btn">Go to Dashboard</a>
+        </div>
+        <p><strong>Thank you for choosing Vibe Manager!</strong></p>
+        <p><small>This is an automated notification from Vibe Manager. If you have any questions, please contact our support team.</small></p>
+    </div>
+</body>
+</html>
+        "#, plan_name, reactivated_at, account_url)
+    }
+
+    fn create_subscription_resumed_html(&self, data: &JsonValue) -> String {
+        let resumed_at = data.get("resumed_at").and_then(|v| v.as_str()).unwrap_or("recently");
+        let period_ends_at = data.get("period_ends_at").and_then(|v| v.as_str()).unwrap_or("your current billing period end");
+        let account_url = data.get("account_url").and_then(|v| v.as_str()).unwrap_or("#");
+
+        format!(r#"
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Your Subscription Cancellation Has Been Undone</title>
+    <style>
+        body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+        .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+        .success {{ background: #d4edda; border-left: 4px solid #28a745; padding: 15px; margin: 20px 0; border-radius: 5px; }}
+        .btn {{ background: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block; margin: 5px; }}
+        .resume-info {{ background: #e9ecef; padding: 15px; border-radius: 5px; margin: 15px 0; }}
+        .highlight {{ color: #28a745; font-weight: bold; }}
+        .header {{ text-align: center; padding: 20px; background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white; border-radius: 10px; margin: 20px 0; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1 style="margin: 0; color: white;">✅ Great News!</h1>
+            <p style="margin: 10px 0 0 0; color: white;">Your subscription cancellation has been undone</p>
+        </div>
+        <div class="success">
+            <p>Your subscription will continue uninterrupted! The scheduled cancellation has been removed from your account.</p>
+        </div>
+        <div class="resume-info">
+            <p><strong>Resumed:</strong> {}</p>
+            <p><strong>Status:</strong> <span class="highlight">Active (Cancellation Removed)</span></p>
+            <p><strong>Next Billing:</strong> {}</p>
+        </div>
+        <p>Your subscription will continue as normal, and you'll maintain access to all premium features. You'll be billed at your next billing cycle as scheduled.</p>
+        <p>Key benefits you'll continue to enjoy:</p>
+        <ul>
+            <li>Uninterrupted access to all AI services</li>
+            <li>Full voice transcription capabilities</li>
+            <li>Complete project management suite</li>
+            <li>Priority customer support</li>
+        </ul>
+        <p>Thank you for staying with us! If you have any questions or concerns, our support team is always here to help.</p>
+        <div style="text-align: center; margin: 30px 0;">
+            <a href="{}" class="btn">View Account Dashboard</a>
+        </div>
+        <p><strong>Thank you for continuing with Vibe Manager!</strong></p>
+        <p><small>This is an automated notification from Vibe Manager. If you have any questions, please contact our support team.</small></p>
+    </div>
+</body>
+</html>
+        "#, resumed_at, period_ends_at, account_url)
+    }
+
     /// Get application base URL for links in emails
     async fn get_app_base_url(&self) -> Result<String, AppError> {
         let environment = std::env::var("ENVIRONMENT").unwrap_or_else(|_| "production".to_string());
@@ -558,33 +673,22 @@ impl EmailNotificationService {
         Ok(base_url.to_string())
     }
 
-    /// Cleanup old processed notifications
-    pub async fn cleanup_old_notifications(&self, days: i32) -> Result<i64, AppError> {
-        let deleted_count = self.email_repository.cleanup_old_notifications(days).await?;
-        
-        if deleted_count > 0 {
-            info!("Cleaned up {} old email notifications", deleted_count);
-        }
-
-        Ok(deleted_count)
+    /// Log email statistics (replaced database cleanup)
+    pub async fn log_email_stats(&self) -> Result<(), AppError> {
+        info!("Email service running in direct mode - no database queuing");
+        Ok(())
     }
 
-    /// Get notification statistics
-    pub async fn get_stats(&self) -> Result<crate::db::repositories::EmailNotificationStats, AppError> {
-        self.email_repository.get_stats().await
-    }
-
-    /// Queue credit purchase success notification
-    pub async fn queue_credit_purchase_notification(
+    /// Send credit purchase success notification
+    pub async fn send_credit_purchase_notification(
         &self,
         user_id: &Uuid,
         email_address: &str,
         credit_amount: &BigDecimal,
         currency: &str,
     ) -> Result<(), AppError> {
-        debug!("Queuing credit purchase notification for user: {} - {} {}", user_id, credit_amount, currency);
+        debug!("Sending credit purchase notification for user: {} - {} {}", user_id, credit_amount, currency);
 
-        let templates = self.config_repository.get_email_templates().await?;
         let app_base_url = self.get_app_base_url().await?;
         
         let template_data = json!({
@@ -596,42 +700,138 @@ impl EmailNotificationService {
             "support_url": format!("{}/support", app_base_url)
         });
 
-        let notification = EmailNotification {
-            id: Uuid::new_v4(),
-            user_id: *user_id,
-            email_address: email_address.to_string(),
-            notification_type: "credit_purchase_success".to_string(),
-            subject: templates.credit_purchase_success.subject.clone(),
-            template_name: templates.credit_purchase_success.template.clone(),
-            template_data,
-            status: "pending".to_string(),
-            attempts: 0,
-            max_attempts: 3,
-            last_attempt_at: None,
-            sent_at: None,
-            error_message: None,
-            priority: 2, // Medium priority
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-        };
+        let subject = "Credits Successfully Added to Your Account".to_string();
+        let template_name = "credit_purchase_success".to_string();
 
-        self.email_repository.create(&notification).await?;
-        info!("Credit purchase notification queued for user: {}", user_id);
+        self.send_email_directly(&subject, &template_name, &template_data, email_address).await?;
+        info!("Credit purchase notification sent for user: {}", user_id);
 
         Ok(())
     }
 
-    /// Get access to the email repository for advanced operations
-    pub fn get_email_repository(&self) -> &Arc<EmailNotificationRepository> {
-        &self.email_repository
-    }
-}
+    /// Send a plan change notification
+    pub async fn send_plan_change_notification(
+        &self,
+        user_id: &Uuid,
+        user_email: &str,
+        old_plan_id: &str,
+        new_plan_id: &str,
+        new_plan_name: &str,
+    ) -> Result<(), AppError> {
+        let app_base_url = self.get_app_base_url().await?;
+        
+        let template_data = json!({
+            "user_id": user_id,
+            "old_plan_id": old_plan_id,
+            "new_plan_id": new_plan_id,
+            "new_plan_name": new_plan_name,
+            "account_url": format!("{}/account", app_base_url),
+            "billing_url": format!("{}/account", app_base_url),
+            "changed_at": Utc::now().format("%B %d, %Y at %I:%M %p UTC").to_string()
+        });
 
-#[derive(Debug, Default)]
-pub struct ProcessingStats {
-    pub total_processed: i32,
-    pub successful: i32,
-    pub failed: i32,
-    pub retries_successful: i32,
-    pub retries_failed: i32,
+        let subject = format!("Your subscription plan has been updated to {}", new_plan_name);
+        let template_name = "plan_change".to_string();
+
+        self.send_email_directly(&subject, &template_name, &template_data, user_email).await?;
+        info!("Sent plan change notification for user: {} (from {} to {})", user_id, old_plan_id, new_plan_id);
+
+        Ok(())
+    }
+
+    /// Send a subscription cancellation notification
+    pub async fn send_subscription_cancellation_notification(
+        &self,
+        user_id: &Uuid,
+        user_email: &str,
+        at_period_end: bool,
+        period_ends_at: Option<&DateTime<Utc>>,
+        cancellation_reason: Option<&str>,
+    ) -> Result<(), AppError> {
+        // Use hardcoded templates
+        let app_base_url = self.get_app_base_url().await?;
+        
+        let (subject, template_name) = if at_period_end {
+            (
+                "Your subscription will cancel at the end of the current billing period".to_string(),
+                "subscription_cancel_at_period_end".to_string()
+            )
+        } else {
+            (
+                "Your subscription has been canceled".to_string(),
+                "subscription_canceled_immediately".to_string()
+            )
+        };
+
+        let template_data = json!({
+            "user_id": user_id,
+            "at_period_end": at_period_end,
+            "period_ends_at": period_ends_at.map(|dt| dt.format("%B %d, %Y at %I:%M %p UTC").to_string()),
+            "cancellation_reason": cancellation_reason,
+            "account_url": format!("{}/account", app_base_url),
+            "reactivate_url": format!("{}/account", app_base_url),
+            "canceled_at": Utc::now().format("%B %d, %Y at %I:%M %p UTC").to_string()
+        });
+
+
+        self.send_email_directly(&subject, &template_name, &template_data, user_email).await?;
+        info!("Sent subscription cancellation notification for user: {} (at_period_end: {})", user_id, at_period_end);
+
+        Ok(())
+    }
+
+    /// Send a subscription reactivation notification
+    pub async fn send_reactivation_notification(
+        &self,
+        user_id: &Uuid,
+        user_email: &str,
+        plan_name: &str,
+    ) -> Result<(), AppError> {
+        // Use hardcoded templates
+        let app_base_url = self.get_app_base_url().await?;
+        
+        let template_data = json!({
+            "user_id": user_id,
+            "plan_name": plan_name,
+            "account_url": format!("{}/account", app_base_url),
+            "billing_url": format!("{}/account", app_base_url),
+            "reactivated_at": Utc::now().format("%B %d, %Y at %I:%M %p UTC").to_string()
+        });
+
+        let subject = format!("Your subscription has been reactivated - Welcome back!");
+        let template_name = "subscription_reactivated".to_string();
+
+        self.send_email_directly(&subject, &template_name, &template_data, user_email).await?;
+        info!("Sent subscription reactivation notification for user: {} (plan: {})", user_id, plan_name);
+
+        Ok(())
+    }
+
+    /// Send a subscription resumed notification (for when cancellation is undone)
+    pub async fn send_subscription_resumed_notification(
+        &self,
+        user_id: &Uuid,
+        user_email: &str,
+        period_ends_at: Option<&DateTime<Utc>>,
+    ) -> Result<(), AppError> {
+        // Use hardcoded templates
+        let app_base_url = self.get_app_base_url().await?;
+        
+        let template_data = json!({
+            "user_id": user_id,
+            "period_ends_at": period_ends_at.map(|dt| dt.format("%B %d, %Y at %I:%M %p UTC").to_string()),
+            "account_url": format!("{}/account", app_base_url),
+            "billing_url": format!("{}/account", app_base_url),
+            "resumed_at": Utc::now().format("%B %d, %Y at %I:%M %p UTC").to_string()
+        });
+
+        let subject = "Your subscription cancellation has been undone".to_string();
+        let template_name = "subscription_resumed".to_string();
+
+        self.send_email_directly(&subject, &template_name, &template_data, user_email).await?;
+        info!("Sent subscription resumed notification for user: {}", user_id);
+
+        Ok(())
+    }
+
 }

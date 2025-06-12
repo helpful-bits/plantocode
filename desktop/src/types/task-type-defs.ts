@@ -6,11 +6,10 @@
  * task-type-validation.ts, and task-model-settings.tsx.
  */
 
-// Base TaskType string union
+// Base TaskType string union (synced with Rust TaskType enum)
 export type TaskType =
   | "implementation_plan"
   | "path_finder" 
-  | "text_improvement"
   | "voice_transcription"
   | "text_correction"
   | "path_correction"
@@ -25,14 +24,13 @@ export type TaskType =
   | "local_file_filtering"
   | "file_relevance_assessment"
   | "extended_path_finder"
-  | "extended_path_correction"
-  | "server_proxy_transcription"
+  | "subscription_lifecycle"
   | "unknown";
 
-// Task types that support system prompts
+// Task types that support system prompts (LLM tasks only)
 export type TaskTypeSupportingSystemPrompts =
   | "path_finder"
-  | "text_improvement"
+  | "voice_transcription"
   | "guidance_generation"
   | "text_correction"
   | "implementation_plan"
@@ -42,14 +40,12 @@ export type TaskTypeSupportingSystemPrompts =
   | "regex_summary_generation"
   | "generic_llm_stream"
   | "extended_path_finder"
-  | "extended_path_correction"
   | "file_relevance_assessment";
 
-// Runtime array of all task types
+// Runtime array of all task types (synced with Rust TaskType enum)
 export const ALL_TASK_TYPES: readonly TaskType[] = [
   "implementation_plan",
   "path_finder",
-  "text_improvement",
   "voice_transcription",
   "text_correction",
   "path_correction",
@@ -63,15 +59,14 @@ export const ALL_TASK_TYPES: readonly TaskType[] = [
   "local_file_filtering",
   "file_relevance_assessment",
   "extended_path_finder",
-  "extended_path_correction",
-  "server_proxy_transcription",
+  "subscription_lifecycle",
   "unknown",
 ] as const;
 
-// Runtime array of system prompt supporting task types
+// Runtime array of system prompt supporting task types (LLM tasks only)
 export const SYSTEM_PROMPT_TASK_TYPES: readonly TaskTypeSupportingSystemPrompts[] = [
   "path_finder",
-  "text_improvement",
+  "voice_transcription",
   "guidance_generation",
   "text_correction",
   "implementation_plan",
@@ -81,7 +76,6 @@ export const SYSTEM_PROMPT_TASK_TYPES: readonly TaskTypeSupportingSystemPrompts[
   "regex_summary_generation",
   "generic_llm_stream",
   "extended_path_finder",
-  "extended_path_correction",
   "file_relevance_assessment",
 ] as const;
 
@@ -107,7 +101,7 @@ export const TaskTypeDetails: Record<TaskType, {
   category?: string;
   description?: string;
   hidden?: boolean;
-  defaultProvider?: "google" | "anthropic" | "openai" | "deepseek" | "groq";
+  defaultProvider?: "google" | "anthropic" | "openai" | "deepseek" | "replicate";
   apiType?: "llm" | "filesystem" | "local";
   systemPromptId?: string | null;
 }> = {
@@ -126,19 +120,13 @@ export const TaskTypeDetails: Record<TaskType, {
     description: "AI model used to find relevant files in your project",
     defaultProvider: "google"
   },
-  text_improvement: { 
-    requiresLlm: true, 
-    displayName: "Text Improvement", 
-    category: "Text Processing",
-    description: "Enhance and refine text using AI",
-    defaultProvider: "anthropic"
-  },
   voice_transcription: { 
-    requiresLlm: true, 
+    requiresLlm: false, 
     displayName: "Voice Transcription", 
     category: "Audio Processing",
-    description: "Convert speech to text using AI transcription",
-    defaultProvider: "openai"
+    description: "Convert speech to text using batch transcription with configurable parameters",
+    apiType: "filesystem",
+    defaultProvider: "replicate"
   },
   text_correction: { 
     requiresLlm: true, 
@@ -194,8 +182,7 @@ export const TaskTypeDetails: Record<TaskType, {
     displayName: "File Finder Workflow", 
     category: "Workflow",
     description: "Advanced file finding workflow with multiple steps",
-    apiType: "filesystem",
-    systemPromptId: null
+    apiType: "filesystem"
   },
   streaming: { 
     requiresLlm: true, 
@@ -212,7 +199,7 @@ export const TaskTypeDetails: Record<TaskType, {
     category: "Workflow Stage",
     description: "Local file filtering and search operations",
     hidden: true,
-    defaultProvider: "google"
+    apiType: "filesystem"
   },
   file_relevance_assessment: { 
     requiresLlm: true, 
@@ -228,20 +215,13 @@ export const TaskTypeDetails: Record<TaskType, {
     description: "Comprehensive file discovery with deeper analysis",
     defaultProvider: "google"
   },
-  extended_path_correction: { 
-    requiresLlm: true, 
-    displayName: "Extended Path Correction", 
-    category: "Workflow Stage",
-    description: "Final validation and correction of discovered files",
-    defaultProvider: "google"
-  },
-  server_proxy_transcription: { 
-    requiresLlm: true, 
-    displayName: "Server Proxy Transcription", 
-    category: "Audio Processing",
-    description: "Server-based transcription processing",
+  subscription_lifecycle: { 
+    requiresLlm: false, 
+    displayName: "Subscription Lifecycle", 
+    category: "Billing",
+    description: "Subscription management operations",
     hidden: true,
-    defaultProvider: "groq"
+    apiType: "local"
   },
   
   // Fallback
@@ -323,4 +303,147 @@ export const JOB_STATUSES = {
     "failed",
     "canceled",
   ] as JobStatus[],
+};
+
+// Transcription Configuration and Validation
+export interface TranscriptionConfiguration {
+  defaultLanguage?: string | null;
+  defaultPrompt?: string | null;
+  defaultTemperature?: number | null;
+  model?: string | null;
+}
+
+// Supported language codes for transcription (ISO 639-1 format with common extensions)
+export const SUPPORTED_TRANSCRIPTION_LANGUAGES = [
+  "en", // English
+  "es", // Spanish
+  "fr", // French
+  "de", // German
+  "it", // Italian
+  "pt", // Portuguese
+  "ru", // Russian
+  "ja", // Japanese
+  "ko", // Korean
+  "zh", // Chinese
+  "zh-cn", // Chinese (Simplified)
+  "zh-tw", // Chinese (Traditional)
+  "ar", // Arabic
+  "hi", // Hindi
+  "nl", // Dutch
+  "pl", // Polish
+  "sv", // Swedish
+  "da", // Danish
+  "no", // Norwegian
+  "fi", // Finnish
+  "tr", // Turkish
+  "he", // Hebrew
+  "th", // Thai
+  "vi", // Vietnamese
+  "uk", // Ukrainian
+  "cs", // Czech
+  "hu", // Hungarian
+  "ro", // Romanian
+  "bg", // Bulgarian
+  "hr", // Croatian
+  "sk", // Slovak
+  "sl", // Slovenian
+  "et", // Estonian
+  "lv", // Latvian
+  "lt", // Lithuanian
+] as const;
+
+export type SupportedTranscriptionLanguage = typeof SUPPORTED_TRANSCRIPTION_LANGUAGES[number];
+
+// Validation functions for transcription parameters
+export const validateTranscriptionLanguage = (language: string): boolean => {
+  if (!language) return true; // Optional parameter
+  return SUPPORTED_TRANSCRIPTION_LANGUAGES.includes(language as SupportedTranscriptionLanguage) ||
+         /^[a-z]{2}(-[a-z]{2})?$/i.test(language); // Basic language code format
+};
+
+export const validateTranscriptionTemperature = (temperature: number): boolean => {
+  return temperature >= 0.0 && temperature <= 1.0;
+};
+
+export const validateTranscriptionPrompt = (prompt: string): boolean => {
+  if (!prompt) return true; // Optional parameter
+  return prompt.trim().length <= 1000; // Max 1000 characters
+};
+
+// Transcription parameter validation utility
+export const validateTranscriptionParameters = (params: {
+  language?: string;
+  prompt?: string;
+  temperature?: number;
+}): { isValid: boolean; errors: string[] } => {
+  const errors: string[] = [];
+  
+  if (params.language && !validateTranscriptionLanguage(params.language)) {
+    errors.push(`Invalid language code: ${params.language}. Use ISO 639-1 format (e.g., 'en', 'es', 'zh-cn')`);
+  }
+  
+  if (params.temperature !== undefined && !validateTranscriptionTemperature(params.temperature)) {
+    errors.push(`Temperature must be between 0.0 and 1.0, got: ${params.temperature}`);
+  }
+  
+  if (params.prompt && !validateTranscriptionPrompt(params.prompt)) {
+    errors.push('Prompt must be 1000 characters or less');
+  }
+  
+  return {
+    isValid: errors.length === 0,
+    errors
+  };
+};
+
+// Default transcription configuration
+export const DEFAULT_TRANSCRIPTION_CONFIG: TranscriptionConfiguration = {
+  defaultLanguage: null, // Auto-detect
+  defaultPrompt: null, // No custom prompt
+  defaultTemperature: 0.7, // Balanced creativity vs consistency
+  model: null, // Use default model
+};
+
+// Language display names for UI
+export const TRANSCRIPTION_LANGUAGE_DISPLAY: Record<string, string> = {
+  "en": "English",
+  "es": "Spanish",
+  "fr": "French",
+  "de": "German",
+  "it": "Italian",
+  "pt": "Portuguese",
+  "ru": "Russian",
+  "ja": "Japanese",
+  "ko": "Korean",
+  "zh": "Chinese",
+  "zh-cn": "Chinese (Simplified)",
+  "zh-tw": "Chinese (Traditional)",
+  "ar": "Arabic",
+  "hi": "Hindi",
+  "nl": "Dutch",
+  "pl": "Polish",
+  "sv": "Swedish",
+  "da": "Danish",
+  "no": "Norwegian",
+  "fi": "Finnish",
+  "tr": "Turkish",
+  "he": "Hebrew",
+  "th": "Thai",
+  "vi": "Vietnamese",
+  "uk": "Ukrainian",
+  "cs": "Czech",
+  "hu": "Hungarian",
+  "ro": "Romanian",
+  "bg": "Bulgarian",
+  "hr": "Croatian",
+  "sk": "Slovak",
+  "sl": "Slovenian",
+  "et": "Estonian",
+  "lv": "Latvian",
+  "lt": "Lithuanian",
+};
+
+// Get display name for language code
+export const getTranscriptionLanguageDisplayName = (languageCode: string): string => {
+  return TRANSCRIPTION_LANGUAGE_DISPLAY[languageCode] || languageCode.toUpperCase();
 };

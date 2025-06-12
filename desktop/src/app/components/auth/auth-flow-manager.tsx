@@ -56,24 +56,40 @@ export function AuthFlowManager({ children }: AuthFlowManagerProps) {
       const checkOnboardingStatus = async () => {
         try {
           // First check storage mode with timeout
-          const storageMode = await Promise.race([
-            invoke<string>('get_storage_mode'),
-            new Promise<never>((_, reject) => 
-              setTimeout(() => reject(new Error('Storage mode check timeout')), 10000)
-            )
-          ]);
+          let timeoutId: ReturnType<typeof setTimeout>;
+          const timeoutPromise = new Promise<never>((_, reject) => {
+            timeoutId = setTimeout(() => reject(new Error('Storage mode check timeout')), 10000);
+          });
+
+          let storageMode: string;
+          try {
+            storageMode = await Promise.race([
+              invoke<string>('get_storage_mode'),
+              timeoutPromise
+            ]);
+          } finally {
+            clearTimeout(timeoutId!);
+          }
           
           const isKeyringRequired = storageMode === 'keyring';
           
           if (isKeyringRequired) {
             // If keyring is required, check if onboarding has been completed
             try {
-              const hasSetup = await Promise.race([
-                invoke<boolean>('is_onboarding_completed_command'),
-                new Promise<never>((_, reject) => 
-                  setTimeout(() => reject(new Error('Onboarding check timeout')), 5000)
-                )
-              ]);
+              let onboardingTimeoutId: ReturnType<typeof setTimeout>;
+              const onboardingTimeoutPromise = new Promise<never>((_, reject) => {
+                onboardingTimeoutId = setTimeout(() => reject(new Error('Onboarding check timeout')), 5000);
+              });
+
+              let hasSetup: boolean;
+              try {
+                hasSetup = await Promise.race([
+                  invoke<boolean>('is_onboarding_completed_command'),
+                  onboardingTimeoutPromise
+                ]);
+              } finally {
+                clearTimeout(onboardingTimeoutId!);
+              }
               setIsOnboardingNeeded(!hasSetup);
             } catch (storeError) {
               const errorInfo = extractErrorInfo(storeError);
@@ -111,12 +127,19 @@ export function AuthFlowManager({ children }: AuthFlowManagerProps) {
 
     const handleOnboardingComplete = async () => {
       try {
-        await Promise.race([
-          invoke('set_onboarding_completed_command'),
-          new Promise<never>((_, reject) => 
-            setTimeout(() => reject(new Error('Onboarding save timeout')), 5000)
-          )
-        ]);
+        let saveTimeoutId: ReturnType<typeof setTimeout>;
+        const saveTimeoutPromise = new Promise<never>((_, reject) => {
+          saveTimeoutId = setTimeout(() => reject(new Error('Onboarding save timeout')), 5000);
+        });
+
+        try {
+          await Promise.race([
+            invoke('set_onboarding_completed_command'),
+            saveTimeoutPromise
+          ]);
+        } finally {
+          clearTimeout(saveTimeoutId!);
+        }
         setIsOnboardingNeeded(false);
         showNotification({
           title: "Setup Complete",
@@ -146,20 +169,34 @@ export function AuthFlowManager({ children }: AuthFlowManagerProps) {
         const initializeAfterAuth = async () => {
           try {
             // Load both runtime configuration and system prompts in parallel
-            const [, systemPromptsResult] = await Promise.all([
-              Promise.race([
-                loadConfig(),
-                new Promise<never>((_, reject) => 
-                  setTimeout(() => reject(new Error('Configuration load timeout')), 30000)
-                )
-              ]),
-              Promise.race([
-                loadSystemPrompts(),
-                new Promise<never>((_, reject) => 
-                  setTimeout(() => reject(new Error('System prompts load timeout')), 30000)
-                )
-              ])
-            ]);
+            let configTimeoutId: ReturnType<typeof setTimeout>;
+            let systemPromptsTimeoutId: ReturnType<typeof setTimeout>;
+            
+            const configTimeoutPromise = new Promise<never>((_, reject) => {
+              configTimeoutId = setTimeout(() => reject(new Error('Configuration load timeout')), 30000);
+            });
+            
+            const systemPromptsTimeoutPromise = new Promise<never>((_, reject) => {
+              systemPromptsTimeoutId = setTimeout(() => reject(new Error('System prompts load timeout')), 30000);
+            });
+
+            let systemPromptsResult: any;
+            try {
+              const [, systemPromptsResponse] = await Promise.all([
+                Promise.race([
+                  loadConfig(),
+                  configTimeoutPromise
+                ]),
+                Promise.race([
+                  loadSystemPrompts(),
+                  systemPromptsTimeoutPromise
+                ])
+              ]);
+              systemPromptsResult = systemPromptsResponse;
+            } finally {
+              clearTimeout(configTimeoutId!);
+              clearTimeout(systemPromptsTimeoutId!);
+            }
 
             if (!systemPromptsResult) {
               throw new Error('System prompts initialization failed');

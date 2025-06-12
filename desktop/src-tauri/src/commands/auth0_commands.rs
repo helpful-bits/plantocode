@@ -340,7 +340,8 @@ pub async fn get_user_info_with_app_jwt(
     let client = &app_state.client;
     let url = format!("{}/api/auth/userinfo", server_url);
     
-    info!("Fetching user info with app JWT");
+    info!("Fetching user info with app JWT from URL: {}", url);
+    info!("Server URL from app_state.settings: {}", server_url);
     
     // Add timeout protection to prevent hanging on network requests
     let fetch_user_info = async {

@@ -10,7 +10,7 @@ export type WorkflowStage =
   | 'LOCAL_FILE_FILTERING'
   | 'FILE_RELEVANCE_ASSESSMENT'
   | 'EXTENDED_PATH_FINDER'
-  | 'EXTENDED_PATH_CORRECTION';
+  | 'PATH_CORRECTION';
 
 // Workflow status - matches backend WorkflowStatus string representations
 export type WorkflowStatus =
@@ -20,6 +20,32 @@ export type WorkflowStatus =
   | 'Completed'
   | 'Failed'
   | 'Canceled';
+
+// Workflow status constants - organized by category for easy use
+export const WORKFLOW_STATUSES = {
+  CREATED: 'Created' as const,
+  RUNNING: 'Running' as const,
+  PAUSED: 'Paused' as const,
+  COMPLETED: 'Completed' as const,
+  FAILED: 'Failed' as const,
+  CANCELED: 'Canceled' as const,
+  
+  // Status groups for filtering/logic
+  ACTIVE: ['Created', 'Running', 'Paused'] as WorkflowStatus[],
+  TERMINAL: ['Completed', 'Failed', 'Canceled'] as WorkflowStatus[],
+  TERMINAL_SUCCESS: ['Completed'] as WorkflowStatus[],
+  TERMINAL_FAILURE: ['Failed', 'Canceled'] as WorkflowStatus[],
+  
+  // Backend string representations (lowercase)
+  BACKEND: {
+    CREATED: 'created' as const,
+    RUNNING: 'running' as const,
+    PAUSED: 'paused' as const,
+    COMPLETED: 'completed' as const,
+    FAILED: 'failed' as const,
+    CANCELED: 'canceled' as const,
+  }
+} as const;
 
 // Job status enum aligned with backend JobStatus string representations
 export type JobStatus =

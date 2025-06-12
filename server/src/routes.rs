@@ -1,9 +1,10 @@
 use actix_web::web;
 use crate::handlers;
+use crate::middleware::RateLimitMiddleware;
 
 /// Configures API routes that REQUIRE JWT authentication.
 /// Mounted under the "/api" scope and wrapped with SecureAuthentication middleware in main.rs.
-pub fn configure_routes(cfg: &mut web::ServiceConfig) {
+pub fn configure_routes(cfg: &mut web::ServiceConfig, strict_rate_limiter: RateLimitMiddleware) {
     cfg.service(
         web::scope("/auth") // Base path: /api/auth
             .route("/userinfo", web::get().to(handlers::auth::userinfo_handler::get_user_info))
@@ -19,47 +20,80 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
             .route("/openrouter/chat/completions", web::post().to(handlers::proxy_handlers::openrouter_chat_completions_proxy))
             .route("/audio/transcriptions", web::post().to(handlers::proxy_handlers::audio_transcriptions_proxy))
             .route("/audio/transcriptions/stream", web::post().to(handlers::proxy_handlers::audio_transcriptions_stream_proxy))
+            .route("/audio/transcriptions/batch", web::post().to(handlers::proxy_handlers::audio_transcriptions_batch_proxy))
+            .route("/transcription/settings", web::get().to(handlers::proxy_handlers::get_transcription_settings))
+            .service(
+                web::resource("/transcription/settings")
+                    .wrap(strict_rate_limiter.clone())
+                    .route(web::put().to(handlers::proxy_handlers::update_transcription_settings))
+            )
+            .service(
+                web::resource("/transcription/settings/reset")
+                    .wrap(strict_rate_limiter.clone())
+                    .route(web::post().to(handlers::proxy_handlers::reset_transcription_settings))
+            )
     );
     
     // Billing routes (/api/billing/*)
     cfg.service(
         web::scope("/billing")
-            .service(handlers::billing_handlers::get_subscription)
-            .service(handlers::billing_handlers::get_available_plans)
-            .service(handlers::billing_handlers::create_checkout_session)
-            .service(handlers::billing_handlers::create_billing_portal)
-            .service(handlers::billing_handlers::get_usage_summary)
-            .service(handlers::billing_handlers::get_invoice_history)
-            .service(handlers::billing_handlers::get_payment_methods)
-            .service(handlers::billing_handlers::get_credit_balance)
-            .service(handlers::billing_handlers::get_credit_packs)
-            .service(handlers::billing_handlers::create_credit_checkout_session)
-            .route("/credits/history", web::get().to(handlers::billing_handlers::get_credit_history))
-    );
-    
-    // Credit routes (/api/credits/*)
-    cfg.service(
-        web::scope("/credits")
-            .route("/balance", web::get().to(handlers::credit_handlers::get_credit_balance))
-            .route("/transactions", web::get().to(handlers::credit_handlers::get_credit_transaction_history))
-            .route("/packs", web::get().to(handlers::credit_handlers::get_credit_packs))
-            .route("/packs/{pack_id}", web::get().to(handlers::credit_handlers::get_credit_pack_by_id))
-            .route("/purchase", web::post().to(handlers::credit_handlers::create_credit_purchase_checkout))
-            .route("/stats", web::get().to(handlers::credit_handlers::get_credit_stats))
-            .route("/admin/adjust", web::post().to(handlers::credit_handlers::admin_adjust_credits))
-            .route("/webhook/stripe", web::post().to(handlers::credit_handlers::handle_stripe_webhook))
-    );
-    
-    // Spending routes (/api/spending/*)
-    cfg.service(
-        web::scope("/spending")
-            .service(handlers::spending_handlers::get_spending_status)
-            .service(handlers::spending_handlers::check_service_access)
-            .service(handlers::spending_handlers::update_spending_limits)
-            .service(handlers::spending_handlers::acknowledge_alert)
-            .service(handlers::spending_handlers::get_spending_history)
-            .service(handlers::spending_handlers::get_spending_analytics)
-            .service(handlers::spending_handlers::get_spending_forecast)
+            // Subscription management routes
+            .service(handlers::billing::subscription_handlers::get_subscription)
+            .service(handlers::billing::subscription_handlers::get_subscription_pending_payment)
+            .service(handlers::billing::subscription_handlers::complete_pending_payment)
+            // Payment and billing portal routes
+            .service(handlers::billing::payment_handlers::create_billing_portal)
+            .service(handlers::billing::payment_handlers::get_available_plans)
+            .service(handlers::billing::subscription_handlers::get_usage_summary)
+            .service(handlers::billing::payment_handlers::get_invoice_history)
+            .service(handlers::billing::payment_handlers::get_payment_methods)
+            .service(handlers::billing::payment_handlers::delete_payment_method)
+            .service(handlers::billing::payment_handlers::set_default_payment_method)
+            // Credit system routes (/api/billing/credits/*)
+            .service(
+                web::scope("/credits")
+                    .service(handlers::billing::credit_handlers::get_credit_balance)
+                    .service(handlers::billing::credit_handlers::get_credit_packs)
+                    .route("/history", web::get().to(handlers::billing::credit_handlers::get_credit_history))
+                    .route("/transaction-history", web::get().to(handlers::billing::credit_handlers::get_credit_transaction_history))
+                    .route("/stats", web::get().to(handlers::billing::credit_handlers::get_credit_stats))
+                    .route("/summary", web::get().to(handlers::billing::credit_handlers::get_credit_summary))
+                    .route("/packs/{pack_id}", web::get().to(handlers::billing::credit_handlers::get_credit_pack_by_id))
+                    .route("/admin/adjust", web::post().to(handlers::billing::credit_handlers::admin_adjust_credits))
+            )
+            // Modern PaymentIntent endpoints (2024) - /api/billing/payment-intents/credits
+            .service(handlers::billing::credit_handlers::create_credit_payment_intent)
+            .service(handlers::billing::payment_handlers::create_subscription_with_intent)
+            .service(handlers::billing::payment_handlers::create_setup_intent)
+            .service(handlers::billing::payment_handlers::get_payment_intent_status)
+            .service(handlers::billing::payment_handlers::get_stripe_publishable_key)
+            // Note: Billing details and invoice customization now handled via Stripe Customer Portal
+            // Subscription lifecycle management endpoints - with strict rate limiting
+            .service(
+                web::resource("/subscription/cancel")
+                    .wrap(strict_rate_limiter.clone())
+                    .route(web::post().to(handlers::billing::subscription_handlers::cancel_subscription))
+            )
+            .service(
+                web::resource("/subscription/resume")
+                    .wrap(strict_rate_limiter.clone())
+                    .route(web::post().to(handlers::billing::subscription_handlers::resume_subscription))
+            )
+            .service(
+                web::resource("/subscription/reactivate")
+                    .wrap(strict_rate_limiter.clone())
+                    .route(web::post().to(handlers::billing::subscription_handlers::reactivate_subscription))
+            )
+            // Move spending routes under billing scope (/api/billing/spending/*)
+            .service(
+                web::scope("/spending")
+                    .service(handlers::spending_handlers::get_spending_status)
+                    .service(handlers::spending_handlers::check_service_access)
+                    .service(handlers::spending_handlers::acknowledge_alert)
+                    .service(handlers::spending_handlers::get_spending_history)
+                    .service(handlers::spending_handlers::get_spending_analytics)
+                    .service(handlers::spending_handlers::get_spending_forecast)
+            )
     );
     
     // Usage routes (/api/usage/*)
@@ -150,8 +184,7 @@ pub fn configure_public_api_routes(cfg: &mut web::ServiceConfig) {
 /// Configures webhook routes that DO NOT require JWT authentication.
 /// Mounted under the "/webhooks" scope in main.rs.
 pub fn configure_webhook_routes(cfg: &mut web::ServiceConfig) {
-    cfg.service(handlers::billing_handlers::stripe_webhook);
-    cfg.route("/stripe/credits", web::post().to(handlers::credit_handlers::handle_stripe_webhook));
+    cfg.service(handlers::billing::webhook_handlers::stripe_webhook);
 }
 
 // Make sure all modules are properly compiled
@@ -162,9 +195,12 @@ mod tests {
     
     #[test]
     fn test_routes_compile() {
-        let mut app = test::init_service(
+        // Test that all route configurations compile without errors
+        let rate_limiter = RateLimitMiddleware::new(100, std::time::Duration::from_secs(60));
+        
+        let _app = test::init_service(
             actix_web::App::new()
-                .configure(configure_routes)
+                .configure(|cfg| configure_routes(cfg, rate_limiter))
                 .configure(configure_public_auth_routes)
                 .configure(configure_public_api_routes)
                 .configure(configure_webhook_routes)

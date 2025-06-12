@@ -11,6 +11,7 @@ import type {
   WorkflowState,
   WorkflowStage,
 } from '@/types/workflow-types';
+import { WORKFLOW_STATUSES } from '@/types/workflow-types';
 
 interface WorkflowPerformanceData {
   workflowId: string;
@@ -39,10 +40,19 @@ export class WorkflowPerformanceMonitor {
   private performanceData: Map<string, WorkflowPerformanceData> = new Map();
   private memoryUsageHistory: Array<{ timestamp: number; usage: number }> = [];
   private maxHistorySize = 1000;
+  private memoryMonitoringInterval: number | null = null;
+  private isDestroyed = false;
 
   private constructor() {
     // Start memory monitoring
     this.startMemoryMonitoring();
+    
+    // Set up cleanup on page unload
+    if (typeof window !== 'undefined') {
+      const cleanup = () => this.destroy();
+      window.addEventListener('beforeunload', cleanup);
+      window.addEventListener('unload', cleanup);
+    }
   }
 
   static getInstance(): WorkflowPerformanceMonitor {
@@ -314,7 +324,7 @@ export class WorkflowPerformanceMonitor {
     });
 
     // End workflow tracking if completed
-    if (workflowState.status === 'Completed' || workflowState.status === 'Failed') {
+    if (workflowState.status === WORKFLOW_STATUSES.COMPLETED || workflowState.status === WORKFLOW_STATUSES.FAILED) {
       const totalFiles = this.estimateTotalFilesProcessed(workflowState);
       this.endWorkflowTracking(workflowId, totalFiles);
     }
@@ -340,7 +350,7 @@ export class WorkflowPerformanceMonitor {
           const { workflowId, status } = event.payload;
           
           // Track workflow completion
-          if ((status === 'Completed' || status === 'Failed') && this.performanceData.has(workflowId)) {
+          if ((status === WORKFLOW_STATUSES.COMPLETED || status === WORKFLOW_STATUSES.FAILED) && this.performanceData.has(workflowId)) {
             this.endWorkflowTracking(workflowId);
           }
         });
@@ -409,7 +419,7 @@ export class WorkflowPerformanceMonitor {
         return workflowState.intermediateData.locallyFilteredFiles.length;
       case 'EXTENDED_PATH_FINDER':
         return workflowState.intermediateData.aiFilteredFiles.length;
-      case 'EXTENDED_PATH_CORRECTION':
+      case 'PATH_CORRECTION':
         return workflowState.intermediateData.extendedUnverifiedPaths.length;
       default:
         return 0;
@@ -428,7 +438,7 @@ export class WorkflowPerformanceMonitor {
       case 'EXTENDED_PATH_FINDER':
         return workflowState.intermediateData.extendedVerifiedPaths.length + 
                workflowState.intermediateData.extendedUnverifiedPaths.length;
-      case 'EXTENDED_PATH_CORRECTION':
+      case 'PATH_CORRECTION':
         return workflowState.intermediateData.extendedCorrectedPaths.length;
       default:
         return 0;
@@ -446,18 +456,67 @@ export class WorkflowPerformanceMonitor {
   }
 
   private startMemoryMonitoring(): void {
-    setInterval(() => {
-      const usage = this.getCurrentMemoryUsage();
-      this.memoryUsageHistory.push({
-        timestamp: Date.now(),
-        usage,
-      });
+    // Only start if not already monitoring and not destroyed
+    if (this.memoryMonitoringInterval !== null || this.isDestroyed) {
+      return;
+    }
 
-      // Trim history if it gets too large
-      if (this.memoryUsageHistory.length > this.maxHistorySize) {
-        this.memoryUsageHistory = this.memoryUsageHistory.slice(-this.maxHistorySize);
+    const monitorMemory = () => {
+      try {
+        // Check if destroyed before each iteration
+        if (this.isDestroyed) {
+          if (this.memoryMonitoringInterval !== null) {
+            clearInterval(this.memoryMonitoringInterval);
+            this.memoryMonitoringInterval = null;
+          }
+          return;
+        }
+
+        const usage = this.getCurrentMemoryUsage();
+        this.memoryUsageHistory.push({
+          timestamp: Date.now(),
+          usage,
+        });
+
+        // Trim history if it gets too large
+        if (this.memoryUsageHistory.length > this.maxHistorySize) {
+          this.memoryUsageHistory = this.memoryUsageHistory.slice(-this.maxHistorySize);
+        }
+      } catch (error) {
+        console.warn('[WorkflowPerformanceMonitor] Error during memory monitoring:', error);
       }
-    }, 5000); // Every 5 seconds
+    };
+
+    // Increased interval from 5s to 30s to reduce overhead
+    this.memoryMonitoringInterval = window.setInterval(monitorMemory, 30000);
+  }
+
+  /**
+   * Destroy the monitor and clean up resources
+   */
+  public destroy(): void {
+    this.isDestroyed = true;
+    
+    if (this.memoryMonitoringInterval !== null) {
+      clearInterval(this.memoryMonitoringInterval);
+      this.memoryMonitoringInterval = null;
+    }
+    
+    // Clear data to free memory
+    this.performanceData.clear();
+    this.memoryUsageHistory = [];
+    
+    // Reset singleton instance
+    if (WorkflowPerformanceMonitor.instance === this) {
+      (WorkflowPerformanceMonitor as any).instance = undefined;
+    }
+  }
+
+  /**
+   * Check if the monitor is destroyed
+   */
+  public getIsDestroyed(): boolean {
+    return this.isDestroyed;
   }
 
   private getCurrentMemoryUsage(): number {
@@ -520,7 +579,7 @@ export function useWorkflowPerformanceMonitor() {
   // Set up event listeners when hook is first used
   useEffect(() => {
     const setupListeners = async () => {
-      if (!eventCleanupRef.current) {
+      if (!eventCleanupRef.current && !monitor.getIsDestroyed()) {
         eventCleanupRef.current = await monitor.setupWorkflowEventListeners();
       }
     };
@@ -533,6 +592,9 @@ export function useWorkflowPerformanceMonitor() {
         eventCleanupRef.current();
         eventCleanupRef.current = null;
       }
+      
+      // Note: We don't destroy the singleton here as other components might be using it
+      // The singleton will clean itself up on page unload
     };
   }, [monitor]);
 

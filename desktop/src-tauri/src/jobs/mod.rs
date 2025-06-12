@@ -33,15 +33,17 @@ use self::processors::{
     TaskEnhancementProcessor,
     TextCorrectionProcessor,
     GenericLlmStreamProcessor,
-    ServerProxyTranscriptionProcessor,
     RegexSummaryGenerationProcessor,
     RegexPatternGenerationProcessor,
     // Individual workflow stage processors
     LocalFileFilteringProcessor,
     ExtendedPathFinderProcessor,
-    ExtendedPathCorrectionProcessor,
     // File relevance assessment processor
-    FileRelevanceAssessmentProcessor
+    FileRelevanceAssessmentProcessor,
+    // Subscription lifecycle processor
+    SubscriptionLifecycleProcessor,
+    // Stale portal session cleanup processor
+    StalePortalSessionCleanupProcessor
 };
 use self::registry::get_job_registry;
 use self::workflow_orchestrator::{init_workflow_orchestrator, get_workflow_orchestrator};
@@ -74,15 +76,17 @@ pub async fn register_job_processors(app_handle: &AppHandle) -> AppResult<()> {
     let task_enhancement_processor = Arc::new(TaskEnhancementProcessor::new());
     let text_correction_processor = Arc::new(TextCorrectionProcessor::new());
     let generic_llm_stream_processor = Arc::new(GenericLlmStreamProcessor::new());
-    let server_proxy_transcription_processor = Arc::new(ServerProxyTranscriptionProcessor::new(app_handle.clone()));
     let regex_summary_generation_processor = Arc::new(RegexSummaryGenerationProcessor::new());
     let regex_pattern_generation_processor = Arc::new(RegexPatternGenerationProcessor::new());
     // Individual workflow stage processors
     let local_file_filtering_processor = Arc::new(LocalFileFilteringProcessor::new());
     let extended_path_finder_processor = Arc::new(ExtendedPathFinderProcessor::new());
-    let extended_path_correction_processor = Arc::new(ExtendedPathCorrectionProcessor::new());
     // File relevance assessment processor
     let file_relevance_assessment_processor = Arc::new(FileRelevanceAssessmentProcessor::new());
+    // Subscription lifecycle processor
+    let subscription_lifecycle_processor = Arc::new(SubscriptionLifecycleProcessor::new());
+    // Stale portal session cleanup processor
+    let stale_portal_session_cleanup_processor = Arc::new(StalePortalSessionCleanupProcessor::new());
     
     // Register processors
     registry.register(path_finder_processor).await;
@@ -92,15 +96,17 @@ pub async fn register_job_processors(app_handle: &AppHandle) -> AppResult<()> {
     registry.register(task_enhancement_processor).await;
     registry.register(text_correction_processor).await;
     registry.register(generic_llm_stream_processor).await;
-    registry.register(server_proxy_transcription_processor).await;
     registry.register(regex_summary_generation_processor).await;
     registry.register(regex_pattern_generation_processor).await;
     // Individual workflow stage processors
     registry.register(local_file_filtering_processor).await;
     registry.register(extended_path_finder_processor).await;
-    registry.register(extended_path_correction_processor).await;
     // File relevance assessment processor
     registry.register(file_relevance_assessment_processor).await;
+    // Subscription lifecycle processor
+    registry.register(subscription_lifecycle_processor).await;
+    // Stale portal session cleanup processor
+    registry.register(stale_portal_session_cleanup_processor).await;
     
     debug!("Job processors registered");
     Ok(())

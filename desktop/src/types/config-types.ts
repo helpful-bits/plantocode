@@ -19,6 +19,7 @@ export interface RuntimeAIConfig {
   pathFinderSettings: PathFinderSettings;
   limits: TokenLimits; // Remove optional since backend uses #[serde(default)]
   maxConcurrentJobs?: number;
+  transcriptionConfig?: TranscriptionConfig;
 }
 
 /**
@@ -64,4 +65,56 @@ export interface PathFinderSettings {
 export interface TokenLimits {
   maxTokensPerRequest?: number;
   maxTokensPerMonth?: number;
+}
+
+/**
+ * Transcription settings interface
+ * Configuration for voice transcription functionality
+ */
+export interface TranscriptionSettings {
+  model?: string;
+  language?: string;
+  prompt?: string;
+  temperature?: number;
+  enablePersistence?: boolean;
+  maxRetries?: number;
+  timeoutMs?: number;
+  customPrompts?: TranscriptionPromptTemplate[];
+}
+
+/**
+ * Transcription prompt template interface
+ * Pre-defined prompt templates for different use cases
+ */
+export interface TranscriptionPromptTemplate {
+  id: string;
+  name: string;
+  description?: string;
+  prompt: string;
+  language?: string;
+  category?: 'general' | 'technical' | 'medical' | 'legal' | 'custom';
+  isDefault?: boolean;
+}
+
+/**
+ * Transcription configuration interface
+ * Complete transcription configuration structure
+ */
+export interface TranscriptionConfig {
+  settings: TranscriptionSettings;
+  templates: TranscriptionPromptTemplate[];
+  userPreferences: TranscriptionUserPreferences;
+}
+
+/**
+ * User preferences for transcription
+ * User-specific transcription preferences and settings
+ */
+export interface TranscriptionUserPreferences {
+  defaultLanguage?: string;
+  defaultModel?: string;
+  preferredPromptTemplateId?: string;
+  autoSaveTranscriptions?: boolean;
+  enableAdvancedSettings?: boolean;
+  customSettings?: Record<string, any>;
 }

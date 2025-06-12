@@ -43,10 +43,12 @@ export function useSessionActions({
   const { projectDirectory } = useProject();
   const { showNotification } = useNotification();
   
-  // Debounce ref for auto-save functionality
-  const autoSaveDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Smart save strategy: Save on meaningful user actions, not arbitrary timeouts
+  const saveOnUserAction = useRef(false);
+  const lastSaveTime = useRef(0);
+  const MIN_SAVE_INTERVAL = 5000; // Only save at most every 5 seconds to avoid spam
   
-  // Use refs to avoid stale closures in the debounced function
+  // Use refs to avoid stale closures
   const currentSessionRef = useRef(currentSession);
   const isSessionModifiedRef = useRef(isSessionModified);
   
@@ -57,6 +59,35 @@ export function useSessionActions({
   useEffect(() => {
     isSessionModifiedRef.current = isSessionModified;
   }, [isSessionModified]);
+
+  // Save on browser events that indicate user is leaving/backgrounding
+  useEffect(() => {
+    const handleSaveEvents = async () => {
+      if (currentSessionRef.current && isSessionModifiedRef.current) {
+        await saveCurrentSession();
+      }
+    };
+
+    // Smart save triggers - when user actually needs it saved
+    const saveOnBlur = () => { saveOnUserAction.current = true; void handleSaveEvents(); };
+    const saveOnVisibilityChange = () => { 
+      if (document.visibilityState === 'hidden') {
+        saveOnUserAction.current = true; 
+        void handleSaveEvents(); 
+      }
+    };
+    const saveOnBeforeUnload = () => { saveOnUserAction.current = true; void handleSaveEvents(); };
+
+    window.addEventListener('blur', saveOnBlur);
+    document.addEventListener('visibilitychange', saveOnVisibilityChange);
+    window.addEventListener('beforeunload', saveOnBeforeUnload);
+
+    return () => {
+      window.removeEventListener('blur', saveOnBlur);
+      document.removeEventListener('visibilitychange', saveOnVisibilityChange);
+      window.removeEventListener('beforeunload', saveOnBeforeUnload);
+    };
+  }, []);
 
   // Handle saving the current session
   const saveCurrentSession = useCallback(async (): Promise<boolean> => {
@@ -145,23 +176,22 @@ export function useSessionActions({
   // Direct reference to saveCurrentSession as flushSaves
   const flushSaves = saveCurrentSession;
   
-  // Debounced auto-save function with improved timing
-  const debouncedSaveCurrentSession = useCallback(() => {
-    if (autoSaveDebounceRef.current) {
-      clearTimeout(autoSaveDebounceRef.current);
-    }
+  // Smart save function - saves immediately if enough time has passed, or marks for save
+  const smartSave = useCallback(() => {
+    const now = Date.now();
+    const timeSinceLastSave = now - lastSaveTime.current;
     
-    autoSaveDebounceRef.current = setTimeout(() => {
-      // Use current session from the closure at call time for more reliable state
-      if (currentSession && isSessionModified) {
+    // If enough time has passed, save immediately
+    if (timeSinceLastSave >= MIN_SAVE_INTERVAL) {
+      lastSaveTime.current = now;
+      if (currentSessionRef.current && isSessionModifiedRef.current) {
         void saveCurrentSession();
       }
-    }, 1500); // Reduced debounce for more responsive saves
-  }, [
-    currentSession,
-    isSessionModified,
-    saveCurrentSession,
-  ]);
+    } else {
+      // Mark that we want to save, will be picked up by event listeners
+      saveOnUserAction.current = true;
+    }
+  }, [saveCurrentSession]);
 
 
   // Update specific fields in the current session
@@ -208,15 +238,15 @@ export function useSessionActions({
         setSessionModified(true);
         setCurrentSession(updatedSession);
         
-        // Trigger debounced auto-save
-        debouncedSaveCurrentSession();
+        // Use smart save instead of debounced auto-save
+        smartSave();
       }
     },
     [
       currentSession, // Use currentSession directly instead of ref
       setCurrentSession, // Stable setter from SessionStateContext
       setSessionModified, // Stable setter from SessionStateContext
-      debouncedSaveCurrentSession, // Memoized function dependency
+      smartSave, // Memoized function dependency
     ]
   );
 
