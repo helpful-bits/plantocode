@@ -105,12 +105,14 @@ const DialogDescription = forwardRef<
   ElementRef<typeof DialogPrimitive.Description>,
   ComponentPropsWithoutRef<typeof DialogPrimitive.Description>
 >(({ className, id = "dialog-description", ...props }, ref) => (
-  <DialogPrimitive.Description
-    ref={ref}
-    id={id}
-    className={cn("text-sm text-muted-soft", className)}
-    {...props}
-  />
+  <DialogPrimitive.Description asChild>
+    <div
+      ref={ref}
+      id={id}
+      className={cn("text-sm text-muted-soft", className)}
+      {...props}
+    />
+  </DialogPrimitive.Description>
 ));
 DialogDescription.displayName = DialogPrimitive.Description.displayName;
 

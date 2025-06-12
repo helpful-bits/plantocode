@@ -21,6 +21,7 @@ import type {
   StageStatus,
   WorkflowStage,
 } from "@/types/workflow-types";
+import { WORKFLOW_STATUSES } from "@/types/workflow-types";
 
 /**
  * WorkflowTracker class for managing File Finder Workflows
@@ -34,6 +35,10 @@ export class WorkflowTracker {
   private completeCallbacks: Set<WorkflowCompleteCallback> = new Set();
   private errorCallbacks: Set<WorkflowErrorCallback> = new Set();
   private isDestroyed = false;
+  private completionHandled = false;
+  private lastStatusFetchTime = 0;
+  private lastEventStatus: string | null = null;
+  private lastKnownState: WorkflowState | null = null;
 
   private constructor(
     workflowId: string,
@@ -229,9 +234,9 @@ export class WorkflowTracker {
             this.mapStatusEventToState(statusEvent);
             
             // Check if workflow completed or failed
-            if (statusEvent.status === 'Completed') {
+            if (statusEvent.status === WORKFLOW_STATUSES.COMPLETED && !this.completionHandled) {
               this.handleWorkflowCompletion();
-            } else if (statusEvent.status === 'Failed' || statusEvent.status === 'Canceled') {
+            } else if (statusEvent.status === WORKFLOW_STATUSES.FAILED || statusEvent.status === WORKFLOW_STATUSES.CANCELED) {
               this.handleWorkflowFailure(statusEvent);
             }
           }
@@ -343,45 +348,36 @@ export class WorkflowTracker {
   }
 
   private mapStatusEventToState(event: WorkflowStatusEvent): WorkflowState {
-    // For event-based updates, fetch full state to get complete workflow details
-    // Events provide status updates but not full stage job information
-    // This ensures UI has comprehensive data without polling
-    this.getStatus().then(fullState => {
-      this.notifyProgress(fullState);
-    }).catch(error => {
-      console.warn('Failed to fetch full state after status event:', error);
-      // Fall back to event data only if full state fetch fails
-      const eventOnlyState: WorkflowState = {
-        workflowId: event.workflowId,
-        sessionId: this.sessionId,
-        status: event.status,
-        stageJobs: [], // Event-based updates don't provide full stage job details
-        progressPercentage: event.progress,
-        currentStage: event.currentStage ? this.mapStageNameToType(event.currentStage) : undefined,
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-        errorMessage: event.errorMessage,
-        taskDescription: '',
-        projectDirectory: '',
-        excludedPaths: [],
-        timeoutMs: undefined,
-        intermediateData: {
-          directoryTreeContent: undefined,
-          rawRegexPatterns: undefined,
-          locallyFilteredFiles: [],
-          aiFilteredFiles: [],
-          initialVerifiedPaths: [],
-          initialUnverifiedPaths: [],
-          initialCorrectedPaths: [],
-          extendedVerifiedPaths: [],
-          extendedUnverifiedPaths: [],
-          extendedCorrectedPaths: [],
-        },
-      };
-      this.notifyProgress(eventOnlyState);
-    });
+    const currentTime = Date.now();
+    const statusChanged = this.lastEventStatus !== event.status;
+    const debounceTime = 500; // 500ms debounce to prevent rapid calls
+    
+    // Only fetch full status when:
+    // 1. Status actually changed (not duplicate events)
+    // 2. Enough time has passed since last fetch (debounce)
+    // 3. This is a critical status (failed/completed/canceled) that needs full details
+    const shouldFetchFullStatus = statusChanged && 
+      (currentTime - this.lastStatusFetchTime > debounceTime ||
+       [WORKFLOW_STATUSES.BACKEND.FAILED, WORKFLOW_STATUSES.BACKEND.COMPLETED, WORKFLOW_STATUSES.BACKEND.CANCELED].includes(event.status.toLowerCase() as any));
+    
+    if (shouldFetchFullStatus) {
+      this.lastStatusFetchTime = currentTime;
+      this.lastEventStatus = event.status;
+      
+      // Fetch full state with stage details for proper UI functionality
+      this.getStatus().then(fullState => {
+        this.notifyProgress(fullState);
+      }).catch(error => {
+        console.warn('Failed to fetch full state after status change:', error);
+        // Fall back to event-only state
+        this.notifyEventOnlyState(event);
+      });
+    } else {
+      // For duplicate events or rapid successive events, just use event data
+      this.notifyEventOnlyState(event);
+    }
 
-    // Return minimal state - the actual notification happens in the promise above
+    // Return minimal state - the actual notification happens above
     return {
       workflowId: event.workflowId,
       sessionId: this.sessionId,
@@ -428,6 +424,9 @@ export class WorkflowTracker {
   }
   
   private async handleWorkflowCompletion(): Promise<void> {
+    // Mark completion as handled to prevent duplicate calls
+    this.completionHandled = true;
+    
     try {
       const results = await this.getResults();
       this.notifyComplete(results);
@@ -443,25 +442,66 @@ export class WorkflowTracker {
       this.workflowId,
       statusEvent.currentStage,
       statusEvent.errorMessage,
-      statusEvent.status === 'Canceled' ? 'WORKFLOW_CANCELED' : 'WORKFLOW_FAILED'
+      statusEvent.status === WORKFLOW_STATUSES.CANCELED ? 'WORKFLOW_CANCELED' : 'WORKFLOW_FAILED'
     );
     
     this.notifyError(workflowError);
   }
 
+  private notifyEventOnlyState(event: WorkflowStatusEvent): void {
+    // Preserve stage jobs and other data from last known state to prevent UI getting stuck
+    const preservedStageJobs = this.lastKnownState?.stageJobs || [];
+    const preservedTaskDescription = this.lastKnownState?.taskDescription || '';
+    const preservedProjectDirectory = this.lastKnownState?.projectDirectory || '';
+    const preservedExcludedPaths = this.lastKnownState?.excludedPaths || [];
+    const preservedIntermediateData = this.lastKnownState?.intermediateData || {
+      directoryTreeContent: undefined,
+      rawRegexPatterns: undefined,
+      locallyFilteredFiles: [],
+      aiFilteredFiles: [],
+      initialVerifiedPaths: [],
+      initialUnverifiedPaths: [],
+      initialCorrectedPaths: [],
+      extendedVerifiedPaths: [],
+      extendedUnverifiedPaths: [],
+      extendedCorrectedPaths: [],
+    };
+
+    const eventBasedState: WorkflowState = {
+      workflowId: event.workflowId,
+      sessionId: this.sessionId,
+      status: this.mapWorkflowStatusString(event.status),
+      stageJobs: preservedStageJobs, // Preserve stage details from last known state
+      progressPercentage: event.progress,
+      currentStage: event.currentStage ? this.mapStageNameToType(event.currentStage) : undefined,
+      createdAt: this.lastKnownState?.createdAt || Date.now(),
+      updatedAt: Date.now(),
+      errorMessage: event.errorMessage,
+      taskDescription: preservedTaskDescription,
+      projectDirectory: preservedProjectDirectory,
+      excludedPaths: preservedExcludedPaths,
+      timeoutMs: this.lastKnownState?.timeoutMs,
+      intermediateData: preservedIntermediateData,
+    };
+    this.notifyProgress(eventBasedState);
+  }
+
   private mapWorkflowStatusString(status: string): WorkflowState['status'] {
-    switch (status.toLowerCase()) {
-      case 'running':
-        return 'Running';
-      case 'completed':
-        return 'Completed';
-      case 'failed':
-        return 'Failed';
-      case 'canceled':
-        return 'Canceled';
-      case 'created':
+    const lowerStatus = status.toLowerCase();
+    switch (lowerStatus) {
+      case WORKFLOW_STATUSES.BACKEND.RUNNING:
+        return WORKFLOW_STATUSES.RUNNING;
+      case WORKFLOW_STATUSES.BACKEND.COMPLETED:
+        return WORKFLOW_STATUSES.COMPLETED;
+      case WORKFLOW_STATUSES.BACKEND.FAILED:
+        return WORKFLOW_STATUSES.FAILED;
+      case WORKFLOW_STATUSES.BACKEND.CANCELED:
+        return WORKFLOW_STATUSES.CANCELED;
+      case WORKFLOW_STATUSES.BACKEND.PAUSED:
+        return WORKFLOW_STATUSES.PAUSED;
+      case WORKFLOW_STATUSES.BACKEND.CREATED:
       default:
-        return 'Created';
+        return WORKFLOW_STATUSES.CREATED;
     }
   }
   
@@ -496,6 +536,8 @@ export class WorkflowTracker {
   }
 
   private notifyProgress(state: WorkflowState): void {
+    // Store the last known state for event-only updates
+    this.lastKnownState = state;
     this.progressCallbacks.forEach(callback => {
       try {
         callback(state);
@@ -646,8 +688,8 @@ export const WorkflowUtils = {
         return 'FILE_RELEVANCE_ASSESSMENT';
       case 'Extended Path Finding':
         return 'EXTENDED_PATH_FINDER';
-      case 'Extended Path Correction':
-        return 'EXTENDED_PATH_CORRECTION';
+      case 'Path Correction':
+        return 'PATH_CORRECTION';
         
       // PascalCase variants from results responses
       case 'GeneratingRegex':
@@ -658,8 +700,8 @@ export const WorkflowUtils = {
         return 'FILE_RELEVANCE_ASSESSMENT';
       case 'ExtendedPathFinder':
         return 'EXTENDED_PATH_FINDER';
-      case 'ExtendedPathCorrection':
-        return 'EXTENDED_PATH_CORRECTION';
+      case 'PathCorrection':
+        return 'PATH_CORRECTION';
         
       // SCREAMING_SNAKE_CASE from WorkflowStageJob.stage and WorkflowStageEvent.stage
       case 'REGEX_PATTERN_GENERATION':
@@ -670,8 +712,8 @@ export const WorkflowUtils = {
         return 'FILE_RELEVANCE_ASSESSMENT';
       case 'EXTENDED_PATH_FINDER':
         return 'EXTENDED_PATH_FINDER';
-      case 'EXTENDED_PATH_CORRECTION':
-        return 'EXTENDED_PATH_CORRECTION';
+      case 'PATH_CORRECTION':
+        return 'PATH_CORRECTION';
         
       default:
         return null;
@@ -687,7 +729,7 @@ export const WorkflowUtils = {
       'LOCAL_FILE_FILTERING',
       'FILE_RELEVANCE_ASSESSMENT',
       'EXTENDED_PATH_FINDER',
-      'EXTENDED_PATH_CORRECTION'
+      'PATH_CORRECTION'
     ];
     
     return validStages.includes(stageName as WorkflowStage) ? (stageName as WorkflowStage) : null;
@@ -699,7 +741,7 @@ export const WorkflowUtils = {
   calculateProgress(stageJobs: any[]): number {
     if (stageJobs.length === 0) return 0;
     
-    const totalStages = 5; // Updated to match FileFinderWorkflow: REGEX_PATTERN_GENERATION, LOCAL_FILE_FILTERING, FILE_RELEVANCE_ASSESSMENT, EXTENDED_PATH_FINDER, EXTENDED_PATH_CORRECTION
+    const totalStages = 5; // Updated to match FileFinderWorkflow: REGEX_PATTERN_GENERATION, LOCAL_FILE_FILTERING, FILE_RELEVANCE_ASSESSMENT, EXTENDED_PATH_FINDER, PATH_CORRECTION
     const completedStages = stageJobs.filter(job => job.status === 'completed' || job.status === 'completedByTag').length;
     const runningStages = stageJobs.filter(job => 
       job.status === 'running' || 
@@ -723,7 +765,7 @@ export const WorkflowUtils = {
       'LOCAL_FILE_FILTERING': 'Local File Filtering',
       'FILE_RELEVANCE_ASSESSMENT': 'AI File Relevance Assessment',
       'EXTENDED_PATH_FINDER': 'Extended Path Finding',
-      'EXTENDED_PATH_CORRECTION': 'Extended Path Correction',
+      'PATH_CORRECTION': 'Path Correction',
     };
     return stageNames[stage] || stage;
   },
@@ -737,7 +779,7 @@ export const WorkflowUtils = {
       'LOCAL_FILE_FILTERING': 'Filtering files based on local patterns and criteria',
       'FILE_RELEVANCE_ASSESSMENT': 'Using AI to assess relevance of filtered files to the task',
       'EXTENDED_PATH_FINDER': 'Finding additional relevant paths for comprehensive results',
-      'EXTENDED_PATH_CORRECTION': 'Final path correction and validation',
+      'PATH_CORRECTION': 'Path correction and validation',
     };
     return descriptions[stage] || 'Processing stage';
   },
@@ -746,14 +788,14 @@ export const WorkflowUtils = {
    * Check if workflow is in a terminal state
    */
   isTerminalState(status: string): boolean {
-    return ['Completed', 'Failed', 'Canceled'].includes(status);
+    return WORKFLOW_STATUSES.TERMINAL.includes(status as any);
   },
 
   /**
    * Check if workflow is running
    */
   isRunning(status: string): boolean {
-    return status === 'Running';
+    return status === WORKFLOW_STATUSES.RUNNING;
   },
 
   /**

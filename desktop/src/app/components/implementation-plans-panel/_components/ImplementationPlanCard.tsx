@@ -63,14 +63,15 @@ const ImplementationPlanCard = React.memo<ImplementationPlanCardProps>(({
     return model;
   })();
 
-  // Calculate estimated token count if available - prefer plan fields over metadata
+  // Calculate estimated token count if available - check job fields first, then metadata
   let tokenCountDisplay = "N/A";
-  const totalTokens = parsedMeta?.taskData?.totalTokens || parsedMeta?.taskData?.tokensUsed;
-  if (typeof totalTokens === 'number' && totalTokens > 0) {
+  const tokensSent = Number(plan.tokensSent || parsedMeta?.taskData?.tokensSent || 0);
+  const tokensReceived = Number(plan.tokensReceived || parsedMeta?.taskData?.tokensReceived || 0);
+  const totalTokens = (tokensSent + tokensReceived) || 
+                     Number(parsedMeta?.taskData?.totalTokens || parsedMeta?.taskData?.tokensUsed || 0);
+  
+  if (totalTokens > 0) {
     tokenCountDisplay = totalTokens.toLocaleString();
-  } else if (typeof totalTokens === 'string') {
-    const numericValue = parseInt(String(totalTokens).replace(/[^0-9]/g, '') || '0', 10);
-    if (numericValue > 0) tokenCountDisplay = `~${numericValue.toLocaleString()}`;
   }
 
   // Format timestamps

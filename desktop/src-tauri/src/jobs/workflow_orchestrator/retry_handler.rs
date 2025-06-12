@@ -253,7 +253,7 @@ fn stage_to_task_type_for_retry(stage: &WorkflowStage) -> TaskType {
         WorkflowStage::LocalFileFiltering => TaskType::LocalFileFiltering,
         WorkflowStage::FileRelevanceAssessment => TaskType::FileRelevanceAssessment,
         WorkflowStage::ExtendedPathFinder => TaskType::ExtendedPathFinder,
-        WorkflowStage::ExtendedPathCorrection => TaskType::ExtendedPathCorrection,
+        WorkflowStage::PathCorrection => TaskType::PathCorrection,
     }
 }
 
@@ -264,7 +264,7 @@ fn task_type_to_workflow_stage(task_type: TaskType) -> Option<WorkflowStage> {
         TaskType::LocalFileFiltering => Some(WorkflowStage::LocalFileFiltering),
         TaskType::FileRelevanceAssessment => Some(WorkflowStage::FileRelevanceAssessment),
         TaskType::ExtendedPathFinder => Some(WorkflowStage::ExtendedPathFinder),
-        TaskType::ExtendedPathCorrection => Some(WorkflowStage::ExtendedPathCorrection),
+        TaskType::PathCorrection => Some(WorkflowStage::PathCorrection),
         _ => None, // Other task types don't correspond to workflow stages
     }
 }

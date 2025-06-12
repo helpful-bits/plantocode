@@ -71,9 +71,25 @@ pub(super) async fn create_abstract_stage_payload(
             return Err(AppError::JobError("PathFinder task type is superseded by ExtendedPathFinder in FileFinderWorkflow".to_string()));
         }
         TaskType::PathCorrection => {
-            // NOTE: This task type is superseded by ExtendedPathCorrection for the main FileFinderWorkflow
-            // Keeping for backward compatibility with older workflows
-            return Err(AppError::JobError("PathCorrection task type is superseded by ExtendedPathCorrection in FileFinderWorkflow".to_string()));
+            // Retrieve extended_unverified_paths from workflow_state.intermediate_data with robust fallback
+            let unverified_paths = workflow_state.intermediate_data.extended_unverified_paths
+                .clone(); // extended_unverified_paths is Vec<String>, not Option<Vec<String>>
+            
+            if unverified_paths.is_empty() {
+                warn!("Extended unverified paths is empty in intermediate_data for PathCorrection");
+            } else {
+                debug!("Using {} extended unverified paths for PathCorrection payload", unverified_paths.len());
+            }
+
+            let payload = StageDataInjector::create_path_correction_payload(
+                workflow_state.workflow_id.clone(),
+                workflow_state.session_id.clone(),
+                workflow_state.task_description.clone(),
+                workflow_state.project_directory.clone(),
+                unverified_paths
+            );
+
+            Ok(JobPayload::PathCorrection(payload))
         }
         TaskType::ExtendedPathFinder => {
             // Retrieve ai_filtered_files from workflow_state.intermediate_data with robust fallback
@@ -95,27 +111,6 @@ pub(super) async fn create_abstract_stage_payload(
             ).await;
 
             Ok(JobPayload::ExtendedPathFinder(payload))
-        }
-        TaskType::ExtendedPathCorrection => {
-            // Retrieve extended_unverified_paths from workflow_state.intermediate_data with robust fallback
-            let unverified_paths = workflow_state.intermediate_data.extended_unverified_paths
-                .clone(); // extended_unverified_paths is Vec<String>, not Option<Vec<String>>
-            
-            if unverified_paths.is_empty() {
-                warn!("Extended unverified paths is empty in intermediate_data for ExtendedPathCorrection");
-            } else {
-                debug!("Using {} extended unverified paths for ExtendedPathCorrection payload", unverified_paths.len());
-            }
-
-            let payload = StageDataInjector::create_path_correction_payload(
-                workflow_state.workflow_id.clone(),
-                workflow_state.session_id.clone(),
-                workflow_state.task_description.clone(),
-                workflow_state.project_directory.clone(),
-                unverified_paths
-            );
-
-            Ok(JobPayload::ExtendedPathCorrection(payload))
         }
         TaskType::FileRelevanceAssessment => {
             let payload = StageDataInjector::create_file_relevance_assessment_payload(

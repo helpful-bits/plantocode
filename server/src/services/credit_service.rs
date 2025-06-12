@@ -22,7 +22,7 @@ impl CreditService {
     pub fn new(user_pool: PgPool, system_pool: PgPool) -> Self {
         Self {
             user_credit_repository: Arc::new(UserCreditRepository::new(user_pool.clone())),
-            credit_transaction_repository: Arc::new(CreditTransactionRepository::new(user_pool.clone())),
+            credit_transaction_repository: Arc::new(CreditTransactionRepository::new(system_pool.clone())),
             credit_pack_repository: Arc::new(CreditPackRepository::new(system_pool)),
         }
     }

@@ -1,127 +1,322 @@
 use tauri::{command, AppHandle, Manager};
-use log::{debug, error, info};
+use log::info;
 use serde::{Serialize, Deserialize};
 use std::sync::Arc;
-use uuid::Uuid;
-use crate::error::AppResult;
-use crate::models::{BackgroundJob, JobStatus, TaskType, JobCommandResponse};
-use crate::utils::get_timestamp;
-use crate::db_utils::{SessionRepository, BackgroundJobRepository};
-use crate::utils::job_creation_utils;
-use crate::jobs::types::JobPayload;
-use crate::error::AppError;
-use crate::api_clients::client_factory;
-use crate::api_clients::client_trait::TranscriptionClient;
+use base64::Engine;
+use crate::error::{AppResult, AppError};
+use crate::db_utils::{SessionRepository, SettingsRepository};
 
-/// Arguments for audio transcription request
-#[derive(Debug, Deserialize)]
+
+
+/// Response for batch transcription
+#[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct TranscribeAudioArgs {
-    pub session_id: String,
-    pub audio_data: Vec<u8>,
-    pub duration_ms: i64,
-    pub filename: Option<String>,
-    pub project_directory: Option<String>,
-    pub language: Option<String>,
+pub struct BatchTranscriptionResponse {
+    pub chunk_index: u32,
+    pub text: String,
+    pub processing_time_ms: Option<i64>,
 }
 
 
-/// Transcribes audio data to text using Groq through server proxy
+
+/// Transcribes audio batch (5-second chunk) directly for real-time task description
 #[command]
-pub async fn create_transcription_job_command(
+pub async fn transcribe_audio_batch_command(
     session_id: String,
-    audio_data: Vec<u8>,
+    audio_base64: String,
+    chunk_index: u32,
     duration_ms: i64,
-    filename: Option<String>,
-    project_directory: Option<String>,
     language: Option<String>,
+    prompt: Option<String>,
+    temperature: Option<f32>,
     app_handle: AppHandle,
-) -> AppResult<JobCommandResponse> {
-    let args = TranscribeAudioArgs {
-        session_id,
-        audio_data,
-        duration_ms,
-        filename,
-        project_directory,
-        language,
-    };
-    info!("Creating audio transcription job");
+) -> AppResult<BatchTranscriptionResponse> {
+    let start_time = std::time::Instant::now();
     
-    // Validate required fields
-    if args.session_id.is_empty() {
+    info!("Transcribing audio batch chunk {} with prompt: {:?}, temperature: {:?}, language: {:?}", 
+          chunk_index, prompt, temperature, language);
+    
+    if session_id.is_empty() {
         return Err(AppError::ValidationError("Session ID is required".to_string()));
     }
     
-    if args.audio_data.is_empty() {
+    if audio_base64.is_empty() {
         return Err(AppError::ValidationError("Audio data is required".to_string()));
     }
     
-    // Get the session repository to verify session and get project directory
+    // Validate temperature parameter if provided
+    if let Some(temp) = temperature {
+        if temp < 0.0 || temp > 1.0 {
+            return Err(AppError::ValidationError("Temperature must be between 0.0 and 1.0".to_string()));
+        }
+    }
+    
+    let audio_data = match base64::engine::general_purpose::STANDARD.decode(&audio_base64) {
+        Ok(data) => data,
+        Err(e) => return Err(AppError::ValidationError(format!("Invalid base64 audio data: {}", e))),
+    };
+    
+    // Get the session repository to verify session
     let session_repo = app_handle.state::<Arc<SessionRepository>>().inner().clone();
     
-    // Verify session exists
-    let session = session_repo.get_session_by_id(&args.session_id).await
+    let session = session_repo.get_session_by_id(&session_id).await
         .map_err(|e| AppError::DatabaseError(format!("Failed to get session: {}", e)))?
-        .ok_or_else(|| AppError::NotFoundError(format!("Session not found: {}", args.session_id)))?;
+        .ok_or_else(|| AppError::NotFoundError(format!("Session not found: {}", session_id)))?;
     
-    // Get project directory from session if not provided
-    let project_dir = match args.project_directory {
-        Some(dir) if !dir.is_empty() => dir,
-        _ => {
-            if session.project_directory.is_empty() {
-                return Err(AppError::ValidationError("Project directory is required".to_string()));
-            }
-            session.project_directory
-        }
-    };
+    let server_url = crate::commands::config_commands::get_server_url(app_handle.clone())
+        .await
+        .map_err(|e| AppError::ConfigError(format!("Failed to get server URL: {}", e)))?;
     
-    // Get transcription model from config
-    let transcription_model = match crate::config::get_default_transcription_model_id() {
-        Ok(model) => model,
-        Err(e) => {
-            return Err(AppError::ConfigError(format!("Failed to get transcription model: {}", e)));
-        }
-    };
+    let token_manager = app_handle.state::<Arc<crate::auth::token_manager::TokenManager>>();
+    let jwt = crate::commands::auth0_commands::get_app_jwt(token_manager)
+        .await
+        .map_err(|e| AppError::AuthError(format!("Failed to get auth token: {}", e)))?
+        .ok_or_else(|| AppError::AuthError("No JWT token available".to_string()))?;
     
-    debug!("Audio duration: {}ms for {} bytes", args.duration_ms, args.audio_data.len());
-    
-    // Generate filename if not provided
-    let filename = args.filename.unwrap_or_else(|| "audio.mp3".to_string());
-    
-    // Create job metadata
-    let metadata = serde_json::json!({
-        "filename": filename,
+    let client = reqwest::Client::new();
+    let request_payload = serde_json::json!({
+        "sessionId": session_id,
+        "audioBase64": audio_base64,
+        "chunkIndex": chunk_index,
+        "durationMs": duration_ms,
+        "language": language,
+        "prompt": prompt,
+        "temperature": temperature
     });
     
-    // Create the VoiceTranscriptionPayload directly
-    let transcription_payload = crate::jobs::types::VoiceTranscriptionPayload {
-        audio_data: args.audio_data,
-        filename: filename.clone(),
-        model: transcription_model.clone(),
-        duration_ms: args.duration_ms,
-        language: args.language,
-    };
+    let response = client
+        .post(&format!("{}/api/proxy/audio/transcriptions/batch", server_url))
+        .header("Authorization", format!("Bearer {}", jwt))
+        .header("Content-Type", "application/json")
+        .json(&request_payload)
+        .send()
+        .await
+        .map_err(|e| AppError::NetworkError(format!("Failed to send batch transcription request: {}", e)))?;
     
-    // Use the job creation utility to create and queue the job
-    let job_id = job_creation_utils::create_and_queue_background_job(
-        &args.session_id,
-        &project_dir,
-        "groq_server_proxy",
-        TaskType::VoiceTranscription,
-        "VOICE_TRANSCRIPTION",
-        &format!("Transcribe audio file: {}", filename),
-        Some((transcription_model, 0.0, 0)), // Temperature and max tokens not relevant for transcription
-        JobPayload::VoiceTranscription(transcription_payload),
-        1, // Priority
-        None, // No workflow_id
-        None, // No workflow_stage
-        Some(metadata), // Extra metadata
-        &app_handle,
-    ).await?;
+    if !response.status().is_success() {
+        let status = response.status();
+        let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+        let error_msg = format!(
+            "Batch transcription failed for chunk {} ({}): {}",
+            chunk_index,
+            status,
+            error_text
+        );
+        info!("{}", error_msg);
+        return Err(AppError::ServerProxyError(error_msg));
+    }
     
-    info!("Created audio transcription job: {}", job_id);
+    let result: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| AppError::SerializationError(format!("Failed to parse batch transcription response: {}", e)))?;
     
-    Ok(JobCommandResponse { job_id })
+    let transcribed_text = result
+        .get("text")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    
+    let processing_time = start_time.elapsed().as_millis() as i64;
+    
+    info!("Batch transcription chunk {} completed in {}ms: '{}'", 
+          chunk_index, processing_time, transcribed_text);
+    
+    Ok(BatchTranscriptionResponse {
+        chunk_index,
+        text: transcribed_text,
+        processing_time_ms: Some(processing_time),
+    })
+}
+
+/// Configuration for transcription settings
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct TranscriptionSettings {
+    pub default_language: Option<String>,
+    pub default_prompt: Option<String>,
+    pub default_temperature: Option<f32>,
+    pub model: Option<String>,
+}
+
+impl Default for TranscriptionSettings {
+    fn default() -> Self {
+        Self {
+            default_language: None,
+            default_prompt: None,
+            default_temperature: Some(0.7),
+            model: None,
+        }
+    }
+}
+
+/// Get transcription settings for the current user
+#[command]
+pub async fn get_transcription_settings_command(
+    app_handle: AppHandle,
+) -> AppResult<TranscriptionSettings> {
+    let settings_repo = app_handle.state::<Arc<SettingsRepository>>().inner().clone();
+    
+    let settings_json = settings_repo
+        .get_value("transcription_settings")
+        .await?
+        .unwrap_or_else(|| serde_json::to_string(&TranscriptionSettings::default()).unwrap());
+    
+    let settings: TranscriptionSettings = serde_json::from_str(&settings_json)
+        .map_err(|e| AppError::SerializationError(format!("Failed to parse transcription settings: {}", e)))?;
+    
+    Ok(settings)
+}
+
+/// Update transcription settings for the current user  
+#[command]
+pub async fn set_transcription_settings_command(
+    settings: TranscriptionSettings,
+    app_handle: AppHandle,
+) -> AppResult<()> {
+    // Validate settings before saving
+    if let Some(temp) = settings.default_temperature {
+        if temp < 0.0 || temp > 1.0 {
+            return Err(AppError::ValidationError("Temperature must be between 0.0 and 1.0".to_string()));
+        }
+    }
+    
+    let settings_repo = app_handle.state::<Arc<SettingsRepository>>().inner().clone();
+    let settings_json = serde_json::to_string(&settings)
+        .map_err(|e| AppError::SerializationError(format!("Failed to serialize transcription settings: {}", e)))?;
+    
+    settings_repo
+        .set_value("transcription_settings", &settings_json)
+        .await?;
+    
+    info!("Updated transcription settings: {:?}", settings);
+    Ok(())
+}
+
+/// Get project-specific transcription settings
+#[command]
+pub async fn get_project_transcription_settings_command(
+    project_directory: String,
+    app_handle: AppHandle,
+) -> AppResult<TranscriptionSettings> {
+    let settings_repo = app_handle.state::<Arc<SettingsRepository>>().inner().clone();
+    let project_hash = crate::utils::hash_utils::hash_string(&project_directory);
+    let key = format!("project_transcription_settings_{}", project_hash);
+    
+    let settings_json = settings_repo
+        .get_value(&key)
+        .await?
+        .unwrap_or_else(|| serde_json::to_string(&TranscriptionSettings::default()).unwrap());
+    
+    let settings: TranscriptionSettings = serde_json::from_str(&settings_json)
+        .map_err(|e| AppError::SerializationError(format!("Failed to parse project transcription settings: {}", e)))?;
+    
+    Ok(settings)
+}
+
+/// Set project-specific transcription settings  
+#[command]
+pub async fn set_project_transcription_settings_command(
+    project_directory: String,
+    settings: TranscriptionSettings,
+    app_handle: AppHandle,
+) -> AppResult<()> {
+    // Validate settings before saving
+    if let Some(temp) = settings.default_temperature {
+        if temp < 0.0 || temp > 1.0 {
+            return Err(AppError::ValidationError("Temperature must be between 0.0 and 1.0".to_string()));
+        }
+    }
+    
+    let settings_repo = app_handle.state::<Arc<SettingsRepository>>().inner().clone();
+    let project_hash = crate::utils::hash_utils::hash_string(&project_directory);
+    let key = format!("project_transcription_settings_{}", project_hash);
+    
+    let settings_json = serde_json::to_string(&settings)
+        .map_err(|e| AppError::SerializationError(format!("Failed to serialize transcription settings: {}", e)))?;
+    
+    settings_repo
+        .set_value(&key, &settings_json)
+        .await?;
+    
+    info!("Updated project transcription settings for {}: {:?}", project_directory, settings);
+    Ok(())
+}
+
+/// Reset transcription settings to defaults
+#[command]
+pub async fn reset_transcription_settings_command(
+    app_handle: AppHandle,
+) -> AppResult<()> {
+    let settings_repo = app_handle.state::<Arc<SettingsRepository>>().inner().clone();
+    let default_settings = TranscriptionSettings::default();
+    let settings_json = serde_json::to_string(&default_settings)
+        .map_err(|e| AppError::SerializationError(format!("Failed to serialize default transcription settings: {}", e)))?;
+    
+    settings_repo
+        .set_value("transcription_settings", &settings_json)
+        .await?;
+    
+    info!("Reset transcription settings to defaults");
+    Ok(())
+}
+
+/// Get effective transcription settings with project-specific overrides
+/// This merges global and project-specific settings for the frontend
+#[command]
+pub async fn get_effective_transcription_settings_command(
+    project_directory: Option<String>,
+    app_handle: AppHandle,
+) -> AppResult<TranscriptionSettings> {
+    let global_settings = get_transcription_settings_command(app_handle.clone()).await?;
+    
+    if let Some(project_dir) = project_directory {
+        let project_settings = get_project_transcription_settings_command(project_dir, app_handle).await?;
+        
+        // Merge settings: project-specific settings override global settings
+        let effective_settings = TranscriptionSettings {
+            default_language: project_settings.default_language.or(global_settings.default_language),
+            default_prompt: project_settings.default_prompt.or(global_settings.default_prompt),
+            default_temperature: project_settings.default_temperature.or(global_settings.default_temperature),
+            model: project_settings.model.or(global_settings.model),
+        };
+        
+        Ok(effective_settings)
+    } else {
+        Ok(global_settings)
+    }
+}
+
+/// Validate transcription settings for UI feedback
+#[command]
+pub async fn validate_transcription_settings_command(
+    settings: TranscriptionSettings,
+) -> AppResult<Vec<String>> {
+    let mut validation_errors = Vec::new();
+    
+    if let Some(temp) = settings.default_temperature {
+        if temp < 0.0 || temp > 1.0 {
+            validation_errors.push("Temperature must be between 0.0 and 1.0".to_string());
+        }
+    }
+    
+    if let Some(prompt) = &settings.default_prompt {
+        if prompt.len() > 1000 {
+            validation_errors.push("Prompt must be 1000 characters or less".to_string());
+        }
+    }
+    
+    if let Some(language) = &settings.default_language {
+        // Basic language code validation (2-letter or language-region format)
+        if !language.chars().all(|c| c.is_alphabetic() || c == '-' || c == '_') {
+            validation_errors.push("Language code contains invalid characters".to_string());
+        }
+        if language.len() < 2 || language.len() > 10 {
+            validation_errors.push("Language code must be between 2 and 10 characters".to_string());
+        }
+    }
+    
+    Ok(validation_errors)
 }
 
 

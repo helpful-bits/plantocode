@@ -96,6 +96,7 @@ pub struct SubscriptionPlan {
     pub stripe_price_id_weekly: Option<String>,
     pub stripe_price_id_monthly: Option<String>,
     pub stripe_price_id_yearly: Option<String>,
+    pub plan_tier: i32,
     pub features: Value,
     pub typed_features: Option<PlanFeatures>,
 }
@@ -156,6 +157,26 @@ impl SubscriptionPlan {
     pub fn get_monthly_price_float(&self) -> f64 {
         self.base_price_monthly.to_f64().unwrap_or(0.0)
     }
+
+    /// Get the plan tier for upgrade/downgrade comparison
+    pub fn get_plan_tier(&self) -> i32 {
+        self.plan_tier
+    }
+
+    /// Check if changing to another plan is an upgrade (higher tier)
+    pub fn is_upgrade_to(&self, other_plan: &SubscriptionPlan) -> bool {
+        other_plan.plan_tier > self.plan_tier
+    }
+
+    /// Check if changing to another plan is a downgrade (lower tier)
+    pub fn is_downgrade_to(&self, other_plan: &SubscriptionPlan) -> bool {
+        other_plan.plan_tier < self.plan_tier
+    }
+
+    /// Check if another plan is the same tier
+    pub fn is_same_tier_as(&self, other_plan: &SubscriptionPlan) -> bool {
+        other_plan.plan_tier == self.plan_tier
+    }
 }
 
 #[derive(Debug)]
@@ -169,7 +190,7 @@ impl SubscriptionPlanRepository {
     }
 
     pub async fn get_plan_by_id(&self, plan_id: &str) -> Result<SubscriptionPlan, AppError> {
-        let query_str = "SELECT id, name, description, base_price_weekly, base_price_monthly, base_price_yearly, included_spending_weekly, included_spending_monthly, overage_rate, hard_limit_multiplier, currency, stripe_price_id_weekly, stripe_price_id_monthly, stripe_price_id_yearly, features FROM subscription_plans WHERE id = $1";
+        let query_str = "SELECT id, name, description, base_price_weekly, base_price_monthly, base_price_yearly, included_spending_weekly, included_spending_monthly, overage_rate, hard_limit_multiplier, currency, stripe_price_id_weekly, stripe_price_id_monthly, stripe_price_id_yearly, plan_tier, features FROM subscription_plans WHERE id = $1";
         
         let record = sqlx::query(query_str)
             .bind(plan_id)
@@ -189,6 +210,7 @@ impl SubscriptionPlanRepository {
                     stripe_price_id_weekly: row.get("stripe_price_id_weekly"),
                     stripe_price_id_monthly: row.get("stripe_price_id_monthly"),
                     stripe_price_id_yearly: row.get("stripe_price_id_yearly"),
+                    plan_tier: row.get("plan_tier"),
                     features: row.get("features"),
                     typed_features: None,
                 }.with_typed_features()
@@ -201,7 +223,7 @@ impl SubscriptionPlanRepository {
     }
 
     pub async fn get_all_plans(&self) -> Result<Vec<SubscriptionPlan>, AppError> {
-        let query_str = "SELECT id, name, description, base_price_weekly, base_price_monthly, base_price_yearly, included_spending_weekly, included_spending_monthly, overage_rate, hard_limit_multiplier, currency, stripe_price_id_weekly, stripe_price_id_monthly, stripe_price_id_yearly, features FROM subscription_plans ORDER BY id";
+        let query_str = "SELECT id, name, description, base_price_weekly, base_price_monthly, base_price_yearly, included_spending_weekly, included_spending_monthly, overage_rate, hard_limit_multiplier, currency, stripe_price_id_weekly, stripe_price_id_monthly, stripe_price_id_yearly, plan_tier, features FROM subscription_plans ORDER BY plan_tier, id";
         
         let records = sqlx::query(query_str)
             .map(|row: PgRow| {
@@ -220,6 +242,7 @@ impl SubscriptionPlanRepository {
                     stripe_price_id_weekly: row.get("stripe_price_id_weekly"),
                     stripe_price_id_monthly: row.get("stripe_price_id_monthly"),
                     stripe_price_id_yearly: row.get("stripe_price_id_yearly"),
+                    plan_tier: row.get("plan_tier"),
                     features: row.get("features"),
                     typed_features: None,
                 }.with_typed_features()
@@ -303,6 +326,7 @@ mod tests {
             stripe_price_id_weekly: None,
             stripe_price_id_monthly: None,
             stripe_price_id_yearly: None,
+            plan_tier: 0,
             features: json!({
                 "coreFeatures": ["Basic AI models"],
                 "allowedModels": ["anthropic/claude-sonnet-4"],
@@ -325,5 +349,93 @@ mod tests {
         assert!(!plan.can_use_model("anthropic/claude-opus-4").unwrap());
         assert_eq!(plan.get_support_level().unwrap(), SupportLevel::Community);
         assert_eq!(plan.get_overage_policy().unwrap(), OveragePolicy::None);
+    }
+
+    #[test]
+    fn test_plan_tier_comparisons() {
+        let free_plan = SubscriptionPlan {
+            id: "free".to_string(),
+            name: "Free".to_string(),
+            description: None,
+            base_price_weekly: BigDecimal::from(0),
+            base_price_monthly: BigDecimal::from(0),
+            base_price_yearly: BigDecimal::from(0),
+            included_spending_weekly: BigDecimal::from(0),
+            included_spending_monthly: BigDecimal::from(5),
+            overage_rate: BigDecimal::from(1),
+            hard_limit_multiplier: BigDecimal::from(2),
+            currency: "USD".to_string(),
+            stripe_price_id_weekly: None,
+            stripe_price_id_monthly: None,
+            stripe_price_id_yearly: None,
+            plan_tier: 0,
+            features: json!({}),
+            typed_features: None,
+        };
+
+        let pro_plan = SubscriptionPlan {
+            id: "pro".to_string(),
+            name: "Pro".to_string(),
+            description: None,
+            base_price_weekly: BigDecimal::from(5),
+            base_price_monthly: BigDecimal::from(20),
+            base_price_yearly: BigDecimal::from(200),
+            included_spending_weekly: BigDecimal::from(12),
+            included_spending_monthly: BigDecimal::from(50),
+            overage_rate: BigDecimal::from(1),
+            hard_limit_multiplier: BigDecimal::from(3),
+            currency: "USD".to_string(),
+            stripe_price_id_weekly: None,
+            stripe_price_id_monthly: None,
+            stripe_price_id_yearly: None,
+            plan_tier: 1,
+            features: json!({}),
+            typed_features: None,
+        };
+
+        let enterprise_plan = SubscriptionPlan {
+            id: "enterprise".to_string(),
+            name: "Enterprise".to_string(),
+            description: None,
+            base_price_weekly: BigDecimal::from(25),
+            base_price_monthly: BigDecimal::from(100),
+            base_price_yearly: BigDecimal::from(1000),
+            included_spending_weekly: BigDecimal::from(50),
+            included_spending_monthly: BigDecimal::from(200),
+            overage_rate: BigDecimal::from(1),
+            hard_limit_multiplier: BigDecimal::from(5),
+            currency: "USD".to_string(),
+            stripe_price_id_weekly: None,
+            stripe_price_id_monthly: None,
+            stripe_price_id_yearly: None,
+            plan_tier: 2,
+            features: json!({}),
+            typed_features: None,
+        };
+
+        // Test tier comparisons
+        assert_eq!(free_plan.get_plan_tier(), 0);
+        assert_eq!(pro_plan.get_plan_tier(), 1);
+        assert_eq!(enterprise_plan.get_plan_tier(), 2);
+
+        // Test upgrade logic
+        assert!(free_plan.is_upgrade_to(&pro_plan));
+        assert!(free_plan.is_upgrade_to(&enterprise_plan));
+        assert!(pro_plan.is_upgrade_to(&enterprise_plan));
+
+        // Test downgrade logic
+        assert!(pro_plan.is_downgrade_to(&free_plan));
+        assert!(enterprise_plan.is_downgrade_to(&free_plan));
+        assert!(enterprise_plan.is_downgrade_to(&pro_plan));
+
+        // Test same tier logic
+        assert!(free_plan.is_same_tier_as(&free_plan));
+        assert!(pro_plan.is_same_tier_as(&pro_plan));
+        assert!(enterprise_plan.is_same_tier_as(&enterprise_plan));
+
+        // Test negatives
+        assert!(!free_plan.is_downgrade_to(&pro_plan));
+        assert!(!pro_plan.is_upgrade_to(&free_plan));
+        assert!(!free_plan.is_same_tier_as(&pro_plan));
     }
 }

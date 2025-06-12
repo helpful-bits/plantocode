@@ -69,6 +69,8 @@ impl UserRepository {
     }
 
     // Get user by email
+    // SECURITY WARNING: This method bypasses RLS - only use with system pool (vibe_manager_app role)
+    // Never call from user-facing handlers that use user pool (authenticated role)
     pub async fn get_by_email(&self, email: &str) -> Result<User, AppError> {
         let user = query_as!(
             User,
@@ -111,7 +113,9 @@ impl UserRepository {
         Ok(user)
     }
 
-    // Get user by Auth0 user ID
+    // Get user by Auth0 user ID  
+    // SECURITY WARNING: This method bypasses RLS - only use with system pool (vibe_manager_app role)
+    // Never call from user-facing handlers that use user pool (authenticated role)
     pub async fn get_by_auth0_user_id(&self, auth0_user_id: &str) -> Result<User, AppError> {
         let user = query_as!(
             User,
@@ -314,9 +318,9 @@ impl UserRepository {
         Ok(())
     }
     
-    // Find users by Stripe customer ID
-    pub async fn find_by_stripe_customer_id(&self, stripe_customer_id: &str) -> Result<Vec<User>, AppError> {
-        let users = query_as!(
+    // Get user by Stripe customer ID
+    pub async fn get_by_stripe_customer_id(&self, stripe_customer_id: &str) -> Result<User, AppError> {
+        let user = query_as!(
             User,
             r#"
             SELECT u.id, u.email, u.password_hash, u.full_name, u.auth0_user_id, u.role, u.created_at, u.updated_at, u.auth0_refresh_token
@@ -326,17 +330,20 @@ impl UserRepository {
             "#,
             stripe_customer_id
         )
-        .fetch_all(&self.db_pool)
+        .fetch_one(&self.db_pool)
         .await
-        .map_err(|e| AppError::Database(format!("Failed to find users by Stripe customer ID: {}", e)))?;
+        .map_err(|e| match e {
+            sqlx::Error::RowNotFound => AppError::NotFound(format!("User with Stripe customer ID not found: {}", stripe_customer_id)),
+            _ => AppError::Database(format!("Failed to get user by Stripe customer ID: {}", e)),
+        })?;
 
-        Ok(users)
+        Ok(user)
     }
 
-    // Find users by Stripe customer ID with custom executor
-    pub async fn find_by_stripe_customer_id_with_executor(&self, stripe_customer_id: &str, executor: &mut sqlx::Transaction<'_, sqlx::Postgres>) -> Result<Vec<User>, AppError>
+    // Get user by Stripe customer ID with custom executor
+    pub async fn get_by_stripe_customer_id_with_executor(&self, stripe_customer_id: &str, executor: &mut sqlx::Transaction<'_, sqlx::Postgres>) -> Result<User, AppError>
     {
-        let users = query_as!(
+        let user = query_as!(
             User,
             r#"
             SELECT u.id, u.email, u.password_hash, u.full_name, u.auth0_user_id, u.role, u.created_at, u.updated_at, u.auth0_refresh_token
@@ -346,11 +353,14 @@ impl UserRepository {
             "#,
             stripe_customer_id
         )
-        .fetch_all(&mut **executor)
+        .fetch_one(&mut **executor)
         .await
-        .map_err(|e| AppError::Database(format!("Failed to find users by Stripe customer ID: {}", e)))?;
+        .map_err(|e| match e {
+            sqlx::Error::RowNotFound => AppError::NotFound(format!("User with Stripe customer ID not found: {}", stripe_customer_id)),
+            _ => AppError::Database(format!("Failed to get user by Stripe customer ID: {}", e)),
+        })?;
 
-        Ok(users)
+        Ok(user)
     }
     
     // Find or create a user based on Auth0 details (Auth0 user ID and email)

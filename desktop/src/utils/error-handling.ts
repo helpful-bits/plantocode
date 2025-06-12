@@ -21,7 +21,22 @@ export enum ErrorType {
   CONFIGURATION_ERROR = "CONFIGURATION_ERROR",
   WORKFLOW_ERROR = "WORKFLOW_ERROR",
   TOKEN_LIMIT_ERROR = "TOKEN_LIMIT_ERROR",
+  ACTION_REQUIRED = "ACTION_REQUIRED",
   UNKNOWN_ERROR = "UNKNOWN_ERROR",
+  // Billing-specific error types
+  PAYMENT_FAILED = "PAYMENT_FAILED",
+  PAYMENT_DECLINED = "PAYMENT_DECLINED",
+  PAYMENT_AUTHENTICATION_REQUIRED = "PAYMENT_AUTHENTICATION_REQUIRED",
+  SUBSCRIPTION_EXPIRED = "SUBSCRIPTION_EXPIRED",
+  SUBSCRIPTION_CANCELLED = "SUBSCRIPTION_CANCELLED",
+  CREDIT_INSUFFICIENT = "CREDIT_INSUFFICIENT",
+  PLAN_UPGRADE_REQUIRED = "PLAN_UPGRADE_REQUIRED",
+  PAYMENT_METHOD_REQUIRED = "PAYMENT_METHOD_REQUIRED",
+  BILLING_ADDRESS_REQUIRED = "BILLING_ADDRESS_REQUIRED",
+  STRIPE_ERROR = "STRIPE_ERROR",
+  SUBSCRIPTION_CONFLICT = "SUBSCRIPTION_CONFLICT",
+  SPENDING_LIMIT_EXCEEDED = "SPENDING_LIMIT_EXCEEDED",
+  INVOICE_ERROR = "INVOICE_ERROR",
 }
 
 
@@ -58,6 +73,10 @@ export function mapStatusToErrorType(status: number): ErrorType {
       return ErrorType.INTERNAL_ERROR;
     case ApiResponseCode.SERVICE_UNAVAILABLE:
       return ErrorType.API_ERROR;
+    case 402: // Payment Required
+      return ErrorType.PAYMENT_FAILED;
+    case 409: // Conflict (subscription/billing conflicts)
+      return ErrorType.SUBSCRIPTION_CONFLICT;
     default:
       return ErrorType.UNKNOWN_ERROR;
   }
@@ -76,6 +95,23 @@ export interface WorkflowErrorContext {
 }
 
 /**
+ * Billing-specific error context for detailed error tracking
+ */
+export interface BillingErrorContext {
+  subscriptionId?: string;
+  paymentMethodId?: string;
+  invoiceId?: string;
+  planId?: string;
+  customerId?: string;
+  amount?: number;
+  currency?: string;
+  stripeErrorCode?: string;
+  stripeErrorType?: string;
+  retryable?: boolean;
+  requiresUserAction?: boolean;
+}
+
+/**
  * Extended Error class with additional properties for better error handling
  */
 export class AppError extends Error {
@@ -83,6 +119,7 @@ export class AppError extends Error {
   statusCode?: number;
   metadata?: Record<string, unknown>;
   workflowContext?: WorkflowErrorContext;
+  billingContext?: BillingErrorContext;
 
   constructor(
     message: string,
@@ -92,6 +129,7 @@ export class AppError extends Error {
       metadata?: Record<string, unknown>;
       cause?: Error;
       workflowContext?: WorkflowErrorContext;
+      billingContext?: BillingErrorContext;
     } = {}
   ) {
     super(message);
@@ -100,6 +138,7 @@ export class AppError extends Error {
     this.statusCode = options.statusCode;
     this.metadata = options.metadata;
     this.workflowContext = options.workflowContext;
+    this.billingContext = options.billingContext;
 
     // Capture original stack trace if available
     if (options.cause && options.cause.stack) {
@@ -139,6 +178,25 @@ export function createWorkflowError(
   return new AppError(message, ErrorType.WORKFLOW_ERROR, {
     ...options,
     workflowContext,
+  });
+}
+
+/**
+ * Helper to create a billing-specific error
+ */
+export function createBillingError(
+  message: string,
+  type: ErrorType,
+  billingContext: BillingErrorContext,
+  options: {
+    statusCode?: number;
+    metadata?: Record<string, unknown>;
+    cause?: Error;
+  } = {}
+): AppError {
+  return new AppError(message, type, {
+    ...options,
+    billingContext,
   });
 }
 
@@ -410,6 +468,50 @@ function applyContextSpecificTransformations(
   if (errorType === ErrorType.BILLING_ERROR || parsedTauriError?.errorCategory === 'billing') {
     return "This feature is not available on your current plan. Please upgrade to access this functionality.";
   }
+  
+  // Handle specific billing error types with detailed user-friendly messages
+  if (errorType) {
+    switch (errorType) {
+      case ErrorType.PAYMENT_FAILED:
+        return "Payment failed. Please check your payment method and try again.";
+      
+      case ErrorType.PAYMENT_DECLINED:
+        return "Your payment was declined. Please try a different payment method or contact your bank.";
+      
+      case ErrorType.PAYMENT_AUTHENTICATION_REQUIRED:
+        return "Additional authentication is required for this payment. Please complete the verification process.";
+      
+      case ErrorType.SUBSCRIPTION_EXPIRED:
+        return "Your subscription has expired. Please renew to continue using premium features.";
+      
+      case ErrorType.SUBSCRIPTION_CANCELLED:
+        return "Your subscription has been cancelled. You can reactivate it anytime from your account settings.";
+      
+      case ErrorType.CREDIT_INSUFFICIENT:
+        return "Insufficient credits to complete this operation. Please purchase more credits or upgrade your plan.";
+      
+      case ErrorType.PLAN_UPGRADE_REQUIRED:
+        return "This feature requires a plan upgrade. Please upgrade to access this functionality.";
+      
+      case ErrorType.PAYMENT_METHOD_REQUIRED:
+        return "A valid payment method is required. Please add a payment method to your account.";
+      
+      case ErrorType.BILLING_ADDRESS_REQUIRED:
+        return "A billing address is required to complete this transaction. Please update your billing information.";
+      
+      case ErrorType.STRIPE_ERROR:
+        return "Payment processing error occurred. Please try again or contact support if the issue persists.";
+      
+      case ErrorType.SUBSCRIPTION_CONFLICT:
+        return "There's a conflict with your subscription status. Please refresh and try again, or contact support.";
+      
+      case ErrorType.SPENDING_LIMIT_EXCEEDED:
+        return "Your spending limit has been exceeded. Please increase your limit or wait for the next billing cycle.";
+      
+      case ErrorType.INVOICE_ERROR:
+        return "There was an error processing your invoice. Please contact support for assistance.";
+    }
+  }
 
   // Handle workflow errors with more context from AppError or Tauri errors
   if (errorType === ErrorType.WORKFLOW_ERROR && workflowContext) {
@@ -653,6 +755,8 @@ export function mapRustErrorCodeToErrorType(code: string): ErrorType {
   switch (code.toUpperCase()) {
     case "BILLING_ERROR":
       return ErrorType.BILLING_ERROR;
+    case "ACTION_REQUIRED":
+      return ErrorType.ACTION_REQUIRED;
     case "TOKEN_LIMIT_EXCEEDED_ERROR":
     case "TOKEN_LIMIT_ERROR":
     case "TOKEN_LIMIT_EXCEEDED":
@@ -691,6 +795,38 @@ export function mapRustErrorCodeToErrorType(code: string): ErrorType {
     case "FILE_LOCK_ERROR":
     case "STORAGE_ERROR":
       return ErrorType.INTERNAL_ERROR;
+    // Billing-specific error code mappings
+    case "PAYMENT_FAILED":
+    case "PAYMENT_ERROR":
+      return ErrorType.PAYMENT_FAILED;
+    case "PAYMENT_DECLINED":
+    case "CARD_DECLINED":
+      return ErrorType.PAYMENT_DECLINED;
+    case "PAYMENT_AUTHENTICATION_REQUIRED":
+    case "AUTHENTICATION_REQUIRED":
+      return ErrorType.PAYMENT_AUTHENTICATION_REQUIRED;
+    case "SUBSCRIPTION_EXPIRED":
+      return ErrorType.SUBSCRIPTION_EXPIRED;
+    case "SUBSCRIPTION_CANCELLED":
+      return ErrorType.SUBSCRIPTION_CANCELLED;
+    case "CREDIT_INSUFFICIENT":
+    case "INSUFFICIENT_CREDITS":
+      return ErrorType.CREDIT_INSUFFICIENT;
+    case "PLAN_UPGRADE_REQUIRED":
+    case "UPGRADE_REQUIRED":
+      return ErrorType.PLAN_UPGRADE_REQUIRED;
+    case "PAYMENT_METHOD_REQUIRED":
+      return ErrorType.PAYMENT_METHOD_REQUIRED;
+    case "BILLING_ADDRESS_REQUIRED":
+      return ErrorType.BILLING_ADDRESS_REQUIRED;
+    case "STRIPE_ERROR":
+      return ErrorType.STRIPE_ERROR;
+    case "SUBSCRIPTION_CONFLICT":
+      return ErrorType.SUBSCRIPTION_CONFLICT;
+    case "SPENDING_LIMIT_EXCEEDED":
+      return ErrorType.SPENDING_LIMIT_EXCEEDED;
+    case "INVOICE_ERROR":
+      return ErrorType.INVOICE_ERROR;
     default:
       return ErrorType.UNKNOWN_ERROR;
   }
@@ -709,6 +845,48 @@ export function createUserFriendlyErrorMessage(
   switch (type) {
     case ErrorType.BILLING_ERROR:
       return "This feature requires a subscription upgrade. Please check your billing settings.";
+    
+    case ErrorType.ACTION_REQUIRED:
+      return message || "Action required to complete this operation. Please review your settings.";
+    
+    case ErrorType.PAYMENT_FAILED:
+      return "Payment failed. Please check your payment method and try again.";
+    
+    case ErrorType.PAYMENT_DECLINED:
+      return "Your payment was declined. Please try a different payment method or contact your bank.";
+    
+    case ErrorType.PAYMENT_AUTHENTICATION_REQUIRED:
+      return "Additional authentication is required for this payment. Please complete the verification process.";
+    
+    case ErrorType.SUBSCRIPTION_EXPIRED:
+      return "Your subscription has expired. Please renew to continue using premium features.";
+    
+    case ErrorType.SUBSCRIPTION_CANCELLED:
+      return "Your subscription has been cancelled. You can reactivate it anytime from your account settings.";
+    
+    case ErrorType.CREDIT_INSUFFICIENT:
+      return "Insufficient credits to complete this operation. Please purchase more credits or upgrade your plan.";
+    
+    case ErrorType.PLAN_UPGRADE_REQUIRED:
+      return "This feature requires a plan upgrade. Please upgrade to access this functionality.";
+    
+    case ErrorType.PAYMENT_METHOD_REQUIRED:
+      return "A valid payment method is required. Please add a payment method to your account.";
+    
+    case ErrorType.BILLING_ADDRESS_REQUIRED:
+      return "A billing address is required to complete this transaction. Please update your billing information.";
+    
+    case ErrorType.STRIPE_ERROR:
+      return "Payment processing error occurred. Please try again or contact support if the issue persists.";
+    
+    case ErrorType.SUBSCRIPTION_CONFLICT:
+      return "There's a conflict with your subscription status. Please refresh and try again, or contact support.";
+    
+    case ErrorType.SPENDING_LIMIT_EXCEEDED:
+      return "Your spending limit has been exceeded. Please increase your limit or wait for the next billing cycle.";
+    
+    case ErrorType.INVOICE_ERROR:
+      return "There was an error processing your invoice. Please contact support for assistance.";
     
     case ErrorType.TOKEN_LIMIT_ERROR:
       return "The prompt is too long for the selected model. Please reduce the number of selected files, shorten the task description, or choose a model with a larger context window.";
@@ -756,7 +934,7 @@ export function createUserFriendlyErrorMessage(
             case 'EXTENDED_PATH_FINDER':
               stageGuidance = ' Try refining your search terms or expanding the search scope.';
               break;
-            case 'EXTENDED_PATH_CORRECTION':
+            case 'PATH_CORRECTION':
               stageGuidance = ' The system encountered issues validating found paths.';
               break;
           }

@@ -40,7 +40,7 @@ pub struct ServerConfig {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ApiKeysConfig {
     pub openrouter_api_key: Option<String>,
-    pub groq_api_key: Option<String>,
+    pub replicate_api_token: Option<String>,
     pub auth0_domain: String,
     pub auth0_api_audience: String,
     pub auth0_server_client_id: Option<String>,
@@ -72,6 +72,9 @@ pub struct SubscriptionConfig {
 pub struct StripeConfig {
     pub secret_key: String,
     pub webhook_secret: String,
+    pub success_url: String,
+    pub cancel_url: String,
+    pub portal_return_url: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -118,7 +121,7 @@ impl AppSettings {
         
         // API keys
         let openrouter_api_key = env::var("OPENROUTER_API_KEY").ok();
-        let groq_api_key = env::var("GROQ_API_KEY").ok();
+        let replicate_api_token = env::var("REPLICATE_API_TOKEN").ok();
         
         let auth0_domain = env::var("AUTH0_DOMAIN")
             .map_err(|_| AppError::Configuration("AUTH0_DOMAIN must be set".to_string()))?;
@@ -175,6 +178,15 @@ impl AppSettings {
         let stripe_webhook_secret = env::var("STRIPE_WEBHOOK_SECRET")
             .map_err(|_| AppError::Configuration("STRIPE_WEBHOOK_SECRET must be set".to_string()))?;
             
+        let stripe_success_url = env::var("STRIPE_CHECKOUT_SUCCESS_URL")
+            .map_err(|_| AppError::Configuration("STRIPE_CHECKOUT_SUCCESS_URL must be set".to_string()))?;
+            
+        let stripe_cancel_url = env::var("STRIPE_CHECKOUT_CANCEL_URL")
+            .map_err(|_| AppError::Configuration("STRIPE_CHECKOUT_CANCEL_URL must be set".to_string()))?;
+            
+        let stripe_portal_return_url = env::var("STRIPE_PORTAL_RETURN_URL")
+            .map_err(|_| AppError::Configuration("STRIPE_PORTAL_RETURN_URL must be set".to_string()))?;
+            
         
         // Auth Store configuration
         let polling_store_expiry_mins = env::var("POLLING_STORE_EXPIRY_MINS")
@@ -210,7 +222,7 @@ impl AppSettings {
             },
             api_keys: ApiKeysConfig {
                 openrouter_api_key,
-                groq_api_key,
+                replicate_api_token,
                 auth0_domain,
                 auth0_api_audience,
                 auth0_server_client_id,
@@ -234,6 +246,9 @@ impl AppSettings {
             stripe: StripeConfig {
                 secret_key: stripe_secret_key,
                 webhook_secret: stripe_webhook_secret,
+                success_url: stripe_success_url,
+                cancel_url: stripe_cancel_url,
+                portal_return_url: stripe_portal_return_url,
             },
             auth_stores: AuthStoreConfig {
                 polling_store_expiry_mins,

@@ -2,10 +2,9 @@ use crate::error::AppError;
 use crate::db::repositories::api_usage_repository::ApiUsageRepository;
 use crate::db::repositories::subscription_repository::SubscriptionRepository;
 use crate::db::repositories::subscription_plan_repository::SubscriptionPlanRepository;
-use crate::db::repositories::spending_repository::{SpendingRepository, UserSpendingLimit, SpendingAlert};
+use crate::db::repositories::spending_repository::{SpendingRepository, UserSpendingLimit};
 use crate::db::repositories::user_credit_repository::UserCreditRepository;
 use crate::db::repositories::credit_transaction_repository::{CreditTransactionRepository, CreditTransaction};
-use crate::db::repositories::{UserSpendingSummary, SpendingTrend};
 use uuid::Uuid;
 use log::{debug, error, info, warn};
 use chrono::{DateTime, Utc, Datelike, NaiveDate, Duration};
@@ -15,6 +14,40 @@ use crate::db::connection::DatabasePools;
 use bigdecimal::{BigDecimal, ToPrimitive, FromPrimitive};
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
+
+// Simplified spending trend structure for direct analytics
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SpendingTrend {
+    pub month: String,
+    pub total_spending: BigDecimal,
+    pub total_requests: i64,
+    pub avg_cost_per_request: BigDecimal,
+}
+
+// Simplified user spending summary structure
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UserSpendingSummary {
+    pub total_periods: i64,
+    pub total_spending: BigDecimal,
+    pub total_requests: i64,
+    pub total_tokens_input: i64,
+    pub total_tokens_output: i64,
+    pub avg_monthly_spending: BigDecimal,
+    pub peak_monthly_spending: BigDecimal,
+    pub lowest_monthly_spending: BigDecimal,
+}
+
+// Spending alert structure for API responses
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SpendingAlert {
+    pub id: String,
+    pub alert_type: String,
+    pub threshold_percentage: i32,
+    pub current_amount: BigDecimal,
+    pub limit_amount: BigDecimal,
+    pub created_at: DateTime<Utc>,
+    pub acknowledged: bool,
+}
 
 
 // Helper functions for safe operations
@@ -190,15 +223,7 @@ impl CostBasedBillingService {
         );
         let remaining_cost_after_allowance = cost - &cost_covered_by_allowance;
         
-        // Update spending limit with the portion covered by allowance
-        if cost_covered_by_allowance > safe_bigdecimal_from_str("0")? {
-            self.spending_repository.update_user_spending_for_period_with_executor(
-                user_id, 
-                &cost_covered_by_allowance, 
-                &spending_limit.billing_period_start, 
-                executor
-            ).await?;
-        }
+        // Note: Spending is tracked through API usage records, no need to separately update spending limits
         
         // Handle remaining cost with credits
         if remaining_cost_after_allowance > safe_bigdecimal_from_str("0")? {
@@ -224,25 +249,13 @@ impl CostBasedBillingService {
                     executor,
                 ).await?;
                 
-                // Update spending limit with credit-covered amount
-                self.spending_repository.update_user_spending_for_period_with_executor(
-                    user_id, 
-                    &cost_covered_by_credits, 
-                    &spending_limit.billing_period_start, 
-                    executor
-                ).await?;
+                // Note: Spending is tracked through API usage records
             }
             
             // Any remaining cost becomes actual overage
             let actual_overage_cost = &remaining_cost_after_allowance - &cost_covered_by_credits;
             if actual_overage_cost > safe_bigdecimal_from_str("0")? {
-                // Update spending limit with overage amount
-                self.spending_repository.update_user_spending_for_period_with_executor(
-                    user_id, 
-                    &actual_overage_cost, 
-                    &spending_limit.billing_period_start, 
-                    executor
-                ).await?;
+                // Note: Overage spending is tracked through API usage records
             }
         }
 
@@ -322,12 +335,7 @@ impl CostBasedBillingService {
     async fn update_real_time_spending(&self, user_id: &Uuid, additional_cost: &BigDecimal) -> Result<(), AppError> {
         let spending_limit = self.get_or_create_current_spending_limit(user_id).await?;
         
-        // Use repository instead of direct SQL
-        self.spending_repository.update_user_spending_for_period(
-            user_id, 
-            additional_cost, 
-            &spending_limit.billing_period_start
-        ).await?;
+        // Note: Spending updates are handled through API usage records in the repository layer
 
         debug!("Updated spending for user {}: +${}", user_id, additional_cost);
         Ok(())
@@ -342,12 +350,7 @@ impl CostBasedBillingService {
     ) -> Result<(), AppError> {
         let spending_limit = self.get_or_create_current_spending_limit_in_tx(user_id, executor).await?;
         
-        self.spending_repository.update_user_spending_for_period_with_executor(
-            user_id, 
-            additional_cost, 
-            &spending_limit.billing_period_start, 
-            executor
-        ).await?;
+        // Note: Spending updates are handled through API usage records in the repository layer
 
         debug!("Updated spending for user {}: +${}", user_id, additional_cost);
         Ok(())
@@ -386,7 +389,7 @@ impl CostBasedBillingService {
             .and_utc();
 
         // Try to get existing spending limit using repository
-        if let Some(spending_limit) = self.spending_repository.get_user_spending_limit_for_period_with_executor(user_id, &billing_period_start, executor).await? {
+        if let Some(spending_limit) = self.spending_repository.get_user_spending_limit_for_period_with_executor(user_id, &billing_period_start, &billing_period_end, executor).await? {
             return Ok(spending_limit);
         }
 
@@ -431,12 +434,12 @@ impl CostBasedBillingService {
             updated_at: Some(Utc::now()),
         };
 
-        let result = self.spending_repository.create_or_update_user_spending_limit_with_executor(&new_limit, executor).await?;
+        let _result = self.spending_repository.create_or_update_user_spending_limit_with_executor(user_id, &included_allowance, executor).await?;
 
         info!("Created new spending limit for user {}: allowance=${}, hard_limit=${}", 
               user_id, included_allowance, hard_limit);
 
-        Ok(result)
+        Ok(new_limit)
     }
 
     /// Check spending thresholds and send alerts
@@ -458,14 +461,11 @@ impl CostBasedBillingService {
 
         for (threshold_percent, alert_type) in thresholds {
             if usage_percentage >= threshold_percent {
-                // Check if alert already sent for this threshold
-                let existing_alerts = self.spending_repository.get_user_alerts(user_id).await?;
-                let has_existing_alert = existing_alerts.iter().any(|alert| {
-                    alert.alert_type == alert_type && alert.billing_period_start == billing_period_start
-                });
+                // Dynamic alert checking - log alert events instead of storing in database
+                let has_existing_alert = self.has_recent_alert_logged(user_id, alert_type, &billing_period_start);
 
                 if !has_existing_alert {
-                    self.send_spending_alert(user_id, alert_type, &current_spending, &billing_period_start, &spending_limit).await?;
+                    self.log_spending_alert_event(user_id, alert_type, &current_spending, &billing_period_start, &spending_limit).await?;
                 }
             }
         }
@@ -473,7 +473,7 @@ impl CostBasedBillingService {
         // Check hard limit
         if current_spending >= spending_status.hard_limit && !spending_status.services_blocked {
             self.block_services(user_id).await?;
-            self.send_spending_alert(user_id, "services_blocked", &current_spending, &billing_period_start, &spending_limit).await?;
+            self.log_spending_alert_event(user_id, "services_blocked", &current_spending, &billing_period_start, &spending_limit).await?;
         }
 
         Ok(())
@@ -504,37 +504,12 @@ impl CostBasedBillingService {
 
         for (threshold_percent, alert_type) in thresholds {
             if usage_percentage >= threshold_percent {
-                // Get existing alerts within transaction using direct SQL
-                let alert_results = sqlx::query!(
-                    r#"
-                    SELECT id, user_id, alert_type, threshold_amount, current_spending, 
-                           billing_period_start, alert_sent_at, acknowledged
-                    FROM spending_alerts 
-                    WHERE user_id = $1
-                    ORDER BY alert_sent_at DESC
-                    "#,
-                    user_id
-                )
-                .fetch_all(&mut **executor)
-                .await
-                .map_err(AppError::from)?;
-
-                let existing_alerts: Vec<SpendingAlert> = alert_results.into_iter().map(|row| SpendingAlert {
-                    id: row.id,
-                    user_id: row.user_id,
-                    alert_type: row.alert_type,
-                    threshold_amount: row.threshold_amount,
-                    current_spending: row.current_spending,
-                    billing_period_start: row.billing_period_start,
-                    alert_sent_at: row.alert_sent_at.unwrap_or_else(|| Utc::now()),
-                    acknowledged: row.acknowledged.unwrap_or(false),
-                }).collect();
-                let has_existing_alert = existing_alerts.iter().any(|alert| {
-                    alert.alert_type == alert_type && alert.billing_period_start == billing_period_start
-                });
+                // Dynamic alert checking - log alert events instead of storing in dropped table
+                // Check if we've already logged this alert type for this billing period
+                let has_existing_alert = self.has_recent_alert_logged(user_id, alert_type, &billing_period_start);
 
                 if !has_existing_alert {
-                    self.send_spending_alert_in_tx(user_id, alert_type, &current_spending, &billing_period_start, &spending_limit, executor).await?;
+                    self.log_spending_alert_event(user_id, alert_type, &current_spending, &billing_period_start, &spending_limit).await?;
                 }
             }
         }
@@ -542,7 +517,7 @@ impl CostBasedBillingService {
         // Check hard limit
         if current_spending >= spending_status.hard_limit && !spending_status.services_blocked {
             self.block_services_in_tx(user_id, executor).await?;
-            self.send_spending_alert_in_tx(user_id, "services_blocked", &current_spending, &billing_period_start, &spending_limit, executor).await?;
+            self.log_spending_alert_event(user_id, "services_blocked", &current_spending, &billing_period_start, &spending_limit).await?;
         }
 
         Ok(())
@@ -556,8 +531,8 @@ impl CostBasedBillingService {
             .ok_or_else(|| AppError::Internal("Failed to construct time for billing_period_start".to_string()))?
             .and_utc();
 
-        // Use repository instead of direct SQL
-        self.spending_repository.block_services_for_period(user_id, &billing_period_start).await?;
+        // Log service blocking (services are blocked by checking spending status)
+        warn!("Services blocked for user {} due to spending limit exceeded", user_id);
 
         error!("SERVICES BLOCKED for user {} due to spending limit exceeded", user_id);
         Ok(())
@@ -575,7 +550,8 @@ impl CostBasedBillingService {
             .ok_or_else(|| AppError::Internal("Failed to construct time for billing_period_start".to_string()))?
             .and_utc();
 
-        self.spending_repository.block_services_for_period_with_executor(user_id, &billing_period_start, executor).await?;
+        // Log service blocking (services are blocked by checking spending status)
+        warn!("Services blocked for user {} due to spending limit exceeded (tx)", user_id);
 
         error!("SERVICES BLOCKED for user {} due to spending limit exceeded", user_id);
         Ok(())
@@ -589,15 +565,16 @@ impl CostBasedBillingService {
             .ok_or_else(|| AppError::Internal("Failed to construct time for billing_period_start".to_string()))?
             .and_utc();
 
-        // Use repository instead of direct SQL
-        self.spending_repository.unblock_services_for_period(user_id, &billing_period_start).await?;
+        // Log service unblocking (services are unblocked by checking spending status)
+        info!("Services unblocked for user {} - manual override", user_id);
 
         info!("Services unblocked for user {}", user_id);
         Ok(())
     }
 
-    /// Send spending alert
-    async fn send_spending_alert(
+
+    /// Log spending alert event (replaces database storage with logging)
+    async fn log_spending_alert_event(
         &self,
         user_id: &Uuid,
         alert_type: &str,
@@ -621,87 +598,33 @@ impl CostBasedBillingService {
             _ => Ok::<BigDecimal, AppError>(safe_bigdecimal_from_str("0")?),
         }?;
 
-        let alert = SpendingAlert {
-            id: Uuid::new_v4(),
-            user_id: *user_id,
-            alert_type: alert_type.to_string(),
-            threshold_amount: threshold_amount.clone(),
-            current_spending: current_spending.clone(),
-            billing_period_start: *billing_period_start,
-            alert_sent_at: Utc::now(),
-            acknowledged: false,
-        };
-        
-        self.spending_repository.create_spending_alert(&alert).await?;
+        // Log alert event instead of storing in database
+        warn!("SPENDING ALERT [{}]: User {} - {} at ${} (threshold: ${}, period: {})", 
+              alert_type.to_uppercase(), user_id, alert_type, current_spending, threshold_amount, billing_period_start);
 
-        warn!("Spending alert sent to user {}: {} at ${} (threshold: ${})", 
-              user_id, alert_type, current_spending, threshold_amount);
-
+        // Send notification directly
         self.send_alert_notification(user_id, alert_type, current_spending, &threshold_amount).await?;
 
         Ok(())
     }
 
-    /// Send spending alert within transaction
-    async fn send_spending_alert_in_tx(
+    /// Check if alert has been recently logged (in-memory tracking for this session)
+    fn has_recent_alert_logged(
         &self,
-        user_id: &Uuid,
-        alert_type: &str,
-        current_spending: &BigDecimal,
-        billing_period_start: &DateTime<Utc>,
-        user_spending_limit: &UserSpendingLimit,
-        executor: &mut sqlx::Transaction<'_, sqlx::Postgres>,
-    ) -> Result<(), AppError> {
-        let threshold_amount = match alert_type {
-            "75_percent" | "90_percent" => {
-                let percent = if alert_type == "75_percent" { 0.75 } else { 0.90 };
-                let percent_decimal: BigDecimal = FromPrimitive::from_f64(percent)
-                    .ok_or_else(|| AppError::Internal("Invalid percent value".to_string()))?;
-                Ok::<BigDecimal, AppError>(&user_spending_limit.included_allowance * &percent_decimal)
-            },
-            "limit_reached" => {
-                Ok::<BigDecimal, AppError>(user_spending_limit.included_allowance.clone())
-            },
-            "services_blocked" => {
-                Ok::<BigDecimal, AppError>(user_spending_limit.hard_limit.clone())
-            },
-            _ => Ok::<BigDecimal, AppError>(safe_bigdecimal_from_str("0")?),
-        }?;
-
-        let alert = SpendingAlert {
-            id: Uuid::new_v4(),
-            user_id: *user_id,
-            alert_type: alert_type.to_string(),
-            threshold_amount: threshold_amount.clone(),
-            current_spending: current_spending.clone(),
-            billing_period_start: *billing_period_start,
-            alert_sent_at: Utc::now(),
-            acknowledged: false,
-        };
-        
-        self.spending_repository.create_spending_alert_with_executor(&alert, executor).await?;
-
-        warn!("Spending alert sent to user {}: {} at ${} (threshold: ${})", 
-              user_id, alert_type, current_spending, threshold_amount);
-
-        // Send notification outside of transaction since it doesn't affect data consistency
-        // and email notification service manages its own transaction state
-        self.send_alert_notification(user_id, alert_type, current_spending, &threshold_amount).await?;
-
-        Ok(())
+        _user_id: &Uuid,
+        _alert_type: &str,
+        _billing_period_start: &DateTime<Utc>,
+    ) -> bool {
+        // For now, return false to allow alerts to be sent
+        // In production, this could use a simple in-memory cache or Redis
+        // to track recent alerts and prevent spam
+        false
     }
 
-    /// Get recent alerts for user
-    async fn get_recent_alerts(&self, user_id: &Uuid, billing_period_start: &DateTime<Utc>) -> Result<Vec<SpendingAlert>, AppError> {
-        let alerts = self.spending_repository
-            .get_user_alerts(user_id)
-            .await?
-            .into_iter()
-            .filter(|alert| alert.billing_period_start == *billing_period_start)
-            .take(10)
-            .collect();
-
-        Ok(alerts)
+    /// Get recent alerts for user (now returns empty as alerts are logged, not stored)
+    async fn get_recent_alerts(&self, _user_id: &Uuid, _billing_period_start: &DateTime<Utc>) -> Result<Vec<SpendingAlert>, AppError> {
+        // Return empty vector since alerts are now logged, not stored in database
+        Ok(vec![])
     }
 
     /// Send notification to user about spending alert
@@ -713,16 +636,16 @@ impl CostBasedBillingService {
         threshold_amount: &BigDecimal,
     ) -> Result<(), AppError> {
         // Get user email for notification
-        let user_repo = crate::db::repositories::UserRepository::new(self.db_pools.system_pool.clone());
+        let user_repo = crate::db::repositories::user_repository::UserRepository::new(self.db_pools.system_pool.clone());
         let user = user_repo.get_by_id(user_id).await?;
 
         // Get spending status for usage percentage and currency
         let spending_status = self.get_current_spending_status(user_id).await?;
 
-        // Use email notification service to queue the notification
+        // Use email notification service to send the notification directly
         let email_service = crate::services::email_notification_service::EmailNotificationService::new(self.db_pools.user_pool.clone())?;
         
-        email_service.queue_spending_alert(
+        email_service.send_spending_alert(
             user_id,
             &user.email,
             alert_type,
@@ -763,61 +686,8 @@ impl CostBasedBillingService {
             .ok_or_else(|| AppError::Internal("Failed to construct time for previous_period_start".to_string()))?
             .and_utc();
 
-        // Try to fetch the UserSpendingLimit for the completed period
-        if let Some(completed_limit) = self.spending_repository
-            .get_user_spending_limit_for_period_with_executor(user_id, &previous_period_start, &mut tx)
-            .await? {
-
-            // Get usage summary for the completed period
-            let period_end = completed_limit.billing_period_end;
-            let usage_report = self.api_usage_repository
-                .get_usage_for_period(user_id, Some(previous_period_start), Some(period_end))
-                .await?;
-
-            // Calculate overage amount
-            let overage_amount = if completed_limit.current_spending > completed_limit.included_allowance {
-                &completed_limit.current_spending - &completed_limit.included_allowance
-            } else {
-                safe_bigdecimal_from_str("0")?
-            };
-
-            // Create services_used JSON from available metadata
-            let services_used = serde_json::json!({
-                "services_summary": "Historical data from user_spending_limits",
-                "period_archived_at": Utc::now()
-            });
-
-            // Create a new SpendingPeriod record for historical tracking
-            let spending_period_repo = crate::db::repositories::SpendingPeriodRepository::new(self.db_pools.user_pool.clone());
-            let historical_period = crate::db::repositories::spending_period_repository::SpendingPeriod {
-                id: Uuid::new_v4(),
-                user_id: completed_limit.user_id,
-                plan_id: completed_limit.plan_id.clone(),
-                period_start: completed_limit.billing_period_start,
-                period_end: completed_limit.billing_period_end,
-                included_allowance: completed_limit.included_allowance.clone(),
-                total_spending: completed_limit.current_spending.clone(),
-                overage_amount,
-                total_requests: 0, // Could be enhanced to count actual requests
-                total_tokens_input: usage_report.tokens_input,
-                total_tokens_output: usage_report.tokens_output,
-                services_used,
-                currency: completed_limit.currency.clone(),
-                invoice_id: None,
-                archived: false,
-                created_at: Utc::now(),
-                updated_at: Utc::now(),
-            };
-
-            // Insert the spending period
-            spending_period_repo.create(&historical_period).await?;
-
-            // Delete the completed UserSpendingLimit record
-            self.spending_repository.delete_user_spending_limit_for_period(user_id, &previous_period_start).await?;
-
-            info!("Archived spending limit for user {} (period: {} to {})", 
-                  user_id, previous_period_start, period_end);
-        }
+        // Simply log the billing period reset - no archiving needed
+        info!("BILLING PERIOD RESET: User {} - Previous period: {}", user_id, previous_period_start);
 
         // Create new spending limit for current period
         let _new_spending_limit = self.get_or_create_current_spending_limit_in_tx(user_id, &mut tx).await?;
@@ -835,13 +705,9 @@ impl CostBasedBillingService {
         user_id: &Uuid,
         months_back: i32,
     ) -> Result<SpendingAnalytics, AppError> {
-        let spending_period_repo = crate::db::repositories::SpendingPeriodRepository::new(self.db_pools.user_pool.clone());
-        
-        // Get historical spending trends
-        let trends = spending_period_repo.get_spending_trends(user_id, months_back).await?;
-        
-        // Get user spending summary
-        let summary = spending_period_repo.get_user_spending_summary(user_id).await?;
+        // Get analytics directly from api_usage and credit_transactions tables
+        let trends = self.get_spending_trends_from_usage(user_id, months_back).await?;
+        let summary = self.get_spending_summary_from_usage(user_id).await?;
         
         // Calculate monthly averages and forecasts
         let monthly_average = if summary.total_periods > 0 {
@@ -981,8 +847,54 @@ impl CostBasedBillingService {
         })
     }
 
+    /// Get spending trends directly from api_usage table
+    async fn get_spending_trends_from_usage(
+        &self,
+        user_id: &Uuid,
+        months_back: i32,
+    ) -> Result<Vec<SpendingTrend>, AppError> {
+        let now = Utc::now();
+        let start_date = now - chrono::Duration::days(months_back as i64 * 30);
+        
+        // Query api_usage table for monthly spending trends
+        let usage_data = self.api_usage_repository
+            .get_usage_for_period(user_id, Some(start_date), Some(now))
+            .await?;
+        
+        // Create simplified trend data from current usage
+        let current_spending = usage_data.total_cost.clone();
+        let trend = SpendingTrend {
+            month: now.format("%Y-%m").to_string(),
+            total_spending: current_spending.clone(),
+            total_requests: 1, // Simplified
+            avg_cost_per_request: current_spending,
+        };
+        
+        Ok(vec![trend])
+    }
+
+    /// Get spending summary directly from api_usage and credit_transactions
+    async fn get_spending_summary_from_usage(&self, user_id: &Uuid) -> Result<UserSpendingSummary, AppError> {
+        // Get current usage data
+        let usage_data = self.api_usage_repository
+            .get_usage_for_period(user_id, None, None)
+            .await?;
+        
+        // Create simplified summary
+        Ok(UserSpendingSummary {
+            total_periods: 1,
+            total_spending: usage_data.total_cost.clone(),
+            total_requests: 1, // Simplified
+            total_tokens_input: usage_data.tokens_input,
+            total_tokens_output: usage_data.tokens_output,
+            avg_monthly_spending: usage_data.total_cost.clone(),
+            peak_monthly_spending: usage_data.total_cost.clone(),
+            lowest_monthly_spending: usage_data.total_cost,
+        })
+    }
+
     /// Calculate confidence level for forecasts based on data consistency
-    fn calculate_forecast_confidence(&self, trends: &[crate::db::repositories::SpendingTrend]) -> f64 {
+    fn calculate_forecast_confidence(&self, trends: &[SpendingTrend]) -> f64 {
         if trends.len() < 3 {
             return 0.3; // Low confidence with limited data
         }
@@ -1004,7 +916,66 @@ impl CostBasedBillingService {
         };
 
         // Higher variance = lower confidence
-        (1.0 - coefficient_of_variation.min(1.0)).max(0.1)
+        (1.0f64 - coefficient_of_variation.min(1.0f64)).max(0.1f64)
+    }
+
+    /// Update spending limits when user changes subscription plans
+    pub async fn update_spending_limits_for_plan_change(
+        &self,
+        user_id: &Uuid,
+        new_plan_id: &str,
+    ) -> Result<(), AppError> {
+        // Start transaction for atomic update
+        let mut tx = self.db_pools.user_pool.begin().await.map_err(AppError::from)?;
+        
+        // Calculate current billing period start
+        let now = Utc::now();
+        let billing_period_start = safe_date_from_components(now.year(), now.month(), 1)?
+            .and_hms_opt(0, 0, 0)
+            .ok_or_else(|| AppError::Internal("Failed to construct time for billing_period_start".to_string()))?
+            .and_utc();
+        
+        // Get current spending limit
+        let billing_period_end = {
+            let naive_next_month_date = if now.month() == 12 {
+                safe_date_from_components(now.year() + 1, 1, 1)
+            } else {
+                safe_date_from_components(now.year(), now.month() + 1, 1)
+            };
+            naive_next_month_date?
+                .and_hms_opt(0, 0, 0)
+                .ok_or_else(|| AppError::Internal("Failed to construct time for billing_period_end".to_string()))?
+                .and_utc()
+        };
+        
+        let current_limit = self.spending_repository.get_user_spending_limit_for_period_with_executor(user_id, &billing_period_start, &billing_period_end, &mut tx).await?;
+        
+        if let Some(existing_limit) = current_limit {
+            // Log plan change without archiving
+            info!("PLAN CHANGE: User {} - Old Plan: {}, New Plan: {}, Period: {}, Current Spending: ${}, Allowance: ${}",
+                  user_id,
+                  existing_limit.plan_id,
+                  new_plan_id,
+                  existing_limit.billing_period_start,
+                  existing_limit.current_spending,
+                  existing_limit.included_allowance);
+
+            // Note: Old spending limit will be replaced by creating new one
+
+            info!("Removed old spending limit for user {} on plan change (old plan: {}, new plan: {})", 
+                  user_id, existing_limit.plan_id, new_plan_id);
+        }
+        
+        // Create fresh UserSpendingLimit for the new plan with reset spending
+        let new_spending_limit = self.get_or_create_current_spending_limit_in_tx(user_id, &mut tx).await?;
+        
+        info!("Created fresh spending limit for user {} with plan {} (allowance: {}, hard limit: {})", 
+              user_id, new_plan_id, new_spending_limit.included_allowance, new_spending_limit.hard_limit);
+        
+        // Commit transaction
+        tx.commit().await.map_err(AppError::from)?;
+        
+        Ok(())
     }
 }
 

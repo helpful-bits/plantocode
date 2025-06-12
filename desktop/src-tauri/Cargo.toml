@@ -50,6 +50,7 @@ quick-xml = { version = "0.37.5", features = ["serialize", "encoding"] }
 sha2 = "0.10.8"
 md5 = "0.7.0"
 tracing = "0.1"
+heck = "0.5"
 
 [features]
 

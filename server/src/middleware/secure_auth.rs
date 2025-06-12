@@ -14,6 +14,7 @@ use uuid::Uuid;
 use crate::error::AppError;
 use crate::services::auth::jwt;
 use crate::security::token_binding::{extract_token_binding_hash_from_service_request, TOKEN_BINDING_HEADER};
+use crate::security::rls_session_manager::RLSSessionManager;
 use crate::models::auth_jwt_claims::Claims;
 
 // Marker struct to indicate request has already been processed by auth middleware
@@ -88,17 +89,35 @@ impl actix_web::FromRequest for UserEmail {
     }
 }
 
-/// Authentication middleware using JWT validation.
+/// Authentication middleware using JWT validation and RLS Session Management.
+/// 
+/// This middleware now uses RLSSessionManager to ensure proper user context isolation
+/// and prevent session variable leakage between requests.
 #[derive(Clone)]
 pub struct SecureAuthentication {
     user_pool: std::sync::Arc<sqlx::PgPool>,
+    rls_manager: Arc<RLSSessionManager>,
 }
 
 impl SecureAuthentication {
     pub fn new(user_pool: sqlx::PgPool) -> Self {
-        debug!("SecureAuthentication::new called - initializing middleware with user_pool for RLS");
+        debug!("SecureAuthentication::new called - initializing middleware with RLS Session Manager");
+        let rls_manager = Arc::new(RLSSessionManager::new(user_pool.clone()));
+        
+        // Start the cleanup task for stale connections
+        rls_manager.start_cleanup_task();
+        
         Self { 
-            user_pool: std::sync::Arc::new(user_pool)
+            user_pool: std::sync::Arc::new(user_pool),
+            rls_manager,
+        }
+    }
+    
+    /// Create middleware with an existing RLS manager (for testing)
+    pub fn with_rls_manager(user_pool: sqlx::PgPool, rls_manager: RLSSessionManager) -> Self {
+        Self {
+            user_pool: std::sync::Arc::new(user_pool),
+            rls_manager: Arc::new(rls_manager),
         }
     }
 }
@@ -116,10 +135,11 @@ where
     type Future = Ready<Result<Self::Transform, Self::InitError>>;
 
     fn new_transform(&self, service: S) -> Self::Future {
-        debug!("SecureAuthentication::new_transform called - creating middleware");
+        debug!("SecureAuthentication::new_transform called - creating middleware with RLS Session Manager");
         ok(SecureAuthenticationMiddleware { 
             service: Arc::new(service),
             user_pool: self.user_pool.clone(),
+            rls_manager: self.rls_manager.clone(),
         })
     }
 }
@@ -128,6 +148,7 @@ where
 pub struct SecureAuthenticationMiddleware<S> {
     service: Arc<S>,
     user_pool: std::sync::Arc<sqlx::PgPool>,
+    rls_manager: Arc<RLSSessionManager>,
 }
 
 
@@ -210,6 +231,7 @@ where
         let request_path = req.path().to_string();
         let token = token.to_string();
         let user_pool = self.user_pool.clone();
+        let rls_manager = self.rls_manager.clone();
         
         // Create a separate async block to verify the token
         Box::pin(async move {
@@ -259,30 +281,33 @@ where
 
                     debug!("JWT valid for user {} (Role: {}) for route {}", user_id, user_role, request_path);
                     
-                    // CRITICAL: Set PostgreSQL session variable for Row Level Security
-                    // All RLS policies in the database depend on current_setting('app.current_user_id', true)::uuid
-                    // This MUST work or ALL authenticated database queries will fail
+                    // CRITICAL: Use RLS Session Manager for secure user context setup
+                    // This replaces the previous direct session variable setting with comprehensive
+                    // validation, monitoring, and explicit failure handling
                     
-                    // Use the proper PostgreSQL function to set session variables
-                    match sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
-                        .bind(user_id.to_string())
-                        .execute(&*user_pool)
-                        .await 
-                    {
-                        Ok(_) => {
-                            debug!("PostgreSQL session variable 'app.current_user_id' set to {} for RLS", user_id);
+                    // Generate request ID for tracing
+                    let request_id = format!("auth_{}_{}", chrono::Utc::now().timestamp_millis(), uuid::Uuid::new_v4());
+                    
+                    // Test connection setup using RLS Session Manager
+                    // This ensures proper isolation and prevents session variable leakage
+                    match rls_manager.get_connection_with_user_context(user_id, Some(request_id.clone())).await {
+                        Ok(_conn) => {
+                            debug!("RLS Session Manager successfully configured user context for user {} on route {} (request: {})", 
+                                   user_id, request_path, request_id);
+                            // Connection is automatically returned to pool with proper cleanup
                         },
                         Err(e) => {
-                            error!("CRITICAL RLS SETUP FAILURE: Failed to set PostgreSQL session variable 'app.current_user_id' for user {}. RLS will not function correctly. Path: {}. Database error: {:?}", user_id, request_path, e);
-                            error!("Database error details: {:#?}", e);
-                            error!("This will cause ALL database queries to fail due to RLS policies");
+                            error!("CRITICAL RLS SETUP FAILURE: RLS Session Manager failed to establish user context for user {}. Path: {}. Request: {}. Error: {}", 
+                                   user_id, request_path, request_id, e);
+                            error!("This failure prevents secure database access and indicates a critical security issue");
                             return Err(Error::from(actix_web::error::ErrorInternalServerError(
-                                "Failed to set user context for database Row Level Security"
+                                format!("Failed to establish secure user context: {}", e)
                             )));
                         }
                     }
                     
-                    debug!("PostgreSQL user context set for user {} on route {}", user_id, request_path);
+                    debug!("Secure user context validated for user {} on route {} (request: {})", 
+                           user_id, request_path, request_id);
                     
                     // Insert user information into req.extensions_mut() for handler access
                     req.extensions_mut().insert(UserId(user_id));

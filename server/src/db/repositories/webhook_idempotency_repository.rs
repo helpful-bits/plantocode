@@ -4,17 +4,46 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use crate::error::AppError;
 
+/// Enhanced webhook idempotency record with locking, retries, and detailed status tracking
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WebhookIdempotencyRecord {
     pub id: Uuid,
     pub webhook_event_id: String,
     pub webhook_type: String,
     pub event_type: String,
-    pub processed_at: DateTime<Utc>,
-    pub processing_result: String,
+    
+    // Processing status and lifecycle
+    pub status: String,
+    pub processing_result: Option<String>,
+    pub processed_at: Option<DateTime<Utc>>,
+    
+    // Locking mechanism for concurrent webhook handling
+    pub locked_at: Option<DateTime<Utc>>,
+    pub locked_by: Option<String>,
+    pub lock_expires_at: Option<DateTime<Utc>>,
+    
+    // Retry mechanism for failed webhooks
+    pub retry_count: i32,
+    pub max_retries: i32,
+    pub next_retry_at: Option<DateTime<Utc>>,
+    
+    // Error tracking and debugging
     pub error_message: Option<String>,
+    pub error_details: Option<serde_json::Value>,
+    pub last_error_at: Option<DateTime<Utc>>,
+    
+    // Webhook payload and metadata
+    pub webhook_payload: Option<serde_json::Value>,
     pub metadata: Option<serde_json::Value>,
+    
+    // Audit and timing
+    pub first_seen_at: DateTime<Utc>,
     pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    
+    // Performance and monitoring
+    pub processing_duration_ms: Option<i32>,
+    pub payload_size_bytes: Option<i32>,
 }
 
 #[derive(Debug)]
@@ -27,75 +56,102 @@ impl WebhookIdempotencyRepository {
         Self { pool }
     }
 
-    /// Check if a webhook event has already been processed
-    pub async fn is_already_processed(&self, webhook_event_id: &str) -> Result<bool, AppError> {
-        let count = sqlx::query_scalar!(
-            r#"
-            SELECT COUNT(*) FROM webhook_idempotency 
-            WHERE webhook_event_id = $1
-            "#,
-            webhook_event_id
-        )
-        .fetch_one(&self.pool)
-        .await
-        .map_err(|e| AppError::Database(format!("Failed to check webhook idempotency: {}", e)))?;
-
-        Ok(count.unwrap_or(0) > 0)
-    }
-
-    /// Get existing webhook processing record
-    pub async fn get_processing_record(&self, webhook_event_id: &str) -> Result<Option<WebhookIdempotencyRecord>, AppError> {
-        let record = sqlx::query_as!(
-            WebhookIdempotencyRecord,
-            r#"
-            SELECT id, webhook_event_id, webhook_type, event_type, processed_at, 
-                   processing_result, error_message, metadata, created_at
-            FROM webhook_idempotency 
-            WHERE webhook_event_id = $1
-            "#,
-            webhook_event_id
-        )
-        .fetch_optional(&self.pool)
-        .await
-        .map_err(|e| AppError::Database(format!("Failed to get webhook processing record: {}", e)))?;
-
-        Ok(record)
-    }
-
-    /// Mark webhook as being processed (creates initial record)
-    pub async fn mark_processing_started(
+    /// Acquire a lock on a webhook event ID for processing
+    /// Returns the full WebhookIdempotencyRecord or an error if the lock cannot be acquired
+    pub async fn acquire_webhook_lock(
         &self,
         webhook_event_id: &str,
         webhook_type: &str,
         event_type: &str,
+        locked_by: &str,
+        lock_duration_minutes: i32,
         metadata: Option<serde_json::Value>,
-    ) -> Result<Uuid, AppError> {
+    ) -> Result<WebhookIdempotencyRecord, AppError> {
         let record_id = Uuid::new_v4();
+        let lock_expires_at = Utc::now() + chrono::Duration::minutes(lock_duration_minutes as i64);
         
-        sqlx::query!(
+        // Attempt to insert a new record or acquire lock on existing record
+        let result = sqlx::query_as!(
+            WebhookIdempotencyRecord,
             r#"
-            INSERT INTO webhook_idempotency (
-                id, webhook_event_id, webhook_type, event_type, 
-                processing_result, metadata, processed_at, created_at
-            ) VALUES (
-                $1, $2, $3, $4, 'processing', $5, NOW(), NOW()
+            WITH webhook_lock AS (
+                INSERT INTO webhook_idempotency (
+                    id, webhook_event_id, webhook_type, event_type,
+                    status, locked_at, locked_by, lock_expires_at, 
+                    retry_count, max_retries, metadata, created_at, updated_at, first_seen_at
+                ) VALUES (
+                    $1, $2, $3, $4, 'processing', NOW(), $5, $6, 0, 3, $7, NOW(), NOW(), NOW()
+                )
+                ON CONFLICT (webhook_event_id) DO UPDATE SET
+                    locked_at = CASE 
+                        WHEN webhook_idempotency.locked_at IS NULL 
+                             OR webhook_idempotency.lock_expires_at < NOW() 
+                             OR webhook_idempotency.status IN ('completed', 'failed') 
+                        THEN NOW()
+                        ELSE webhook_idempotency.locked_at
+                    END,
+                    locked_by = CASE 
+                        WHEN webhook_idempotency.locked_at IS NULL 
+                             OR webhook_idempotency.lock_expires_at < NOW() 
+                             OR webhook_idempotency.status IN ('completed', 'failed') 
+                        THEN $5
+                        ELSE webhook_idempotency.locked_by
+                    END,
+                    lock_expires_at = CASE 
+                        WHEN webhook_idempotency.locked_at IS NULL 
+                             OR webhook_idempotency.lock_expires_at < NOW() 
+                             OR webhook_idempotency.status IN ('completed', 'failed') 
+                        THEN $6
+                        ELSE webhook_idempotency.lock_expires_at
+                    END,
+                    status = CASE 
+                        WHEN webhook_idempotency.locked_at IS NULL 
+                             OR webhook_idempotency.lock_expires_at < NOW() 
+                             OR webhook_idempotency.status IN ('completed', 'failed') 
+                        THEN 'processing'
+                        ELSE webhook_idempotency.status
+                    END,
+                    updated_at = NOW()
+                RETURNING *
             )
+            SELECT 
+                id, webhook_event_id, webhook_type, event_type,
+                status, processing_result, processed_at,
+                locked_at, locked_by, lock_expires_at,
+                retry_count, max_retries, next_retry_at,
+                error_message, error_details, last_error_at,
+                webhook_payload, metadata,
+                first_seen_at, created_at, updated_at,
+                processing_duration_ms, payload_size_bytes
+            FROM webhook_lock
             "#,
             record_id,
             webhook_event_id,
             webhook_type,
             event_type,
+            locked_by,
+            lock_expires_at,
             metadata
         )
-        .execute(&self.pool)
+        .fetch_one(&self.pool)
         .await
-        .map_err(|e| AppError::Database(format!("Failed to mark webhook processing started: {}", e)))?;
+        .map_err(|e| AppError::Database(format!("Failed to acquire webhook lock: {}", e)))?;
 
-        Ok(record_id)
+        // Check if we successfully acquired the lock
+        if result.locked_by.as_ref() == Some(&locked_by.to_string()) && 
+           result.status == "processing" {
+            Ok(result)
+        } else {
+            Err(AppError::Database(format!(
+                "Failed to acquire lock for webhook {}: already locked by {:?}",
+                webhook_event_id,
+                result.locked_by
+            )))
+        }
     }
 
     /// Mark webhook processing as completed successfully
-    pub async fn mark_processing_completed(
+    pub async fn mark_as_completed(
         &self,
         webhook_event_id: &str,
         result_metadata: Option<serde_json::Value>,
@@ -103,9 +159,14 @@ impl WebhookIdempotencyRepository {
         sqlx::query!(
             r#"
             UPDATE webhook_idempotency 
-            SET processing_result = 'success', 
+            SET status = 'completed',
+                processing_result = 'success', 
                 processed_at = NOW(),
-                metadata = COALESCE($2, metadata)
+                locked_at = NULL,
+                locked_by = NULL,
+                lock_expires_at = NULL,
+                metadata = COALESCE($2, metadata),
+                updated_at = NOW()
             WHERE webhook_event_id = $1
             "#,
             webhook_event_id,
@@ -113,13 +174,13 @@ impl WebhookIdempotencyRepository {
         )
         .execute(&self.pool)
         .await
-        .map_err(|e| AppError::Database(format!("Failed to mark webhook processing completed: {}", e)))?;
+        .map_err(|e| AppError::Database(format!("Failed to mark webhook completed: {}", e)))?;
 
         Ok(())
     }
 
     /// Mark webhook processing as failed
-    pub async fn mark_processing_failed(
+    pub async fn mark_as_failed(
         &self,
         webhook_event_id: &str,
         error_message: &str,
@@ -128,10 +189,16 @@ impl WebhookIdempotencyRepository {
         sqlx::query!(
             r#"
             UPDATE webhook_idempotency 
-            SET processing_result = 'failure', 
+            SET status = 'failed',
+                processing_result = 'failure', 
                 processed_at = NOW(),
+                locked_at = NULL,
+                locked_by = NULL,
+                lock_expires_at = NULL,
                 error_message = $2,
-                metadata = COALESCE($3, metadata)
+                last_error_at = NOW(),
+                metadata = COALESCE($3, metadata),
+                updated_at = NOW()
             WHERE webhook_event_id = $1
             "#,
             webhook_event_id,
@@ -140,78 +207,138 @@ impl WebhookIdempotencyRepository {
         )
         .execute(&self.pool)
         .await
-        .map_err(|e| AppError::Database(format!("Failed to mark webhook processing failed: {}", e)))?;
+        .map_err(|e| AppError::Database(format!("Failed to mark webhook failed: {}", e)))?;
 
         Ok(())
     }
 
-    /// Mark webhook as skipped (already processed or not relevant)
-    pub async fn mark_processing_skipped(
+    /// Release webhook lock with failure and schedule retry if retries are available
+    pub async fn release_webhook_lock_with_failure(
         &self,
         webhook_event_id: &str,
-        reason: &str,
+        error_message: &str,
+        retry_delay_minutes: i32,
+        error_metadata: Option<serde_json::Value>,
     ) -> Result<(), AppError> {
-        sqlx::query!(
-            r#"
-            UPDATE webhook_idempotency 
-            SET processing_result = 'skipped', 
-                processed_at = NOW(),
-                error_message = $2
-            WHERE webhook_event_id = $1
-            "#,
-            webhook_event_id,
-            reason
-        )
+        let next_retry_at = Utc::now() + chrono::Duration::minutes(retry_delay_minutes as i64);
+        
+        // First, get the current retry count to determine if we should retry or fail
+        let current_record = self.get_by_event_id(webhook_event_id).await?
+            .ok_or_else(|| AppError::Database(format!("Webhook record not found: {}", webhook_event_id)))?;
+        
+        let new_retry_count = current_record.retry_count + 1;
+        let should_retry = new_retry_count < current_record.max_retries;
+        
+        if should_retry {
+            // Schedule retry
+            sqlx::query!(
+                r#"
+                UPDATE webhook_idempotency 
+                SET retry_count = $2,
+                    next_retry_at = $3,
+                    status = 'pending',
+                    processing_result = NULL,
+                    locked_at = NULL,
+                    locked_by = NULL,
+                    lock_expires_at = NULL,
+                    error_message = $4,
+                    last_error_at = NOW(),
+                    metadata = COALESCE($5, metadata),
+                    updated_at = NOW()
+                WHERE webhook_event_id = $1
+                "#,
+                webhook_event_id,
+                new_retry_count,
+                next_retry_at,
+                error_message,
+                error_metadata
+            )
+        } else {
+            // Mark as permanently failed
+            sqlx::query!(
+                r#"
+                UPDATE webhook_idempotency 
+                SET retry_count = $2,
+                    next_retry_at = NULL,
+                    status = 'failed',
+                    processing_result = 'failure',
+                    locked_at = NULL,
+                    locked_by = NULL,
+                    lock_expires_at = NULL,
+                    error_message = $3,
+                    last_error_at = NOW(),
+                    metadata = COALESCE($4, metadata),
+                    updated_at = NOW()
+                WHERE webhook_event_id = $1
+                "#,
+                webhook_event_id,
+                new_retry_count,
+                error_message,
+                error_metadata
+            )
+        }
         .execute(&self.pool)
         .await
-        .map_err(|e| AppError::Database(format!("Failed to mark webhook processing skipped: {}", e)))?;
+        .map_err(|e| AppError::Database(format!("Failed to release webhook lock with failure: {}", e)))?;
 
         Ok(())
     }
 
-    /// Cleanup old webhook records (older than specified days)
-    pub async fn cleanup_old_records(&self, days_to_keep: i32) -> Result<u64, AppError> {
-        let rows_affected = sqlx::query!(
-            r#"
-            DELETE FROM webhook_idempotency 
-            WHERE created_at < NOW() - INTERVAL '1 day' * $1
-            "#,
-            days_to_keep as f64
-        )
-        .execute(&self.pool)
-        .await
-        .map_err(|e| AppError::Database(format!("Failed to cleanup old webhook records: {}", e)))?
-        .rows_affected();
-
-        Ok(rows_affected)
-    }
-
-    /// Get webhook processing statistics
-    pub async fn get_processing_stats(&self, days_back: i32) -> Result<WebhookProcessingStats, AppError> {
-        let stats = sqlx::query!(
+    /// Get webhook record by event ID
+    pub async fn get_by_event_id(&self, webhook_event_id: &str) -> Result<Option<WebhookIdempotencyRecord>, AppError> {
+        let result = sqlx::query_as!(
+            WebhookIdempotencyRecord,
             r#"
             SELECT 
-                COUNT(*) as total_events,
-                COUNT(CASE WHEN processing_result = 'success' THEN 1 END) as successful,
-                COUNT(CASE WHEN processing_result = 'failure' THEN 1 END) as failed,
-                COUNT(CASE WHEN processing_result = 'skipped' THEN 1 END) as skipped,
-                COUNT(CASE WHEN processing_result = 'processing' THEN 1 END) as still_processing
+                id, webhook_event_id, webhook_type, event_type,
+                status, processing_result, processed_at,
+                locked_at, locked_by, lock_expires_at,
+                retry_count, max_retries, next_retry_at,
+                error_message, error_details, last_error_at,
+                webhook_payload, metadata,
+                first_seen_at, created_at, updated_at,
+                processing_duration_ms, payload_size_bytes
             FROM webhook_idempotency 
-            WHERE created_at > NOW() - INTERVAL '1 day' * $1
+            WHERE webhook_event_id = $1
             "#,
-            days_back as f64
+            webhook_event_id
         )
-        .fetch_one(&self.pool)
+        .fetch_optional(&self.pool)
         .await
-        .map_err(|e| AppError::Database(format!("Failed to get webhook processing stats: {}", e)))?;
+        .map_err(|e| AppError::Database(format!("Failed to get webhook record: {}", e)))?;
 
-        Ok(WebhookProcessingStats {
-            total_events: stats.total_events.unwrap_or(0),
-            successful: stats.successful.unwrap_or(0),
-            failed: stats.failed.unwrap_or(0),
-            skipped: stats.skipped.unwrap_or(0),
-            still_processing: stats.still_processing.unwrap_or(0),
-        })
+        Ok(result)
+    }
+
+    /// Get webhooks ready for retry
+    pub async fn get_webhooks_ready_for_retry(&self, limit: i32) -> Result<Vec<WebhookIdempotencyRecord>, AppError> {
+        let results = sqlx::query_as!(
+            WebhookIdempotencyRecord,
+            r#"
+            SELECT 
+                id, webhook_event_id, webhook_type, event_type,
+                status, processing_result, processed_at,
+                locked_at, locked_by, lock_expires_at,
+                retry_count, max_retries, next_retry_at,
+                error_message, error_details, last_error_at,
+                webhook_payload, metadata,
+                first_seen_at, created_at, updated_at,
+                processing_duration_ms, payload_size_bytes
+            FROM webhook_idempotency 
+            WHERE status = 'pending' 
+              AND retry_count < max_retries 
+              AND next_retry_at <= NOW()
+              AND (locked_at IS NULL OR lock_expires_at < NOW())
+            ORDER BY next_retry_at ASC
+            LIMIT $1
+            "#,
+            limit as i64
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| AppError::Database(format!("Failed to get webhooks ready for retry: {}", e)))?;
+
+        Ok(results)
     }
 }
 

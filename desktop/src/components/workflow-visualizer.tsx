@@ -11,6 +11,7 @@ import { Badge } from '@/ui/badge';
 import { Button } from '@/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/ui/collapsible';
 import { WorkflowUtils } from '@/utils/workflow-utils';
+import { WORKFLOW_STATUSES } from '@/types/workflow-types';
 import { retryWorkflowStageAction, cancelWorkflowStageAction } from '@/actions/file-system/workflow-stage.actions';
 import { extractErrorInfo, createUserFriendlyErrorMessage } from '@/utils/error-handling';
 import type { WorkflowState, WorkflowStageJob, WorkflowStage, WorkflowStatusResponse, WorkflowStatus, JobStatus } from '@/types/workflow-types';
@@ -20,16 +21,16 @@ import type { WorkflowState, WorkflowStageJob, WorkflowStage, WorkflowStatusResp
 function mapWorkflowStatus(status: string): WorkflowStatus {
   const normalizedStatus = status.toLowerCase().trim();
   switch (normalizedStatus) {
-    case 'created': return 'Created';
-    case 'running': return 'Running';
-    case 'paused': return 'Paused';
-    case 'completed': return 'Completed';
-    case 'failed': return 'Failed';
-    case 'canceled':
-    case 'cancelled': return 'Canceled';
+    case WORKFLOW_STATUSES.BACKEND.CREATED: return WORKFLOW_STATUSES.CREATED;
+    case WORKFLOW_STATUSES.BACKEND.RUNNING: return WORKFLOW_STATUSES.RUNNING;
+    case WORKFLOW_STATUSES.BACKEND.PAUSED: return WORKFLOW_STATUSES.PAUSED;
+    case WORKFLOW_STATUSES.BACKEND.COMPLETED: return WORKFLOW_STATUSES.COMPLETED;
+    case WORKFLOW_STATUSES.BACKEND.FAILED: return WORKFLOW_STATUSES.FAILED;
+    case WORKFLOW_STATUSES.BACKEND.CANCELED:
+    case 'cancelled': return WORKFLOW_STATUSES.CANCELED;
     default: 
       console.warn(`Unknown workflow status: ${status}, defaulting to Created`);
-      return 'Created';
+      return WORKFLOW_STATUSES.CREATED;
   }
 }
 
@@ -84,7 +85,7 @@ function getAllWorkflowStages(): WorkflowStage[] {
     'LOCAL_FILE_FILTERING',
     'FILE_RELEVANCE_ASSESSMENT',
     'EXTENDED_PATH_FINDER',
-    'EXTENDED_PATH_CORRECTION'
+    'PATH_CORRECTION'
   ];
 }
 
@@ -188,9 +189,9 @@ export function WorkflowVisualizer({
   }, [workflowState, workflowStatus]);
   
   const isRunning = WorkflowUtils.isRunning(effectiveWorkflowState.status);
-  const isPaused = effectiveWorkflowState.status === 'Paused';
+  const isPaused = effectiveWorkflowState.status === WORKFLOW_STATUSES.PAUSED;
   const canCancel = (isRunning || isPaused) && onCancel;
-  const canRetry = (effectiveWorkflowState.status === 'Failed' || effectiveWorkflowState.status === 'Canceled') && onRetry;
+  const canRetry = (effectiveWorkflowState.status === WORKFLOW_STATUSES.FAILED || effectiveWorkflowState.status === WORKFLOW_STATUSES.CANCELED) && onRetry;
   const canPause = isRunning && onPause;
   const canResume = isPaused && onResume;
 
@@ -539,15 +540,15 @@ function StageJobCard({
 
 function WorkflowStatusIcon({ status }: { status: string }) {
   switch (status) {
-    case 'Completed':
+    case WORKFLOW_STATUSES.COMPLETED:
       return <CheckCircle className="w-5 h-5 text-green-500" />;
-    case 'Failed':
+    case WORKFLOW_STATUSES.FAILED:
       return <XCircle className="w-5 h-5 text-red-500" />;
-    case 'Canceled':
+    case WORKFLOW_STATUSES.CANCELED:
       return <XCircle className="w-5 h-5 text-orange-500" />;
-    case 'Paused':
+    case WORKFLOW_STATUSES.PAUSED:
       return <Pause className="w-5 h-5 text-yellow-500" />;
-    case 'Running':
+    case WORKFLOW_STATUSES.RUNNING:
       return <Play className="w-5 h-5 text-blue-500 animate-pulse" />;
     default:
       return <Clock className="w-5 h-5 text-gray-500" />;
@@ -581,13 +582,13 @@ function JobStatusIcon({ status }: { status: string }) {
 
 function getStatusBadgeVariant(status: string): "default" | "secondary" | "destructive" | "outline" {
   switch (status) {
-    case 'Completed':
+    case WORKFLOW_STATUSES.COMPLETED:
       return 'default';
-    case 'Failed':
+    case WORKFLOW_STATUSES.FAILED:
       return 'destructive';
-    case 'Running':
+    case WORKFLOW_STATUSES.RUNNING:
       return 'outline';
-    case 'Paused':
+    case WORKFLOW_STATUSES.PAUSED:
       return 'secondary';
     default:
       return 'secondary';

@@ -20,8 +20,9 @@ interface SystemPromptEditorProps {
 }
 
 function SystemPromptEditor({ sessionId, taskType, onSave }: SystemPromptEditorProps) {
+  // Always call hooks first, before any conditional logic
   const { prompt, loading, error, isCustom, update, reset, validate } = useSystemPrompt({
-    sessionId,
+    sessionId: sessionId || '',
     taskType
   });
   const { getDefault } = useDefaultSystemPrompts();
@@ -89,6 +90,17 @@ function SystemPromptEditor({ sessionId, taskType, onSave }: SystemPromptEditorP
 
   const placeholders = extractPlaceholders(isEditing ? editedPrompt : currentPrompt);
   const availablePlaceholders = getAvailablePlaceholders();
+
+  // Handle missing required props after all hooks are called
+  if (!sessionId || !taskType) {
+    return (
+      <Card className="p-4">
+        <Alert variant="destructive">
+          Missing required session ID or task type
+        </Alert>
+      </Card>
+    );
+  }
 
   if (loading) {
     return (
@@ -212,7 +224,7 @@ function SystemPromptEditor({ sessionId, taskType, onSave }: SystemPromptEditorP
 
 const TASK_CATEGORIES = {
   'Code Analysis': ['path_finder', 'path_correction', 'guidance_generation'],
-  'Text Processing': ['text_improvement', 'text_correction'],
+  'Text Processing': ['text_correction'],
   'Development': ['implementation_plan', 'task_enhancement'],
   'Pattern Matching': ['regex_pattern_generation', 'regex_summary_generation'],
   'General': ['generic_llm_stream']

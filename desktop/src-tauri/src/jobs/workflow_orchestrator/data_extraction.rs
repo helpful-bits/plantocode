@@ -95,7 +95,7 @@ pub(super) async fn extract_and_store_stage_data_internal(
                     "unverifiedPaths": unverified_paths
                 })
             }
-            TaskType::ExtendedPathCorrection => {
+            TaskType::PathCorrection => {
                 let final_paths = StageDataExtractor::extract_final_paths(job_id, &repo).await
                     .map_err(|e| AppError::JobError(format!("Failed to extract final paths from job {}: {}", job_id, e)))?;
                 

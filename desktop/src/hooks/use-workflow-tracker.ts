@@ -5,6 +5,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { WorkflowTracker, WorkflowUtils } from '@/utils/workflow-utils';
+import { WORKFLOW_STATUSES } from '@/types/workflow-types';
 import { useWorkflowPerformanceMonitor } from '@/utils/workflow-performance-monitor';
 import { createWorkflowError } from '@/utils/error-handling';
 import type {
@@ -72,9 +73,9 @@ export function useWorkflowTracker(
   };
 
   // Computed state
-  const isRunning = workflowState?.status === 'Running' || workflowState?.status === 'Created';
-  const isCompleted = workflowState?.status === 'Completed';
-  const hasError = error !== null || workflowState?.status === 'Failed';
+  const isRunning = workflowState?.status === WORKFLOW_STATUSES.RUNNING || workflowState?.status === WORKFLOW_STATUSES.CREATED;
+  const isCompleted = workflowState?.status === WORKFLOW_STATUSES.COMPLETED;
+  const hasError = error !== null || workflowState?.status === WORKFLOW_STATUSES.FAILED;
   const progressPercentage = workflowState?.progressPercentage ?? 0;
   // STANDARDIZED: workflowState.currentStage is now SCREAMING_SNAKE_CASE internally
   const currentStageName = workflowState?.currentStage 
@@ -272,9 +273,9 @@ export function useExistingWorkflowTracker(
   const performanceMonitor = useWorkflowPerformanceMonitor();
 
   // Computed state
-  const isRunning = workflowState?.status === 'Running' || workflowState?.status === 'Created';
-  const isCompleted = workflowState?.status === 'Completed';
-  const hasError = error !== null || workflowState?.status === 'Failed';
+  const isRunning = workflowState?.status === WORKFLOW_STATUSES.RUNNING || workflowState?.status === WORKFLOW_STATUSES.CREATED;
+  const isCompleted = workflowState?.status === WORKFLOW_STATUSES.COMPLETED;
+  const hasError = error !== null || workflowState?.status === WORKFLOW_STATUSES.FAILED;
   const progressPercentage = workflowState?.progressPercentage ?? 0;
   // STANDARDIZED: workflowState.currentStage is now SCREAMING_SNAKE_CASE internally
   const currentStageName = workflowState?.currentStage 
@@ -349,7 +350,7 @@ export function useExistingWorkflowTracker(
       performanceMonitor.updateFromState(currentState);
       
       // If completed and we don't have results yet, fetch them
-      if (currentState.status === 'Completed' && !results) {
+      if (currentState.status === WORKFLOW_STATUSES.COMPLETED && !results) {
         try {
           const workflowResults = await trackerRef.current.getResults();
           setResults(workflowResults);
@@ -403,7 +404,7 @@ export function useExistingWorkflowTracker(
         performanceMonitor.updateFromState(initialState);
 
         // If already completed, get results
-        if (initialState.status === 'Completed') {
+        if (initialState.status === WORKFLOW_STATUSES.COMPLETED) {
           try {
             const workflowResults = await tracker.getResults();
             setResults(workflowResults);
@@ -490,11 +491,11 @@ export function useMultipleWorkflowTracker(
   }, 0) / Math.max(workflows.length, 1);
 
   const anyRunning = Object.values(workflowStates).some(state => 
-    state?.status === 'Running' || state?.status === 'Created'
+    state?.status === WORKFLOW_STATUSES.RUNNING || state?.status === WORKFLOW_STATUSES.CREATED
   );
 
   const allCompleted = workflows.length > 0 && Object.values(workflowStates).every(state => 
-    state?.status === 'Completed'
+    state?.status === WORKFLOW_STATUSES.COMPLETED
   );
 
   // Cancel all workflows

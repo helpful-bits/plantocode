@@ -57,6 +57,13 @@ impl ApiUsageRepository {
 
     /// Records API usage for billing purposes with executor
     pub async fn record_usage_with_executor(&self, entry: ApiUsageEntryDto, executor: &mut sqlx::Transaction<'_, sqlx::Postgres>) -> Result<ApiUsageRecord, AppError> {
+        // Set user context for RLS within this transaction
+        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
+            .bind(entry.user_id.to_string())
+            .execute(&mut **executor)
+            .await
+            .map_err(|e| AppError::Database(format!("Failed to set user context for RLS: {}", e)))?;
+
         let metadata_to_store = match entry.metadata {
             Some(serde_json::Value::Object(ref map)) if map.is_empty() => None,
             other => other,
@@ -112,6 +119,15 @@ impl ApiUsageRepository {
         start_date: chrono::DateTime<chrono::Utc>,
         end_date: chrono::DateTime<chrono::Utc>,
     ) -> Result<(i64, i64, BigDecimal), AppError> {
+        let mut tx = self.db_pool.begin().await.map_err(AppError::from)?;
+        
+        // Set user context for RLS within this transaction
+        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
+            .bind(user_id.to_string())
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| AppError::Database(format!("Failed to set user context for RLS: {}", e)))?;
+
         let result = sqlx::query(
             r#"
             SELECT 
@@ -125,9 +141,11 @@ impl ApiUsageRepository {
         .bind(user_id)
         .bind(start_date)
         .bind(end_date)
-        .fetch_one(&self.db_pool)
+        .fetch_one(&mut *tx)
         .await
         .map_err(|e| AppError::Database(format!("Failed to get user usage: {}", e)))?;
+        
+        tx.commit().await.map_err(AppError::from)?;
 
         let total_input: i64 = result.get("total_input");
         let total_output: i64 = result.get("total_output");
@@ -143,6 +161,15 @@ impl ApiUsageRepository {
         start_date: Option<DateTime<Utc>>,
         end_date: Option<DateTime<Utc>>,
     ) -> Result<ApiUsageReport, AppError> {
+        let mut tx = self.db_pool.begin().await.map_err(AppError::from)?;
+        
+        // Set user context for RLS within this transaction
+        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
+            .bind(user_id.to_string())
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| AppError::Database(format!("Failed to set user context for RLS: {}", e)))?;
+
         let result = sqlx::query(
             r#"
             SELECT 
@@ -158,9 +185,11 @@ impl ApiUsageRepository {
         .bind(user_id)
         .bind(start_date)
         .bind(end_date)
-        .fetch_one(&self.db_pool)
+        .fetch_one(&mut *tx)
         .await
         .map_err(|e| AppError::Database(format!("Failed to get usage for period: {}", e)))?;
+        
+        tx.commit().await.map_err(AppError::from)?;
 
         Ok(ApiUsageReport {
             tokens_input: result.get("tokens_input"),
