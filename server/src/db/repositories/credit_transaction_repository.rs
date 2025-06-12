@@ -211,11 +211,7 @@ impl CreditTransactionRepository {
                 COALESCE(SUM(CASE WHEN transaction_type = 'purchase' THEN amount ELSE 0 END), 0) as total_purchased,
                 COALESCE(SUM(CASE WHEN transaction_type = 'consumption' THEN amount ELSE 0 END), 0) as total_consumed,
                 COALESCE(SUM(CASE WHEN transaction_type = 'refund' THEN amount ELSE 0 END), 0) as total_refunded,
-                COALESCE(
-                    SUM(CASE WHEN transaction_type IN ('purchase', 'refund', 'adjustment') THEN amount 
-                             WHEN transaction_type = 'consumption' THEN -amount 
-                             ELSE 0 END), 0
-                ) as net_balance,
+                COALESCE(SUM(amount), 0) as net_balance,
                 COUNT(*) as transaction_count
             FROM credit_transactions 
             WHERE user_id = $1
@@ -343,6 +339,16 @@ impl CreditTransactionRepository {
 
     /// Count total transactions for a user
     pub async fn count_transactions(&self, user_id: &Uuid) -> Result<i64, AppError> {
+        let mut tx = self.pool.begin().await
+            .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
+
+        // Set user context for RLS within this transaction
+        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
+            .bind(user_id.to_string())
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| AppError::Database(format!("Failed to set user context for RLS: {}", e)))?;
+
         let result = sqlx::query!(
             r#"
             SELECT COUNT(*) as count
@@ -351,9 +357,12 @@ impl CreditTransactionRepository {
             "#,
             user_id
         )
-        .fetch_one(&self.pool)
+        .fetch_one(&mut *tx)
         .await
         .map_err(|e| AppError::Database(format!("Failed to count credit transactions: {}", e)))?;
+
+        tx.commit().await
+            .map_err(|e| AppError::Database(format!("Failed to commit transaction: {}", e)))?;
 
         Ok(result.count.unwrap_or(0))
     }

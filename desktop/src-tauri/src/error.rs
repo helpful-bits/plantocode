@@ -93,6 +93,46 @@ pub enum AppError {
     
     #[error("Token limit exceeded: {0}")]
     TokenLimitExceededError(String),
+    
+    // Billing-specific errors
+    #[error("Payment failed: {0}")]
+    PaymentFailed(String),
+    
+    #[error("Payment declined: {0}")]
+    PaymentDeclined(String),
+    
+    #[error("Payment authentication required: {0}")]
+    PaymentAuthenticationRequired(String),
+    
+    #[error("Subscription expired: {0}")]
+    SubscriptionExpired(String),
+    
+    #[error("Subscription cancelled: {0}")]
+    SubscriptionCancelled(String),
+    
+    #[error("Insufficient credits: {0}")]
+    CreditInsufficient(String),
+    
+    #[error("Plan upgrade required: {0}")]
+    PlanUpgradeRequired(String),
+    
+    #[error("Payment method required: {0}")]
+    PaymentMethodRequired(String),
+    
+    #[error("Billing address required: {0}")]
+    BillingAddressRequired(String),
+    
+    #[error("Stripe error: {0}")]
+    StripeError(String),
+    
+    #[error("Subscription conflict: {0}")]
+    SubscriptionConflict(String),
+    
+    #[error("Spending limit exceeded: {0}")]
+    SpendingLimitExceeded(String),
+    
+    #[error("Invoice error: {0}")]
+    InvoiceError(String),
 }
 
 impl From<std::io::Error> for AppError {
@@ -188,6 +228,19 @@ impl From<AppError> for SerializableError {
             AppError::InvalidResponse(_) => "INVALID_RESPONSE_ERROR",
             AppError::StorageError(_) => "STORAGE_ERROR",
             AppError::TokenLimitExceededError(_) => "TOKEN_LIMIT_EXCEEDED_ERROR",
+            AppError::PaymentFailed(_) => "PAYMENT_FAILED",
+            AppError::PaymentDeclined(_) => "PAYMENT_DECLINED",
+            AppError::PaymentAuthenticationRequired(_) => "PAYMENT_AUTHENTICATION_REQUIRED",
+            AppError::SubscriptionExpired(_) => "SUBSCRIPTION_EXPIRED",
+            AppError::SubscriptionCancelled(_) => "SUBSCRIPTION_CANCELLED",
+            AppError::CreditInsufficient(_) => "CREDIT_INSUFFICIENT",
+            AppError::PlanUpgradeRequired(_) => "PLAN_UPGRADE_REQUIRED",
+            AppError::PaymentMethodRequired(_) => "PAYMENT_METHOD_REQUIRED",
+            AppError::BillingAddressRequired(_) => "BILLING_ADDRESS_REQUIRED",
+            AppError::StripeError(_) => "STRIPE_ERROR",
+            AppError::SubscriptionConflict(_) => "SUBSCRIPTION_CONFLICT",
+            AppError::SpendingLimitExceeded(_) => "SPENDING_LIMIT_EXCEEDED",
+            AppError::InvoiceError(_) => "INVOICE_ERROR",
         }.to_string();
         
         SerializableError {

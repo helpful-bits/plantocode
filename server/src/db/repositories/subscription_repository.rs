@@ -16,6 +16,8 @@ pub struct Subscription {
     pub is_trial: bool,
     pub trial_ends_at: Option<DateTime<Utc>>,
     pub current_period_ends_at: Option<DateTime<Utc>>,
+    pub pending_plan_id: Option<String>,
+    pub cancel_at_period_end: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -82,9 +84,9 @@ impl SubscriptionRepository {
             r#"
             INSERT INTO subscriptions 
             (id, user_id, plan_id, status, stripe_customer_id, stripe_subscription_id, 
-             trial_ends_at, current_period_ends_at, created_at, updated_at)
+             trial_ends_at, current_period_ends_at, pending_plan_id, cancel_at_period_end, created_at, updated_at)
             VALUES 
-            ($1, $2, $3, $4, $5, $6, $7, $8, now(), now())
+            ($1, $2, $3, $4, $5, $6, $7, $8, NULL, false, now(), now())
             "#,
             id,
             user_id,
@@ -112,6 +114,7 @@ impl SubscriptionRepository {
                    plan_id, status, 
                    (trial_ends_at IS NOT NULL AND trial_ends_at > now()) as "is_trial!: bool",
                    trial_ends_at, current_period_ends_at,
+                   pending_plan_id, cancel_at_period_end,
                    created_at, updated_at
             FROM subscriptions
             WHERE id = $1
@@ -153,6 +156,7 @@ impl SubscriptionRepository {
                    plan_id, status, 
                    (trial_ends_at IS NOT NULL AND trial_ends_at > now()) as "is_trial!: bool",
                    trial_ends_at, current_period_ends_at,
+                   pending_plan_id, cancel_at_period_end,
                    created_at, updated_at
             FROM subscriptions
             WHERE user_id = $1
@@ -164,6 +168,33 @@ impl SubscriptionRepository {
         .fetch_optional(&mut **executor)
         .await
         .map_err(|e| AppError::Database(format!("Failed to fetch user subscription: {}", e)))?;
+
+        Ok(record)
+    }
+
+    // Get subscription by Stripe subscription ID with custom executor
+    pub async fn get_by_stripe_subscription_id_with_executor(&self, stripe_subscription_id: &str, executor: &mut sqlx::Transaction<'_, sqlx::Postgres>) -> Result<Option<Subscription>, AppError>
+    {
+        let record = query_as!(
+            Subscription,
+            r#"
+            SELECT id, user_id, 
+                   stripe_customer_id, stripe_subscription_id,
+                   plan_id, status, 
+                   (trial_ends_at IS NOT NULL AND trial_ends_at > now()) as "is_trial!: bool",
+                   trial_ends_at, current_period_ends_at,
+                   pending_plan_id, cancel_at_period_end,
+                   created_at, updated_at
+            FROM subscriptions
+            WHERE stripe_subscription_id = $1
+            ORDER BY created_at DESC
+            LIMIT 1
+            "#,
+            stripe_subscription_id
+        )
+        .fetch_optional(&mut **executor)
+        .await
+        .map_err(|e| AppError::Database(format!("Failed to fetch subscription by Stripe ID: {}", e)))?;
 
         Ok(record)
     }
@@ -181,7 +212,7 @@ impl SubscriptionRepository {
     // Update an existing subscription with custom executor
     pub async fn update_with_executor(&self, subscription: &Subscription, executor: &mut sqlx::Transaction<'_, sqlx::Postgres>) -> Result<(), AppError>
     {
-        query!(
+        let result = query!(
             r#"
             UPDATE subscriptions 
             SET stripe_customer_id = $1,
@@ -190,8 +221,10 @@ impl SubscriptionRepository {
                 status = $4,
                 trial_ends_at = $5,
                 current_period_ends_at = $6,
+                pending_plan_id = $7,
+                cancel_at_period_end = $8,
                 updated_at = now()
-            WHERE id = $7
+            WHERE id = $9
             "#,
             subscription.stripe_customer_id,
             subscription.stripe_subscription_id,
@@ -199,11 +232,17 @@ impl SubscriptionRepository {
             subscription.status,
             subscription.trial_ends_at,
             subscription.current_period_ends_at,
+            subscription.pending_plan_id,
+            subscription.cancel_at_period_end,
             subscription.id
         )
         .execute(&mut **executor)
         .await
         .map_err(|e| AppError::Database(format!("Failed to update subscription: {}", e)))?;
+
+        if result.rows_affected() == 0 {
+            return Err(AppError::Database("Subscription not found for update".to_string()));
+        }
 
         Ok(())
     }
@@ -225,4 +264,5 @@ impl SubscriptionRepository {
 
         Ok(())
     }
+
 }

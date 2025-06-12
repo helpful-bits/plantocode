@@ -7,7 +7,7 @@ use dirs;
 use uuid::Uuid;
 use reqwest::header::{HeaderMap, HeaderValue};
 use crate::constants::{SERVER_API_URL, HEADER_CLIENT_ID};
-use crate::api_clients::{ApiClient, TranscriptionClient, server_proxy_client::ServerProxyClient};
+use crate::api_clients::{ApiClient, TranscriptionClient, server_proxy_client::ServerProxyClient, billing_client::BillingClient};
 use crate::auth::TokenManager;
 use crate::services::{BackupService, BackupConfig, initialize_cache_service};
 use sqlx::SqlitePool;
@@ -83,10 +83,21 @@ pub async fn initialize_api_clients(app_handle: &AppHandle) -> AppResult<()> {
     let api_client_arc: Arc<dyn ApiClient> = server_proxy_client_arc.clone();
     let transcription_client_arc: Arc<dyn TranscriptionClient> = server_proxy_client_arc.clone();
     
+    // Initialize BillingClient
+    let billing_client = BillingClient::new(token_manager.clone());
+    let billing_client_arc = Arc::new(billing_client);
+    
+    info!("BillingClient initialized");
+    
     // Manage state with Tauri
     app_handle.manage(api_client_arc);
     app_handle.manage(transcription_client_arc);
     app_handle.manage(server_proxy_client_arc);
+    app_handle.manage(billing_client_arc);
+    
+    // Initialize payment event emitter for real-time updates
+    crate::utils::payment_events::init_payment_event_emitter(app_handle.clone());
+    info!("Payment event emitter initialized for real-time billing updates");
     
     info!("API clients initialized and registered in app state.");
     

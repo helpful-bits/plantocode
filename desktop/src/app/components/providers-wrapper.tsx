@@ -25,6 +25,7 @@ import { DatabaseProvider } from "@/contexts";
 import { BackgroundJobsProvider } from "@/contexts/background-jobs";
 import { SessionProvider } from "@/contexts/session";
 import { NotificationProvider } from "@/contexts";
+import { TooltipProvider } from "@/ui/tooltip";
 
 export interface ProvidersWrapperProps {
   children: React.ReactNode;
@@ -71,15 +72,17 @@ export function ProvidersWrapper({
           </div>
         }
       >
-        <NotificationProvider>
-          <DatabaseProvider>
-            <ProjectProvider>
-              <SessionProvider>
-                <BackgroundJobsProvider>{children}</BackgroundJobsProvider>
-              </SessionProvider>
-            </ProjectProvider>
-          </DatabaseProvider>
-        </NotificationProvider>
+        <TooltipProvider>
+          <NotificationProvider>
+            <DatabaseProvider>
+              <ProjectProvider>
+                <SessionProvider>
+                  <BackgroundJobsProvider>{children}</BackgroundJobsProvider>
+                </SessionProvider>
+              </ProjectProvider>
+            </DatabaseProvider>
+          </NotificationProvider>
+        </TooltipProvider>
       </ErrorBoundary>
     </ClientOnly>
   );

@@ -5,8 +5,8 @@ import { useState, useRef, useCallback } from "react";
 import { setupMedia, cleanupMedia } from "./voice-media-handler";
 import { getErrorMessage } from "@/utils/error-handling";
 
-const MEDIA_RECORDER_TIMESLICE_MS = 10000;
-const MEDIA_RECORDER_REQUEST_DATA_INTERVAL_MS = 3000;
+const MEDIA_RECORDER_TIMESLICE_MS = 5000;
+const MEDIA_RECORDER_REQUEST_DATA_INTERVAL_MS = 5000;
 
 interface UseVoiceMediaStateProps {
   onError: (error: string) => void;
@@ -20,6 +20,7 @@ export function useVoiceMediaState({
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
+  const dataRequestIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const lastRecordingRef = useRef<{ blob: Blob; durationMs: number } | null>(null);
 
@@ -53,6 +54,12 @@ export function useVoiceMediaState({
 
     recorderRef.current.start(MEDIA_RECORDER_TIMESLICE_MS);
 
+    // Clear any existing interval first
+    if (dataRequestIntervalRef.current !== null) {
+      clearInterval(dataRequestIntervalRef.current);
+      dataRequestIntervalRef.current = null;
+    }
+
     const interval = setInterval(() => {
       if (recorderRef.current && recorderRef.current.state === "recording") {
         try {
@@ -61,17 +68,27 @@ export function useVoiceMediaState({
           console.warn("[VoiceRecording] Error requesting data:", err);
         }
       } else {
-        clearInterval(interval);
+        // Recording stopped, clean up interval
+        if (dataRequestIntervalRef.current !== null) {
+          clearInterval(dataRequestIntervalRef.current);
+          dataRequestIntervalRef.current = null;
+        }
       }
     }, MEDIA_RECORDER_REQUEST_DATA_INTERVAL_MS);
 
-    const intervalId = interval as unknown as number;
+    dataRequestIntervalRef.current = interval;
 
     const originalStop = recorderRef.current.onstop;
     recorderRef.current.onstop = (ev) => {
-      clearInterval(intervalId);
-      if (originalStop && recorderRef.current)
+      // Clean up interval when recording stops
+      if (dataRequestIntervalRef.current !== null) {
+        clearInterval(dataRequestIntervalRef.current);
+        dataRequestIntervalRef.current = null;
+      }
+      
+      if (originalStop && recorderRef.current) {
         originalStop.call(recorderRef.current, ev);
+      }
     };
 
     return media;
@@ -84,13 +101,9 @@ export function useVoiceMediaState({
 
     try {
       if (recorderRef.current && recorderRef.current.state === "recording") {
-        try {
-          recorderRef.current.requestData();
-
-          await new Promise((resolve) => setTimeout(resolve, 500));
-        } catch (err) {
-          console.warn("[VoiceRecording] Error in final requestData:", err);
-        }
+        // Simply request final data - MediaRecorder will handle it asynchronously
+        // No need for complex timeout logic that may interfere with natural flow
+        recorderRef.current.requestData();
       }
 
       recorderRef.current.stop();
@@ -115,6 +128,12 @@ export function useVoiceMediaState({
   }, [onError]);
 
   const resetMediaState = useCallback(() => {
+    // Clean up interval first
+    if (dataRequestIntervalRef.current !== null) {
+      clearInterval(dataRequestIntervalRef.current);
+      dataRequestIntervalRef.current = null;
+    }
+    
     cleanupMedia(recorderRef.current, streamRef.current);
     recorderRef.current = null;
     streamRef.current = null;

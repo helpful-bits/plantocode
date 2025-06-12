@@ -34,7 +34,7 @@ pub async fn create_abstract_stage_job_with_lock_internal(
         TaskType::LocalFileFiltering => WorkflowStage::LocalFileFiltering,
         TaskType::FileRelevanceAssessment => WorkflowStage::FileRelevanceAssessment,
         TaskType::ExtendedPathFinder => WorkflowStage::ExtendedPathFinder,
-        TaskType::ExtendedPathCorrection => WorkflowStage::ExtendedPathCorrection,
+        TaskType::PathCorrection => WorkflowStage::PathCorrection,
         _ => return Err(crate::error::AppError::JobError(format!("Unsupported task type for workflow stage: {:?}", task_type))),
     };
     

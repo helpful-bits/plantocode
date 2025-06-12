@@ -45,15 +45,6 @@ pub struct OpenRouterLlmPayload {
     pub stream: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct VoiceTranscriptionPayload {
-    pub audio_data: Vec<u8>,
-    pub filename: String,
-    pub model: String,
-    pub duration_ms: i64,
-    pub language: Option<String>,
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -147,12 +138,6 @@ pub struct ExtendedPathFinderPayload {
     pub initial_paths: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ExtendedPathCorrectionPayload {
-    pub task_description: String,
-    pub extended_paths: Vec<String>,
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -167,12 +152,21 @@ pub struct FileRelevanceAssessmentPayload {
     pub locally_filtered_files: Vec<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SubscriptionLifecyclePayload {
+    pub user_id: String,
+    pub action: String, // 'change_plan', 'cancel', etc.
+    pub new_plan_id: Option<String>,
+    pub effective_immediately: Option<bool>,
+    pub context: Option<serde_json::Value>, // Additional context for the operation
+}
+
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", content = "data")]
 pub enum JobPayload {
     OpenRouterLlm(OpenRouterLlmPayload),
-    VoiceTranscription(VoiceTranscriptionPayload),
     PathFinder(PathFinderPayload),
     ImplementationPlan(ImplementationPlanPayload),
     GuidanceGeneration(GuidanceGenerationPayload),
@@ -185,9 +179,9 @@ pub enum JobPayload {
     // Individual workflow stage payloads
     LocalFileFiltering(LocalFileFilteringPayload),
     ExtendedPathFinder(ExtendedPathFinderPayload),
-    ExtendedPathCorrection(ExtendedPathCorrectionPayload),
     RegexPatternGenerationWorkflow(RegexPatternGenerationWorkflowPayload),
     FileRelevanceAssessment(FileRelevanceAssessmentPayload),
+    SubscriptionLifecycle(SubscriptionLifecyclePayload),
 }
 
 // Structured types for Implementation Plan parsing
@@ -319,7 +313,7 @@ impl Job {
 pub enum WorkflowStage {
     LocalFileFiltering,
     ExtendedPathFinder,
-    ExtendedPathCorrection,
+    PathCorrection,
     RegexPatternGeneration,
     // Add more stages as workflows expand
 }
@@ -329,7 +323,7 @@ impl std::fmt::Display for WorkflowStage {
         match self {
             WorkflowStage::LocalFileFiltering => write!(f, "LocalFileFiltering"),
             WorkflowStage::ExtendedPathFinder => write!(f, "ExtendedPathFinder"),
-            WorkflowStage::ExtendedPathCorrection => write!(f, "ExtendedPathCorrection"),
+            WorkflowStage::PathCorrection => write!(f, "PathCorrection"),
             WorkflowStage::RegexPatternGeneration => write!(f, "RegexPatternGeneration"),
         }
     }

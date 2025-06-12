@@ -16,6 +16,9 @@ pub mod xml_utils;
 pub mod prompt_template_utils;
 pub mod config_resolver;
 pub mod context_resolver;
+pub mod payment_events;
+pub mod transcription_validation;
+pub mod transcription_error_handling;
 
 
 pub use directory_tree::{generate_directory_tree, DirectoryTreeOptions};
@@ -43,6 +46,21 @@ pub use xml_utils::extract_xml_from_markdown;
 pub use prompt_template_utils::{PromptPlaceholders, substitute_placeholders, generate_system_prompt_id, get_template_for_display, convert_to_template};
 pub use config_resolver::resolve_model_settings;
 pub use context_resolver::{get_project_directory_from_session, get_directory_tree_from_session, get_api_type_from_task_type, calculate_total_tokens, get_response_length, resolve_job_context, JobContext};
+pub use payment_events::{PaymentEventEmitter, PaymentEventType, init_payment_event_emitter, get_payment_event_emitter, emit_payment_event};
+pub use transcription_validation::{
+    validate_prompt, validate_temperature, validate_language_code, validate_audio_file, 
+    validate_transcription_params, validate_with_fallbacks, sanitize_prompt_content,
+    normalize_language_code, clamp_temperature, format_validation_error,
+    ValidatedTranscriptionParams, ValidatedAudioFile, ValidationError as TranscriptionValidationError,
+    TranscriptionParameterFallbacks, ValidationRetryConfig
+};
+pub use transcription_error_handling::{
+    execute_with_retry, execute_with_timeout, recover_with_fallbacks, calculate_retry_delay,
+    classify_transcription_error, create_transcription_error, generate_user_friendly_message,
+    attempt_error_recovery, get_error_resolution_suggestions,
+    TranscriptionError, TranscriptionErrorCategory, TranscriptionErrorContext, 
+    RecoveryStrategy, RetryConfig, TranscriptionResult
+};
 // UNIFIED PROMPT SYSTEM - CONSOLIDATES LEGACY PROMPT SYSTEMS
 pub mod unified_prompt_system;
 pub use unified_prompt_system::{UnifiedPromptProcessor, UnifiedPromptContext, UnifiedPromptContextBuilder, ComposedPrompt};

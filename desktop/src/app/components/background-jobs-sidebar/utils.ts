@@ -141,7 +141,7 @@ export function getApiTypeBadgeClasses(apiType: ApiType): string {
       color = "text-primary-foreground";
       bgColor = "bg-primary";
       break;
-    case "groq":
+    case "replicate":
       color = "text-warning-foreground";
       bgColor = "bg-warning";
       break;

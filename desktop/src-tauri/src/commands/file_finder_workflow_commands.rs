@@ -386,7 +386,7 @@ pub async fn get_file_finder_workflow_results(
     // Extract extended path correction results
     if !workflow_result.intermediate_data.extended_corrected_paths.is_empty() {
         stage_results.insert(
-            "ExtendedPathCorrection".to_string(),
+            "PathCorrection".to_string(),
             serde_json::json!({
                 "corrected_paths": workflow_result.intermediate_data.extended_corrected_paths,
                 "count": workflow_result.intermediate_data.extended_corrected_paths.len(),

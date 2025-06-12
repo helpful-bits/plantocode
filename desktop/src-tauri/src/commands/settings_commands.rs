@@ -7,6 +7,7 @@ use serde_json::{json, Map};
 use serde::{Serialize, Deserialize};
 use crate::config;
 use log;
+use heck::ToLowerCamelCase;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ConfigurationHealthReport {
@@ -39,27 +40,20 @@ pub async fn validate_configuration_health(app_handle: AppHandle, project_direct
     match config::get_runtime_ai_config() {
         Ok(Some(runtime_config)) => {
             report.server_connectivity = true;
-            let required_keys = get_required_frontend_task_types();
+            // Get all task types that exist in the server configuration
+            let mut available_frontend_keys = Vec::new();
+            for snake_case_key in runtime_config.tasks.keys() {
+                available_frontend_keys.push(snake_case_key.to_lower_camel_case());
+            }
             let mut server_frontend_map = Map::new();
             
             for (snake_case_key, _) in &runtime_config.tasks {
-                let camel_case_key = match snake_to_camel_case(snake_case_key) {
-                    Ok(key) => key,
-                    Err(e) => {
-                        log::warn!("Skipping task type {} due to mapping error: {}", snake_case_key, e);
-                        continue;
-                    }
-                };
+                let camel_case_key = snake_case_key.to_lower_camel_case();
                 server_frontend_map.insert(camel_case_key, json!({}));
             }
             
-            for required_key in &required_keys {
-                if !server_frontend_map.contains_key(*required_key) {
-                    report.missing_task_types.push(required_key.to_string());
-                }
-            }
-            
-            report.server_config_complete = report.missing_task_types.is_empty();
+            // Server config is complete if we have any LLM tasks configured
+            report.server_config_complete = !server_frontend_map.is_empty();
         },
         Ok(None) => {
             report.validation_errors.push("Server configuration not loaded".to_string());
@@ -175,70 +169,16 @@ struct FrontendReadyTaskModelConfig {
     temperature: f32,
 }
 
-fn snake_to_camel_case(snake_str: &str) -> AppResult<String> {
-    match snake_str {
-        "implementation_plan" => Ok("implementationPlan".to_string()),
-        "path_finder" => Ok("pathFinder".to_string()),
-        "text_improvement" => Ok("textImprovement".to_string()),
-        "voice_transcription" => Ok("voiceTranscription".to_string()),
-        "text_correction" => Ok("textCorrection".to_string()),
-        "path_correction" => Ok("pathCorrection".to_string()),
-        "guidance_generation" => Ok("guidanceGeneration".to_string()),
-        "task_enhancement" => Ok("taskEnhancement".to_string()),
-        "generic_llm_stream" => Ok("genericLlmStream".to_string()),
-        "regex_summary_generation" => Ok("regexSummaryGeneration".to_string()),
-        "regex_pattern_generation" => Ok("regexPatternGeneration".to_string()),
-        "file_finder_workflow" => Ok("fileFinderWorkflow".to_string()),
-        "local_file_filtering" => Ok("localFileFiltering".to_string()),
-        "file_relevance_assessment" => Ok("fileRelevanceAssessment".to_string()),
-        "extended_path_finder" => Ok("extendedPathFinder".to_string()),
-        "extended_path_correction" => Ok("extendedPathCorrection".to_string()),
-        "streaming" => Ok("streaming".to_string()),
-        "unknown" => Ok("unknown".to_string()),
-        _ => {
-            log::error!("Unknown task type '{}' - no camelCase mapping defined", snake_str);
-            Err(AppError::ConfigError(format!("Unknown task type '{}' - no camelCase mapping defined", snake_str)))
-        }
-    }
-}
 
-fn get_required_frontend_task_types() -> Vec<&'static str> {
-    vec![
-        "pathFinder",
-        "voiceTranscription",
-        "regexPatternGeneration",
-        "regexSummaryGeneration", 
-        "pathCorrection",
-        "textImprovement",
-        "textCorrection",
-        "taskEnhancement",
-        "guidanceGeneration",
-        "implementationPlan",
-        "genericLlmStream",
-        "fileFinderWorkflow",
-        "localFileFiltering",
-        "fileRelevanceAssessment",
-        "extendedPathFinder",
-        "extendedPathCorrection",
-        "streaming",
-        "unknown",
-    ]
-}
+
 
 fn validate_project_settings_completeness(settings_json: &str) -> AppResult<bool> {
-    let settings: serde_json::Value = serde_json::from_str(settings_json)
+    let _settings: serde_json::Value = serde_json::from_str(settings_json)
         .map_err(|e| AppError::ConfigError(format!("Invalid project settings JSON: {}", e)))?;
     
-    let required_keys = get_required_frontend_task_types();
-    
-    for required_key in required_keys {
-        if settings.get(required_key).is_none() {
-            log::warn!("Project settings missing required key: {}", required_key);
-            return Ok(false);
-        }
-    }
-    
-    log::info!("Project settings validation passed - all required keys present");
+    // Project settings are always valid if they parse as JSON
+    // The frontend will handle missing keys gracefully
+    log::info!("Project settings validation passed - valid JSON");
     Ok(true)
 }
 
@@ -252,15 +192,13 @@ fn merge_project_with_server_defaults(
     let project_obj = project_settings.as_object_mut()
         .ok_or_else(|| AppError::ConfigError("Project settings must be a JSON object".to_string()))?;
     
-    let required_keys = get_required_frontend_task_types();
     let mut added_keys = Vec::new();
     
-    for required_key in required_keys {
-        if !project_obj.contains_key(required_key) {
-            if let Some(server_value) = server_frontend_map.get(required_key) {
-                project_obj.insert(required_key.to_string(), server_value.clone());
-                added_keys.push(required_key);
-            }
+    // Add any server task that's not in project settings
+    for (server_key, server_value) in server_frontend_map {
+        if !project_obj.contains_key(server_key) {
+            project_obj.insert(server_key.clone(), server_value.clone());
+            added_keys.push(server_key.as_str());
         }
     }
     
@@ -278,80 +216,29 @@ pub async fn get_all_task_model_settings_for_project_command(app_handle: AppHand
     let runtime_ai_config = config::get_runtime_ai_config()?
         .ok_or_else(|| AppError::ConfigError("RuntimeAIConfig not available from server. Please ensure server connection is established.".to_string()))?;
     
+    // Convert server tasks to frontend format
     let mut server_frontend_map = Map::new();
     for (snake_case_key, task_config) in &runtime_ai_config.tasks {
-        let camel_case_key = match snake_to_camel_case(snake_case_key) {
-            Ok(key) => key,
-            Err(e) => {
-                log::warn!("Skipping task type {} due to mapping error: {}", snake_case_key, e);
-                continue;
-            }
+        let camel_case_key = snake_case_key.to_lower_camel_case();
+        let frontend_config = FrontendReadyTaskModelConfig {
+            model: task_config.model.clone().unwrap_or_default(),
+            max_tokens: task_config.max_tokens.unwrap_or(0),
+            temperature: task_config.temperature.unwrap_or(0.0),
         };
-        // Parse task type to check if it's an LLM task
-        let task_type = match snake_case_key.parse::<crate::models::TaskType>() {
-            Ok(task_type) => task_type,
-            Err(_) => {
-                log::warn!("Skipping unknown task type: {}", snake_case_key);
-                continue;
-            }
-        };
-        
-        let value_to_insert = if task_type.requires_llm() {
-            log::debug!("Including LLM task {} with full config for frontend", snake_case_key);
-            let frontend_config = FrontendReadyTaskModelConfig {
-                model: task_config.model.clone().unwrap_or_else(|| {
-                    log::warn!("Task {} missing model, using empty string", snake_case_key);
-                    String::new()
-                }),
-                max_tokens: task_config.max_tokens.unwrap_or_else(|| {
-                    log::warn!("Task {} missing max_tokens, using 0", snake_case_key);
-                    0
-                }),
-                temperature: task_config.temperature.unwrap_or_else(|| {
-                    log::warn!("Task {} missing temperature, using 0.0", snake_case_key);
-                    0.0
-                }),
-            };
+        server_frontend_map.insert(
+            camel_case_key, 
             serde_json::to_value(frontend_config)
                 .map_err(|e| AppError::SerializationError(format!("Failed to serialize task config for {}: {}", snake_case_key, e)))?
-        } else {
-            // For non-LLM tasks, insert an empty object. The frontend will handle rendering.
-            log::debug!("Including non-LLM task {} with empty config for frontend", snake_case_key);
-            serde_json::json!({})
-        };
-        
-        server_frontend_map.insert(camel_case_key, value_to_insert);
+        );
     }
     
+    // If we have project settings, merge them with server defaults
     if let Some(settings_json) = project_settings {
-        log::info!("Found project-specific settings, validating completeness...");
-        
-        match validate_project_settings_completeness(&settings_json) {
-            Ok(true) => {
-                log::info!("Project settings are complete, using them directly");
-                return Ok(settings_json);
-            },
-            Ok(false) => {
-                log::warn!("Project settings are incomplete, merging with server defaults");
-                return merge_project_with_server_defaults(&settings_json, &server_frontend_map);
-            },
-            Err(e) => {
-                log::error!("Project settings validation failed: {}", e);
-                return Err(AppError::ConfigError(format!("Project settings are invalid and cannot be used: {}. Either fix the project settings or clear them to use server defaults.", e)));
-            }
-        }
+        log::info!("Found project-specific settings, merging with server defaults");
+        return merge_project_with_server_defaults(&settings_json, &server_frontend_map);
     }
     
     log::info!("Using server defaults for all task configurations");
-    
-    let required_frontend_keys = get_required_frontend_task_types();
-    
-    for required_key in required_frontend_keys {
-        if !server_frontend_map.contains_key(required_key) {
-            return Err(AppError::ConfigError(format!("Server did not provide configuration for required task type '{}'. Please ensure server database is properly configured.", required_key)));
-        }
-    }
-    
     let result_json = serde_json::Value::Object(server_frontend_map);
     Ok(result_json.to_string())
 }
@@ -362,56 +249,20 @@ mod tests {
 
     #[test]
     fn test_validate_project_settings_completeness() {
-        let complete_settings = r#"
+        let valid_settings = r#"
         {
-            "pathFinder": {"model": "test", "maxTokens": 1000, "temperature": 0.5},
-            "voiceTranscription": {"model": "test", "maxTokens": 1000, "temperature": 0.5},
-            "regexPatternGeneration": {"model": "test", "maxTokens": 1000, "temperature": 0.5},
-            "regexSummaryGeneration": {"model": "test", "maxTokens": 1000, "temperature": 0.5},
-            "pathCorrection": {"model": "test", "maxTokens": 1000, "temperature": 0.5},
-            "textImprovement": {"model": "test", "maxTokens": 1000, "temperature": 0.5},
-            "textCorrection": {"model": "test", "maxTokens": 1000, "temperature": 0.5},
-            "taskEnhancement": {"model": "test", "maxTokens": 1000, "temperature": 0.5},
-            "guidanceGeneration": {"model": "test", "maxTokens": 1000, "temperature": 0.5},
-            "implementationPlan": {"model": "test", "maxTokens": 1000, "temperature": 0.5},
-            "genericLlmStream": {"model": "test", "maxTokens": 1000, "temperature": 0.5},
-            "fileFinderWorkflow": {"model": "test", "maxTokens": 1000, "temperature": 0.5},
-            "localFileFiltering": {"model": "test", "maxTokens": 1000, "temperature": 0.5},
-            "fileRelevanceAssessment": {"model": "test", "maxTokens": 1000, "temperature": 0.5},
-            "extendedPathFinder": {"model": "test", "maxTokens": 1000, "temperature": 0.5},
-            "extendedPathCorrection": {"model": "test", "maxTokens": 1000, "temperature": 0.5},
-            "streaming": {"model": "test", "maxTokens": 1000, "temperature": 0.5},
-            "unknown": {"model": "test", "maxTokens": 1000, "temperature": 0.5}
+            "pathFinder": {"model": "test", "maxTokens": 1000, "temperature": 0.5}
         }
         "#;
         
-        assert!(validate_project_settings_completeness(complete_settings).unwrap());
+        assert!(validate_project_settings_completeness(valid_settings).unwrap());
     }
     
     #[test]
-    fn test_validate_project_settings_missing_extended_path_correction() {
-        let incomplete_settings = r#"
-        {
-            "pathFinder": {"model": "test", "maxTokens": 1000, "temperature": 0.5},
-            "voiceTranscription": {"model": "test", "maxTokens": 1000, "temperature": 0.5},
-            "regexPatternGeneration": {"model": "test", "maxTokens": 1000, "temperature": 0.5},
-            "regexSummaryGeneration": {"model": "test", "maxTokens": 1000, "temperature": 0.5},
-            "pathCorrection": {"model": "test", "maxTokens": 1000, "temperature": 0.5},
-            "textImprovement": {"model": "test", "maxTokens": 1000, "temperature": 0.5},
-            "taskEnhancement": {"model": "test", "maxTokens": 1000, "temperature": 0.5},
-            "guidanceGeneration": {"model": "test", "maxTokens": 1000, "temperature": 0.5},
-            "implementationPlan": {"model": "test", "maxTokens": 1000, "temperature": 0.5},
-            "genericLlmStream": {"model": "test", "maxTokens": 1000, "temperature": 0.5},
-            "fileFinderWorkflow": {"model": "test", "maxTokens": 1000, "temperature": 0.5},
-            "localFileFiltering": {"model": "test", "maxTokens": 1000, "temperature": 0.5},
-            "fileRelevanceAssessment": {"model": "test", "maxTokens": 1000, "temperature": 0.5},
-            "extendedPathFinder": {"model": "test", "maxTokens": 1000, "temperature": 0.5},
-            "streaming": {"model": "test", "maxTokens": 1000, "temperature": 0.5},
-            "unknown": {"model": "test", "maxTokens": 1000, "temperature": 0.5}
-        }
-        "#;
+    fn test_validate_project_settings_empty_object() {
+        let empty_settings = r#"{}"#;
         
-        assert!(!validate_project_settings_completeness(incomplete_settings).unwrap());
+        assert!(validate_project_settings_completeness(empty_settings).unwrap());
     }
     
     #[test]

@@ -796,7 +796,7 @@ async fn add_orphaned_job_to_workflow(
         TaskType::LocalFileFiltering => "LocalFileFiltering", 
         TaskType::FileRelevanceAssessment => "FileRelevanceAssessment",
         TaskType::ExtendedPathFinder => "ExtendedPathFinder",
-        TaskType::ExtendedPathCorrection => "ExtendedPathCorrection",
+        TaskType::PathCorrection => "PathCorrection",
         _ => return Err(AppError::JobError(format!("Unsupported workflow task type: {:?}", task_type))),
     };
     

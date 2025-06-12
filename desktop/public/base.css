@@ -46,3 +46,86 @@ body {
   /* Inherit the gradient background */
   background: inherit;
 }
+
+/* Billing UI Enhancements */
+.billing-card-hover {
+  transform-origin: center;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.billing-card-hover:hover {
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+}
+
+.billing-button-hover {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.billing-button-hover:hover:not(:disabled) {
+  transform: translateY(-1px) scale(1.05);
+}
+
+.billing-button-hover:active:not(:disabled) {
+  transform: translateY(0) scale(1.02);
+}
+
+/* Enhanced pulse animation for skeleton loaders */
+@keyframes enhanced-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.animate-enhanced-pulse {
+  animation: enhanced-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Focus improvements for accessibility */
+.billing-focus:focus-visible {
+  outline: 2px solid hsl(var(--primary));
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* Smooth transitions for disabled states */
+.billing-disabled-transition {
+  transition: opacity 0.2s ease-in-out, cursor 0.2s ease-in-out;
+}
+
+.billing-disabled-transition:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Enhanced tooltip styles */
+.billing-tooltip {
+  position: relative;
+}
+
+.billing-tooltip::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: hsl(var(--popover));
+  color: hsl(var(--popover-foreground));
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease-in-out;
+  z-index: 1000;
+  border: 1px solid hsl(var(--border));
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+.billing-tooltip:hover::after {
+  opacity: 1;
+}

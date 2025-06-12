@@ -318,7 +318,7 @@ impl WorkflowOrchestrator {
                                         crate::models::TaskType::LocalFileFiltering => "LocalFileFiltering",
                                         crate::models::TaskType::FileRelevanceAssessment => "FileRelevanceAssessment",
                                         crate::models::TaskType::ExtendedPathFinder => "ExtendedPathFinder",
-                                        crate::models::TaskType::ExtendedPathCorrection => "ExtendedPathCorrection",
+                                        crate::models::TaskType::PathCorrection => "PathCorrection",
                                         _ => continue,
                                     };
                                     
@@ -388,7 +388,7 @@ impl WorkflowOrchestrator {
                             crate::models::TaskType::LocalFileFiltering => "LocalFileFiltering",
                             crate::models::TaskType::FileRelevanceAssessment => "FileRelevanceAssessment",
                             crate::models::TaskType::ExtendedPathFinder => "ExtendedPathFinder",
-                            crate::models::TaskType::ExtendedPathCorrection => "ExtendedPathCorrection",
+                            crate::models::TaskType::PathCorrection => "PathCorrection",
                             _ => continue,
                         };
                         

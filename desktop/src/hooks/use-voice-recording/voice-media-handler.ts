@@ -118,21 +118,13 @@ export async function setupMedia({
       );
     }
 
-    // Add an event handler for when recording starts
+    // Simplified event handler - MediaRecorder handles timing internally
     recorder.onstart = () => {
       // eslint-disable-next-line no-console
       console.log("[MediaHandler] Recording started successfully");
-
-      // Force a data available event after a short delay to ensure we're capturing
-      setTimeout(() => {
-        if (recorder.state === "recording") {
-          // eslint-disable-next-line no-console
-          console.log(
-            "[MediaHandler] Requesting data from recorder via requestData()"
-          );
-          recorder.requestData();
-        }
-      }, 1000);
+      
+      // No need for artificial timeout - MediaRecorder's timeslice handles this
+      // The ondataavailable event will fire naturally based on the timeslice parameter
     };
 
     // Handle data chunks as they become available
@@ -148,9 +140,8 @@ export async function setupMedia({
       }
     };
 
-    // Log more detailed error information
+    // Simplified error handling
     recorder.onerror = (event) => {
-      // Get detailed error info when available
       const errorDetails = event.error
         ? `${(event.error && typeof event.error === 'object' && 'name' in event.error && typeof event.error.name === 'string') ? event.error.name : 'Error'}: ${(event.error && typeof event.error === 'object' && 'message' in event.error && typeof event.error.message === 'string') ? event.error.message : 'Unknown error'}`
         : "Unknown MediaRecorder error";
@@ -162,7 +153,7 @@ export async function setupMedia({
       onError(`Error during recording: ${errorDetails}. Please try again.`);
     };
 
-    // Handle recorder stop event
+    // Simplified stop handler
     recorder.onstop = () => {
       // eslint-disable-next-line no-console
       console.log("[MediaHandler] Recording stopped");

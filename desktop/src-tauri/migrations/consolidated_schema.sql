@@ -108,6 +108,12 @@ CREATE TABLE IF NOT EXISTS key_value_store (
 -- Create index for key_value_store table
 CREATE INDEX IF NOT EXISTS idx_key_value_store_key ON key_value_store(key);
 
+-- =========================================================================
+-- Transcription Configuration
+-- =========================================================================
+-- Note: Transcription configurations are fetched from server and cached in memory
+-- User preferences are stored in key_value_store as simple JSON
+
 -- Create background_jobs table
 CREATE TABLE IF NOT EXISTS background_jobs (
   id TEXT PRIMARY KEY,
@@ -166,76 +172,19 @@ CREATE INDEX IF NOT EXISTS idx_system_prompts_task_type ON system_prompts(task_t
 -- Desktop SQLite database contains ONLY user-defined custom system prompts
 -- Default prompts are fetched from server and cached in memory with 5-minute TTL
 
--- Insert default 2025 model configurations
-INSERT OR REPLACE INTO key_value_store (key, value, updated_at)
-VALUES 
-('default_llm_model_2025', 'anthropic/claude-sonnet-4', strftime('%s', 'now')),
-('default_reasoning_model_2025', 'deepseek/deepseek-r1', strftime('%s', 'now')),
-('default_fast_model_2025', 'google/gemini-2.5-flash-preview-05-20', strftime('%s', 'now')),
-('default_transcription_model_2025', 'whisper-large-v3', strftime('%s', 'now')),
-('model_update_version', '2025.1', strftime('%s', 'now')),
-('available_claude_models_2025', '["anthropic/claude-sonnet-4", "claude-opus-4-20250522", "claude-3-7-sonnet-20250219"]', strftime('%s', 'now')),
-('available_gemini_models_2025', '["google/gemini-2.5-flash-preview-05-20", "google/gemini-2.5-flash-preview-05-20:thinking", "google/gemini-2.5-pro-preview"]', strftime('%s', 'now')),
-('available_reasoning_models_2025', '["deepseek/deepseek-r1", "deepseek/deepseek-r1-distill-qwen-32b", "deepseek/deepseek-r1-distill-qwen-14b"]', strftime('%s', 'now'));
+-- Model configurations are fetched from server - no local storage needed
 
 
--- Store application-wide configurations, especially those managed dynamically
-CREATE TABLE IF NOT EXISTS application_configurations (
-config_key TEXT PRIMARY KEY,    -- e.g., 'ai_settings_default_llm_model_id', 'ai_settings_available_models'
-config_value TEXT NOT NULL,     -- Store complex configurations as JSON text
-description TEXT,               -- Optional description of the configuration
-updated_at INTEGER DEFAULT (strftime('%s', 'now')) NOT NULL
-);
-
-CREATE INDEX IF NOT EXISTS idx_application_configurations_config_key ON application_configurations(config_key);
-
--- Insert comprehensive AI task configurations into application_configurations
-INSERT INTO application_configurations (config_key, config_value, description)
-VALUES 
-('ai_settings_task_specific_configs', '{
-  "implementation_plan": {"model": "google/gemini-2.5-pro-preview", "max_tokens": 65536, "temperature": 0.7},
-  "path_finder": {"model": "google/gemini-2.5-flash-preview-05-20", "max_tokens": 8192, "temperature": 0.3},
-  "text_improvement": {"model": "anthropic/claude-sonnet-4", "max_tokens": 4096, "temperature": 0.7},
-  "voice_transcription": {"model": "groq/whisper-large-v3-turbo", "max_tokens": 4096, "temperature": 0.0},
-  "text_correction": {"model": "anthropic/claude-sonnet-4", "max_tokens": 2048, "temperature": 0.5},
-  "path_correction": {"model": "google/gemini-2.5-flash-preview-05-20", "max_tokens": 4096, "temperature": 0.3},
-  "regex_pattern_generation": {"model": "anthropic/claude-sonnet-4", "max_tokens": 1000, "temperature": 0.2},
-  "regex_summary_generation": {"model": "anthropic/claude-sonnet-4", "max_tokens": 2048, "temperature": 0.3},
-  "guidance_generation": {"model": "google/gemini-2.5-pro-preview", "max_tokens": 8192, "temperature": 0.7},
-  "task_enhancement": {"model": "google/gemini-2.5-pro-preview", "max_tokens": 4096, "temperature": 0.7},
-  "file_finder_workflow": {"model": "google/gemini-2.5-flash-preview-05-20", "max_tokens": 2048, "temperature": 0.3},
-  "generic_llm_stream": {"model": "google/gemini-2.5-pro-preview", "max_tokens": 16384, "temperature": 0.7},
-  "streaming": {"model": "google/gemini-2.5-pro-preview", "max_tokens": 16384, "temperature": 0.7},
-  "local_file_filtering": {},
-  "extended_path_finder": {"model": "google/gemini-2.5-flash-preview-05-20", "max_tokens": 8192, "temperature": 0.3},
-  "extended_path_correction": {"model": "google/gemini-2.5-flash-preview-05-20", "max_tokens": 4096, "temperature": 0.3},
-  "file_relevance_assessment": {"model": "google/gemini-2.5-flash-preview-05-20", "max_tokens": 24000, "temperature": 0.3},
-  "unknown": {"model": "google/gemini-2.5-pro-preview", "max_tokens": 4096, "temperature": 0.7}
-}', 'Task-specific model configurations including model, tokens, and temperature for all supported task types'),
-
-('ai_settings_default_llm_model_id', '"google/gemini-2.5-pro-preview"', 'Default LLM model for new installations'),
-('ai_settings_default_voice_model_id', '"anthropic/claude-sonnet-4"', 'Default voice processing model'),
-('ai_settings_default_transcription_model_id', '"groq/whisper-large-v3-turbo"', 'Default transcription model'),
-('ai_settings_path_finder_settings', '{
-  "max_files_with_content": 10,
-  "include_file_contents": true,
-  "max_content_size_per_file": 5000,
-  "max_file_count": 50,
-  "file_content_truncation_chars": 2000,
-  "content_limit_buffer": 1000
-}', 'Settings for the PathFinder agent functionality'),
-('ai_settings_available_models', '[]', 'List of available AI models with their properties - will be populated from server at startup')
-
-ON CONFLICT (config_key) DO UPDATE SET
-  config_value = EXCLUDED.config_value,
-  description = EXCLUDED.description,
-  updated_at = strftime('%s', 'now');
+-- AI configurations come from server only
+-- Model configurations are fetched from server - no local storage needed
+-- Desktop only stores user-specific local preferences in key_value_store if needed
 
 -- User credits balance tracking (local cache from server)
 CREATE TABLE IF NOT EXISTS user_credits (
     user_id TEXT PRIMARY KEY,
     balance TEXT NOT NULL DEFAULT '0.0000', -- Store as TEXT for precise decimal handling
     currency TEXT NOT NULL DEFAULT 'USD',
+    services_blocked INTEGER DEFAULT 0 CHECK(services_blocked IN (0, 1)),
     created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
     updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
 );
@@ -251,6 +200,7 @@ CREATE TABLE IF NOT EXISTS credit_transactions (
     stripe_charge_id TEXT, -- For purchases
     related_api_usage_id TEXT, -- For consumptions
     metadata TEXT, -- JSON string
+    balance_after TEXT, -- Balance after this transaction for audit trail
     created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
 );
 
@@ -262,8 +212,16 @@ CREATE INDEX IF NOT EXISTS idx_credit_transactions_stripe_charge ON credit_trans
 CREATE INDEX IF NOT EXISTS idx_credit_transactions_created ON credit_transactions(created_at DESC);
 
 -- Record this consolidated schema in the key_value_store table
+-- =========================================================================
+-- Insert Default Transcription Configuration Data
+-- =========================================================================
+
+-- Transcription configurations are fetched from server and cached in memory
+-- User preferences stored as JSON in key_value_store by voice_commands.rs
+
 INSERT OR REPLACE INTO key_value_store (key, value, updated_at)
-VALUES ('schema_version', '2025-05-29-enhanced-system-prompts-with-credits', strftime('%s', 'now')),
+VALUES ('schema_version', '2025-06-11-enhanced-transcription-configuration', strftime('%s', 'now')),
        ('last_model_update', strftime('%s', 'now'), strftime('%s', 'now')),
        ('initial_setup_with_2025_models', 'true', strftime('%s', 'now')),
-       ('enhanced_system_prompts_migration_applied', strftime('%s', 'now'), strftime('%s', 'now'));
+       ('enhanced_system_prompts_migration_applied', strftime('%s', 'now'), strftime('%s', 'now')),
+       ('transcription_configuration_migration_applied', strftime('%s', 'now'), strftime('%s', 'now'));

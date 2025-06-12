@@ -2,6 +2,10 @@ export interface TaskModelSettings {
   model?: string;
   maxTokens?: number;
   temperature?: number;
+  // Transcription-specific settings
+  transcriptionPrompt?: string;
+  languageCode?: string;
+  transcriptionModel?: string;
 }
 
 export interface TaskSettings {

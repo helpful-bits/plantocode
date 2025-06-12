@@ -17,8 +17,12 @@ pub enum AppError {
     External(String),
     InvalidArgument(String),
     Payment(String),
+    PaymentRequired(String), // For cases where additional payment is needed (e.g., failed proration)
     Serialization(String),
     LockPoisoned(String),
+    NotImplemented(String),
+    ActionRequired(String),
+    TooManyRequests(String),
 }
 
 #[derive(Serialize, Deserialize)]
@@ -42,8 +46,12 @@ impl fmt::Display for AppError {
             AppError::External(e) => write!(f, "External service error: {}", e),
             AppError::InvalidArgument(e) => write!(f, "Invalid argument: {}", e),
             AppError::Payment(e) => write!(f, "Payment error: {}", e),
+            AppError::PaymentRequired(e) => write!(f, "Payment required: {}", e),
             AppError::Serialization(e) => write!(f, "Serialization error: {}", e),
             AppError::LockPoisoned(e) => write!(f, "Lock poisoned: {}", e),
+            AppError::NotImplemented(e) => write!(f, "Not implemented: {}", e),
+            AppError::ActionRequired(e) => write!(f, "Action required: {}", e),
+            AppError::TooManyRequests(e) => write!(f, "Too many requests: {}", e),
         }
     }
 }
@@ -64,8 +72,12 @@ impl ResponseError for AppError {
             AppError::External(_) => (StatusCode::BAD_GATEWAY, "external_service_error"),
             AppError::InvalidArgument(_) => (StatusCode::BAD_REQUEST, "invalid_argument"),
             AppError::Payment(_) => (StatusCode::PAYMENT_REQUIRED, "payment_required"),
+            AppError::PaymentRequired(_) => (StatusCode::PAYMENT_REQUIRED, "payment_required"),
             AppError::Serialization(_) => (StatusCode::INTERNAL_SERVER_ERROR, "serialization_error"),
             AppError::LockPoisoned(_) => (StatusCode::INTERNAL_SERVER_ERROR, "lock_poisoned"),
+            AppError::NotImplemented(_) => (StatusCode::NOT_IMPLEMENTED, "not_implemented"),
+            AppError::ActionRequired(_) => (StatusCode::BAD_REQUEST, "action_required"),
+            AppError::TooManyRequests(_) => (StatusCode::TOO_MANY_REQUESTS, "too_many_requests"),
         };
 
         let error_response = ErrorResponse {
@@ -90,8 +102,12 @@ impl ResponseError for AppError {
             AppError::External(_) => StatusCode::BAD_GATEWAY,
             AppError::InvalidArgument(_) => StatusCode::BAD_REQUEST,
             AppError::Payment(_) => StatusCode::PAYMENT_REQUIRED,
+            AppError::PaymentRequired(_) => StatusCode::PAYMENT_REQUIRED,
             AppError::Serialization(_) => StatusCode::INTERNAL_SERVER_ERROR,
             AppError::LockPoisoned(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            AppError::NotImplemented(_) => StatusCode::NOT_IMPLEMENTED,
+            AppError::ActionRequired(_) => StatusCode::BAD_REQUEST,
+            AppError::TooManyRequests(_) => StatusCode::TOO_MANY_REQUESTS,
         }
     }
 }
@@ -120,6 +136,28 @@ impl From<serde_json::Error> for AppError {
 impl From<bigdecimal::ParseBigDecimalError> for AppError {
     fn from(error: bigdecimal::ParseBigDecimalError) -> Self {
         AppError::Validation(format!("Invalid decimal value: {}", error))
+    }
+}
+
+impl From<crate::services::stripe_service::StripeServiceError> for AppError {
+    fn from(error: crate::services::stripe_service::StripeServiceError) -> Self {
+        match error {
+            crate::services::stripe_service::StripeServiceError::StripeApi(stripe_error) => {
+                AppError::Payment(format!("Stripe API error: {}", stripe_error))
+            }
+            crate::services::stripe_service::StripeServiceError::WebhookVerification(msg) => {
+                AppError::Auth(format!("Webhook verification failed: {}", msg))
+            }
+            crate::services::stripe_service::StripeServiceError::Configuration(msg) => {
+                AppError::Configuration(format!("Stripe configuration error: {}", msg))
+            }
+            crate::services::stripe_service::StripeServiceError::PaymentProcessing(msg) => {
+                AppError::Payment(format!("Payment processing error: {}", msg))
+            }
+            crate::services::stripe_service::StripeServiceError::SubscriptionManagement(msg) => {
+                AppError::Payment(format!("Subscription management error: {}", msg))
+            }
+        }
     }
 }
 

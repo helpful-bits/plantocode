@@ -124,3 +124,143 @@ pub static EXCLUDED_DIRS_FOR_SCAN: [&str; 20] = [
 pub const APP_DATA_DIR_NAME: &str = "com.vibe-manager.app";
 pub const APP_TEMP_SUBDIR_NAME: &str = "com.vibe-manager.desktop/temp";
 pub const DB_FILENAME: &str = "appdata.db";
+
+// ====================================
+// TYPE-SAFE ENUMS TO REPLACE MAGIC STRINGS
+// ====================================
+
+use serde::{Deserialize, Serialize};
+
+/// Service provider types for API proxying
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ServiceProvider {
+    ReplicateServerProxy,
+    OpenRouterProxy,
+    DirectApi,
+}
+
+impl ServiceProvider {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ServiceProvider::ReplicateServerProxy => "replicate_server_proxy",
+            ServiceProvider::OpenRouterProxy => "openrouter_proxy", 
+            ServiceProvider::DirectApi => "direct_api",
+        }
+    }
+}
+
+impl std::fmt::Display for ServiceProvider {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
+/// API provider types for validation and configuration
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ApiProvider {
+    Gemini,
+    Claude,
+    Whisper,
+    Replicate,
+    OpenAI,
+    Anthropic,
+    Google,
+}
+
+impl ApiProvider {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ApiProvider::Gemini => "gemini",
+            ApiProvider::Claude => "claude",
+            ApiProvider::Whisper => "whisper",
+            ApiProvider::Replicate => "replicate",
+            ApiProvider::OpenAI => "openai",
+            ApiProvider::Anthropic => "anthropic",
+            ApiProvider::Google => "google",
+        }
+    }
+
+    pub fn all_valid() -> Vec<&'static str> {
+        vec![
+            Self::Gemini.as_str(),
+            Self::Claude.as_str(), 
+            Self::Whisper.as_str(),
+            Self::Replicate.as_str(),
+            Self::OpenAI.as_str(),
+            Self::Anthropic.as_str(),
+            Self::Google.as_str(),
+        ]
+    }
+}
+
+impl std::fmt::Display for ApiProvider {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
+/// Error types for consistent error handling
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ErrorType {
+    ReplicateError,
+    OpenRouterError,
+    AnthropicError,
+    OpenAIError,
+    NetworkError,
+    SerializationError,
+    InvalidArgument,
+}
+
+impl ErrorType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ErrorType::ReplicateError => "replicate_error",
+            ErrorType::OpenRouterError => "openrouter_error",
+            ErrorType::AnthropicError => "anthropic_error",
+            ErrorType::OpenAIError => "openai_error",
+            ErrorType::NetworkError => "network_error",
+            ErrorType::SerializationError => "serialization_error",
+            ErrorType::InvalidArgument => "invalid_argument",
+        }
+    }
+}
+
+impl std::fmt::Display for ErrorType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
+/// Job categories for better organization
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum JobCategory {
+    VoiceTranscription,
+    TextProcessing,
+    PathFinding,
+    ImplementationPlanning,
+    FileAnalysis,
+    WorkflowExecution,
+}
+
+impl JobCategory {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            JobCategory::VoiceTranscription => "VOICE_TRANSCRIPTION",
+            JobCategory::TextProcessing => "TEXT_PROCESSING",
+            JobCategory::PathFinding => "PATH_FINDING",
+            JobCategory::ImplementationPlanning => "IMPLEMENTATION_PLANNING",
+            JobCategory::FileAnalysis => "FILE_ANALYSIS",
+            JobCategory::WorkflowExecution => "WORKFLOW_EXECUTION",
+        }
+    }
+}
+
+impl std::fmt::Display for JobCategory {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}

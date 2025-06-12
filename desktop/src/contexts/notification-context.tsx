@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState, useCallback } from "react";
+import { createContext, useContext, useState, useCallback, useRef, useEffect } from "react";
 import type { ReactNode } from "react";
 
 import { NotificationBanner } from "@/ui/notification-banner";
@@ -41,6 +41,9 @@ const NotificationContext = createContext<NotificationContextValue>({
 
 export function NotificationProvider({ children }: { children: ReactNode }) {
   const [notifications, setNotifications] = useState<ActiveNotification[]>([]);
+  
+  // Store active timeouts for cleanup
+  const activeTimeoutsRef = useRef<Map<string, number>>(new Map());
 
   const showNotification = useCallback(({
     title,
@@ -61,16 +64,42 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
     setNotifications(prev => [...prev, notification]);
 
-    // Auto-dismiss after duration
+    // Auto-dismiss after duration with proper cleanup
     if (duration > 0) {
-      setTimeout(() => {
-        setNotifications(prev => prev.filter(n => n.id !== id));
+      const timeoutId = window.setTimeout(() => {
+        try {
+          setNotifications(prev => prev.filter(n => n.id !== id));
+          // Remove from active timeouts map
+          activeTimeoutsRef.current.delete(id);
+        } catch (error) {
+          console.error('[NotificationProvider] Error dismissing notification:', error);
+        }
       }, duration);
+      
+      // Store timeout ID for cleanup
+      activeTimeoutsRef.current.set(id, timeoutId);
     }
   }, []);
 
   const dismissNotification = useCallback((id: string) => {
     setNotifications(prev => prev.filter(n => n.id !== id));
+    
+    // Clear any pending timeout for this notification
+    const timeoutId = activeTimeoutsRef.current.get(id);
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+      activeTimeoutsRef.current.delete(id);
+    }
+  }, []);
+
+  // Cleanup all timeouts on unmount
+  useEffect(() => {
+    return () => {
+      for (const timeoutId of activeTimeoutsRef.current.values()) {
+        clearTimeout(timeoutId);
+      }
+      activeTimeoutsRef.current.clear();
+    };
   }, []);
 
   const showError = useCallback((error: unknown, context?: string, userContext?: string) => {
@@ -85,6 +114,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     
     // Determine specific error types for enhanced handling
     const isBillingError = errorInfo.type === ErrorType.BILLING_ERROR;
+    const isActionRequired = errorInfo.type === ErrorType.ACTION_REQUIRED;
     const isPermissionError = errorInfo.type === ErrorType.PERMISSION_ERROR;
     const isConfigError = errorInfo.type === ErrorType.CONFIGURATION_ERROR;
     const isNetworkError = errorInfo.type === ErrorType.NETWORK_ERROR;
@@ -98,6 +128,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     // Create enhanced title based on error type
     const getErrorTitle = () => {
       if (isBillingError) return "Billing Error";
+      if (isActionRequired) return "Action Required";
       if (isPermissionError) return "Access Denied";
       if (isConfigError) return "Configuration Error";
       if (isNetworkError) return "Connection Error";
@@ -115,6 +146,16 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       if (isBillingError) {
         return {
           label: "View Billing",
+          onClick: () => {
+            window.location.pathname = '/settings';
+          },
+          variant: "default" as const
+        };
+      }
+      
+      if (isActionRequired) {
+        return {
+          label: "Add Payment Method",
           onClick: () => {
             window.location.pathname = '/settings';
           },
@@ -243,7 +284,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     
     // Determine duration based on error severity
     const getDuration = () => {
-      if (isBillingError || isConfigError || isDatabaseError || isInternalError) return 0; // Don't auto-dismiss critical errors
+      if (isBillingError || isActionRequired || isConfigError || isDatabaseError || isInternalError) return 0; // Don't auto-dismiss critical errors
       if (isPermissionError || isWorkflowError || isNotFoundError) return 10000; // Longer for actionable errors
       if (isValidationError) return 8000; // Medium duration for user input errors
       if (isNetworkError) return 6000; // Shorter for network issues that might resolve

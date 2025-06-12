@@ -2,6 +2,7 @@ use log::{error, debug};
 use serde_json::Value;
 
 use crate::error::AppError;
+use crate::constants::ErrorType;
 
 /// Check if an error message indicates token limit exceeded
 fn is_token_limit_error(message: &str) -> bool {
@@ -99,15 +100,15 @@ pub fn map_server_proxy_error(status_code: u16, response_text: &str) -> AppError
             "not_found" => AppError::NotFoundError(message),
             "configuration_error" => AppError::ConfigError(format!("Server configuration error: {}", message)),
             "internal_error" => AppError::ServerProxyError(format!("Server internal error: {}", message)),
-            "serialization_error" => AppError::SerializationError(format!("Server serialization error: {}", message)),
-            "invalid_argument" => AppError::InvalidArgument(message),
+            error_type if error_type == ErrorType::SerializationError.as_str() => AppError::SerializationError(format!("Server serialization error: {}", message)),
+            error_type if error_type == ErrorType::InvalidArgument.as_str() => AppError::InvalidArgument(message),
             // Handle provider-specific errors that may come from the server
-            "openrouter_error" => AppError::OpenRouterError(format!("OpenRouter API error: {}", message)),
-            "groq_error" => AppError::ExternalServiceError(format!("Groq API error: {}", message)),
-            "anthropic_error" => AppError::ExternalServiceError(format!("Anthropic API error: {}", message)),
-            "openai_error" => AppError::ExternalServiceError(format!("OpenAI API error: {}", message)),
+            error_type if error_type == ErrorType::OpenRouterError.as_str() => AppError::OpenRouterError(format!("OpenRouter API error: {}", message)),
+            error_type if error_type == ErrorType::ReplicateError.as_str() => AppError::ExternalServiceError(format!("Replicate API error: {}", message)),
+            error_type if error_type == ErrorType::AnthropicError.as_str() => AppError::ExternalServiceError(format!("Anthropic API error: {}", message)),
+            error_type if error_type == ErrorType::OpenAIError.as_str() => AppError::ExternalServiceError(format!("OpenAI API error: {}", message)),
             // Network and connection related errors
-            "network_error" => AppError::NetworkError(format!("Network error: {}", message)),
+            error_type if error_type == ErrorType::NetworkError.as_str() => AppError::NetworkError(format!("Network error: {}", message)),
             "timeout_error" => AppError::NetworkError(format!("Request timeout: {}", message)),
             "connection_error" => AppError::NetworkError(format!("Connection error: {}", message)),
             _ => {

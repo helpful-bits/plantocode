@@ -1,8 +1,7 @@
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::sync::RwLock;
-use std::collections::HashMap;
-use log::{info, warn, error};
+use log::{info, warn};
 use tauri::{AppHandle, Manager};
 use crate::constants::SERVER_API_URL;
 use crate::utils::env_utils::read_env;
@@ -163,74 +162,11 @@ pub fn get_model_for_task(task_type: TaskType) -> AppResult<String> {
     Err(AppError::ConfigError(format!("Server configuration not loaded for task {:?}. Please check server connection and configuration.", task_type)))
 }
 
-/// Fallback function to get model configuration from local desktop database
-/// when server runtime config is not available
-async fn get_model_for_task_from_local_fallback(task_type: TaskType, app_handle: &AppHandle) -> AppResult<String> {
-    if !task_type.requires_llm() {
-        return Err(AppError::ConfigError(format!("Task {:?} is a local filesystem task that does not require LLM model configuration", task_type)));
-    }
-    
-    let settings_repo = app_handle.state::<Arc<crate::db_utils::settings_repository::SettingsRepository>>().inner().clone();
-    
-    // Try to get task-specific configuration from local database
-    let task_key = match task_type {
-        TaskType::ImplementationPlan => "implementation_plan",
-        TaskType::PathFinder => "path_finder", 
-        TaskType::VoiceTranscription => "voice_transcription",
-        TaskType::TextCorrection => "text_correction",
-        TaskType::PathCorrection => "path_correction",
-        TaskType::GuidanceGeneration => "guidance_generation",
-        TaskType::TaskEnhancement => "task_enhancement",
-        TaskType::GenericLlmStream => "generic_llm_stream",
-        TaskType::RegexSummaryGeneration => "regex_summary_generation",
-        TaskType::RegexPatternGeneration => "regex_pattern_generation",
-        TaskType::ExtendedPathFinder => "extended_path_finder",
-        TaskType::ExtendedPathCorrection => "extended_path_correction",
-        TaskType::FileRelevanceAssessment => "file_relevance_assessment",
-        _ => {
-            warn!("Unknown task type for local fallback: {:?}, using generic default", task_type);
-            "unknown"
-        }
-    };
-    
-    // Try to get from local application_configurations
-    if let Ok(Some(config_json)) = settings_repo.get_value("ai_settings_task_specific_configs").await {
-        if let Ok(config_data) = serde_json::from_str::<serde_json::Value>(&config_json) {
-            if let Some(task_config) = config_data.get(task_key) {
-                if let Some(model) = task_config.get("model").and_then(|m| m.as_str()) {
-                    info!("Using local fallback model for {:?}: {}", task_type, model);
-                    return Ok(model.to_string());
-                }
-            }
-        }
-    }
-    
-    // Final fallback to reasonable defaults based on task type
-    let fallback_model = match task_type {
-        TaskType::ImplementationPlan | TaskType::GuidanceGeneration => "google/gemini-2.5-pro-preview",
-        TaskType::PathFinder | TaskType::ExtendedPathFinder => "google/gemini-2.5-flash-preview-05-20",
-        TaskType::TextCorrection | TaskType::RegexPatternGeneration | TaskType::RegexSummaryGeneration => "anthropic/claude-sonnet-4",
-        TaskType::PathCorrection | TaskType::ExtendedPathCorrection => "google/gemini-2.5-flash-preview-05-20",
-        TaskType::TaskEnhancement => "google/gemini-2.5-pro-preview",
-        TaskType::FileRelevanceAssessment => "google/gemini-2.5-flash-preview-05-20",
-        _ => "google/gemini-2.5-pro-preview",  // General default
-    };
-    
-    warn!("Using hardcoded fallback model for {:?}: {} (server config not available)", task_type, fallback_model);
-    Ok(fallback_model.to_string())
-}
 
 // Async version: Get model for a specific task type with AppHandle
-pub async fn get_model_for_task_async(task_type: TaskType, app_handle: &AppHandle) -> AppResult<String> {
-    // First try server configuration
-    match get_model_for_task(task_type) {
-        Ok(model) => Ok(model),
-        Err(_) => {
-            // If server config fails, try local fallback
-            warn!("Server configuration not available, using local fallback for task {:?}", task_type);
-            get_model_for_task_from_local_fallback(task_type, app_handle).await
-        }
-    }
+pub async fn get_model_for_task_async(task_type: TaskType, _app_handle: &AppHandle) -> AppResult<String> {
+    // Use server configuration only - no local fallbacks
+    get_model_for_task(task_type)
 }
 
 // Get task-specific configuration
@@ -275,20 +211,11 @@ pub fn get_default_max_tokens_for_task(task_type: Option<TaskType>) -> AppResult
                 return Ok(server_default);
             }
             
-            // Final fallback to task-specific hardcoded defaults
-            let fallback_max_tokens = match task {
-                TaskType::ImplementationPlan => 4000,  // Long-form content
-                TaskType::PathFinder | TaskType::ExtendedPathFinder => 2000,  // Structured output
-                TaskType::TextCorrection => 1000,  // Text refinement
-                TaskType::GuidanceGeneration => 1500,  // Guidance content
-                TaskType::TaskEnhancement => 1000,  // Task refinement
-                TaskType::RegexSummaryGeneration | TaskType::RegexPatternGeneration => 500,  // Short regex output
-                TaskType::PathCorrection | TaskType::ExtendedPathCorrection => 500,  // Path corrections
-                _ => 1000,  // General default for other LLM tasks
-            };
-            
-            warn!("No max_tokens configuration found for task {:?}, using hardcoded fallback: {}", task, fallback_max_tokens);
-            return Ok(fallback_max_tokens);
+            // No hardcoded fallbacks - fail gracefully
+            return Err(AppError::ConfigError(format!(
+                "No max_tokens configuration found for task {:?}. Please check server configuration.", 
+                task
+            )));
         }
     }
     
@@ -296,16 +223,9 @@ pub fn get_default_max_tokens_for_task(task_type: Option<TaskType>) -> AppResult
 }
 
 // Async version: Get max tokens for a task with AppHandle
-pub async fn get_max_tokens_for_task_async(task_type: TaskType, app_handle: &AppHandle) -> AppResult<u32> {
-    // First try server configuration
-    match get_default_max_tokens_for_task(Some(task_type)) {
-        Ok(max_tokens) => Ok(max_tokens),
-        Err(_) => {
-            // If server config fails, try local fallback
-            warn!("Server configuration not available, using local fallback for max_tokens {:?}", task_type);
-            get_max_tokens_for_task_from_local_fallback(task_type, app_handle).await
-        }
-    }
+pub async fn get_max_tokens_for_task_async(task_type: TaskType, _app_handle: &AppHandle) -> AppResult<u32> {
+    // Use server configuration only - no local fallbacks
+    get_default_max_tokens_for_task(Some(task_type))
 }
 
 // Get default temperature for a task (sync version)
@@ -344,151 +264,23 @@ pub fn get_default_temperature_for_task(task_type: Option<TaskType>) -> AppResul
                 return Ok(server_default);
             }
             
-            // Final fallback to task-specific hardcoded defaults
-            let fallback_temperature = match task {
-                TaskType::ImplementationPlan | TaskType::GuidanceGeneration => 0.3,  // More deterministic for structured content
-                TaskType::PathFinder | TaskType::ExtendedPathFinder => 0.1,  // Very deterministic for path finding
-                TaskType::TextCorrection => 0.5,  // Balanced creativity for text improvement
-                TaskType::RegexSummaryGeneration | TaskType::RegexPatternGeneration => 0.2,  // Deterministic for regex
-                TaskType::PathCorrection | TaskType::ExtendedPathCorrection => 0.1,  // Very deterministic for corrections
-                TaskType::TaskEnhancement => 0.4,  // Slightly creative for task enhancement
-                _ => 0.3,  // General default for other LLM tasks
-            };
-            
-            warn!("No temperature configuration found for task {:?}, using hardcoded fallback: {}", task, fallback_temperature);
-            return Ok(fallback_temperature);
+            // No hardcoded fallbacks - fail gracefully
+            return Err(AppError::ConfigError(format!(
+                "No temperature configuration found for task {:?}. Please check server configuration.", 
+                task
+            )));
         }
     }
     
     Err(AppError::ConfigError(format!("Server configuration not loaded for temperature. Please check server connection and configuration.")))
 }
 
-/// Fallback function to get temperature configuration from local desktop database
-async fn get_temperature_for_task_from_local_fallback(task_type: TaskType, app_handle: &AppHandle) -> AppResult<f32> {
-    if !task_type.requires_llm() {
-        return Err(AppError::ConfigError(format!("Task {:?} is a local filesystem task that does not require temperature configuration", task_type)));
-    }
-    
-    let settings_repo = app_handle.state::<Arc<crate::db_utils::settings_repository::SettingsRepository>>().inner().clone();
-    
-    // Try to get task-specific configuration from local database
-    let task_key = match task_type {
-        TaskType::ImplementationPlan => "implementation_plan",
-        TaskType::PathFinder => "path_finder", 
-        TaskType::VoiceTranscription => "voice_transcription",
-        TaskType::TextCorrection => "text_correction",
-        TaskType::PathCorrection => "path_correction",
-        TaskType::GuidanceGeneration => "guidance_generation",
-        TaskType::TaskEnhancement => "task_enhancement",
-        TaskType::GenericLlmStream => "generic_llm_stream",
-        TaskType::RegexSummaryGeneration => "regex_summary_generation",
-        TaskType::RegexPatternGeneration => "regex_pattern_generation",
-        TaskType::ExtendedPathFinder => "extended_path_finder",
-        TaskType::ExtendedPathCorrection => "extended_path_correction",
-        TaskType::FileRelevanceAssessment => "file_relevance_assessment",
-        _ => "unknown"
-    };
-    
-    // Try to get from local application_configurations
-    if let Ok(Some(config_json)) = settings_repo.get_value("ai_settings_task_specific_configs").await {
-        if let Ok(config_data) = serde_json::from_str::<serde_json::Value>(&config_json) {
-            if let Some(task_config) = config_data.get(task_key) {
-                if let Some(temperature) = task_config.get("temperature").and_then(|t| t.as_f64()) {
-                    info!("Using local fallback temperature for {:?}: {}", task_type, temperature);
-                    return Ok(temperature as f32);
-                }
-            }
-        }
-    }
-    
-    // Final fallback to reasonable defaults based on task type
-    let fallback_temperature = match task_type {
-        TaskType::ImplementationPlan | TaskType::GuidanceGeneration => 0.7,
-        TaskType::PathFinder | TaskType::ExtendedPathFinder => 0.3,
-        TaskType::TextCorrection => 0.5,
-        TaskType::RegexSummaryGeneration => 0.3,
-        TaskType::RegexPatternGeneration => 0.2,
-        TaskType::PathCorrection | TaskType::ExtendedPathCorrection => 0.3,
-        TaskType::TaskEnhancement => 0.7,
-        TaskType::FileRelevanceAssessment => 0.3,
-        _ => 0.7,  // General default
-    };
-    
-    warn!("Using hardcoded fallback temperature for {:?}: {} (server config not available)", task_type, fallback_temperature);
-    Ok(fallback_temperature)
-}
 
-/// Fallback function to get max_tokens configuration from local desktop database
-async fn get_max_tokens_for_task_from_local_fallback(task_type: TaskType, app_handle: &AppHandle) -> AppResult<u32> {
-    if !task_type.requires_llm() {
-        return Err(AppError::ConfigError(format!("Task {:?} is a local filesystem task that does not require max_tokens configuration", task_type)));
-    }
-    
-    let settings_repo = app_handle.state::<Arc<crate::db_utils::settings_repository::SettingsRepository>>().inner().clone();
-    
-    // Try to get task-specific configuration from local database
-    let task_key = match task_type {
-        TaskType::ImplementationPlan => "implementation_plan",
-        TaskType::PathFinder => "path_finder", 
-        TaskType::VoiceTranscription => "voice_transcription",
-        TaskType::TextCorrection => "text_correction",
-        TaskType::PathCorrection => "path_correction",
-        TaskType::GuidanceGeneration => "guidance_generation",
-        TaskType::TaskEnhancement => "task_enhancement",
-        TaskType::GenericLlmStream => "generic_llm_stream",
-        TaskType::RegexSummaryGeneration => "regex_summary_generation",
-        TaskType::RegexPatternGeneration => "regex_pattern_generation",
-        TaskType::ExtendedPathFinder => "extended_path_finder",
-        TaskType::ExtendedPathCorrection => "extended_path_correction",
-        TaskType::FileRelevanceAssessment => "file_relevance_assessment",
-        _ => "unknown"
-    };
-    
-    // Try to get from local application_configurations
-    if let Ok(Some(config_json)) = settings_repo.get_value("ai_settings_task_specific_configs").await {
-        if let Ok(config_data) = serde_json::from_str::<serde_json::Value>(&config_json) {
-            if let Some(task_config) = config_data.get(task_key) {
-                if let Some(max_tokens) = task_config.get("max_tokens").and_then(|t| t.as_u64()) {
-                    info!("Using local fallback max_tokens for {:?}: {}", task_type, max_tokens);
-                    return Ok(max_tokens as u32);
-                }
-            }
-        }
-    }
-    
-    // Final fallback to reasonable defaults based on task type
-    let fallback_max_tokens = match task_type {
-        TaskType::ImplementationPlan => 65536,
-        TaskType::PathFinder => 8192,
-        TaskType::VoiceTranscription => 4096,
-        TaskType::TextCorrection => 2048,
-        TaskType::PathCorrection => 4096,
-        TaskType::GuidanceGeneration => 8192,
-        TaskType::TaskEnhancement => 4096,
-        TaskType::GenericLlmStream => 16384,
-        TaskType::RegexSummaryGeneration => 2048,
-        TaskType::RegexPatternGeneration => 1000,
-        TaskType::ExtendedPathFinder => 8192,
-        TaskType::ExtendedPathCorrection => 4096,
-        TaskType::FileRelevanceAssessment => 24000,
-        _ => 4096,  // General default
-    };
-    
-    warn!("Using hardcoded fallback max_tokens for {:?}: {} (server config not available)", task_type, fallback_max_tokens);
-    Ok(fallback_max_tokens)
-}
 
 // Async version: Get temperature for a task with AppHandle
-pub async fn get_temperature_for_task_async(task_type: TaskType, app_handle: &AppHandle) -> AppResult<f32> {
-    // First try server configuration
-    match get_default_temperature_for_task(Some(task_type)) {
-        Ok(temperature) => Ok(temperature),
-        Err(_) => {
-            // If server config fails, try local fallback
-            warn!("Server configuration not available, using local fallback for temperature {:?}", task_type);
-            get_temperature_for_task_from_local_fallback(task_type, app_handle).await
-        }
-    }
+pub async fn get_temperature_for_task_async(task_type: TaskType, _app_handle: &AppHandle) -> AppResult<f32> {
+    // Use server configuration only - no local fallbacks
+    get_default_temperature_for_task(Some(task_type))
 }
 
 // Get context window size for a model
@@ -539,7 +331,6 @@ fn extract_model_from_project_settings(settings_json: &str, task_type: TaskType)
     let task_key = match task_type {
         TaskType::ImplementationPlan => "implementationPlan",
         TaskType::PathFinder => "pathFinder",
-        TaskType::VoiceTranscription => "transcription",
         TaskType::TextCorrection => "textCorrection",
         TaskType::PathCorrection => "pathCorrection",
         TaskType::GuidanceGeneration => "guidanceGeneration",
@@ -549,7 +340,6 @@ fn extract_model_from_project_settings(settings_json: &str, task_type: TaskType)
         TaskType::RegexPatternGeneration => "regexPatternGeneration",
         TaskType::FileFinderWorkflow => "fileFinderWorkflow",
         TaskType::ExtendedPathFinder => "extendedPathFinder",
-        TaskType::ExtendedPathCorrection => "extendedPathCorrection",
         // Local tasks don't have model settings
         TaskType::LocalFileFiltering => return None,
         _ => return None,
@@ -573,7 +363,6 @@ fn extract_temperature_from_project_settings(settings_json: &str, task_type: Tas
     let task_key = match task_type {
         TaskType::ImplementationPlan => "implementationPlan",
         TaskType::PathFinder => "pathFinder",
-        TaskType::VoiceTranscription => "transcription",
         TaskType::TextCorrection => "textCorrection",
         TaskType::PathCorrection => "pathCorrection",
         TaskType::GuidanceGeneration => "guidanceGeneration",
@@ -583,7 +372,6 @@ fn extract_temperature_from_project_settings(settings_json: &str, task_type: Tas
         TaskType::RegexPatternGeneration => "regexPatternGeneration",
         TaskType::FileFinderWorkflow => "fileFinderWorkflow",
         TaskType::ExtendedPathFinder => "extendedPathFinder",
-        TaskType::ExtendedPathCorrection => "extendedPathCorrection",
         // Local tasks don't have temperature settings
         TaskType::LocalFileFiltering => return None,
         _ => return None,
@@ -607,7 +395,6 @@ fn extract_max_tokens_from_project_settings(settings_json: &str, task_type: Task
     let task_key = match task_type {
         TaskType::ImplementationPlan => "implementationPlan",
         TaskType::PathFinder => "pathFinder",
-        TaskType::VoiceTranscription => "transcription",
         TaskType::TextCorrection => "textCorrection",
         TaskType::PathCorrection => "pathCorrection",
         TaskType::GuidanceGeneration => "guidanceGeneration",
@@ -617,7 +404,6 @@ fn extract_max_tokens_from_project_settings(settings_json: &str, task_type: Task
         TaskType::RegexPatternGeneration => "regexPatternGeneration",
         TaskType::FileFinderWorkflow => "fileFinderWorkflow",
         TaskType::ExtendedPathFinder => "extendedPathFinder",
-        TaskType::ExtendedPathCorrection => "extendedPathCorrection",
         // Local tasks don't have max_tokens settings
         TaskType::LocalFileFiltering => return None,
         _ => return None,

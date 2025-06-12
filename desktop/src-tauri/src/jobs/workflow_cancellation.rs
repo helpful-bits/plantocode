@@ -544,8 +544,8 @@ mod tests {
                     allow_parallel_execution: false,
                 },
                 super::super::workflow_types::WorkflowStageDefinition {
-                    stage_name: "ExtendedPathCorrection".to_string(),
-                    task_type: crate::models::TaskType::ExtendedPathCorrection,
+                    stage_name: "PathCorrection".to_string(),
+                    task_type: crate::models::TaskType::PathCorrection,
                     processor_name: None,
                     dependencies: vec!["ExtendedPathFinder".to_string()],
                     allow_parallel_execution: false,
@@ -556,7 +556,7 @@ mod tests {
         let stages = handler.get_subsequent_stages("LocalFileFiltering", &workflow_def);
         assert!(stages.contains("LocalFileFiltering"));
         assert!(stages.contains("ExtendedPathFinder"));
-        assert!(stages.contains("ExtendedPathCorrection"));
+        assert!(stages.contains("PathCorrection"));
     }
 
     #[tokio::test]

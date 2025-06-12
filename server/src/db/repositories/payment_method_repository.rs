@@ -1,6 +1,5 @@
 use sqlx::PgPool;
 use uuid::Uuid;
-use chrono::{DateTime, Utc, Datelike};
 use serde::{Deserialize, Serialize};
 use crate::error::AppError;
 
@@ -9,16 +8,9 @@ pub struct PaymentMethod {
     pub id: String, // Stripe payment method ID
     pub user_id: Uuid,
     pub stripe_customer_id: String,
-    pub r#type: String, // 'type' is a Rust keyword, so we use r#type
     pub card_brand: Option<String>,
     pub card_last_four: Option<String>,
-    pub card_exp_month: Option<i32>,
-    pub card_exp_year: Option<i32>,
-    pub card_country: Option<String>,
-    pub card_funding: Option<String>,
     pub is_default: bool,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone)]
@@ -52,37 +44,24 @@ impl PaymentMethodRepository {
             PaymentMethod,
             r#"
             INSERT INTO payment_methods (
-                id, user_id, stripe_customer_id, type, card_brand,
-                card_last_four, card_exp_month, card_exp_year, card_country,
-                card_funding, is_default, created_at, updated_at
+                id, user_id, stripe_customer_id, card_brand,
+                card_last_four, is_default
             ) VALUES (
-                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW()
+                $1, $2, $3, $4, $5, $6
             )
             ON CONFLICT (id) DO UPDATE SET
                 card_brand = EXCLUDED.card_brand,
                 card_last_four = EXCLUDED.card_last_four,
-                card_exp_month = EXCLUDED.card_exp_month,
-                card_exp_year = EXCLUDED.card_exp_year,
-                card_country = EXCLUDED.card_country,
-                card_funding = EXCLUDED.card_funding,
-                is_default = EXCLUDED.is_default,
-                updated_at = NOW()
-            RETURNING id, user_id, stripe_customer_id, type as "type", card_brand,
-                      card_last_four, card_exp_month, card_exp_year, card_country,
-                      card_funding, is_default, created_at, updated_at
+                is_default = EXCLUDED.is_default
+            RETURNING id, user_id, stripe_customer_id, card_brand,
+                      card_last_four, is_default
             "#,
             payment_method.id,
             payment_method.user_id,
             payment_method.stripe_customer_id,
-            payment_method.r#type,
             payment_method.card_brand,
             payment_method.card_last_four,
-            payment_method.card_exp_month,
-            payment_method.card_exp_year,
-            payment_method.card_country,
-            payment_method.card_funding,
             payment_method.is_default,
-            payment_method.created_at,
         )
         .fetch_one(&mut **executor)
         .await
@@ -95,9 +74,8 @@ impl PaymentMethodRepository {
     pub async fn get_by_id(&self, payment_method_id: &str) -> Result<Option<PaymentMethod>, AppError> {
         let payment_method = sqlx::query_as!(
             PaymentMethod,
-            r#"SELECT id, user_id, stripe_customer_id, type as "type", card_brand,
-                      card_last_four, card_exp_month, card_exp_year, card_country,
-                      card_funding, is_default, created_at, updated_at 
+            r#"SELECT id, user_id, stripe_customer_id, card_brand,
+                      card_last_four, is_default
                FROM payment_methods WHERE id = $1"#,
             payment_method_id
         )
@@ -113,12 +91,11 @@ impl PaymentMethodRepository {
         let payment_methods = sqlx::query_as!(
             PaymentMethod,
             r#"
-            SELECT id, user_id, stripe_customer_id, type as "type", card_brand,
-                   card_last_four, card_exp_month, card_exp_year, card_country,
-                   card_funding, is_default, created_at, updated_at
+            SELECT id, user_id, stripe_customer_id, card_brand,
+                   card_last_four, is_default
             FROM payment_methods 
             WHERE user_id = $1 
-            ORDER BY is_default DESC, created_at DESC
+            ORDER BY is_default DESC, id DESC
             LIMIT $2 OFFSET $3
             "#,
             user_id,
@@ -149,12 +126,11 @@ impl PaymentMethodRepository {
         let payment_methods = sqlx::query_as!(
             PaymentMethod,
             r#"
-            SELECT id, user_id, stripe_customer_id, type as "type", card_brand,
-                   card_last_four, card_exp_month, card_exp_year, card_country,
-                   card_funding, is_default, created_at, updated_at
+            SELECT id, user_id, stripe_customer_id, card_brand,
+                   card_last_four, is_default
             FROM payment_methods 
             WHERE stripe_customer_id = $1 
-            ORDER BY is_default DESC, created_at DESC
+            ORDER BY is_default DESC, id DESC
             "#,
             stripe_customer_id
         )
@@ -170,9 +146,8 @@ impl PaymentMethodRepository {
         let payment_method = sqlx::query_as!(
             PaymentMethod,
             r#"
-            SELECT id, user_id, stripe_customer_id, type as "type", card_brand,
-                   card_last_four, card_exp_month, card_exp_year, card_country,
-                   card_funding, is_default, created_at, updated_at
+            SELECT id, user_id, stripe_customer_id, card_brand,
+                   card_last_four, is_default
             FROM payment_methods 
             WHERE user_id = $1 AND is_default = true
             "#,
@@ -241,28 +216,17 @@ impl PaymentMethodRepository {
         Ok(())
     }
 
-    /// Update payment method details
-    pub async fn update_details(
-        &self,
-        payment_method_id: &str,
-        card_exp_month: Option<i32>,
-        card_exp_year: Option<i32>,
-    ) -> Result<(), AppError> {
-        sqlx::query!(
-            r#"
-            UPDATE payment_methods 
-            SET card_exp_month = $2, card_exp_year = $3, updated_at = NOW()
-            WHERE id = $1
-            "#,
-            payment_method_id,
-            card_exp_month,
-            card_exp_year
+    /// Check if user has a default payment method
+    pub async fn has_default_payment_method(&self, user_id: &Uuid) -> Result<bool, AppError> {
+        let count = sqlx::query_scalar!(
+            "SELECT COUNT(*) FROM payment_methods WHERE user_id = $1 AND is_default = true",
+            user_id
         )
-        .execute(&self.pool)
+        .fetch_one(&self.pool)
         .await
-        .map_err(|e| AppError::Database(format!("Failed to update payment method details: {}", e)))?;
+        .map_err(|e| AppError::Database(format!("Failed to check default payment method: {}", e)))?;
 
-        Ok(())
+        Ok(count.unwrap_or(0) > 0)
     }
 
     /// Check if user has any payment methods
@@ -278,40 +242,4 @@ impl PaymentMethodRepository {
         Ok(count.unwrap_or(0) > 0)
     }
 
-    /// Get payment methods that are about to expire (within 30 days)
-    pub async fn get_expiring_soon(&self) -> Result<Vec<PaymentMethod>, AppError> {
-        let now = Utc::now();
-        let current_year = now.year();
-        let current_month = now.month() as i32;
-        
-        // Calculate 30 days from now
-        let future_date = now + chrono::Duration::days(30);
-        let future_year = future_date.year();
-        let future_month = future_date.month() as i32;
-
-        let payment_methods = sqlx::query_as!(
-            PaymentMethod,
-            r#"
-            SELECT id, user_id, stripe_customer_id, type as "type", card_brand,
-                   card_last_four, card_exp_month, card_exp_year, card_country,
-                   card_funding, is_default, created_at, updated_at
-            FROM payment_methods 
-            WHERE type = 'card'
-            AND (
-                (card_exp_year = $1 AND card_exp_month <= $2) OR
-                (card_exp_year = $3 AND card_exp_month <= $4 AND $1 != $3)
-            )
-            ORDER BY card_exp_year ASC, card_exp_month ASC
-            "#,
-            current_year,
-            current_month,
-            future_year,
-            future_month
-        )
-        .fetch_all(&self.pool)
-        .await
-        .map_err(|e| AppError::Database(format!("Failed to get expiring payment methods: {}", e)))?;
-
-        Ok(payment_methods)
-    }
 }

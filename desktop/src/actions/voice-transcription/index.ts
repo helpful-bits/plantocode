@@ -1,12 +1,19 @@
-/**
- * Voice Transcription Actions
- *
- * This module exports all voice transcription and correction related actions.
- */
-
-// Re-export voice transcription related actions
 export {
-  createTranscriptionJobFromBlobAction,
-  transcribeAudioBlob,
+  transcribeAudioChunk,
+  transcribeAudioBlobViaBatch,
+  transcribeAudioBlobAction,
+  type TranscriptionSettings,
 } from "./transcribe";
 export { createTextCorrectionJobAction } from "./correct-text";
+export {
+  getTranscriptionSettings,
+  setTranscriptionSettings,
+  getProjectTranscriptionSettings,
+  setProjectTranscriptionSettings,
+  resetTranscriptionSettings,
+  getEffectiveTranscriptionSettings,
+  validateTranscriptionSettings,
+  mergeTranscriptionSettings,
+  getDefaultTranscriptionSettings,
+  isDefaultTranscriptionSettings,
+} from "./settings";

@@ -1,4 +1,4 @@
-import { AlertCircle, RefreshCw, Sparkles } from "lucide-react";
+import { AlertCircle, RefreshCw, Sparkles, Loader2 } from "lucide-react";
 
 import { Button } from "@/ui/button";
 import { Card, CardContent, CardHeader } from "@/ui/card";
@@ -131,6 +131,44 @@ export function NoSubscriptionState({
       <p className="text-xs text-muted-foreground leading-7">
         30-day guarantee • No setup fees
       </p>
+    </div>
+  );
+}
+
+/**
+ * Processing state for async operations
+ */
+interface ProcessingStateProps {
+  title: string;
+  description?: string;
+  progress?: number;
+}
+
+export function ProcessingState({ title, description, progress }: ProcessingStateProps) {
+  return (
+    <div className="content-spacing">
+      <div className="flex flex-col items-center justify-center py-12 space-y-4">
+        <div className="p-3 bg-primary/10 rounded-full">
+          <Loader2 className="h-6 w-6 animate-spin text-primary" />
+        </div>
+        <div className="text-center space-y-2">
+          <h3 className="font-semibold text-foreground">{title}</h3>
+          {description && (
+            <p className="text-sm text-muted-foreground leading-relaxed">{description}</p>
+          )}
+        </div>
+        {progress !== undefined && (
+          <div className="w-64 space-y-2">
+            <div className="w-full bg-muted rounded-full h-2">
+              <div 
+                className="h-2 bg-primary rounded-full transition-all duration-500"
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+            <p className="text-xs text-muted-foreground text-center">{progress}% complete</p>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

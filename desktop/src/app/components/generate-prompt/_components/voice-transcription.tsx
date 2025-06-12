@@ -1,13 +1,14 @@
 "use client";
 
-import { Mic, MicOff, Loader2, RefreshCw } from "lucide-react";
+import { Mic, MicOff, Loader2 } from "lucide-react";
 import {
   useState,
   useCallback,
   useEffect,
+  useRef,
 } from "react";
 
-import { useVoiceRecording } from "@/hooks/use-voice-recording";
+import { useVoiceMediaState, useBatchTranscriptionProcessor } from "@/hooks/use-voice-recording";
 import {
   Button,
   Select,
@@ -16,10 +17,13 @@ import {
   SelectTrigger,
   SelectValue,
   Label,
+  Badge,
+  Alert,
 } from "@/ui";
-import { Switch } from "@/ui/switch";
 import { useNotification } from "@/contexts/notification-context";
-import { getErrorMessage } from "@/utils/error-handling"; // Import error handling utility
+import { getErrorMessage } from "@/utils/error-handling";
+import { useProject } from "@/contexts/project-context";
+import { getModelSettingsForProject } from "@/actions/project-settings.actions";
 
 import { useCorePromptContext } from "../_contexts/core-prompt-context";
 
@@ -27,10 +31,26 @@ import { type TaskDescriptionHandle } from "./task-description";
 
 interface VoiceTranscriptionProps {
   onTranscribed: (text: string) => void;
-  onInteraction?: () => void; // Optional interaction handler
+  onInteraction?: () => void;
   textareaRef?: React.RefObject<TaskDescriptionHandle | null> | undefined;
-  disabled?: boolean; // Added prop to disable the component during session switching
+  disabled?: boolean;
 }
+
+// Enhanced language options with more languages
+const ENHANCED_TRANSCRIPTION_LANGUAGES = [
+  { code: 'en', name: 'English', nativeName: 'English' },
+  { code: 'es', name: 'Spanish', nativeName: 'Español' },
+  { code: 'fr', name: 'French', nativeName: 'Français' },
+  { code: 'de', name: 'German', nativeName: 'Deutsch' },
+  { code: 'it', name: 'Italian', nativeName: 'Italiano' },
+  { code: 'pt', name: 'Portuguese', nativeName: 'Português' },
+  { code: 'ru', name: 'Russian', nativeName: 'Русский' },
+  { code: 'ja', name: 'Japanese', nativeName: '日本語' },
+  { code: 'ko', name: 'Korean', nativeName: '한국어' },
+  { code: 'zh', name: 'Chinese', nativeName: '中文' },
+  { code: 'ar', name: 'Arabic', nativeName: 'العربية' },
+  { code: 'hi', name: 'Hindi', nativeName: 'हिन्दी' },
+] as const;
 
 const VoiceTranscription = function VoiceTranscription({
   onTranscribed,
@@ -38,375 +58,252 @@ const VoiceTranscription = function VoiceTranscription({
   textareaRef,
   disabled = false,
 }: VoiceTranscriptionProps) {
-  const [showRevertOption, setShowRevertOption] = useState(false);
   const [languageCode, setLanguageCode] = useState<string>("en");
-  const [autoImproveText, setAutoImproveText] = useState<boolean>(true);
-  const [defaultDeviceLabel, setDefaultDeviceLabel] = useState<string | null>(
-    null
-  );
+  const [selectedAudioInputId, setSelectedAudioInputId] = useState<string>("default");
+  const [isRecording, setIsRecording] = useState(false);
+  const [availableInputs, setAvailableInputs] = useState<MediaDeviceInfo[]>([]);
+  const [recordingError, setRecordingError] = useState<string | null>(null);
+  
+  // Transcription settings from project configuration
+  const [transcriptionSettings, setTranscriptionSettings] = useState({
+    transcriptionPrompt: '',
+    transcriptionModel: 'whisper-large-v3',
+    languageCode: 'en',
+    temperature: 0.0,
+  });
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
+  const [settingsError, setSettingsError] = useState<string | null>(null);
+
+  // Refs for cleanup and tracking
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const isMountedRef = useRef(true);
+  const previousTextRef = useRef("");
 
   // Get core context
   const {
-    state: { projectDirectory, activeSessionId },
+    state: { activeSessionId },
   } = useCorePromptContext();
   
   const { showNotification } = useNotification();
+  const { projectDirectory } = useProject();
 
-  // Track active session ID and auto-improve setting changes
+  // Load transcription settings from project configuration
   useEffect(() => {
-    // No-op, dependency for other effects
-  }, [activeSessionId]);
-
-  // Clear revert option when auto-improve setting changes
-  useEffect(() => {
-    setShowRevertOption(false);
-  }, [autoImproveText]);
-
-  const handleCorrectionComplete = useCallback(
-    (raw: string, corrected: string) => {
-      // Check if raw and corrected text are different and auto-improve is enabled
-      if (raw !== corrected && autoImproveText) {
-        // Replace the raw text with corrected text if textarea ref is available
-        if (textareaRef?.current && textareaRef.current.replaceText) {
-          try {
-            textareaRef.current.replaceText(raw, corrected);
-            
-            // Text was replaced successfully
-          } catch (error) {
-            console.warn("[VoiceTranscription] Error replacing raw text with improved text:", error);
-          }
-        }
+    const loadTranscriptionSettings = async () => {
+      if (!projectDirectory) return;
+      
+      try {
+        setSettingsError(null);
+        const result = await getModelSettingsForProject(projectDirectory);
         
-        setShowRevertOption(true);
-      }
-    },
-    [textareaRef, showNotification, autoImproveText]
-  );
-
-  // Create a wrapper for onTranscribed that inserts at cursor position if ref is available
-  // Enhanced with improved error handling and UI stability
-  const handleTranscriptionComplete = useCallback(
-    (text: string) => {
-      // Skip processing if component is disabled
-      if (disabled) {
-        return;
-      }
-
-      // The transcription should have been validated by voice-transcription-handler.ts
-      // but we'll add extra validation here for better stability
-      if (!text || typeof text !== "string") {
-        console.warn("[VoiceTranscription] No valid transcription result received");
-        return;
-      }
-
-      // Check for meaningful content
-      const trimmedText = text.trim();
-      if (!trimmedText) {
-        console.warn("[VoiceTranscription] Empty transcription result");
-        return;
-      }
-
-
-      // Attempt to handle the case where we're in the middle of a session switch
-      if (!activeSessionId) {
-        console.warn(
-          "[VoiceTranscription] No active session when trying to insert transcription"
-        );
-        showNotification({
-          title: "Session Error",
-          message: "Cannot insert transcription text - no active session.",
-          type: "error",
-        });
-        return;
-      }
-
-      // Insert at cursor position if textarea ref is available
-      if (textareaRef?.current) {
-        try {
-          // Make sure the text has line breaks or spaces if needed
-          const formattedText = trimmedText
-            .replace(/([.!?])\s*(?=[A-Z])/g, "$1\n\n") // Add paragraph breaks after end-of-sentence punctuation followed by capital
-            .replace(/([;:])\s*(?=[a-zA-Z])/g, "$1\n"); // Add line breaks after semicolons and colons
-
-          textareaRef.current.insertTextAtCursorPosition(formattedText);
-          // Successfully inserted text at cursor position
-
-          // Call onInteraction to signal the text was inserted
-          if (onInteraction) {
-            onInteraction();
-          }
-
-          // Transcription was inserted successfully
-        } catch (_error) {
-
-          // Fall back to the original method if insertion fails
-          try {
-            onTranscribed(trimmedText);
-
-            // Still call onInteraction to signal that text was changed
-            if (onInteraction) {
-              onInteraction();
-            }
-
-            // Text was added at the end as fallback
-          } catch (_fallbackError) {
-            console.warn("[VoiceTranscription] Could not insert transcription text");
-          }
+        if (result.isSuccess && result.data?.voiceTranscription) {
+          const voiceSettings = result.data.voiceTranscription;
+          const newSettings = {
+            transcriptionPrompt: voiceSettings.transcriptionPrompt || '',
+            transcriptionModel: voiceSettings.transcriptionModel || 'whisper-large-v3',
+            languageCode: voiceSettings.languageCode || 'en',
+            temperature: voiceSettings.temperature ?? 0.0,
+          };
+          
+          setTranscriptionSettings(newSettings);
+          setLanguageCode(newSettings.languageCode);
         }
-      } else {
-        // Otherwise, call the original onTranscribed function
-        onTranscribed(trimmedText);
-
-        // Call onInteraction to signal the text was inserted
-        if (onInteraction) {
-          onInteraction();
-        }
+        setSettingsLoaded(true);
+      } catch (error) {
+        console.error('Failed to load transcription settings:', error);
+        setSettingsError('Failed to load transcription settings from project configuration');
+        setSettingsLoaded(true);
       }
-    },
-    [textareaRef, onTranscribed, onInteraction, activeSessionId, disabled]
-  );
+    };
 
+    loadTranscriptionSettings();
+  }, [projectDirectory]);
+
+  // Handle errors
+  const handleError = useCallback((error: string) => {
+    setRecordingError(error);
+    showNotification({
+      title: "Voice Transcription Error",
+      message: error,
+      type: "error",
+    });
+  }, [showNotification]);
+
+  // Voice media state hook (5-second chunking)
   const {
-    isRecording,
-    isProcessing,
-    error: voiceError, // Get error state
-    rawText,
-    startRecording, // Function to start recording
-    stopRecording, // Function to stop recording
-    requestPermissionAndRefreshDevices, // Function to request permission early
-    availableAudioInputs, // Available microphones
-    selectedAudioInputId, // Currently selected microphone ID
-    activeAudioInputLabel, // Label of the active microphone
-    selectAudioInput, // Function to select a microphone
-  } = useVoiceRecording({
-    onTranscribed: handleTranscriptionComplete, // Pass the wrapper function
-    onCorrectionComplete: handleCorrectionComplete, // Pass the correction callback
-    onInteraction, // Pass the interaction handler
-    languageCode, // Pass the current language code to the hook
-    sessionId: activeSessionId, // Pass the active session ID for background job tracking
-    projectDirectory: projectDirectory || undefined, // Convert null to undefined for projectDirectory
-    autoCorrect: autoImproveText, // Use the checkbox state
+    startMediaRecording,
+    stopMediaRecording,
+    activeAudioInputLabel,
+  } = useVoiceMediaState({
+    onError: handleError,
+    selectedAudioInputId,
   });
 
-  // Request microphone permission early to populate device labels
-  useEffect(() => {
-    // Only request permission if we have an active session and component is not disabled
-    if (activeSessionId && !disabled && requestPermissionAndRefreshDevices) {
-      // Add a small delay to ensure component is fully mounted
-      const timeoutId = setTimeout(async () => {
+  // Progressive text display state
+  const [displayText, setDisplayText] = useState("");
+
+  const {
+    processAudioChunk,
+    isProcessing: isTranscribing,
+    resetProcessor,
+    getStats,
+    cleanup: cleanupProcessor,
+  } = useBatchTranscriptionProcessor({
+    sessionId: activeSessionId || "",
+    languageCode: transcriptionSettings.languageCode === "en" ? undefined : transcriptionSettings.languageCode,
+    transcriptionPrompt: transcriptionSettings.transcriptionPrompt,
+    transcriptionModel: transcriptionSettings.transcriptionModel,
+    temperature: transcriptionSettings.temperature,
+    onTextUpdate: (fullText: string) => {
+      if (!isMountedRef.current) return;
+      
+      const trimmedText = fullText.trim();
+      setDisplayText(trimmedText);
+      
+      // Update textarea progressively if available
+      if (textareaRef?.current && trimmedText) {
         try {
-          const permissionGranted = await requestPermissionAndRefreshDevices();
-          if (permissionGranted) {
-            // eslint-disable-next-line no-console
-            console.log("[VoiceTranscription] Microphone permission granted early, device labels populated");
+          const previousText = previousTextRef.current;
+          
+          if (previousText && trimmedText.startsWith(previousText)) {
+            const newPart = trimmedText.slice(previousText.length).trim();
+            if (newPart) {
+              textareaRef.current.appendText(" " + newPart);
+            }
+          } else if (previousText) {
+            textareaRef.current.replaceText(previousText, trimmedText);
           } else {
-            // eslint-disable-next-line no-console
-            console.log("[VoiceTranscription] Microphone permission denied or unavailable");
-            // Don't show a notification for permission denial as it's expected behavior
-            // Device labels will be populated when user starts recording
+            textareaRef.current.insertTextAtCursorPosition(trimmedText);
           }
+          
+          previousTextRef.current = trimmedText;
+          onInteraction?.();
         } catch (error) {
-          // eslint-disable-next-line no-console
-          console.warn("[VoiceTranscription] Error requesting early microphone permission:", error);
-          // Silently handle permission errors - this is expected in many cases
-        }
-      }, 100);
-
-      return () => clearTimeout(timeoutId);
-    }
-    
-    return undefined;
-  }, [activeSessionId, disabled, requestPermissionAndRefreshDevices]);
-
-  // Try to identify the default device based on current information
-  useEffect(() => {
-    // If we already have an active label and the default is selected, use that
-    if (activeAudioInputLabel && selectedAudioInputId === "default") {
-      setDefaultDeviceLabel(activeAudioInputLabel);
-      return;
-    }
-
-    // Try to identify a potential default device from available devices
-    // Usually the first device is the default one in many browsers
-    if (availableAudioInputs.length > 0) {
-      // First check if we have a device with labels - browser might not
-      // provide labels until after permission is granted
-      const hasLabels = availableAudioInputs.some((device) => !!device.label);
-
-      if (hasLabels) {
-        const potentialDefault = availableAudioInputs.find(
-          (device) =>
-            device.deviceId === "default" ||
-            (device.label && device.label.toLowerCase().includes("default")) ||
-            device.deviceId === ""
-        );
-
-        if (potentialDefault && potentialDefault.label) {
-          setDefaultDeviceLabel(potentialDefault.label);
-        } else if (availableAudioInputs[0].label) {
-          // Use first available device as a best guess for default
-          setDefaultDeviceLabel(availableAudioInputs[0].label);
+          try {
+            onTranscribed(trimmedText);
+            onInteraction?.();
+          } catch (fallbackError) {}
         }
       } else {
-        // No labeled devices available yet
+        onTranscribed(trimmedText);
+        onInteraction?.();
       }
-    }
-  }, [availableAudioInputs, activeAudioInputLabel, selectedAudioInputId]);
+    },
+    onChunkComplete: () => {
+      if (!isMountedRef.current) return;
+    },
+    onError: handleError,
+  });
 
-  const handleToggleRecording = async () => {
-    // Skip if component is disabled
-    if (disabled) {
-      return;
-    }
+  // Load available audio devices
+  useEffect(() => {
+    const loadDevices = async () => {
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const audioInputs = devices.filter(device => device.kind === 'audioinput');
+        setAvailableInputs(audioInputs);
+      } catch (error) {}
+    };
 
-    // Skip if we're in the middle of processing
-    if (isProcessing) {
-      return;
-    }
+    loadDevices();
+    
+    // Listen for device changes
+    navigator.mediaDevices.addEventListener('devicechange', loadDevices);
+    
+    return () => {
+      navigator.mediaDevices.removeEventListener('devicechange', loadDevices);
+    };
+  }, []);
 
-    // Skip if there's no active session
-    if (!activeSessionId) {
-      showNotification({
-        title: "Session Error",
-        message: "Cannot record - no active session.",
-        type: "error",
-      });
+  // Cleanup on unmount
+  useEffect(() => {
+    isMountedRef.current = true;
+    
+    return () => {
+      isMountedRef.current = false;
+      cleanupProcessor();
+      
+      // Stop any active recording
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+        try {
+          mediaRecorderRef.current.stop();
+        } catch (e) {}
+      }
+      
+      // Stop media streams
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, [cleanupProcessor]);
+
+  // Handle recording start
+  const startRecording = useCallback(async () => {
+    if (!activeSessionId || disabled || isRecording) {
       return;
     }
 
     try {
-      if (!isRecording) {
-        // Start recording
-        await startRecording();
+      setRecordingError(null);
+      setDisplayText("");
+      previousTextRef.current = "";
+      resetProcessor();
 
-        // Reset any previous error state when starting a new recording
-        setShowRevertOption(false);
-      } else {
-        // Stop recording
-        stopRecording();
-      }
-    } catch (_error) {
-      showNotification({
-        title: "Recording Error",
-        message: "Could not toggle recording state.",
-        type: "error",
-      });
-    }
-  };
-
-  // Retry functionality removed - users should just record again
-  const handleRetry = async () => {
-    showNotification({
-      title: "Please Record Again", 
-      message: "For best results, please record your message again.",
-      type: "info",
-    });
-  };
-
-  // Enhanced revert handler with improved error handling and session state awareness
-  const handleRevertToRaw = useCallback(() => {
-    // Skip if component is disabled
-    if (disabled) {
-      return;
-    }
-
-    // Skip if we're in the middle of a session switch or there's no active session
-    if (!activeSessionId) {
-      showNotification({
-        title: "Session Error",
-        message: "Cannot revert to raw text - no active session.",
-        type: "error",
-      });
-      return;
-    }
-
-    // Validate the raw text
-    if (!rawText || typeof rawText !== "string") {
-      showNotification({
-        title: "Revert Error",
-        message: "No raw transcription text available to revert to.",
-        type: "error",
-      });
-      return;
-    }
-
-    // Check for meaningful content
-    const trimmedRawText = rawText.trim();
-    if (!trimmedRawText) {
-      showNotification({
-        title: "Empty Raw Text",
-        message: "The raw transcription was empty. Nothing to revert to.",
-        type: "warning",
-      });
-      return;
-    }
-
-
-    // Insert raw text at cursor position if textarea ref is available
-    if (textareaRef?.current) {
-      try {
-        // Format raw text for better readability
-        // This is less aggressive than the full transcription formatting
-        const formattedRawText = trimmedRawText
-          .replace(/\s{3,}/g, "\n") // Replace multiple spaces with newlines
-          .replace(/([.!?])\s+([A-Z])/g, "$1\n$2"); // Add newlines after sentences
-
-        textareaRef.current.insertTextAtCursorPosition(formattedRawText);
-
-        // Call onInteraction to signal the text was inserted
-        if (onInteraction) {
-          onInteraction();
-        }
-
-        // Provide clear feedback about using the original transcription
-        showNotification({
-          title: "Using Original Groq Transcription",
-          message:
-            "Using the direct transcription without Claude&apos;s improvements.",
-          type: "success",
+      const media = await startMediaRecording((chunk: Blob) => {
+        processAudioChunk(chunk).catch((error) => {
+          console.error('[VoiceTranscription] processAudioChunk error:', error);
+          handleError(getErrorMessage(error, "transcription"));
         });
+      });
 
-        // Hide the revert option since we've now used it
-        setShowRevertOption(false);
-      } catch (_error) {
-
-        // Fall back to onTranscribed with error handling
-        try {
-          onTranscribed(trimmedRawText);
-
-          // Call onInteraction to signal the text was inserted
-          if (onInteraction) {
-            onInteraction();
-          }
-
-          // Using original transcription as fallback
-
-          // Hide the revert option since we've now used it
-          setShowRevertOption(false);
-        } catch (_fallbackError) {
-          console.warn("[VoiceTranscription] Could not switch to original transcription");
-        }
+      if (media) {
+        mediaRecorderRef.current = media.recorder;
+        streamRef.current = media.stream;
+        setIsRecording(true);
       }
-    } else {
-      // Use onTranscribed callback when textarea ref isn't available
-      onTranscribed(trimmedRawText);
-
-      if (onInteraction) {
-        onInteraction();
-      }
-
-      // Hide the revert option
-      setShowRevertOption(false);
+    } catch (error) {
+      const errorMessage = getErrorMessage(error, "transcription");
+      handleError(errorMessage);
     }
-  }, [
-    rawText,
-    textareaRef,
-    onInteraction,
-    onTranscribed,
-    activeSessionId,
-    disabled,
-    setShowRevertOption,
-  ]);
+  }, [activeSessionId, disabled, isRecording, startMediaRecording, processAudioChunk, resetProcessor, handleError]);
+
+  // Handle recording stop
+  const stopRecording = useCallback(async () => {
+    if (!isRecording) {
+      return;
+    }
+
+    try {
+      await stopMediaRecording();
+      setIsRecording(false);
+    } catch (error) {
+      const errorMessage = getErrorMessage(error, "transcription");
+      handleError(errorMessage);
+    }
+  }, [isRecording, stopMediaRecording, handleError]);
+
+  // Toggle recording
+  const handleToggleRecording = useCallback(async () => {
+    if (disabled || !activeSessionId) {
+      if (!activeSessionId) {
+        showNotification({
+          title: "Session Error",
+          message: "Cannot record - no active session.",
+          type: "error",
+        });
+      }
+      return;
+    }
+
+    if (isRecording) {
+      await stopRecording();
+    } else {
+      await startRecording();
+    }
+  }, [disabled, activeSessionId, isRecording, stopRecording, startRecording, showNotification]);
+
+  const stats = getStats();
 
   return (
     <div className="inline-flex flex-col gap-3 border border-border/60 rounded-xl p-6 bg-card/95 backdrop-blur-sm shadow-soft max-w-fit">
@@ -420,7 +317,7 @@ const VoiceTranscription = function VoiceTranscription({
           disabled={!activeSessionId || disabled}
           variant={isRecording ? "destructive" : "secondary"}
           size="sm"
-          className="min-w-[120px]"
+          className="min-w-[140px]"
           title={
             disabled
               ? "Feature disabled during session switching"
@@ -434,7 +331,7 @@ const VoiceTranscription = function VoiceTranscription({
               <MicOff className="h-4 w-4 mr-2" />
               <span>Stop Recording</span>
             </>
-          ) : isProcessing ? (
+          ) : isTranscribing ? (
             <>
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />
               <span>Processing...</span>
@@ -448,32 +345,53 @@ const VoiceTranscription = function VoiceTranscription({
         </Button>
       </div>
 
-      <p className="text-xs text-muted-foreground text-balance">
-        Record your task description using your microphone. 
-        {autoImproveText 
-          ? "Groq transcribes and AI automatically improves the text." 
-          : "Groq transcribes your speech directly without improvements."
-        }
-      </p>
+      <div className="space-y-2">
+        <p className="text-xs text-muted-foreground text-balance">
+          Record your task description using your microphone. AI transcribes your speech in real-time 
+          as you speak, with text appearing immediately every 5 seconds.
+        </p>
+        
+        {settingsLoaded && transcriptionSettings.transcriptionPrompt && (
+          <div className="flex items-center gap-2">
+            <Badge variant="secondary" className="text-xs">
+              Custom Prompt Active
+            </Badge>
+            <span className="text-xs text-muted-foreground">
+              Model: {transcriptionSettings.transcriptionModel} • Temp: {transcriptionSettings.temperature.toFixed(2)}
+            </span>
+          </div>
+        )}
+        
+        {settingsError && (
+          <Alert variant="destructive" className="mt-2">
+            <p className="text-xs">{settingsError}</p>
+          </Alert>
+        )}
+      </div>
+      {(isRecording || stats.totalChunks > 0) && (
+        <div className="text-xs text-muted-foreground bg-muted/50 rounded-md p-2">
+          <div className="flex gap-4">
+            <span>Chunks: {stats.totalChunks}</span>
+            <span>Completed: {stats.completedChunks}</span>
+            {stats.failedChunks > 0 && (
+              <span className="text-destructive">Failed: {stats.failedChunks}</span>
+            )}
+            {isRecording && (
+              <span className="text-primary">● Recording</span>
+            )}
+            {stats.totalChunks > 0 && (
+              <span>Success: {Math.round(stats.successRate)}%</span>
+            )}
+          </div>
+          {displayText && (
+            <div className="mt-1 text-xs text-foreground/80 italic truncate">
+              Current: "{displayText.slice(-60)}..."
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="flex flex-row gap-4 items-start mt-2">
-        <div className="flex flex-col">
-          <Label htmlFor="auto-improve-toggle" className="text-xs mb-1 text-foreground">
-            Auto-improve
-          </Label>
-          <div className="h-9 flex items-center">
-            <Switch
-              id="auto-improve-toggle"
-              checked={autoImproveText}
-              onCheckedChange={setAutoImproveText}
-              disabled={isRecording || isProcessing || !activeSessionId || disabled}
-            />
-          </div>
-          <p className="text-xs text-muted-foreground mt-1 text-balance">
-            {autoImproveText ? "AI enhances transcription" : "Raw transcription only"}
-          </p>
-        </div>
-
         <div className="flex flex-col">
           <Label htmlFor="language-select" className="text-xs mb-1 text-foreground">
             Language
@@ -483,20 +401,20 @@ const VoiceTranscription = function VoiceTranscription({
               <Select
                 value={languageCode}
                 onValueChange={setLanguageCode}
-                disabled={
-                  isRecording || isProcessing || !activeSessionId || disabled
-                }
+                disabled={isRecording || isTranscribing || !activeSessionId || disabled}
               >
-                <SelectTrigger
-                  id="language-select"
-                  className="w-full h-9"
-                >
+                <SelectTrigger id="language-select" className="w-full h-9">
                   <SelectValue placeholder="Select language" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="en">English</SelectItem>
-                  <SelectItem value="es">Spanish</SelectItem>
-                  <SelectItem value="fr">French</SelectItem>
+                  {ENHANCED_TRANSCRIPTION_LANGUAGES.map((lang) => (
+                    <SelectItem key={lang.code} value={lang.code}>
+                      <div className="flex items-center gap-2">
+                        <span>{lang.nativeName}</span>
+                        <span className="text-xs text-muted-foreground">({lang.name})</span>
+                      </div>
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -514,24 +432,21 @@ const VoiceTranscription = function VoiceTranscription({
             <div className="w-[280px]">
               <Select
                 value={selectedAudioInputId}
-                onValueChange={selectAudioInput}
+                onValueChange={setSelectedAudioInputId}
                 disabled={
                   isRecording ||
-                  isProcessing ||
+                  isTranscribing ||
                   !activeSessionId ||
                   disabled ||
-                  availableAudioInputs.length === 0
+                  availableInputs.length === 0
                 }
               >
-                <SelectTrigger
-                  id="microphone-select"
-                  className="w-full h-9"
-                >
+                <SelectTrigger id="microphone-select" className="w-full h-9">
                   <SelectValue placeholder="Select microphone" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="default">System Default</SelectItem>
-                  {availableAudioInputs.map((device, index) => (
+                  {availableInputs.map((device, index) => (
                     <SelectItem key={device.deviceId} value={device.deviceId || `device-${index}`}>
                       {device.label || `Microphone ${index + 1}`}
                     </SelectItem>
@@ -541,54 +456,22 @@ const VoiceTranscription = function VoiceTranscription({
             </div>
           </div>
           <p className="text-xs text-muted-foreground mt-1 text-balance">
-            {(() => {
-              if (activeAudioInputLabel) return `Using: ${activeAudioInputLabel}`;
-              if (selectedAudioInputId !== "default") {
-                const selectedDevice = availableAudioInputs.find(d => d.deviceId === selectedAudioInputId);
-                if (selectedDevice?.label) return `Selected: ${selectedDevice.label}`;
-                if (activeSessionId && availableAudioInputs.length > 0) return `Start recording to confirm selected device`;
-                if (activeSessionId && availableAudioInputs.length === 0) return `No microphone found. Check system settings.`;
-              }
-              if (defaultDeviceLabel && availableAudioInputs.length > 0) return `Default: ${defaultDeviceLabel}`;
-              if (activeSessionId && availableAudioInputs.length > 0) return "Default device will be identified after recording";
-              if (activeSessionId && availableAudioInputs.length === 0) return `No microphone found. Check system settings.`;
-              return "Select a session to enable microphone";
-            })()}
+            {activeAudioInputLabel 
+              ? `Using: ${activeAudioInputLabel}`
+              : availableInputs.length > 0 
+                ? "Start recording to identify device"
+                : "No microphone found. Check system settings."
+            }
           </p>
         </div>
       </div>
 
-      {/* Show error message and retry button */}
-      {voiceError && (
-        <div className="flex flex-col gap-2 mt-2">
-          <div className="text-sm text-destructive">
-            {getErrorMessage(voiceError, 'transcription')}
-          </div>
-          <Button
-            type="button"
-            onClick={handleRetry}
-            variant="outline"
-            size="compact"
-            disabled={isRecording || disabled || isProcessing}
-          >
-            <RefreshCw className="h-3.5 w-3.5 mr-2" />
-            Retry Last Recording
-          </Button>
-        </div>
-      )}
-
-      {showRevertOption && rawText && autoImproveText && (
+      {/* Show error message */}
+      {recordingError && (
         <div className="mt-2">
-          <Button
-            type="button"
-            onClick={handleRevertToRaw}
-            variant="link"
-            size="compact-sm"
-            className="justify-start p-0 h-auto text-muted-foreground"
-            disabled={disabled}
-          >
-            Switch to original transcription (without AI improvements)
-          </Button>
+          <div className="text-sm text-destructive">
+            {recordingError}
+          </div>
         </div>
       )}
     </div>

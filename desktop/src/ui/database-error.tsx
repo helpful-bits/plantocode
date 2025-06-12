@@ -12,7 +12,7 @@ import {
   FileDown,
   HardDrive,
 } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 
 import {
   type DatabaseErrorCategory,
@@ -58,6 +58,19 @@ export default function DatabaseErrorHandler() {
   const [healthData, setHealthData] = useState<DatabaseHealthData | null>(null);
   const [isCheckingHealth, setIsCheckingHealth] = useState(false);
   const [structuredErrorInfo, setStructuredErrorInfo] = useState<ReturnType<typeof extractErrorInfo> | null>(null);
+  
+  // Store timeout IDs for cleanup
+  const timeoutIdsRef = useRef<Set<number>>(new Set());
+
+  // Cleanup timeouts on unmount
+  useEffect(() => {
+    return () => {
+      for (const timeoutId of timeoutIdsRef.current) {
+        clearTimeout(timeoutId);
+      }
+      timeoutIdsRef.current.clear();
+    };
+  }, []);
 
   useEffect(() => {
     // Listen for database connection errors
@@ -132,9 +145,10 @@ export default function DatabaseErrorHandler() {
         );
         setBackupPath(result.backup || null);
 
-        setTimeout(() => {
+        const timeoutId = window.setTimeout(() => {
           window.location.reload();
         }, 2000);
+        timeoutIdsRef.current.add(timeoutId);
       } else {
         setRepairSuccess(false);
         setRepairStatus(`Repair failed: ${result.error || "Unknown error"}`);
@@ -179,9 +193,10 @@ export default function DatabaseErrorHandler() {
         );
         setBackupPath(result.backup || null);
 
-        setTimeout(() => {
+        const timeoutId = window.setTimeout(() => {
           window.location.reload();
         }, 2000);
+        timeoutIdsRef.current.add(timeoutId);
       } else {
         setRepairSuccess(false);
         setRepairStatus(`Reset failed: ${result.error || "Unknown error"}`);

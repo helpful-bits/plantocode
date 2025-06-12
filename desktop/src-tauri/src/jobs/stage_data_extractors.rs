@@ -796,7 +796,7 @@ impl StageDataExtractor {
         Ok(None)
     }
 
-    /// Extract final paths from PathCorrection or ExtendedPathCorrection job
+    /// Extract final paths from PathCorrection job
     pub async fn extract_final_paths(
         job_id: &str, 
         repo: &BackgroundJobRepository

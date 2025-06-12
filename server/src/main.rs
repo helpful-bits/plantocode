@@ -22,7 +22,7 @@ use crate::auth_stores::{PollingStore, Auth0StateStore};
 use crate::auth_stores::store_utils;
 use crate::config::AppSettings;
 use crate::db::connection::{create_dual_pools, verify_connection, DatabasePools};
-use crate::db::{ApiUsageRepository, SubscriptionRepository, UserRepository, SettingsRepository, ModelRepository, SubscriptionPlanRepository, SystemPromptsRepository, BillingConfigurationRepository, CreditPackRepository};
+use crate::db::{ApiUsageRepository, SubscriptionRepository, UserRepository, SettingsRepository, ModelRepository, SubscriptionPlanRepository, SystemPromptsRepository, CreditPackRepository};
 use crate::middleware::{
     SecureAuthentication, 
     create_rate_limit_storage,
@@ -178,7 +178,7 @@ async fn main() -> std::io::Result<()> {
     // Create app_settings (no AI model configuration - everything is database-driven)
     let app_settings = env_app_settings;
     
-    // Initialize Auth0 OAuth service with system pool (for Auth0 user lookups)
+    // Initialize Auth0 OAuth service with system pool (for Auth0 user creation/lookup)
     let auth0_oauth_service = Auth0OAuthService::new(&app_settings, db_pools.system_pool.clone());
     log::info!("Auth0 OAuth service initialized successfully");
     
@@ -320,7 +320,6 @@ async fn main() -> std::io::Result<()> {
         let settings_repository = std::sync::Arc::new(SettingsRepository::new(db_pools.system_pool.clone()));
         let subscription_plan_repository = std::sync::Arc::new(SubscriptionPlanRepository::new(db_pools.system_pool.clone()));
         let system_prompts_repository = std::sync::Arc::new(SystemPromptsRepository::new(db_pools.system_pool.clone()));
-        let billing_configuration_repository = std::sync::Arc::new(BillingConfigurationRepository::new(db_pools.system_pool.clone()));
         let credit_pack_repository = std::sync::Arc::new(CreditPackRepository::new(db_pools.system_pool.clone()));
         
         // User-specific operations - use user pool  
@@ -352,6 +351,7 @@ async fn main() -> std::io::Result<()> {
             .wrap(Logger::new("%a %t \"%r\" %s %b \"%{Referer}i\" \"%{User-Agent}i\" %T"))
             .wrap(cors)
             .app_data(web::Data::new(db_pools.clone())) // Provide both pools
+            .app_data(web::Data::new(db_pools.user_pool.clone())) // Provide user pool for handlers expecting PgPool
             .app_data(auth0_oauth_service)
             .app_data(web::Data::new(billing_service.clone()))
             .app_data(web::Data::new(cost_based_billing_service.as_ref().clone()))
@@ -365,7 +365,6 @@ async fn main() -> std::io::Result<()> {
             .app_data(web::Data::new(user_repository.clone()))
             .app_data(web::Data::new(app_state.model_repository.clone()))
             .app_data(web::Data::new(system_prompts_repository.clone()))
-            .app_data(web::Data::new(billing_configuration_repository.clone()))
             .app_data(web::Data::new(credit_pack_repository.clone()))
             
             // Register health check endpoint with IP-based rate limiting
@@ -387,7 +386,7 @@ async fn main() -> std::io::Result<()> {
                 web::scope("/api")
                     .wrap(strict_rate_limiter.clone())
                     .wrap(SecureAuthentication::new(db_pools.user_pool.clone()))
-                    .configure(configure_routes)
+                    .configure(|cfg| configure_routes(cfg, strict_rate_limiter.clone()))
             )
             // Public webhook routes with IP-based rate limiting (no authentication)
             .service(

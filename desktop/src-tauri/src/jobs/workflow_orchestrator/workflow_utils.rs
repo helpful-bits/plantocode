@@ -23,7 +23,7 @@ pub(super) async fn get_stage_model_config(
                 TaskType::RegexPatternGeneration => "GeneratingRegex_model",
                 TaskType::FileRelevanceAssessment => "FileRelevanceAssessment_model",
                 TaskType::ExtendedPathFinder => "ExtendedPathFinder_model",
-                TaskType::ExtendedPathCorrection => "ExtendedPathCorrection_model",
+                TaskType::PathCorrection => "PathCorrection_model",
                 _ => "",
             };
 

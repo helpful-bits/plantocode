@@ -49,7 +49,12 @@ export function useSidebarStateManager(): SidebarManager {
     isRefreshing: false,
   });
 
+  // Track previous sidebar state before auto-collapsing for settings
+  const [previousCollapsedState, setPreviousCollapsedState] = useState<boolean | null>(null);
+  const [isAutoCollapsedForSettings, setIsAutoCollapsedForSettings] = useState(false);
+
   const refreshClickedRef = useRef(false);
+  const refreshTimeoutRef = useRef<number | null>(null);
   
   // Create a ref for the state to avoid dependency cycles
   const stateRef = useRef(state);
@@ -63,13 +68,27 @@ export function useSidebarStateManager(): SidebarManager {
   useEffect(() => {
     if (state.clearFeedback) {
       const timer = setTimeout(() => {
-        setState((prev: SidebarState) => ({ ...prev, clearFeedback: null }));
+        try {
+          setState((prev: SidebarState) => ({ ...prev, clearFeedback: null }));
+        } catch (error) {
+          console.error('[SidebarStateManager] Error clearing feedback message:', error);
+        }
       }, 5000); // Show for 5 seconds
 
       return () => clearTimeout(timer);
     }
     return undefined;
   }, [state.clearFeedback]);
+
+  // Cleanup refresh timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (refreshTimeoutRef.current !== null) {
+        clearTimeout(refreshTimeoutRef.current);
+        refreshTimeoutRef.current = null;
+      }
+    };
+  }, []);
 
   // Update CSS variable and context when sidebar state changes
   useEffect(() => {
@@ -79,6 +98,59 @@ export function useSidebarStateManager(): SidebarManager {
     // Update the context state
     setIsSidebarCollapsed(state.activeCollapsed);
   }, [state.activeCollapsed, setIsSidebarCollapsed]);
+
+  // Auto-collapse sidebar when navigating to settings to maximize horizontal space
+  useEffect(() => {
+    let routeChangeTimeout: number | null = null;
+    
+    const handleRouteChange = (event: CustomEvent) => {
+      // Debounce route changes to prevent rapid state changes
+      if (routeChangeTimeout) {
+        clearTimeout(routeChangeTimeout);
+      }
+      
+      routeChangeTimeout = window.setTimeout(() => {
+        const newPath = event.detail?.path;
+        if (!newPath) return; // Guard against undefined path
+        const isSettingsRoute = newPath === '/settings';
+        
+        if (isSettingsRoute && !isAutoCollapsedForSettings) {
+          // Store current sidebar state before auto-collapsing
+          setPreviousCollapsedState(state.activeCollapsed);
+          setIsAutoCollapsedForSettings(true);
+          
+          // Auto-collapse to give maximum horizontal space for settings
+          setState((prev: SidebarState) => ({ ...prev, activeCollapsed: true }));
+        } else if (!isSettingsRoute && isAutoCollapsedForSettings) {
+          // Restore previous sidebar state when leaving settings
+          setIsAutoCollapsedForSettings(false);
+          
+          if (previousCollapsedState !== null) {
+            setState((prev: SidebarState) => ({ ...prev, activeCollapsed: previousCollapsedState }));
+            setPreviousCollapsedState(null);
+          }
+        }
+      }, 50); // Small debounce to smooth transitions
+    };
+
+    // Listen for route changes
+    window.addEventListener('routeChange', handleRouteChange as EventListener);
+    
+    // Check initial route
+    const currentPath = window.location.pathname;
+    if (currentPath === '/settings' && !isAutoCollapsedForSettings) {
+      setPreviousCollapsedState(state.activeCollapsed);
+      setIsAutoCollapsedForSettings(true);
+      setState((prev: SidebarState) => ({ ...prev, activeCollapsed: true }));
+    }
+
+    return () => {
+      window.removeEventListener('routeChange', handleRouteChange as EventListener);
+      if (routeChangeTimeout) {
+        clearTimeout(routeChangeTimeout);
+      }
+    };
+  }, [state.activeCollapsed, isAutoCollapsedForSettings, previousCollapsedState]);
 
   // Handle manual refresh of jobs
   const handleRefresh = useCallback(async () => {
@@ -92,9 +164,20 @@ export function useSidebarStateManager(): SidebarManager {
       await refreshJobs();
     } finally {
       setState((prev: SidebarState) => ({ ...prev, isRefreshing: false }));
+      
+      // Clear any existing timeout first
+      if (refreshTimeoutRef.current !== null) {
+        clearTimeout(refreshTimeoutRef.current);
+      }
+      
       // Reset after a delay to prevent rapid clicks
-      setTimeout(() => {
-        refreshClickedRef.current = false;
+      refreshTimeoutRef.current = window.setTimeout(() => {
+        try {
+          refreshClickedRef.current = false;
+          refreshTimeoutRef.current = null;
+        } catch (error) {
+          console.error('[SidebarStateManager] Error resetting refresh state:', error);
+        }
       }, 1000);
     }
   }, [refreshJobs]);
@@ -190,9 +273,15 @@ export function useSidebarStateManager(): SidebarManager {
 
   // Handle sidebar collapse toggle
   const handleCollapseChange = useCallback((open: boolean) => {
+    // If user manually changes sidebar state while on settings, clear auto-collapse tracking
+    if (isAutoCollapsedForSettings) {
+      setIsAutoCollapsedForSettings(false);
+      setPreviousCollapsedState(null);
+    }
+    
     setState((prev: SidebarState) => ({ ...prev, activeCollapsed: !open }));
     // This will trigger the useEffect which updates both CSS var and context
-  }, []);
+  }, [isAutoCollapsedForSettings]);
 
   // Handle selecting a job for details view
   const handleSelectJob = useCallback((job: BackgroundJob) => {

@@ -47,10 +47,14 @@ function WorkflowStages({ job }: WorkflowStagesProps) {
   const workflowId = parsedMeta?.workflowId;
   const { showError, showSuccess } = useNotification();
   
+  // Memoize options to prevent hook re-running on every render
+  const trackerOptions = useMemo(() => ({}), []);
+  
   // Get workflow state if this is a workflow job
   const { workflowState, error, refreshState } = useExistingWorkflowTracker(
     workflowId || '',
-    job.sessionId || ''
+    job.sessionId || '',
+    trackerOptions
   );
 
   const handleRetryStage = async (stageJobId: string) => {
@@ -400,11 +404,11 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
       const structuredTaskTypes = [
         // Path-related tasks
         "path_finder", "initial_path_finding", "extended_path_finding", "extended_path_finder",
-        "local_file_filtering", "path_correction", "extended_path_correction", "initial_path_correction",
+        "local_file_filtering", "path_correction", "initial_path_correction",
         "file_finder_workflow",
         // Other structured JSON tasks
         "regex_pattern_generation", "regex_summary_generation", "guidance_generation",
-        "task_enhancement", "text_improvement", "text_correction"
+        "task_enhancement", "text_correction"
       ];
       return structuredTaskTypes.includes(taskType);
     };

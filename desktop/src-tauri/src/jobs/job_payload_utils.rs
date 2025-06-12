@@ -31,10 +31,10 @@ pub fn deserialize_value_to_job_payload(json_value: &serde_json::Value, task_typ
     use crate::jobs::types::{
         JobPayload, RegexPatternGenerationWorkflowPayload, 
         LocalFileFilteringPayload, PathFinderPayload, PathCorrectionPayload, 
-        ExtendedPathFinderPayload, ExtendedPathCorrectionPayload, ImplementationPlanPayload,
+        ExtendedPathFinderPayload, ImplementationPlanPayload,
         GuidanceGenerationPayload, TaskEnhancementPayload,
         TextCorrectionPayload, GenericLlmStreamPayload, RegexPatternGenerationPayload,
-        OpenRouterLlmPayload, VoiceTranscriptionPayload, FileRelevanceAssessmentPayload
+        OpenRouterLlmPayload, FileRelevanceAssessmentPayload
     };
     use crate::jobs::processors::regex_summary_generation_processor::RegexSummaryGenerationPayload;
     use crate::models::TaskType;
@@ -71,11 +71,6 @@ pub fn deserialize_value_to_job_payload(json_value: &serde_json::Value, task_typ
                 .map_err(|e| AppError::JobError(format!("Failed to deserialize ExtendedPathFinderPayload: {}", e)))?;
             Ok(JobPayload::ExtendedPathFinder(payload))
         }
-        TaskType::ExtendedPathCorrection => {
-            let payload: ExtendedPathCorrectionPayload = serde_json::from_value(json_value.clone())
-                .map_err(|e| AppError::JobError(format!("Failed to deserialize ExtendedPathCorrectionPayload: {}", e)))?;
-            Ok(JobPayload::ExtendedPathCorrection(payload))
-        }
         TaskType::ImplementationPlan => {
             let payload: ImplementationPlanPayload = serde_json::from_value(json_value.clone())
                 .map_err(|e| AppError::JobError(format!("Failed to deserialize ImplementationPlanPayload: {}", e)))?;
@@ -106,11 +101,6 @@ pub fn deserialize_value_to_job_payload(json_value: &serde_json::Value, task_typ
                 .map_err(|e| AppError::JobError(format!("Failed to deserialize RegexSummaryGenerationPayload: {}", e)))?;
             Ok(JobPayload::RegexSummaryGeneration(payload))
         }
-        TaskType::VoiceTranscription => {
-            let payload: VoiceTranscriptionPayload = serde_json::from_value(json_value.clone())
-                .map_err(|e| AppError::JobError(format!("Failed to deserialize VoiceTranscriptionPayload: {}", e)))?;
-            Ok(JobPayload::VoiceTranscription(payload))
-        }
         TaskType::FileRelevanceAssessment => {
             let payload: FileRelevanceAssessmentPayload = serde_json::from_value(json_value.clone())
                 .map_err(|e| AppError::JobError(format!("Failed to deserialize FileRelevanceAssessmentPayload: {}", e)))?;
@@ -119,6 +109,15 @@ pub fn deserialize_value_to_job_payload(json_value: &serde_json::Value, task_typ
         // FileFinderWorkflow is handled by workflow orchestrator, not individual payload deserialization
         TaskType::FileFinderWorkflow => {
             Err(AppError::JobError("FileFinderWorkflow should be handled by WorkflowOrchestrator, not individual payload deserialization".to_string()))
+        }
+        TaskType::SubscriptionLifecycle => {
+            let payload: crate::jobs::types::SubscriptionLifecyclePayload = serde_json::from_value(json_value.clone())
+                .map_err(|e| AppError::JobError(format!("Failed to deserialize SubscriptionLifecyclePayload: {}", e)))?;
+            Ok(JobPayload::SubscriptionLifecycle(payload))
+        }
+        // VoiceTranscription uses direct API calls, not background jobs
+        TaskType::VoiceTranscription => {
+            Err(AppError::JobError("VoiceTranscription uses direct API calls instead of background job system".to_string()))
         }
         // Streaming and Unknown are not retryable job types
         TaskType::Streaming | TaskType::Unknown => {

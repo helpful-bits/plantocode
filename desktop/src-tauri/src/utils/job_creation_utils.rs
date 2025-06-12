@@ -228,14 +228,19 @@ fn inject_job_id_into_payload(payload: &mut JobPayload, job_id: &str) {
         // Workflow stage payloads
         JobPayload::LocalFileFiltering(_) => {},
         JobPayload::ExtendedPathFinder(_) => {},
-        JobPayload::ExtendedPathCorrection(_) => {},
         JobPayload::RegexPatternGenerationWorkflow(_) => {},
         JobPayload::FileRelevanceAssessment(_) => {},
         
         // Server proxy payloads (do not have background_job_id fields)
-        JobPayload::VoiceTranscription(_) | JobPayload::OpenRouterLlm(_) => {
-            // These payload types intentionally do not have background_job_id fields
-            // as they are processed by external services and don't need internal job tracking
+        JobPayload::OpenRouterLlm(_) => {
+            // This payload type intentionally does not have background_job_id field
+            // as it is processed by external services and doesn't need internal job tracking
+        }
+        
+        // Subscription lifecycle payloads
+        JobPayload::SubscriptionLifecycle(_) => {
+            // SubscriptionLifecycle payloads are handled by specific processors
+            // and don't need background_job_id field injection
         }
     }
 }

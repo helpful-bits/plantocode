@@ -9,6 +9,7 @@ import { VirtualizedCodeViewer } from "@/ui/virtualized-code-viewer";
 import { useJobDetailsContext } from "../../_contexts/job-details-context";
 import { parsePlanResponseContent, extractStepsFromPlan, createPlanWithOnlyStep } from "../../../implementation-plans-panel/_utils/plan-content-parser";
 import { Button } from "@/ui/button";
+import { SubscriptionLifecycleJobDetails } from "./SubscriptionLifecycleJobDetails";
 
 import { getStreamingProgressValue } from "../../utils";
 
@@ -142,35 +143,44 @@ export function JobDetailsResponseSection() {
               </div>
             )}
 
-            <VirtualizedCodeViewer
-              content={displayContentForViewer}
-              language={viewerLanguage}
-              height="70vh"
-              showCopy={true}
-              copyText={job.taskType === "implementation_plan" ? "Copy content" : "Copy response"}
-              showContentSize={true}
-              isLoading={isJobStreaming}
-              placeholder="No response content available"
-              className={
-                job.taskType === "implementation_plan"
-                  ? isJobStreaming
-                    ? "border-info/60 bg-info/5"
-                    : job.status === "completed"
-                      ? "border-success/60 bg-success/5"
+            {job.taskType === "subscription_lifecycle" ? (
+              <SubscriptionLifecycleJobDetails
+                payload={parsedMetadata?.jobPayloadForWorker?.data}
+                error={job.errorMessage}
+                status={job.status}
+                response={job.response}
+              />
+            ) : (
+              <VirtualizedCodeViewer
+                content={displayContentForViewer}
+                language={viewerLanguage}
+                height="70vh"
+                showCopy={true}
+                copyText={job.taskType === "implementation_plan" ? "Copy content" : "Copy response"}
+                showContentSize={true}
+                isLoading={isJobStreaming}
+                placeholder="No response content available"
+                className={
+                  job.taskType === "implementation_plan"
+                    ? isJobStreaming
+                      ? "border-info/60 bg-info/5"
+                      : job.status === "completed"
+                        ? "border-success/60 bg-success/5"
+                        : undefined
+                    : job.taskType === "path_finder" || job.taskType === "regex_pattern_generation"
+                      ? "border-border/60 bg-slate-50/50 dark:bg-slate-900/50"
                       : undefined
-                  : job.taskType === "path_finder" || job.taskType === "regex_pattern_generation"
-                    ? "border-border/60 bg-slate-50/50 dark:bg-slate-900/50"
-                    : undefined
-              }
-              loadingIndicator={
-                <div className="flex items-center justify-center h-full">
-                  <div className="flex items-center gap-2">
-                    <Loader2 className="h-4 w-4 animate-spin text-info" />
-                    <span className="text-sm text-info">Streaming response...</span>
+                }
+                loadingIndicator={
+                  <div className="flex items-center justify-center h-full">
+                    <div className="flex items-center gap-2">
+                      <Loader2 className="h-4 w-4 animate-spin text-info" />
+                      <span className="text-sm text-info">Streaming response...</span>
+                    </div>
                   </div>
-                </div>
-              }
-            />
+                }
+              />
+            )}
           </CardContent>
         </CollapsibleContent>
       </Collapsible>

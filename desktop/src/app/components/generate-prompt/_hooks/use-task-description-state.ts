@@ -206,7 +206,19 @@ export function useTaskDescriptionState({
     try {
       await navigator.clipboard.writeText(sessionTaskDescription);
       setTaskCopySuccess(true);
-      setTimeout(() => setTaskCopySuccess(false), 2000);
+      
+      setTimeout(() => {
+        try {
+          setTaskCopySuccess(prevState => {
+            // Only update if still true to avoid race conditions
+            return prevState ? false : prevState;
+          });
+        } catch (error) {
+          console.error('[TaskDescriptionState] Error resetting copy success state:', error);
+        }
+      }, 2000);
+      
+      // Store timeout ID for potential cleanup (though not critical for short timeouts)
       return true;
     } catch (error) {
       console.error("Error copying task description:", error);

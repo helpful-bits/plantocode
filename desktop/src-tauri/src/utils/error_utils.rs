@@ -120,6 +120,19 @@ pub fn format_user_error(error: &AppError) -> String {
         },
         AppError::StorageError(msg) => format!("Storage error: {}", msg),
         AppError::TokenLimitExceededError(msg) => format!("Token limit exceeded: {}", msg),
+        AppError::PaymentFailed(msg) => format!("Payment failed: {}", msg),
+        AppError::PaymentDeclined(msg) => format!("Payment declined: {}", msg),
+        AppError::PaymentAuthenticationRequired(msg) => format!("Payment authentication required: {}", msg),
+        AppError::SubscriptionExpired(msg) => format!("Subscription expired: {}", msg),
+        AppError::SubscriptionCancelled(msg) => format!("Subscription cancelled: {}", msg),
+        AppError::CreditInsufficient(msg) => format!("Insufficient credits: {}", msg),
+        AppError::PlanUpgradeRequired(msg) => format!("Plan upgrade required: {}", msg),
+        AppError::PaymentMethodRequired(msg) => format!("Payment method required: {}", msg),
+        AppError::BillingAddressRequired(msg) => format!("Billing address required: {}", msg),
+        AppError::StripeError(msg) => format!("Payment service error: {}", msg),
+        AppError::SubscriptionConflict(msg) => format!("Subscription conflict: {}", msg),
+        AppError::SpendingLimitExceeded(msg) => format!("Spending limit exceeded: {}", msg),
+        AppError::InvoiceError(msg) => format!("Invoice error: {}", msg),
     }
 }
 

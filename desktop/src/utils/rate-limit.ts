@@ -2,45 +2,57 @@
  * Rate limiting utility
  *
  * Provides a mechanism to rate limit API requests based on a key, with configurable
- * limits and time windows.
+ * limits and time windows. Uses intelligent cleanup-on-access pattern to avoid
+ * memory leaks without requiring interval timers.
  */
 
 import { createLogger } from '@/utils/logger';
 
 const logger = createLogger({ namespace: "RateLimit" });
 
-// Track request timestamps by key
-const rateLimitStore: Map<string, number[]> = new Map();
-
-// Cleanup interval (5 minutes)
-const CLEANUP_INTERVAL = 5 * 60 * 1000;
-
-// Set up periodic cleanup to prevent memory leaks
-if (typeof window !== "undefined") {
-  setInterval(() => {
-    const now = Date.now();
-    // Clean up entries older than 1 hour
-    for (const [key, timestamps] of rateLimitStore.entries()) {
-      const oneHourAgo = now - 60 * 60 * 1000;
-
-      // Remove all timestamps older than 1 hour
-      const newTimestamps = timestamps.filter((time) => time > oneHourAgo);
-
-      if (newTimestamps.length === 0) {
-        // Remove the key entirely if no valid timestamps remain
-        rateLimitStore.delete(key);
-      } else if (newTimestamps.length < timestamps.length) {
-        // Update with only recent timestamps
-        rateLimitStore.set(key, newTimestamps);
-      }
-    }
-
-    // Log is used for debugging rate limit cleanup
-    logger.debug(
-      `[Rate Limit] Cleaned up rate limit store. Current size: ${rateLimitStore.size} keys`
-    );
-  }, CLEANUP_INTERVAL);
+// Track request timestamps by key with last access time for intelligent cleanup
+interface RateLimitEntry {
+  timestamps: number[];
+  lastAccess: number;
 }
+
+const rateLimitStore: Map<string, RateLimitEntry> = new Map();
+
+// Maximum age for cleanup (1 hour)
+const MAX_ENTRY_AGE = 60 * 60 * 1000;
+
+// Perform cleanup-on-access - clean expired entries when we access the store
+const cleanupOnAccess = () => {
+  const now = Date.now();
+  const staleEntries: string[] = [];
+  
+  // Find entries that haven't been accessed recently
+  for (const [key, entry] of rateLimitStore.entries()) {
+    if (now - entry.lastAccess > MAX_ENTRY_AGE) {
+      staleEntries.push(key);
+    }
+  }
+  
+  // Remove stale entries
+  for (const key of staleEntries) {
+    rateLimitStore.delete(key);
+  }
+  
+  // Only log if we actually cleaned up entries
+  if (staleEntries.length > 0) {
+    logger.debug(
+      `[Rate Limit] Cleaned up ${staleEntries.length} stale entries. Current size: ${rateLimitStore.size} keys`
+    );
+  }
+};
+
+// Clean up expired timestamps within an entry
+const cleanupEntry = (entry: RateLimitEntry, windowStart: number): number[] => {
+  const recentTimestamps = entry.timestamps.filter((time) => time > windowStart);
+  entry.timestamps = recentTimestamps;
+  entry.lastAccess = Date.now();
+  return recentTimestamps;
+};
 
 /**
  * Check if a request should be rate limited based on a key, limit count, and time window
@@ -59,11 +71,24 @@ export function rateLimitCheck(
   const windowMs = windowSeconds * 1000;
   const windowStart = now - windowMs;
 
-  // Get existing timestamps for this key
-  const timestamps = rateLimitStore.get(key) || [];
+  // Intelligent cleanup-on-access - clean stale entries periodically
+  // Only run cleanup occasionally to avoid overhead on every request
+  if (Math.random() < 0.1) { // 10% chance to run cleanup
+    cleanupOnAccess();
+  }
 
-  // Filter to only include timestamps within the current window
-  const recentTimestamps = timestamps.filter((time) => time > windowStart);
+  // Get existing entry for this key
+  const existingEntry = rateLimitStore.get(key);
+  
+  let recentTimestamps: number[];
+  
+  if (existingEntry) {
+    // Clean up expired timestamps and update last access
+    recentTimestamps = cleanupEntry(existingEntry, windowStart);
+  } else {
+    // No existing entry
+    recentTimestamps = [];
+  }
 
   // Check if we're over the limit
   if (recentTimestamps.length >= limit) {
@@ -104,8 +129,16 @@ export function rateLimitCheck(
   // Add current timestamp
   recentTimestamps.push(now);
 
-  // Update store
-  rateLimitStore.set(key, recentTimestamps);
+  // Update or create store entry with intelligent structure
+  if (existingEntry) {
+    existingEntry.timestamps = recentTimestamps;
+    existingEntry.lastAccess = now;
+  } else {
+    rateLimitStore.set(key, {
+      timestamps: recentTimestamps,
+      lastAccess: now,
+    });
+  }
 
   // Only log rate limit status when approaching the limit (75% or more)
   const approachingLimit = recentTimestamps.length >= Math.ceil(limit * 0.75);
@@ -118,4 +151,11 @@ export function rateLimitCheck(
   }
 
   return false; // Not rate limited
+}
+
+/**
+ * Manually trigger cleanup of expired entries (for testing or manual cleanup)
+ */
+export function forceCleanup(): void {
+  cleanupOnAccess();
 }

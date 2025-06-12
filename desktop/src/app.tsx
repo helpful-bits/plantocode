@@ -113,6 +113,8 @@ export default function App() {
         throw new Error("Application must run in a browser environment");
       }
 
+      // Initialize billing system optimizations (removed due to missing module)
+
       // Check if Tauri is available for desktop functionality
       if (isTauri) {
         // Use a logger that can be configured instead of console.log
@@ -122,12 +124,19 @@ export default function App() {
         // Basic Tauri environment validation
         try {
           // Test basic Tauri functionality with a timeout
-          await Promise.race([
-            import('@tauri-apps/api/app').then(({ getName }) => getName()),
-            new Promise<never>((_, reject) => 
-              setTimeout(() => reject(new Error('Tauri API timeout')), 5000)
-            )
-          ]);
+          let timeoutId: number;
+          const timeoutPromise = new Promise<never>((_, reject) => {
+            timeoutId = window.setTimeout(() => reject(new Error('Tauri API timeout')), 5000);
+          });
+
+          try {
+            await Promise.race([
+              import('@tauri-apps/api/app').then(({ getName }) => getName()),
+              timeoutPromise
+            ]);
+          } finally {
+            clearTimeout(timeoutId!);
+          }
         } catch (tauriError) {
           console.warn("[App] Tauri API validation failed:", tauriError);
           // Continue anyway - the app can still function with limited features
@@ -190,6 +199,7 @@ export default function App() {
       if (cleanup) {
         cleanup();
       }
+      // Cleanup billing system on app shutdown (removed due to missing module)
     };
   }, []);
 

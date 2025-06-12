@@ -452,13 +452,32 @@ export function useOrchestratedBackgroundJobsState({
     void refreshJobs();
   }, [initialJobs.length, initialLoad, refreshJobs]);
 
-  // Set up timer to update timestamps every minute
+  // Event-driven timestamp updates instead of polling
   useEffect(() => {
-    const interval = setInterval(() => {
-      setTimestampUpdateTrigger(prev => prev + 1);
-    }, 60000); // Update every 60 seconds
+    const handleVisibilityChange = () => {
+      // Update timestamps when user returns to see fresh relative times
+      if (document.visibilityState === 'visible') {
+        setTimestampUpdateTrigger(prev => prev + 1);
+      }
+    };
 
-    return () => clearInterval(interval);
+    const handleUserInteraction = () => {
+      // Update timestamps on user interaction to show current relative times
+      setTimestampUpdateTrigger(prev => prev + 1);
+    };
+
+    // Listen for meaningful events instead of arbitrary intervals
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleUserInteraction);
+    
+    // Update timestamps when jobs actually change (more relevant)
+    window.addEventListener('job-status-change', handleUserInteraction);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleUserInteraction);
+      window.removeEventListener('job-status-change', handleUserInteraction);
+    };
   }, []);
 
   // Get job by ID helper

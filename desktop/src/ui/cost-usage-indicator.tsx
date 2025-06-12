@@ -1,6 +1,6 @@
 import { RefreshCw } from "lucide-react";
 
-import { useCostUsage } from "@/hooks/useCostUsage";
+import { useBillingData } from "@/hooks/use-billing-data";
 
 import { Badge } from "./badge";
 import { Button } from "./button";
@@ -47,21 +47,19 @@ export function CostUsageIndicator({
   className = "",
 
   // Fetch options
-  autoRefreshInterval,
+  autoRefreshInterval: _,
 }: CostUsageIndicatorProps) {
   // Fetch usage data if no override props provided
   const shouldFetch = currentSpending === undefined || monthlyAllowance === undefined;
-  const { usage, isLoading, error, refreshUsage } = useCostUsage({ 
-    autoRefreshInterval
-  });
+  const { spendingStatus, isLoading, error, refreshBillingData } = useBillingData();
 
   // Use provided values or fetched values with safe fallbacks
-  const actualCurrentSpending = (currentSpending ?? usage?.currentSpending) ?? 0;
-  const actualMonthlyAllowance = (monthlyAllowance ?? usage?.monthlyAllowance) ?? 0;
-  const actualUsagePercentage = (usagePercentage ?? usage?.usagePercentage) ?? 0;
-  const actualServicesBlocked = (servicesBlocked ?? usage?.servicesBlocked) ?? false;
-  const actualCurrency = currency ?? usage?.currency ?? "USD";
-  const actualTrialDaysLeft = trialDaysLeft ?? usage?.trialDaysRemaining;
+  const actualCurrentSpending = (currentSpending ?? spendingStatus?.currentSpending) ?? 0;
+  const actualMonthlyAllowance = (monthlyAllowance ?? spendingStatus?.includedAllowance) ?? 0;
+  const actualUsagePercentage = (usagePercentage ?? spendingStatus?.usagePercentage) ?? 0;
+  const actualServicesBlocked = (servicesBlocked ?? spendingStatus?.servicesBlocked) ?? false;
+  const actualCurrency = currency ?? spendingStatus?.currency ?? "USD";
+  const actualTrialDaysLeft = trialDaysLeft;
 
   // Format currency with 2 decimal places
   const formattedSpending = actualCurrentSpending.toFixed(2);
@@ -100,7 +98,7 @@ export function CostUsageIndicator({
             variant="ghost"
             size="icon"
             className="h-6 w-6"
-            onClick={refreshUsage}
+            onClick={refreshBillingData}
             disabled={isLoading}
           >
             <RefreshCw className="h-3 w-3" />
@@ -134,7 +132,7 @@ export function CostUsageIndicator({
                 variant="ghost"
                 size="icon"
                 className="h-6 w-6"
-                onClick={refreshUsage}
+                onClick={refreshBillingData}
                 disabled={isLoading}
               >
                 <RefreshCw className="h-3 w-3" />

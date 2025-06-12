@@ -24,7 +24,7 @@ export default function GeneratePromptForm() {
 function GeneratePromptFormContent() {
   // Get data from contexts
   const {
-    state: { projectDirectory },
+    state: { projectDirectory, activeSessionId },
   } = useCorePromptContext();
 
   // Initialize task context
@@ -50,21 +50,28 @@ function GeneratePromptFormContent() {
         </ErrorBoundary>
 
         {/* Task Description Section */}
-        <ErrorBoundary
-          fallback={
-            <div className="p-6 border border-destructive/20 bg-background/95 backdrop-blur-sm shadow-soft rounded-xl">
-              <H3 className="text-destructive">Task Section Error</H3>
-              <P className="text-destructive text-sm mt-1">Unable to load task section. Please try refreshing.</P>
+        {activeSessionId ? (
+          <ErrorBoundary
+            fallback={
+              <div className="p-6 border border-destructive/20 bg-background/95 backdrop-blur-sm shadow-soft rounded-xl">
+                <H3 className="text-destructive">Task Section Error</H3>
+                <P className="text-destructive text-sm mt-1">Unable to load task section. Please try refreshing.</P>
+              </div>
+            }
+          >
+            <div className="relative">
+              <TaskSection disabled={false} />
             </div>
-          }
-        >
-          <div className="relative">
-            <TaskSection disabled={false} />
+          </ErrorBoundary>
+        ) : (
+          <div className="text-center text-muted-foreground italic p-6 border border-dashed rounded-xl border-border/60 bg-background/80 backdrop-blur-sm shadow-soft">
+            <P>No active session selected.</P>
+            <Subtle className="mt-2">Please create or select a session in the Project section above.</Subtle>
           </div>
-        </ErrorBoundary>
+        )}
 
         {/* Simple File Browser */}
-        {projectDirectory ? (
+        {projectDirectory && activeSessionId ? (
           <ErrorBoundary
             fallback={
               <div className="p-6 border border-destructive/20 bg-background/95 backdrop-blur-sm shadow-soft rounded-xl">
@@ -79,8 +86,15 @@ function GeneratePromptFormContent() {
           </ErrorBoundary>
         ) : (
           <div className="text-center text-muted-foreground italic p-6 border border-dashed rounded-xl border-border/60 bg-background/80 backdrop-blur-sm shadow-soft">
-            <P>No project directory selected.</P>
-            <Subtle className="mt-2">Please select a project directory in the Project section above.</Subtle>
+            <P>
+              {!projectDirectory && !activeSessionId 
+                ? "No project directory or session selected." 
+                : !projectDirectory 
+                  ? "No project directory selected."
+                  : "No active session selected."
+              }
+            </P>
+            <Subtle className="mt-2">Please select a project directory and create/select a session in the Project section above.</Subtle>
           </div>
         )}
       </div>

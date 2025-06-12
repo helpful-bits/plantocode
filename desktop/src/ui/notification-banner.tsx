@@ -28,26 +28,12 @@ export const NotificationBanner: FC<NotificationBannerProps> = ({
   message,
   isVisible = true,
   onDismiss,
-  autoClose = false,
-  autoCloseDelay = 5000,
   className = "",
   icon,
   children,
 }) => {
   const [isOpen, setIsOpen] = useState(isVisible);
 
-  // Set up auto-close timer if enabled
-  useEffect(() => {
-    if (autoClose && isOpen) {
-      const timer = setTimeout(() => {
-        setIsOpen(false);
-        if (onDismiss) onDismiss();
-      }, autoCloseDelay);
-
-      return () => clearTimeout(timer);
-    }
-    return undefined;
-  }, [autoClose, autoCloseDelay, isOpen, onDismiss]);
 
   // Update open state when isVisible changes
   useEffect(() => {

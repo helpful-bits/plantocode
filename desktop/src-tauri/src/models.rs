@@ -201,7 +201,7 @@ pub enum TaskType {
     LocalFileFiltering,
     FileRelevanceAssessment,
     ExtendedPathFinder,
-    ExtendedPathCorrection,
+    SubscriptionLifecycle,
     Streaming,
     Unknown,
 }
@@ -223,7 +223,7 @@ impl ToString for TaskType {
             TaskType::LocalFileFiltering => "local_file_filtering".to_string(),
             TaskType::FileRelevanceAssessment => "file_relevance_assessment".to_string(),
             TaskType::ExtendedPathFinder => "extended_path_finder".to_string(),
-            TaskType::ExtendedPathCorrection => "extended_path_correction".to_string(),
+            TaskType::SubscriptionLifecycle => "subscription_lifecycle".to_string(),
             TaskType::Streaming => "streaming".to_string(),
             TaskType::Unknown => "unknown".to_string(),
         }
@@ -249,7 +249,7 @@ impl std::str::FromStr for TaskType {
             "local_file_filtering" => Ok(TaskType::LocalFileFiltering),
             "file_relevance_assessment" => Ok(TaskType::FileRelevanceAssessment),
             "extended_path_finder" => Ok(TaskType::ExtendedPathFinder),
-            "extended_path_correction" => Ok(TaskType::ExtendedPathCorrection),
+            "subscription_lifecycle" => Ok(TaskType::SubscriptionLifecycle),
             "streaming" => Ok(TaskType::Streaming),
             _ => Ok(TaskType::Unknown),
         }
@@ -262,14 +262,14 @@ impl TaskType {
         match self {
             // Local/filesystem tasks that don't use LLMs
             TaskType::LocalFileFiltering 
-            | TaskType::FileFinderWorkflow => false,
+            | TaskType::FileFinderWorkflow
+            | TaskType::VoiceTranscription
+            | TaskType::SubscriptionLifecycle => false,
             // LLM tasks that require configuration
             TaskType::FileRelevanceAssessment
             | TaskType::ExtendedPathFinder
-            | TaskType::ExtendedPathCorrection
             | TaskType::ImplementationPlan
             | TaskType::PathFinder
-            | TaskType::VoiceTranscription
             | TaskType::TextCorrection
             | TaskType::PathCorrection
             | TaskType::GuidanceGeneration
@@ -288,11 +288,13 @@ impl TaskType {
         match self {
             // Local/filesystem tasks use filesystem API
             TaskType::LocalFileFiltering 
-            | TaskType::FileFinderWorkflow => ApiType::FileSystem,
+            | TaskType::FileFinderWorkflow
+            | TaskType::VoiceTranscription
+            | TaskType::SubscriptionLifecycle => ApiType::FileSystem,
             // Extended workflow stages use OpenRouter API
             TaskType::FileRelevanceAssessment
             | TaskType::ExtendedPathFinder
-            | TaskType::ExtendedPathCorrection => ApiType::OpenRouter,
+            => ApiType::OpenRouter,
             // All other LLM tasks use OpenRouter API
             _ => ApiType::OpenRouter,
         }
@@ -727,4 +729,24 @@ pub struct DatabaseHealthData {
     pub error_severity: Option<String>, // Corresponds to DatabaseErrorSeverity
     pub details: Option<serde_json::Value>, // Other diagnostic details
     pub last_modified: Option<String>, // ISO 8601 string
+}
+
+/// Subscription plan model that matches server response and frontend expectations
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SubscriptionPlan {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub monthly_price: f64,
+    pub yearly_price: f64,
+    pub currency: String,
+    pub features: Vec<String>,
+    pub recommended: bool,
+    pub trial_days: i32,
+    pub stripe_monthly_price_id: Option<String>,
+    pub stripe_yearly_price_id: Option<String>,
+    pub active: bool,
+    pub created_at: Option<String>,
+    pub updated_at: Option<String>,
 }

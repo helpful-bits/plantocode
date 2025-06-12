@@ -144,7 +144,26 @@ pub fn round_for_currency(amount: &BigDecimal, currency: &str) -> Result<BigDeci
 /// 
 /// This prevents duplicate operations during retries
 /// Keys are limited to 255 characters by Stripe
+/// 
+/// # Arguments
+/// * `operation` - The type of operation (e.g., "subscription", "payment", "credit")
+/// * `identifier` - Unique identifier for this operation (e.g., user_id, amount, etc.)
+/// 
+/// # Examples
+/// ```
+/// let key = generate_idempotency_key("subscription", "user_123_plan_456")?;
+/// let key = generate_idempotency_key("payment", "user_123_1000_cents")?;
+/// let key = generate_idempotency_key("credit", "user_123_pack_789")?;
+/// ```
 pub fn generate_idempotency_key(operation: &str, identifier: &str) -> Result<String, AppError> {
+    if operation.is_empty() {
+        return Err(AppError::InvalidArgument("Operation cannot be empty".to_string()));
+    }
+    
+    if identifier.is_empty() {
+        return Err(AppError::InvalidArgument("Identifier cannot be empty".to_string()));
+    }
+    
     let key = format!("{}_{}", operation, identifier);
     
     if key.len() > 255 {
@@ -154,4 +173,51 @@ pub fn generate_idempotency_key(operation: &str, identifier: &str) -> Result<Str
     }
     
     Ok(key)
+}
+
+/// Generate a time-based idempotency key for operations that can be retried
+/// 
+/// This includes a timestamp to allow the same operation to be retried later
+pub fn generate_time_based_idempotency_key(operation: &str, identifier: &str) -> Result<String, AppError> {
+    use chrono::Utc;
+    
+    if operation.is_empty() {
+        return Err(AppError::InvalidArgument("Operation cannot be empty".to_string()));
+    }
+    
+    if identifier.is_empty() {
+        return Err(AppError::InvalidArgument("Identifier cannot be empty".to_string()));
+    }
+    
+    let timestamp = Utc::now().timestamp();
+    let key = format!("{}_{}_{}", operation, identifier, timestamp);
+    
+    if key.len() > 255 {
+        return Err(AppError::InvalidArgument(
+            format!("Time-based idempotency key too long: {} characters (max 255)", key.len())
+        ));
+    }
+    
+    Ok(key)
+}
+
+/// Generate specialized idempotency keys for common operations
+pub mod idempotency_keys {
+    use super::*;
+    use uuid::Uuid;
+    
+    /// Generate idempotency key for subscription operations
+    pub fn subscription_key(user_id: &Uuid, operation: &str) -> Result<String, AppError> {
+        generate_idempotency_key("sub", &format!("{}_{}", operation, user_id))
+    }
+    
+    /// Generate idempotency key for payment operations
+    pub fn payment_key(user_id: &Uuid, operation: &str, amount_cents: i64) -> Result<String, AppError> {
+        generate_idempotency_key("pay", &format!("{}_{}_{}", operation, user_id, amount_cents))
+    }
+    
+    /// Generate idempotency key for credit operations
+    pub fn credit_key(user_id: &Uuid, credit_pack_id: &str) -> Result<String, AppError> {
+        generate_idempotency_key("credit", &format!("{}_{}", user_id, credit_pack_id))
+    }
 }

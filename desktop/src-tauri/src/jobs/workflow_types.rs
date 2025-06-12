@@ -28,7 +28,7 @@ pub enum WorkflowStage {
     LocalFileFiltering,
     FileRelevanceAssessment,
     ExtendedPathFinder,
-    ExtendedPathCorrection,
+    PathCorrection,
 }
 
 impl std::fmt::Display for WorkflowStage {
@@ -45,7 +45,7 @@ impl WorkflowStage {
             WorkflowStage::LocalFileFiltering,
             WorkflowStage::FileRelevanceAssessment,
             WorkflowStage::ExtendedPathFinder,
-            WorkflowStage::ExtendedPathCorrection,
+            WorkflowStage::PathCorrection,
         ]
     }
 
@@ -55,8 +55,8 @@ impl WorkflowStage {
             WorkflowStage::RegexPatternGeneration => Some(WorkflowStage::LocalFileFiltering),
             WorkflowStage::LocalFileFiltering => Some(WorkflowStage::FileRelevanceAssessment),
             WorkflowStage::FileRelevanceAssessment => Some(WorkflowStage::ExtendedPathFinder),
-            WorkflowStage::ExtendedPathFinder => Some(WorkflowStage::ExtendedPathCorrection),
-            WorkflowStage::ExtendedPathCorrection => None,
+            WorkflowStage::ExtendedPathFinder => Some(WorkflowStage::PathCorrection),
+            WorkflowStage::PathCorrection => None,
         }
     }
 
@@ -67,7 +67,7 @@ impl WorkflowStage {
             WorkflowStage::LocalFileFiltering => Some(WorkflowStage::RegexPatternGeneration),
             WorkflowStage::FileRelevanceAssessment => Some(WorkflowStage::LocalFileFiltering),
             WorkflowStage::ExtendedPathFinder => Some(WorkflowStage::FileRelevanceAssessment),
-            WorkflowStage::ExtendedPathCorrection => Some(WorkflowStage::ExtendedPathFinder),
+            WorkflowStage::PathCorrection => Some(WorkflowStage::ExtendedPathFinder),
         }
     }
 
@@ -78,7 +78,7 @@ impl WorkflowStage {
             WorkflowStage::LocalFileFiltering => 1,
             WorkflowStage::FileRelevanceAssessment => 2,
             WorkflowStage::ExtendedPathFinder => 3,
-            WorkflowStage::ExtendedPathCorrection => 4,
+            WorkflowStage::PathCorrection => 4,
         }
     }
 
@@ -89,7 +89,7 @@ impl WorkflowStage {
             WorkflowStage::LocalFileFiltering => "Local File Filtering",
             WorkflowStage::FileRelevanceAssessment => "AI File Relevance Assessment",
             WorkflowStage::ExtendedPathFinder => "Extended Path Finding",
-            WorkflowStage::ExtendedPathCorrection => "Extended Path Correction",
+            WorkflowStage::PathCorrection => "Path Correction",
         }
     }
 
@@ -100,7 +100,7 @@ impl WorkflowStage {
             "Local File Filtering" => Some(WorkflowStage::LocalFileFiltering),
             "AI File Relevance Assessment" => Some(WorkflowStage::FileRelevanceAssessment),
             "Extended Path Finding" => Some(WorkflowStage::ExtendedPathFinder),
-            "Extended Path Correction" => Some(WorkflowStage::ExtendedPathCorrection),
+            "Path Correction" => Some(WorkflowStage::PathCorrection),
             _ => None,
         }
     }
@@ -112,7 +112,7 @@ impl WorkflowStage {
             TaskType::LocalFileFiltering => Some(WorkflowStage::LocalFileFiltering),
             TaskType::FileRelevanceAssessment => Some(WorkflowStage::FileRelevanceAssessment),
             TaskType::ExtendedPathFinder => Some(WorkflowStage::ExtendedPathFinder),
-            TaskType::ExtendedPathCorrection => Some(WorkflowStage::ExtendedPathCorrection),
+            TaskType::PathCorrection => Some(WorkflowStage::PathCorrection),
             _ => None,
         }
     }
@@ -514,7 +514,7 @@ impl Default for ErrorRecoveryConfig {
         strategy_map.insert("LocalFileFiltering".to_string(), RecoveryStrategy::RetryStage { max_attempts: 2, delay_ms: 2000 });
         strategy_map.insert("FileRelevanceAssessment".to_string(), RecoveryStrategy::RetryStage { max_attempts: 3, delay_ms: 4000 });
         strategy_map.insert("ExtendedPathFinder".to_string(), RecoveryStrategy::RetryStage { max_attempts: 2, delay_ms: 5000 });
-        strategy_map.insert("ExtendedPathCorrection".to_string(), RecoveryStrategy::RetryStage { max_attempts: 2, delay_ms: 3000 });
+        strategy_map.insert("PathCorrection".to_string(), RecoveryStrategy::RetryStage { max_attempts: 2, delay_ms: 3000 });
         
         Self {
             strategy_map,

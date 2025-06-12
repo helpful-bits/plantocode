@@ -1,0 +1,508 @@
+use chrono::Utc;
+use log::{error, warn, info};
+use serde_json::json;
+use std::collections::HashMap;
+use uuid::Uuid;
+
+/// Severity levels for admin alerts
+#[derive(Debug, Clone)]
+pub enum AlertSeverity {
+    Critical,
+    High,
+    Medium,
+    Low,
+}
+
+impl AlertSeverity {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            AlertSeverity::Critical => "CRITICAL",
+            AlertSeverity::High => "HIGH", 
+            AlertSeverity::Medium => "MEDIUM",
+            AlertSeverity::Low => "LOW",
+        }
+    }
+}
+
+/// Types of admin alerts
+#[derive(Debug, Clone)]
+pub enum AlertType {
+    DataIntegrityIssue,
+    StripeWebhookFailure,
+    PaymentProcessingError,
+    SystemResourceExhaustion,
+    SecurityIncident,
+    // Enhanced security-specific alert types
+    AuthenticationAttack,
+    DdosAttack,
+    ApiKeyCompromise,
+    WebhookSecurityBreach,
+    DataAccessAnomaly,
+    SuspiciousActivity,
+    ComplianceViolation,
+    RateLimitExceeded,
+}
+
+impl AlertType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            AlertType::DataIntegrityIssue => "DATA_INTEGRITY_ISSUE",
+            AlertType::StripeWebhookFailure => "STRIPE_WEBHOOK_FAILURE",
+            AlertType::PaymentProcessingError => "PAYMENT_PROCESSING_ERROR",
+            AlertType::SystemResourceExhaustion => "SYSTEM_RESOURCE_EXHAUSTION",
+            AlertType::SecurityIncident => "SECURITY_INCIDENT",
+            AlertType::AuthenticationAttack => "AUTHENTICATION_ATTACK",
+            AlertType::DdosAttack => "DDOS_ATTACK",
+            AlertType::ApiKeyCompromise => "API_KEY_COMPROMISE",
+            AlertType::WebhookSecurityBreach => "WEBHOOK_SECURITY_BREACH",
+            AlertType::DataAccessAnomaly => "DATA_ACCESS_ANOMALY",
+            AlertType::SuspiciousActivity => "SUSPICIOUS_ACTIVITY",
+            AlertType::ComplianceViolation => "COMPLIANCE_VIOLATION",
+            AlertType::RateLimitExceeded => "RATE_LIMIT_EXCEEDED",
+        }
+    }
+}
+
+/// Admin alert structure
+#[derive(Debug, Clone)]
+pub struct AdminAlert {
+    pub alert_id: Uuid,
+    pub timestamp: chrono::DateTime<Utc>,
+    pub severity: AlertSeverity,
+    pub alert_type: AlertType,
+    pub title: String,
+    pub description: String,
+    pub metadata: HashMap<String, String>,
+    pub requires_immediate_attention: bool,
+}
+
+impl AdminAlert {
+    pub fn new(
+        severity: AlertSeverity,
+        alert_type: AlertType,
+        title: String,
+        description: String,
+    ) -> Self {
+        let requires_immediate_attention = matches!(severity, AlertSeverity::Critical);
+        Self {
+            alert_id: Uuid::new_v4(),
+            timestamp: Utc::now(),
+            severity,
+            alert_type,
+            title,
+            description,
+            metadata: HashMap::new(),
+            requires_immediate_attention,
+        }
+    }
+
+    pub fn with_metadata(mut self, key: String, value: String) -> Self {
+        self.metadata.insert(key, value);
+        self
+    }
+
+    pub fn with_immediate_attention(mut self, requires_attention: bool) -> Self {
+        self.requires_immediate_attention = requires_attention;
+        self
+    }
+}
+
+/// Admin alerting service
+pub struct AdminAlertingService {
+    // In a real implementation, this would connect to external alerting services
+    // like PagerDuty, Slack, email, etc.
+}
+
+impl AdminAlertingService {
+    pub fn new() -> Self {
+        Self {}
+    }
+
+    /// Send an admin alert through multiple channels
+    pub async fn send_alert(&self, alert: AdminAlert) {
+        // Log the alert (always done)
+        self.log_alert(&alert);
+
+        // Send to external alerting systems based on severity
+        match alert.severity {
+            AlertSeverity::Critical => {
+                self.send_critical_alert(&alert).await;
+            },
+            AlertSeverity::High => {
+                self.send_high_priority_alert(&alert).await;
+            },
+            AlertSeverity::Medium | AlertSeverity::Low => {
+                self.send_standard_alert(&alert).await;
+            },
+        }
+    }
+
+    /// Log alert to application logs
+    fn log_alert(&self, alert: &AdminAlert) {
+        let alert_json = json!({
+            "alert_id": alert.alert_id,
+            "timestamp": alert.timestamp.to_rfc3339(),
+            "severity": alert.severity.as_str(),
+            "alert_type": alert.alert_type.as_str(),
+            "title": alert.title,
+            "description": alert.description,
+            "metadata": alert.metadata,
+            "requires_immediate_attention": alert.requires_immediate_attention
+        });
+
+        match alert.severity {
+            AlertSeverity::Critical => {
+                error!("🚨 ADMIN ALERT: {}", alert_json);
+            },
+            AlertSeverity::High => {
+                warn!("⚠️ ADMIN ALERT: {}", alert_json);
+            },
+            AlertSeverity::Medium | AlertSeverity::Low => {
+                info!("ℹ️ ADMIN ALERT: {}", alert_json);
+            },
+        }
+    }
+
+    /// Send critical alert (requires immediate attention)
+    async fn send_critical_alert(&self, alert: &AdminAlert) {
+        // In production, this would:
+        // 1. Send to PagerDuty for on-call engineers
+        // 2. Send urgent Slack message to #critical-alerts channel
+        // 3. Send SMS/phone alerts to engineering leads
+        // 4. Create high-priority ticket in incident management system
+        
+        info!("🚨 CRITICAL ALERT sent to on-call engineers: {} - {}", alert.title, alert.description);
+        
+        // Simulate external alerting services
+        self.simulate_pagerduty_alert(alert).await;
+        self.simulate_slack_critical_alert(alert).await;
+        self.simulate_incident_management_ticket(alert).await;
+    }
+
+    /// Send high priority alert
+    async fn send_high_priority_alert(&self, alert: &AdminAlert) {
+        // In production, this would:
+        // 1. Send to Slack #alerts channel
+        // 2. Create ticket in support system
+        // 3. Send email to engineering team
+        
+        info!("⚠️ HIGH PRIORITY ALERT sent to engineering team: {} - {}", alert.title, alert.description);
+        
+        self.simulate_slack_alert(alert).await;
+        self.simulate_email_alert(alert).await;
+    }
+
+    /// Send standard alert
+    async fn send_standard_alert(&self, alert: &AdminAlert) {
+        // In production, this would:
+        // 1. Send to Slack #monitoring channel
+        // 2. Create low-priority ticket for review
+        
+        info!("ℹ️ STANDARD ALERT logged: {} - {}", alert.title, alert.description);
+        
+        self.simulate_monitoring_log(alert).await;
+    }
+
+    // Simulation methods for external services (replace with real implementations)
+    
+    async fn simulate_pagerduty_alert(&self, alert: &AdminAlert) {
+        info!("📟 PagerDuty Alert Sent: [{}] {} (Alert ID: {})", 
+              alert.severity.as_str(), alert.title, alert.alert_id);
+    }
+
+    async fn simulate_slack_critical_alert(&self, alert: &AdminAlert) {
+        info!("💬 Slack Critical Alert Sent to #critical-alerts: [{}] {} (Alert ID: {})", 
+              alert.severity.as_str(), alert.title, alert.alert_id);
+    }
+
+    async fn simulate_slack_alert(&self, alert: &AdminAlert) {
+        info!("💬 Slack Alert Sent to #alerts: [{}] {} (Alert ID: {})", 
+              alert.severity.as_str(), alert.title, alert.alert_id);
+    }
+
+    async fn simulate_email_alert(&self, alert: &AdminAlert) {
+        info!("📧 Email Alert Sent to engineering team: [{}] {} (Alert ID: {})", 
+              alert.severity.as_str(), alert.title, alert.alert_id);
+    }
+
+    async fn simulate_incident_management_ticket(&self, alert: &AdminAlert) {
+        info!("🎫 Incident Management Ticket Created: [{}] {} (Alert ID: {})", 
+              alert.severity.as_str(), alert.title, alert.alert_id);
+    }
+
+    async fn simulate_monitoring_log(&self, alert: &AdminAlert) {
+        info!("📊 Monitoring Log Entry: [{}] {} (Alert ID: {})", 
+              alert.severity.as_str(), alert.title, alert.alert_id);
+    }
+}
+
+/// Convenience function to send critical data integrity alert
+pub async fn send_data_integrity_alert(
+    customer_id: &str,
+    user_count: usize,
+    event_type: &str,
+    additional_context: HashMap<String, String>,
+) {
+    let alerting_service = AdminAlertingService::new();
+    
+    let alert = AdminAlert::new(
+        AlertSeverity::Critical,
+        AlertType::DataIntegrityIssue,
+        "Multiple Users Found for Single Stripe Customer ID".to_string(),
+        format!(
+            "Data integrity violation detected: Stripe Customer ID '{}' is associated with {} users. This violates the one-to-one customer-user relationship and requires immediate manual reconciliation. Event type: {}",
+            customer_id, user_count, event_type
+        ),
+    )
+    .with_metadata("stripe_customer_id".to_string(), customer_id.to_string())
+    .with_metadata("user_count".to_string(), user_count.to_string())
+    .with_metadata("event_type".to_string(), event_type.to_string())
+    .with_metadata("requires_manual_intervention".to_string(), "true".to_string());
+
+    // Add any additional context
+    let alert = additional_context.into_iter().fold(alert, |acc, (k, v)| {
+        acc.with_metadata(k, v)
+    });
+
+    alerting_service.send_alert(alert).await;
+}
+
+/// Convenience function to send Stripe webhook failure alert
+pub async fn send_stripe_webhook_failure_alert(
+    webhook_event_id: &str,
+    error_message: &str,
+    event_type: &str,
+) {
+    let alerting_service = AdminAlertingService::new();
+    
+    let alert = AdminAlert::new(
+        AlertSeverity::High,
+        AlertType::StripeWebhookFailure,
+        "Stripe Webhook Processing Failed".to_string(),
+        format!(
+            "Failed to process Stripe webhook event. Event ID: {}, Event Type: {}, Error: {}",
+            webhook_event_id, event_type, error_message
+        ),
+    )
+    .with_metadata("webhook_event_id".to_string(), webhook_event_id.to_string())
+    .with_metadata("event_type".to_string(), event_type.to_string())
+    .with_metadata("error_message".to_string(), error_message.to_string());
+
+    alerting_service.send_alert(alert).await;
+}
+
+/// Convenience function to send payment processing error alert
+pub async fn send_payment_processing_error_alert(
+    payment_intent_id: &str,
+    customer_id: &str,
+    error_message: &str,
+) {
+    let alerting_service = AdminAlertingService::new();
+    
+    let alert = AdminAlert::new(
+        AlertSeverity::High,
+        AlertType::PaymentProcessingError,
+        "Payment Processing Error".to_string(),
+        format!(
+            "Payment processing failed for customer {}. Payment Intent: {}, Error: {}",
+            customer_id, payment_intent_id, error_message
+        ),
+    )
+    .with_metadata("payment_intent_id".to_string(), payment_intent_id.to_string())
+    .with_metadata("customer_id".to_string(), customer_id.to_string())
+    .with_metadata("error_message".to_string(), error_message.to_string());
+
+    alerting_service.send_alert(alert).await;
+}
+
+/// Convenience function to send authentication attack alert
+pub async fn send_authentication_attack_alert(
+    ip_address: &str,
+    failed_attempts: u32,
+    time_window: &str,
+    user_agent: Option<&str>,
+) {
+    let alerting_service = AdminAlertingService::new();
+    
+    let severity = if failed_attempts > 50 { AlertSeverity::Critical } else { AlertSeverity::High };
+    
+    let alert = AdminAlert::new(
+        severity,
+        AlertType::AuthenticationAttack,
+        "Authentication Attack Detected".to_string(),
+        format!(
+            "Detected {} failed authentication attempts from IP {} in {}. This may indicate a brute force attack.",
+            failed_attempts, ip_address, time_window
+        ),
+    )
+    .with_metadata("ip_address".to_string(), ip_address.to_string())
+    .with_metadata("failed_attempts".to_string(), failed_attempts.to_string())
+    .with_metadata("time_window".to_string(), time_window.to_string())
+    .with_metadata("user_agent".to_string(), user_agent.unwrap_or("unknown").to_string());
+
+    alerting_service.send_alert(alert).await;
+}
+
+/// Convenience function to send DDoS attack alert
+pub async fn send_ddos_attack_alert(
+    ip_address: &str,
+    request_count: u64,
+    attack_type: &str,
+    action_taken: &str,
+) {
+    let alerting_service = AdminAlertingService::new();
+    
+    let alert = AdminAlert::new(
+        AlertSeverity::Critical,
+        AlertType::DdosAttack,
+        "DDoS Attack Detected and Mitigated".to_string(),
+        format!(
+            "DDoS attack detected from IP {}. Attack type: {}, Request count: {}, Action taken: {}",
+            ip_address, attack_type, request_count, action_taken
+        ),
+    )
+    .with_metadata("ip_address".to_string(), ip_address.to_string())
+    .with_metadata("request_count".to_string(), request_count.to_string())
+    .with_metadata("attack_type".to_string(), attack_type.to_string())
+    .with_metadata("action_taken".to_string(), action_taken.to_string());
+
+    alerting_service.send_alert(alert).await;
+}
+
+/// Convenience function to send API key compromise alert
+pub async fn send_api_key_compromise_alert(
+    key_type: &str,
+    compromise_indicators: &[String],
+    action_taken: &str,
+) {
+    let alerting_service = AdminAlertingService::new();
+    
+    let alert = AdminAlert::new(
+        AlertSeverity::Critical,
+        AlertType::ApiKeyCompromise,
+        "API Key Compromise Detected".to_string(),
+        format!(
+            "Potential compromise detected for {} API key. Indicators: {}. Action taken: {}",
+            key_type, 
+            compromise_indicators.join(", "),
+            action_taken
+        ),
+    )
+    .with_metadata("key_type".to_string(), key_type.to_string())
+    .with_metadata("indicators".to_string(), compromise_indicators.join(", "))
+    .with_metadata("action_taken".to_string(), action_taken.to_string())
+    .with_immediate_attention(true);
+
+    alerting_service.send_alert(alert).await;
+}
+
+/// Convenience function to send webhook security breach alert
+pub async fn send_webhook_security_breach_alert(
+    ip_address: &str,
+    breach_type: &str,
+    details: &str,
+) {
+    let alerting_service = AdminAlertingService::new();
+    
+    let alert = AdminAlert::new(
+        AlertSeverity::High,
+        AlertType::WebhookSecurityBreach,
+        "Webhook Security Breach Detected".to_string(),
+        format!(
+            "Security breach detected in webhook processing from IP {}. Breach type: {}. Details: {}",
+            ip_address, breach_type, details
+        ),
+    )
+    .with_metadata("ip_address".to_string(), ip_address.to_string())
+    .with_metadata("breach_type".to_string(), breach_type.to_string())
+    .with_metadata("details".to_string(), details.to_string());
+
+    alerting_service.send_alert(alert).await;
+}
+
+/// Convenience function to send compliance violation alert
+pub async fn send_compliance_violation_alert(
+    regulation: &str,
+    violation_type: &str,
+    affected_data: &str,
+    remediation_required: bool,
+) {
+    let alerting_service = AdminAlertingService::new();
+    
+    let severity = if remediation_required { AlertSeverity::Critical } else { AlertSeverity::High };
+    
+    let alert = AdminAlert::new(
+        severity,
+        AlertType::ComplianceViolation,
+        "Compliance Violation Detected".to_string(),
+        format!(
+            "Violation of {} compliance detected. Type: {}, Affected data: {}, Remediation required: {}",
+            regulation, violation_type, affected_data, remediation_required
+        ),
+    )
+    .with_metadata("regulation".to_string(), regulation.to_string())
+    .with_metadata("violation_type".to_string(), violation_type.to_string())
+    .with_metadata("affected_data".to_string(), affected_data.to_string())
+    .with_metadata("remediation_required".to_string(), remediation_required.to_string())
+    .with_immediate_attention(remediation_required);
+
+    alerting_service.send_alert(alert).await;
+}
+
+/// Convenience function to send rate limit exceeded alert
+pub async fn send_rate_limit_exceeded_alert(
+    source: &str,
+    limit_type: &str,
+    current_rate: u64,
+    threshold: u64,
+    action_taken: &str,
+) {
+    let alerting_service = AdminAlertingService::new();
+    
+    let severity = if current_rate > threshold * 2 { AlertSeverity::High } else { AlertSeverity::Medium };
+    
+    let alert = AdminAlert::new(
+        severity,
+        AlertType::RateLimitExceeded,
+        "Rate Limit Exceeded".to_string(),
+        format!(
+            "Rate limit exceeded for {}. Type: {}, Current rate: {}, Threshold: {}, Action: {}",
+            source, limit_type, current_rate, threshold, action_taken
+        ),
+    )
+    .with_metadata("source".to_string(), source.to_string())
+    .with_metadata("limit_type".to_string(), limit_type.to_string())
+    .with_metadata("current_rate".to_string(), current_rate.to_string())
+    .with_metadata("threshold".to_string(), threshold.to_string())
+    .with_metadata("action_taken".to_string(), action_taken.to_string());
+
+    alerting_service.send_alert(alert).await;
+}
+
+/// Convenience function to send suspicious activity alert
+pub async fn send_suspicious_activity_alert(
+    activity_type: &str,
+    source: &str,
+    details: HashMap<String, String>,
+) {
+    let alerting_service = AdminAlertingService::new();
+    
+    let alert = AdminAlert::new(
+        AlertSeverity::Medium,
+        AlertType::SuspiciousActivity,
+        "Suspicious Activity Detected".to_string(),
+        format!(
+            "Suspicious {} activity detected from {}. Review required.",
+            activity_type, source
+        ),
+    )
+    .with_metadata("activity_type".to_string(), activity_type.to_string())
+    .with_metadata("source".to_string(), source.to_string());
+
+    // Add all details as metadata
+    let alert = details.into_iter().fold(alert, |acc, (k, v)| {
+        acc.with_metadata(k, v)
+    });
+
+    alerting_service.send_alert(alert).await;
+}

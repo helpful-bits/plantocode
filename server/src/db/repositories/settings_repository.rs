@@ -41,7 +41,7 @@ impl SettingsRepository {
         Self { db_pool }
     }
 
-    async fn get_config_value(&self, key: &str) -> Result<Option<JsonValue>, AppError> {
+    pub async fn get_config_value(&self, key: &str) -> Result<Option<JsonValue>, AppError> {
         let record = sqlx::query!(
             "SELECT config_value FROM application_configurations WHERE config_key = $1",
             key

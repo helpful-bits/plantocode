@@ -25,6 +25,9 @@ export * from "./date-utils";
 export * from "./hash";
 export * from "./validation-utils";
 
+// Re-export ValidationResult explicitly
+export type { ValidationResult } from "./validation-utils";
+
 // Async and functional utilities
 export * from "./async-utils";
 export * from "./function-utils";
