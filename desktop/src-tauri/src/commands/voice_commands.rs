@@ -29,6 +29,7 @@ pub async fn transcribe_audio_batch_command(
     language: Option<String>,
     prompt: Option<String>,
     temperature: Option<f32>,
+    model: Option<String>,
     app_handle: AppHandle,
 ) -> AppResult<BatchTranscriptionResponse> {
     let start_time = std::time::Instant::now();
@@ -81,7 +82,8 @@ pub async fn transcribe_audio_batch_command(
         "durationMs": duration_ms,
         "language": language,
         "prompt": prompt,
-        "temperature": temperature
+        "temperature": temperature,
+        "model": model
     });
     
     let response = client
@@ -129,194 +131,12 @@ pub async fn transcribe_audio_batch_command(
     })
 }
 
-/// Configuration for transcription settings
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct TranscriptionSettings {
-    pub default_language: Option<String>,
-    pub default_prompt: Option<String>,
-    pub default_temperature: Option<f32>,
-    pub model: Option<String>,
-}
 
-impl Default for TranscriptionSettings {
-    fn default() -> Self {
-        Self {
-            default_language: None,
-            default_prompt: None,
-            default_temperature: Some(0.7),
-            model: None,
-        }
-    }
-}
 
-/// Get transcription settings for the current user
-#[command]
-pub async fn get_transcription_settings_command(
-    app_handle: AppHandle,
-) -> AppResult<TranscriptionSettings> {
-    let settings_repo = app_handle.state::<Arc<SettingsRepository>>().inner().clone();
-    
-    let settings_json = settings_repo
-        .get_value("transcription_settings")
-        .await?
-        .unwrap_or_else(|| serde_json::to_string(&TranscriptionSettings::default()).unwrap());
-    
-    let settings: TranscriptionSettings = serde_json::from_str(&settings_json)
-        .map_err(|e| AppError::SerializationError(format!("Failed to parse transcription settings: {}", e)))?;
-    
-    Ok(settings)
-}
 
-/// Update transcription settings for the current user  
-#[command]
-pub async fn set_transcription_settings_command(
-    settings: TranscriptionSettings,
-    app_handle: AppHandle,
-) -> AppResult<()> {
-    // Validate settings before saving
-    if let Some(temp) = settings.default_temperature {
-        if temp < 0.0 || temp > 1.0 {
-            return Err(AppError::ValidationError("Temperature must be between 0.0 and 1.0".to_string()));
-        }
-    }
-    
-    let settings_repo = app_handle.state::<Arc<SettingsRepository>>().inner().clone();
-    let settings_json = serde_json::to_string(&settings)
-        .map_err(|e| AppError::SerializationError(format!("Failed to serialize transcription settings: {}", e)))?;
-    
-    settings_repo
-        .set_value("transcription_settings", &settings_json)
-        .await?;
-    
-    info!("Updated transcription settings: {:?}", settings);
-    Ok(())
-}
 
-/// Get project-specific transcription settings
-#[command]
-pub async fn get_project_transcription_settings_command(
-    project_directory: String,
-    app_handle: AppHandle,
-) -> AppResult<TranscriptionSettings> {
-    let settings_repo = app_handle.state::<Arc<SettingsRepository>>().inner().clone();
-    let project_hash = crate::utils::hash_utils::hash_string(&project_directory);
-    let key = format!("project_transcription_settings_{}", project_hash);
-    
-    let settings_json = settings_repo
-        .get_value(&key)
-        .await?
-        .unwrap_or_else(|| serde_json::to_string(&TranscriptionSettings::default()).unwrap());
-    
-    let settings: TranscriptionSettings = serde_json::from_str(&settings_json)
-        .map_err(|e| AppError::SerializationError(format!("Failed to parse project transcription settings: {}", e)))?;
-    
-    Ok(settings)
-}
 
-/// Set project-specific transcription settings  
-#[command]
-pub async fn set_project_transcription_settings_command(
-    project_directory: String,
-    settings: TranscriptionSettings,
-    app_handle: AppHandle,
-) -> AppResult<()> {
-    // Validate settings before saving
-    if let Some(temp) = settings.default_temperature {
-        if temp < 0.0 || temp > 1.0 {
-            return Err(AppError::ValidationError("Temperature must be between 0.0 and 1.0".to_string()));
-        }
-    }
-    
-    let settings_repo = app_handle.state::<Arc<SettingsRepository>>().inner().clone();
-    let project_hash = crate::utils::hash_utils::hash_string(&project_directory);
-    let key = format!("project_transcription_settings_{}", project_hash);
-    
-    let settings_json = serde_json::to_string(&settings)
-        .map_err(|e| AppError::SerializationError(format!("Failed to serialize transcription settings: {}", e)))?;
-    
-    settings_repo
-        .set_value(&key, &settings_json)
-        .await?;
-    
-    info!("Updated project transcription settings for {}: {:?}", project_directory, settings);
-    Ok(())
-}
 
-/// Reset transcription settings to defaults
-#[command]
-pub async fn reset_transcription_settings_command(
-    app_handle: AppHandle,
-) -> AppResult<()> {
-    let settings_repo = app_handle.state::<Arc<SettingsRepository>>().inner().clone();
-    let default_settings = TranscriptionSettings::default();
-    let settings_json = serde_json::to_string(&default_settings)
-        .map_err(|e| AppError::SerializationError(format!("Failed to serialize default transcription settings: {}", e)))?;
-    
-    settings_repo
-        .set_value("transcription_settings", &settings_json)
-        .await?;
-    
-    info!("Reset transcription settings to defaults");
-    Ok(())
-}
 
-/// Get effective transcription settings with project-specific overrides
-/// This merges global and project-specific settings for the frontend
-#[command]
-pub async fn get_effective_transcription_settings_command(
-    project_directory: Option<String>,
-    app_handle: AppHandle,
-) -> AppResult<TranscriptionSettings> {
-    let global_settings = get_transcription_settings_command(app_handle.clone()).await?;
-    
-    if let Some(project_dir) = project_directory {
-        let project_settings = get_project_transcription_settings_command(project_dir, app_handle).await?;
-        
-        // Merge settings: project-specific settings override global settings
-        let effective_settings = TranscriptionSettings {
-            default_language: project_settings.default_language.or(global_settings.default_language),
-            default_prompt: project_settings.default_prompt.or(global_settings.default_prompt),
-            default_temperature: project_settings.default_temperature.or(global_settings.default_temperature),
-            model: project_settings.model.or(global_settings.model),
-        };
-        
-        Ok(effective_settings)
-    } else {
-        Ok(global_settings)
-    }
-}
-
-/// Validate transcription settings for UI feedback
-#[command]
-pub async fn validate_transcription_settings_command(
-    settings: TranscriptionSettings,
-) -> AppResult<Vec<String>> {
-    let mut validation_errors = Vec::new();
-    
-    if let Some(temp) = settings.default_temperature {
-        if temp < 0.0 || temp > 1.0 {
-            validation_errors.push("Temperature must be between 0.0 and 1.0".to_string());
-        }
-    }
-    
-    if let Some(prompt) = &settings.default_prompt {
-        if prompt.len() > 1000 {
-            validation_errors.push("Prompt must be 1000 characters or less".to_string());
-        }
-    }
-    
-    if let Some(language) = &settings.default_language {
-        // Basic language code validation (2-letter or language-region format)
-        if !language.chars().all(|c| c.is_alphabetic() || c == '-' || c == '_') {
-            validation_errors.push("Language code contains invalid characters".to_string());
-        }
-        if language.len() < 2 || language.len() > 10 {
-            validation_errors.push("Language code must be between 2 and 10 characters".to_string());
-        }
-    }
-    
-    Ok(validation_errors)
-}
 
 

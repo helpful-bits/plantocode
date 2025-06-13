@@ -76,7 +76,7 @@ cargo run
 - `JWT_ACCESS_TOKEN_DURATION_DAYS`: Duration of access tokens in days (default: 30)
 - `FIREBASE_API_KEY`: Your Firebase project API key
 - `FIREBASE_PROJECT_ID`: Your Firebase project ID
-- `REPLICATE_API_TOKEN`: Replicate API token for streaming transcription services
+- `REPLICATE_API_TOKEN`: (Optional) Legacy Replicate API token - not used with direct OpenAI transcription
 
 ## Authentication Flow
 

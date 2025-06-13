@@ -71,11 +71,6 @@ export function GeneratePromptFeatureProvider({
     // Reset session fields
     sessionActions.updateCurrentSessionFields({
       taskDescription: "",
-      titleRegex: "",
-      contentRegex: "",
-      negativeTitleRegex: "",
-      negativeContentRegex: "",
-      isRegexActive: true,
       searchTerm: "",
       includedFiles: [],
       forceExcludedFiles: [],

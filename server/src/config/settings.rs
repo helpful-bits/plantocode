@@ -41,6 +41,7 @@ pub struct ServerConfig {
 pub struct ApiKeysConfig {
     pub openrouter_api_key: Option<String>,
     pub replicate_api_token: Option<String>,
+    pub openai_api_key: Option<String>,
     pub auth0_domain: String,
     pub auth0_api_audience: String,
     pub auth0_server_client_id: Option<String>,
@@ -71,6 +72,7 @@ pub struct SubscriptionConfig {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct StripeConfig {
     pub secret_key: String,
+    pub publishable_key: String,
     pub webhook_secret: String,
     pub success_url: String,
     pub cancel_url: String,
@@ -122,6 +124,7 @@ impl AppSettings {
         // API keys
         let openrouter_api_key = env::var("OPENROUTER_API_KEY").ok();
         let replicate_api_token = env::var("REPLICATE_API_TOKEN").ok();
+        let openai_api_key = env::var("OPENAI_API_KEY").ok();
         
         let auth0_domain = env::var("AUTH0_DOMAIN")
             .map_err(|_| AppError::Configuration("AUTH0_DOMAIN must be set".to_string()))?;
@@ -175,6 +178,9 @@ impl AppSettings {
         let stripe_secret_key = env::var("STRIPE_SECRET_KEY")
             .map_err(|_| AppError::Configuration("STRIPE_SECRET_KEY must be set".to_string()))?;
             
+        let stripe_publishable_key = env::var("STRIPE_PUBLISHABLE_KEY")
+            .map_err(|_| AppError::Configuration("STRIPE_PUBLISHABLE_KEY must be set".to_string()))?;
+            
         let stripe_webhook_secret = env::var("STRIPE_WEBHOOK_SECRET")
             .map_err(|_| AppError::Configuration("STRIPE_WEBHOOK_SECRET must be set".to_string()))?;
             
@@ -223,6 +229,7 @@ impl AppSettings {
             api_keys: ApiKeysConfig {
                 openrouter_api_key,
                 replicate_api_token,
+                openai_api_key,
                 auth0_domain,
                 auth0_api_audience,
                 auth0_server_client_id,
@@ -245,6 +252,7 @@ impl AppSettings {
             },
             stripe: StripeConfig {
                 secret_key: stripe_secret_key,
+                publishable_key: stripe_publishable_key,
                 webhook_secret: stripe_webhook_secret,
                 success_url: stripe_success_url,
                 cancel_url: stripe_cancel_url,

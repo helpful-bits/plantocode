@@ -2,17 +2,13 @@ export interface TaskModelSettings {
   model?: string;
   maxTokens?: number;
   temperature?: number;
-  // Transcription-specific settings
-  transcriptionPrompt?: string;
   languageCode?: string;
-  transcriptionModel?: string;
 }
 
 export interface TaskSettings {
   pathFinder: TaskModelSettings;
   voiceTranscription: TaskModelSettings;
   regexPatternGeneration: TaskModelSettings;
-  regexSummaryGeneration: TaskModelSettings;
   pathCorrection: TaskModelSettings;
   textImprovement: TaskModelSettings;
   textCorrection: TaskModelSettings;

@@ -202,15 +202,10 @@ pub struct PathFinderMetadata {
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RegexMetadata {
-    pub title_regex: Option<String>,
-    pub content_regex: Option<String>,
-    pub negative_title_regex: Option<String>,
-    pub negative_content_regex: Option<String>,
-    pub title_regex_description: Option<String>,
-    pub content_regex_description: Option<String>,
-    pub negative_title_regex_description: Option<String>,
-    pub negative_content_regex_description: Option<String>,
-    pub regex_summary_explanation: Option<String>,
+    pub path_pattern: Option<String>,
+    pub content_pattern: Option<String>,
+    pub negative_path_pattern: Option<String>,
+    pub negative_content_pattern: Option<String>,
 }
 
 #[derive(serde::Serialize)]

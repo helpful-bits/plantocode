@@ -7,7 +7,7 @@ use stripe::{
     CreateSubscriptionItem, Price, Expandable, Invoice, PaymentMethod,
     ListPaymentMethods, CreatePrice, Product, CreateProduct, CreatePriceRecurringInterval, CreatePriceRecurring,
     ApiVersion, UpdateSubscription, UpdateSubscriptionItems, CreateCheckoutSessionLineItems,
-    CreateInvoice,
+    CreateInvoice, InvoiceStatus, ListInvoices,
 };
 use chrono::{DateTime, Utc};
 use hmac::{Hmac, Mac};
@@ -366,12 +366,47 @@ impl StripeService {
         let parsed_customer_id = customer_id.parse()
             .map_err(|_| StripeServiceError::Configuration("Invalid Stripe customer ID format".to_string()))?;
         
-        let mut list_params = stripe::ListInvoices::new();
+        let mut list_params = ListInvoices::new();
         list_params.customer = Some(parsed_customer_id);
         list_params.limit = Some(100); // Reasonable limit
 
         let invoices = Invoice::list(&self.client, &list_params).await?;
         info!("Retrieved {} invoices for customer: {}", invoices.data.len(), customer_id);
+        
+        Ok(invoices.data)
+    }
+
+    /// List invoices for a customer from Stripe with status filter and pagination
+    pub async fn list_invoices_with_filter(&self, customer_id: &str, status: Option<&str>, limit: Option<u64>, starting_after: Option<&str>) -> Result<Vec<Invoice>, StripeServiceError> {
+        let parsed_customer_id = customer_id.parse()
+            .map_err(|_| StripeServiceError::Configuration("Invalid Stripe customer ID format".to_string()))?;
+        
+        let mut list_params = ListInvoices::new();
+        list_params.customer = Some(parsed_customer_id);
+        
+        // Pass pagination parameters directly to Stripe API
+        if let Some(limit_value) = limit {
+            list_params.limit = Some(limit_value);
+        }
+        if let Some(starting_after_value) = starting_after {
+            list_params.starting_after = Some(starting_after_value.parse()
+                .map_err(|_| StripeServiceError::Configuration("Invalid starting_after invoice ID format".to_string()))?);
+        }
+        
+        // Set status filter if provided
+        if let Some(status_str) = status {
+            list_params.status = match status_str.to_lowercase().as_str() {
+                "draft" => Some(InvoiceStatus::Draft),
+                "open" => Some(InvoiceStatus::Open),
+                "paid" => Some(InvoiceStatus::Paid),
+                "uncollectible" => Some(InvoiceStatus::Uncollectible),
+                "void" => Some(InvoiceStatus::Void),
+                _ => None, // Unknown status, ignore filter
+            };
+        }
+
+        let invoices = Invoice::list(&self.client, &list_params).await?;
+        info!("Retrieved {} invoices for customer: {} with status filter: {:?}", invoices.data.len(), customer_id, status);
         
         Ok(invoices.data)
     }

@@ -138,8 +138,10 @@ impl JobProcessor for PathCorrectionProcessor {
             &model_used,
         ).await?;
 
-        // Extract system and user prompts from the composed result
-        let (system_prompt, user_prompt, system_prompt_id) = llm_api_utils::extract_prompts_from_composed(&composed_prompt);
+        // Extract system and user prompts using direct field access
+        let system_prompt = composed_prompt.system_prompt.clone();
+        let user_prompt = composed_prompt.user_prompt.clone();
+        let system_prompt_id = composed_prompt.system_prompt_id.clone();
         
         // Build messages array
         let messages = llm_api_utils::create_openrouter_messages(&system_prompt, &user_prompt);

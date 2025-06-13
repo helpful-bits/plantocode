@@ -5,6 +5,9 @@ use crate::error::{AppError, AppResult};
 use crate::models::TaskType;
 use crate::db_utils::SettingsRepository;
 use crate::utils::prompt_template_utils::PromptPlaceholders;
+use crate::api_clients::ServerProxyClient;
+use tauri::{AppHandle, Manager};
+use std::sync::Arc;
 
 /// **UNIFIED PROMPT SYSTEM**
 /// This consolidates the functionality from three overlapping systems:
@@ -17,8 +20,8 @@ use crate::utils::prompt_template_utils::PromptPlaceholders;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UnifiedPromptContext {
-    // Session and task info
-    pub session_id: String,
+    // Project and task info
+    pub project_directory: String,
     pub task_type: TaskType,
     pub task_description: String,
     
@@ -28,7 +31,6 @@ pub struct UnifiedPromptContext {
     pub session_name: Option<String>,
     
     // Rich context data
-    pub project_directory: Option<String>,
     pub project_structure: Option<String>,
     pub file_contents: Option<HashMap<String, String>>,
     pub relevant_files: Option<Vec<String>>,
@@ -43,7 +45,8 @@ pub struct UnifiedPromptContext {
 
 #[derive(Debug, Clone)]
 pub struct ComposedPrompt {
-    pub final_prompt: String,
+    pub system_prompt: String,
+    pub user_prompt: String,
     pub system_prompt_id: String,
     pub context_sections: Vec<String>,
     pub estimated_tokens: Option<usize>,
@@ -57,25 +60,66 @@ impl UnifiedPromptProcessor {
         Self
     }
 
+    /// Get effective system prompt from project settings or server defaults
+    async fn get_effective_system_prompt(
+        &self,
+        app_handle: &AppHandle,
+        project_directory: &str,
+        task_type: &str,
+    ) -> AppResult<(String, String)> {
+        // First try to get project-specific system prompt
+        let project_settings = crate::commands::settings_commands::get_project_task_model_settings_command(
+            app_handle.clone(),
+            project_directory.to_string(),
+        ).await?;
+
+        if let Some(settings_json) = project_settings {
+            let settings: serde_json::Value = serde_json::from_str(&settings_json)
+                .map_err(|e| AppError::ConfigError(format!("Invalid project settings JSON: {}", e)))?;
+            
+            if let Some(task_settings) = settings.get(task_type) {
+                if let Some(task_object) = task_settings.as_object() {
+                    if let Some(system_prompt) = task_object.get("systemPrompt") {
+                        if let Some(prompt_str) = system_prompt.as_str() {
+                            if !prompt_str.is_empty() {
+                                return Ok((prompt_str.to_string(), "project".to_string()));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Fall back to server default system prompt
+        let server_client = app_handle.state::<Arc<ServerProxyClient>>().inner().clone();
+        if let Some(default_prompt) = server_client.get_default_system_prompt(task_type).await? {
+            // Try both field name formats (server might use either)
+            let prompt_str = default_prompt.get("system_prompt")
+                .or_else(|| default_prompt.get("systemPrompt"))
+                .and_then(|p| p.as_str());
+            
+            if let Some(prompt_str) = prompt_str {
+                return Ok((prompt_str.to_string(), "default".to_string()));
+            }
+        }
+
+        // Ultimate fallback: empty system prompt
+        Ok(("".to_string(), "fallback".to_string()))
+    }
+
     /// Main composition method that combines database templates with context
     pub async fn compose_prompt(
         &self,
         context: &UnifiedPromptContext,
-        settings_repo: &SettingsRepository,
+        app_handle: &AppHandle,
     ) -> AppResult<ComposedPrompt> {
-        // Get the system prompt template from database (from prompt_composition.rs)
+        // Get the system prompt template from project settings or server defaults
         let placeholders = self.create_placeholders(context)?;
-        let (system_template, system_prompt_id) = settings_repo
-            .get_effective_system_prompt_with_substitution(
-                &context.session_id,
-                &context.task_type.to_string(),
-                &placeholders,
-            )
-            .await?
-            .ok_or_else(|| AppError::ConfigError(format!(
-                "No system prompt found for task type '{}'. System prompts may not be initialized. Please ensure you are authenticated and the application has loaded properly.",
-                context.task_type.to_string()
-            )))?;
+        let (system_template, system_prompt_id) = self.get_effective_system_prompt(
+            app_handle,
+            &context.project_directory,
+            &context.task_type.to_string(),
+        ).await?;
 
         // Process the template with enhanced features (from enhanced_prompt_template.rs)
         let processed_system = self.process_template(&system_template, context)?;
@@ -83,17 +127,16 @@ impl UnifiedPromptProcessor {
         // Create user prompt with context (from prompt_composition.rs)
         let user_prompt = self.generate_user_prompt(context)?;
         
-        // Combine system and user parts
-        let final_prompt = format!("{}\n\n{}", processed_system, user_prompt);
         
         // Estimate tokens
-        let estimated_tokens = Some(crate::utils::token_estimator::estimate_tokens(&final_prompt) as usize);
+        let estimated_tokens = Some(crate::utils::token_estimator::estimate_tokens(&processed_system) as usize);
         
         // Track context sections used
         let context_sections = self.get_context_sections_used(context);
         
         Ok(ComposedPrompt {
-            final_prompt,
+            system_prompt: processed_system,
+            user_prompt,
             system_prompt_id,
             context_sections,
             estimated_tokens,
@@ -128,10 +171,8 @@ impl UnifiedPromptProcessor {
         placeholders = placeholders.with_session_name(context.session_name.as_deref());
         placeholders = placeholders.with_task_type(Some(&context.task_type.to_string()));
         
-        if let Some(ref project_dir) = context.project_directory {
-            if !project_dir.trim().is_empty() {
-                placeholders = placeholders.with_project_context(Some(project_dir));
-            }
+        if !context.project_directory.trim().is_empty() {
+            placeholders = placeholders.with_project_context(Some(&context.project_directory));
         }
 
         // Convert file contents to XML format if available and non-empty
@@ -180,11 +221,7 @@ impl UnifiedPromptProcessor {
         let task_type_str = context.task_type.to_string();
         substitutions.insert("{{TASK_TYPE}}", &task_type_str);
         substitutions.insert("{{TASK_DESCRIPTION}}", &context.task_description);
-        substitutions.insert("{{SESSION_ID}}", &context.session_id);
-        
-        if let Some(ref project_dir) = context.project_directory {
-            substitutions.insert("{{PROJECT_DIRECTORY}}", project_dir.as_str());
-        }
+        substitutions.insert("{{PROJECT_DIRECTORY}}", &context.project_directory);
         
         if let Some(ref language) = context.language {
             substitutions.insert("{{LANGUAGE}}", language.as_str());
@@ -208,7 +245,7 @@ impl UnifiedPromptProcessor {
         
         // Process conditional sections - remove empty placeholders
         let empty_placeholders = vec![
-            ("{{PROJECT_CONTEXT}}", context.project_directory.as_ref().map_or(true, |p| p.trim().is_empty())),
+            ("{{PROJECT_CONTEXT}}", context.project_directory.trim().is_empty()),
             ("{{FILE_CONTENTS}}", context.file_contents.as_ref().map_or(true, |fc| fc.is_empty())),
             ("{{DIRECTORY_TREE}}", context.directory_tree.as_ref().map_or(true, |dt| dt.trim().is_empty())),
             ("{{CUSTOM_INSTRUCTIONS}}", context.custom_instructions.as_ref().map_or(true, |ci| ci.trim().is_empty())),
@@ -246,18 +283,10 @@ impl UnifiedPromptProcessor {
         Ok(result)
     }
 
-    /// Generate user prompt with context (from prompt_composition.rs)
+    /// Generate user prompt - simply wraps task description in <task></task> tags
+    /// File contents and directory tree are handled via system prompt placeholders
     fn generate_user_prompt(&self, context: &UnifiedPromptContext) -> AppResult<String> {
-        let mut user_prompt = context.task_description.clone();
-        
-        // Add relevant context based on task type
-        if let Some(ref files) = context.relevant_files {
-            if !files.is_empty() {
-                user_prompt.push_str(&format!("\n\nRelevant files: {}", files.join(", ")));
-            }
-        }
-        
-        Ok(user_prompt)
+        Ok(format!("<task>\n{}\n</task>", context.task_description))
     }
 
 
@@ -307,16 +336,15 @@ pub struct UnifiedPromptContextBuilder {
 }
 
 impl UnifiedPromptContextBuilder {
-    pub fn new(session_id: String, task_type: TaskType, task_description: String) -> Self {
+    pub fn new(project_directory: String, task_type: TaskType, task_description: String) -> Self {
         Self {
             context: UnifiedPromptContext {
-                session_id,
+                project_directory,
                 task_type,
                 task_description,
                 custom_instructions: None,
                 model_name: None,
                 session_name: None,
-                project_directory: None,
                 project_structure: None,
                 file_contents: None,
                 relevant_files: None,
@@ -325,11 +353,6 @@ impl UnifiedPromptContextBuilder {
                 language: None,
             },
         }
-    }
-
-    pub fn project_directory(mut self, project_directory: Option<String>) -> Self {
-        self.context.project_directory = project_directory;
-        self
     }
 
     pub fn project_structure(mut self, project_structure: Option<String>) -> Self {

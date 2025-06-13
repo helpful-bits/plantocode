@@ -101,7 +101,6 @@ pub struct TaskEnhancementPayload {
 #[serde(rename_all = "camelCase")]
 pub struct TextCorrectionPayload {
     pub text_to_correct: String,
-    pub language: String,
     pub original_transcription_job_id: Option<String>,
 }
 
@@ -174,7 +173,6 @@ pub enum JobPayload {
     TaskEnhancement(TaskEnhancementPayload),
     TextCorrection(TextCorrectionPayload),
     GenericLlmStream(GenericLlmStreamPayload),
-    RegexSummaryGeneration(crate::jobs::processors::regex_summary_generation_processor::RegexSummaryGenerationPayload),
     RegexPatternGeneration(RegexPatternGenerationPayload),
     // Individual workflow stage payloads
     LocalFileFiltering(LocalFileFilteringPayload),

@@ -84,6 +84,7 @@ export function formatInvoice(invoice: InvoiceHistoryEntry): {
   daysPastDue: number;
   hasPdf: boolean;
 } {
+  // Backend should provide isOverdue and daysPastDue for consistency
   const formatCurrency = (amount: number, currency: string) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
@@ -167,9 +168,10 @@ export function formatInvoice(invoice: InvoiceHistoryEntry): {
 }
 
 /**
- * Get enhanced invoice history with formatted display data
+ * Get formatted invoice history with enhanced display data
+ * Uses backend-provided summary data instead of frontend calculations
  */
-export async function getEnhancedInvoiceHistory(
+export async function getFormattedInvoiceHistory(
   request: InvoiceHistoryRequest = {}
 ): Promise<{
   invoices: Array<InvoiceHistoryEntry & ReturnType<typeof formatInvoice>>;
@@ -190,35 +192,18 @@ export async function getEnhancedInvoiceHistory(
     ...formatInvoice(invoice)
   }));
   
-  // Calculate summary
-  const summary = {
-    totalAmount: 0,
-    paidAmount: 0,
-    outstandingAmount: 0,
-    overdueAmount: 0,
-    overdueCount: 0
-  };
-  
-  for (const invoice of enhancedInvoices) {
-    summary.totalAmount += invoice.amount;
-    
-    if (invoice.status?.toLowerCase() === 'paid') {
-      summary.paidAmount += invoice.amount;
-    } else if (invoice.status?.toLowerCase() === 'open') {
-      summary.outstandingAmount += invoice.amount;
-      
-      if (invoice.isOverdue) {
-        summary.overdueAmount += invoice.amount;
-        summary.overdueCount++;
-      }
-    }
-  }
-  
+  // Use backend-provided summary directly - no frontend calculations needed
   return {
     invoices: enhancedInvoices,
     totalCount: response.totalCount,
     hasMore: response.hasMore,
-    summary
+    summary: response.summary || {
+      totalAmount: 0,
+      paidAmount: 0,
+      outstandingAmount: 0,
+      overdueAmount: 0,
+      overdueCount: 0
+    }
   };
 }
 

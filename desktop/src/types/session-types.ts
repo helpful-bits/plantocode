@@ -39,7 +39,7 @@ export interface BackgroundJob {
   endTime?: number;
 }
 
-// Session structure including background jobs and task settings
+// Session structure - stores user context and preferences, NOT workflow artifacts
 export type Session = {
   id: string;
   name: string; // User-provided name for the session
@@ -47,16 +47,6 @@ export type Session = {
   projectHash?: string; // Hashed project directory for database lookups
   taskDescription?: string; // Task description field
   searchTerm?: string; // Search filter for files
-  titleRegex?: string; // Regex for file titles
-  contentRegex?: string; // Regex for file contents
-  negativeTitleRegex?: string; // Negative regex for file titles
-  negativeContentRegex?: string; // Negative regex for file contents
-  titleRegexDescription?: string; // Natural language description for title regex
-  contentRegexDescription?: string; // Natural language description for content regex
-  negativeTitleRegexDescription?: string; // Natural language description for negative title regex
-  negativeContentRegexDescription?: string; // Natural language description for negative content regex
-  regexSummaryExplanation?: string; // Human-readable summary of all regex filters
-  isRegexActive: boolean; // Whether regex filtering is active
   updatedAt?: number; // Timestamp of last update (managed by repository)
   createdAt: number; // Timestamp when the session was created
   includedFiles: string[]; // Array of comparablePath strings (normalized, project-relative paths) that are selected

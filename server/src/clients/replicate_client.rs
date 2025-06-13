@@ -8,6 +8,7 @@ use futures_util::{Stream, StreamExt};
 use std::pin::Pin;
 use actix_web::web;
 use tracing::{debug, info, warn, error, instrument};
+use base64::Engine;
 
 // Replicate API base URL
 const REPLICATE_BASE_URL: &str = "https://api.replicate.com/v1";
@@ -89,7 +90,37 @@ impl ReplicateClient {
         })
     }
 
-    /// Upload audio file to Replicate's file storage
+    /// Create data URI from base64 audio data (for files < 1MB)
+    #[instrument(skip(self, audio_data), fields(filename = %filename))]
+    pub fn create_audio_data_uri(
+        &self,
+        audio_data: &[u8],
+        filename: &str,
+    ) -> Result<String, AppError> {
+        // Validate file size - data URI is only recommended for files < 1MB
+        const MAX_DATA_URI_SIZE: usize = 1024 * 1024; // 1MB
+        if audio_data.len() > MAX_DATA_URI_SIZE {
+            return Err(AppError::Validation(format!(
+                "Audio file too large for data URI ({}KB > 1MB). Use file upload instead.",
+                audio_data.len() / 1024
+            )));
+        }
+
+        // Validate audio filename
+        Self::validate_audio_filename(filename)?;
+
+        // Encode to base64
+        let base64_data = base64::engine::general_purpose::STANDARD.encode(audio_data);
+        
+        // Create data URI exactly as shown in Replicate documentation
+        // Use application/octet-stream as the MIME type for maximum compatibility
+        let data_uri = format!("data:application/octet-stream;base64,{}", base64_data);
+        
+        debug!("Created data URI for audio file: {} ({} bytes)", filename, audio_data.len());
+        Ok(data_uri)
+    }
+
+    /// Upload audio file to Replicate's file storage (for files >= 1MB)
     #[instrument(skip(self, audio_data), fields(filename = %filename))]
     pub async fn upload_audio_file(
         &self,
@@ -126,25 +157,31 @@ impl ReplicateClient {
             )));
         }
 
-        let upload_response: ReplicateFileUploadResponse = response
-            .json()
-            .await
-            .map_err(|e| AppError::External(format!("Failed to parse Replicate upload response: {}", e)))?;
+        // Debug: Log the actual response body to understand the format
+        let response_text = response.text().await
+            .map_err(|e| AppError::External(format!("Failed to get response text: {}", e)))?;
+        
+        debug!("Replicate upload response body: {}", response_text);
+        
+        let upload_response: ReplicateFileUploadResponse = serde_json::from_str(&response_text)
+            .map_err(|e| AppError::External(format!("Failed to parse Replicate upload response: {} | Response body: {}", e, response_text)))?;
 
         Ok(upload_response.serving_url)
     }
 
-    /// Create a transcription prediction using OpenAI GPT-4o model
-    #[instrument(skip(self), fields(audio_url = %audio_url))]
-    pub async fn create_transcription_prediction(
+    /// Create a transcription prediction using data URI as per Replicate documentation
+    #[instrument(skip(self, audio_data), fields(filename = %filename))]
+    pub async fn create_transcription_prediction_json(
         &self,
-        audio_url: String,
+        model_id: &str,
+        audio_data: &[u8],
+        filename: &str,
         language: Option<&str>,
         prompt: Option<&str>,
         temperature: Option<f32>,
         stream: bool,
     ) -> Result<ReplicatePredictionResponse, AppError> {
-        let url = format!("{}/models/openai/gpt-4o-transcribe/predictions", self.base_url);
+        let url = format!("{}/models/{}/predictions", self.base_url, model_id);
 
         // Validate language parameter if provided
         if let Some(lang) = language.as_ref() {
@@ -156,13 +193,18 @@ impl ReplicateClient {
             Self::validate_temperature(temp)?;
         }
         
+        // Create data URI exactly as shown in Replicate documentation
+        let audio_url = self.create_audio_data_uri(audio_data, filename)?;
+        
+        // Create the transcription input with the data URI
         let input = ReplicateTranscriptionInput {
             audio_file: audio_url,
-            language: language.map(|s| s.to_string()),
-            prompt: prompt.map(|s| s.to_string()),
-            temperature: temperature.or(Some(0.0)), // Default to 0.0 for deterministic output
+            language: language.map(String::from),
+            prompt: prompt.map(String::from),
+            temperature,
         };
-
+        
+        // Create the prediction request
         let request = ReplicatePredictionRequest {
             input,
             stream: if stream { Some(true) } else { None },
@@ -305,11 +347,12 @@ impl ReplicateClient {
         Ok(prediction)
     }
 
-    /// Complete transcription workflow: upload file + create prediction + wait for result
-    /// This is for non-streaming transcription
+    /// Complete transcription workflow using data URI as per Replicate documentation
+    /// Uses data URI format: data:application/octet-stream;base64,{audio_data}
     #[instrument(skip(self, audio_data), fields(filename = %filename))]
     pub async fn transcribe(
         &self,
+        model_id: &str,
         audio_data: &[u8],
         filename: &str,
         language: Option<&str>,
@@ -319,15 +362,14 @@ impl ReplicateClient {
         // Validate input parameters before processing
         Self::validate_audio_filename(filename)?;
         
-        // Upload the audio file
-        info!("Uploading audio file: {}", filename);
-        let audio_url = self.upload_audio_file(audio_data, filename).await?;
-        
-        // Create prediction without streaming
-        debug!("Creating transcription prediction with language: {:?}, prompt: {:?}, temperature: {:?}", 
-               language, prompt, temperature);
-        let prediction = self.create_transcription_prediction(
-            audio_url, 
+        // Create prediction using JSON with data URI as per Replicate docs
+        info!("Creating JSON prediction with data URI for: {} ({} bytes)", filename, audio_data.len());
+        debug!("Creating transcription prediction with model: {}, language: {:?}, prompt: {:?}, temperature: {:?}", 
+               model_id, language, prompt, temperature);
+        let prediction = self.create_transcription_prediction_json(
+            model_id,
+            audio_data, 
+            filename,
             language, 
             prompt, 
             temperature, 
@@ -344,11 +386,12 @@ impl ReplicateClient {
         Ok((transcribed_text, HeaderMap::new()))
     }
     
-    /// Complete transcription workflow with streaming: upload file + create prediction + return stream
-    /// This is for streaming transcription with full parameter support
+    /// Complete transcription workflow with streaming using data URI as per Replicate documentation
+    /// Uses data URI format: data:application/octet-stream;base64,{audio_data}
     #[instrument(skip(self, audio_data), fields(filename = %filename))]
     pub async fn transcribe_streaming(
         &self,
+        model_id: &str,
         audio_data: &[u8],
         filename: &str,
         language: Option<&str>,
@@ -358,15 +401,14 @@ impl ReplicateClient {
         // Validate input parameters before processing
         Self::validate_audio_filename(filename)?;
         
-        // Upload the audio file
-        info!("Uploading audio file for streaming: {}", filename);
-        let audio_url = self.upload_audio_file(audio_data, filename).await?;
-        
-        // Create prediction with streaming enabled
-        debug!("Creating streaming transcription prediction with language: {:?}, prompt: {:?}, temperature: {:?}", 
-               language, prompt, temperature);
-        let prediction = self.create_transcription_prediction(
-            audio_url, 
+        // Create prediction using JSON with data URI as per Replicate docs for streaming
+        info!("Creating JSON streaming prediction with data URI for: {} ({} bytes)", filename, audio_data.len());
+        debug!("Creating streaming transcription prediction with model: {}, language: {:?}, prompt: {:?}, temperature: {:?}", 
+               model_id, language, prompt, temperature);
+        let prediction = self.create_transcription_prediction_json(
+            model_id,
+            audio_data, 
+            filename,
             language, 
             prompt, 
             temperature, 
@@ -422,6 +464,28 @@ impl ReplicateClient {
         Ok(())
     }
     
+    /// Get MIME type from audio filename extension
+    fn get_audio_mime_type(filename: &str) -> Result<&'static str, AppError> {
+        let filename_lower = filename.to_lowercase();
+        
+        if filename_lower.ends_with(".webm") {
+            Ok("audio/webm")
+        } else if filename_lower.ends_with(".mp3") {
+            Ok("audio/mpeg")
+        } else if filename_lower.ends_with(".wav") {
+            Ok("audio/wav")
+        } else if filename_lower.ends_with(".ogg") {
+            Ok("audio/ogg")
+        } else if filename_lower.ends_with(".m4a") {
+            Ok("audio/mp4")
+        } else if filename_lower.ends_with(".flac") {
+            Ok("audio/flac")
+        } else {
+            // Default to application/octet-stream as shown in docs
+            Ok("application/octet-stream")
+        }
+    }
+
     /// Validate audio filename
     fn validate_audio_filename(filename: &str) -> Result<(), AppError> {
         if filename.is_empty() {

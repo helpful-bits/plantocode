@@ -98,19 +98,19 @@ impl SpendingRepository {
                    sp.currency,
                    COALESCE(SUM(au.cost), 0) as current_spending,
                    false as services_blocked,
-                   s.current_period_ends_at
+                   COALESCE(s.current_period_end, s.current_period_ends_at) as current_period_ends_at
             FROM subscriptions s
-            JOIN subscription_plans sp ON s.plan_id = sp.id
+            JOIN subscription_plans sp ON COALESCE(s.stripe_plan_id, s.plan_id) = sp.id
             LEFT JOIN api_usage au ON s.user_id = au.user_id 
-                AND au.timestamp >= $2 AND au.timestamp <= $3
+                AND au.timestamp >= COALESCE(s.current_period_start, s.created_at) 
+                AND au.timestamp <= COALESCE(s.current_period_end, s.current_period_ends_at)
             WHERE s.user_id = $1 AND s.status = 'active'
             GROUP BY s.id, s.user_id, s.plan_id, s.created_at, s.updated_at,
                      sp.included_spending_monthly, sp.included_spending_weekly, 
-                     sp.hard_limit_multiplier, sp.currency, s.current_period_ends_at
+                     sp.hard_limit_multiplier, sp.currency, s.current_period_start, 
+                     s.current_period_end, s.current_period_ends_at
             "#,
-            user_id,
-            period_start,
-            period_end
+            user_id
         )
         .fetch_optional(&self.pool)
         .await
@@ -149,19 +149,19 @@ impl SpendingRepository {
                    sp.currency,
                    COALESCE(SUM(au.cost), 0) as current_spending,
                    false as services_blocked,
-                   s.current_period_ends_at
+                   COALESCE(s.current_period_end, s.current_period_ends_at) as current_period_ends_at
             FROM subscriptions s
-            JOIN subscription_plans sp ON s.plan_id = sp.id
+            JOIN subscription_plans sp ON COALESCE(s.stripe_plan_id, s.plan_id) = sp.id
             LEFT JOIN api_usage au ON s.user_id = au.user_id 
-                AND au.timestamp >= $2 AND au.timestamp <= $3
+                AND au.timestamp >= COALESCE(s.current_period_start, s.created_at) 
+                AND au.timestamp <= COALESCE(s.current_period_end, s.current_period_ends_at)
             WHERE s.user_id = $1 AND s.status = 'active'
             GROUP BY s.id, s.user_id, s.plan_id, s.created_at, s.updated_at,
                      sp.included_spending_monthly, sp.included_spending_weekly, 
-                     sp.hard_limit_multiplier, sp.currency, s.current_period_ends_at
+                     sp.hard_limit_multiplier, sp.currency, s.current_period_start, 
+                     s.current_period_end, s.current_period_ends_at
             "#,
-            user_id,
-            period_start,
-            period_end
+            user_id
         )
         .fetch_optional(&mut **executor)
         .await

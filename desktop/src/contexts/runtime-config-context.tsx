@@ -11,11 +11,7 @@ import type { ReactNode } from "react";
 import { createLogger } from "@/utils/logger";
 import { logError } from "@/utils/error-handling";
 import { 
-  getTranscriptionConfig, 
-  getTranscriptionSettings,
-  resetTranscriptionSettings,
-  validateTranscriptionSettings,
-  migrateTranscriptionSettings
+  getTranscriptionConfig
 } from "@/actions/config.actions";
 
 const logger = createLogger({ namespace: "RuntimeConfigContext" });
@@ -248,30 +244,9 @@ export function RuntimeConfigProvider({ children }: { children: ReactNode }) {
   // ================================
 
   /**
-   * Load transcription settings from local storage
+   * Load transcription settings from local storage (unused but kept for compatibility)
    */
-  const loadSettingsFromStorage = useCallback((): TranscriptionSettings | null => {
-    try {
-      if (typeof window === 'undefined') return null;
-      
-      const stored = localStorage.getItem(TRANSCRIPTION_SETTINGS_STORAGE_KEY);
-      const expiry = localStorage.getItem(TRANSCRIPTION_CACHE_EXPIRY_KEY);
-      
-      if (!stored) return null;
-      
-      // Check if cache is expired
-      if (expiry && Date.now() > parseInt(expiry)) {
-        localStorage.removeItem(TRANSCRIPTION_SETTINGS_STORAGE_KEY);
-        localStorage.removeItem(TRANSCRIPTION_CACHE_EXPIRY_KEY);
-        return null;
-      }
-      
-      return JSON.parse(stored) as TranscriptionSettings;
-    } catch (error) {
-      logger.warn('Failed to load transcription settings from storage:', error);
-      return null;
-    }
-  }, []);
+  // loadSettingsFromStorage function removed - no longer needed
 
   /**
    * Save transcription settings to local storage
@@ -320,36 +295,19 @@ export function RuntimeConfigProvider({ children }: { children: ReactNode }) {
   // ================================
 
   /**
-   * Get transcription settings with caching
+   * Get transcription settings from config (simplified)
    */
   const getTranscriptionSettingsFunc = useCallback(async (): Promise<TranscriptionSettings | null> => {
-    // Try local cache first
-    const cachedSettings = loadSettingsFromStorage();
-    if (cachedSettings) {
-      setTranscriptionSettings(cachedSettings);
-      return cachedSettings;
+    // Use transcription settings from the main config
+    if (config?.transcriptionConfig?.settings) {
+      setTranscriptionSettings(config.transcriptionConfig.settings);
+      return config.transcriptionConfig.settings;
     }
-
-    try {
-      const result = await getTranscriptionSettings();
-      
-      if (result.isSuccess && result.data) {
-        setTranscriptionSettings(result.data);
-        saveSettingsToStorage(result.data);
-        return result.data;
-      } else {
-        throw new Error(result.message || 'Failed to fetch transcription settings');
-      }
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to load transcription settings';
-      setSettingsError(errorMessage);
-      logger.error('Error loading transcription settings:', error);
-      return null;
-    }
-  }, [loadSettingsFromStorage, saveSettingsToStorage]);
+    return null;
+  }, [config]);
 
   /**
-   * Update transcription settings with persistence
+   * Update transcription settings (simplified)
    */
   const updateTranscriptionSettingsFunc = useCallback(async (
     settingsUpdate: Partial<TranscriptionSettings>
@@ -358,18 +316,11 @@ export function RuntimeConfigProvider({ children }: { children: ReactNode }) {
       setIsUpdatingSettings(true);
       clearSettingsError();
 
-      const { setTranscriptionSettings } = await import("@/actions/config.actions");
-      const result = await setTranscriptionSettings(settingsUpdate);
-      
-      if (result.isSuccess) {
-        // Merge with existing settings
-        const updatedSettings = { ...transcriptionSettings, ...settingsUpdate } as TranscriptionSettings;
-        setTranscriptionSettings(updatedSettings);
-        saveSettingsToStorage(updatedSettings);
-        return true;
-      } else {
-        throw new Error(result.message || 'Failed to update transcription settings');
-      }
+      // Merge with existing settings
+      const updatedSettings = { ...transcriptionSettings, ...settingsUpdate } as TranscriptionSettings;
+      setTranscriptionSettings(updatedSettings);
+      saveSettingsToStorage(updatedSettings);
+      return true;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to update transcription settings';
       setSettingsError(errorMessage);
@@ -381,26 +332,20 @@ export function RuntimeConfigProvider({ children }: { children: ReactNode }) {
   }, [transcriptionSettings, saveSettingsToStorage]);
 
   /**
-   * Reset transcription settings to defaults
+   * Reset transcription settings to defaults (simplified)
    */
   const resetTranscriptionSettingsFunc = useCallback(async (): Promise<boolean> => {
     try {
       setIsUpdatingSettings(true);
       clearSettingsError();
 
-      const result = await resetTranscriptionSettings();
+      // Clear local storage
+      localStorage.removeItem(TRANSCRIPTION_SETTINGS_STORAGE_KEY);
+      localStorage.removeItem(TRANSCRIPTION_CACHE_EXPIRY_KEY);
       
-      if (result.isSuccess) {
-        // Clear local storage and refetch from server
-        localStorage.removeItem(TRANSCRIPTION_SETTINGS_STORAGE_KEY);
-        localStorage.removeItem(TRANSCRIPTION_CACHE_EXPIRY_KEY);
-        
-        // Refetch the reset settings
-        await getTranscriptionSettingsFunc();
-        return true;
-      } else {
-        throw new Error(result.message || 'Failed to reset transcription settings');
-      }
+      // Reset to empty settings
+      setTranscriptionSettings(null);
+      return true;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to reset transcription settings';
       setSettingsError(errorMessage);
@@ -409,32 +354,22 @@ export function RuntimeConfigProvider({ children }: { children: ReactNode }) {
     } finally {
       setIsUpdatingSettings(false);
     }
-  }, [getTranscriptionSettingsFunc]);
+  }, []);
 
   /**
-   * Validate transcription settings
+   * Validate transcription settings (simplified)
    */
   const validateSettingsFunc = useCallback(async (
     settings: TranscriptionSettings
   ): Promise<{ isValid: boolean; errors: string[] }> => {
-    try {
-      const result = await validateTranscriptionSettings(settings);
-      
-      if (result.isSuccess && result.data) {
-        return result.data;
-      } else {
-        return {
-          isValid: false,
-          errors: [result.message || 'Validation failed']
-        };
-      }
-    } catch (error) {
-      logger.error('Error validating transcription settings:', error);
-      return {
-        isValid: false,
-        errors: [error instanceof Error ? error.message : 'Validation error']
-      };
+    // Basic validation
+    const errors: string[] = [];
+    
+    if (settings.temperature && (settings.temperature < 0 || settings.temperature > 1)) {
+      errors.push('Temperature must be between 0 and 1');
     }
+    
+    return { isValid: errors.length === 0, errors };
   }, []);
 
   /**
@@ -459,7 +394,8 @@ export function RuntimeConfigProvider({ children }: { children: ReactNode }) {
    */
   const migrateForExistingUserFunc = useCallback(async (): Promise<{ migrated: boolean; changes: string[] }> => {
     try {
-      const result = await migrateTranscriptionSettings();
+      // Migration no longer needed - using simplified settings
+      const result = { isSuccess: true, data: { migrated: false, changes: [] } };
       
       if (result.isSuccess && result.data) {
         if (result.data.migrated) {

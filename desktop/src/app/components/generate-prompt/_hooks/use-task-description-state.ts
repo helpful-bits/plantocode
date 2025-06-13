@@ -162,8 +162,7 @@ export function useTaskDescriptionState({
           selectedText,
           activeSessionId,
           null, // originalJobId
-          projectDirectory,
-          "en" // language
+          projectDirectory
         );
 
         if (result.isSuccess && result.data?.jobId) {

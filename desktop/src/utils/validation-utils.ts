@@ -19,14 +19,9 @@ import { type ActionState } from "@/types";
 export interface SessionData {
   taskDescription?: string;
   searchTerm?: string;
-  titleRegex?: string;
-  contentRegex?: string;
   includedFiles?: string[];
   forceExcludedFiles?: string[];
   projectDirectory?: string;
-  negativeTitleRegex?: string;
-  negativeContentRegex?: string;
-  isRegexActive?: boolean;
   searchSelectedFilesOnly?: boolean;
   [key: string]: unknown;
 }
@@ -795,21 +790,6 @@ export function validateSessionData(sessionData: SessionData): string | undefine
     return "Search term must be a string";
   }
 
-  // Check if titleRegex is provided and is a string
-  if (
-    sessionData.titleRegex !== undefined &&
-    typeof sessionData.titleRegex !== "string"
-  ) {
-    return "Title regex must be a string";
-  }
-
-  // Check if contentRegex is provided and is a string
-  if (
-    sessionData.contentRegex !== undefined &&
-    typeof sessionData.contentRegex !== "string"
-  ) {
-    return "Content regex must be a string";
-  }
 
   // Check if includedFiles is provided and is an array of strings
   if (sessionData.includedFiles !== undefined) {
@@ -851,29 +831,6 @@ export function validateSessionData(sessionData: SessionData): string | undefine
     return "Project directory must be a string";
   }
 
-  // Check negativeTitleRegex if provided
-  if (
-    sessionData.negativeTitleRegex !== undefined &&
-    typeof sessionData.negativeTitleRegex !== "string"
-  ) {
-    return "Negative title regex must be a string";
-  }
-
-  // Check negativeContentRegex if provided
-  if (
-    sessionData.negativeContentRegex !== undefined &&
-    typeof sessionData.negativeContentRegex !== "string"
-  ) {
-    return "Negative content regex must be a string";
-  }
-
-  // Check isRegexActive if provided
-  if (
-    sessionData.isRegexActive !== undefined &&
-    typeof sessionData.isRegexActive !== "boolean"
-  ) {
-    return "Is regex active must be a boolean";
-  }
 
   // Check searchSelectedFilesOnly if provided
   if (

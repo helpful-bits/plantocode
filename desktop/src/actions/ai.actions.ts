@@ -10,6 +10,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { type ActionState, type TaskType } from "@/types";
 import { createErrorState, createSuccessState } from "@/utils/error-handling";
 import { handleActionError } from "@/utils/action-utils";
+import { DRAFT_SESSION_ID } from "@/contexts/session/_hooks/use-session-state";
 
 
 /**
@@ -30,6 +31,11 @@ export async function sendPromptToAiAction(
   }
 
   try {
+    // Handle draft session - this cannot be used for AI actions
+    if (sessionId === DRAFT_SESSION_ID) {
+      return createErrorState("Cannot perform AI actions on unsaved draft session. Please save the session first.");
+    }
+
     // Get session details including project directory
     const sessionDetails = await invoke<{ projectDirectory: string }>("get_session_command", {
       sessionId: sessionId,
@@ -175,6 +181,11 @@ export async function initiateGenericAiStreamAction(params: {
     let finalProjectDirectory = projectDirectory;
     if (!finalProjectDirectory && sessionId) {
       try {
+        // Handle draft session
+        if (sessionId === DRAFT_SESSION_ID) {
+          return createErrorState("Cannot perform AI actions on unsaved draft session. Please save the session first.");
+        }
+
         const sessionDetails = await invoke<{ projectDirectory: string }>("get_session_command", {
           sessionId: sessionId,
         });

@@ -28,16 +28,6 @@ pub async fn create_session_command(app_handle: AppHandle, session_data: CreateS
         }),
         task_description: session_data.task_description,
         search_term: session_data.search_term,
-        title_regex: session_data.title_regex,
-        content_regex: session_data.content_regex,
-        negative_title_regex: session_data.negative_title_regex,
-        negative_content_regex: session_data.negative_content_regex,
-        title_regex_description: session_data.title_regex_description,
-        content_regex_description: session_data.content_regex_description,
-        negative_title_regex_description: session_data.negative_title_regex_description,
-        negative_content_regex_description: session_data.negative_content_regex_description,
-        regex_summary_explanation: None,
-        is_regex_active: session_data.is_regex_active.unwrap_or(true),
         search_selected_files_only: session_data.search_selected_files_only.unwrap_or(false),
         model_used: session_data.model_used.filter(|s| !s.is_empty()),
         created_at: session_data.created_at.unwrap_or(now),
@@ -242,48 +232,6 @@ pub async fn update_session_fields_command(app_handle: AppHandle, session_id: St
             }
         }
 
-        // Handle title_regex
-        if fields.contains_key("titleRegex") {
-            if let Some(title_regex) = fields["titleRegex"].as_str() {
-                updated_session.title_regex = Some(title_regex.to_string());
-            } else if fields["titleRegex"].is_null() {
-                updated_session.title_regex = None;
-            }
-        }
-
-        // Handle content_regex
-        if fields.contains_key("contentRegex") {
-            if let Some(content_regex) = fields["contentRegex"].as_str() {
-                updated_session.content_regex = Some(content_regex.to_string());
-            } else if fields["contentRegex"].is_null() {
-                updated_session.content_regex = None;
-            }
-        }
-
-        // Handle negative_title_regex
-        if fields.contains_key("negativeTitleRegex") {
-            if let Some(negative_title_regex) = fields["negativeTitleRegex"].as_str() {
-                updated_session.negative_title_regex = Some(negative_title_regex.to_string());
-            } else if fields["negativeTitleRegex"].is_null() {
-                updated_session.negative_title_regex = None;
-            }
-        }
-
-        // Handle negative_content_regex
-        if fields.contains_key("negativeContentRegex") {
-            if let Some(negative_content_regex) = fields["negativeContentRegex"].as_str() {
-                updated_session.negative_content_regex = Some(negative_content_regex.to_string());
-            } else if fields["negativeContentRegex"].is_null() {
-                updated_session.negative_content_regex = None;
-            }
-        }
-
-        // Handle is_regex_active
-        if fields.contains_key("isRegexActive") {
-            if let Some(is_regex_active) = fields["isRegexActive"].as_bool() {
-                updated_session.is_regex_active = is_regex_active;
-            }
-        }
 
         // Handle search_selected_files_only
         if fields.contains_key("searchSelectedFilesOnly") {
@@ -332,50 +280,6 @@ pub async fn update_session_fields_command(app_handle: AppHandle, session_id: St
             }
         }
 
-        // Handle title_regex_description
-        if fields.contains_key("titleRegexDescription") {
-            if let Some(title_regex_description) = fields["titleRegexDescription"].as_str() {
-                updated_session.title_regex_description = Some(title_regex_description.to_string());
-            } else if fields["titleRegexDescription"].is_null() {
-                updated_session.title_regex_description = None;
-            }
-        }
-
-        // Handle content_regex_description
-        if fields.contains_key("contentRegexDescription") {
-            if let Some(content_regex_description) = fields["contentRegexDescription"].as_str() {
-                updated_session.content_regex_description = Some(content_regex_description.to_string());
-            } else if fields["contentRegexDescription"].is_null() {
-                updated_session.content_regex_description = None;
-            }
-        }
-
-        // Handle negative_title_regex_description
-        if fields.contains_key("negativeTitleRegexDescription") {
-            if let Some(negative_title_regex_description) = fields["negativeTitleRegexDescription"].as_str() {
-                updated_session.negative_title_regex_description = Some(negative_title_regex_description.to_string());
-            } else if fields["negativeTitleRegexDescription"].is_null() {
-                updated_session.negative_title_regex_description = None;
-            }
-        }
-
-        // Handle negative_content_regex_description
-        if fields.contains_key("negativeContentRegexDescription") {
-            if let Some(negative_content_regex_description) = fields["negativeContentRegexDescription"].as_str() {
-                updated_session.negative_content_regex_description = Some(negative_content_regex_description.to_string());
-            } else if fields["negativeContentRegexDescription"].is_null() {
-                updated_session.negative_content_regex_description = None;
-            }
-        }
-
-        // Handle regex_summary_explanation
-        if fields.contains_key("regexSummaryExplanation") {
-            if let Some(regex_summary_explanation) = fields["regexSummaryExplanation"].as_str() {
-                updated_session.regex_summary_explanation = Some(regex_summary_explanation.to_string());
-            } else if fields["regexSummaryExplanation"].is_null() {
-                updated_session.regex_summary_explanation = None;
-            }
-        }
 
         // Update timestamp
         updated_session.updated_at = chrono::Utc::now().timestamp_millis();

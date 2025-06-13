@@ -448,7 +448,7 @@ mod tests {
         assert_eq!(call_count, 3);
     }
 
-    #[test]
+    #[tokio::test]
     async fn test_circuit_breaker() {
         let circuit_breaker = CircuitBreaker::new(2, Duration::from_millis(100));
         

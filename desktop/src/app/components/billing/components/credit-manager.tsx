@@ -26,7 +26,6 @@ import {
   sanitizeHtml 
 } from '@/utils/validation-utils';
 import { useNotification } from "@/contexts/notification-context";
-import { dispatchCacheInvalidation } from "@/utils/billing-cache";
 import StripeProvider from '../stripe/StripeProvider';
 import PaymentElementForm from '../stripe/PaymentElementForm';
 
@@ -75,7 +74,7 @@ export const CreditManager = ({
       ]);
       
       if (balanceResult.status === 'fulfilled') {
-        setBalance(balanceResult.value.balance || 0);
+        setBalance(balanceResult.value.balance);
         setCurrency(balanceResult.value.currency || 'USD');
       }
       
@@ -169,9 +168,6 @@ export const CreditManager = ({
     setPaymentIntent(null);
     setError(null);
     loadCreditData(); // Refresh balance after purchase
-    
-    // Dispatch cache invalidation to refresh billing data immediately
-    dispatchCacheInvalidation('CREDITS_UPDATED');
   };
 
   // Handle payment error

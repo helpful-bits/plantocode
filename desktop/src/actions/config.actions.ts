@@ -101,7 +101,7 @@ export async function getTranscriptionSettings(): Promise<{
   message?: string;
 }> {
   try {
-    const settings = await invoke<TranscriptionSettings>("get_transcription_settings");
+    const settings = await invoke<TranscriptionSettings>("get_transcription_settings_command");
     return {
       isSuccess: true,
       data: settings,

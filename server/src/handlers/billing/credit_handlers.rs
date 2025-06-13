@@ -1,13 +1,13 @@
 use actix_web::{web, HttpResponse, get, post, HttpRequest, HttpMessage};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use bigdecimal::BigDecimal;
+use bigdecimal::{BigDecimal, ToPrimitive};
 use crate::error::AppError;
 use crate::services::billing_service::BillingService;
 use crate::services::credit_service::CreditService;
 use crate::db::repositories::user_credit_repository::UserCreditRepository;
 use crate::db::repositories::credit_transaction_repository::CreditTransactionRepository;
-use crate::db::repositories::CreditPackRepository;
+use crate::db::repositories::{CreditPackRepository, credit_pack_repository::CreditPack};
 use crate::middleware::secure_auth::UserId;
 use crate::models::auth_jwt_claims::Claims;
 use log::{debug, info};
@@ -22,6 +22,14 @@ pub struct PaginationQuery {
     pub limit: i32,
     #[serde(default = "default_offset")]
     pub offset: i32,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AdminAdjustCreditsRequest {
+    pub user_id: Uuid,
+    pub amount: BigDecimal,
+    pub transaction_type: String,
+    pub description: String,
 }
 
 fn default_limit() -> i32 { 20 }
@@ -78,7 +86,7 @@ pub async fn get_credit_summary(
 }
 
 /// Get available credit packs
-#[get("/credits/packs")]
+#[get("/packs")]
 pub async fn get_credit_packs(
     billing_service: web::Data<BillingService>,
 ) -> Result<HttpResponse, AppError> {
@@ -87,11 +95,15 @@ pub async fn get_credit_packs(
     let credit_pack_repo = crate::db::repositories::CreditPackRepository::new(billing_service.get_db_pool());
     let credit_packs = credit_pack_repo.get_active_packs().await?;
     
-    Ok(HttpResponse::Ok().json(credit_packs))
+    let response = CreditPacksResponse {
+        packs: credit_packs,
+    };
+    
+    Ok(HttpResponse::Ok().json(response))
 }
 
 /// Get user's current credit balance
-#[get("/credits/balance")]
+#[get("/balance")]
 pub async fn get_credit_balance(
     user_id: UserId,
     billing_service: web::Data<BillingService>,
@@ -103,12 +115,14 @@ pub async fn get_credit_balance(
     
     let response = match balance {
         Some(credit) => serde_json::json!({
-            "balance": credit.balance,
+            "userId": user_id.0,
+            "balance": credit.balance.to_f64().unwrap_or(0.0),
             "currency": credit.currency,
             "lastUpdated": credit.updated_at
         }),
         None => serde_json::json!({
-            "balance": 0,
+            "userId": user_id.0,
+            "balance": 0.0,
             "currency": "USD",
             "lastUpdated": null
         })
@@ -219,6 +233,12 @@ pub struct PaymentIntentResponse {
     pub description: String,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreditPacksResponse {
+    pub packs: Vec<CreditPack>,
+}
+
 /// Get user's credit statistics
 pub async fn get_credit_stats(
     user_id: UserId,
@@ -241,27 +261,49 @@ pub async fn get_credit_pack_by_id(
     Ok(HttpResponse::Ok().json(pack))
 }
 
+// Admin-only authorization middleware required
 /// Admin endpoint to adjust credits
 pub async fn admin_adjust_credits(
     req: HttpRequest,
-    payload: web::Json<serde_json::Value>,
+    payload: web::Json<AdminAdjustCreditsRequest>,
     credit_service: web::Data<CreditService>,
 ) -> Result<HttpResponse, AppError> {
     let _claims = req.extensions().get::<Claims>().ok_or_else(|| {
         AppError::Unauthorized("Missing authentication claims".to_string())
     })?.clone();
     
-    // This would be an admin-only endpoint to manually adjust credits
-    // For now, return a placeholder response
+    let request = payload.into_inner();
+    
+    // Adjust credit balance with admin metadata
+    let admin_metadata = serde_json::json!({
+        "admin_adjustment": true,
+        "adjustment_type": if request.amount > BigDecimal::from(0) { "credit" } else { "debit" },
+        "transaction_type": request.transaction_type
+    });
+    
+    let updated_balance = credit_service.adjust_credits(
+        &request.user_id,
+        &request.amount,
+        request.description.clone(),
+        Some(admin_metadata),
+    ).await?;
+    
     Ok(HttpResponse::Ok().json(serde_json::json!({
-        "message": "Admin credit adjustment not yet implemented",
-        "status": "placeholder",
-        "payload": payload.into_inner()
+        "success": true,
+        "adjustment": {
+            "userId": request.user_id,
+            "amount": request.amount.to_string(),
+            "transactionType": request.transaction_type,
+            "description": request.description,
+            "adjustedAt": chrono::Utc::now()
+        },
+        "newBalance": updated_balance.balance,
+        "currency": updated_balance.currency
     })))
 }
 
 /// Create a PaymentIntent for credit purchase (modern embedded payment flow)
-#[post("/payment-intents/credits")]
+#[post("/payment-intent")]
 pub async fn create_credit_payment_intent(
     billing_service: web::Data<BillingService>,
     user_id: UserId,

@@ -25,7 +25,6 @@ import { JobDetailsErrorSection } from "./_components/job-details/JobDetailsErro
 import { JobDetailsMetadataSection } from "./_components/job-details/JobDetailsMetadataSection";
 import { JobDetailsModelConfigSection } from "./_components/job-details/JobDetailsModelConfigSection";
 import { JobDetailsPromptSection } from "./_components/job-details/JobDetailsPromptSection";
-import { JobDetailsSystemPromptSection } from "./_components/job-details/JobDetailsSystemPromptSection";
 import { JobDetailsResponseSection } from "./_components/job-details/JobDetailsResponseSection";
 import { JobDetailsStatusSection } from "./_components/job-details/JobDetailsStatusSection";
 import { JobDetailsTimingSection } from "./_components/job-details/JobDetailsTimingSection";
@@ -319,58 +318,23 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
         return "Regex data not available or not valid JSON.";
       }
 
-      const patternsOutput: string[] = [];
 
-      // Expected structure from RegexPatternGenerationProcessor:
-      // { primaryPattern: { pattern: "...", flags: ["g", "i"] }, alternativePatterns: [...], flags: [...] }
-      // Or fallback structure: { titleRegex: "...", contentRegex: "..." }
+      // ONLY support the clean 4-pattern structure from RegexPatternGenerationProcessor:
+      // { pathPattern: "...", contentPattern: "...", negativePathPattern: "...", negativeContentPattern: "..." }
       
-      // Directly access fields on 'data' which is the parsed JSON payload
-      const primaryPattern = data?.primaryPattern?.pattern;
-      if (primaryPattern && typeof primaryPattern === 'string') {
-        const primaryFlags = data?.primaryPattern?.flags;
-        const flagsStr = Array.isArray(primaryFlags) && primaryFlags.length > 0 ? primaryFlags.join("") : "";
-        patternsOutput.push(`Primary: /${primaryPattern}/${flagsStr}`);
-      }
-
-      const alternatives = data?.alternativePatterns;
-      if (Array.isArray(alternatives)) {
-        alternatives.forEach((alt: any, index: number) => {
-          const altPattern = alt?.pattern;
-          if (altPattern && typeof altPattern === 'string') {
-            const altFlags = alt?.flags;
-            const flagsStr = Array.isArray(altFlags) && altFlags.length > 0 ? altFlags.join("") : "";
-            patternsOutput.push(`Alt ${index + 1}: /${altPattern}/${flagsStr}`);
-          }
-        });
-      }
-
-      // Global flags at the top level
-      const globalFlags = data?.flags;
-      if (Array.isArray(globalFlags) && globalFlags.length > 0) {
-        patternsOutput.push(`Global Flags: ${globalFlags.join("")}`);
-      }
-
-      if (patternsOutput.length > 0) {
-        return patternsOutput.join("\n");
-      }
-
-      // Fallback for old structure (titleRegex, contentRegex, etc.)
-      const regexPatternsTyped = data as Record<string, string>;
-      const fallbackPatterns = [
-        regexPatternsTyped.titleRegex && `Title: ${regexPatternsTyped.titleRegex}`,
-        regexPatternsTyped.contentRegex && `Content: ${regexPatternsTyped.contentRegex}`,
-        regexPatternsTyped.negativeTitleRegex &&
-          `Negative Title: ${regexPatternsTyped.negativeTitleRegex}`,
-        regexPatternsTyped.negativeContentRegex &&
-          `Negative Content: ${regexPatternsTyped.negativeContentRegex}`,
+      // Handle new clean 4-pattern structure (ONLY supported format)
+      const cleanPatterns = [
+        data.pathPattern && `Path: ${data.pathPattern}`,
+        data.contentPattern && `Content: ${data.contentPattern}`,
+        data.negativePathPattern && `Negative Path: ${data.negativePathPattern}`,
+        data.negativeContentPattern && `Negative Content: ${data.negativeContentPattern}`,
       ].filter(Boolean);
 
-      if (fallbackPatterns.length > 0) {
-        return fallbackPatterns.join("\n");
+      if (cleanPatterns.length > 0) {
+        return cleanPatterns.join("\n");
       }
 
-      return "No displayable regex patterns found.";
+      return "No regex patterns found. Expected clean 4-pattern structure.";
     } catch (e) {
       console.error("Error formatting regex patterns:", e);
       return "Regex data not available or not valid JSON.";
@@ -629,7 +593,7 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
 
             {/* Content sections */}
             <div className="space-y-4">
-              <JobDetailsSystemPromptSection />
+              {/* System prompt section has been removed */}
               <JobDetailsPromptSection />
               <JobDetailsResponseSection />
               <JobDetailsMetadataSection />

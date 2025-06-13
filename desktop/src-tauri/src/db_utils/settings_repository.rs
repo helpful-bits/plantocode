@@ -1,9 +1,9 @@
 use std::sync::Arc;
 use sqlx::{sqlite::SqliteRow, Row, SqlitePool};
 use crate::error::{AppError, AppResult};
-use crate::models::{TaskSettings, Settings, SystemPrompt, DefaultSystemPrompt};
-use crate::utils::{get_timestamp, PromptPlaceholders, substitute_placeholders};
-use crate::services::{BackupConfig, SystemPromptCacheService};
+use crate::models::{TaskSettings, Settings};
+use crate::utils::get_timestamp;
+use crate::services::BackupConfig;
 use tauri::{AppHandle, Manager};
 
 #[derive(Debug)]
@@ -239,168 +239,16 @@ impl SettingsRepository {
         self.set_value("backup_config", &json_str).await
     }
     
-    /// Get system prompt for a specific session and task type
-    pub async fn get_system_prompt(&self, session_id: &str, task_type: &str) -> AppResult<Option<SystemPrompt>> {
-        let row = sqlx::query("SELECT * FROM system_prompts WHERE session_id = $1 AND task_type = $2")
-            .bind(session_id)
-            .bind(task_type)
-            .fetch_optional(&*self.pool)
-            .await
-            .map_err(|e| AppError::DatabaseError(format!("Failed to fetch system prompt: {}", e)))?;
-            
-        match row {
-            Some(row) => {
-                let id: String = row.try_get("id")?;
-                let session_id: String = row.try_get("session_id")?;
-                let task_type: String = row.try_get("task_type")?;
-                let system_prompt: String = row.try_get("system_prompt")?;
-                let is_default: i64 = row.try_get("is_default")?;
-                let created_at: i64 = row.try_get("created_at")?;
-                let updated_at: i64 = row.try_get("updated_at")?;
-                
-                Ok(Some(SystemPrompt {
-                    id,
-                    session_id,
-                    task_type,
-                    system_prompt,
-                    is_default: is_default != 0,
-                    created_at,
-                    updated_at,
-                }))
-            },
-            None => Ok(None)
-        }
-    }
+
     
-    /// Set system prompt for a specific session and task type
-    pub async fn set_system_prompt(&self, prompt: &SystemPrompt) -> AppResult<()> {
-        let now = get_timestamp();
-        
-        sqlx::query(
-            r#"
-            INSERT INTO system_prompts (id, session_id, task_type, system_prompt, is_default, created_at, updated_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
-            ON CONFLICT (session_id, task_type) DO UPDATE SET
-                system_prompt = excluded.system_prompt,
-                is_default = excluded.is_default,
-                updated_at = excluded.updated_at
-            "#)
-            .bind(&prompt.id)
-            .bind(&prompt.session_id)
-            .bind(&prompt.task_type)
-            .bind(&prompt.system_prompt)
-            .bind(if prompt.is_default { 1 } else { 0 })
-            .bind(prompt.created_at)
-            .bind(now)
-            .execute(&*self.pool)
-            .await
-            .map_err(|e| AppError::DatabaseError(format!("Failed to set system prompt: {}", e)))?;
-            
-        Ok(())
-    }
     
-    /// Delete system prompt for a specific session and task type
-    pub async fn delete_system_prompt(&self, session_id: &str, task_type: &str) -> AppResult<()> {
-        sqlx::query("DELETE FROM system_prompts WHERE session_id = $1 AND task_type = $2")
-            .bind(session_id)
-            .bind(task_type)
-            .execute(&*self.pool)
-            .await
-            .map_err(|e| AppError::DatabaseError(format!("Failed to delete system prompt: {}", e)))?;
-            
-        Ok(())
-    }
     
-    /// Get default system prompt for a task type from in-memory cache
-    pub async fn get_default_system_prompt(&self, task_type: &str) -> AppResult<Option<DefaultSystemPrompt>> {
-        if let Some(app_handle) = &self.app_handle {
-            if let Some(cache_service) = app_handle.try_state::<Arc<SystemPromptCacheService>>() {
-                return cache_service.get_fresh_system_prompt(task_type).await;
-            }
-        }
-        
-        // Fallback: return None if cache service is not available
-        log::warn!("SystemPromptCacheService not available, returning None for task_type: {}", task_type);
-        Ok(None)
-    }
     
-    /// Get effective system prompt for a task type (custom first, then default)
-    pub async fn get_effective_system_prompt(&self, session_id: &str, task_type: &str) -> AppResult<Option<String>> {
-        // First try to get custom system prompt
-        if let Some(custom_prompt) = self.get_system_prompt(session_id, task_type).await? {
-            return Ok(Some(custom_prompt.system_prompt));
-        }
-        
-        // Fall back to default system prompt from in-memory cache
-        if let Some(default_prompt) = self.get_default_system_prompt(task_type).await? {
-            return Ok(Some(default_prompt.system_prompt));
-        }
-        
-        Ok(None)
-    }
     
-    /// Get all default system prompts from in-memory cache
-    pub async fn get_all_default_system_prompts(&self) -> AppResult<Vec<DefaultSystemPrompt>> {
-        if let Some(app_handle) = &self.app_handle {
-            if let Some(cache_service) = app_handle.try_state::<Arc<SystemPromptCacheService>>() {
-                // Access the cache directly to get all prompts
-                let cache = cache_service.cache.read().await;
-                let prompts: Vec<DefaultSystemPrompt> = cache.values()
-                    .map(|entry| entry.prompt.clone())
-                    .collect();
-                return Ok(prompts);
-            }
-        }
-        
-        // Fallback: return empty Vec if cache service is not available
-        log::warn!("SystemPromptCacheService not available, returning empty Vec for all default system prompts");
-        Ok(Vec::new())
-    }
     
-    /// Reset system prompt to default for a session and task type
-    pub async fn reset_system_prompt_to_default(&self, session_id: &str, task_type: &str) -> AppResult<()> {
-        // Delete custom prompt to fall back to default
-        self.delete_system_prompt(session_id, task_type).await
-    }
+
     
-    /// Get effective system prompt with placeholder substitution
-    /// This is the main method that processors should use to get system prompts
-    pub async fn get_effective_system_prompt_with_substitution(
-        &self, 
-        session_id: &str, 
-        task_type: &str,
-        placeholders: &PromptPlaceholders
-    ) -> AppResult<Option<(String, String)>> {
-        // Get the prompt record (custom first, then default from in-memory cache) and its ID
-        let (template, system_prompt_id) = if let Some(custom_prompt) = self.get_system_prompt(session_id, task_type).await? {
-            (custom_prompt.system_prompt, custom_prompt.id)
-        } else if let Some(default_prompt) = self.get_default_system_prompt(task_type).await? {
-            (default_prompt.system_prompt, default_prompt.id)
-        } else {
-            return Ok(None);
-        };
-        
-        // Apply placeholder substitution
-        let substituted_prompt = substitute_placeholders(&template, placeholders)?;
-        
-        Ok(Some((substituted_prompt, system_prompt_id)))
-    }
     
-    /// Get system prompt template for display in UI (with placeholders intact)
-    pub async fn get_system_prompt_template_for_display(
-        &self, 
-        session_id: &str, 
-        task_type: &str
-    ) -> AppResult<Option<String>> {
-        // Get the template (custom first, then default from in-memory cache)
-        if let Some(custom_prompt) = self.get_system_prompt(session_id, task_type).await? {
-            Ok(Some(crate::utils::prompt_template_utils::get_template_for_display(&custom_prompt.system_prompt)))
-        } else if let Some(default_prompt) = self.get_default_system_prompt(task_type).await? {
-            Ok(Some(crate::utils::prompt_template_utils::get_template_for_display(&default_prompt.system_prompt)))
-        } else {
-            Ok(None)
-        }
-    }
 
     /// Get workflow setting value
     pub async fn get_workflow_setting(&self, workflow_name: &str, setting_key: &str) -> AppResult<Option<String>> {
@@ -443,16 +291,4 @@ impl SettingsRepository {
         Ok(settings)
     }
     
-    /// Update a default system prompt - NOT SUPPORTED (server is source of truth)
-    /// Default system prompts should only be updated on the server
-    pub async fn update_default_system_prompt(
-        &self, 
-        _task_type: &str, 
-        _new_prompt_content: &str, 
-        _new_description: Option<&str>
-    ) -> AppResult<()> {
-        Err(AppError::ConfigError(
-            "Default system prompts cannot be updated from desktop app. Server is the source of truth.".to_string()
-        ))
-    }
 }

@@ -8,7 +8,7 @@ import {
   useRef,
 } from "react";
 
-import { useVoiceMediaState, useBatchTranscriptionProcessor } from "@/hooks/use-voice-recording";
+import { useVoiceMediaState, useAudioInputDevices } from "@/hooks/use-voice-recording";
 import {
   Button,
   Select,
@@ -17,16 +17,15 @@ import {
   SelectTrigger,
   SelectValue,
   Label,
-  Badge,
-  Alert,
 } from "@/ui";
 import { useNotification } from "@/contexts/notification-context";
 import { getErrorMessage } from "@/utils/error-handling";
-import { useProject } from "@/contexts/project-context";
 import { getModelSettingsForProject } from "@/actions/project-settings.actions";
+import { getSessionAction } from "@/actions/session/crud.actions";
+import { TaskModelSettings } from "@/types";
 
+import { transcribeAudioBlobAction } from "@/actions/voice-transcription";
 import { useCorePromptContext } from "../_contexts/core-prompt-context";
-
 import { type TaskDescriptionHandle } from "./task-description";
 
 interface VoiceTranscriptionProps {
@@ -59,66 +58,75 @@ const VoiceTranscription = function VoiceTranscription({
   disabled = false,
 }: VoiceTranscriptionProps) {
   const [languageCode, setLanguageCode] = useState<string>("en");
-  const [selectedAudioInputId, setSelectedAudioInputId] = useState<string>("default");
   const [isRecording, setIsRecording] = useState(false);
-  const [availableInputs, setAvailableInputs] = useState<MediaDeviceInfo[]>([]);
+  const [isTranscribing, setIsTranscribing] = useState(false);
   const [recordingError, setRecordingError] = useState<string | null>(null);
+  const [recordingDuration, setRecordingDuration] = useState(0);
+  const [transcriptionSettings, setTranscriptionSettings] = useState<TaskModelSettings | null>(null);
   
-  // Transcription settings from project configuration
-  const [transcriptionSettings, setTranscriptionSettings] = useState({
-    transcriptionPrompt: '',
-    transcriptionModel: 'whisper-large-v3',
-    languageCode: 'en',
-    temperature: 0.0,
-  });
-  const [settingsLoaded, setSettingsLoaded] = useState(false);
-  const [settingsError, setSettingsError] = useState<string | null>(null);
 
   // Refs for cleanup and tracking
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const isMountedRef = useRef(true);
-  const previousTextRef = useRef("");
+  const recordingStartTimeRef = useRef<number>(0);
+  const durationIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Get core context
   const {
     state: { activeSessionId },
   } = useCorePromptContext();
   
+  
   const { showNotification } = useNotification();
-  const { projectDirectory } = useProject();
 
-  // Load transcription settings from project configuration
+  // Audio input devices management
+  const {
+    availableAudioInputs,
+    selectedAudioInputId,
+    selectAudioInput,
+    requestPermissionAndRefreshDevices,
+  } = useAudioInputDevices();
+
+  // Fetch transcription settings when activeSessionId changes
   useEffect(() => {
-    const loadTranscriptionSettings = async () => {
-      if (!projectDirectory) return;
-      
+    const fetchTranscriptionSettings = async () => {
+      if (!activeSessionId) {
+        setTranscriptionSettings(null);
+        return;
+      }
+
       try {
-        setSettingsError(null);
-        const result = await getModelSettingsForProject(projectDirectory);
-        
-        if (result.isSuccess && result.data?.voiceTranscription) {
-          const voiceSettings = result.data.voiceTranscription;
-          const newSettings = {
-            transcriptionPrompt: voiceSettings.transcriptionPrompt || '',
-            transcriptionModel: voiceSettings.transcriptionModel || 'whisper-large-v3',
-            languageCode: voiceSettings.languageCode || 'en',
-            temperature: voiceSettings.temperature ?? 0.0,
-          };
-          
-          setTranscriptionSettings(newSettings);
-          setLanguageCode(newSettings.languageCode);
+        const sessionResult = await getSessionAction(activeSessionId);
+        if (sessionResult.isSuccess && sessionResult.data?.projectDirectory) {
+          const settingsResult = await getModelSettingsForProject(sessionResult.data.projectDirectory);
+          if (settingsResult.isSuccess && settingsResult.data?.voiceTranscription) {
+            setTranscriptionSettings(settingsResult.data.voiceTranscription);
+            if (settingsResult.data.voiceTranscription.languageCode) {
+              setLanguageCode(settingsResult.data.voiceTranscription.languageCode);
+            }
+          }
         }
-        setSettingsLoaded(true);
       } catch (error) {
-        console.error('Failed to load transcription settings:', error);
-        setSettingsError('Failed to load transcription settings from project configuration');
-        setSettingsLoaded(true);
+        console.warn('[VoiceTranscription] Failed to fetch transcription settings:', error);
       }
     };
 
-    loadTranscriptionSettings();
-  }, [projectDirectory]);
+    fetchTranscriptionSettings();
+  }, [activeSessionId]);
+
+  // Request audio permissions and enumerate devices on component mount
+  useEffect(() => {
+    // Check and request permissions immediately when component loads
+    const initializeAudioDevices = async () => {
+      try {
+        await requestPermissionAndRefreshDevices();
+      } catch (error) {
+        console.warn('[VoiceTranscription] Failed to initialize audio devices:', error);
+      }
+    };
+
+    initializeAudioDevices();
+  }, [requestPermissionAndRefreshDevices]);
 
   // Handle errors
   const handleError = useCallback((error: string) => {
@@ -140,90 +148,83 @@ const VoiceTranscription = function VoiceTranscription({
     selectedAudioInputId,
   });
 
-  // Progressive text display state
-  const [displayText, setDisplayText] = useState("");
+  // Handle transcription of completed audio blob
+  const handleTranscription = useCallback(async (audioBlob: Blob) => {
+    if (!activeSessionId) {
+      handleError("No active session for transcription");
+      return;
+    }
 
-  const {
-    processAudioChunk,
-    isProcessing: isTranscribing,
-    resetProcessor,
-    getStats,
-    cleanup: cleanupProcessor,
-  } = useBatchTranscriptionProcessor({
-    sessionId: activeSessionId || "",
-    languageCode: transcriptionSettings.languageCode === "en" ? undefined : transcriptionSettings.languageCode,
-    transcriptionPrompt: transcriptionSettings.transcriptionPrompt,
-    transcriptionModel: transcriptionSettings.transcriptionModel,
-    temperature: transcriptionSettings.temperature,
-    onTextUpdate: (fullText: string) => {
-      if (!isMountedRef.current) return;
-      
-      const trimmedText = fullText.trim();
-      setDisplayText(trimmedText);
-      
-      // Update textarea progressively if available
-      if (textareaRef?.current && trimmedText) {
-        try {
-          const previousText = previousTextRef.current;
-          
-          if (previousText && trimmedText.startsWith(previousText)) {
-            const newPart = trimmedText.slice(previousText.length).trim();
-            if (newPart) {
-              textareaRef.current.appendText(" " + newPart);
-            }
-          } else if (previousText) {
-            textareaRef.current.replaceText(previousText, trimmedText);
-          } else {
-            textareaRef.current.insertTextAtCursorPosition(trimmedText);
-          }
-          
-          previousTextRef.current = trimmedText;
-          onInteraction?.();
-        } catch (error) {
+    setIsTranscribing(true);
+    
+    try {
+      const result = await transcribeAudioBlobAction(
+        audioBlob,
+        activeSessionId,
+        languageCode,
+        undefined,
+        transcriptionSettings?.temperature ?? 0.0,
+        transcriptionSettings?.model
+      );
+
+      if (result.isSuccess && result.data?.text) {
+        const transcribedText = result.data.text.trim();
+        
+        if (textareaRef?.current && transcribedText) {
           try {
-            onTranscribed(trimmedText);
+            textareaRef.current.insertTextAtCursorPosition(transcribedText);
             onInteraction?.();
-          } catch (fallbackError) {}
+          } catch (error) {
+            onTranscribed(transcribedText);
+            onInteraction?.();
+          }
+        } else {
+          onTranscribed(transcribedText);
+          onInteraction?.();
         }
+
+        showNotification({
+          title: "Transcription Complete",
+          message: `Successfully transcribed ${Math.round(recordingDuration)}s of audio`,
+          type: "success",
+        });
       } else {
-        onTranscribed(trimmedText);
-        onInteraction?.();
+        handleError(result.message || "Transcription failed");
       }
-    },
-    onChunkComplete: () => {
-      if (!isMountedRef.current) return;
-    },
-    onError: handleError,
-  });
+    } catch (error) {
+      handleError(getErrorMessage(error, "transcription"));
+    } finally {
+      setIsTranscribing(false);
+    }
+  }, [activeSessionId, languageCode, transcriptionSettings, textareaRef, onTranscribed, onInteraction, recordingDuration, showNotification, handleError]);
 
-  // Load available audio devices
+
+  // Duration tracking
   useEffect(() => {
-    const loadDevices = async () => {
-      try {
-        const devices = await navigator.mediaDevices.enumerateDevices();
-        const audioInputs = devices.filter(device => device.kind === 'audioinput');
-        setAvailableInputs(audioInputs);
-      } catch (error) {}
-    };
+    if (isRecording) {
+      recordingStartTimeRef.current = Date.now();
+      setRecordingDuration(0);
+      
+      durationIntervalRef.current = setInterval(() => {
+        setRecordingDuration((Date.now() - recordingStartTimeRef.current) / 1000);
+      }, 1000);
+    } else {
+      if (durationIntervalRef.current) {
+        clearInterval(durationIntervalRef.current);
+        durationIntervalRef.current = null;
+      }
+    }
 
-    loadDevices();
-    
-    // Listen for device changes
-    navigator.mediaDevices.addEventListener('devicechange', loadDevices);
-    
     return () => {
-      navigator.mediaDevices.removeEventListener('devicechange', loadDevices);
+      if (durationIntervalRef.current) {
+        clearInterval(durationIntervalRef.current);
+      }
     };
-  }, []);
+  }, [isRecording]);
 
   // Cleanup on unmount
   useEffect(() => {
-    isMountedRef.current = true;
-    
     return () => {
-      isMountedRef.current = false;
-      cleanupProcessor();
-      
       // Stop any active recording
       if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
         try {
@@ -235,26 +236,26 @@ const VoiceTranscription = function VoiceTranscription({
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(track => track.stop());
       }
+
+      // Clear duration interval
+      if (durationIntervalRef.current) {
+        clearInterval(durationIntervalRef.current);
+      }
     };
-  }, [cleanupProcessor]);
+  }, []);
 
   // Handle recording start
   const startRecording = useCallback(async () => {
-    if (!activeSessionId || disabled || isRecording) {
+    if (!activeSessionId || disabled || isRecording || isTranscribing) {
       return;
     }
 
     try {
       setRecordingError(null);
-      setDisplayText("");
-      previousTextRef.current = "";
-      resetProcessor();
 
-      const media = await startMediaRecording((chunk: Blob) => {
-        processAudioChunk(chunk).catch((error) => {
-          console.error('[VoiceTranscription] processAudioChunk error:', error);
-          handleError(getErrorMessage(error, "transcription"));
-        });
+      const media = await startMediaRecording((audioBlob: Blob) => {
+        // This callback is called when recording stops
+        handleTranscription(audioBlob);
       });
 
       if (media) {
@@ -266,7 +267,7 @@ const VoiceTranscription = function VoiceTranscription({
       const errorMessage = getErrorMessage(error, "transcription");
       handleError(errorMessage);
     }
-  }, [activeSessionId, disabled, isRecording, startMediaRecording, processAudioChunk, resetProcessor, handleError]);
+  }, [activeSessionId, disabled, isRecording, isTranscribing, startMediaRecording, handleTranscription, handleError]);
 
   // Handle recording stop
   const stopRecording = useCallback(async () => {
@@ -277,6 +278,7 @@ const VoiceTranscription = function VoiceTranscription({
     try {
       await stopMediaRecording();
       setIsRecording(false);
+      // Note: handleTranscription will be called automatically via the onComplete callback
     } catch (error) {
       const errorMessage = getErrorMessage(error, "transcription");
       handleError(errorMessage);
@@ -285,7 +287,7 @@ const VoiceTranscription = function VoiceTranscription({
 
   // Toggle recording
   const handleToggleRecording = useCallback(async () => {
-    if (disabled || !activeSessionId) {
+    if (disabled || !activeSessionId || isTranscribing) {
       if (!activeSessionId) {
         showNotification({
           title: "Session Error",
@@ -301,9 +303,14 @@ const VoiceTranscription = function VoiceTranscription({
     } else {
       await startRecording();
     }
-  }, [disabled, activeSessionId, isRecording, stopRecording, startRecording, showNotification]);
+  }, [disabled, activeSessionId, isRecording, isTranscribing, stopRecording, startRecording, showNotification]);
 
-  const stats = getStats();
+  // Format duration for display
+  const formatDuration = (seconds: number): string => {
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
 
   return (
     <div className="inline-flex flex-col gap-3 border border-border/60 rounded-xl p-6 bg-card/95 backdrop-blur-sm shadow-soft max-w-fit">
@@ -314,7 +321,7 @@ const VoiceTranscription = function VoiceTranscription({
         <Button
           type="button"
           onClick={handleToggleRecording}
-          disabled={!activeSessionId || disabled}
+          disabled={!activeSessionId || disabled || isTranscribing}
           variant={isRecording ? "destructive" : "secondary"}
           size="sm"
           className="min-w-[140px]"
@@ -323,6 +330,8 @@ const VoiceTranscription = function VoiceTranscription({
               ? "Feature disabled during session switching"
               : !activeSessionId
                 ? "Please select or create a session to enable voice recording"
+                : isTranscribing
+                  ? "Please wait for transcription to complete"
                 : undefined
           }
         >
@@ -334,7 +343,7 @@ const VoiceTranscription = function VoiceTranscription({
           ) : isTranscribing ? (
             <>
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              <span>Processing...</span>
+              <span>Transcribing...</span>
             </>
           ) : (
             <>
@@ -347,47 +356,25 @@ const VoiceTranscription = function VoiceTranscription({
 
       <div className="space-y-2">
         <p className="text-xs text-muted-foreground text-balance">
-          Record your task description using your microphone. AI transcribes your speech in real-time 
-          as you speak, with text appearing immediately every 5 seconds.
+          Record your task description using your microphone. Click stop when finished, and AI will transcribe 
+          your complete recording. Maximum recording time: 10 minutes.
         </p>
         
-        {settingsLoaded && transcriptionSettings.transcriptionPrompt && (
-          <div className="flex items-center gap-2">
-            <Badge variant="secondary" className="text-xs">
-              Custom Prompt Active
-            </Badge>
-            <span className="text-xs text-muted-foreground">
-              Model: {transcriptionSettings.transcriptionModel} • Temp: {transcriptionSettings.temperature.toFixed(2)}
-            </span>
-          </div>
-        )}
-        
-        {settingsError && (
-          <Alert variant="destructive" className="mt-2">
-            <p className="text-xs">{settingsError}</p>
-          </Alert>
-        )}
       </div>
-      {(isRecording || stats.totalChunks > 0) && (
+      {(isRecording || isTranscribing) && (
         <div className="text-xs text-muted-foreground bg-muted/50 rounded-md p-2">
-          <div className="flex gap-4">
-            <span>Chunks: {stats.totalChunks}</span>
-            <span>Completed: {stats.completedChunks}</span>
-            {stats.failedChunks > 0 && (
-              <span className="text-destructive">Failed: {stats.failedChunks}</span>
-            )}
+          <div className="flex gap-4 items-center">
             {isRecording && (
-              <span className="text-primary">● Recording</span>
+              <>
+                <span className="text-primary">● Recording</span>
+                <span>Duration: {formatDuration(recordingDuration)}</span>
+                <span>Max: 10:00</span>
+              </>
             )}
-            {stats.totalChunks > 0 && (
-              <span>Success: {Math.round(stats.successRate)}%</span>
+            {isTranscribing && (
+              <span className="text-primary">🎵 Transcribing audio...</span>
             )}
           </div>
-          {displayText && (
-            <div className="mt-1 text-xs text-foreground/80 italic truncate">
-              Current: "{displayText.slice(-60)}..."
-            </div>
-          )}
         </div>
       )}
 
@@ -432,13 +419,13 @@ const VoiceTranscription = function VoiceTranscription({
             <div className="w-[280px]">
               <Select
                 value={selectedAudioInputId}
-                onValueChange={setSelectedAudioInputId}
+                onValueChange={selectAudioInput}
                 disabled={
                   isRecording ||
                   isTranscribing ||
                   !activeSessionId ||
                   disabled ||
-                  availableInputs.length === 0
+                  availableAudioInputs.length === 0
                 }
               >
                 <SelectTrigger id="microphone-select" className="w-full h-9">
@@ -446,7 +433,7 @@ const VoiceTranscription = function VoiceTranscription({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="default">System Default</SelectItem>
-                  {availableInputs.map((device, index) => (
+                  {availableAudioInputs.map((device, index) => (
                     <SelectItem key={device.deviceId} value={device.deviceId || `device-${index}`}>
                       {device.label || `Microphone ${index + 1}`}
                     </SelectItem>
@@ -458,8 +445,8 @@ const VoiceTranscription = function VoiceTranscription({
           <p className="text-xs text-muted-foreground mt-1 text-balance">
             {activeAudioInputLabel 
               ? `Using: ${activeAudioInputLabel}`
-              : availableInputs.length > 0 
-                ? "Start recording to identify device"
+              : availableAudioInputs.length > 0 
+                ? "Devices available - select one to use"
                 : "No microphone found. Check system settings."
             }
           </p>

@@ -25,11 +25,6 @@ export const CreditManagerAsync = lazy(() =>
   }))
 );
 
-export const SpendingAlertManagerAsync = lazy(() => 
-  import('./components/spending-alert-manager').then(module => ({ 
-    default: module.SpendingAlertManager 
-  }))
-);
 
 export const SubscriptionModalAsync = lazy(() => 
   import('./components/subscription-modal').then(module => ({ 
@@ -72,7 +67,6 @@ export function withBillingSuspense<T extends object>(
 export const PaymentMethodsManager = withBillingSuspense(PaymentMethodsManagerAsync);
 export const SubscriptionReactivationModal = withBillingSuspense(SubscriptionReactivationModalAsync);
 export const CreditManager = withBillingSuspense(CreditManagerAsync);
-export const SpendingAlertManager = withBillingSuspense(SpendingAlertManagerAsync);
 export const SubscriptionModal = withBillingSuspense(SubscriptionModalAsync);
 export const InvoiceHistoryManager = withBillingSuspense(InvoiceHistoryManagerAsync);
 

@@ -15,18 +15,17 @@ import {
   Slider,
   Card,
   CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
   Input,
   Button,
   Badge,
   Alert,
   VirtualizedCodeViewer,
-  Tooltip,
 } from "@/ui";
-import { useSystemPrompt, useDefaultSystemPrompts } from "@/hooks/use-system-prompts";
-import { extractPlaceholders } from "@/actions/system-prompts.actions";
+import { useProjectSystemPrompt } from "@/hooks/use-project-system-prompts";
+import {
+  getServerDefaultTaskModelSettings,
+  resetProjectSettingToDefault,
+} from "@/actions/project-settings.actions";
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import SettingsEnhancementEngine from "./settings-enhancement-engine";
 
@@ -37,6 +36,8 @@ interface TaskModelSettingsProps {
   availableModels: ModelInfo[] | null;
   onSettingsChange: (settings: TaskSettings) => void;
   sessionId?: string;
+  projectDirectory?: string;
+  onRefresh?: () => void;
 }
 
 interface ValidationResult {
@@ -45,70 +46,80 @@ interface ValidationResult {
   warnings: string[];
 }
 
-interface AutoSaveState {
-  isDirty: boolean;
-  isSaving: boolean;
-  lastSaved: Date | null;
-  error: string | null;
-}
 
 interface SystemPromptEditorProps {
-  sessionId?: string;
+  projectDirectory?: string;
   taskType: TaskType;
   onSave?: () => void;
 }
 
-function SystemPromptEditor({ sessionId, taskType, onSave }: SystemPromptEditorProps) {
+function SystemPromptEditor({ projectDirectory, taskType, onSave }: SystemPromptEditorProps) {
   // Always call hooks first, before any conditional logic
-  const { prompt, loading, error, isCustom, update, reset, validate } = useSystemPrompt({
-    sessionId: sessionId || '',
+  const { prompt, loading, error, isCustom, update, reset, validate } = useProjectSystemPrompt({
+    projectDirectory: projectDirectory || '',
     taskType: taskType as TaskTypeSupportingSystemPrompts,
-    autoLoad: !!sessionId && supportsSystemPrompts(taskType)
+    autoLoad: !!projectDirectory && supportsSystemPrompts(taskType)
   });
   
   const isSupported = supportsSystemPrompts(taskType);
-  const { getDefault } = useDefaultSystemPrompts();
+  // System prompts are now project-based rather than session-based
   
   const [editedPrompt, setEditedPrompt] = useState('');
   const [validationError, setValidationError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
-  const [showDefaultPrompt, setShowDefaultPrompt] = useState(false);
+  const [serverDefault, setServerDefault] = useState<{systemPrompt: string, description?: string} | null>(null);
+  const saveTimeoutRef = useRef<number | null>(null);
 
-  const defaultPrompt = getDefault(taskType as TaskTypeSupportingSystemPrompts);
-  const currentPrompt = prompt?.systemPrompt || '';
+  // For project-based system prompts, we need to distinguish between:
+  // - Custom prompts (stored at project level)
+  // - Default prompts (from server, shown when no custom prompt exists)
+  // The hook handles this logic: prompt contains either custom or default content
+  const currentPrompt = prompt || '';
+  const defaultPrompt = serverDefault;
   
+  // Load server default when component mounts
+  useEffect(() => {
+    if (!isCustom && prompt) {
+      // When not custom, the prompt from the hook is the server default
+      setServerDefault({
+        systemPrompt: prompt,
+        description: `Default system prompt for ${TaskTypeDetails[taskType]?.displayName || taskType}`
+      });
+    }
+  }, [isCustom, prompt, taskType]);
+
   // All hooks must be called before any conditional returns
   const handlePromptChange = useCallback((value: string) => {
     setEditedPrompt(value);
     setValidationError(null);
-  }, []);
-
-  const handleSave = useCallback(async () => {
-    const promptToSave = editedPrompt || currentPrompt;
-    const validation = validate(promptToSave);
-    if (!validation.isValid) {
-      setValidationError(validation.errors.join(', '));
-      return;
+    
+    // Clear existing timeout
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
     }
+    
+    // Debounced auto-save after 1 second of no typing
+    saveTimeoutRef.current = window.setTimeout(async () => {
+      const validation = validate(value);
+      if (!validation.isValid) {
+        setValidationError(validation.errors.join(', '));
+        return;
+      }
 
-    setIsSaving(true);
-    setValidationError(null);
+      setIsSaving(true);
+      try {
+        await update(value);
+        onSave?.();
+      } catch (err) {
+        setValidationError(err instanceof Error ? err.message : 'Failed to save prompt');
+      } finally {
+        setIsSaving(false);
+      }
+    }, 1000);
+  }, [validate, update, onSave]);
 
-    try {
-      await update(promptToSave);
-      onSave?.();
-    } catch (err) {
-      setValidationError(err instanceof Error ? err.message : 'Failed to save prompt');
-    } finally {
-      setIsSaving(false);
-    }
-  }, [editedPrompt, currentPrompt, validate, update, onSave]);
 
   const handleReset = useCallback(async () => {
-    if (!confirm('Are you sure you want to reset this prompt to the default? This will remove your custom prompt.')) {
-      return;
-    }
-
     setIsSaving(true);
     try {
       await reset();
@@ -121,8 +132,19 @@ function SystemPromptEditor({ sessionId, taskType, onSave }: SystemPromptEditorP
     }
   }, [reset, onSave]);
 
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, []);
+
   const displayedPrompt = editedPrompt || currentPrompt;
-  const placeholders = extractPlaceholders(displayedPrompt);
+  // Extract placeholders from the current prompt template
+  const placeholders: string[] = currentPrompt ? 
+    (currentPrompt.match(/\{\{([A-Z_]+)\}\}/g) || []).map(match => match.slice(2, -2)) : [];
   
   // Handle unsupported task types after all hooks are called
   if (!isSupported) {
@@ -135,11 +157,11 @@ function SystemPromptEditor({ sessionId, taskType, onSave }: SystemPromptEditorP
     );
   }
 
-  if (!sessionId) {
+  if (!projectDirectory) {
     return (
       <div className="mt-6 p-4 bg-muted/30 rounded-lg text-center">
         <p className="text-sm text-muted-foreground">
-          No active session. Please create or select a session to manage system prompts.
+          No project directory available. Please open a project to manage system prompts.
         </p>
       </div>
     );
@@ -157,33 +179,53 @@ function SystemPromptEditor({ sessionId, taskType, onSave }: SystemPromptEditorP
   }
 
   return (
-    <div className="mt-6 space-y-4">
-      <div className="border-t pt-6">
+    <div className="space-y-4">
+      <div>
         <div className="flex items-center justify-between mb-4">
           <div>
             <h4 className="text-sm font-medium">System Prompt</h4>
-            <p className="text-xs text-muted-foreground">{defaultPrompt?.description}</p>
+            <p className="text-xs text-muted-foreground">{defaultPrompt?.description || 'Default system prompt'}</p>
           </div>
-          <div className="flex items-center gap-2">
-            {isCustom ? (
-              <Badge variant="default" className="text-xs bg-blue-500/10 text-blue-600 border-blue-200">
-                Project Custom
-              </Badge>
-            ) : (
-              <Badge variant="outline" className="text-xs">
-                System Default
-              </Badge>
-            )}
-            {defaultPrompt && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setShowDefaultPrompt(!showDefaultPrompt)}
-                className="text-xs h-6 px-2 cursor-pointer"
-              >
-                {showDefaultPrompt ? 'Hide' : 'View'} Default
-              </Button>
-            )}
+          <div className="flex items-center border border-border/50 rounded-lg overflow-hidden">
+            <Button
+              variant={!isCustom ? "filter-active" : "filter"}
+              size="xs"
+              className="px-3 h-7 text-xs"
+              onClick={() => {
+                if (isCustom) {
+                  handleReset();
+                }
+              }}
+            >
+              Default
+            </Button>
+            <div className="w-[1px] h-5 bg-border/40" />
+            <Button
+              variant={isCustom ? "filter-active" : "filter"}
+              size="xs"
+              className="px-3 h-7 text-xs"
+              onClick={async () => {
+                if (!isCustom) {
+                  setIsSaving(true);
+                  setValidationError(null);
+                  
+                  try {
+                    // Create new custom prompt from default or start with empty prompt
+                    // For voice transcription and other tasks without defaults, start with empty string
+                    const promptToSave = defaultPrompt?.systemPrompt || '';
+                    await update(promptToSave);
+                    setEditedPrompt('');
+                  } catch (err) {
+                    setValidationError(err instanceof Error ? err.message : 'Failed to activate custom prompt');
+                  } finally {
+                    setIsSaving(false);
+                  }
+                }
+              }}
+              disabled={isSaving}
+            >
+              Custom
+            </Button>
           </div>
         </div>
 
@@ -200,50 +242,19 @@ function SystemPromptEditor({ sessionId, taskType, onSave }: SystemPromptEditorP
         )}
 
         <div className="space-y-3">
-          {showDefaultPrompt && defaultPrompt && (
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label className="text-xs font-medium text-muted-foreground">Default Template</Label>
-                <Badge variant="outline" className="text-xs">Read-only</Badge>
-              </div>
-              <VirtualizedCodeViewer
-                content={defaultPrompt.systemPrompt || ''}
-                height="250px"
-                showCopy={true}
-                copyText="Copy Default"
-                showContentSize={true}
-                readOnly={true}
-                placeholder="No default prompt available"
-                language="markdown"
-                className="bg-muted/30 border-muted"
-                virtualizationThreshold={5000}
-              />
-            </div>
-          )}
-          
           <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label className="text-xs font-medium">
-                {isCustom ? 'Custom Prompt' : 'Active Prompt (Default)'}
-              </Label>
-              {isCustom && (
-                <Badge variant="secondary" className="text-xs">
-                  Modified from default
-                </Badge>
-              )}
-            </div>
             <VirtualizedCodeViewer
-              content={displayedPrompt}
+              content={isCustom ? displayedPrompt : (defaultPrompt?.systemPrompt || '')}
               height="400px"
               showCopy={true}
               copyText="Copy Prompt"
               showContentSize={true}
-              readOnly={false}
-              placeholder="Enter your custom system prompt..."
+              readOnly={!isCustom}
+              placeholder={isCustom ? "Enter your custom system prompt..." : "Default system prompt was not defined"}
               language="markdown"
-              onChange={(value) => handlePromptChange(value || '')}
+              onChange={isCustom ? (value) => handlePromptChange(value || '') : undefined}
               virtualizationThreshold={10000}
-              className={isCustom ? "border-primary/40" : undefined}
+              className={isCustom ? "border-primary/40" : "bg-muted/30 border-muted"}
             />
           </div>
 
@@ -263,8 +274,8 @@ function SystemPromptEditor({ sessionId, taskType, onSave }: SystemPromptEditorP
             </div>
           )}
 
-          <div className="flex justify-end gap-2">
-            {isCustom && (
+          {isCustom && (
+            <div className="flex justify-end">
               <Button 
                 variant="outline" 
                 size="sm"
@@ -274,16 +285,8 @@ function SystemPromptEditor({ sessionId, taskType, onSave }: SystemPromptEditorP
               >
                 Reset to Default
               </Button>
-            )}
-            <Button 
-              size="sm"
-              onClick={handleSave}
-              disabled={isSaving}
-              className="cursor-pointer"
-            >
-              {isSaving ? 'Saving...' : 'Save'}
-            </Button>
-          </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -306,7 +309,6 @@ const taskSettingsKeyToTaskType: Record<keyof TaskSettings, TaskType> = {
   taskEnhancement: "task_enhancement",
   genericLlmStream: "generic_llm_stream",
   regexPatternGeneration: "regex_pattern_generation",
-  regexSummaryGeneration: "regex_summary_generation",
   streaming: "streaming",
   unknown: "unknown",
 };
@@ -372,446 +374,17 @@ const TRANSCRIPTION_LANGUAGES = [
   { code: 'hi', name: 'Hindi', nativeName: 'हिन्दी' },
 ] as const;
 
-// Transcription models are now dynamically fetched from server via RuntimeAIConfig.availableModels
-// No hardcoded array needed - we filter by provider type "whisper"
-
-interface TranscriptionSpecificSettingsProps {
-  settings: any;
-  taskSettingsKey: keyof TaskSettings;
-  onSettingsChange: (settings: TaskSettings) => void;
-  taskSettings: TaskSettings;
-  availableModels: ModelInfo[] | null;
-}
-
-function TranscriptionSpecificSettings({
-  settings,
-  taskSettingsKey,
-  onSettingsChange,
-  taskSettings,
-  availableModels,
-}: TranscriptionSpecificSettingsProps) {
-  const [promptPreview, setPromptPreview] = useState('');
-  const [showPromptModal, setShowPromptModal] = useState(false);
-  const [validationErrors, setValidationErrors] = useState<string[]>([]);
-  const [previewSettings, setPreviewSettings] = useState<any>(null);
-  const [isTestingPrompt, setIsTestingPrompt] = useState(false);
-  const [promptTestResult, setPromptTestResult] = useState<string | null>(null);
-
-  const currentLanguage = settings.languageCode || 'en';
-  const currentModel = settings.transcriptionModel || 'whisper-large-v3';
-  const currentTemperature = settings.temperature ?? 0.0;
-
-  // Get transcription models from server-fetched available models
-  const transcriptionModels = useMemo((): ModelInfo[] => {
-    if (!availableModels || availableModels.length === 0) {
-      return [];
-    }
-    return availableModels.filter(model => model.provider === 'whisper');
-  }, [availableModels]);
-
-  // Enhanced validation for transcription settings
-  const validateTranscriptionSettings = useCallback((prompt: string, temperature: number, language: string, model: string) => {
-    const errors: string[] = [];
-    const warnings: string[] = [];
-    
-    // Prompt validation
-    if (prompt.length > 1000) {
-      errors.push('Prompt should be under 1000 characters for optimal performance');
-    }
-    
-    if (prompt.includes('{{') || prompt.includes('}}')) {
-      errors.push('Template variables are not supported in transcription prompts');
-    }
-    
-    if (prompt.length > 500) {
-      warnings.push('Very long prompts may reduce transcription speed');
-    }
-    
-    // Temperature validation for transcription
-    if (temperature < 0 || temperature > 1) {
-      errors.push('Temperature must be between 0.0 and 1.0');
-    }
-    
-    if (temperature > 0.3) {
-      warnings.push('High temperature may reduce transcription accuracy');
-    }
-    
-    // Language validation
-    const validLanguage = TRANSCRIPTION_LANGUAGES.find(l => l.code === language);
-    if (!validLanguage) {
-      errors.push('Invalid language code selected');
-    }
-    
-    // Model validation
-    const validModel = transcriptionModels.find(m => m.id === model);
-    if (!validModel) {
-      errors.push('Invalid transcription model selected');
-    }
-    
-    const allErrors = [...errors, ...warnings];
-    setValidationErrors(allErrors);
-    return { 
-      isValid: errors.length === 0, 
-      errors,
-      warnings
-    };
-  }, [transcriptionModels]);
-
-  // Generate comprehensive preview text based on current settings
-  useEffect(() => {
-    const language = TRANSCRIPTION_LANGUAGES.find(l => l.code === currentLanguage) as { code: string; name: string; nativeName: string } | undefined;
-    const model = transcriptionModels.find(m => m.id === currentModel);
-    
-    const preview = [
-      `Language: ${language?.nativeName || language?.name || 'English'}`,
-      `Model: ${model?.name || model?.id || 'Default Model'}`,
-      `Temperature: ${currentTemperature.toFixed(2)}`
-    ].join(' • ');
-    
-    setPromptPreview(preview);
-    
-    // Update preview settings for modal
-    setPreviewSettings({
-      language: language?.nativeName || 'English',
-      model: model?.name || model?.id || 'Default Model',
-      temperature: currentTemperature,
-      description: model?.description || ''
-    });
-  }, [currentLanguage, currentModel, currentTemperature, transcriptionModels]);
-
-  const handleLanguageChange = (languageCode: string) => {
-    const newSettings = { ...taskSettings };
-    newSettings[taskSettingsKey] = {
-      ...settings,
-      languageCode,
-    };
-    onSettingsChange(newSettings);
-  };
-
-  const handleModelChange = (transcriptionModel: string) => {
-    const newSettings = { ...taskSettings };
-    newSettings[taskSettingsKey] = {
-      ...settings,
-      transcriptionModel,
-    };
-    onSettingsChange(newSettings);
-  };
-
-  const handleTemperatureChange = (temperature: number) => {
-    validateTranscriptionSettings('', temperature, currentLanguage, currentModel);
-    const newSettings = { ...taskSettings };
-    newSettings[taskSettingsKey] = {
-      ...settings,
-      temperature,
-    };
-    onSettingsChange(newSettings);
-  };
-  
-  const testPromptSettings = async () => {
-    setIsTestingPrompt(true);
-    setPromptTestResult(null);
-    
-    try {
-      // Simulate a quick validation test
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      const validation = validateTranscriptionSettings('', currentTemperature, currentLanguage, currentModel);
-      if (validation.isValid) {
-        setPromptTestResult('✓ Settings validated successfully');
-      } else {
-        setPromptTestResult(`⚠ Issues found: ${validation.errors.join(', ')}`);
-      }
-    } catch (error) {
-      setPromptTestResult('✗ Validation failed');
-    } finally {
-      setIsTestingPrompt(false);
-    }
-  };
-
-  const resetToDefaults = () => {
-    const defaultModel = transcriptionModels.length > 0 
-      ? transcriptionModels[0].id 
-      : 'whisper-large-v3'; // fallback if no models available
-    
-    const newSettings = { ...taskSettings };
-    newSettings[taskSettingsKey] = {
-      ...settings,
-      languageCode: 'en',
-      transcriptionModel: defaultModel,
-      transcriptionPrompt: '',
-      temperature: 0.0,
-    };
-    onSettingsChange(newSettings);
-    setValidationErrors([]);
-    setPromptTestResult(null);
-  };
-
-  return (
-    <div className="mt-8 border-t pt-6">
-      <div className="space-y-6">
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <div>
-              <h4 className="text-lg font-semibold">Transcription Configuration</h4>
-              <p className="text-sm text-muted-foreground">
-                Configure language, model, and prompt settings for voice transcription
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowPromptModal(true)}
-                className="text-xs"
-              >
-                Preview Settings
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={testPromptSettings}
-                disabled={isTestingPrompt}
-                className="text-xs"
-              >
-                {isTestingPrompt ? 'Testing...' : 'Test Settings'}
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={resetToDefaults}
-                className="text-xs"
-              >
-                Reset to Defaults
-              </Button>
-            </div>
-          </div>
-
-          {validationErrors.length > 0 && (
-            <Alert variant={validationErrors.some(err => 
-              err.includes('must be') || err.includes('Invalid') || err.includes('not supported')
-            ) ? "destructive" : "default"}>
-              <div className="space-y-1">
-                <p className="text-sm font-medium">Configuration Issues:</p>
-                <ul className="text-xs space-y-0.5 list-disc list-inside">
-                  {validationErrors.map((error, idx) => (
-                    <li key={idx}>{error}</li>
-                  ))}
-                </ul>
-              </div>
-            </Alert>
-          )}
-          
-          {promptTestResult && (
-            <Alert variant={promptTestResult.startsWith('✓') ? "default" : "destructive"}>
-              <p className="text-sm">{promptTestResult}</p>
-            </Alert>
-          )}
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-          {/* Language Selection */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label className="text-sm font-medium">
-                Transcription Language
-              </Label>
-              <Badge variant="secondary" className="text-xs">
-                {TRANSCRIPTION_LANGUAGES.find(l => l.code === currentLanguage)?.nativeName || 'English'}
-              </Badge>
-            </div>
-            <Select
-              value={currentLanguage}
-              onValueChange={handleLanguageChange}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select language" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup>
-                  <SelectLabel>Available Languages</SelectLabel>
-                  {TRANSCRIPTION_LANGUAGES.map((lang) => (
-                    <SelectItem key={lang.code} value={lang.code}>
-                      <div className="flex items-center gap-2">
-                        <span>{lang.nativeName}</span>
-                        <span className="text-xs text-muted-foreground">({lang.name})</span>
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-muted-foreground">
-              Primary language for voice transcription. Better accuracy when matched to spoken language.
-            </p>
-          </div>
-
-          {/* Transcription Model Selection */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label className="text-sm font-medium">
-                Transcription Model
-              </Label>
-              <Badge variant="secondary" className="text-xs">
-                {transcriptionModels.find(m => m.id === currentModel)?.name || transcriptionModels.find(m => m.id === currentModel)?.id || 'Default Model'}
-              </Badge>
-            </div>
-            <Select
-              value={currentModel}
-              onValueChange={handleModelChange}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select model" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup>
-                  <SelectLabel>Transcription Models</SelectLabel>
-                  {transcriptionModels.length > 0 ? (
-                    transcriptionModels.filter(model => model.id && model.id.trim() !== '').map((model) => (
-                      <SelectItem key={model.id} value={model.id}>
-                        <div className="space-y-1">
-                          <div>{model.name || model.id}</div>
-                          <div className="text-xs text-muted-foreground">{model.description || `Provider: ${model.provider}`}</div>
-                        </div>
-                      </SelectItem>
-                    ))
-                  ) : (
-                    <SelectItem value="no-models-available" disabled>
-                      No transcription models available
-                    </SelectItem>
-                  )}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-muted-foreground">
-              Choose model based on accuracy vs speed requirements. Large models are more accurate but slower.
-            </p>
-          </div>
-          
-          {/* Temperature Control for Transcription */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label className="text-sm font-medium">
-                Temperature
-              </Label>
-              <Badge variant="secondary" className="text-xs">
-                {currentTemperature.toFixed(2)}
-              </Badge>
-            </div>
-            <div className="flex items-center gap-3 w-full">
-              <div className="flex-1 min-w-[120px]">
-                <Slider
-                  value={[currentTemperature]}
-                  max={1.0}
-                  min={0.0}
-                  step={0.05}
-                  onValueChange={(value: number[]) => handleTemperatureChange(value[0])}
-                  className="w-full"
-                  aria-label="Transcription Temperature"
-                />
-              </div>
-              <Input
-                type="number"
-                value={currentTemperature.toFixed(2)}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                  const value = parseFloat(e.target.value);
-                  if (!isNaN(value) && value >= 0 && value <= 1) {
-                    handleTemperatureChange(value);
-                  }
-                }}
-                className="w-20 font-mono text-sm text-right shrink-0 text-foreground pr-2"
-                min={0}
-                max={1}
-                step={0.01}
-                placeholder="0.00"
-              />
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Lower values (0.0-0.2) for accuracy, higher (0.3-1.0) for creativity. Recommended: 0.0-0.1 for transcription.
-            </p>
-          </div>
-        </div>
-
-
-        {/* Current Configuration Preview */}
-        <div className="p-4 bg-muted/50 rounded-lg">
-          <div className="flex items-center justify-between mb-2">
-            <h5 className="text-sm font-medium">Current Configuration</h5>
-            <Badge variant="outline" className="text-xs">
-              Live Preview
-            </Badge>
-          </div>
-          <p className="text-xs text-muted-foreground font-mono">
-            {promptPreview}
-          </p>
-        </div>
-
-        {/* Preview Modal */}
-        {showPromptModal && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-            <div className="bg-background p-6 rounded-lg max-w-md w-full m-4">
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-semibold">Transcription Settings Preview</h3>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setShowPromptModal(false)}
-                  >
-                    ×
-                  </Button>
-                </div>
-                <div className="space-y-3">
-                  <div>
-                    <Label className="text-sm font-medium">Language</Label>
-                    <p className="text-sm text-muted-foreground">
-                      {previewSettings?.language || 'English'}
-                    </p>
-                  </div>
-                  <div>
-                    <Label className="text-sm font-medium">Model</Label>
-                    <p className="text-sm text-muted-foreground">
-                      {previewSettings?.model || 'Whisper Large v3'}
-                    </p>
-                    <p className="text-xs text-muted-foreground/70">
-                      {previewSettings?.description || ''}
-                    </p>
-                  </div>
-                  <div>
-                    <Label className="text-sm font-medium">Temperature</Label>
-                    <p className="text-sm text-muted-foreground">
-                      {previewSettings?.temperature?.toFixed(2) || '0.00'}
-                    </p>
-                  </div>
-                </div>
-                <Button
-                  onClick={() => setShowPromptModal(false)}
-                  className="w-full"
-                >
-                  Close
-                </Button>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
 
 export default function TaskModelSettings({
   taskSettings,
   availableModels,
   onSettingsChange,
-  sessionId,
+  projectDirectory,
+  onRefresh,
 }: TaskModelSettingsProps) {
-  const [autoSaveState, setAutoSaveState] = useState<AutoSaveState>({
-    isDirty: false,
-    isSaving: false,
-    lastSaved: null,
-    error: null,
-  });
-  
   const saveTimeoutRef = useRef<number | null>(null);
+  const [serverDefaults, setServerDefaults] = useState<TaskSettings | null>(null);
+  const [sliderValues, setSliderValues] = useState<Record<string, number>>({});
   
   const validateTaskSettings = useCallback((settings: TaskSettings, taskKey: keyof TaskSettings): ValidationResult => {
     const errors: string[] = [];
@@ -824,9 +397,7 @@ export default function TaskModelSettings({
     if (requiresLlm && settings[taskKey]) {
       const taskSetting = settings[taskKey];
       
-      if (!taskSetting.model) {
-        warnings.push('No model selected - will use system default');
-      }
+      // Remove warning for empty model - just use server default silently
       
       if (taskSetting.maxTokens !== undefined) {
         if (taskSetting.maxTokens < 1000) {
@@ -859,27 +430,8 @@ export default function TaskModelSettings({
       clearTimeout(saveTimeoutRef.current);
     }
     
-    setAutoSaveState(prev => ({ ...prev, isDirty: true, error: null }));
-    
     saveTimeoutRef.current = window.setTimeout(() => {
-      setAutoSaveState(prev => ({ ...prev, isSaving: true }));
-      
-      try {
-        onSettingsChange(newSettings);
-        setAutoSaveState(prev => ({
-          ...prev,
-          isDirty: false,
-          isSaving: false,
-          lastSaved: new Date(),
-          error: null
-        }));
-      } catch (error) {
-        setAutoSaveState(prev => ({
-          ...prev,
-          isSaving: false,
-          error: error instanceof Error ? error.message : 'Failed to save settings'
-        }));
-      }
+      onSettingsChange(newSettings);
     }, 1000);
   }, [onSettingsChange]);
   
@@ -890,6 +442,38 @@ export default function TaskModelSettings({
       }
     };
   }, []);
+
+  // Load server defaults
+  useEffect(() => {
+    async function loadServerDefaults() {
+      try {
+        const result = await getServerDefaultTaskModelSettings();
+        if (result.isSuccess && result.data) {
+          setServerDefaults(result.data);
+        }
+      } catch (error) {
+        console.error('Failed to load server defaults:', error);
+      }
+    }
+    
+    loadServerDefaults();
+  }, []);
+
+  // Initialize slider values from taskSettings
+  useEffect(() => {
+    const newSliderValues: Record<string, number> = {};
+    
+    for (const taskKey of Object.keys(taskSettings) as (keyof TaskSettings)[]) {
+      const settings = taskSettings[taskKey];
+      if (settings) {
+        newSliderValues[`${taskKey}.maxTokens`] = settings.maxTokens ?? 4000;
+        newSliderValues[`${taskKey}.temperature`] = settings.temperature ?? 0.7;
+      }
+    }
+    
+    setSliderValues(newSliderValues);
+  }, [taskSettings]);
+
 
   const getTaskSettings = (camelCaseKey: keyof TaskSettings) => {
     const settings = taskSettings[camelCaseKey];
@@ -925,19 +509,70 @@ export default function TaskModelSettings({
     debouncedSave(newSettings);
   };
 
-  const isSettingCustomized = (camelCaseKey: keyof TaskSettings, settingName: 'model' | 'maxTokens' | 'temperature') => {
-    const settings = getTaskSettings(camelCaseKey);
+
+  const isDifferentFromDefault = (camelCaseKey: keyof TaskSettings, settingName: 'model' | 'maxTokens' | 'temperature' | 'languageCode') => {
+    if (!serverDefaults || !serverDefaults[camelCaseKey]) return false;
     
-    const defaultValues = {
-      model: '',
-      maxTokens: 4000,
-      temperature: 0.3
-    };
+    const currentSettings = getTaskSettings(camelCaseKey);
+    const defaultSettings = serverDefaults[camelCaseKey];
     
-    return settings[settingName] !== defaultValues[settingName];
+    const currentValue = currentSettings[settingName];
+    const defaultValue = defaultSettings?.[settingName];
+    
+    return currentValue !== defaultValue;
   };
 
+  const getSliderValue = (camelCaseKey: keyof TaskSettings, settingName: 'maxTokens' | 'temperature') => {
+    const key = `${camelCaseKey}.${settingName}`;
+    if (sliderValues[key] !== undefined) {
+      return sliderValues[key];
+    }
+    
+    const settings = getTaskSettings(camelCaseKey);
+    return settingName === 'maxTokens' ? (settings.maxTokens ?? 4000) : (settings.temperature ?? 0.7);
+  };
+
+  const setSliderValue = (camelCaseKey: keyof TaskSettings, settingName: 'maxTokens' | 'temperature', value: number) => {
+    const key = `${camelCaseKey}.${settingName}`;
+    setSliderValues(prev => ({
+      ...prev,
+      [key]: value
+    }));
+  };
+
+  const handleResetToDefault = async (camelCaseKey: keyof TaskSettings, settingName: 'model' | 'maxTokens' | 'temperature' | 'languageCode') => {
+    if (!projectDirectory) return;
+    
+    try {
+      await resetProjectSettingToDefault(projectDirectory, camelCaseKey, settingName);
+      
+      
+      // Clear slider value for this setting so it gets reinitialized
+      if (settingName === 'maxTokens' || settingName === 'temperature') {
+        setSliderValues(prev => {
+          const updated = { ...prev };
+          delete updated[`${camelCaseKey}.${settingName}`];
+          return updated;
+        });
+      }
+      
+      // Refresh settings through parent component
+      if (onRefresh) {
+        onRefresh();
+      }
+      
+    } catch (error) {
+      console.error(`Failed to reset ${camelCaseKey}.${settingName} to default:`, error);
+    }
+  };
+
+
   const handleMaxTokensChange = (camelCaseKey: keyof TaskSettings, value: number[]) => {
+    // Just update local slider state - no saving
+    setSliderValue(camelCaseKey, 'maxTokens', value[0]);
+  };
+
+  const handleMaxTokensCommit = (camelCaseKey: keyof TaskSettings, value: number[]) => {
     const taskType = taskSettingsKeyToTaskType[camelCaseKey];
     const requiresLlm = TaskTypeDetails[taskType]?.requiresLlm ?? true;
     if (!requiresLlm) return;
@@ -954,6 +589,11 @@ export default function TaskModelSettings({
   };
 
   const handleTemperatureChange = (camelCaseKey: keyof TaskSettings, value: number[]) => {
+    // Just update local slider state - no saving
+    setSliderValue(camelCaseKey, 'temperature', value[0]);
+  };
+
+  const handleTemperatureCommit = (camelCaseKey: keyof TaskSettings, value: number[]) => {
     const taskType = taskSettingsKeyToTaskType[camelCaseKey];
     const requiresLlm = TaskTypeDetails[taskType]?.requiresLlm ?? true;
     if (!requiresLlm) return;
@@ -979,9 +619,33 @@ export default function TaskModelSettings({
       return [];
     }
     
+    // Special case for voice transcription - filter for specific transcription models
+    if (camelCaseKey === 'voiceTranscription') {
+      return availableModels.filter(model => 
+        model.id.includes('gpt-4o-transcribe') || 
+        model.id.includes('gpt-4o-mini-transcribe') ||
+        model.id.includes('openai/gpt-4o-transcribe') ||
+        model.id.includes('openai/gpt-4o-mini-transcribe')
+      );
+    }
+    
     const apiType = taskDetails?.defaultProvider || "google";
     return availableModels.filter(model => model.provider === apiType);
   };
+
+  // Transcription-specific handlers
+  const handleTranscriptionLanguageChange = (camelCaseKey: keyof TaskSettings, languageCode: string) => {
+    const settings = getTaskSettings(camelCaseKey);
+    const newSettings = { ...taskSettings };
+
+    newSettings[camelCaseKey] = {
+      ...settings,
+      languageCode,
+    };
+
+    debouncedSave(newSettings);
+  };
+
 
   const { workflowStages, standaloneFeatures } = useMemo(() => {
     const stages = FILE_FINDING_WORKFLOW_STAGES.filter(stage => 
@@ -1038,73 +702,6 @@ export default function TaskModelSettings({
 
   return (
     <Card>
-      <CardHeader className="pb-2">
-        <div className="flex items-center justify-between">
-          <div>
-            <CardTitle className="text-lg">AI Model Settings</CardTitle>
-            <CardDescription className="text-balance">
-              Configure AI models for workflow stages and standalone features. Workflow stages work together in sequence, while standalone features operate independently.
-            </CardDescription>
-          </div>
-          
-          <div className="flex items-center gap-3">
-            <Tooltip>
-              <div className="flex items-center gap-1 text-xs text-muted-foreground cursor-help">
-                <kbd className="px-1.5 py-0.5 text-xs bg-muted border rounded">Ctrl+S</kbd>
-                <span>Force Save</span>
-              </div>
-              <div className="text-xs">
-                Use Ctrl+S (Cmd+S on Mac) to force immediate save of any pending changes
-              </div>
-            </Tooltip>
-            
-            <div className="flex items-center gap-2">
-              {autoSaveState.isSaving && (
-                <Tooltip>
-                  <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                    <div className="w-3 h-3 border border-primary/30 border-t-primary rounded-full animate-spin"></div>
-                    <span>Saving...</span>
-                  </div>
-                  <div className="text-xs">Automatically saving your changes</div>
-                </Tooltip>
-              )}
-              {autoSaveState.lastSaved && !autoSaveState.isSaving && !autoSaveState.isDirty && (
-                <Tooltip>
-                  <div className="flex items-center gap-1 text-xs text-green-600">
-                    <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                    <span>Saved {autoSaveState.lastSaved.toLocaleTimeString()}</span>
-                  </div>
-                  <div className="text-xs">All changes have been saved successfully</div>
-                </Tooltip>
-              )}
-              {autoSaveState.isDirty && !autoSaveState.isSaving && (
-                <Tooltip>
-                  <div className="flex items-center gap-1 text-xs text-amber-600">
-                    <div className="w-2 h-2 bg-amber-500 rounded-full animate-pulse"></div>
-                    <span>Unsaved changes</span>
-                  </div>
-                  <div className="text-xs">Changes will auto-save in 1 second</div>
-                </Tooltip>
-              )}
-              {autoSaveState.error && (
-                <Tooltip>
-                  <div className="flex items-center gap-1 text-xs text-red-600">
-                    <div className="w-2 h-2 bg-red-500 rounded-full"></div>
-                    <span>Save failed</span>
-                  </div>
-                  <div className="text-xs">Click to retry or check your connection</div>
-                </Tooltip>
-              )}
-            </div>
-          </div>
-        </div>
-        
-        {autoSaveState.error && (
-          <Alert variant="destructive" className="mt-4">
-            <span className="text-sm">Failed to save settings: {autoSaveState.error}</span>
-          </Alert>
-        )}
-      </CardHeader>
       <CardContent className="p-6">
         <div className="grid grid-cols-1 lg:grid-cols-[250px_1fr] gap-4">
           <div className="space-y-4">
@@ -1324,50 +921,19 @@ export default function TaskModelSettings({
               const models = getModelsForTask(taskSettingsKey);
               const validation = validateTaskSettings(taskSettings, taskSettingsKey);
               
-              const workflowStage = FILE_FINDING_WORKFLOW_STAGES.find(stage => stage.key === selectedTask);
-              const standaloneFeature = STANDALONE_FEATURES.find(feature => feature.key === selectedTask);
-              const isWorkflowStage = selectedCategory === 'workflow' && workflowStage;
+              // Voice transcription specific variables
+              const isVoiceTranscription = taskSettingsKey === 'voiceTranscription';
+              const currentLanguage = settings.languageCode || 'en';
+              
               
               return (
                 <div className="w-full space-y-6">
+                  <SystemPromptEditor
+                    projectDirectory={projectDirectory}
+                    taskType={taskType}
+                  />
+                  
                   <div className="space-y-3">
-                    <div className="flex items-center gap-3">
-                      {isWorkflowStage ? (
-                        <>
-                          <span className="w-8 h-8 rounded-full bg-primary/20 text-primary text-sm flex items-center justify-center font-bold">
-                            {'stageNumber' in workflowStage ? workflowStage.stageNumber : '#'}
-                          </span>
-                          <div>
-                            <h2 className="text-lg font-semibold">{workflowStage.displayName}</h2>
-                            <p className="text-sm text-muted-foreground">
-                              Stage {'stageNumber' in workflowStage ? workflowStage.stageNumber : '?'} of 5 in File Finding Workflow
-                            </p>
-                          </div>
-                        </>
-                      ) : (
-                        <div>
-                          <h2 className="text-lg font-semibold">{standaloneFeature?.displayName || taskDetails?.displayName || selectedTask}</h2>
-                          <p className="text-sm text-muted-foreground">Standalone Feature</p>
-                        </div>
-                      )}
-                    </div>
-                    
-                    {(isWorkflowStage ? workflowStage.description : 
-                      (standaloneFeature?.description || taskDetails?.description)) && (
-                      <div className="p-3 bg-muted/50 rounded-lg">
-                        <p className="text-sm text-muted-foreground">
-                          {isWorkflowStage ? workflowStage.description : 
-                           (standaloneFeature?.description || taskDetails?.description)}
-                        </p>
-                        {isWorkflowStage && workflowStage && 'nextStage' in workflowStage && workflowStage.nextStage && (
-                          <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
-                            <span>↓ Output feeds into:</span>
-                            <span className="font-medium">{workflowStage.nextStage}</span>
-                          </p>
-                        )}
-                      </div>
-                    )}
-                    
                     {(validation.errors.length > 0 || validation.warnings.length > 0) && (
                       <div className="space-y-2">
                         {validation.errors.length > 0 && (
@@ -1397,14 +963,10 @@ export default function TaskModelSettings({
                       </div>
                     )}
                   </div>
-
-                  <SystemPromptEditor
-                    sessionId={sessionId}
-                    taskType={taskType}
-                  />
                   
                   {taskDetails?.requiresLlm !== false ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                    {/* First Column - Model */}
                     <div className="space-y-2">
                       <div className="flex items-center justify-between">
                         <Label
@@ -1413,14 +975,19 @@ export default function TaskModelSettings({
                         >
                           Model
                         </Label>
-                        {isSettingCustomized(taskSettingsKey, 'model') && (
-                          <Badge variant="secondary" className="text-xs">
-                            Project Override
-                          </Badge>
+                        {isDifferentFromDefault(taskSettingsKey, 'model') && (
+                          <Button
+                            variant="ghost"
+                            size="xs"
+                            className="px-2 h-6 text-xs text-muted-foreground hover:text-foreground"
+                            onClick={() => handleResetToDefault(taskSettingsKey, 'model')}
+                          >
+                            Reset
+                          </Button>
                         )}
                       </div>
                       <Select
-                        value={settings.model || ""}
+                        value={settings.model || (serverDefaults?.[taskSettingsKey]?.model || "")}
                         onValueChange={(value: string) =>
                           handleModelChange(taskSettingsKey, value)
                         }
@@ -1437,9 +1004,10 @@ export default function TaskModelSettings({
                           {models.length > 0 ? (
                             <SelectGroup>
                               <SelectLabel>
-                                {(taskDetails?.defaultProvider || "google").charAt(0).toUpperCase() +
-                                  (taskDetails?.defaultProvider || "google").slice(1)}{" "}
-                                Models
+                                {isVoiceTranscription ? 'Transcription Models' : (
+                                  (taskDetails?.defaultProvider || "google").charAt(0).toUpperCase() +
+                                  (taskDetails?.defaultProvider || "google").slice(1) + " Models"
+                                )}
                               </SelectLabel>
                               {models.filter(model => model.id && model.id.trim() !== '').map((model) => (
                                 <SelectItem key={model.id} value={model.id}>
@@ -1455,159 +1023,229 @@ export default function TaskModelSettings({
                         </SelectContent>
                       </Select>
                       <p className="text-xs text-muted-foreground">
-                        {models.find((m) => m.id === settings.model)
-                          ?.description || "Select a model"}
-                        {settings.model && (
-                          <span className="block text-[10px] text-muted-foreground/70 mt-0.5 font-mono">
-                            {settings.model}
-                          </span>
-                        )}
+                        {(() => {
+                          const currentModel = settings.model || serverDefaults?.[taskSettingsKey]?.model;
+                          const modelInfo = models.find((m) => m.id === currentModel);
+                          return modelInfo?.description || "Select a model";
+                        })()}
+                        {(() => {
+                          const currentModel = settings.model || serverDefaults?.[taskSettingsKey]?.model;
+                          return currentModel && (
+                            <span className="block text-[10px] text-muted-foreground/70 mt-0.5 font-mono">
+                              {currentModel}
+                            </span>
+                          );
+                        })()}
                       </p>
                     </div>
 
+                    {/* Second Column - Temperature */}
                     <div className="space-y-2">
                       <div className="flex items-center justify-between">
                         <Label
-                          htmlFor={`max-tokens-${selectedTask}`}
+                          htmlFor={`temperature-${selectedTask}`}
                           className="text-sm font-medium"
                         >
-                          Max Tokens
+                          Temperature
                         </Label>
-                        {isSettingCustomized(taskSettingsKey, 'maxTokens') && (
-                          <Badge variant="secondary" className="text-xs">
-                            Project Override
-                          </Badge>
-                        )}
+                        <div className="flex items-center gap-2">
+                          {validation.errors.some(e => e.includes('Temperature')) && (
+                            <Badge variant="destructive" className="text-xs">
+                              Error
+                            </Badge>
+                          )}
+                          {validation.warnings.some(w => w.includes('temperature')) && (
+                            <Badge variant="outline" className="text-xs text-amber-600 border-amber-200">
+                              Warning
+                            </Badge>
+                          )}
+                          {isDifferentFromDefault(taskSettingsKey, 'temperature') && (
+                            <Button
+                              variant="ghost"
+                              size="xs"
+                              className="px-2 h-6 text-xs text-muted-foreground hover:text-foreground"
+                              onClick={() => handleResetToDefault(taskSettingsKey, 'temperature')}
+                            >
+                              Reset
+                            </Button>
+                          )}
+                        </div>
                       </div>
                       <div className="flex items-center gap-3 w-full">
                         <div className="flex-1 min-w-[120px]">
                           <Slider
-                            id={`max-tokens-${selectedTask}`}
-                            value={[settings.maxTokens ?? 4000]}
-                            max={100000}
-                            min={1000}
-                            step={1000}
+                            id={`temperature-${selectedTask}`}
+                            value={[getSliderValue(taskSettingsKey, 'temperature')]}
+                            max={1}
+                            min={0}
+                            step={0.05}
                             onValueChange={(value: number[]) =>
-                              handleMaxTokensChange(taskSettingsKey, value)
+                              handleTemperatureChange(taskSettingsKey, value)
+                            }
+                            onValueCommit={(value: number[]) =>
+                              handleTemperatureCommit(taskSettingsKey, value)
                             }
                             className="w-full"
-                            aria-label="Max tokens"
+                            aria-label="Temperature"
                           />
                         </div>
                         <Input
                           type="number"
-                          value={settings.maxTokens ?? ''}
+                          value={getSliderValue(taskSettingsKey, 'temperature').toFixed(2)}
                           onChange={(
                             e: React.ChangeEvent<HTMLInputElement>
                           ) => {
-                            const value = parseInt(e.target.value);
+                            const value = parseFloat(e.target.value);
                             if (e.target.value === '' || (
-                              !isNaN(value) &&
-                              value >= 1000 &&
-                              value <= 100000
+                              !isNaN(value) && 
+                              value >= 0 && 
+                              value <= 1
                             )) {
-                              handleMaxTokensChange(taskSettingsKey, [value || 4000]);
+                              handleTemperatureChange(taskSettingsKey, [value || 0.7]);
+                            }
+                          }}
+                          onBlur={(e: React.ChangeEvent<HTMLInputElement>) => {
+                            const value = parseFloat(e.target.value);
+                            if (!isNaN(value) && value >= 0 && value <= 1) {
+                              handleTemperatureCommit(taskSettingsKey, [value]);
                             }
                           }}
                           className={`w-24 font-mono text-sm text-right shrink-0 text-foreground pr-2 ${
-                            validation.errors.some(e => e.includes('tokens')) ? 'border-red-500 focus:ring-red-200' : ''
+                            validation.errors.some(e => e.includes('Temperature')) ? 'border-red-500 focus:ring-red-200' : ''
                           }`}
-                          min={1000}
-                          max={100000}
-                          placeholder="4000"
+                          min={0}
+                          max={1}
+                          step={0.01}
+                          placeholder="0.70"
                         />
                       </div>
-                      <p className="text-xs text-muted-foreground">
-                        Maximum output tokens for this task type
+                      <p className="text-xs text-muted-foreground text-balance">
+                        {taskSettingsKey === "pathCorrection" || taskSettingsKey === "pathFinder"
+                          ? "Lower values produce more accurate path suggestions"
+                          : taskSettingsKey === "textCorrection"
+                          ? "Lower values for accuracy, higher for more creative corrections"
+                          : "Lower (0.0-0.3): factual and precise. Higher (0.7-1.0): creative and varied."}
                       </p>
                     </div>
 
-                    {selectedTask !== "voiceTranscription" ? (
+                    {/* Third Column - Language for voice transcription, Max Tokens for others */}
+                    {isVoiceTranscription ? (
                       <div className="space-y-2">
                         <div className="flex items-center justify-between">
                           <Label
-                            htmlFor={`temperature-${selectedTask}`}
+                            htmlFor={`language-select-${selectedTask}`}
                             className="text-sm font-medium"
                           >
-                            Temperature
+                            Language
                           </Label>
-                          <div className="flex items-center gap-2">
-                            {validation.errors.some(e => e.includes('Temperature')) && (
-                              <Badge variant="destructive" className="text-xs">
-                                Error
-                              </Badge>
-                            )}
-                            {validation.warnings.some(w => w.includes('temperature')) && (
-                              <Badge variant="outline" className="text-xs text-amber-600 border-amber-200">
-                                Warning
-                              </Badge>
-                            )}
-                            {isSettingCustomized(taskSettingsKey, 'temperature') && (
-                              <Badge variant="secondary" className="text-xs">
-                                Project Override
-                              </Badge>
-                            )}
-                          </div>
+                          {isDifferentFromDefault(taskSettingsKey, 'languageCode') && (
+                            <Button
+                              variant="ghost"
+                              size="xs"
+                              className="px-2 h-6 text-xs text-muted-foreground hover:text-foreground"
+                              onClick={() => handleResetToDefault(taskSettingsKey, 'languageCode')}
+                            >
+                              Reset
+                            </Button>
+                          )}
                         </div>
-                        <div className="flex items-center gap-3 w-full">
-                          <div className="flex-1 min-w-[120px]">
-                            <Slider
-                              id={`temperature-${selectedTask}`}
-                              value={[settings.temperature ?? 0.7]}
-                              max={1}
-                              min={0}
-                              step={0.05}
-                              onValueChange={(value: number[]) =>
-                                handleTemperatureChange(taskSettingsKey, value)
-                              }
-                              className="w-full"
-                              aria-label="Temperature"
-                            />
-                          </div>
-                          <Input
-                            type="number"
-                            value={settings.temperature !== undefined ? Number(settings.temperature).toFixed(2) : ''}
-                            onChange={(
-                              e: React.ChangeEvent<HTMLInputElement>
-                            ) => {
-                              const value = parseFloat(e.target.value);
-                              if (e.target.value === '' || (
-                                !isNaN(value) && 
-                                value >= 0 && 
-                                value <= 1
-                              )) {
-                                handleTemperatureChange(taskSettingsKey, [value || 0.7]);
-                              }
-                            }}
-                            className={`w-24 font-mono text-sm text-right shrink-0 text-foreground pr-2 ${
-                              validation.errors.some(e => e.includes('Temperature')) ? 'border-red-500 focus:ring-red-200' : ''
-                            }`}
-                            min={0}
-                            max={1}
-                            step={0.01}
-                            placeholder="0.70"
-                          />
-                        </div>
-                        <p className="text-xs text-muted-foreground text-balance">
-                          {selectedTask === "pathCorrection" || selectedTask === "pathFinder"
-                            ? "Lower values produce more accurate path suggestions"
-                            : selectedTask === "voiceTranscription"
-                            ? "Not applicable for transcription models"
-                            : selectedTask === "textCorrection"
-                            ? "Lower values for accuracy, higher for more creative corrections"
-                            : "Lower (0.0-0.3): factual and precise. Higher (0.7-1.0): creative and varied."}
+                        <Select
+                          value={currentLanguage}
+                          onValueChange={(value: string) =>
+                            handleTranscriptionLanguageChange(taskSettingsKey, value)
+                          }
+                        >
+                          <SelectTrigger className="w-full">
+                            <SelectValue placeholder="Select language" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectGroup>
+                              <SelectLabel>Available Languages</SelectLabel>
+                              {TRANSCRIPTION_LANGUAGES.map((lang) => (
+                                <SelectItem key={lang.code} value={lang.code}>
+                                  <div className="flex items-center gap-2">
+                                    <span>{lang.nativeName}</span>
+                                    <span className="text-xs text-muted-foreground">({lang.name})</span>
+                                  </div>
+                                </SelectItem>
+                              ))}
+                            </SelectGroup>
+                          </SelectContent>
+                        </Select>
+                        <p className="text-xs text-muted-foreground">
+                          Primary language for voice transcription
                         </p>
                       </div>
                     ) : (
                       <div className="space-y-2">
-                        <Label className="text-sm font-medium text-muted-foreground/80">
-                          Temperature
-                        </Label>
-                        <div className="flex items-center h-[40px] justify-center">
-                          <p className="text-xs text-muted-foreground italic">
-                            Not used for transcription
-                          </p>
+                        <div className="flex items-center justify-between">
+                          <Label
+                            htmlFor={`max-tokens-${selectedTask}`}
+                            className="text-sm font-medium"
+                          >
+                            Max Tokens
+                          </Label>
+                          {isDifferentFromDefault(taskSettingsKey, 'maxTokens') && (
+                            <Button
+                              variant="ghost"
+                              size="xs"
+                              className="px-2 h-6 text-xs text-muted-foreground hover:text-foreground"
+                              onClick={() => handleResetToDefault(taskSettingsKey, 'maxTokens')}
+                            >
+                              Reset
+                            </Button>
+                          )}
                         </div>
+                        <div className="flex items-center gap-3 w-full">
+                          <div className="flex-1 min-w-[120px]">
+                            <Slider
+                              id={`max-tokens-${selectedTask}`}
+                              value={[getSliderValue(taskSettingsKey, 'maxTokens')]}
+                              max={100000}
+                              min={1000}
+                              step={1000}
+                              onValueChange={(value: number[]) =>
+                                handleMaxTokensChange(taskSettingsKey, value)
+                              }
+                              onValueCommit={(value: number[]) =>
+                                handleMaxTokensCommit(taskSettingsKey, value)
+                              }
+                              className="w-full"
+                              aria-label="Max tokens"
+                            />
+                          </div>
+                          <Input
+                            type="number"
+                            value={getSliderValue(taskSettingsKey, 'maxTokens')}
+                            onChange={(
+                              e: React.ChangeEvent<HTMLInputElement>
+                            ) => {
+                              const value = parseInt(e.target.value);
+                              if (e.target.value === '' || (
+                                !isNaN(value) &&
+                                value >= 1000 &&
+                                value <= 100000
+                              )) {
+                                handleMaxTokensChange(taskSettingsKey, [value || 4000]);
+                              }
+                            }}
+                            onBlur={(e: React.ChangeEvent<HTMLInputElement>) => {
+                              const value = parseInt(e.target.value);
+                              if (!isNaN(value) && value >= 1000 && value <= 100000) {
+                                handleMaxTokensCommit(taskSettingsKey, [value]);
+                              }
+                            }}
+                            className={`w-24 font-mono text-sm text-right shrink-0 text-foreground pr-2 ${
+                              validation.errors.some(e => e.includes('tokens')) ? 'border-red-500 focus:ring-red-200' : ''
+                            }`}
+                            min={1000}
+                            max={100000}
+                            placeholder="4000"
+                          />
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          Maximum output tokens for this task type
+                        </p>
                       </div>
                     )}
                   </div>
@@ -1627,16 +1265,6 @@ export default function TaskModelSettings({
                     </div>
                   )}
 
-                  {/* Voice Transcription Specific Settings */}
-                  {selectedTask === "voiceTranscription" && (
-                    <TranscriptionSpecificSettings
-                      settings={settings}
-                      taskSettingsKey={taskSettingsKey}
-                      onSettingsChange={debouncedSave}
-                      taskSettings={taskSettings}
-                      availableModels={availableModels}
-                    />
-                  )}
                 </div>
               );
             })()}

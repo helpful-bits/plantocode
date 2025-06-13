@@ -1,4 +1,5 @@
 use crate::error::AppError;
+use crate::handlers::billing::dashboard_handler::{BillingDashboardData, BillingDashboardPlanDetails, BillingDashboardSpendingDetails};
 use crate::db::repositories::api_usage_repository::ApiUsageRepository;
 use crate::db::repositories::subscription_repository::{SubscriptionRepository, Subscription};
 use crate::db::repositories::subscription_plan_repository::{SubscriptionPlanRepository, SubscriptionPlan};
@@ -22,6 +23,63 @@ use bigdecimal::{BigDecimal, ToPrimitive, FromPrimitive};
 
 // Import Stripe service
 use crate::services::stripe_service::{StripeService, StripeServiceError};
+// Import Stripe types directly for enum matching
+use stripe::InvoiceStatus;
+
+// Invoice response structures
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InvoiceSummary {
+    pub total_amount: f64,
+    pub paid_amount: f64,
+    pub outstanding_amount: f64,
+    pub overdue_amount: f64,
+    pub currency: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InvoiceHistoryResponse {
+    pub invoices: Vec<serde_json::Value>,
+    pub summary: InvoiceSummary,
+    pub total_count: usize,
+    pub has_more: bool,
+}
+
+// Subscription details response structures
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SubscriptionDetailsResponse {
+    pub plan: String,
+    pub plan_name: Option<String>,
+    pub status: String,
+    pub trial_ends_at: Option<DateTime<Utc>>,
+    pub current_period_ends_at: Option<DateTime<Utc>>,
+    pub monthly_spending_allowance: Option<f64>,
+    pub hard_spending_limit: Option<f64>,
+    pub is_trialing: bool,
+    pub has_cancelled: bool,
+    pub next_invoice_amount: Option<f64>,
+    pub currency: String,
+    pub usage: UsageInfo,
+    pub credit_balance: f64,
+    pub pending_plan_id: Option<String>,
+    pub cancel_at_period_end: bool,
+    pub management_state: String,
+    pub subscription_id: Option<String>,
+    pub customer_id: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageInfo {
+    pub total_cost: f64,
+    pub usage_percentage: f64,
+    pub services_blocked: bool,
+    pub monthly_limit: Option<f64>,
+    pub hard_limit: Option<f64>,
+    pub remaining_allowance: Option<f64>,
+}
 
 
 #[derive(Clone)]
@@ -237,6 +295,31 @@ impl BillingService {
     }
 
     
+    // Create a default free trial subscription for a new user (public method)
+    pub async fn create_default_subscription_for_new_user(&self, user_id: &Uuid) -> Result<Subscription, AppError> {
+        let mut tx = self.db_pools.user_pool.begin().await
+            .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
+            
+        let subscription = self.create_trial_subscription_and_limit_in_tx(user_id, &mut tx).await?;
+        
+        tx.commit().await
+            .map_err(|e| AppError::Database(format!("Failed to commit transaction: {}", e)))?;
+            
+        Ok(subscription)
+    }
+
+    // Ensure user has a subscription, create default one if missing
+    pub async fn ensure_user_has_subscription(&self, user_id: &Uuid) -> Result<Subscription, AppError> {
+        // First try to get existing subscription
+        if let Some(existing_subscription) = self.subscription_repository.get_by_user_id(user_id).await? {
+            return Ok(existing_subscription);
+        }
+        
+        // No subscription exists, create default one
+        info!("User {} has no subscription, creating default free trial subscription", user_id);
+        self.create_default_subscription_for_new_user(user_id).await
+    }
+
     // Get the database pool for use by other components
     pub fn get_db_pool(&self) -> PgPool {
         self.subscription_repository.get_pool().clone()
@@ -307,9 +390,25 @@ impl BillingService {
         let mut tx = self.db_pools.user_pool.begin().await
             .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
 
-        // Fetch the user's subscription and check management state
-        let subscription = self.subscription_repository.get_by_user_id_with_executor(user_id, &mut tx).await?
-            .ok_or_else(|| AppError::InvalidArgument("User has no active subscription".to_string()))?;
+        // Ensure user has a subscription, create default one if missing
+        let subscription = match self.subscription_repository.get_by_user_id_with_executor(user_id, &mut tx).await? {
+            Some(subscription) => subscription,
+            None => {
+                info!("User {} accessing billing portal has no subscription, creating default subscription", user_id);
+                // Commit current transaction and start fresh for subscription creation
+                tx.commit().await
+                    .map_err(|e| AppError::Database(format!("Failed to commit transaction: {}", e)))?;
+                
+                // Create default subscription
+                let subscription = self.create_default_subscription_for_new_user(user_id).await?;
+                
+                // Start new transaction for portal creation
+                tx = self.db_pools.user_pool.begin().await
+                    .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
+                
+                subscription
+            }
+        };
 
         // Portal access is now simplified without state tracking
 
@@ -338,11 +437,21 @@ impl BillingService {
     }
     
     
-    // Get subscription details for a user
+    // Get subscription details for a user (legacy method for backward compatibility)
     pub async fn get_subscription_details(
         &self,
         user_id: &Uuid,
     ) -> Result<serde_json::Value, AppError> {
+        // Use the new method and convert to JSON for backward compatibility
+        let response = self.get_subscription_details_for_client(user_id).await?;
+        Ok(serde_json::to_value(response)?)
+    }
+
+    // Get subscription details for client with structured response
+    pub async fn get_subscription_details_for_client(
+        &self,
+        user_id: &Uuid,
+    ) -> Result<SubscriptionDetailsResponse, AppError> {
         // Get subscription
         let subscription = self.subscription_repository.get_by_user_id(user_id).await?;
         
@@ -357,38 +466,43 @@ impl BillingService {
             }
         };
         
-        let _plan = self.get_plan_by_id(&subscription.plan_id).await?;
-        
-        
         // COST-BASED BILLING: Get spending status instead of just usage cost
         let spending_status = self.cost_based_billing_service.get_current_spending_status(user_id).await?;
-        let cost = spending_status.current_spending.to_f64().unwrap_or(0.0);
         
         // Get plan details for allowance and currency
         let plan = self.get_plan_by_id(&subscription.plan_id).await?;
         
-        // Build the response matching frontend SubscriptionInfo interface
-        let response = serde_json::json!({
-            "plan": subscription.plan_id,
-            "status": subscription.status,
-            "trialEndsAt": subscription.trial_ends_at,
-            "currentPeriodEndsAt": subscription.current_period_ends_at,
-            "monthlySpendingAllowance": spending_status.included_allowance.to_f64().unwrap_or(0.0),
-            "hardSpendingLimit": spending_status.hard_limit.to_f64().unwrap_or(0.0),
-            "creditBalance": spending_status.credit_balance.to_f64().unwrap_or(0.0),
-            "isTrialing": subscription.status == "trialing",
-            "hasCancelled": subscription.status == "canceled",
-            "nextInvoiceAmount": self.calculate_next_invoice_amount(user_id, &spending_status).await?,
-            "currency": spending_status.currency,
-            "pendingPlanId": subscription.pending_plan_id,
-            "cancelAtPeriodEnd": subscription.cancel_at_period_end,
-            "managementState": "in_sync",  // Simplified - no longer tracked
-            "usage": {
-                "totalCost": spending_status.current_spending.to_f64().unwrap_or(0.0),
-                "usagePercentage": spending_status.usage_percentage,
-                "servicesBlocked": spending_status.services_blocked
-            }
-        });
+        // Calculate next invoice amount
+        let next_invoice_amount = self.calculate_next_invoice_amount(user_id, &spending_status).await?;
+        
+        // Build the structured response
+        let response = SubscriptionDetailsResponse {
+            plan: subscription.plan_id.clone(),
+            plan_name: Some(plan.name.clone()),
+            status: subscription.status.clone(),
+            trial_ends_at: subscription.trial_ends_at,
+            current_period_ends_at: subscription.current_period_ends_at,
+            monthly_spending_allowance: Some(plan.included_spending_monthly.to_f64().unwrap_or(0.0)),
+            hard_spending_limit: Some(spending_status.hard_limit.to_f64().unwrap_or(0.0)),
+            is_trialing: subscription.status == "trialing",
+            has_cancelled: subscription.status == "canceled",
+            next_invoice_amount,
+            currency: spending_status.currency.clone(),
+            usage: UsageInfo {
+                total_cost: spending_status.current_spending.to_f64().unwrap_or(0.0),
+                usage_percentage: spending_status.usage_percentage,
+                services_blocked: spending_status.services_blocked,
+                monthly_limit: Some(plan.included_spending_monthly.to_f64().unwrap_or(0.0)),
+                hard_limit: Some(spending_status.hard_limit.to_f64().unwrap_or(0.0)),
+                remaining_allowance: Some(spending_status.remaining_allowance.to_f64().unwrap_or(0.0)),
+            },
+            credit_balance: spending_status.credit_balance.to_f64().unwrap_or(0.0),
+            pending_plan_id: subscription.pending_plan_id.clone(),
+            cancel_at_period_end: subscription.cancel_at_period_end,
+            management_state: "in_sync".to_string(),
+            subscription_id: subscription.stripe_subscription_id.clone(),
+            customer_id: subscription.stripe_customer_id.clone(),
+        };
         
         Ok(response)
     }
@@ -551,6 +665,56 @@ impl BillingService {
             Some(service) => Ok(service),
             None => Err(AppError::Configuration("Stripe not configured".to_string())),
         }
+    }
+
+    /// Get consolidated billing dashboard data
+    pub async fn get_billing_dashboard_data(&self, user_id: &Uuid) -> Result<BillingDashboardData, AppError> {
+        debug!("Fetching billing dashboard data for user: {}", user_id);
+
+        // Get subscription details
+        let subscription = self.subscription_repository.get_by_user_id(user_id).await?;
+        let subscription = match subscription {
+            Some(sub) => sub,
+            None => {
+                // Create a trial subscription and initial spending limit first
+                let mut tx = self.get_db_pool().begin().await.map_err(AppError::from)?;
+                let subscription = self.create_trial_subscription_and_limit_in_tx(user_id, &mut tx).await?;
+                tx.commit().await.map_err(AppError::from)?;
+                subscription
+            }
+        };
+
+        // Get plan details
+        let plan = self.get_plan_by_id(&subscription.plan_id).await?;
+
+        // Get spending status
+        let spending_status = self.cost_based_billing_service.get_current_spending_status(user_id).await?;
+
+        // Build plan details
+        let plan_details = BillingDashboardPlanDetails {
+            plan_id: plan.id.clone(),
+            name: plan.name.clone(),
+            price_usd: plan.base_price_monthly.to_f64().unwrap_or(0.0),
+            billing_interval: "monthly".to_string(),
+        };
+
+        // Build spending details
+        let spending_details = BillingDashboardSpendingDetails {
+            current_spending_usd: spending_status.current_spending.to_f64().unwrap_or(0.0),
+            spending_limit_usd: spending_status.hard_limit.to_f64().unwrap_or(0.0),
+            period_start: spending_status.billing_period_start.to_rfc3339(),
+            period_end: spending_status.next_billing_date.to_rfc3339(),
+        };
+
+        // Build consolidated response
+        let dashboard_data = BillingDashboardData {
+            plan_details,
+            spending_details,
+            credit_balance_usd: spending_status.credit_balance.to_f64().unwrap_or(0.0),
+        };
+
+        info!("Successfully assembled billing dashboard data for user: {}", user_id);
+        Ok(dashboard_data)
     }
 
 
@@ -789,6 +953,10 @@ impl BillingService {
         // For reactivation, we'll create a new subscription since Stripe doesn't support reactivating canceled subscriptions
         let target_plan_id = plan_id.unwrap_or(current_subscription.plan_id);
         
+        // Verify the target plan exists before creating a new subscription
+        let plan_repo = self.subscription_plan_repository.clone();
+        let _target_plan = plan_repo.get_plan_by_id(&target_plan_id).await?;
+        
         // Create new subscription with trial
         let new_subscription = match self.create_subscription_with_trial(user_id, &target_plan_id).await {
             Ok(subscription) => subscription,
@@ -846,71 +1014,315 @@ impl BillingService {
         self.get_subscription_details(user_id).await
     }
 
-    /// Delete a payment method for a user
-    pub async fn delete_payment_method(
+
+    /// Get detailed payment methods with default flag
+    pub async fn get_detailed_payment_methods(
         &self,
         user_id: &Uuid,
-        payment_method_id: &str,
-    ) -> Result<(), AppError> {
+    ) -> Result<Vec<serde_json::Value>, AppError> {
         // Ensure Stripe is configured
         let stripe_service = match &self.stripe_service {
             Some(service) => service,
             None => return Err(AppError::Configuration("Stripe not configured".to_string())),
         };
 
-        // Verify the payment method belongs to the user's customer
+        // Get customer ID
         let customer_id = self.get_or_create_stripe_customer(user_id).await?;
-        let customer_payment_methods = stripe_service.list_payment_methods(&customer_id).await
-            .map_err(|e| AppError::External(format!("Failed to list payment methods: {}", e)))?;
 
-        // Check if the payment method belongs to this customer
-        let payment_method_belongs_to_customer = customer_payment_methods
-            .iter()
-            .any(|pm| pm.id.to_string() == payment_method_id);
+        // Concurrently fetch customer details and payment methods
+        let (customer, payment_methods) = tokio::try_join!(
+            stripe_service.get_customer(&customer_id),
+            stripe_service.list_payment_methods(&customer_id)
+        ).map_err(|e| AppError::External(format!("Failed to fetch customer data: {}", e)))?;
 
-        if !payment_method_belongs_to_customer {
-            return Err(AppError::InvalidArgument("Payment method does not belong to this customer".to_string()));
-        }
+        // Get the default payment method ID from customer
+        let default_payment_method_id = customer.invoice_settings
+            .as_ref()
+            .and_then(|settings| settings.default_payment_method.as_ref())
+            .map(|pm| match pm {
+                stripe::Expandable::Id(id) => id.to_string(),
+                stripe::Expandable::Object(pm_obj) => pm_obj.id.to_string(),
+            });
 
-        // Detach the payment method
-        stripe_service.detach_payment_method(payment_method_id).await
-            .map_err(|e| AppError::External(format!("Failed to detach payment method: {}", e)))?;
+        // Build response with isDefault flag
+        let detailed_methods: Vec<serde_json::Value> = payment_methods
+            .into_iter()
+            .map(|pm| {
+                let is_default = default_payment_method_id
+                    .as_ref()
+                    .map(|default_id| *default_id == pm.id.to_string())
+                    .unwrap_or(false);
 
-        info!("Successfully deleted payment method {} for user {}", payment_method_id, user_id);
-        Ok(())
+                serde_json::json!({
+                    "id": pm.id,
+                    "type": format!("{:?}", pm.type_),
+                    "card": pm.card.as_ref().map(|card| serde_json::json!({
+                        "brand": card.brand,
+                        "last4": card.last4,
+                        "expMonth": card.exp_month,
+                        "expYear": card.exp_year,
+                    })),
+                    "created": pm.created,
+                    "isDefault": is_default
+                })
+            })
+            .collect();
+
+        Ok(detailed_methods)
     }
 
-    /// Set default payment method for a user
-    pub async fn set_default_payment_method(
+    /// Get invoice history with structured data and summary
+    pub async fn get_invoice_history(
         &self,
         user_id: &Uuid,
-        payment_method_id: &str,
-    ) -> Result<(), AppError> {
+        query: crate::handlers::billing::payment_handlers::InvoiceFilterQuery,
+    ) -> Result<InvoiceHistoryResponse, AppError> {
         // Ensure Stripe is configured
         let stripe_service = match &self.stripe_service {
             Some(service) => service,
             None => return Err(AppError::Configuration("Stripe not configured".to_string())),
         };
 
-        // Verify the payment method belongs to the user's customer
+        // Get customer ID
         let customer_id = self.get_or_create_stripe_customer(user_id).await?;
-        let customer_payment_methods = stripe_service.list_payment_methods(&customer_id).await
-            .map_err(|e| AppError::External(format!("Failed to list payment methods: {}", e)))?;
 
-        // Check if the payment method belongs to this customer
-        let payment_method_belongs_to_customer = customer_payment_methods
-            .iter()
-            .any(|pm| pm.id.to_string() == payment_method_id);
+        // Calculate pagination parameters for Stripe API
+        let limit = Some(100u64); // Fixed limit for consistent pagination
+        let starting_after = if query.offset > 0 { 
+            // For simplicity, we'll use None for starting_after in this implementation
+            // In a full implementation, you would need to track the last invoice ID from previous page
+            None 
+        } else { 
+            None 
+        };
 
-        if !payment_method_belongs_to_customer {
-            return Err(AppError::InvalidArgument("Payment method does not belong to this customer".to_string()));
+        // Fetch invoices from Stripe with status filter and pagination
+        let mut invoices = stripe_service.list_invoices_with_filter(&customer_id, query.status.as_deref(), limit, starting_after).await
+            .map_err(|e| AppError::External(format!("Failed to get invoices: {}", e)))?;
+
+        // Apply sorting if specified
+        if let Some(sort_field) = &query.sort_field {
+            let sort_desc = query.sort_direction.as_deref() == Some("desc");
+            
+            match sort_field.as_str() {
+                "amount" => {
+                    invoices.sort_by(|a, b| {
+                        let amount_a = a.amount_due.unwrap_or(0);
+                        let amount_b = b.amount_due.unwrap_or(0);
+                        if sort_desc {
+                            amount_b.cmp(&amount_a)
+                        } else {
+                            amount_a.cmp(&amount_b)
+                        }
+                    });
+                }
+                "created" | "createdDate" => {
+                    invoices.sort_by(|a, b| {
+                        let created_a = a.created.unwrap_or(0);
+                        let created_b = b.created.unwrap_or(0);
+                        if sort_desc {
+                            created_b.cmp(&created_a)
+                        } else {
+                            created_a.cmp(&created_b)
+                        }
+                    });
+                }
+                "dueDate" => {
+                    invoices.sort_by(|a, b| {
+                        let due_a = a.due_date.unwrap_or(0);
+                        let due_b = b.due_date.unwrap_or(0);
+                        if sort_desc {
+                            due_b.cmp(&due_a)
+                        } else {
+                            due_a.cmp(&due_b)
+                        }
+                    });
+                }
+                "status" => {
+                    invoices.sort_by(|a, b| {
+                        let status_a = a.status.as_ref().map(|s| format!("{:?}", s)).unwrap_or_default();
+                        let status_b = b.status.as_ref().map(|s| format!("{:?}", s)).unwrap_or_default();
+                        if sort_desc {
+                            status_b.cmp(&status_a)
+                        } else {
+                            status_a.cmp(&status_b)
+                        }
+                    });
+                }
+                _ => {
+                    // Default sort by created date descending for unknown fields
+                    invoices.sort_by(|a, b| {
+                        let created_a = a.created.unwrap_or(0);
+                        let created_b = b.created.unwrap_or(0);
+                        created_b.cmp(&created_a)
+                    });
+                }
+            }
+        } else {
+            // Default sort by created date descending if no sort specified
+            invoices.sort_by(|a, b| {
+                let created_a = a.created.unwrap_or(0);
+                let created_b = b.created.unwrap_or(0);
+                created_b.cmp(&created_a)
+            });
         }
 
-        // Set as default payment method
-        stripe_service.set_default_payment_method(&customer_id, payment_method_id).await
-            .map_err(|e| AppError::External(format!("Failed to set default payment method: {}", e)))?;
+        // Set summary to default zero values (server-side calculation removed)
+        let summary = InvoiceSummary {
+            total_amount: 0.0,
+            paid_amount: 0.0,
+            outstanding_amount: 0.0,
+            overdue_amount: 0.0,
+            currency: "usd".to_string(),
+        };
 
-        info!("Successfully set payment method {} as default for user {}", payment_method_id, user_id);
+        // Apply pagination
+        let total_count = invoices.len();
+        let offset = query.offset as usize;
+        let limit = query.limit as usize;
+        let has_more = offset + limit < total_count;
+
+        let paginated_invoices: Vec<stripe::Invoice> = invoices
+            .into_iter()
+            .skip(offset)
+            .take(limit)
+            .collect();
+
+        // Map to the expected frontend structure
+        let invoice_entries: Vec<serde_json::Value> = paginated_invoices
+            .into_iter()
+            .map(|invoice| {
+                serde_json::json!({
+                    "id": invoice.id,
+                    "amount": invoice.amount_due.unwrap_or(0) as f64 / 100.0,
+                    "currency": invoice.currency.map(|c| c.to_string()).unwrap_or_else(|| "usd".to_string()),
+                    "status": invoice.status.map(|s| format!("{:?}", s)).unwrap_or_else(|| "unknown".to_string()),
+                    "createdDate": invoice.created.and_then(|timestamp| {
+                        chrono::DateTime::from_timestamp(timestamp, 0)
+                            .map(|dt| dt.to_rfc3339())
+                    }).unwrap_or_else(|| chrono::Utc::now().to_rfc3339()),
+                    "dueDate": invoice.due_date.and_then(|timestamp| {
+                        chrono::DateTime::from_timestamp(timestamp, 0)
+                            .map(|dt| dt.to_rfc3339())
+                    }),
+                    "paidDate": invoice.status_transitions.as_ref()
+                        .and_then(|transitions| transitions.paid_at)
+                        .and_then(|timestamp| {
+                            chrono::DateTime::from_timestamp(timestamp, 0)
+                                .map(|dt| dt.to_rfc3339())
+                        }),
+                    "invoicePdf": invoice.invoice_pdf,
+                    "description": invoice.description.unwrap_or_else(|| "Subscription".to_string())
+                })
+            })
+            .collect();
+
+        // Return structured response
+        Ok(InvoiceHistoryResponse {
+            invoices: invoice_entries,
+            summary,
+            total_count,
+            has_more,
+        })
+    }
+
+    /// Comprehensive subscription synchronization from Stripe webhooks
+    /// This method ensures the local database is an accurate mirror of Stripe's subscription state
+    pub async fn sync_subscription_from_webhook(&self, stripe_sub: &stripe::Subscription) -> Result<(), AppError> {
+        info!("Syncing subscription from webhook: {}", stripe_sub.id);
+        
+        // Find user by Stripe customer ID
+        let user_repo = crate::db::repositories::user_repository::UserRepository::new(
+            self.db_pools.system_pool.clone()
+        );
+        let customer_id = stripe_sub.customer.id().to_string();
+        
+        let user = user_repo.get_by_stripe_customer_id(&customer_id).await?;
+        info!("Found user {} for customer {}", user.id, customer_id);
+        
+        // Start a database transaction for atomic updates
+        let mut tx = self.db_pools.user_pool.begin().await
+            .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
+        
+        // Find local subscription by user_id
+        let mut local_subscription = self.subscription_repository.get_by_user_id_with_executor(&user.id, &mut tx).await?
+            .ok_or_else(|| {
+                error!("No local subscription found for user {} during webhook sync", user.id);
+                AppError::Database(format!("No local subscription found for user {}", user.id))
+            })?;
+        
+        info!("Found local subscription {} for user {}", local_subscription.id, user.id);
+        
+        // Extract plan ID from Stripe subscription items
+        let stripe_plan_id = stripe_sub.items.data
+            .first()
+            .and_then(|item| item.price.as_ref())
+            .map(|price| price.id.to_string())
+            .unwrap_or_else(|| local_subscription.plan_id.clone());
+        
+        // Convert timestamps from Stripe (Unix timestamps) to DateTime<Utc>
+        let current_period_start = DateTime::from_timestamp(stripe_sub.current_period_start, 0)
+            .unwrap_or_else(|| local_subscription.current_period_start);
+        
+        let current_period_end = DateTime::from_timestamp(stripe_sub.current_period_end, 0)
+            .unwrap_or_else(|| local_subscription.current_period_end);
+        
+        let trial_start = stripe_sub.trial_start
+            .and_then(|ts| DateTime::from_timestamp(ts, 0));
+        
+        let trial_end = stripe_sub.trial_end
+            .and_then(|ts| DateTime::from_timestamp(ts, 0));
+        
+        // Update ALL the enhanced synchronization fields from the Stripe subscription object
+        local_subscription.stripe_customer_id = Some(customer_id);
+        local_subscription.stripe_subscription_id = Some(stripe_sub.id.to_string());
+        local_subscription.status = match stripe_sub.status {
+            stripe::SubscriptionStatus::Active => "active".to_string(),
+            stripe::SubscriptionStatus::Canceled => "canceled".to_string(),
+            stripe::SubscriptionStatus::Incomplete => "incomplete".to_string(),
+            stripe::SubscriptionStatus::IncompleteExpired => "incomplete_expired".to_string(),
+            stripe::SubscriptionStatus::PastDue => "past_due".to_string(),
+            stripe::SubscriptionStatus::Trialing => "trialing".to_string(),
+            stripe::SubscriptionStatus::Unpaid => "unpaid".to_string(),
+            stripe::SubscriptionStatus::Paused => "paused".to_string(),
+        };
+        local_subscription.cancel_at_period_end = stripe_sub.cancel_at_period_end;
+        local_subscription.current_period_ends_at = Some(current_period_end);
+        local_subscription.trial_ends_at = trial_end;
+        
+        // Enhanced Stripe webhook synchronization fields
+        local_subscription.stripe_plan_id = stripe_plan_id;
+        local_subscription.current_period_start = current_period_start;
+        local_subscription.current_period_end = current_period_end;
+        local_subscription.trial_start = trial_start;
+        local_subscription.trial_end = trial_end;
+        // Keep existing pending_plan_id (this is managed by the application, not by Stripe directly)
+        // local_subscription.pending_plan_id = local_subscription.pending_plan_id;
+        
+        // Update the subscription in the database
+        self.subscription_repository.update_with_executor(&local_subscription, &mut tx).await
+            .map_err(|e| {
+                error!("Failed to update subscription {} during webhook sync: {}", local_subscription.id, e);
+                e
+            })?;
+        
+        // Commit the transaction
+        tx.commit().await
+            .map_err(|e| AppError::Database(format!("Failed to commit subscription sync transaction: {}", e)))?;
+        
+        info!("Successfully synced subscription {} from Stripe webhook for user {}", 
+              stripe_sub.id, user.id);
+        
+        // Log the comprehensive sync for audit purposes
+        info!("Webhook sync details - Status: {}, Plan: {}, Period: {} to {}, Trial: {} to {}, Cancel at period end: {}", 
+              local_subscription.status,
+              local_subscription.stripe_plan_id,
+              local_subscription.current_period_start.to_rfc3339(),
+              local_subscription.current_period_end.to_rfc3339(),
+              local_subscription.trial_start.map(|ts| ts.to_rfc3339()).unwrap_or_else(|| "none".to_string()),
+              local_subscription.trial_end.map(|ts| ts.to_rfc3339()).unwrap_or_else(|| "none".to_string()),
+              local_subscription.cancel_at_period_end);
+        
         Ok(())
     }
 

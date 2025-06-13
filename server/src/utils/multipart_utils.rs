@@ -9,6 +9,8 @@ pub struct TranscriptionMultipartData {
     pub model: String,
     pub duration_ms: i64,
     pub language: Option<String>,
+    pub prompt: Option<String>,
+    pub temperature: Option<f32>,
 }
 
 pub async fn process_transcription_multipart(mut payload: Multipart) -> Result<TranscriptionMultipartData, AppError> {
@@ -17,6 +19,8 @@ pub async fn process_transcription_multipart(mut payload: Multipart) -> Result<T
     let mut model = String::new(); // Default to empty, service will use default
     let mut duration_ms: i64 = 0;
     let mut language: Option<String> = None;
+    let mut prompt: Option<String> = None;
+    let mut temperature: Option<f32> = None;
 
     while let Some(item) = payload.next().await {
         let mut field = item?;
@@ -66,6 +70,27 @@ pub async fn process_transcription_multipart(mut payload: Multipart) -> Result<T
                     language = Some(language_str.trim().to_string());
                 }
             },
+            "prompt" => {
+                let mut prompt_data = Vec::new();
+                while let Some(chunk) = field.next().await {
+                    prompt_data.extend_from_slice(&chunk?);
+                }
+                let prompt_str = String::from_utf8(prompt_data)
+                    .map_err(|_| AppError::InvalidArgument("Invalid prompt encoding".to_string()))?;
+                if !prompt_str.trim().is_empty() {
+                    prompt = Some(prompt_str.trim().to_string());
+                }
+            },
+            "temperature" => {
+                let mut temperature_data = Vec::new();
+                while let Some(chunk) = field.next().await {
+                    temperature_data.extend_from_slice(&chunk?);
+                }
+                let temperature_str = String::from_utf8(temperature_data)
+                    .map_err(|_| AppError::InvalidArgument("Invalid temperature encoding".to_string()))?;
+                temperature = Some(temperature_str.trim().parse::<f32>()
+                    .map_err(|_| AppError::InvalidArgument("Invalid temperature value".to_string()))?);
+            },
             _ => {
                 // Skip other fields
             }
@@ -86,5 +111,7 @@ pub async fn process_transcription_multipart(mut payload: Multipart) -> Result<T
         model,
         duration_ms,
         language,
+        prompt,
+        temperature,
     })
 }

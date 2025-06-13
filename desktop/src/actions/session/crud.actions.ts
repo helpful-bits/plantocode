@@ -5,6 +5,7 @@ import { hashString } from "@/utils/hash";
 import { normalizePath } from "@/utils/path-utils";
 import { createLogger } from "@/utils/logger";
 import { handleActionError } from "@/utils/action-utils";
+import { DRAFT_SESSION_ID } from "@/contexts/session/_hooks/use-session-state";
 
 import { setActiveSessionAction } from "./active.actions";
 
@@ -123,6 +124,14 @@ export async function getSessionAction(
   sessionId: string
 ): Promise<ActionState<Session>> {
   try {
+    // Handle draft session - this is a special placeholder that doesn't exist in the database
+    if (sessionId === DRAFT_SESSION_ID) {
+      return {
+        isSuccess: false,
+        message: "Draft session cannot be loaded from database",
+      };
+    }
+
     // Use the Tauri command to get a session by ID
     const session = await invoke<Session | null>("get_session_command", {
       sessionId,

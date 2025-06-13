@@ -3,8 +3,26 @@ use serde::{Deserialize, Serialize};
 use crate::error::AppError;
 use crate::services::billing_service::BillingService;
 use crate::middleware::secure_auth::UserId;
+use crate::models::runtime_config::AppState;
+use crate::db::repositories::subscription_plan_repository::{PlanFeatures, SpendingDetails};
 use log::{debug, info, error};
 use uuid::Uuid;
+use bigdecimal::{BigDecimal, ToPrimitive};
+use std::collections::HashMap;
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClientSubscriptionPlan {
+    pub id: String,
+    pub name: String,
+    pub monthly_price: BigDecimal,
+    pub yearly_price: BigDecimal,
+    pub currency: String,
+    pub trial_days: i32,
+    pub features: Vec<String>,
+    pub recommended: bool,
+    pub active: bool,
+}
 
 // ========================================
 // SUBSCRIPTION MANAGEMENT HANDLERS
@@ -18,122 +36,21 @@ pub async fn get_subscription(
 ) -> Result<HttpResponse, AppError> {
     debug!("Getting subscription for user: {}", user_id.0);
     
-    // Get subscription details
-    let subscription = billing_service.get_subscription_details(&user_id.0).await?;
+    // Get subscription details using the new structured method
+    let subscription = billing_service.get_subscription_details_for_client(&user_id.0).await?;
     
     // Return the subscription details
     Ok(HttpResponse::Ok().json(subscription))
 }
 
-/// Get subscription with pending payment status for failed proration handling
-#[get("/api/billing/subscription/pending-payment")]
-pub async fn get_subscription_pending_payment(
-    billing_service: web::Data<BillingService>,
-    user_id: UserId,
-) -> Result<HttpResponse, AppError> {
-    debug!("Getting subscription pending payment status for user: {}", user_id.0);
-    
-    let sub_repo = crate::db::repositories::SubscriptionRepository::new(billing_service.get_db_pool().clone());
-    
-    if let Some(subscription) = sub_repo.get_by_user_id(&user_id.0).await? {
-        // Check if subscription has pending plan change (simplified without payment intent)
-        if subscription.pending_plan_id.is_some() {
-            let publishable_key = billing_service.get_stripe_publishable_key()?;
-            
-            let response = serde_json::json!({
-                "hasPendingPayment": true,
-                "publishableKey": publishable_key,
-                "pendingPlanId": subscription.pending_plan_id,
-                "currentStatus": subscription.status
-            });
-            
-            Ok(HttpResponse::Ok().json(response))
-        } else {
-            let response = serde_json::json!({
-                "hasPendingPayment": false
-            });
-            
-            Ok(HttpResponse::Ok().json(response))
-        }
-    } else {
-        Err(AppError::NotFound("Subscription not found".to_string()))
-    }
-}
 
-/// Complete pending payment and apply plan change
-#[post("/api/billing/subscription/complete-pending-payment")]
-pub async fn complete_pending_payment(
-    billing_service: web::Data<BillingService>,
-    user_id: UserId,
-) -> Result<HttpResponse, AppError> {
-    info!("Completing pending payment for user: {}", user_id.0);
-    
-    let mut tx = billing_service.get_db_pool().begin().await
-        .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
-    
-    let sub_repo = crate::db::repositories::SubscriptionRepository::new(billing_service.get_db_pool().clone());
-    
-    if let Some(mut subscription) = sub_repo.get_by_user_id_with_executor(&user_id.0, &mut tx).await? {
-        // Apply pending plan change
-        if let Some(pending_plan_id) = subscription.pending_plan_id.clone() {
-            let old_plan_id = subscription.plan_id.clone();
-            subscription.plan_id = pending_plan_id.clone();
-            subscription.pending_plan_id = None;
-            subscription.status = "active".to_string();
-            
-            sub_repo.update_with_executor(&subscription, &mut tx).await?;
-            
-            // Update spending limits for the new plan
-            let cost_based_service = billing_service.get_cost_based_billing_service();
-            if let Err(e) = cost_based_service.update_spending_limits_for_plan_change(&user_id.0, &pending_plan_id).await {
-                error!("Failed to update spending limits after manual payment completion for user {}: {}", user_id.0, e);
-            } else {
-                info!("Successfully updated spending limits for user {} after manual payment completion", user_id.0);
-            }
-            
-            tx.commit().await.map_err(|e| AppError::Database(format!("Failed to commit transaction: {}", e)))?;
-            
-            info!("Successfully completed pending payment and applied plan change for user: {} from {} to {}", user_id.0, old_plan_id, pending_plan_id);
-            
-            let response = serde_json::json!({
-                "success": true,
-                "newPlanId": pending_plan_id,
-                "previousPlanId": old_plan_id,
-                "message": "Plan change completed successfully"
-            });
-            
-            Ok(HttpResponse::Ok().json(response))
-        } else {
-            tx.rollback().await.map_err(|e| AppError::Database(format!("Failed to rollback transaction: {}", e)))?;
-            Err(AppError::InvalidArgument("No pending plan change found".to_string()))
-        }
-    } else {
-        tx.rollback().await.map_err(|e| AppError::Database(format!("Failed to rollback transaction: {}", e)))?;
-        Err(AppError::NotFound("Subscription not found".to_string()))
-    }
-}
 
-#[derive(Debug, Deserialize)]
-pub struct PreviewSubscriptionChangeRequest {
-    pub new_plan_id: String,
-    #[serde(default = "default_proration_behavior")]
-    pub proration_behavior: String, // "create_prorations", "none", "always_invoice"
-}
 
-#[derive(Debug, Deserialize)]
-pub struct ChangeSubscriptionPlanRequest {
-    pub new_plan_id: String,
-    #[serde(default = "default_proration_behavior")]
-    pub proration_behavior: String, // "create_prorations", "none", "always_invoice"
-    #[serde(default)]
-    pub billing_cycle_anchor: Option<String>, // "now", "unchanged"
-}
 
 #[derive(Debug, Deserialize)]
 pub struct CancelSubscriptionRequest {
     #[serde(default = "default_at_period_end")]
     pub at_period_end: bool,
-    pub cancellation_reason: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -244,4 +161,142 @@ pub async fn get_usage_summary(
     
     // Return the usage summary
     Ok(HttpResponse::Ok().json(usage))
+}
+
+// ========================================
+// SUBSCRIPTION PLAN HANDLERS
+// ========================================
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlanLimits {
+    pub monthly_allowance: f64,
+    pub overage_rate: f64,
+    pub hard_limit_multiplier: f64,
+    pub models: Vec<String>,
+    pub support: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlanDetails {
+    pub name: String,
+    pub price: String,
+    pub period: String,
+    pub features: Vec<String>,
+    pub limits: PlanLimits,
+}
+
+/// Get available subscription plans - using subscription_plan_repository and returning Vec<SubscriptionPlan>
+#[get("/plans")]
+pub async fn get_available_plans(
+    app_state: web::Data<AppState>,
+) -> Result<HttpResponse, AppError> {
+    debug!("Getting available subscription plans");
+    
+    let plans = app_state.subscription_plan_repository.get_all_plans().await?;
+    
+    let client_plans: Result<Vec<ClientSubscriptionPlan>, AppError> = plans.into_iter().map(|plan| {
+        // Get typed features (fallback to defaults if parsing fails)
+        let typed_features = plan.get_typed_features().unwrap_or_else(|e| {
+            error!("Failed to parse features for plan '{}': {}", plan.id, e);
+            PlanFeatures {
+                core_features: vec!["Basic features".to_string()],
+                allowed_models: vec!["basic".to_string()],
+                support_level: "Standard".to_string(),
+                api_access: false,
+                analytics_level: "Basic".to_string(),
+                spending_details: SpendingDetails {
+                    overage_policy: "none".to_string(),
+                    hard_cutoff: true,
+                },
+            }
+        });
+        
+        Ok(ClientSubscriptionPlan {
+            id: plan.id.clone(),
+            name: plan.name.clone(),
+            monthly_price: plan.base_price_monthly.clone(),
+            yearly_price: plan.base_price_yearly.clone(),
+            currency: plan.currency.clone(),
+            trial_days: app_state.settings.subscription.default_trial_days as i32,
+            features: typed_features.core_features,
+            recommended: plan.plan_tier == 1, // Pro plan is recommended
+            active: true, // All plans in database are considered active
+        })
+    }).collect();
+    
+    Ok(HttpResponse::Ok().json(client_plans?))
+}
+
+// ========================================
+// SUBSCRIPTION CREATION HANDLERS
+// ========================================
+
+#[derive(Debug, Deserialize)]
+pub struct CreateSubscriptionIntentRequest {
+    pub plan_id: String,
+    pub trial_days: Option<u32>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SubscriptionIntentResponse {
+    pub subscription_id: String,
+    pub client_secret: Option<String>, // For SetupIntent or PaymentIntent
+    pub publishable_key: String,
+    pub status: String,
+    pub trial_end: Option<String>,
+}
+
+/// Create a subscription with SetupIntent for trial (modern embedded payment flow)
+/// Fixed client secret retrieval to prioritize subscription.pending_setup_intent.client_secret
+#[post("/subscriptions/create-with-intent")]
+pub async fn create_subscription_with_intent(
+    billing_service: web::Data<BillingService>,
+    user_id: UserId,
+    req: web::Json<CreateSubscriptionIntentRequest>,
+) -> Result<HttpResponse, AppError> {
+    info!("Creating subscription with intent for plan: {} for user: {}", req.plan_id, user_id.0);
+    
+    let subscription = billing_service.create_subscription_with_trial(
+        &user_id.0,
+        &req.plan_id,
+    ).await?;
+    
+    let publishable_key = billing_service.get_stripe_publishable_key()?;
+    
+    // Fixed client secret retrieval logic - prioritize pending_setup_intent first
+    let client_secret = subscription.pending_setup_intent
+        .and_then(|setup_intent| match setup_intent {
+            stripe::Expandable::Id(_) => None,
+            stripe::Expandable::Object(setup_intent_obj) => setup_intent_obj.client_secret,
+        })
+        .or_else(|| {
+            // Fallback to payment_intent.client_secret from latest_invoice
+            subscription.latest_invoice
+                .and_then(|invoice| match invoice {
+                    stripe::Expandable::Id(_) => None,
+                    stripe::Expandable::Object(invoice_obj) => {
+                        invoice_obj.payment_intent.and_then(|pi| match pi {
+                            stripe::Expandable::Id(_) => None,
+                            stripe::Expandable::Object(pi_obj) => pi_obj.client_secret,
+                        })
+                    }
+                })
+        });
+    
+    let response = SubscriptionIntentResponse {
+        subscription_id: subscription.id.to_string(),
+        client_secret,
+        publishable_key,
+        status: format!("{:?}", subscription.status),
+        trial_end: subscription.trial_end.and_then(|t| {
+            chrono::DateTime::from_timestamp(t, 0)
+                .map(|dt| dt.to_rfc3339())
+        }),
+    };
+    
+    info!("Successfully created subscription with intent for user: {}", user_id.0);
+    Ok(HttpResponse::Ok().json(response))
 }

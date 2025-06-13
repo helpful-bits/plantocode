@@ -19,19 +19,6 @@ export async function createSetupIntent(): Promise<SetupIntentResponse> {
   return await invoke<SetupIntentResponse>('create_setup_intent_command');
 }
 
-/**
- * Delete a payment method
- */
-export async function deletePaymentMethod(id: string): Promise<void> {
-  return await invoke<void>('delete_payment_method_command', { id });
-}
-
-/**
- * Set a payment method as default
- */
-export async function setDefaultPaymentMethod(id: string): Promise<void> {
-  return await invoke<void>('set_default_payment_method_command', { id });
-}
 
 // Note: getStripePublishableKey is exported from portal.actions.ts to avoid duplication
 
@@ -49,17 +36,17 @@ export function validatePaymentMethod(paymentMethod: Partial<PaymentMethod>): {
     errors.push('Payment method ID is required');
   }
 
-  if (paymentMethod.expMonth && paymentMethod.expYear) {
+  if (paymentMethod.card?.expMonth && paymentMethod.card?.expYear) {
     const currentDate = new Date();
     const currentYear = currentDate.getFullYear();
     const currentMonth = currentDate.getMonth() + 1;
     
-    if (paymentMethod.expYear < currentYear || 
-        (paymentMethod.expYear === currentYear && paymentMethod.expMonth < currentMonth)) {
+    if (paymentMethod.card.expYear < currentYear || 
+        (paymentMethod.card.expYear === currentYear && paymentMethod.card.expMonth < currentMonth)) {
       errors.push('Payment method has expired');
     }
     
-    if (paymentMethod.expMonth < 1 || paymentMethod.expMonth > 12) {
+    if (paymentMethod.card.expMonth < 1 || paymentMethod.card.expMonth > 12) {
       errors.push('Invalid expiration month');
     }
   }
@@ -80,8 +67,8 @@ export function formatPaymentMethod(paymentMethod: PaymentMethod): {
   isExpired: boolean;
   expiresWithinMonths: number;
 } {
-  const brand = paymentMethod.brand || paymentMethod.typeName || 'Card';
-  const lastFour = paymentMethod.lastFour || '****';
+  const brand = paymentMethod.card?.brand || paymentMethod.type_ || 'Card';
+  const lastFour = paymentMethod.card?.last4 || '****';
   
   const displayName = `${brand.charAt(0).toUpperCase() + brand.slice(1)} ending in ${lastFour}`;
   const displayNumber = `•••• •••• •••• ${lastFour}`;
@@ -90,18 +77,18 @@ export function formatPaymentMethod(paymentMethod: PaymentMethod): {
   let isExpired = false;
   let expiresWithinMonths = Infinity;
   
-  if (paymentMethod.expMonth && paymentMethod.expYear) {
-    displayExpiry = `${paymentMethod.expMonth.toString().padStart(2, '0')}/${paymentMethod.expYear}`;
+  if (paymentMethod.card?.expMonth && paymentMethod.card?.expYear) {
+    displayExpiry = `${paymentMethod.card.expMonth.toString().padStart(2, '0')}/${paymentMethod.card.expYear}`;
     
     const currentDate = new Date();
     const currentYear = currentDate.getFullYear();
     const currentMonth = currentDate.getMonth() + 1;
     
-    isExpired = paymentMethod.expYear < currentYear || 
-                (paymentMethod.expYear === currentYear && paymentMethod.expMonth < currentMonth);
+    isExpired = paymentMethod.card.expYear < currentYear || 
+                (paymentMethod.card.expYear === currentYear && paymentMethod.card.expMonth < currentMonth);
     
     if (!isExpired) {
-      const expiryDate = new Date(paymentMethod.expYear, paymentMethod.expMonth - 1, 1);
+      const expiryDate = new Date(paymentMethod.card.expYear, paymentMethod.card.expMonth - 1, 1);
       const monthsDiff = (expiryDate.getFullYear() - currentYear) * 12 + 
                         (expiryDate.getMonth() - currentMonth + 1);
       expiresWithinMonths = Math.max(0, monthsDiff);
@@ -137,7 +124,8 @@ export async function getEnhancedPaymentMethods(): Promise<Array<PaymentMethod &
     return {
       ...pm,
       ...formatted,
-      needsAttention
+      needsAttention,
+      isDefault: pm.isDefault
     };
   });
 }

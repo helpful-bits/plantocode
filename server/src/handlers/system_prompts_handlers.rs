@@ -17,6 +17,36 @@ pub struct DefaultSystemPrompt {
     pub updated_at: chrono::DateTime<chrono::Utc>,
 }
 
+/// camelCase response struct for frontend compatibility
+#[derive(Serialize, Debug)]
+struct DefaultSystemPromptResponse {
+    pub id: String,
+    #[serde(rename = "taskType")]
+    pub task_type: String,
+    #[serde(rename = "systemPrompt")]
+    pub system_prompt: String,
+    pub description: Option<String>,
+    pub version: String,
+    #[serde(rename = "createdAt")]
+    pub created_at: i64,
+    #[serde(rename = "updatedAt")]
+    pub updated_at: i64,
+}
+
+impl From<crate::db::repositories::system_prompts_repository::DefaultSystemPrompt> for DefaultSystemPromptResponse {
+    fn from(prompt: crate::db::repositories::system_prompts_repository::DefaultSystemPrompt) -> Self {
+        Self {
+            id: prompt.id,
+            task_type: prompt.task_type,
+            system_prompt: prompt.system_prompt,
+            description: prompt.description,
+            version: prompt.version,
+            created_at: prompt.created_at.timestamp(),
+            updated_at: prompt.updated_at.timestamp(),
+        }
+    }
+}
+
 /// Get all default system prompts
 pub async fn get_default_system_prompts(
     prompts_repo: web::Data<Arc<SystemPromptsRepository>>,
@@ -26,7 +56,12 @@ pub async fn get_default_system_prompts(
     match prompts_repo.get_all_default_prompts().await {
         Ok(prompts) => {
             info!("Successfully retrieved {} default system prompts", prompts.len());
-            Ok(HttpResponse::Ok().json(prompts))
+            // Transform to camelCase format for frontend compatibility
+            let response_prompts: Vec<DefaultSystemPromptResponse> = prompts
+                .into_iter()
+                .map(DefaultSystemPromptResponse::from)
+                .collect();
+            Ok(HttpResponse::Ok().json(response_prompts))
         }
         Err(e) => {
             error!("Failed to fetch default system prompts: {}", e);
@@ -46,7 +81,9 @@ pub async fn get_default_system_prompt_by_task_type(
     match prompts_repo.get_default_prompt_by_task_type(&task_type).await {
         Ok(Some(prompt)) => {
             info!("Successfully retrieved default system prompt for task type: {}", task_type);
-            Ok(HttpResponse::Ok().json(prompt))
+            // Transform to camelCase format for frontend compatibility
+            let response_prompt = DefaultSystemPromptResponse::from(prompt);
+            Ok(HttpResponse::Ok().json(response_prompt))
         }
         Ok(None) => {
             info!("No default system prompt found for task type: {}", task_type);

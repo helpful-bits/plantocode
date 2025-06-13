@@ -23,17 +23,9 @@ export * from "./task-type-defs";
 
 // Export system prompt types (excluding TaskType to avoid conflict)
 export type {
-  SystemPrompt,
   DefaultSystemPrompt,
-  SystemPromptResponse,
-  GetSystemPromptRequest,
-  SetSystemPromptRequest,
-  ResetSystemPromptRequest,
-  GetSystemPromptResponse,
-  SetSystemPromptResponse,
   GetDefaultSystemPromptsResponse,
   GetDefaultSystemPromptResponse,
-  HasCustomSystemPromptResponse,
   SystemPromptDisplayData,
   SystemPromptFormData,
   TaskTypeSupportingSystemPrompts

@@ -25,6 +25,16 @@ use std::time::Instant;
 use base64::Engine;
 use chrono;
 
+/// Helper function to standardize model ID handling across transcription endpoints
+fn resolve_transcription_model(model_input: Option<String>) -> Option<String> {
+    match model_input {
+        None => None, // Use default from database
+        Some(model) if model.is_empty() => None, // Empty string means use default
+        Some(model) if model == "openai/gpt-4o-transcribe" => None, // Default model, use database default
+        Some(model) => Some(model), // Use provided model
+    }
+}
+
 /// Validation functions for transcription parameters
 fn validate_transcription_prompt(prompt: &Option<String>) -> Result<(), AppError> {
     if let Some(p) = prompt {
@@ -140,7 +150,7 @@ pub async fn openrouter_chat_completions_proxy(
     }
 }
 
-/// Audio Transcription API proxy (Replicate OpenAI GPT-4o)
+/// Audio Transcription API proxy (Direct OpenAI GPT-4o)
 pub async fn audio_transcriptions_proxy(
     user_id: UserId,
     proxy_service: web::Data<ProxyService>,
@@ -166,11 +176,7 @@ pub async fn audio_transcriptions_proxy(
     let multipart_data = process_transcription_multipart(payload).await?;
     
     // Forward the transcription request to the proxy service
-    let model_from_payload = if multipart_data.model.is_empty() || multipart_data.model == "openai/gpt-4o-transcribe" { 
-        None // Use default from app_settings
-    } else { 
-        Some(multipart_data.model) 
-    };
+    let model_from_payload = resolve_transcription_model(Some(multipart_data.model));
     
     let result = proxy_service.forward_transcription_request(
         &user_id.0, 
@@ -179,8 +185,8 @@ pub async fn audio_transcriptions_proxy(
         model_from_payload,
         multipart_data.duration_ms,
         multipart_data.language.as_deref(),
-        None, // TODO: Add prompt support to multipart processing
-        None, // TODO: Add temperature support to multipart processing
+        multipart_data.prompt.as_deref(),
+        multipart_data.temperature
     ).await?;
     
     // Log request duration
@@ -191,7 +197,7 @@ pub async fn audio_transcriptions_proxy(
     Ok(HttpResponse::Ok().json(result))
 }
 
-/// Audio Transcription Streaming API proxy (Replicate OpenAI GPT-4o)
+/// Audio Transcription Streaming API proxy (Direct OpenAI GPT-4o)
 pub async fn audio_transcriptions_stream_proxy(
     user_id: UserId,
     req: HttpRequest,
@@ -236,6 +242,16 @@ pub async fn audio_transcriptions_stream_proxy(
         .and_then(|v| v.to_str().ok())
         .map(|s| s.to_string());
     
+    let prompt = req.headers()
+        .get("X-Prompt")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string());
+    
+    let temperature = req.headers()
+        .get("X-Temperature")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.parse::<f32>().ok());
+    
     // Read the streaming payload into a buffer
     let mut buffer = web::BytesMut::new();
     while let Some(chunk) = payload.next().await {
@@ -246,11 +262,7 @@ pub async fn audio_transcriptions_stream_proxy(
     let audio_data = buffer.to_vec();
     
     // Forward the transcription request to the proxy service
-    let model_from_payload = if model.is_none() || model.as_ref() == Some(&"openai/gpt-4o-transcribe".to_string()) {
-        None // Use default from app_settings
-    } else {
-        model
-    };
+    let model_from_payload = resolve_transcription_model(model);
     
     let result = proxy_service.forward_transcription_request(
         &user_id.0,
@@ -259,8 +271,8 @@ pub async fn audio_transcriptions_stream_proxy(
         model_from_payload,
         duration_ms.unwrap_or(0),
         language.as_deref(),
-        None, // TODO: Add prompt support to streaming endpoint
-        None, // TODO: Add temperature support to streaming endpoint  
+        prompt.as_deref(),
+        temperature  
     ).await?;
     
     // Log request duration
@@ -271,58 +283,29 @@ pub async fn audio_transcriptions_stream_proxy(
     Ok(HttpResponse::Ok().json(result))
 }
 
-/// Audio Transcription Batch API proxy (Replicate OpenAI GPT-4o)
-/// Handles JSON requests with base64-encoded audio chunks for real-time transcription
+/// Batch transcription request struct as specified in task requirements
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct AudioBatchRequest {
+pub struct BatchTranscriptionRequest {
     pub session_id: String,
     pub audio_base64: String,
     pub chunk_index: u32,
-    pub duration_ms: i64,
+    pub duration_ms: u32,
     pub language: Option<String>,
     pub prompt: Option<String>,
     pub temperature: Option<f32>,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AudioBatchResponse {
-    pub text: String,
-    pub chunk_index: u32,
-    pub processing_time_ms: Option<i64>,
-}
-
-/// Request structure for transcription settings
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TranscriptionSettingsRequest {
-    pub default_prompt: Option<String>,
-    pub default_temperature: Option<f32>,
-    pub default_language: Option<String>,
-    pub default_model: Option<String>,
-}
-
-/// Response structure for transcription settings
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TranscriptionSettingsResponse {
-    pub default_prompt: Option<String>,
-    pub default_temperature: Option<f32>,
-    pub default_language: Option<String>,
-    pub default_model: Option<String>,
-    pub updated_at: Option<String>,
+    pub model: Option<String>,
 }
 
 pub async fn audio_transcriptions_batch_proxy(
     user_id: UserId,
     proxy_service: web::Data<ProxyService>,
     cost_billing_service: web::Data<CostBasedBillingService>,
-    body: web::Json<AudioBatchRequest>,
+    payload: web::Json<BatchTranscriptionRequest>,
 ) -> Result<HttpResponse, AppError> {
     let start = Instant::now();
     
-    debug!("Audio transcription batch request from user: {} (chunk {})", user_id.0, body.chunk_index);
+    debug!("Audio transcription batch request from user: {} (chunk {})", user_id.0, payload.chunk_index);
     
     // Check spending limits BEFORE processing request
     let has_access = cost_billing_service.check_service_access(&user_id.0).await?;
@@ -335,7 +318,7 @@ pub async fn audio_transcriptions_batch_proxy(
         })));
     }
     
-    let request = body.into_inner();
+    let request = payload.into_inner();
     
     // Validate required fields
     if request.session_id.is_empty() {
@@ -393,145 +376,40 @@ pub async fn audio_transcriptions_batch_proxy(
         return Err(AppError::BadRequest("Audio data exceeds maximum size limit (25MB)".to_string()));
     }
     
-    // Generate filename for this chunk
+    // Generate filename for this chunk (webm is the actual format being recorded)
     let filename = format!("chunk_{}.webm", request.chunk_index);
     
+    // Clone values before moving them
+    let language_clone = request.language.clone();
+    let prompt_clone = sanitized_prompt.clone();
+    let temperature_clone = request.temperature;
+    
     // Forward the transcription request to the proxy service with enhanced parameters
-    let result = proxy_service.forward_transcription_request(
+    let result = proxy_service.forward_batch_transcription_request(
         &user_id.0,
-        &audio_data,
+        audio_data,
         &filename,
-        None, // Use default model (openai/gpt-4o-transcribe)
         request.duration_ms,
-        request.language.as_deref(),
-        sanitized_prompt.as_deref(),      // prompt
-        request.temperature,              // temperature
+        request.chunk_index,
+        resolve_transcription_model(request.model.clone()), // Use standardized model resolution
+        request.language,
+        sanitized_prompt,
+        request.temperature,
     ).await?;
-    
-    // Extract transcribed text from the result
-    let transcribed_text = result
-        .get("text")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_string();
-    
-    let processing_time = start.elapsed().as_millis() as i64;
     
     // Log request duration with enhanced parameters info
     info!("Audio transcription batch chunk {} completed in {:?} (prompt: {}, temp: {:?}, lang: {:?})", 
         request.chunk_index, 
         start.elapsed(),
-        sanitized_prompt.is_some(),
-        request.temperature,
-        request.language
+        prompt_clone.is_some(),
+        temperature_clone,
+        language_clone
     );
     
-    // Return the batch response
-    let response = AudioBatchResponse {
-        text: transcribed_text,
-        chunk_index: request.chunk_index,
-        processing_time_ms: Some(processing_time),
-    };
-    
-    Ok(HttpResponse::Ok().json(response))
+    // Return the JSON response with the result
+    Ok(HttpResponse::Ok().json(result))
 }
 
-/// Get transcription settings for a user
-pub async fn get_transcription_settings(
-    user_id: UserId,
-    proxy_service: web::Data<ProxyService>,
-) -> Result<HttpResponse, AppError> {
-    debug!("Get transcription settings request from user: {}", user_id.0);
-    
-    // TODO: Once database schema is ready, implement settings retrieval
-    // For now, return default/placeholder settings
-    let settings = TranscriptionSettingsResponse {
-        default_prompt: Some("Transcribe the following audio accurately, maintaining speaker identification and punctuation.".to_string()),
-        default_temperature: Some(0.1),
-        default_language: Some("en".to_string()),
-        default_model: Some("openai/gpt-4o-transcribe".to_string()),
-        updated_at: None,
-    };
-    
-    info!("Retrieved transcription settings for user: {}", user_id.0);
-    Ok(HttpResponse::Ok().json(settings))
-}
-
-/// Update transcription settings for a user
-pub async fn update_transcription_settings(
-    user_id: UserId,
-    proxy_service: web::Data<ProxyService>,
-    body: web::Json<TranscriptionSettingsRequest>,
-) -> Result<HttpResponse, AppError> {
-    debug!("Update transcription settings request from user: {}", user_id.0);
-    
-    let settings_request = body.into_inner();
-    
-    // Validate settings parameters
-    validate_transcription_prompt(&settings_request.default_prompt)?;
-    validate_transcription_temperature(&settings_request.default_temperature)?;
-    
-    // Validate language code if provided
-    if let Some(ref lang) = settings_request.default_language {
-        if lang.len() > 10 {
-            return Err(AppError::BadRequest("Language code too long".to_string()));
-        }
-    }
-    
-    // Validate model if provided
-    if let Some(ref model) = settings_request.default_model {
-        if model.is_empty() {
-            return Err(AppError::BadRequest("Model cannot be empty".to_string()));
-        }
-        if model.len() > 100 {
-            return Err(AppError::BadRequest("Model name too long".to_string()));
-        }
-    }
-    
-    // Sanitize prompt
-    let sanitized_prompt = sanitize_transcription_prompt(settings_request.default_prompt);
-    
-    // TODO: Once database schema is ready, implement settings persistence
-    // For now, return the sanitized settings as confirmation
-    let response_settings = TranscriptionSettingsResponse {
-        default_prompt: sanitized_prompt,
-        default_temperature: settings_request.default_temperature,
-        default_language: settings_request.default_language,
-        default_model: settings_request.default_model,
-        updated_at: Some(chrono::Utc::now().to_rfc3339()),
-    };
-    
-    info!("Updated transcription settings for user: {} (prompt: {}, temp: {:?}, lang: {:?}, model: {:?})", 
-        user_id.0,
-        response_settings.default_prompt.is_some(),
-        response_settings.default_temperature,
-        response_settings.default_language,
-        response_settings.default_model
-    );
-    
-    Ok(HttpResponse::Ok().json(response_settings))
-}
-
-/// Reset transcription settings to defaults for a user
-pub async fn reset_transcription_settings(
-    user_id: UserId,
-    proxy_service: web::Data<ProxyService>,
-) -> Result<HttpResponse, AppError> {
-    debug!("Reset transcription settings request from user: {}", user_id.0);
-    
-    // TODO: Once database schema is ready, implement settings reset
-    // For now, return default settings
-    let default_settings = TranscriptionSettingsResponse {
-        default_prompt: None, // Use system default
-        default_temperature: None, // Use system default
-        default_language: None, // Auto-detect
-        default_model: None, // Use system default
-        updated_at: Some(chrono::Utc::now().to_rfc3339()),
-    };
-    
-    info!("Reset transcription settings for user: {}", user_id.0);
-    Ok(HttpResponse::Ok().json(default_settings))
-}
 
 /// Generic AI proxy endpoint for desktop app
 /// 

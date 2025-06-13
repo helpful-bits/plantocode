@@ -98,6 +98,7 @@ pub struct SubscriptionPlan {
     pub stripe_price_id_yearly: Option<String>,
     pub plan_tier: i32,
     pub features: Value,
+    pub active: bool,
     pub typed_features: Option<PlanFeatures>,
 }
 
@@ -190,7 +191,7 @@ impl SubscriptionPlanRepository {
     }
 
     pub async fn get_plan_by_id(&self, plan_id: &str) -> Result<SubscriptionPlan, AppError> {
-        let query_str = "SELECT id, name, description, base_price_weekly, base_price_monthly, base_price_yearly, included_spending_weekly, included_spending_monthly, overage_rate, hard_limit_multiplier, currency, stripe_price_id_weekly, stripe_price_id_monthly, stripe_price_id_yearly, plan_tier, features FROM subscription_plans WHERE id = $1";
+        let query_str = "SELECT id, name, description, base_price_weekly, base_price_monthly, base_price_yearly, included_spending_weekly, included_spending_monthly, overage_rate, hard_limit_multiplier, currency, stripe_price_id_weekly, stripe_price_id_monthly, stripe_price_id_yearly, plan_tier, features, active FROM subscription_plans WHERE id = $1";
         
         let record = sqlx::query(query_str)
             .bind(plan_id)
@@ -212,6 +213,7 @@ impl SubscriptionPlanRepository {
                     stripe_price_id_yearly: row.get("stripe_price_id_yearly"),
                     plan_tier: row.get("plan_tier"),
                     features: row.get("features"),
+                    active: row.get("active"),
                     typed_features: None,
                 }.with_typed_features()
             })
@@ -223,7 +225,7 @@ impl SubscriptionPlanRepository {
     }
 
     pub async fn get_all_plans(&self) -> Result<Vec<SubscriptionPlan>, AppError> {
-        let query_str = "SELECT id, name, description, base_price_weekly, base_price_monthly, base_price_yearly, included_spending_weekly, included_spending_monthly, overage_rate, hard_limit_multiplier, currency, stripe_price_id_weekly, stripe_price_id_monthly, stripe_price_id_yearly, plan_tier, features FROM subscription_plans ORDER BY plan_tier, id";
+        let query_str = "SELECT id, name, description, base_price_weekly, base_price_monthly, base_price_yearly, included_spending_weekly, included_spending_monthly, overage_rate, hard_limit_multiplier, currency, stripe_price_id_weekly, stripe_price_id_monthly, stripe_price_id_yearly, plan_tier, features, active FROM subscription_plans ORDER BY plan_tier, id";
         
         let records = sqlx::query(query_str)
             .map(|row: PgRow| {
@@ -244,6 +246,7 @@ impl SubscriptionPlanRepository {
                     stripe_price_id_yearly: row.get("stripe_price_id_yearly"),
                     plan_tier: row.get("plan_tier"),
                     features: row.get("features"),
+                    active: row.get("active"),
                     typed_features: None,
                 }.with_typed_features()
             })

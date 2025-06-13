@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS db_diagnostic_logs (
 -- Core Tables
 -- =========================================================================
 
--- Create sessions table
+-- Create sessions table (stores user context and preferences, NOT workflow artifacts)
 CREATE TABLE IF NOT EXISTS sessions (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
@@ -37,16 +37,6 @@ CREATE TABLE IF NOT EXISTS sessions (
   project_hash TEXT NOT NULL, -- Hash of project_directory for faster lookups
   task_description TEXT DEFAULT NULL,
   search_term TEXT DEFAULT NULL,
-  title_regex TEXT DEFAULT NULL,
-  content_regex TEXT DEFAULT NULL,
-  negative_title_regex TEXT DEFAULT NULL,
-  negative_content_regex TEXT DEFAULT NULL,
-  title_regex_description TEXT DEFAULT NULL,
-  content_regex_description TEXT DEFAULT NULL,
-  negative_title_regex_description TEXT DEFAULT NULL,
-  negative_content_regex_description TEXT DEFAULT NULL,
-  regex_summary_explanation TEXT DEFAULT NULL,
-  is_regex_active INTEGER DEFAULT 1 CHECK(is_regex_active IN (0, 1)),
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
   model_used TEXT DEFAULT NULL,
@@ -150,27 +140,7 @@ CREATE TABLE IF NOT EXISTS task_settings (
   FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
 );
 
--- Create system_prompts table to store custom system prompts
--- Note: For existing databases, this requires manual migration to add id column
-CREATE TABLE IF NOT EXISTS system_prompts (
-  id TEXT PRIMARY KEY,
-  session_id TEXT NOT NULL,
-  task_type TEXT NOT NULL,
-  system_prompt TEXT NOT NULL,
-  is_default INTEGER DEFAULT 0 CHECK(is_default IN (0, 1)),
-  created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
-  updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
-  UNIQUE(session_id, task_type),
-  FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
-);
 
--- Create index for system_prompts table
-CREATE INDEX IF NOT EXISTS idx_system_prompts_session_task ON system_prompts(session_id, task_type);
-CREATE INDEX IF NOT EXISTS idx_system_prompts_task_type ON system_prompts(task_type);
-
--- Note: Default system prompts are stored ONLY on the server (PostgreSQL)
--- Desktop SQLite database contains ONLY user-defined custom system prompts
--- Default prompts are fetched from server and cached in memory with 5-minute TTL
 
 -- Model configurations are fetched from server - no local storage needed
 
@@ -224,4 +194,5 @@ VALUES ('schema_version', '2025-06-11-enhanced-transcription-configuration', str
        ('last_model_update', strftime('%s', 'now'), strftime('%s', 'now')),
        ('initial_setup_with_2025_models', 'true', strftime('%s', 'now')),
        ('enhanced_system_prompts_migration_applied', strftime('%s', 'now'), strftime('%s', 'now')),
-       ('transcription_configuration_migration_applied', strftime('%s', 'now'), strftime('%s', 'now'));
+       ('transcription_configuration_migration_applied', strftime('%s', 'now'), strftime('%s', 'now')),
+       ('system_prompts_table_removed', strftime('%s', 'now'), strftime('%s', 'now'));

@@ -275,7 +275,6 @@ impl JobProcessor for ImplementationPlanProcessor {
             }
         }
 
-        let prompt = composed_prompt.final_prompt;
         let system_prompt_id = composed_prompt.system_prompt_id;
         
         info!("Generated implementation plan prompt for task: {}", &payload.task_description);

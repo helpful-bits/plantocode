@@ -69,7 +69,8 @@ The server needs the following environment variables:
 ```
 # API Keys
 OPENROUTER_API_KEY=...  # For LLM requests
-REPLICATE_API_TOKEN=... # For streaming transcription requests
+# REPLICATE_API_TOKEN=... # Optional: Legacy transcription (not used with direct OpenAI)
+OPENAI_API_KEY=...      # For direct transcription with GPT-4o
 
 # Rate Limiting
 RATE_LIMIT_WINDOW_MS=60000  # 1 minute

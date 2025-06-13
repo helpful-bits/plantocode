@@ -26,12 +26,7 @@ export async function resetSessionStateAction(sessionId: string) {
     const fieldsToUpdate = {
       taskDescription: "",
       includedFiles: [],
-      titleRegex: "",
-      contentRegex: "",
-      negativeTitleRegex: "",
-      negativeContentRegex: "",
       searchTerm: "",
-      isRegexActive: true,
       searchSelectedFilesOnly: false,
     };
 

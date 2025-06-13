@@ -75,9 +75,10 @@ impl LlmTaskRunner {
         // Build unified prompt
         let composed_prompt = self.build_prompt(context, settings_repo).await?;
         
-        // Extract system and user prompts
-        let (system_prompt, user_prompt, system_prompt_id) = 
-            llm_api_utils::extract_prompts_from_composed(&composed_prompt);
+        // Extract system and user prompts using direct field access
+        let system_prompt = composed_prompt.system_prompt.clone();
+        let user_prompt = composed_prompt.user_prompt.clone();
+        let system_prompt_id = composed_prompt.system_prompt_id.clone();
         
         // Create messages
         let messages = llm_api_utils::create_openrouter_messages(&system_prompt, &user_prompt);
@@ -128,9 +129,10 @@ impl LlmTaskRunner {
         // Build unified prompt
         let composed_prompt = self.build_prompt(context, settings_repo).await?;
         
-        // Extract system and user prompts
-        let (system_prompt, user_prompt, system_prompt_id) = 
-            llm_api_utils::extract_prompts_from_composed(&composed_prompt);
+        // Extract system and user prompts using direct field access
+        let system_prompt = composed_prompt.system_prompt.clone();
+        let user_prompt = composed_prompt.user_prompt.clone();
+        let system_prompt_id = composed_prompt.system_prompt_id.clone();
         
         // Create API options with streaming enabled
         let api_options = llm_api_utils::create_api_client_options(
@@ -181,17 +183,19 @@ impl LlmTaskRunner {
     ) -> AppResult<ComposedPrompt> {
         // Handle system prompt override
         if let Some(override_prompt) = &context.system_prompt_override {
-            let final_prompt_content = if context.task_description.is_empty() {
+            if context.task_description.is_empty() {
                 warn!("LlmTaskRunner (job {}): Using system_prompt_override with an empty task_description.", self.job.id);
-                override_prompt.clone()
-            } else {
-                format!("{}\n\n{}", override_prompt, context.task_description)
-            };
+            }
+            
+            // Calculate tokens based on combined prompt
+            let combined_content = format!("{}\n\n{}", override_prompt, context.task_description);
+            
             return Ok(crate::utils::unified_prompt_system::ComposedPrompt {
-                final_prompt: final_prompt_content.clone(),
+                system_prompt: override_prompt.clone(),
+                user_prompt: context.task_description.clone(),
                 system_prompt_id: "override".to_string(),
                 context_sections: vec![], // No context sections for override
-                estimated_tokens: Some(crate::utils::token_estimator::estimate_tokens(&final_prompt_content) as usize),
+                estimated_tokens: Some(crate::utils::token_estimator::estimate_tokens(&combined_content) as usize),
             });
         }
 

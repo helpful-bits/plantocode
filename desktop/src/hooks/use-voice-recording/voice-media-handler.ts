@@ -14,6 +14,7 @@ export interface MediaSetupResult {
   recorder: MediaRecorder;
   activeDeviceId: string | null;
   activeDeviceLabel: string | null;
+  mimeType: string;
 }
 
 /**
@@ -55,13 +56,13 @@ export async function setupMedia({
       return null;
     }
 
-    // Define MIME type options in order of preference for Whisper compatibility
-    // Whisper works best with webm, mp3, wav, and flac formats
+    // Define MIME type options in order of preference for GPT-4o-transcribe compatibility
+    // Remove codec parameters as they can break decoding in GPT-4o models
     const mimeTypePreference = [
       "audio/webm",
       "audio/mp4",
-      "audio/mpeg",
-      "audio/ogg; codecs=opus",
+      "audio/mpeg", 
+      "audio/ogg",
       "audio/wav",
       "audio/flac",
       "", // Empty string as last resort (browser default)
@@ -160,7 +161,7 @@ export async function setupMedia({
       onStop();
     };
 
-    return { stream, recorder, activeDeviceId, activeDeviceLabel };
+    return { stream, recorder, activeDeviceId, activeDeviceLabel, mimeType: mimeType || "audio/webm" };
   } catch (error) {
     console.error("Media setup error:", error);
 

@@ -336,7 +336,6 @@ fn extract_model_from_project_settings(settings_json: &str, task_type: TaskType)
         TaskType::GuidanceGeneration => "guidanceGeneration",
         TaskType::TaskEnhancement => "taskEnhancement",
         TaskType::GenericLlmStream => "genericLlmStream",
-        TaskType::RegexSummaryGeneration => "regexSummaryGeneration",
         TaskType::RegexPatternGeneration => "regexPatternGeneration",
         TaskType::FileFinderWorkflow => "fileFinderWorkflow",
         TaskType::ExtendedPathFinder => "extendedPathFinder",
@@ -368,7 +367,6 @@ fn extract_temperature_from_project_settings(settings_json: &str, task_type: Tas
         TaskType::GuidanceGeneration => "guidanceGeneration",
         TaskType::TaskEnhancement => "taskEnhancement",
         TaskType::GenericLlmStream => "genericLlmStream",
-        TaskType::RegexSummaryGeneration => "regexSummaryGeneration",
         TaskType::RegexPatternGeneration => "regexPatternGeneration",
         TaskType::FileFinderWorkflow => "fileFinderWorkflow",
         TaskType::ExtendedPathFinder => "extendedPathFinder",
@@ -400,7 +398,6 @@ fn extract_max_tokens_from_project_settings(settings_json: &str, task_type: Task
         TaskType::GuidanceGeneration => "guidanceGeneration",
         TaskType::TaskEnhancement => "taskEnhancement",
         TaskType::GenericLlmStream => "genericLlmStream",
-        TaskType::RegexSummaryGeneration => "regexSummaryGeneration",
         TaskType::RegexPatternGeneration => "regexPatternGeneration",
         TaskType::FileFinderWorkflow => "fileFinderWorkflow",
         TaskType::ExtendedPathFinder => "extendedPathFinder",
@@ -413,6 +410,37 @@ fn extract_max_tokens_from_project_settings(settings_json: &str, task_type: Task
         .get("maxTokens")?
         .as_u64()
         .map(|t| t as u32)
+}
+
+/// Helper function to extract system_prompt from project settings
+fn extract_system_prompt_from_project_settings(settings_json: &str, task_type: TaskType) -> Option<String> {
+    // Local tasks don't have system_prompt settings
+    if !task_type.requires_llm() {
+        return None;
+    }
+    
+    let settings: serde_json::Value = serde_json::from_str(settings_json).ok()?;
+    
+    let task_key = match task_type {
+        TaskType::ImplementationPlan => "implementationPlan",
+        TaskType::PathFinder => "pathFinder",
+        TaskType::TextCorrection => "textCorrection",
+        TaskType::PathCorrection => "pathCorrection",
+        TaskType::GuidanceGeneration => "guidanceGeneration",
+        TaskType::TaskEnhancement => "taskEnhancement",
+        TaskType::GenericLlmStream => "genericLlmStream",
+        TaskType::RegexPatternGeneration => "regexPatternGeneration",
+        TaskType::FileFinderWorkflow => "fileFinderWorkflow",
+        TaskType::ExtendedPathFinder => "extendedPathFinder",
+        // Local tasks don't have system_prompt settings
+        TaskType::LocalFileFiltering => return None,
+        _ => return None,
+    };
+    
+    settings.get(task_key)?
+        .get("systemPrompt")?
+        .as_str()
+        .map(|s| s.to_string())
 }
 
 /// Async version: Get model for a task, checking project-specific settings first, then falling back to server config
@@ -490,6 +518,45 @@ pub async fn get_max_tokens_for_task_with_project(task_type: TaskType, project_d
     // Fall back to server config (with async version)
     log::debug!("Using server default max_tokens for {:?}", task_type);
     get_max_tokens_for_task_async(task_type, app_handle).await
+}
+
+/// Async version: Get system prompt for a task, checking project-specific settings first, then falling back to server config
+pub async fn get_system_prompt_for_task_with_project(task_type: TaskType, project_directory: &str, app_handle: &AppHandle) -> AppResult<Option<String>> {
+    // Check if this task requires LLM configuration
+    if !task_type.requires_llm() {
+        return Ok(None);
+    }
+    
+    // First try to get project-specific settings
+    let settings_repo = app_handle.state::<Arc<SettingsRepository>>().inner().clone();
+    let project_hash = hash_string(project_directory);
+    let key = format!("project_task_model_settings_{}", project_hash);
+    
+    // Try to get project settings
+    if let Ok(Some(settings_json)) = settings_repo.get_value(&key).await {
+        if let Some(system_prompt) = extract_system_prompt_from_project_settings(&settings_json, task_type) {
+            log::debug!("Using project-specific system_prompt for {:?}", task_type);
+            return Ok(Some(system_prompt));
+        }
+    }
+    
+    // Fall back to server config
+    let config_guard = CONFIG.read().map_err(|e| AppError::InternalError(format!("Failed to acquire read lock: {}", e)))?;
+    
+    if let Some(runtime_config) = &*config_guard {
+        let task_key = task_type.to_string();
+        
+        // First try task-specific configuration
+        if let Some(task_config) = runtime_config.tasks.get(&task_key) {
+            if let Some(system_prompt) = &task_config.system_prompt {
+                log::debug!("Using server default system_prompt for {:?}", task_type);
+                return Ok(Some(system_prompt.clone()));
+            }
+        }
+    }
+    
+    log::debug!("No system_prompt configured for {:?}", task_type);
+    Ok(None)
 }
 
 

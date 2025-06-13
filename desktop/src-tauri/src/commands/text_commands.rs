@@ -15,7 +15,6 @@ use crate::jobs::types::JobPayload;
 pub struct CorrectTextArgs {
     pub session_id: String,
     pub text_to_correct: String,
-    pub language: String, 
     pub original_transcription_job_id: Option<String>,
     pub project_directory: Option<String>,
 }
@@ -25,7 +24,6 @@ pub struct CorrectTextArgs {
 pub async fn correct_text_command(
     session_id: String,
     text_to_correct: String,
-    language: String,
     original_transcription_job_id: Option<String>,
     project_directory: Option<String>,
     app_handle: AppHandle,
@@ -33,7 +31,6 @@ pub async fn correct_text_command(
     let args = CorrectTextArgs {
         session_id,
         text_to_correct,
-        language,
         original_transcription_job_id,
         project_directory,
     };
@@ -48,14 +45,10 @@ pub async fn correct_text_command(
         return Err(AppError::ValidationError("Text to correct is required".to_string()));
     }
     
-    if args.language.is_empty() {
-        return Err(AppError::ValidationError("Language is required".to_string()));
-    }
     
     // Create the job payload
     let payload = crate::jobs::types::TextCorrectionPayload {
         text_to_correct: args.text_to_correct.clone(),
-        language: args.language.clone(),
         original_transcription_job_id: args.original_transcription_job_id.clone(),
     };
     

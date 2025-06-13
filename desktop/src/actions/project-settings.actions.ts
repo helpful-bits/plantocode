@@ -180,3 +180,145 @@ export async function saveProjectSettingAction(
     return handleActionError(error) as ActionState<void>;
   }
 }
+
+/**
+ * Get server default task model settings (without project overrides)
+ */
+export async function getServerDefaultTaskModelSettings(): Promise<ActionState<TaskSettings | null>> {
+  try {
+    const settingsJson = await invoke<string>("get_server_default_task_model_settings_command");
+    
+    try {
+      const settings = JSON.parse(settingsJson) as TaskSettings;
+      return {
+        isSuccess: true,
+        message: "Server defaults loaded successfully",
+        data: settings,
+      };
+    } catch (parseError) {
+      console.error("Error parsing server default settings:", parseError);
+      return {
+        isSuccess: false,
+        message: "Error parsing server defaults",
+        data: undefined,
+      };
+    }
+  } catch (error) {
+    console.error("Error getting server default task model settings:", error);
+    return handleActionError(error) as ActionState<TaskSettings | null>;
+  }
+}
+
+/**
+ * Get project overrides only (without server defaults)
+ */
+export async function getProjectOverridesOnly(
+  projectDirectory: string
+): Promise<ActionState<TaskSettings | null>> {
+  try {
+    if (!projectDirectory) {
+      return {
+        isSuccess: false,
+        message: "No project directory provided",
+        data: undefined,
+      };
+    }
+
+    const settingsJson = await invoke<string | null>("get_project_overrides_only_command", {
+      projectDirectory,
+    });
+
+    if (!settingsJson) {
+      return {
+        isSuccess: true,
+        message: "No project overrides found",
+        data: null,
+      };
+    }
+
+    try {
+      const settings = JSON.parse(settingsJson) as TaskSettings;
+      return {
+        isSuccess: true,
+        message: "Project overrides loaded successfully",
+        data: settings,
+      };
+    } catch (parseError) {
+      console.error("Error parsing project overrides:", parseError);
+      return {
+        isSuccess: false,
+        message: "Error parsing project overrides",
+        data: undefined,
+      };
+    }
+  } catch (error) {
+    console.error("Error getting project overrides:", error);
+    return handleActionError(error) as ActionState<TaskSettings | null>;
+  }
+}
+
+/**
+ * Reset a specific project setting to server default
+ */
+export async function resetProjectSettingToDefault(
+  projectDirectory: string,
+  taskKey: string,
+  settingKey: string
+): Promise<ActionState<void>> {
+  try {
+    if (!projectDirectory || !taskKey || !settingKey) {
+      return {
+        isSuccess: false,
+        message: "Missing required parameters",
+      };
+    }
+
+    await invoke("reset_project_setting_to_default_command", {
+      projectDirectory,
+      taskKey,
+      settingKey,
+    });
+
+    return {
+      isSuccess: true,
+      message: "Setting reset to default successfully",
+    };
+  } catch (error) {
+    console.error(`Error resetting ${taskKey}.${settingKey} to default:`, error);
+    return handleActionError(error) as ActionState<void>;
+  }
+}
+
+/**
+ * Check if a specific project setting is customized (different from server default)
+ */
+export async function isProjectSettingCustomized(
+  projectDirectory: string,
+  taskKey: string,
+  settingKey: string
+): Promise<ActionState<boolean>> {
+  try {
+    if (!projectDirectory || !taskKey || !settingKey) {
+      return {
+        isSuccess: false,
+        message: "Missing required parameters",
+        data: false,
+      };
+    }
+
+    const isCustomized = await invoke<boolean>("is_project_setting_customized_command", {
+      projectDirectory,
+      taskKey,
+      settingKey,
+    });
+
+    return {
+      isSuccess: true,
+      message: "Customization status checked successfully",
+      data: isCustomized,
+    };
+  } catch (error) {
+    console.error(`Error checking if ${taskKey}.${settingKey} is customized:`, error);
+    return handleActionError(error) as ActionState<boolean>;
+  }
+}

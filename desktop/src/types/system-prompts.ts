@@ -1,14 +1,5 @@
 // TypeScript types for system prompt management
 
-export interface SystemPrompt {
-  id: string;
-  sessionId: string;
-  taskType: string;
-  systemPrompt: string;
-  isDefault: boolean;
-  createdAt: number;
-  updatedAt: number;
-}
 
 export interface DefaultSystemPrompt {
   id: string;
@@ -18,43 +9,6 @@ export interface DefaultSystemPrompt {
   version: string;
   createdAt: number;
   updatedAt: number;
-}
-
-export interface SystemPromptResponse {
-  sessionId: string;
-  taskType: string;
-  systemPrompt: string;
-  isDefault: boolean;
-  isCustom: boolean;
-  version?: string;
-  basedOnVersion?: string;
-}
-
-export interface GetSystemPromptRequest {
-  sessionId: string;
-  taskType: string;
-}
-
-export interface SetSystemPromptRequest {
-  sessionId: string;
-  taskType: string;
-  systemPrompt: string;
-}
-
-export interface ResetSystemPromptRequest {
-  sessionId: string;
-  taskType: string;
-}
-
-// API Response types
-export interface GetSystemPromptResponse {
-  data?: SystemPromptResponse;
-  error?: string;
-}
-
-export interface SetSystemPromptResponse {
-  success: boolean;
-  error?: string;
 }
 
 export interface GetDefaultSystemPromptsResponse {
@@ -67,10 +21,6 @@ export interface GetDefaultSystemPromptResponse {
   error?: string;
 }
 
-export interface HasCustomSystemPromptResponse {
-  hasCustom: boolean;
-  error?: string;
-}
 
 // Import task types from consolidated definitions
 import type { TaskType, TaskTypeSupportingSystemPrompts } from './task-type-defs';
@@ -80,7 +30,7 @@ export type { TaskType, TaskTypeSupportingSystemPrompts };
 export interface SystemPromptFormData {
   taskType: TaskTypeSupportingSystemPrompts;
   systemPrompt: string;
-  isDefault: boolean;
+  isActive: boolean;
 }
 
 export interface SystemPromptDisplayData {
@@ -89,7 +39,6 @@ export interface SystemPromptDisplayData {
   description: string;
   currentPrompt: string;
   isCustom: boolean;
-  isDefault: boolean;
   lastUpdated?: number;
 }
 
@@ -124,7 +73,7 @@ export interface SystemPromptSettings {
   taskType: TaskType;
   enabled: boolean;
   customPrompt?: string;
-  useDefault: boolean;
+  isActive: boolean;
 }
 
 export interface SystemPromptSettingsGroup {

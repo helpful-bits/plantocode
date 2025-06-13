@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import type { CreditBalanceResponse } from '@/types/tauri-commands';
 
 export interface CreditPack {
   id: string;
@@ -6,18 +7,13 @@ export interface CreditPack {
   valueCredits: number;
   priceAmount: number;
   currency: string;
+  stripePriceId: string;
   description?: string;
   recommended: boolean;
   bonusPercentage?: number;
-  isPopular: boolean;
-  displayOrder: number;
+  isPopular?: boolean;
 }
 
-export interface CreditBalance {
-  balance: number;
-  currency: string;
-  lastUpdated: string;
-}
 
 export interface PaymentIntent {
   id?: string; // id is not always present in the create response
@@ -39,8 +35,8 @@ export async function getCreditPacks(): Promise<CreditPack[]> {
 /**
  * Get current credit balance for the user
  */
-export async function getCreditBalance(): Promise<CreditBalance> {
-  return await invoke<CreditBalance>('get_credit_balance_command');
+export async function getCreditBalance(): Promise<CreditBalanceResponse> {
+  return await invoke<CreditBalanceResponse>('get_credit_balance_command');
 }
 
 /**

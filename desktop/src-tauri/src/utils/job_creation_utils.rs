@@ -223,7 +223,6 @@ fn inject_job_id_into_payload(payload: &mut JobPayload, job_id: &str) {
         JobPayload::TextCorrection(_) => {},
         JobPayload::GenericLlmStream(_) => {},
         JobPayload::RegexPatternGeneration(_) => {},
-        JobPayload::RegexSummaryGeneration(_) => {},
         
         // Workflow stage payloads
         JobPayload::LocalFileFiltering(_) => {},

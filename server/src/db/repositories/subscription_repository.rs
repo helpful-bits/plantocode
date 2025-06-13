@@ -16,10 +16,16 @@ pub struct Subscription {
     pub is_trial: bool,
     pub trial_ends_at: Option<DateTime<Utc>>,
     pub current_period_ends_at: Option<DateTime<Utc>>,
-    pub pending_plan_id: Option<String>,
     pub cancel_at_period_end: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    // Enhanced Stripe webhook synchronization fields
+    pub stripe_plan_id: String,
+    pub current_period_start: DateTime<Utc>,
+    pub current_period_end: DateTime<Utc>,
+    pub trial_start: Option<DateTime<Utc>>,
+    pub trial_end: Option<DateTime<Utc>>,
+    pub pending_plan_id: Option<String>,
 }
 
 #[derive(Debug)]
@@ -79,14 +85,17 @@ impl SubscriptionRepository {
     ) -> Result<Uuid, AppError>
     {
         let id = Uuid::new_v4();
+        let now = Utc::now();
         
         query!(
             r#"
             INSERT INTO subscriptions 
             (id, user_id, plan_id, status, stripe_customer_id, stripe_subscription_id, 
-             trial_ends_at, current_period_ends_at, pending_plan_id, cancel_at_period_end, created_at, updated_at)
+             trial_ends_at, current_period_ends_at, cancel_at_period_end, 
+             stripe_plan_id, current_period_start, current_period_end, 
+             trial_start, trial_end, pending_plan_id, created_at, updated_at)
             VALUES 
-            ($1, $2, $3, $4, $5, $6, $7, $8, NULL, false, now(), now())
+            ($1, $2, $3, $4, $5, $6, $7, $8, false, $9, $10, $11, $12, $13, NULL, now(), now())
             "#,
             id,
             user_id,
@@ -96,6 +105,11 @@ impl SubscriptionRepository {
             stripe_subscription_id,
             trial_ends_at,
             current_period_ends_at,
+            plan_id, // Default stripe_plan_id to plan_id for backward compatibility
+            now, // Default current_period_start to now
+            current_period_ends_at, // current_period_end
+            trial_ends_at, // trial_start (backward compatibility - if trial_ends_at exists, assume trial started now)
+            trial_ends_at, // trial_end
         )
         .execute(&mut **executor)
         .await
@@ -114,7 +128,9 @@ impl SubscriptionRepository {
                    plan_id, status, 
                    (trial_ends_at IS NOT NULL AND trial_ends_at > now()) as "is_trial!: bool",
                    trial_ends_at, current_period_ends_at,
-                   pending_plan_id, cancel_at_period_end,
+                   cancel_at_period_end,
+                   stripe_plan_id, current_period_start, current_period_end,
+                   trial_start, trial_end, pending_plan_id,
                    created_at, updated_at
             FROM subscriptions
             WHERE id = $1
@@ -156,7 +172,9 @@ impl SubscriptionRepository {
                    plan_id, status, 
                    (trial_ends_at IS NOT NULL AND trial_ends_at > now()) as "is_trial!: bool",
                    trial_ends_at, current_period_ends_at,
-                   pending_plan_id, cancel_at_period_end,
+                   cancel_at_period_end,
+                   stripe_plan_id, current_period_start, current_period_end,
+                   trial_start, trial_end, pending_plan_id,
                    created_at, updated_at
             FROM subscriptions
             WHERE user_id = $1
@@ -183,7 +201,11 @@ impl SubscriptionRepository {
                    plan_id, status, 
                    (trial_ends_at IS NOT NULL AND trial_ends_at > now()) as "is_trial!: bool",
                    trial_ends_at, current_period_ends_at,
-                   pending_plan_id, cancel_at_period_end,
+                   cancel_at_period_end,
+                   COALESCE(stripe_plan_id, plan_id) as "stripe_plan_id!: String",
+                   COALESCE(current_period_start, created_at) as "current_period_start!: DateTime<Utc>",
+                   COALESCE(current_period_end, current_period_ends_at) as "current_period_end!: DateTime<Utc>",
+                   trial_start, trial_end, pending_plan_id,
                    created_at, updated_at
             FROM subscriptions
             WHERE stripe_subscription_id = $1
@@ -221,10 +243,15 @@ impl SubscriptionRepository {
                 status = $4,
                 trial_ends_at = $5,
                 current_period_ends_at = $6,
-                pending_plan_id = $7,
-                cancel_at_period_end = $8,
+                cancel_at_period_end = $7,
+                stripe_plan_id = $8,
+                current_period_start = $9,
+                current_period_end = $10,
+                trial_start = $11,
+                trial_end = $12,
+                pending_plan_id = $13,
                 updated_at = now()
-            WHERE id = $9
+            WHERE id = $14
             "#,
             subscription.stripe_customer_id,
             subscription.stripe_subscription_id,
@@ -232,8 +259,13 @@ impl SubscriptionRepository {
             subscription.status,
             subscription.trial_ends_at,
             subscription.current_period_ends_at,
-            subscription.pending_plan_id,
             subscription.cancel_at_period_end,
+            subscription.stripe_plan_id,
+            subscription.current_period_start,
+            subscription.current_period_end,
+            subscription.trial_start,
+            subscription.trial_end,
+            subscription.pending_plan_id,
             subscription.id
         )
         .execute(&mut **executor)
@@ -264,5 +296,6 @@ impl SubscriptionRepository {
 
         Ok(())
     }
+
 
 }

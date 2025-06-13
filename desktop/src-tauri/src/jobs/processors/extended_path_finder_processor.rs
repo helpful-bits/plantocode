@@ -106,8 +106,10 @@ impl JobProcessor for ExtendedPathFinderProcessor {
         info!("Enhanced Extended Path Finder prompt composition for job {}", job.id);
         info!("System prompt ID: {}", composed_prompt.system_prompt_id);
         
-        // Extract prompts using standardized utility
-        let (system_prompt, user_prompt, system_prompt_id) = llm_api_utils::extract_prompts_from_composed(&composed_prompt);
+        // Extract prompts using direct field access
+        let system_prompt = composed_prompt.system_prompt.clone();
+        let user_prompt = composed_prompt.user_prompt.clone();
+        let system_prompt_id = composed_prompt.system_prompt_id.clone();
         
         // Add initial paths context to the user prompt
         let initial_paths_text = if payload.initial_paths.is_empty() {

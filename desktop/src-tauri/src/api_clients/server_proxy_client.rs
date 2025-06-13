@@ -98,6 +98,13 @@ impl ServerProxyClient {
     pub async fn get_default_system_prompts(&self) -> AppResult<Vec<serde_json::Value>> {
         info!("Fetching all default system prompts from server");
         
+        let prompts = self.try_fetch_default_system_prompts_from_server().await?;
+        info!("Successfully fetched {} default system prompts from server", prompts.len());
+        Ok(prompts)
+    }
+    
+    /// Try to fetch default system prompts from server (can fail)
+    async fn try_fetch_default_system_prompts_from_server(&self) -> AppResult<Vec<serde_json::Value>> {
         // Create the prompts endpoint URL - this is a public endpoint, no auth required
         let prompts_url = format!("{}/system-prompts/defaults", self.server_url);
         
@@ -120,14 +127,19 @@ impl ServerProxyClient {
         let prompts: Vec<serde_json::Value> = response.json().await
             .map_err(|e| AppError::ServerProxyError(format!("Failed to parse default system prompts response: {}", e)))?;
             
-        info!("Successfully fetched {} default system prompts from server", prompts.len());
-        
         Ok(prompts)
     }
     
-    /// Get a specific default system prompt by task type from the server
+    
+    /// Get a specific default system prompt by task type from server
     pub async fn get_default_system_prompt(&self, task_type: &str) -> AppResult<Option<serde_json::Value>> {
         info!("Fetching default system prompt for task type '{}' from server", task_type);
+        
+        self.try_fetch_default_system_prompt_from_server(task_type).await
+    }
+    
+    /// Try to fetch a specific default system prompt from server (can fail)
+    async fn try_fetch_default_system_prompt_from_server(&self, task_type: &str) -> AppResult<Option<serde_json::Value>> {
         
         // Create the specific prompt endpoint URL - this is a public endpoint, no auth required
         let prompt_url = format!("{}/system-prompts/defaults/{}", self.server_url, task_type);
@@ -161,49 +173,21 @@ impl ServerProxyClient {
         Ok(Some(prompt))
     }
     
-    /// Populate local default system prompts cache from server
-    /// This method fetches all default system prompts from the server and stores them locally
-    pub async fn populate_default_system_prompts_cache(&self, settings_repo: &crate::db_utils::SettingsRepository) -> AppResult<()> {
-        info!("Populating default system prompts cache from server");
+    /// Initialize system prompts cache from server
+    /// This method validates that system prompts are available from the server
+    pub async fn populate_default_system_prompts_cache(&self, _settings_repo: &crate::db_utils::SettingsRepository) -> AppResult<()> {
+        info!("Validating default system prompts availability from server");
         
-        match self.get_default_system_prompts().await {
-            Ok(server_prompts) => {
-                let mut populated_count = 0;
-                
-                for prompt_value in server_prompts {
-                    // Parse the server response into our DefaultSystemPrompt structure
-                    if let Some(task_type) = prompt_value.get("task_type").and_then(|v| v.as_str()) {
-                        if let Some(system_prompt) = prompt_value.get("system_prompt").and_then(|v| v.as_str()) {
-                            let description = prompt_value.get("description").and_then(|v| v.as_str()).map(|s| s.to_string());
-                            let version = prompt_value.get("version").and_then(|v| v.as_str()).unwrap_or("1.0");
-                            
-                            // Store in local database cache
-                            match settings_repo.update_default_system_prompt(task_type, system_prompt, description.as_deref()).await {
-                                Ok(_) => {
-                                    debug!("Cached default system prompt for task type: {}", task_type);
-                                    populated_count += 1;
-                                }
-                                Err(e) => {
-                                    warn!("Failed to cache system prompt for task type {}: {}", task_type, e);
-                                }
-                            }
-                        } else {
-                            warn!("System prompt missing system_prompt field for prompt: {:?}", prompt_value);
-                        }
-                    } else {
-                        warn!("System prompt missing task_type field for prompt: {:?}", prompt_value);
-                    }
-                }
-                
-                info!("Successfully populated {} default system prompts from server", populated_count);
-                Ok(())
-            }
-            Err(e) => {
-                warn!("Failed to fetch default system prompts from server: {}. Using local fallbacks if available.", e);
-                // Don't treat this as a fatal error - the app can still function with local prompts
-                Err(e)
-            }
+        let server_prompts = self.get_default_system_prompts().await?;
+        let prompt_count = server_prompts.len();
+        
+        if prompt_count > 0 {
+            info!("Successfully validated {} default system prompts from server", prompt_count);
+        } else {
+            warn!("No default system prompts returned from server");
         }
+        
+        Ok(())
     }
     
     /// Helper method to invoke AI requests via the server proxy
