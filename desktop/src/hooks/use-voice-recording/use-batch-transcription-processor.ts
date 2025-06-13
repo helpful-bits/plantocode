@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { transcribeAudioChunk } from "@/actions/voice-transcription/transcribe";
 import { getErrorMessage, logError } from "@/utils/error-handling";
 
@@ -39,8 +39,27 @@ export function useBatchTranscriptionProcessor({
   
   // Use refs to track active processing to avoid race conditions
   const activeProcessingRef = useRef<Set<number>>(new Set());
+  const processedChunkHashes = useRef<Set<string>>(new Set());
   const isMountedRef = useRef(true);
   
+  // Ensure mounted state is properly managed
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+  
+  // Generate a simple hash for chunk deduplication
+  const generateChunkHash = useCallback(async (audioChunk: Blob): Promise<string> => {
+    // Use size + first few bytes as a simple hash
+    const arrayBuffer = await audioChunk.arrayBuffer();
+    const bytes = new Uint8Array(arrayBuffer);
+    const sampleBytes = bytes.slice(0, Math.min(100, bytes.length));
+    const hash = `${audioChunk.size}_${Array.from(sampleBytes).join('')}`;
+    return hash;
+  }, []);
+
   // Build full text from processed chunks in order
   const buildFullText = useCallback((chunks: Map<number, ChunkTranscriptionState>): string => {
     const orderedChunks = Array.from(chunks.values())
@@ -56,11 +75,27 @@ export function useBatchTranscriptionProcessor({
       return;
     }
 
+    // Validate chunk size to filter out duplicate/empty chunks
+    if (audioChunk.size < 1000) {
+      console.warn('[BatchTranscriptionProcessor] Skipping small chunk:', audioChunk.size, 'bytes');
+      return;
+    }
+
+    // Generate hash to detect duplicate chunks
+    const chunkHash = await generateChunkHash(audioChunk);
+    if (processedChunkHashes.current.has(chunkHash)) {
+      console.warn('[BatchTranscriptionProcessor] Skipping duplicate chunk based on content hash:', chunkHash);
+      return;
+    }
+    
+    processedChunkHashes.current.add(chunkHash);
+
     const chunkIndex = currentChunkIndex;
     setCurrentChunkIndex(prev => prev + 1);
     
     // Skip if already processing this chunk
     if (activeProcessingRef.current.has(chunkIndex)) {
+      console.warn('[BatchTranscriptionProcessor] Skipping duplicate chunk index:', chunkIndex);
       return;
     }
     
@@ -84,7 +119,7 @@ export function useBatchTranscriptionProcessor({
         audioChunk,
         chunkIndex,
         sessionId,
-        languageCode === "en" ? undefined : languageCode,
+        languageCode,
         transcriptionPrompt,
         temperature
       );
@@ -117,7 +152,14 @@ export function useBatchTranscriptionProcessor({
       
       if (!isMountedRef.current) return;
 
-      const errorMessage = getErrorMessage(error, "transcription");
+      let errorMessage = getErrorMessage(error, "transcription");
+      
+      // Provide user-friendly messages for common audio issues
+      if (errorMessage.includes("corrupted or unsupported") || errorMessage.includes("malformed")) {
+        errorMessage = "Audio chunk encoding issue detected - this chunk will be skipped. Recording quality may improve with a different microphone or browser.";
+      } else if (errorMessage.includes("too small") || errorMessage.includes("Invalid WebM")) {
+        errorMessage = "Audio chunk format issue - this chunk will be skipped automatically.";
+      }
       
       // Mark chunk as failed
       setProcessedChunks(prev => {
@@ -131,7 +173,11 @@ export function useBatchTranscriptionProcessor({
         return newMap;
       });
 
-      onError?.(errorMessage);
+      // Only show error notification for non-duplicate/non-format errors
+      if (!errorMessage.includes("will be skipped")) {
+        onError?.(errorMessage);
+      }
+      
       await logError(error, "useBatchTranscriptionProcessor", { chunkIndex, sessionId });
 
     } finally {
@@ -144,7 +190,7 @@ export function useBatchTranscriptionProcessor({
         setIsProcessing(false);
       }
     }
-  }, [sessionId, languageCode, currentChunkIndex, onTextUpdate, onChunkComplete, onError, buildFullText, processedChunks]);
+  }, [sessionId, languageCode, currentChunkIndex, onTextUpdate, onChunkComplete, onError, buildFullText, processedChunks, generateChunkHash]);
 
   const getCurrentText = useCallback((): string => {
     return buildFullText(processedChunks);
@@ -155,6 +201,7 @@ export function useBatchTranscriptionProcessor({
     setCurrentChunkIndex(0);
     setIsProcessing(false);
     activeProcessingRef.current.clear();
+    processedChunkHashes.current.clear();
   }, []);
 
   const getStats = useCallback(() => {
@@ -176,6 +223,7 @@ export function useBatchTranscriptionProcessor({
   const cleanup = useCallback(() => {
     isMountedRef.current = false;
     activeProcessingRef.current.clear();
+    processedChunkHashes.current.clear();
   }, []);
 
   return {

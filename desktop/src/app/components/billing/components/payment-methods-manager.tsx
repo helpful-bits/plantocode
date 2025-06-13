@@ -3,33 +3,22 @@
 import { useState, useEffect } from "react";
 import { 
   CreditCard,
-  Plus,
   AlertTriangle,
   Loader2,
   ExternalLink,
-  Shield,
   Info,
   RefreshCw,
-  Star,
-  Trash2,
 } from "lucide-react";
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/ui/dialog";
 import { Button } from "@/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/ui/card";
+import { Card, CardContent } from "@/ui/card";
 import { Badge } from "@/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/ui/alert";
 import { useNotification } from "@/contexts/notification-context";
 import { getErrorMessage } from "@/utils/error-handling";
-import { dispatchCacheInvalidation } from "@/utils/billing-cache";
-import StripeProvider from "../stripe/StripeProvider";
-import SetupElementForm from "../stripe/SetupElementForm";
 import { 
   getEnhancedPaymentMethods,
-  hasValidPaymentMethods,
-  createSetupIntent,
-  deletePaymentMethod,
-  setDefaultPaymentMethod,
 } from "@/actions/billing/payment-methods.actions";
 import { openBillingPortal } from "@/actions/billing/portal.actions";
 import type { PaymentMethod } from "@/types/tauri-commands";
@@ -59,16 +48,12 @@ interface PaymentMethodStatus {
 
 export function PaymentMethodsManager({ 
   isOpen, 
-  onClose, 
-  onPaymentMethodsUpdated 
+  onClose 
 }: PaymentMethodsManagerProps) {
   const [paymentMethods, setPaymentMethods] = useState<EnhancedPaymentMethod[]>([]);
   const [status, setStatus] = useState<PaymentMethodStatus | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [isAddingMethod, setIsAddingMethod] = useState(false);
-  const [setupIntent, setSetupIntent] = useState<{ clientSecret: string; publishableKey: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [operatingIds, setOperatingIds] = useState<Set<string>>(new Set());
 
   const { showNotification } = useNotification();
 
@@ -83,10 +68,14 @@ export function PaymentMethodsManager({
       setIsLoading(true);
       setError(null);
       
-      const [methods, statusInfo] = await Promise.all([
-        getEnhancedPaymentMethods(),
-        hasValidPaymentMethods()
-      ]);
+      const methods = await getEnhancedPaymentMethods();
+      const statusInfo = {
+        hasAny: methods.length > 0,
+        hasDefault: methods.some(pm => pm.isDefault),
+        hasValid: methods.some(pm => !pm.isExpired),
+        expiredCount: methods.filter(pm => pm.isExpired).length,
+        expiringCount: methods.filter(pm => !pm.isExpired && pm.expiresWithinMonths <= 2).length,
+      };
       
       setPaymentMethods(methods);
       setStatus(statusInfo);
@@ -99,120 +88,7 @@ export function PaymentMethodsManager({
     }
   };
 
-  const handleAddPaymentMethod = async () => {
-    try {
-      setIsAddingMethod(true);
-      setError(null);
-      
-      const intent = await createSetupIntent();
-      setSetupIntent({
-        clientSecret: intent.clientSecret,
-        publishableKey: intent.publishableKey
-      });
-    } catch (err) {
-      const errorMessage = getErrorMessage(err);
-      setError(errorMessage);
-      
-      showNotification({
-        title: "Setup Failed",
-        message: errorMessage,
-        type: "error",
-      });
-    }
-  };
 
-  const handleSetupSuccess = async (_setupIntentId: string) => {
-    setIsAddingMethod(false);
-    setSetupIntent(null);
-    
-    showNotification({
-      title: "Payment Method Added",
-      message: "Your payment method has been successfully added.",
-      type: "success",
-    });
-    
-    await loadPaymentMethods();
-    onPaymentMethodsUpdated?.();
-    
-    // Dispatch cache invalidation to refresh payment method data immediately
-    dispatchCacheInvalidation('PAYMENT_METHODS_UPDATED');
-  };
-
-  const handleSetupError = (error: string) => {
-    setError(error);
-    setIsAddingMethod(false);
-    setSetupIntent(null);
-    
-    showNotification({
-      title: "Setup Failed",
-      message: error,
-      type: "error",
-    });
-  };
-
-  const handleSetDefault = async (paymentMethodId: string) => {
-    try {
-      setOperatingIds(prev => new Set(prev).add(paymentMethodId));
-      
-      await setDefaultPaymentMethod(paymentMethodId);
-      
-      showNotification({
-        title: "Default Updated",
-        message: "Payment method has been set as default.",
-        type: "success",
-      });
-      
-      await loadPaymentMethods();
-      onPaymentMethodsUpdated?.();
-    } catch (err) {
-      const errorMessage = getErrorMessage(err);
-      showNotification({
-        title: "Failed to Set Default",
-        message: errorMessage,
-        type: "error",
-      });
-    } finally {
-      setOperatingIds(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(paymentMethodId);
-        return newSet;
-      });
-    }
-  };
-
-  const handleDelete = async (paymentMethodId: string) => {
-    if (!confirm('Are you sure you want to delete this payment method? This action cannot be undone.')) {
-      return;
-    }
-
-    try {
-      setOperatingIds(prev => new Set(prev).add(paymentMethodId));
-      
-      await deletePaymentMethod(paymentMethodId);
-      
-      showNotification({
-        title: "Payment Method Deleted",
-        message: "Payment method has been successfully removed.",
-        type: "success",
-      });
-      
-      await loadPaymentMethods();
-      onPaymentMethodsUpdated?.();
-    } catch (err) {
-      const errorMessage = getErrorMessage(err);
-      showNotification({
-        title: "Failed to Delete",
-        message: errorMessage,
-        type: "error",
-      });
-    } finally {
-      setOperatingIds(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(paymentMethodId);
-        return newSet;
-      });
-    }
-  };
 
   const handleOpenBillingPortal = async () => {
     try {
@@ -249,7 +125,7 @@ export function PaymentMethodsManager({
             Payment Methods
           </DialogTitle>
           <DialogDescription>
-            View your payment methods and add new ones. For advanced management like setting default payment methods or removing existing ones, please use the Stripe billing portal.
+            View, add, and manage your payment methods. Set a default for your subscription and remove cards you no longer use.
           </DialogDescription>
         </DialogHeader>
 
@@ -262,27 +138,6 @@ export function PaymentMethodsManager({
         )}
 
 
-        {/* Billing Portal Notice - Prominent */}
-        <Alert className="border-blue-200 bg-blue-50">
-          <ExternalLink className="h-4 w-4 text-blue-600" />
-          <AlertTitle className="text-blue-800">Advanced Payment Management</AlertTitle>
-          <AlertDescription className="text-blue-700">
-            <div className="flex items-center justify-between">
-              <span>
-                For setting default payment methods, removing cards, or updating billing details, 
-                use Stripe's secure billing portal.
-              </span>
-              <Button 
-                onClick={handleOpenBillingPortal}
-                className="ml-4 bg-blue-600 hover:bg-blue-700 text-white"
-                size="sm"
-              >
-                <ExternalLink className="h-4 w-4 mr-2" />
-                Open Billing Portal
-              </Button>
-            </div>
-          </AlertDescription>
-        </Alert>
 
         {/* Payment Method Status Summary */}
         {status && (
@@ -328,13 +183,6 @@ export function PaymentMethodsManager({
                 <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
                 Refresh
               </Button>
-              <Button 
-                onClick={handleOpenBillingPortal}
-                className="bg-blue-600 hover:bg-blue-700 text-white transition-all duration-200 hover:scale-105 hover:shadow-md"
-              >
-                <ExternalLink className="h-4 w-4 mr-2" />
-                Manage in Portal
-              </Button>
             </div>
           </div>
 
@@ -352,11 +200,11 @@ export function PaymentMethodsManager({
                   Add a payment method to enable subscription billing and credit purchases.
                 </p>
                 <Button 
-                  onClick={handleAddPaymentMethod}
+                  onClick={handleOpenBillingPortal}
                   className="transition-all duration-200 hover:scale-105 hover:shadow-md"
                 >
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add Payment Method
+                  <ExternalLink className="h-4 w-4 mr-2" />
+                  Manage Payment Methods
                 </Button>
               </CardContent>
             </Card>
@@ -365,15 +213,15 @@ export function PaymentMethodsManager({
               {paymentMethods.map((method) => (
                 <Card 
                   key={method.id} 
-                  className={`transition-all duration-200 hover:shadow-md ${
-                    method.needsAttention ? 'border-orange-200 bg-orange-50/30' : 'hover:scale-102'
+                  className={`transition-all duration-200 ${
+                    method.needsAttention ? 'border-orange-200 bg-orange-50/30' : ''
                   }`}
                 >
                   <CardContent className="p-4">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-6 bg-gray-200 rounded flex items-center justify-center text-xs font-medium">
-                          {method.brand?.toUpperCase() || method.typeName?.toUpperCase() || "CARD"}
+                          {method.card?.brand?.toUpperCase() || method.type_?.toUpperCase() || "CARD"}
                         </div>
                         <div>
                           <div className="font-medium">{method.displayNumber}</div>
@@ -401,45 +249,6 @@ export function PaymentMethodsManager({
                             Expires Soon
                           </Badge>
                         )}
-                        
-                        {/* Action buttons */}
-                        <div className="flex items-center gap-1 ml-2">
-                          {!method.isDefault && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleSetDefault(method.id)}
-                              disabled={operatingIds.has(method.id) || method.isExpired}
-                              className="h-7 px-2 text-xs"
-                            >
-                              {operatingIds.has(method.id) ? (
-                                <Loader2 className="h-3 w-3 animate-spin" />
-                              ) : (
-                                <>
-                                  <Star className="h-3 w-3 mr-1" />
-                                  Set Default
-                                </>
-                              )}
-                            </Button>
-                          )}
-                          
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleDelete(method.id)}
-                            disabled={operatingIds.has(method.id) || method.isDefault}
-                            className="h-7 px-2 text-xs text-red-600 hover:text-red-700 hover:bg-red-50"
-                          >
-                            {operatingIds.has(method.id) ? (
-                              <Loader2 className="h-3 w-3 animate-spin" />
-                            ) : (
-                              <>
-                                <Trash2 className="h-3 w-3 mr-1" />
-                                Delete
-                              </>
-                            )}
-                          </Button>
-                        </div>
                       </div>
                     </div>
                   </CardContent>
@@ -447,60 +256,24 @@ export function PaymentMethodsManager({
               ))}
               
               {paymentMethods.length > 0 && (
-                <div className="text-center text-sm text-muted-foreground py-2">
-                  <Info className="h-4 w-4 inline mr-1" />
-                  You can now set default and delete payment methods directly. Use the billing portal for advanced features.
+                <div className="text-center py-4">
+                  <Button 
+                    onClick={handleOpenBillingPortal}
+                    className="bg-blue-600 hover:bg-blue-700 text-white transition-all duration-200 hover:scale-105 hover:shadow-md"
+                  >
+                    <ExternalLink className="h-4 w-4 mr-2" />
+                    Manage Payment Methods
+                  </Button>
+                  <div className="text-center text-sm text-muted-foreground py-2 mt-2">
+                    <Info className="h-4 w-4 inline mr-1" />
+                    Use the Stripe billing portal to add, edit, delete, and set default payment methods.
+                  </div>
                 </div>
               )}
             </div>
           )}
         </div>
 
-        {/* Add Payment Method Section - Only show when there are existing methods */}
-        {!isAddingMethod && !setupIntent && paymentMethods.length > 0 && (
-          <Card>
-            <CardContent className="p-6 text-center">
-              <CreditCard className="h-8 w-8 text-gray-400 mx-auto mb-3" />
-              <h3 className="font-medium mb-2">Add New Payment Method</h3>
-              <p className="text-sm text-muted-foreground mb-4">
-                Securely add a new payment method for subscriptions and credit purchases.
-              </p>
-              <Button 
-                onClick={handleAddPaymentMethod} 
-                disabled={isLoading}
-                className="transition-all duration-200 hover:scale-105 hover:shadow-md"
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Add Payment Method
-              </Button>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Stripe Setup Form */}
-        {setupIntent && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Shield className="h-5 w-5 text-green-500" />
-                Add Payment Method
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <StripeProvider>
-                <SetupElementForm
-                  clientSecret={setupIntent.clientSecret}
-                  onSuccess={handleSetupSuccess}
-                  onError={handleSetupError}
-                  onCancel={() => {
-                    setIsAddingMethod(false);
-                    setSetupIntent(null);
-                  }}
-                />
-              </StripeProvider>
-            </CardContent>
-          </Card>
-        )}
 
         {/* Footer */}
         <div className="flex justify-end pt-4 border-t">

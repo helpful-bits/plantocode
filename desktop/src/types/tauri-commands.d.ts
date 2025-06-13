@@ -313,7 +313,6 @@ export interface ImproveTextCommandArgs {
 export interface CorrectTextCommandArgs {
   sessionId: string;
   textToCorrect: string;
-  language: string;
   originalTranscriptionJobId?: string | null;
   projectDirectory?: string | null;
 }
@@ -389,6 +388,33 @@ export interface ValidateTranscriptionSettingsCommandArgs {
   settings: TranscriptionSettings;
 }
 
+// Commands from settings_commands - system prompt related
+export interface GetProjectSystemPromptCommandArgs {
+  projectDirectory: string;
+  taskType: string;
+}
+
+export interface SetProjectSystemPromptCommandArgs {
+  projectDirectory: string;
+  taskType: string;
+  systemPrompt: string;
+}
+
+export interface ResetProjectSystemPromptCommandArgs {
+  projectDirectory: string;
+  taskType: string;
+}
+
+export interface FetchDefaultSystemPromptsFromServerCommandArgs {
+}
+
+export interface FetchDefaultSystemPromptFromServerCommandArgs {
+  taskType: string;
+}
+
+export interface InitializeSystemPromptsFromServerCommandArgs {
+}
+
 // Commands from config_commands / key-value store
 export interface GetKeyValueCommandArgs {
   key: string;
@@ -445,37 +471,6 @@ export interface ResetDatabaseCommandArgs {
 }
 
 
-// Commands from system_prompt_commands
-export interface GetSystemPromptCommandArgs {
-  sessionId: string;
-  taskType: string;
-}
-
-export interface SetSystemPromptCommandArgs {
-  sessionId: string;
-  taskType: string;
-  systemPrompt: string;
-}
-
-export interface ResetSystemPromptCommandArgs {
-  sessionId: string;
-  taskType: string;
-}
-
-export interface GetDefaultSystemPromptCommandArgs {
-  taskType: string;
-}
-
-export interface HasCustomSystemPromptCommandArgs {
-  sessionId: string;
-  taskType: string;
-}
-
-export interface UpdateDefaultSystemPromptCommandArgs {
-  taskType: string;
-  newPromptContent: string;
-  newDescription?: string;
-}
 
 
 // Commands from file_finder_workflow_commands
@@ -634,16 +629,12 @@ export type TauriInvoke = {
   "check_database_health_command": (args: CheckDatabaseHealthCommandArgs) => Promise<DatabaseHealthResult>;
   "repair_database_command": (args: RepairDatabaseCommandArgs) => Promise<DatabaseRepairResult>;
   "reset_database_command": (args: ResetDatabaseCommandArgs) => Promise<DatabaseResetResult>;
-  "get_system_prompt_command": (args: GetSystemPromptCommandArgs) => Promise<import("@/types").SystemPromptResponse | null>;
-  "set_system_prompt_command": (args: SetSystemPromptCommandArgs) => Promise<void>;
-  "reset_system_prompt_command": (args: ResetSystemPromptCommandArgs) => Promise<void>;
-  "get_default_system_prompts_command": () => Promise<import("@/types").DefaultSystemPrompt[]>;
-  "get_default_system_prompt_command": (args: GetDefaultSystemPromptCommandArgs) => Promise<import("@/types").DefaultSystemPrompt | null>;
-  "has_custom_system_prompt_command": (args: HasCustomSystemPromptCommandArgs) => Promise<boolean>;
-  "update_default_system_prompt_command": (args: UpdateDefaultSystemPromptCommandArgs) => Promise<void>;
-  "fetch_default_system_prompts_from_server": () => Promise<any[]>;
-  "fetch_default_system_prompt_from_server": (args: { taskType: string }) => Promise<any | null>;
-  "initialize_system_prompts_from_server": () => Promise<void>;
+  "get_project_system_prompt_command": (args: GetProjectSystemPromptCommandArgs) => Promise<string | null>;
+  "set_project_system_prompt_command": (args: SetProjectSystemPromptCommandArgs) => Promise<void>;
+  "reset_project_system_prompt_command": (args: ResetProjectSystemPromptCommandArgs) => Promise<void>;
+  "fetch_default_system_prompts_from_server": (args: FetchDefaultSystemPromptsFromServerCommandArgs) => Promise<import("@/types/system-prompts").DefaultSystemPrompt[]>;
+  "fetch_default_system_prompt_from_server": (args: FetchDefaultSystemPromptFromServerCommandArgs) => Promise<import("@/types/system-prompts").DefaultSystemPrompt | null>;
+  "initialize_system_prompts_from_server": (args: InitializeSystemPromptsFromServerCommandArgs) => Promise<void>;
   
   // Billing commands
   "get_subscription_details_command": () => Promise<SubscriptionDetails>;
@@ -708,6 +699,9 @@ export type TauriInvoke = {
   // Billing health monitoring commands
   "check_billing_health_command": (args: CheckBillingHealthCommandArgs) => Promise<BillingHealthStatus>;
   "ping_billing_service_command": (args: PingBillingServiceCommandArgs) => Promise<boolean>;
+  
+  // Consolidated billing dashboard command
+  "get_billing_dashboard_data_command": () => Promise<BillingDashboardData>;
 };
 
 // Billing-related types
@@ -719,10 +713,10 @@ export interface SubscriptionDetails {
   currentPeriodEndsAt?: string;
   monthlySpendingAllowance?: number;
   hardSpendingLimit?: number;
-  isTrialing?: boolean;
-  hasCancelled?: boolean;
+  isTrialing: boolean;
+  hasCancelled: boolean;
   nextInvoiceAmount?: number;
-  currency?: string;
+  currency: string;
   usage: UsageInfo;
   creditBalance: number;
   pendingPlanId?: string | null;
@@ -747,11 +741,11 @@ export interface SubscriptionPlan {
 }
 
 export interface UsageInfo {
-  totalCost: number;
+  currentSpending: number;
+  includedAllowance: number;
   usagePercentage: number;
   servicesBlocked: boolean;
-  currentSpending: number;
-  monthlyAllowance: number;
+  currency: string;
 }
 
 export interface CheckoutSessionResponse {
@@ -797,10 +791,19 @@ export interface InvoiceHistoryEntry {
   description: string;
 }
 
+export interface InvoiceSummary {
+  totalAmount: number;
+  paidAmount: number;
+  outstandingAmount: number;
+  overdueAmount: number;
+  overdueCount: number;
+}
+
 export interface InvoiceHistoryResponse {
   invoices: InvoiceHistoryEntry[];
   totalCount: number;
   hasMore: boolean;
+  summary?: InvoiceSummary;
 }
 
 // Database health and maintenance result types
@@ -856,8 +859,9 @@ export interface ServiceAccessResponse {
 // Credit system types
 export interface CreditBalanceResponse {
   userId: string;
-  balance: number; // Proper numeric type
+  balance: number;
   currency: string;
+  lastUpdated: string;
 }
 
 export interface CreditTransactionEntry {
@@ -995,6 +999,8 @@ export interface InvoiceHistoryRequest {
   endDate?: string;
   status?: string;
   search?: string;
+  sortField?: 'createdDate' | 'amount' | 'status';
+  sortDirection?: 'asc' | 'desc';
 }
 
 export interface SpendingAnalyticsResponse {
@@ -1047,11 +1053,13 @@ export interface MonthlyForecast {
 
 export interface PaymentMethod {
   id: string;
-  typeName: string;
-  lastFour?: string;
-  brand?: string;
-  expMonth?: number;
-  expYear?: number;
+  type_: string;
+  card: {
+    brand: string;
+    last4: string;
+    expMonth: number;
+    expYear: number;
+  } | null;
   isDefault: boolean;
   createdDate: string;
 }
@@ -1120,6 +1128,27 @@ export interface BillingHealthStatus {
   errorDetails: string[];
   warnings: string[];
   recommendations: string[];
+}
+
+// Consolidated billing dashboard types
+export interface BillingDashboardPlanDetails {
+  planId: string;
+  name: string;
+  priceUsd: number;
+  billingInterval: string;
+}
+
+export interface BillingDashboardSpendingDetails {
+  currentSpendingUsd: number;
+  spendingLimitUsd: number;
+  periodStart: string;
+  periodEnd: string;
+}
+
+export interface BillingDashboardData {
+  planDetails: BillingDashboardPlanDetails;
+  spendingDetails: BillingDashboardSpendingDetails;
+  creditBalanceUsd: number;
 }
 
 // Strongly typed invoke function

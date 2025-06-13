@@ -23,17 +23,6 @@ impl SessionRepository {
         
         let task_description: Option<String> = row.try_get("task_description")?;
         let search_term: Option<String> = row.try_get("search_term")?;
-        let title_regex: Option<String> = row.try_get("title_regex")?;
-        let content_regex: Option<String> = row.try_get("content_regex")?;
-        let negative_title_regex: Option<String> = row.try_get("negative_title_regex")?;
-        let negative_content_regex: Option<String> = row.try_get("negative_content_regex")?;
-        let title_regex_description: Option<String> = row.try_get("title_regex_description")?;
-        let content_regex_description: Option<String> = row.try_get("content_regex_description")?;
-        let negative_title_regex_description: Option<String> = row.try_get("negative_title_regex_description")?;
-        let negative_content_regex_description: Option<String> = row.try_get("negative_content_regex_description")?;
-        let regex_summary_explanation: Option<String> = row.try_get("regex_summary_explanation")?;
-        
-        let is_regex_active: bool = row.try_get::<'_, i64, _>("is_regex_active").unwrap_or(0) == 1;
         let search_selected_files_only = row.try_get::<'_, i64, _>("search_selected_files_only").unwrap_or(0) == 1;
         let model_used: Option<String> = row.try_get("model_used")?;
         
@@ -51,16 +40,6 @@ impl SessionRepository {
             project_hash,
             task_description,
             search_term,
-            title_regex,
-            content_regex,
-            negative_title_regex,
-            negative_content_regex,
-            title_regex_description,
-            content_regex_description,
-            negative_title_regex_description,
-            negative_content_regex_description,
-            regex_summary_explanation,
-            is_regex_active,
             search_selected_files_only,
             model_used,
             created_at,
@@ -162,14 +141,9 @@ impl SessionRepository {
             r#"
             INSERT INTO sessions (
                 id, name, project_directory, project_hash, 
-                task_description, search_term, title_regex, content_regex,
-                negative_title_regex, negative_content_regex, 
-                title_regex_description, content_regex_description,
-                negative_title_regex_description, negative_content_regex_description,
-                regex_summary_explanation, is_regex_active,
-                search_selected_files_only, model_used,
+                task_description, search_term, search_selected_files_only, model_used,
                 created_at, updated_at
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
             "#)
             .bind(&session.id)
             .bind(&session.name)
@@ -177,16 +151,6 @@ impl SessionRepository {
             .bind(&session.project_hash)
             .bind(&session.task_description)
             .bind(&session.search_term)
-            .bind(&session.title_regex)
-            .bind(&session.content_regex)
-            .bind(&session.negative_title_regex)
-            .bind(&session.negative_content_regex)
-            .bind(&session.title_regex_description)
-            .bind(&session.content_regex_description)
-            .bind(&session.negative_title_regex_description)
-            .bind(&session.negative_content_regex_description)
-            .bind(&session.regex_summary_explanation)
-            .bind(if session.is_regex_active { 1i64 } else { 0i64 })
             .bind(if session.search_selected_files_only { 1i64 } else { 0i64 })
             .bind(&session.model_used)
             .bind(session.created_at)
@@ -257,36 +221,16 @@ impl SessionRepository {
                 project_hash = $3,
                 task_description = $4,
                 search_term = $5,
-                title_regex = $6,
-                content_regex = $7,
-                negative_title_regex = $8,
-                negative_content_regex = $9,
-                title_regex_description = $10,
-                content_regex_description = $11,
-                negative_title_regex_description = $12,
-                negative_content_regex_description = $13,
-                regex_summary_explanation = $14,
-                is_regex_active = $15,
-                search_selected_files_only = $16,
-                model_used = $17,
-                updated_at = $18
-            WHERE id = $19
+                search_selected_files_only = $6,
+                model_used = $7,
+                updated_at = $8
+            WHERE id = $9
             "#)
             .bind(&session.name)
             .bind(&session.project_directory)
             .bind(&session.project_hash)
             .bind(&session.task_description)
             .bind(&session.search_term)
-            .bind(&session.title_regex)
-            .bind(&session.content_regex)
-            .bind(&session.negative_title_regex)
-            .bind(&session.negative_content_regex)
-            .bind(&session.title_regex_description)
-            .bind(&session.content_regex_description)
-            .bind(&session.negative_title_regex_description)
-            .bind(&session.negative_content_regex_description)
-            .bind(&session.regex_summary_explanation)
-            .bind(if session.is_regex_active { 1i64 } else { 0i64 })
             .bind(if session.search_selected_files_only { 1i64 } else { 0i64 })
             .bind(&session.model_used)
             .bind(session.updated_at)

@@ -21,39 +21,31 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig, strict_rate_limiter: RateL
             .route("/audio/transcriptions", web::post().to(handlers::proxy_handlers::audio_transcriptions_proxy))
             .route("/audio/transcriptions/stream", web::post().to(handlers::proxy_handlers::audio_transcriptions_stream_proxy))
             .route("/audio/transcriptions/batch", web::post().to(handlers::proxy_handlers::audio_transcriptions_batch_proxy))
-            .route("/transcription/settings", web::get().to(handlers::proxy_handlers::get_transcription_settings))
-            .service(
-                web::resource("/transcription/settings")
-                    .wrap(strict_rate_limiter.clone())
-                    .route(web::put().to(handlers::proxy_handlers::update_transcription_settings))
-            )
-            .service(
-                web::resource("/transcription/settings/reset")
-                    .wrap(strict_rate_limiter.clone())
-                    .route(web::post().to(handlers::proxy_handlers::reset_transcription_settings))
-            )
     );
     
     // Billing routes (/api/billing/*)
     cfg.service(
         web::scope("/billing")
+            // Dashboard route
+            .route("/dashboard", web::get().to(handlers::billing::dashboard_handler::get_billing_dashboard_data_handler))
             // Subscription management routes
             .service(handlers::billing::subscription_handlers::get_subscription)
-            .service(handlers::billing::subscription_handlers::get_subscription_pending_payment)
-            .service(handlers::billing::subscription_handlers::complete_pending_payment)
+            .service(handlers::billing::subscription_handlers::get_available_plans)
+            .service(handlers::billing::subscription_handlers::get_usage_summary)
+            .service(handlers::billing::subscription_handlers::create_subscription_with_intent)
             // Payment and billing portal routes
             .service(handlers::billing::payment_handlers::create_billing_portal)
-            .service(handlers::billing::payment_handlers::get_available_plans)
-            .service(handlers::billing::subscription_handlers::get_usage_summary)
             .service(handlers::billing::payment_handlers::get_invoice_history)
             .service(handlers::billing::payment_handlers::get_payment_methods)
-            .service(handlers::billing::payment_handlers::delete_payment_method)
-            .service(handlers::billing::payment_handlers::set_default_payment_method)
+            .service(handlers::billing::payment_handlers::create_setup_intent)
+            .service(handlers::billing::payment_handlers::get_payment_intent_status)
+            .service(handlers::billing::payment_handlers::get_stripe_publishable_key)
             // Credit system routes (/api/billing/credits/*)
             .service(
                 web::scope("/credits")
                     .service(handlers::billing::credit_handlers::get_credit_balance)
                     .service(handlers::billing::credit_handlers::get_credit_packs)
+                    .service(handlers::billing::credit_handlers::create_credit_payment_intent)
                     .route("/history", web::get().to(handlers::billing::credit_handlers::get_credit_history))
                     .route("/transaction-history", web::get().to(handlers::billing::credit_handlers::get_credit_transaction_history))
                     .route("/stats", web::get().to(handlers::billing::credit_handlers::get_credit_stats))
@@ -61,12 +53,6 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig, strict_rate_limiter: RateL
                     .route("/packs/{pack_id}", web::get().to(handlers::billing::credit_handlers::get_credit_pack_by_id))
                     .route("/admin/adjust", web::post().to(handlers::billing::credit_handlers::admin_adjust_credits))
             )
-            // Modern PaymentIntent endpoints (2024) - /api/billing/payment-intents/credits
-            .service(handlers::billing::credit_handlers::create_credit_payment_intent)
-            .service(handlers::billing::payment_handlers::create_subscription_with_intent)
-            .service(handlers::billing::payment_handlers::create_setup_intent)
-            .service(handlers::billing::payment_handlers::get_payment_intent_status)
-            .service(handlers::billing::payment_handlers::get_stripe_publishable_key)
             // Note: Billing details and invoice customization now handled via Stripe Customer Portal
             // Subscription lifecycle management endpoints - with strict rate limiting
             .service(
@@ -89,6 +75,7 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig, strict_rate_limiter: RateL
                 web::scope("/spending")
                     .service(handlers::spending_handlers::get_spending_status)
                     .service(handlers::spending_handlers::check_service_access)
+                    .service(handlers::spending_handlers::update_spending_limits)
                     .service(handlers::spending_handlers::acknowledge_alert)
                     .service(handlers::spending_handlers::get_spending_history)
                     .service(handlers::spending_handlers::get_spending_analytics)
@@ -96,11 +83,11 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig, strict_rate_limiter: RateL
             )
     );
     
-    // Usage routes (/api/usage/*)
-    cfg.service(
-        web::scope("/usage")
-            .route("/summary", web::get().to(handlers::usage_handlers::get_usage_summary_handler))
-    );
+    // Usage routes (/api/usage/*) - DEPRECATED: functionality moved to billing dashboard
+    // cfg.service(
+    //     web::scope("/usage")
+    //         .route("/summary", web::get().to(handlers::usage_handlers::get_usage_summary_handler))
+    // );
     
     // AI proxy endpoint for direct model access (/api/ai-proxy/*)
     cfg.service(
@@ -193,8 +180,8 @@ mod tests {
     use super::*;
     use actix_web::test;
     
-    #[test]
-    fn test_routes_compile() {
+    #[actix_web::test]
+    async fn test_routes_compile() {
         // Test that all route configurations compile without errors
         let rate_limiter = RateLimitMiddleware::new(100, std::time::Duration::from_secs(60));
         

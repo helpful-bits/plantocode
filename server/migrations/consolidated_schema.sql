@@ -46,6 +46,12 @@ CREATE TABLE IF NOT EXISTS subscriptions (
     services_blocked BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    -- Enhanced subscription fields for better Stripe synchronization
+    stripe_plan_id VARCHAR(255) NOT NULL,
+    current_period_start TIMESTAMP WITH TIME ZONE NOT NULL,
+    current_period_end TIMESTAMP WITH TIME ZONE NOT NULL,
+    trial_start TIMESTAMP WITH TIME ZONE,
+    trial_end TIMESTAMP WITH TIME ZONE,
     CONSTRAINT fk_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
@@ -118,6 +124,7 @@ CREATE TABLE IF NOT EXISTS subscription_plans (
     stripe_price_id_yearly VARCHAR(100),
     plan_tier INTEGER NOT NULL DEFAULT 0,
     features JSONB NOT NULL DEFAULT '{}',
+    active BOOLEAN NOT NULL DEFAULT true,
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
 );
@@ -153,6 +160,9 @@ CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user_id ON refresh_tokens(user_id)
 CREATE INDEX IF NOT EXISTS idx_subscriptions_user_id ON subscriptions(user_id);
 CREATE INDEX IF NOT EXISTS idx_subscriptions_status ON subscriptions(status);
 CREATE INDEX IF NOT EXISTS idx_subscriptions_services_blocked ON subscriptions(services_blocked) WHERE services_blocked = TRUE;
+CREATE INDEX IF NOT EXISTS idx_subscriptions_stripe_plan_id ON subscriptions(stripe_plan_id);
+CREATE INDEX IF NOT EXISTS idx_subscriptions_current_period_end ON subscriptions(current_period_end);
+CREATE INDEX IF NOT EXISTS idx_subscriptions_trial_end ON subscriptions(trial_end);
 CREATE INDEX IF NOT EXISTS idx_projects_owner_id ON projects(owner_id);
 -- Spending alerts and notifications
 
@@ -262,7 +272,8 @@ VALUES
 ('deepseek/deepseek-r1-distill-qwen-32b', 'DeepSeek R1 Distill Qwen 32B', 32768, 0.000140, 0.000280, 'token_based', 0.000000, 0, 'tokens', (SELECT id FROM providers WHERE code = 'deepseek'), 'reasoning', '{"text_generation": true, "code_generation": true, "reasoning": true}', 'active', 'DeepSeek R1 Distilled Qwen 32B - Efficient reasoning model'),
 ('deepseek/deepseek-r1-distill-qwen-14b', 'DeepSeek R1 Distill Qwen 14B', 32768, 0.000070, 0.000140, 'token_based', 0.000000, 0, 'tokens', (SELECT id FROM providers WHERE code = 'deepseek'), 'reasoning', '{"text_generation": true, "code_generation": true, "reasoning": true}', 'active', 'DeepSeek R1 Distilled Qwen 14B - Compact reasoning model'),
 
--- Groq transcription models
+-- Transcription models
+('openai/gpt-4o-transcribe',       'GPT-4o Transcribe (OpenAI via Replicate)', 0, 0.000000, 0.000000, 'duration_based', 0.050000, 10, 'seconds', (SELECT id FROM providers WHERE code = 'openai'), 'transcription', '{"transcription": true, "audio_processing": true, "multi_language": true}', 'active', 'OpenAI GPT-4o based transcription model hosted on Replicate'),
 ('groq/whisper-large-v3',          'Whisper Large V3 (Groq)',          0, 0.000000, 0.000000, 'duration_based', 0.111000, 10, 'hours', (SELECT id FROM providers WHERE code = 'groq'), 'transcription', '{"transcription": true, "audio_processing": true}', 'active', 'High-accuracy audio transcription model'),
 ('groq/whisper-large-v3-turbo',    'Whisper Large V3 Turbo (Groq)',    0, 0.000000, 0.000000, 'duration_based', 0.040000, 10, 'hours', (SELECT id FROM providers WHERE code = 'groq'), 'transcription', '{"transcription": true, "audio_processing": true}', 'active', 'Fast audio transcription model'),
 ('groq/distil-whisper-large-v3-en', 'Distil-Whisper Large V3 English (Groq)', 0, 0.000000, 0.000000, 'duration_based', 0.020000, 10, 'hours', (SELECT id FROM providers WHERE code = 'groq'), 'transcription', '{"transcription": true, "audio_processing": true}', 'active', 'Efficient English transcription model')
@@ -464,45 +475,83 @@ When the user provides text within <text_to_correct> tags:
 Respond with only the corrected text. Do not include XML tags, explanations, or any other content in your response.
 </output_format>', 'Complete XML-structured system prompt with all instructions for text correction', '6.0'),
 
-('default_implementation_plan', 'implementation_plan', 'You are a software development planning assistant. Your task is to create detailed, actionable implementation plans for software development tasks.
+('default_implementation_plan', 'implementation_plan', '<identity>
+You are a BOLD EXPERT software architect tasked with providing a detailed implementation plan based on codebase analysis.
+</identity>
 
-## Project Context:
+<role>
+1. Review the codebase to understand its architecture and data flow
+2. Determine how to implement the requested task within that architecture
+3. Consider the complete project structure when planning your implementation
+4. Produce a clear, step-by-step implementation plan with explicit file operations
+</role>
+
+<implementation_plan_requirements>
+- Specific files that need to be created, modified, moved, or deleted
+- Exact changes needed for each file (functions/components to add/modify/remove)
+- Any code sections or functionality that should be removed or replaced
+- Clear, logical ordering of steps
+- Rationale for each architectural decision made
+- Follow existing naming conventions and folder structure; improve them only when a clearly superior, consistent alternative exists
+- Prefer simple, maintainable solutions over complex ones
+- Identify and eliminate duplicate code
+- Critically evaluate the current architecture and boldly propose superior approaches when they provide clear benefits
+- Refactor large files into smaller, focused modules when appropriate
+- Look at the complete project structure to understand the codebase organization
+- Identify the appropriate locations for new files based on existing structure
+- Avoid adding unnecessary comments; include only comments that provide essential clarity
+- Do not introduce backward compatibility approaches; leverage fully modern, forward-looking features exclusively
+</implementation_plan_requirements>
+
+<bash_commands_guidelines>
+- Include commands only when they meaningfully aid implementation or understanding
+- Keep exploration commands highly targeted (exact patterns, limited context)
+- Prefer directory-specific searches over broad ones
+- Append `| cat` to interactive commands to avoid paging
+</bash_commands_guidelines>
+
+<response_format>
+Your response MUST strictly follow this XML template:
+
+<implementation_plan>
+  <agent_instructions>
+    Read the following plan CAREFULLY, COMPREHEND IT, and IMPLEMENT it COMPLETELY. THINK HARD!
+    DO NOT add unnecessary comments.
+    DO NOT introduce backward compatibility approaches; leverage fully modern, forward-looking features exclusively.
+  </agent_instructions>
+  <steps>
+    <step number="1">
+      <title>Descriptive title of step</title>
+      <description>Detailed explanation of what needs to be done</description>
+      <file_operations>
+        <operation type="create|modify|delete|move">
+          <path>Exact file path</path>
+          <changes>Description of exact changes needed</changes>
+        </operation>
+        <!-- Multiple operations can be listed -->
+      </file_operations>
+      <!-- Optional elements -->
+      <bash_commands>mkdir -p path/to/dir && mv old/file.js new/location.js</bash_commands>
+      <exploration_commands>grep -n "exactFunctionName" --include="*.js" src/specific-directory/ -A 2 -B 2</exploration_commands>
+    </step>
+    <!-- Additional steps as needed -->
+  </steps>
+</implementation_plan>
+
+Guidelines:
+- Be specific about file paths, component names, and function names
+- Prioritize maintainability; avoid overengineering
+- Critically assess the architecture and propose better alternatives when beneficial
+- DO NOT include actual code implementations
+- DO NOT mention git commands, version control, or tests
+- Output exactly ONE implementation plan.
+</response_format>
+
 {{PROJECT_CONTEXT}}
 
 {{FILE_CONTENTS}}
 
-{{DIRECTORY_TREE}}
-
-Your implementation plans should:
-- Break down complex tasks into clear, manageable steps
-- Provide specific technical details and approaches
-- Consider dependencies between different parts of the implementation
-- Include testing considerations
-- Suggest best practices and potential pitfalls to avoid
-- Be practical and implementable by developers
-- Enable parallel execution by providing precise, unambiguous instructions for each coding agent
-
-## Critical Planning Requirements:
-Think deeply about the implementation approach. After creating your initial plan, evaluate it critically and refine it further. Consider how multiple coding agents could work simultaneously on different parts of this implementation without conflicts or dependencies blocking progress.
-
-Structure your response clearly with numbered steps and detailed explanations.
-
-Please provide your response in XML format:
-<implementation_plan>
-  <agent_instructions>Provide EXACT, unambiguous instructions for coding agents to work in parallel. Each agent should have crystal-clear direction on what to implement, which files to modify/create, and how their work integrates with other agents. Think critically about the approach, then refine and optimize the instructions for maximum clarity and parallel execution efficiency.</agent_instructions>
-  <steps>
-    <step number="1">
-      <title>Step title</title>
-      <description>Detailed description of what to do</description>
-      <file_operations>
-        <operation type="create|modify|delete">
-          <path>file/path</path>
-          <description>What to do with this file</description>
-        </operation>
-      </file_operations>
-    </step>
-  </steps>
-</implementation_plan>', 'Enhanced system prompt for creating implementation plans with parallel agent coordination', '3.0'),
+{{DIRECTORY_TREE}}', 'BOLD EXPERT system prompt with clean prompt separation (no TASK section)', '4.1'),
 
 ('default_path_correction', 'path_correction', 'You are a path correction assistant that validates and corrects file paths against the actual filesystem structure.
 
@@ -553,48 +602,71 @@ Please provide your response in XML format:
   </acceptance_criteria>
 </task_enhancement>', 'Enhanced system prompt for enhancing requirements', '2.0'),
 
-('default_regex_pattern_generation', 'regex_pattern_generation', 'You are a regex pattern generation assistant that creates precise regular expressions for filtering files by their paths and names.
+('default_regex_pattern_generation', 'regex_pattern_generation', 'You are a dual-layer file filtering assistant that creates precise regular expressions for filtering files by BOTH their paths AND content.
 
 {{DIRECTORY_TREE}}
 
-Your task is to analyze the user''s task description and generate regex patterns that specifically target FILE PATHS/NAMES (not file content). Focus on:
+Your task is to analyze the user''s task description and generate filtering patterns that work together:
 
-1. **Keywords and Technologies**: Identify key terms like "auth", "user", "service", "config", etc.
-2. **File Extensions**: Match relevant file types (.js, .ts, .py, .go, .rs, etc.)
-3. **Naming Conventions**: Consider common patterns like snake_case, camelCase, kebab-case
-4. **Directory Structure**: Target specific folders or path patterns
+## **DUAL FILTERING STRATEGY:**
+1. **PATH PATTERNS**: Match file paths/names for rapid initial filtering
+2. **CONTENT PATTERNS**: Match file content for semantic precision
+3. **NEGATIVE PATTERNS**: Exclude irrelevant files from both layers
 
-**Pattern Precision Guidelines:**
-- GOOD: `auth.*\.(js|ts)$` for authentication files
-- GOOD: `user_service.*\.go$` for Go user service files  
-- BAD: `.*\.js$` (too broad, matches all JS files)
-- BAD: `.*auth.*` (too broad, matches any path with "auth")
+## **PATTERN CATEGORIES:**
 
-**Examples by Task Type:**
-- "User authentication service in Go" → `(auth|user).*service.*\.go$`, `.*/(auth|user)_.*\.go$`
-- "React components for forms" → `.*component.*form.*\.(tsx?|jsx?)$`, `.*/forms?/.*\.(tsx?|jsx?)$`
-- "Database migrations" → `.*migration.*\.(sql|js|ts)$`, `.*/migrations?/.*`
+### **Path Filtering (Fast Initial Filter)**
+- Target file names, extensions, directory structures
+- Keywords: "auth", "user", "service", "config", "component", etc.
+- Extensions: \.js$, \.ts$, \.go$, \.py$, \.rs$, etc.
+- Directories: /auth/, /components/, /services/, /utils/, etc.
+
+### **Content Filtering (Semantic Precision)**
+- Target code keywords, function names, class names, imports
+- API calls, database queries, specific algorithms
+- Comments and documentation keywords
+- Variable names and constants
+
+### **Negative Filtering (Exclusion)**
+- Exclude tests, specs, mocks, generated files
+- Skip deprecated, TODO, or incomplete code
+- Avoid unrelated functionality
+
+## **PRECISION GUIDELINES:**
+**GOOD Path**: `auth.*\.(js|ts)$` (targets auth files)
+**GOOD Content**: `(login|signin|authenticate|JWT|token)` (targets auth functionality)
+**BAD Path**: `.*\.js$` (too broad - all JS files)
+**BAD Content**: `function` (too broad - all functions)
+
+## **EXAMPLES BY TASK TYPE:**
+
+**"User authentication system":**
+- Path: `(auth|login|signin|user).*\.(js|ts|go|py)$`
+- Content: `(authenticate|login|signin|JWT|token|password|session)`
+- Negative Content: `(test|mock|deprecated|TODO)`
+
+**"React form components":**
+- Path: `.*/(forms?|components?)/.*\.(tsx?|jsx?)$`
+- Content: `(useState|useForm|onSubmit|validation|input|field)`
+- Negative Path: `(test|spec|story|mock)`
+
+**"Database migrations":**
+- Path: `.*migration.*\.(sql|js|ts)$`
+- Content: `(CREATE TABLE|ALTER TABLE|DROP|INSERT|UPDATE)`
+- Negative Content: `(rollback|down|undo)`
 
 CRITICAL: Your entire response must be ONLY the raw JSON object. Do NOT include any surrounding text, explanations, or markdown code fences. The response must start with ''{'' and end with ''}''.
 
 Required output format:
 {
-  "filePathRegexPatterns": ["pattern1", "pattern2", "pattern3"],
-  "rationale": "Brief explanation of why these patterns target relevant files"
+  "pathPattern": "single regex for file paths/names (required)",
+  "contentPattern": "single regex for file content (optional but recommended)",
+  "negativePathPattern": "single regex to exclude paths (optional)",
+  "negativeContentPattern": "single regex to exclude content (optional)"
 }
 
-Each pattern in filePathRegexPatterns should be a precise regex that matches file paths/names likely to contain the requested functionality. Aim for 2-5 patterns that balance precision with coverage.', 'Enhanced system prompt for generating precise file path regex patterns', '3.0'),
+Generate patterns that work together to precisely identify files containing the requested functionality while excluding irrelevant matches.', 'Enhanced dual-layer filtering system prompt for path and content regex patterns', '4.0'),
 
-('default_regex_summary_generation', 'regex_summary_generation', 'You are a regex summary assistant that explains regular expression patterns in plain language.
-
-Your role is to:
-- Analyze the provided regular expression patterns
-- Explain what each pattern matches in clear, understandable language
-- Describe the purpose and functionality of the patterns
-- Provide examples of what would and would not match
-- Help users understand how the patterns work
-
-Provide clear, non-technical explanations that help users understand the regex patterns.', 'Enhanced system prompt for generating regex summaries', '2.0'),
 
 ('default_generic_llm_stream', 'generic_llm_stream', 'You are a helpful AI assistant that provides responses based on user requests.
 
@@ -655,7 +727,9 @@ Task Description:
 File Contents:
 {{FILE_CONTENTS}}
 
-Respond ONLY with the list of relevant file paths from the provided list, one per line. If no files are relevant, return an empty response.', 'System prompt for AI-powered file relevance assessment', '1.0')
+Respond ONLY with the list of relevant file paths from the provided list, one per line. If no files are relevant, return an empty response.', 'System prompt for AI-powered file relevance assessment', '1.0'),
+
+('default_voice_transcription', 'voice_transcription', '', 'Complete XML-structured system prompt with all instructions for voice transcription', '1.0')
 
 ON CONFLICT (id) DO UPDATE SET
   task_type = EXCLUDED.task_type,
@@ -669,7 +743,7 @@ INSERT INTO application_configurations (config_key, config_value, description)
 VALUES 
 ('ai_settings_default_llm_model_id', '"google/gemini-2.5-pro-preview"'::jsonb, 'Default LLM model ID - references models.id in models table'),
 ('ai_settings_default_voice_model_id', '"anthropic/claude-sonnet-4"'::jsonb, 'Default voice model ID - references models.id in models table'),
-('ai_settings_default_transcription_model_id', '"groq/whisper-large-v3-turbo"'::jsonb, 'Default transcription model ID - references models.id in models table')
+('ai_settings_default_transcription_model_id', '"openai/gpt-4o-transcribe"'::jsonb, 'Default transcription model ID - references models.id in models table')
 ON CONFLICT (config_key) DO UPDATE SET
   config_value = EXCLUDED.config_value,
   description = EXCLUDED.description,
@@ -762,7 +836,7 @@ CREATE TABLE IF NOT EXISTS transcription_settings (
     user_id UUID REFERENCES users(id) ON DELETE CASCADE,
     session_id TEXT, -- For desktop session-specific settings
     setting_type VARCHAR(20) NOT NULL CHECK(setting_type IN ('global', 'session', 'project')),
-    model_id VARCHAR(255) NOT NULL DEFAULT 'groq/whisper-large-v3-turbo',
+    model_id VARCHAR(255) NOT NULL DEFAULT 'openai/gpt-4o-transcribe',
     prompt TEXT,
     language_code VARCHAR(10) DEFAULT 'auto',
     temperature DECIMAL(3,2) DEFAULT 0.0 CHECK(temperature >= 0.0 AND temperature <= 1.0),
@@ -843,11 +917,10 @@ VALUES
   "implementation_plan": {"model": "google/gemini-2.5-pro-preview", "max_tokens": 65536, "temperature": 0.7},
   "path_finder": {"model": "google/gemini-2.5-flash-preview-05-20", "max_tokens": 8192, "temperature": 0.3},
   "text_improvement": {"model": "anthropic/claude-sonnet-4", "max_tokens": 4096, "temperature": 0.7},
-  "voice_transcription": {"model": "groq/whisper-large-v3-turbo", "max_tokens": 4096, "temperature": 0.0},
+  "voice_transcription": {"model": "openai/gpt-4o-transcribe", "max_tokens": 4096, "temperature": 0.0},
   "text_correction": {"model": "anthropic/claude-sonnet-4", "max_tokens": 2048, "temperature": 0.5},
   "path_correction": {"model": "google/gemini-2.5-flash-preview-05-20", "max_tokens": 4096, "temperature": 0.3},
   "regex_pattern_generation": {"model": "anthropic/claude-sonnet-4", "max_tokens": 1000, "temperature": 0.2},
-  "regex_summary_generation": {"model": "anthropic/claude-sonnet-4", "max_tokens": 2048, "temperature": 0.3},
   "guidance_generation": {"model": "google/gemini-2.5-pro-preview", "max_tokens": 8192, "temperature": 0.7},
   "task_enhancement": {"model": "google/gemini-2.5-pro-preview", "max_tokens": 4096, "temperature": 0.7},
   "extended_path_finder": {"model": "google/gemini-2.5-flash-preview-05-20", "max_tokens": 8192, "temperature": 0.3},
@@ -1252,6 +1325,7 @@ CREATE TABLE IF NOT EXISTS credit_packs (
     currency VARCHAR(3) NOT NULL DEFAULT 'USD',
     description TEXT,
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    display_order INTEGER NOT NULL DEFAULT 0,  -- For UI ordering
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -1298,6 +1372,40 @@ CREATE INDEX IF NOT EXISTS idx_credit_packs_active ON credit_packs(is_active);
 CREATE INDEX IF NOT EXISTS idx_credit_packs_display_order ON credit_packs(display_order);
 CREATE INDEX IF NOT EXISTS idx_credit_pack_stripe_config_environment ON credit_pack_stripe_config(environment);
 CREATE INDEX IF NOT EXISTS idx_credit_pack_stripe_config_active ON credit_pack_stripe_config(is_active);
+
+-- RLS for credit_packs table
+ALTER TABLE credit_packs ENABLE ROW LEVEL SECURITY;
+
+-- Public read access to active credit packs for all authenticated users
+CREATE POLICY "Public can select active credit packs"
+ON credit_packs FOR SELECT
+TO authenticated, vibe_manager_app
+USING (is_active = true);
+
+-- App can manage all credit packs
+CREATE POLICY "App can manage credit packs"
+ON credit_packs FOR ALL
+TO vibe_manager_app
+USING (true);
+
+-- RLS for credit_pack_stripe_config table  
+ALTER TABLE credit_pack_stripe_config ENABLE ROW LEVEL SECURITY;
+
+-- Public read access to active credit pack configurations
+CREATE POLICY "Public can select active credit pack stripe config"
+ON credit_pack_stripe_config FOR SELECT
+TO authenticated, vibe_manager_app
+USING (is_active = true);
+
+-- App can manage all credit pack stripe configurations
+CREATE POLICY "App can manage credit pack stripe config"
+ON credit_pack_stripe_config FOR ALL
+TO vibe_manager_app
+USING (true);
+
+-- Grant SELECT permissions to authenticated role for credit tables
+GRANT SELECT ON credit_packs TO authenticated;
+GRANT SELECT ON credit_pack_stripe_config TO authenticated;
 
 -- User credits balance tracking
 CREATE TABLE IF NOT EXISTS user_credits (
@@ -1531,9 +1639,10 @@ ON CONFLICT (language_code) DO UPDATE SET
 -- Insert available transcription models
 INSERT INTO transcription_model_preferences (model_id, model_name, provider_name, is_available, supports_prompt, supports_temperature, supports_language_detection, max_audio_duration_seconds, supported_formats, pricing_type, cost_per_minute, display_order)
 VALUES 
-('groq/whisper-large-v3-turbo', 'Whisper Large V3 Turbo', 'Groq', TRUE, TRUE, TRUE, TRUE, 600, 'mp3,wav,m4a,webm,ogg,flac', 'duration_based', 0.040, 1),
-('groq/whisper-large-v3', 'Whisper Large V3', 'Groq', TRUE, TRUE, TRUE, TRUE, 600, 'mp3,wav,m4a,webm,ogg,flac', 'duration_based', 0.111, 2),
-('groq/distil-whisper-large-v3-en', 'Distil-Whisper Large V3 (English)', 'Groq', TRUE, TRUE, TRUE, FALSE, 600, 'mp3,wav,m4a,webm,ogg,flac', 'duration_based', 0.020, 3)
+('openai/gpt-4o-transcribe', 'GPT-4o Transcribe (OpenAI via Replicate)', 'OpenAI', TRUE, TRUE, TRUE, TRUE, 600, 'mp3,wav,m4a,webm,ogg,flac', 'duration_based', 0.050, 1),
+('groq/whisper-large-v3-turbo', 'Whisper Large V3 Turbo', 'Groq', TRUE, TRUE, TRUE, TRUE, 600, 'mp3,wav,m4a,webm,ogg,flac', 'duration_based', 0.040, 2),
+('groq/whisper-large-v3', 'Whisper Large V3', 'Groq', TRUE, TRUE, TRUE, TRUE, 600, 'mp3,wav,m4a,webm,ogg,flac', 'duration_based', 0.111, 3),
+('groq/distil-whisper-large-v3-en', 'Distil-Whisper Large V3 (English)', 'Groq', TRUE, TRUE, TRUE, FALSE, 600, 'mp3,wav,m4a,webm,ogg,flac', 'duration_based', 0.020, 4)
 ON CONFLICT (model_id) DO UPDATE SET
     model_name = EXCLUDED.model_name,
     provider_name = EXCLUDED.provider_name,

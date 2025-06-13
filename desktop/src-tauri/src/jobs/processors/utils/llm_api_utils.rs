@@ -34,27 +34,6 @@ pub fn create_openrouter_messages(
     ]
 }
 
-/// Extract system and user prompts from composed prompt
-/// Splits the composed prompt into system and user components
-pub fn extract_prompts_from_composed(
-    composed_prompt: &crate::utils::unified_prompt_system::ComposedPrompt,
-) -> (String, String, String) {
-    let system_prompt_text = composed_prompt
-        .final_prompt
-        .split("\n\n")
-        .next()
-        .unwrap_or("")
-        .to_string();
-    let user_prompt_text = composed_prompt
-        .final_prompt
-        .split("\n\n")
-        .skip(1)
-        .collect::<Vec<&str>>()
-        .join("\n\n");
-    let system_prompt_id = composed_prompt.system_prompt_id.clone();
-    
-    (system_prompt_text, user_prompt_text, system_prompt_id)
-}
 
 /// Creates API client options for LLM calls using provided model settings
 pub fn create_api_client_options(

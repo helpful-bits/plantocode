@@ -10,8 +10,7 @@ export async function createTextCorrectionJobAction(
   text: string,
   sessionId: string,
   originalJobId: string | null,
-  projectDirectory?: string,
-  language: string = "en"
+  projectDirectory?: string
 ): Promise<ActionState<{ jobId: string }>> {
   try {
     // Validate inputs
@@ -39,7 +38,6 @@ export async function createTextCorrectionJobAction(
         textToCorrect: text,
         originalTranscriptionJobId: originalJobId ?? null,
         projectDirectory: projectDirectory ?? null,
-        language,
       }
     );
 

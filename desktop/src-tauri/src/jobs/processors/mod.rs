@@ -4,7 +4,6 @@ pub mod abstract_llm_processor;
 pub mod path_finder_processor;
 pub mod path_finder_types;
 pub mod implementation_plan_processor;
-pub mod regex_summary_generation_processor;
 pub mod guidance_generation_processor;
 pub mod path_correction_processor;
 pub mod task_enhancement_processor;
@@ -23,7 +22,6 @@ pub use abstract_llm_processor::{LlmTaskRunner, LlmTaskConfig, LlmTaskConfigBuil
 pub use path_finder_processor::PathFinderProcessor;
 pub use path_finder_types::{PathFinderResult, PathFinderOptions};
 pub use implementation_plan_processor::ImplementationPlanProcessor;
-pub use regex_summary_generation_processor::{RegexSummaryGenerationProcessor, RegexSummaryGenerationPayload};
 pub use guidance_generation_processor::GuidanceGenerationProcessor;
 pub use path_correction_processor::PathCorrectionProcessor;
 pub use task_enhancement_processor::TaskEnhancementProcessor;

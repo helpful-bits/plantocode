@@ -205,7 +205,7 @@ export function SubscriptionModal({
                 Choose Your Plan
               </DialogTitle>
               <DialogDescription id="subscription-modal-description">
-                Start with a free 1-day trial. No credit card required upfront, but we'll save your payment method for seamless conversion.
+                Start your free trial today. A payment method is required to begin, but you won't be charged until your trial ends. Cancel anytime.
               </DialogDescription>
             </DialogHeader>
 

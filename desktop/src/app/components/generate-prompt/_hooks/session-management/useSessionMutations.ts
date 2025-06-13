@@ -96,11 +96,6 @@ export function useSessionMutations({
       let initialStateForNewSession: Partial<Session> = { 
         projectDirectory: normalizedProjectDir,
         taskDescription: "",
-        titleRegex: "",
-        contentRegex: "",
-        negativeTitleRegex: "",
-        negativeContentRegex: "",
-        isRegexActive: false,
         searchTerm: "",
         includedFiles: [] as string[],
         forceExcludedFiles: [] as string[],
@@ -124,7 +119,6 @@ export function useSessionMutations({
         projectDirectory: normalizedProjectDir, // Ensure projectDirectory is always defined
         updatedAt: Date.now(),
         createdAt: Date.now(), // Add the required createdAt field
-        isRegexActive: initialStateForNewSession.isRegexActive ?? false,
         includedFiles: initialStateForNewSession.includedFiles ?? [],
         forceExcludedFiles: initialStateForNewSession.forceExcludedFiles ?? [],
         searchSelectedFilesOnly: initialStateForNewSession.searchSelectedFilesOnly ?? false,
@@ -361,13 +355,8 @@ export function useSessionMutations({
         projectDirectory: session.projectDirectory,
         taskDescription: session.taskDescription,
         searchTerm: session.searchTerm,
-        titleRegex: session.titleRegex,
-        contentRegex: session.contentRegex,
-        isRegexActive: session.isRegexActive,
         includedFiles: session.includedFiles,
         forceExcludedFiles: session.forceExcludedFiles,
-        negativeTitleRegex: session.negativeTitleRegex,
-        negativeContentRegex: session.negativeContentRegex,
         searchSelectedFilesOnly: session.searchSelectedFilesOnly,
       };
 

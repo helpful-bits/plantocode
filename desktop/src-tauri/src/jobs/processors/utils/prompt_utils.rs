@@ -5,7 +5,7 @@
 use std::sync::Arc;
 use tauri::{AppHandle, Manager};
 
-use crate::error::AppResult;
+use crate::error::{AppResult, AppError};
 use crate::db_utils::{SettingsRepository, SessionRepository};
 use crate::jobs::types::Job;
 use crate::utils::unified_prompt_system::{
@@ -29,6 +29,23 @@ pub async fn get_session_name(
     }
 }
 
+/// Get project directory from session ID for context building
+pub async fn get_project_directory_from_session(
+    session_id: &str,
+    app_handle: &AppHandle,
+) -> AppResult<String> {
+    let session_repo = app_handle
+        .state::<Arc<SessionRepository>>()
+        .inner()
+        .clone();
+    
+    if let Some(session) = session_repo.get_session_by_id(session_id).await? {
+        Ok(session.project_directory)
+    } else {
+        Err(AppError::ConfigError(format!("Session not found: {}", session_id)))
+    }
+}
+
 /// Builds unified prompt context and composes prompt using Job and AppHandle for context
 pub async fn build_unified_prompt(
     job: &Job,
@@ -42,15 +59,15 @@ pub async fn build_unified_prompt(
     // Check if cache service is available and refresh if needed
     refresh_system_prompts_if_needed(app_handle).await;
     
-    // Get session name
+    // Get session name and project directory
     let session_name = get_session_name(&job.session_id, app_handle).await?;
+    let project_directory = get_project_directory_from_session(&job.session_id, app_handle).await?;
     
     let context = UnifiedPromptContextBuilder::new(
-        job.session_id.clone(),
+        project_directory,
         job.job_type,
         task_description,
     )
-    .project_directory(None)
     .file_contents(file_contents)
     .directory_tree(directory_tree)
     .session_name(session_name)
@@ -58,7 +75,7 @@ pub async fn build_unified_prompt(
     .build();
 
     let prompt_processor = UnifiedPromptProcessor::new();
-    prompt_processor.compose_prompt(&context, settings_repo).await
+    prompt_processor.compose_prompt(&context, app_handle).await
 }
 
 /// Refresh system prompts using cache service if available and needed

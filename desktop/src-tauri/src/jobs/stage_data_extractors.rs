@@ -566,8 +566,8 @@ impl StageDataExtractor {
         Ok(cleaned_patterns)
     }
     
-    /// Helper method to extract regex patterns from JSON data
-    /// Looks for primaryPattern.pattern, alternativePatterns, titleRegex, contentRegex, etc.
+    /// Extract regex patterns from JSON data using ONLY the clean 4-pattern structure
+    /// Looks for pathPattern, contentPattern, negativePathPattern, negativeContentPattern
     /// Returns empty vector on any parsing error to prevent workflow stall
     pub fn extract_patterns_from_json(json_value: &Value) -> AppResult<Vec<String>> {
         let mut patterns = Vec::new();
@@ -578,65 +578,20 @@ impl StageDataExtractor {
             return Ok(vec![]);
         }
         
-        if !json_value.is_object() && !json_value.is_array() {
-            debug!("JSON value is neither object nor array, attempting string conversion");
-            if let Some(str_val) = json_value.as_str() {
-                if !str_val.trim().is_empty() {
-                    patterns.push(str_val.trim().to_string());
-                }
-            }
-            return Ok(patterns);
+        if !json_value.is_object() {
+            debug!("JSON value is not an object, returning empty patterns list");
+            return Ok(vec![]);
         }
         
-        // Look for primaryPattern.pattern
-        if let Some(primary_pattern) = json_value.get("primaryPattern") {
-            if let Some(pattern_obj) = primary_pattern.as_object() {
-                if let Some(pattern_value) = pattern_obj.get("pattern") {
-                    if let Some(pattern_str) = pattern_value.as_str() {
-                        let trimmed = pattern_str.trim();
-                        if !trimmed.is_empty() {
-                            patterns.push(trimmed.to_string());
-                            debug!("Extracted primaryPattern.pattern: {}", trimmed);
-                        }
-                    }
-                }
-            }
-        }
-        
-        // Look for alternativePatterns array
-        if let Some(alternative_patterns) = json_value.get("alternativePatterns") {
-            if let Some(array) = alternative_patterns.as_array() {
-                for item in array {
-                    if let Some(pattern_obj) = item.as_object() {
-                        if let Some(pattern_value) = pattern_obj.get("pattern") {
-                            if let Some(pattern_str) = pattern_value.as_str() {
-                                let trimmed = pattern_str.trim();
-                                if !trimmed.is_empty() {
-                                    patterns.push(trimmed.to_string());
-                                    debug!("Extracted alternativePattern: {}", trimmed);
-                                }
-                            }
-                        }
-                    } else if let Some(pattern_str) = item.as_str() {
-                        let trimmed = pattern_str.trim();
-                        if !trimmed.is_empty() {
-                            patterns.push(trimmed.to_string());
-                            debug!("Extracted alternativePattern (string): {}", trimmed);
-                        }
-                    }
-                }
-            }
-        }
-        
-        // Look for individual regex fields
-        let regex_fields = [
-            "titleRegex", 
-            "contentRegex", 
-            "negativeTitleRegex", 
-            "negativeContentRegex"
+        // Extract ONLY the clean 4-pattern structure
+        let pattern_fields = [
+            "pathPattern",
+            "contentPattern", 
+            "negativePathPattern",
+            "negativeContentPattern"
         ];
         
-        for field in &regex_fields {
+        for field in &pattern_fields {
             if let Some(pattern_value) = json_value.get(field) {
                 if let Some(pattern_str) = pattern_value.as_str() {
                     let trimmed = pattern_str.trim();
@@ -644,42 +599,6 @@ impl StageDataExtractor {
                         patterns.push(trimmed.to_string());
                         debug!("Extracted {}: {}", field, trimmed);
                     }
-                }
-            }
-        }
-        
-        // Look for regexPatterns array (newer format)
-        if let Some(regex_patterns_value) = json_value.get("regexPatterns") {
-            if let Some(array) = regex_patterns_value.as_array() {
-                for item in array {
-                    if let Some(pattern_str) = item.as_str() {
-                        let trimmed = pattern_str.trim();
-                        if !trimmed.is_empty() {
-                            patterns.push(trimmed.to_string());
-                            debug!("Extracted regexPattern: {}", trimmed);
-                        }
-                    }
-                }
-            }
-        }
-        
-        // Look for general "patterns" field
-        if let Some(patterns_value) = json_value.get("patterns") {
-            if let Some(array) = patterns_value.as_array() {
-                for item in array {
-                    if let Some(pattern_str) = item.as_str() {
-                        let trimmed = pattern_str.trim();
-                        if !trimmed.is_empty() {
-                            patterns.push(trimmed.to_string());
-                            debug!("Extracted pattern: {}", trimmed);
-                        }
-                    }
-                }
-            } else if let Some(pattern_str) = patterns_value.as_str() {
-                let trimmed = pattern_str.trim();
-                if !trimmed.is_empty() {
-                    patterns.push(trimmed.to_string());
-                    debug!("Extracted pattern (string): {}", trimmed);
                 }
             }
         }
@@ -693,38 +612,19 @@ impl StageDataExtractor {
         Self::extract_patterns_from_json(raw_regex_json)
     }
 
-    /// Extract single path pattern (for file path filtering)
+    /// Extract single path pattern (for file path filtering) using clean structure
     pub fn extract_path_pattern_from_json(json_value: &Value) -> AppResult<Option<String>> {
         if json_value.is_null() {
             return Ok(None);
         }
         
-        // Look for pathRegex, filePathRegex, or pathPattern fields (single pattern)
-        let path_fields = ["pathRegex", "filePathRegex", "pathPattern", "titleRegex"];
-        
-        for field in &path_fields {
-            if let Some(pattern_value) = json_value.get(field) {
-                if let Some(pattern_str) = pattern_value.as_str() {
-                    let trimmed = pattern_str.trim();
-                    if !trimmed.is_empty() {
-                        debug!("Extracted path pattern from {}: {}", field, trimmed);
-                        return Ok(Some(trimmed.to_string()));
-                    }
-                }
-            }
-        }
-        
-        // Also check if filePathRegexPatterns array exists and take first element
-        if let Some(file_path_patterns) = json_value.get("filePathRegexPatterns") {
-            if let Some(array) = file_path_patterns.as_array() {
-                if let Some(first_item) = array.first() {
-                    if let Some(pattern_str) = first_item.as_str() {
-                        let trimmed = pattern_str.trim();
-                        if !trimmed.is_empty() {
-                            debug!("Extracted path pattern from filePathRegexPatterns[0]: {}", trimmed);
-                            return Ok(Some(trimmed.to_string()));
-                        }
-                    }
+        // Look ONLY for pathPattern field
+        if let Some(pattern_value) = json_value.get("pathPattern") {
+            if let Some(pattern_str) = pattern_value.as_str() {
+                let trimmed = pattern_str.trim();
+                if !trimmed.is_empty() {
+                    debug!("Extracted path pattern: {}", trimmed);
+                    return Ok(Some(trimmed.to_string()));
                 }
             }
         }
@@ -732,14 +632,14 @@ impl StageDataExtractor {
         Ok(None)
     }
 
-    /// Extract single content pattern (for file content filtering)
+    /// Extract single content pattern (for file content filtering) using clean structure
     pub fn extract_content_pattern_from_json(json_value: &Value) -> AppResult<Option<String>> {
         if json_value.is_null() {
             return Ok(None);
         }
         
-        // Look for contentRegex field
-        if let Some(pattern_value) = json_value.get("contentRegex") {
+        // Look ONLY for contentPattern field
+        if let Some(pattern_value) = json_value.get("contentPattern") {
             if let Some(pattern_str) = pattern_value.as_str() {
                 let trimmed = pattern_str.trim();
                 if !trimmed.is_empty() {
@@ -752,23 +652,19 @@ impl StageDataExtractor {
         Ok(None)
     }
 
-    /// Extract single negative path pattern (for file path exclusion)
+    /// Extract single negative path pattern (for file path exclusion) using clean structure
     pub fn extract_negative_path_pattern_from_json(json_value: &Value) -> AppResult<Option<String>> {
         if json_value.is_null() {
             return Ok(None);
         }
         
-        // Look for negativePathRegex or negativeTitleRegex field
-        let negative_path_fields = ["negativePathRegex", "negativeTitleRegex"];
-        
-        for field in &negative_path_fields {
-            if let Some(pattern_value) = json_value.get(field) {
-                if let Some(pattern_str) = pattern_value.as_str() {
-                    let trimmed = pattern_str.trim();
-                    if !trimmed.is_empty() {
-                        debug!("Extracted negative path pattern from {}: {}", field, trimmed);
-                        return Ok(Some(trimmed.to_string()));
-                    }
+        // Look ONLY for negativePathPattern field
+        if let Some(pattern_value) = json_value.get("negativePathPattern") {
+            if let Some(pattern_str) = pattern_value.as_str() {
+                let trimmed = pattern_str.trim();
+                if !trimmed.is_empty() {
+                    debug!("Extracted negative path pattern: {}", trimmed);
+                    return Ok(Some(trimmed.to_string()));
                 }
             }
         }
@@ -776,14 +672,14 @@ impl StageDataExtractor {
         Ok(None)
     }
 
-    /// Extract single negative content pattern (for file content exclusion)
+    /// Extract single negative content pattern (for file content exclusion) using clean structure
     pub fn extract_negative_content_pattern_from_json(json_value: &Value) -> AppResult<Option<String>> {
         if json_value.is_null() {
             return Ok(None);
         }
         
-        // Look for negativeContentRegex field
-        if let Some(pattern_value) = json_value.get("negativeContentRegex") {
+        // Look ONLY for negativeContentPattern field
+        if let Some(pattern_value) = json_value.get("negativeContentPattern") {
             if let Some(pattern_str) = pattern_value.as_str() {
                 let trimmed = pattern_str.trim();
                 if !trimmed.is_empty() {

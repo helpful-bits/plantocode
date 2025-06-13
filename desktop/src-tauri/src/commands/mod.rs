@@ -1,12 +1,10 @@
 // Re-export all command modules
 pub mod regex_commands;
-pub mod regex_summary_commands;
 pub mod guidance_commands;
 pub mod file_system_commands;
 pub mod app_commands;
 pub mod auth0_commands;
 pub mod billing_commands;
-pub mod billing_health_commands;
 pub mod config_commands;
 pub mod job_commands;
 pub mod db_commands;
@@ -23,12 +21,10 @@ pub mod generic_task_commands;
 pub mod setup_commands;
 pub mod database_maintenance_commands;
 pub mod server_config_commands;
-pub mod system_prompt_commands;
 pub mod backup_commands;
 
 // Re-export all command functions for easier imports
 pub use regex_commands::{generate_regex_command, generate_regex_patterns_command};
-pub use regex_summary_commands::generate_regex_summary_command;
 pub use guidance_commands::generate_guidance_command;
 pub use file_system_commands::{
     get_home_directory_command,
@@ -93,13 +89,6 @@ pub use file_finder_workflow_commands::{
 // Re-exports from voice commands module
 pub use voice_commands::{
     transcribe_audio_batch_command,
-    get_transcription_settings_command,
-    set_transcription_settings_command,
-    get_project_transcription_settings_command,
-    set_project_transcription_settings_command,
-    reset_transcription_settings_command,
-    get_effective_transcription_settings_command,
-    validate_transcription_settings_command,
 };
 
 // Re-exports from generic task commands module
@@ -157,6 +146,12 @@ pub use settings_commands::{
     validate_configuration_health,
     set_onboarding_completed_command,
     is_onboarding_completed_command,
+    get_project_system_prompt_command,
+    set_project_system_prompt_command,
+    reset_project_system_prompt_command,
+    fetch_default_system_prompts_from_server,
+    fetch_default_system_prompt_from_server,
+    initialize_system_prompts_from_server,
 };
 
 // Re-exports from session commands module
@@ -190,28 +185,16 @@ pub use server_config_commands::{
     refresh_server_config_cache_command,
 };
 
-// Re-exports from system prompt commands module
-pub use system_prompt_commands::{
-    get_system_prompt_command,
-    set_system_prompt_command,
-    reset_system_prompt_command,
-    get_default_system_prompts_command,
-    get_default_system_prompt_command,
-    has_custom_system_prompt_command,
-};
 
 // Re-exports from billing commands module
 pub use billing_commands::{
-    get_subscription_details_command,
+    get_billing_dashboard_data_command,
     get_subscription_plans_command,
-    create_billing_portal_command,
-    get_spending_status_command,
     acknowledge_spending_alert_command,
     update_spending_limits_command,
     get_invoice_history_command,
     get_spending_history_command,
     check_service_access_command,
-    get_credit_balance_command,
     get_credit_history_command,
     get_credit_packs_command,
     get_credit_stats_command,
@@ -229,14 +212,14 @@ pub use billing_commands::{
     // Subscription lifecycle management
     cancel_subscription_command,
     resume_subscription_command,
+    reactivate_subscription_command,
+    get_usage_summary_command,
     create_billing_portal_session_command,
-};
-
-// Re-exports from billing health commands module
-pub use billing_health_commands::{
+    // Billing health monitoring
     check_billing_health_command,
     ping_billing_service_command,
 };
+
 
 // Re-exports from backup commands module
 pub use backup_commands::{

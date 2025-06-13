@@ -193,11 +193,10 @@ pub async fn estimate_implementation_plan_tokens_command(
     
     // Create unified prompt context
     let context = UnifiedPromptContextBuilder::new(
-        session_id.clone(),
+        project_directory.clone(),
         TaskType::ImplementationPlan,
         task_description.clone(),
     )
-    .project_directory(Some(project_directory.clone()))
     .project_structure(project_structure.clone())
     .file_contents(if file_contents_map.is_empty() { None } else { Some(file_contents_map.clone()) })
     .build();
@@ -205,7 +204,7 @@ pub async fn estimate_implementation_plan_tokens_command(
     // Use UnifiedPromptProcessor to generate the complete prompt
     let prompt_processor = UnifiedPromptProcessor::new();
     let composed_prompt = prompt_processor
-        .compose_prompt(&context, &settings_repo)
+        .compose_prompt(&context, &app_handle)
         .await?;
     
     // Estimate the number of tokens in the final prompt
@@ -269,11 +268,10 @@ pub async fn get_implementation_plan_prompt_command(
     
     // Create unified prompt context
     let context = UnifiedPromptContextBuilder::new(
-        session_id.clone(),
+        project_directory.clone(),
         TaskType::ImplementationPlan,
         task_description.clone(),
     )
-    .project_directory(Some(project_directory.clone()))
     .project_structure(project_structure.clone())
     .file_contents(if file_contents_map.is_empty() { None } else { Some(file_contents_map.clone()) })
     .build();
@@ -281,30 +279,18 @@ pub async fn get_implementation_plan_prompt_command(
     // Use UnifiedPromptProcessor to generate the complete prompt
     let prompt_processor = UnifiedPromptProcessor::new();
     let composed_prompt = prompt_processor
-        .compose_prompt(&context, &settings_repo)
+        .compose_prompt(&context, &app_handle)
         .await?;
     
-    // Extract system and user prompts from the composed result
-    let parts: Vec<&str> = composed_prompt.final_prompt.splitn(2, "\n\n").collect();
-    let system_prompt = parts.get(0).unwrap_or(&"").to_string();
-    let user_prompt = parts.get(1).unwrap_or(&"").to_string();
-    
-    // Create combined prompt for backward compatibility
-    let combined_prompt = composed_prompt.final_prompt.clone();
-    
-    // Clean up the system prompt (already extracted above)
-    let final_system_prompt = if !system_prompt.is_empty() {
-        system_prompt
-    } else {
-        "You are an AI assistant specialized in creating detailed implementation plans for software development tasks.".to_string()
-    };
-    
-    // The user prompt is already extracted above
-    
+    // Use the clean separated prompts from the unified system
+    let system_prompt = composed_prompt.system_prompt;
+    let user_prompt = composed_prompt.user_prompt;
+    let combined_prompt = format!("{}\n\n{}", system_prompt, user_prompt);
+
     Ok(ImplementationPlanPromptResponse {
-        system_prompt: final_system_prompt,
-        user_prompt: user_prompt,
-        combined_prompt: combined_prompt,
+        system_prompt,
+        user_prompt, 
+        combined_prompt,
     })
 }
 

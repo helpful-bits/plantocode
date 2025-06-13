@@ -28,7 +28,7 @@ pub struct AuthDataResponse {
     pub expires_in: i64, // Token lifetime in seconds
 }
 
-// Session model that matches the TypeScript Session interface
+// Session model - stores user context and preferences, NOT workflow artifacts
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Session {
@@ -38,16 +38,6 @@ pub struct Session {
     pub project_hash: String,
     pub task_description: Option<String>,
     pub search_term: Option<String>,
-    pub title_regex: Option<String>,
-    pub content_regex: Option<String>,
-    pub negative_title_regex: Option<String>,
-    pub negative_content_regex: Option<String>,
-    pub title_regex_description: Option<String>,
-    pub content_regex_description: Option<String>,
-    pub negative_title_regex_description: Option<String>,
-    pub negative_content_regex_description: Option<String>,
-    pub regex_summary_explanation: Option<String>,
-    pub is_regex_active: bool,
     pub search_selected_files_only: bool,
     pub model_used: Option<String>,
     pub created_at: i64,
@@ -66,15 +56,6 @@ pub struct CreateSessionRequest {
     pub project_hash: Option<String>,
     pub task_description: Option<String>,
     pub search_term: Option<String>,
-    pub title_regex: Option<String>,
-    pub content_regex: Option<String>,
-    pub negative_title_regex: Option<String>,
-    pub negative_content_regex: Option<String>,
-    pub title_regex_description: Option<String>,
-    pub content_regex_description: Option<String>,
-    pub negative_title_regex_description: Option<String>,
-    pub negative_content_regex_description: Option<String>,
-    pub is_regex_active: Option<bool>,
     pub search_selected_files_only: Option<bool>,
     pub model_used: Option<String>,
     pub created_at: Option<i64>,
@@ -194,7 +175,6 @@ pub enum TaskType {
     GuidanceGeneration,
     TaskEnhancement,
     GenericLlmStream,
-    RegexSummaryGeneration,
     RegexPatternGeneration,
     FileFinderWorkflow,
     // New individual workflow stage types
@@ -217,7 +197,6 @@ impl ToString for TaskType {
             TaskType::GuidanceGeneration => "guidance_generation".to_string(),
             TaskType::TaskEnhancement => "task_enhancement".to_string(),
             TaskType::GenericLlmStream => "generic_llm_stream".to_string(),
-            TaskType::RegexSummaryGeneration => "regex_summary_generation".to_string(),
             TaskType::RegexPatternGeneration => "regex_pattern_generation".to_string(),
             TaskType::FileFinderWorkflow => "file_finder_workflow".to_string(),
             TaskType::LocalFileFiltering => "local_file_filtering".to_string(),
@@ -243,7 +222,6 @@ impl std::str::FromStr for TaskType {
             "guidance_generation" => Ok(TaskType::GuidanceGeneration),
             "task_enhancement" => Ok(TaskType::TaskEnhancement),
             "generic_llm_stream" => Ok(TaskType::GenericLlmStream),
-            "regex_summary_generation" => Ok(TaskType::RegexSummaryGeneration),
             "regex_pattern_generation" => Ok(TaskType::RegexPatternGeneration),
             "file_finder_workflow" => Ok(TaskType::FileFinderWorkflow),
             "local_file_filtering" => Ok(TaskType::LocalFileFiltering),
@@ -275,7 +253,6 @@ impl TaskType {
             | TaskType::GuidanceGeneration
             | TaskType::TaskEnhancement
             | TaskType::GenericLlmStream
-            | TaskType::RegexSummaryGeneration
             | TaskType::RegexPatternGeneration => true,
             // Streaming and Unknown default to true for safety
             TaskType::Streaming
@@ -340,7 +317,7 @@ pub struct SystemPrompt {
     pub session_id: String,
     pub task_type: String,
     pub system_prompt: String,
-    pub is_default: bool,
+    pub is_active: bool,
     pub created_at: i64,
     pub updated_at: i64,
 }
@@ -572,6 +549,7 @@ pub struct TaskSpecificModelConfig {
     pub model: Option<String>,
     pub max_tokens: Option<u32>,
     pub temperature: Option<f32>,
+    pub system_prompt: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

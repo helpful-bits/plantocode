@@ -1,17 +1,22 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { 
-  type SpendingStatusInfo,
-  type SubscriptionDetails,
+  type BillingDashboardData,
 } from '@/types/tauri-commands';
 import { useNotification } from '@/contexts/notification-context';
 import { getErrorMessage } from '@/utils/error-handling';
 
+export interface SpendingStatus {
+  currentSpending: number;
+  includedAllowance: number;
+  usagePercentage: number;
+  servicesBlocked: boolean;
+  currency: string;
+}
 
 export interface UseBillingDataReturn {
-  spendingStatus: SpendingStatusInfo | null;
-  subscriptionDetails: SubscriptionDetails | null;
-  creditBalance: number | null;
+  dashboardData: BillingDashboardData | null;
+  spendingStatus: SpendingStatus | null;
   isLoading: boolean;
   error: string | null;
   refreshBillingData: () => Promise<void>;
@@ -19,37 +24,44 @@ export interface UseBillingDataReturn {
 }
 
 export function useBillingData(): UseBillingDataReturn {
-  const [spendingStatus, setSpendingStatus] = useState<SpendingStatusInfo | null>(null);
-  const [subscriptionDetails, setSubscriptionDetails] = useState<SubscriptionDetails | null>(null);
+  const [dashboardData, setDashboardData] = useState<BillingDashboardData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { showNotification } = useNotification();
   const isMountedRef = useRef(true);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const fetchBillingData = useCallback(async () => {
+    // Abort any existing request
+    if (abortControllerRef.current) {
+      console.log('Aborting previous request');
+      abortControllerRef.current.abort();
+    }
+    
+    abortControllerRef.current = new AbortController();
+    const signal = abortControllerRef.current.signal;
+
     try {
-      if (!isMountedRef.current) return;
-      if (isLoading) return; // Prevent concurrent calls
+      if (!isMountedRef.current || signal.aborted) return;
+      
       setIsLoading(true);
       setError(null);
 
-      // Fetch only the two primary data sources
-      const [statusData, subscriptionData] = await Promise.all([
-        invoke<SpendingStatusInfo>('get_spending_status_command'),
-        invoke<SubscriptionDetails>('get_subscription_details_command'),
-      ]);
+      // Get fresh billing data - NEVER cache financial information
+      const data = await invoke<BillingDashboardData>('get_billing_dashboard_data_command');
 
-      if (!isMountedRef.current) return;
-      setSpendingStatus(statusData);
-      setSubscriptionDetails(subscriptionData);
+      if (!isMountedRef.current || signal.aborted) return;
+
+      setDashboardData(data);
+
     } catch (err) {
-      if (!isMountedRef.current) return;
+      if (!isMountedRef.current || signal.aborted) return;
       
       const errorMessage = getErrorMessage(err);
       setError(errorMessage);
-      console.error('Failed to fetch billing data:', err);
+      // Don't clear dashboardData on error - keep previous data if available
       
-      // Show notification for critical errors only once per session
+      // Show notification for critical errors
       if ((errorMessage.includes('spending_limit_exceeded') || errorMessage.includes('services_blocked')) &&
           !sessionStorage.getItem('billing-error-notified')) {
         sessionStorage.setItem('billing-error-notified', 'true');
@@ -60,13 +72,14 @@ export function useBillingData(): UseBillingDataReturn {
         });
       }
     } finally {
-      if (isMountedRef.current) {
+      if (isMountedRef.current && !signal.aborted) {
         setIsLoading(false);
       }
     }
-  }, [isLoading, showNotification]);
+  }, []); // Remove showNotification dependency to prevent re-renders
 
   const refreshBillingData = useCallback(async () => {
+    // Always fetch fresh data - no caching for billing information
     await fetchBillingData();
   }, [fetchBillingData]);
 
@@ -75,7 +88,7 @@ export function useBillingData(): UseBillingDataReturn {
       await invoke<boolean>('acknowledge_spending_alert_command', { alertId });
       
       // Refresh data after acknowledgment
-      await refreshBillingData();
+      await fetchBillingData();
       
       showNotification({
         title: 'Alert Acknowledged',
@@ -92,30 +105,45 @@ export function useBillingData(): UseBillingDataReturn {
         type: 'error',
       });
     }
-  }, [refreshBillingData, showNotification]);
+  }, [fetchBillingData, showNotification]);
 
   // Initial data fetch
   useEffect(() => {
     fetchBillingData();
   }, [fetchBillingData]);
-
-  // Smart refresh based on user activity and critical states  
+  
+  // Retry if no data after mount (auth timing issue)
   useEffect(() => {
+    if (!dashboardData && !isLoading && !error) {
+      const retryTimer = setTimeout(fetchBillingData, 2000);
+      return () => clearTimeout(retryTimer);
+    }
+    return;
+  }, [dashboardData, isLoading, error, fetchBillingData]);
+
+  // Smart refresh based on critical states with improved logic
+  useEffect(() => {
+    // Check if services are blocked based on spending data
+    const servicesBlocked = dashboardData && 
+      dashboardData.spendingDetails.currentSpendingUsd >= dashboardData.spendingDetails.spendingLimitUsd;
+    
+    if (!servicesBlocked) {
+      return; // Only set up listeners when services are blocked
+    }
+
     const handleUserActivity = () => {
-      // Only refresh if we're in a critical state and user is active
-      if (spendingStatus?.servicesBlocked && isMountedRef.current) {
+      if (isMountedRef.current) {
         void fetchBillingData();
       }
     };
 
     const handleVisibilityChange = () => {
-      // Refresh when user returns to tab if data might be stale
-      if (document.visibilityState === 'visible' && spendingStatus?.servicesBlocked) {
+      if (document.visibilityState === 'visible' && isMountedRef.current) {
         void fetchBillingData();
       }
     };
 
-    // Optimized event listeners with passive flags for better performance
+    // Use passive listeners for better performance
     window.addEventListener('focus', handleUserActivity, { passive: true });
     document.addEventListener('visibilitychange', handleVisibilityChange, { passive: true });
 
@@ -123,33 +151,47 @@ export function useBillingData(): UseBillingDataReturn {
       window.removeEventListener('focus', handleUserActivity);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [spendingStatus?.servicesBlocked, fetchBillingData]);
+  }, [dashboardData, fetchBillingData]);
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
       isMountedRef.current = false;
+      // Abort any pending requests
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
     };
   }, []);
 
-  // Derive creditBalance from subscriptionDetails on the client side
-  const creditBalance = useMemo(() => {
-    return subscriptionDetails?.creditBalance ?? spendingStatus?.creditBalance ?? null;
-  }, [subscriptionDetails?.creditBalance, spendingStatus?.creditBalance]);
+  // Compute spending status from dashboard data
+  const spendingStatus = useMemo((): SpendingStatus | null => {
+    if (!dashboardData) {
+      return null;
+    }
+
+    const { currentSpendingUsd, spendingLimitUsd } = dashboardData.spendingDetails;
+    
+    return {
+      currentSpending: currentSpendingUsd,
+      includedAllowance: spendingLimitUsd,
+      usagePercentage: spendingLimitUsd > 0 ? (currentSpendingUsd / spendingLimitUsd) * 100 : 0,
+      servicesBlocked: currentSpendingUsd >= spendingLimitUsd,
+      currency: 'USD'
+    };
+  }, [dashboardData]);
 
   // Memoize the return object to prevent unnecessary re-renders
   const returnValue = useMemo(() => ({
+    dashboardData,
     spendingStatus,
-    subscriptionDetails,
-    creditBalance,
     isLoading,
     error,
     refreshBillingData,
     acknowledgeSpendingAlert,
   }), [
+    dashboardData,
     spendingStatus,
-    subscriptionDetails,
-    creditBalance,
     isLoading,
     error,
     refreshBillingData,

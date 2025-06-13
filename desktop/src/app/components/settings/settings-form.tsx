@@ -1,7 +1,6 @@
 "use client";
 
-import { CheckCircle, Loader2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 
 import {
@@ -31,7 +30,54 @@ export default function SettingsForm({ sessionId }: SettingsFormProps) {
   const [availableModels, setAvailableModels] = useState<ModelInfo[] | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [saveSuccess, setSaveSuccess] = useState(false);
+
+  // Function to refresh project settings (can be called from child components)
+  const refreshProjectSettings = useCallback(async () => {
+    if (!projectDirectory) return;
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      // First refresh runtime config to ensure we have latest task configurations
+      await invoke("fetch_runtime_ai_config");
+      
+      const [settingsResult, modelsResult] = await Promise.all([
+        getModelSettingsForProject(projectDirectory),
+        getAvailableAIModels(),
+      ]);
+      
+      if (settingsResult.isSuccess && settingsResult.data) {
+        setTaskSettings(settingsResult.data);
+      } else {
+        setError(settingsResult.message || "Failed to load project settings");
+        setTaskSettings(null);
+      }
+      
+      setAvailableModels(modelsResult || []);
+    } catch (err) {
+      const errorInfo = extractErrorInfo(err);
+      const userMessage = createUserFriendlyErrorMessage(errorInfo, "project settings");
+      
+      await logError(err, "SettingsForm.refreshProjectSettings", { projectDirectory });
+      
+      setError(userMessage);
+      setTaskSettings(null);
+      
+      showNotification({
+        title: "Settings Load Error",
+        message: userMessage,
+        type: "error",
+        actionButton: {
+          label: "Retry",
+          onClick: refreshProjectSettings,
+          variant: "outline"
+        }
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  }, [projectDirectory, showNotification]);
 
   // Fetch project settings when projectDirectory changes
   useEffect(() => {
@@ -41,56 +87,7 @@ export default function SettingsForm({ sessionId }: SettingsFormProps) {
 
     async function fetchProjectSettings() {
       if (!isMounted) return;
-      setIsLoading(true);
-      setError(null);
-
-      try {
-        // First refresh runtime config to ensure we have latest task configurations
-        await invoke("fetch_runtime_ai_config");
-        
-        if (!isMounted) return;
-        
-        const [settingsResult, modelsResult] = await Promise.all([
-          getModelSettingsForProject(projectDirectory),
-          getAvailableAIModels(),
-        ]);
-        
-        if (!isMounted) return;
-        
-        if (settingsResult.isSuccess && settingsResult.data) {
-          setTaskSettings(settingsResult.data);
-        } else {
-          setError(settingsResult.message || "Failed to load project settings");
-          setTaskSettings(null);
-        }
-        
-        setAvailableModels(modelsResult || []);
-      } catch (err) {
-        if (!isMounted) return;
-        
-        const errorInfo = extractErrorInfo(err);
-        const userMessage = createUserFriendlyErrorMessage(errorInfo, "project settings");
-        
-        await logError(err, "SettingsForm.fetchProjectSettings", { projectDirectory });
-        
-        setError(userMessage);
-        setTaskSettings(null);
-        
-        showNotification({
-          title: "Settings Load Error",
-          message: userMessage,
-          type: "error",
-          actionButton: {
-            label: "Retry",
-            onClick: () => fetchProjectSettings(),
-            variant: "outline"
-          }
-        });
-      } finally {
-        if (isMounted) {
-          setIsLoading(false);
-        }
-      }
+      await refreshProjectSettings();
     }
 
     void fetchProjectSettings();
@@ -98,12 +95,11 @@ export default function SettingsForm({ sessionId }: SettingsFormProps) {
     return () => {
       isMounted = false;
     };
-  }, [projectDirectory]);
+  }, [projectDirectory, refreshProjectSettings]);
 
   // Handle settings changes
   const handleSettingsChange = async (newSettings: TaskSettings) => {
     setTaskSettings(newSettings);
-    setSaveSuccess(false);
 
     if (!projectDirectory) {
       setError("No active project");
@@ -119,11 +115,7 @@ export default function SettingsForm({ sessionId }: SettingsFormProps) {
         newSettings
       );
 
-      if (result.isSuccess) {
-        setSaveSuccess(true);
-        // Hide success message after a delay
-        setTimeout(() => setSaveSuccess(false), 3000);
-      } else {
+      if (!result.isSuccess) {
         setError(result.message || "Failed to save settings");
       }
     } catch (err) {
@@ -155,20 +147,6 @@ export default function SettingsForm({ sessionId }: SettingsFormProps) {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-2 justify-end">
-        {isLoading && (
-          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-        )}
-        <div className="h-5 text-xs flex items-center min-w-[60px]">
-          {saveSuccess && (
-            <span className="text-success flex items-center gap-1">
-              <CheckCircle className="h-4 w-4" /> Saved
-            </span>
-          )}
-        </div>
-        {error && <span className="text-xs text-destructive">{error}</span>}
-      </div>
-
       <Tabs defaultValue="models" className="w-full">
         <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="models">Model Settings</TabsTrigger>
@@ -182,6 +160,8 @@ export default function SettingsForm({ sessionId }: SettingsFormProps) {
               availableModels={availableModels}
               onSettingsChange={handleSettingsChange}
               sessionId={sessionId}
+              projectDirectory={projectDirectory}
+              onRefresh={refreshProjectSettings}
             />
           )}
 

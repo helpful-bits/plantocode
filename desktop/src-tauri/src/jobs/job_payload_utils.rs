@@ -36,7 +36,6 @@ pub fn deserialize_value_to_job_payload(json_value: &serde_json::Value, task_typ
         TextCorrectionPayload, GenericLlmStreamPayload, RegexPatternGenerationPayload,
         OpenRouterLlmPayload, FileRelevanceAssessmentPayload
     };
-    use crate::jobs::processors::regex_summary_generation_processor::RegexSummaryGenerationPayload;
     use crate::models::TaskType;
     
     match task_type {
@@ -95,11 +94,6 @@ pub fn deserialize_value_to_job_payload(json_value: &serde_json::Value, task_typ
             let payload: GenericLlmStreamPayload = serde_json::from_value(json_value.clone())
                 .map_err(|e| AppError::JobError(format!("Failed to deserialize GenericLlmStreamPayload: {}", e)))?;
             Ok(JobPayload::GenericLlmStream(payload))
-        }
-        TaskType::RegexSummaryGeneration => {
-            let payload: RegexSummaryGenerationPayload = serde_json::from_value(json_value.clone())
-                .map_err(|e| AppError::JobError(format!("Failed to deserialize RegexSummaryGenerationPayload: {}", e)))?;
-            Ok(JobPayload::RegexSummaryGeneration(payload))
         }
         TaskType::FileRelevanceAssessment => {
             let payload: FileRelevanceAssessmentPayload = serde_json::from_value(json_value.clone())

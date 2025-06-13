@@ -16,7 +16,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/ui/alert";
 import { useNotification } from "@/contexts/notification-context";
 import { getErrorMessage } from "@/utils/error-handling";
-import { resumeSubscription } from "@/actions/billing/subscription-lifecycle.actions";
+import { resumeSubscription, reactivateSubscription } from "@/actions/billing/subscription-lifecycle.actions";
 import type { SubscriptionDetails } from "@/types/tauri-commands";
 
 export interface SubscriptionReactivationModalProps {
@@ -40,15 +40,40 @@ export function SubscriptionReactivationModal({
 
 
   const handleReactivate = async () => {
+    if (!currentSubscription) {
+        setError("Subscription details are not available. Please close and try again.");
+        showNotification({
+            title: "Reactivation Failed",
+            message: "Missing subscription details.",
+            type: "error",
+        });
+        setIsReactivating(false); // also ensure loading state is reset
+        return;
+    }
+
     try {
       setIsReactivating(true);
       setError(null);
 
-      const reactivatedSubscription = await resumeSubscription();
+      let reactivatedSubscription;
+      let notificationTitle;
+
+      // Check subscription status and call correct action
+      if (currentSubscription?.cancelAtPeriodEnd === true) {
+        // Subscription is scheduled for cancellation - resume it
+        reactivatedSubscription = await resumeSubscription();
+        notificationTitle = "Subscription Resumed!";
+      } else if (currentSubscription?.status === 'canceled') {
+        // Subscription has already ended - reactivate it
+        reactivatedSubscription = await reactivateSubscription(currentSubscription.plan);
+        notificationTitle = "Subscription Reactivated!";
+      } else {
+        throw new Error("Invalid subscription state for reactivation");
+      }
 
       showNotification({
-        title: "Subscription Reactivated!",
-        message: "Your subscription has been successfully reactivated and is now active.",
+        title: notificationTitle,
+        message: "Your subscription has been successfully restored and is now active.",
         type: "success",
       });
 
@@ -75,8 +100,9 @@ export function SubscriptionReactivationModal({
 
 
   // Check if subscription can be reactivated
+  // Can reactivate if: status is 'canceled' (ended) OR cancelAtPeriodEnd is true (scheduled to cancel)
   const canReactivate = currentSubscription?.status === 'canceled' || 
-                       currentSubscription?.hasCancelled;
+                       currentSubscription?.cancelAtPeriodEnd === true;
 
   if (!canReactivate) {
     return (
@@ -96,7 +122,7 @@ export function SubscriptionReactivationModal({
             <CheckCircle className="h-4 w-4" />
             <AlertTitle>Subscription Status</AlertTitle>
             <AlertDescription>
-              Your subscription is {currentSubscription?.status} and will continue until{' '}
+              Your subscription is {currentSubscription?.status}{currentSubscription?.cancelAtPeriodEnd ? ' (scheduled to cancel)' : ''} and will continue until{' '}
               {currentSubscription?.currentPeriodEndsAt && 
                 new Date(currentSubscription.currentPeriodEndsAt).toLocaleDateString()
               }.
@@ -122,8 +148,10 @@ export function SubscriptionReactivationModal({
             Reactivate Subscription
           </DialogTitle>
           <DialogDescription>
-            Your subscription was canceled but can be reactivated at any time.
-            Reactivation will restore your previous plan and billing cycle.
+            {currentSubscription?.status === 'canceled' 
+              ? 'Your subscription was canceled but can be reactivated at any time.'
+              : 'Your subscription is scheduled for cancellation but can be reactivated.'
+            } Reactivation will restore your previous plan and billing cycle.
           </DialogDescription>
         </DialogHeader>
 
@@ -140,7 +168,7 @@ export function SubscriptionReactivationModal({
           <Card className="bg-red-50 border-red-200">
             <CardHeader>
               <CardTitle className="text-sm font-medium text-red-900">
-                Canceled Subscription
+                {currentSubscription?.status === 'canceled' ? 'Canceled Subscription' : 'Subscription Scheduled for Cancellation'}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
@@ -157,7 +185,10 @@ export function SubscriptionReactivationModal({
                 </div>
               )}
               <div className="text-xs text-red-700">
-                Reactivate before your access period ends to continue using AI services without interruption.
+                {currentSubscription?.status === 'canceled' 
+                  ? 'Reactivate to restore access to AI services.'
+                  : 'Reactivate before your access period ends to continue using AI services without interruption.'
+                }
               </div>
             </CardContent>
           </Card>
