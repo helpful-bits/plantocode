@@ -5,8 +5,7 @@ import { useState, useRef, useCallback } from "react";
 import { setupMedia, cleanupMedia } from "./voice-media-handler";
 import { getErrorMessage } from "@/utils/error-handling";
 
-const MEDIA_RECORDER_TIMESLICE_MS = 5000;
-const MEDIA_RECORDER_REQUEST_DATA_INTERVAL_MS = 5000;
+const MAX_RECORDING_DURATION_MS = 10 * 60 * 1000; // 10 minutes
 
 interface UseVoiceMediaStateProps {
   onError: (error: string) => void;
@@ -20,7 +19,8 @@ export function useVoiceMediaState({
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
-  const dataRequestIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const mimeTypeRef = useRef<string>("audio/webm");
+  const autoStopTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const lastRecordingRef = useRef<{ blob: Blob; durationMs: number } | null>(null);
 
@@ -28,16 +28,23 @@ export function useVoiceMediaState({
     string | null
   >(null);
 
-  const startMediaRecording = useCallback(async (onDataAvailable: (chunk: Blob) => void) => {
+  const startMediaRecording = useCallback(async (onComplete: (blob: Blob) => void) => {
     audioChunksRef.current = [];
 
     const media = await setupMedia({
       onDataAvailable: (chunk) => {
         audioChunksRef.current.push(chunk);
-        onDataAvailable(chunk);
       },
       onError,
-      onStop: () => {},
+      onStop: () => {
+        // Combine all chunks into single blob when recording stops
+        if (audioChunksRef.current.length > 0) {
+          const audioBlob = new Blob(audioChunksRef.current, {
+            type: mimeTypeRef.current,
+          });
+          onComplete(audioBlob);
+        }
+      },
       deviceId: selectedAudioInputId,
     });
 
@@ -47,49 +54,21 @@ export function useVoiceMediaState({
 
     streamRef.current = media.stream;
     recorderRef.current = media.recorder;
+    mimeTypeRef.current = media.mimeType;
 
     if (media.activeDeviceLabel) {
       setActiveAudioInputLabel(media.activeDeviceLabel);
     }
 
-    recorderRef.current.start(MEDIA_RECORDER_TIMESLICE_MS);
+    // Start recording without timeslice for single continuous recording
+    recorderRef.current.start();
 
-    // Clear any existing interval first
-    if (dataRequestIntervalRef.current !== null) {
-      clearInterval(dataRequestIntervalRef.current);
-      dataRequestIntervalRef.current = null;
-    }
-
-    const interval = setInterval(() => {
+    // Auto-stop after maximum duration
+    autoStopTimeoutRef.current = setTimeout(() => {
       if (recorderRef.current && recorderRef.current.state === "recording") {
-        try {
-          recorderRef.current.requestData();
-        } catch (err) {
-          console.warn("[VoiceRecording] Error requesting data:", err);
-        }
-      } else {
-        // Recording stopped, clean up interval
-        if (dataRequestIntervalRef.current !== null) {
-          clearInterval(dataRequestIntervalRef.current);
-          dataRequestIntervalRef.current = null;
-        }
+        recorderRef.current.stop();
       }
-    }, MEDIA_RECORDER_REQUEST_DATA_INTERVAL_MS);
-
-    dataRequestIntervalRef.current = interval;
-
-    const originalStop = recorderRef.current.onstop;
-    recorderRef.current.onstop = (ev) => {
-      // Clean up interval when recording stops
-      if (dataRequestIntervalRef.current !== null) {
-        clearInterval(dataRequestIntervalRef.current);
-        dataRequestIntervalRef.current = null;
-      }
-      
-      if (originalStop && recorderRef.current) {
-        originalStop.call(recorderRef.current, ev);
-      }
-    };
+    }, MAX_RECORDING_DURATION_MS);
 
     return media;
   }, [selectedAudioInputId, onError]);
@@ -100,22 +79,14 @@ export function useVoiceMediaState({
     }
 
     try {
-      if (recorderRef.current && recorderRef.current.state === "recording") {
-        // Simply request final data - MediaRecorder will handle it asynchronously
-        // No need for complex timeout logic that may interfere with natural flow
-        recorderRef.current.requestData();
+      // Clear auto-stop timeout if recording is stopped manually
+      if (autoStopTimeoutRef.current) {
+        clearTimeout(autoStopTimeoutRef.current);
+        autoStopTimeoutRef.current = null;
       }
 
-      recorderRef.current.stop();
-
-
-      if (audioChunksRef.current.length > 0) {
-        const audioBlob = new Blob(audioChunksRef.current, {
-          type: "audio/webm",
-        });
-        lastRecordingRef.current = { blob: audioBlob, durationMs: Date.now() };
-      } else {
-        console.warn("[VoiceRecording] No audio chunks captured during recording");
+      if (recorderRef.current && recorderRef.current.state === "recording") {
+        recorderRef.current.stop();
       }
     } catch (err) {
       console.error("[VoiceRecording] Error in stopMediaRecording:", err);
@@ -128,12 +99,12 @@ export function useVoiceMediaState({
   }, [onError]);
 
   const resetMediaState = useCallback(() => {
-    // Clean up interval first
-    if (dataRequestIntervalRef.current !== null) {
-      clearInterval(dataRequestIntervalRef.current);
-      dataRequestIntervalRef.current = null;
+    // Clear any pending timeout
+    if (autoStopTimeoutRef.current) {
+      clearTimeout(autoStopTimeoutRef.current);
+      autoStopTimeoutRef.current = null;
     }
-    
+
     cleanupMedia(recorderRef.current, streamRef.current);
     recorderRef.current = null;
     streamRef.current = null;

@@ -364,11 +364,10 @@ pub async fn estimate_path_finder_tokens_command(
     
     // Create unified prompt context for PathFinder
     let context = UnifiedPromptContextBuilder::new(
-        session_id.clone(),
+        project_directory.clone(),
         TaskType::PathFinder,
         task_description.clone(),
     )
-    .project_directory(Some(project_directory.clone()))
     .directory_tree(Some(directory_tree))
     .file_contents(if file_contents_map.is_empty() { None } else { Some(file_contents_map) })
     .build();
@@ -376,7 +375,7 @@ pub async fn estimate_path_finder_tokens_command(
     // Use UnifiedPromptProcessor to generate the complete prompt
     let prompt_processor = UnifiedPromptProcessor::new();
     let composed_prompt = prompt_processor
-        .compose_prompt(&context, &settings_repo)
+        .compose_prompt(&context, &app_handle)
         .await?;
     
     // Estimate the number of tokens in the final prompt

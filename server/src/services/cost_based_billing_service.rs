@@ -259,8 +259,11 @@ impl CostBasedBillingService {
             }
         }
 
-        // Check spending thresholds and send alerts within transaction
-        self.check_spending_thresholds_in_tx(user_id, executor).await?;
+        // Drop executor reference before calling non-transactional method
+        drop(executor);
+        
+        // Check spending thresholds and send alerts (non-transactional)
+        self.check_spending_thresholds(user_id).await?;
 
         debug!("Processed API usage for user {}: cost=${}, covered by allowance=${}, covered by credits=${}", 
                user_id, cost, cost_covered_by_allowance, 
@@ -479,49 +482,6 @@ impl CostBasedBillingService {
         Ok(())
     }
 
-    /// Check spending thresholds and send alerts within transaction
-    async fn check_spending_thresholds_in_tx(
-        &self, 
-        user_id: &Uuid,
-        executor: &mut sqlx::Transaction<'_, sqlx::Postgres>
-    ) -> Result<(), AppError> {
-        // We need to get the current spending status within the transaction context
-        // For now, use the non-transactional version since the spending status calculation
-        // involves multiple repository calls that don't all have _with_executor variants yet
-        let spending_status = self.get_current_spending_status(user_id).await?;
-        let spending_limit = self.get_or_create_current_spending_limit_in_tx(user_id, executor).await?;
-        
-        let usage_percentage = spending_status.usage_percentage;
-        let current_spending = spending_status.current_spending;
-        let billing_period_start = spending_status.billing_period_start;
-
-        // Check thresholds: 75%, 90%, 100% (limit reached), hard limit
-        let thresholds = vec![
-            (75.0, "75_percent"),
-            (90.0, "90_percent"),
-            (100.0, "limit_reached"),
-        ];
-
-        for (threshold_percent, alert_type) in thresholds {
-            if usage_percentage >= threshold_percent {
-                // Dynamic alert checking - log alert events instead of storing in dropped table
-                // Check if we've already logged this alert type for this billing period
-                let has_existing_alert = self.has_recent_alert_logged(user_id, alert_type, &billing_period_start);
-
-                if !has_existing_alert {
-                    self.log_spending_alert_event(user_id, alert_type, &current_spending, &billing_period_start, &spending_limit).await?;
-                }
-            }
-        }
-
-        // Check hard limit
-        if current_spending >= spending_status.hard_limit && !spending_status.services_blocked {
-            self.block_services_in_tx(user_id, executor).await?;
-            self.log_spending_alert_event(user_id, "services_blocked", &current_spending, &billing_period_start, &spending_limit).await?;
-        }
-
-        Ok(())
-    }
 
     /// Block AI services for user
     async fn block_services(&self, user_id: &Uuid) -> Result<(), AppError> {
@@ -538,24 +498,6 @@ impl CostBasedBillingService {
         Ok(())
     }
 
-    /// Block AI services for user within transaction
-    async fn block_services_in_tx(
-        &self, 
-        user_id: &Uuid,
-        executor: &mut sqlx::Transaction<'_, sqlx::Postgres>
-    ) -> Result<(), AppError> {
-        let now = Utc::now();
-        let billing_period_start = safe_date_from_components(now.year(), now.month(), 1)?
-            .and_hms_opt(0, 0, 0)
-            .ok_or_else(|| AppError::Internal("Failed to construct time for billing_period_start".to_string()))?
-            .and_utc();
-
-        // Log service blocking (services are blocked by checking spending status)
-        warn!("Services blocked for user {} due to spending limit exceeded (tx)", user_id);
-
-        error!("SERVICES BLOCKED for user {} due to spending limit exceeded", user_id);
-        Ok(())
-    }
 
     /// Unblock AI services for user (manual override or new billing period)
     pub async fn unblock_services(&self, user_id: &Uuid) -> Result<(), AppError> {

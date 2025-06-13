@@ -16,7 +16,6 @@ export type TaskType =
   | "guidance_generation"
   | "task_enhancement"
   | "generic_llm_stream"
-  | "regex_summary_generation"
   | "regex_pattern_generation"
   | "file_finder_workflow"
   | "streaming"
@@ -37,7 +36,6 @@ export type TaskTypeSupportingSystemPrompts =
   | "path_correction"
   | "task_enhancement"
   | "regex_pattern_generation"
-  | "regex_summary_generation"
   | "generic_llm_stream"
   | "extended_path_finder"
   | "file_relevance_assessment";
@@ -52,7 +50,6 @@ export const ALL_TASK_TYPES: readonly TaskType[] = [
   "guidance_generation",
   "task_enhancement",
   "generic_llm_stream",
-  "regex_summary_generation",
   "regex_pattern_generation",
   "file_finder_workflow",
   "streaming",
@@ -73,7 +70,6 @@ export const SYSTEM_PROMPT_TASK_TYPES: readonly TaskTypeSupportingSystemPrompts[
   "path_correction",
   "task_enhancement",
   "regex_pattern_generation",
-  "regex_summary_generation",
   "generic_llm_stream",
   "extended_path_finder",
   "file_relevance_assessment",
@@ -121,12 +117,12 @@ export const TaskTypeDetails: Record<TaskType, {
     defaultProvider: "google"
   },
   voice_transcription: { 
-    requiresLlm: false, 
+    requiresLlm: true, 
     displayName: "Voice Transcription", 
     category: "Audio Processing",
     description: "Convert speech to text using batch transcription with configurable parameters",
-    apiType: "filesystem",
-    defaultProvider: "replicate"
+    apiType: "llm",
+    defaultProvider: "openai"
   },
   text_correction: { 
     requiresLlm: true, 
@@ -162,13 +158,6 @@ export const TaskTypeDetails: Record<TaskType, {
     category: "General",
     hidden: true,
     defaultProvider: "google"
-  },
-  regex_summary_generation: { 
-    requiresLlm: true, 
-    displayName: "Regex Summary Generation", 
-    category: "Pattern Matching",
-    hidden: true,
-    defaultProvider: "anthropic"
   },
   regex_pattern_generation: { 
     requiresLlm: true, 

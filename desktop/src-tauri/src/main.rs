@@ -134,10 +134,8 @@ fn main() {
             commands::auth0_commands::clear_stored_app_jwt,
             
             // Billing commands
-            commands::billing_commands::get_subscription_details_command,
+            commands::billing_commands::get_billing_dashboard_data_command,
             commands::billing_commands::get_subscription_plans_command,
-            commands::billing_commands::create_billing_portal_command,
-            commands::billing_commands::get_spending_status_command,
             commands::billing_commands::acknowledge_spending_alert_command,
             commands::billing_commands::update_spending_limits_command,
             commands::billing_commands::get_invoice_history_command,
@@ -150,9 +148,9 @@ fn main() {
             commands::billing_commands::set_default_payment_method_command,
             
             // Credit system commands
-            commands::billing_commands::get_credit_balance_command,
             commands::billing_commands::get_credit_history_command,
             commands::billing_commands::get_credit_packs_command,
+            commands::billing_commands::get_credit_balance_command,
             commands::billing_commands::get_credit_stats_command,
             
             // Modern PaymentIntent-based commands (2024)
@@ -163,12 +161,14 @@ fn main() {
             commands::billing_commands::get_stripe_publishable_key_command,
             
             // Billing health monitoring
-            commands::billing_health_commands::check_billing_health_command,
-            commands::billing_health_commands::ping_billing_service_command,
+            commands::billing_commands::check_billing_health_command,
+            commands::billing_commands::ping_billing_service_command,
             
             // Subscription lifecycle management
             commands::billing_commands::cancel_subscription_command,
             commands::billing_commands::resume_subscription_command,
+            commands::billing_commands::reactivate_subscription_command,
+            commands::billing_commands::get_usage_summary_command,
             commands::billing_commands::create_billing_portal_session_command,
             
             // Config commands
@@ -235,13 +235,6 @@ fn main() {
             
             // Voice commands
             commands::voice_commands::transcribe_audio_batch_command,
-            commands::voice_commands::get_transcription_settings_command,
-            commands::voice_commands::set_transcription_settings_command,
-            commands::voice_commands::get_project_transcription_settings_command,
-            commands::voice_commands::set_project_transcription_settings_command,
-            commands::voice_commands::reset_transcription_settings_command,
-            commands::voice_commands::get_effective_transcription_settings_command,
-            commands::voice_commands::validate_transcription_settings_command,
             
             // Generic task commands
             commands::generic_task_commands::generic_llm_stream_command,
@@ -249,7 +242,6 @@ fn main() {
             
             // Other task-specific commands
             commands::regex_commands::generate_regex_patterns_command,
-            commands::regex_summary_commands::generate_regex_summary_command,
             commands::guidance_commands::generate_guidance_command,
             
             // Database commands
@@ -264,6 +256,10 @@ fn main() {
             commands::settings_commands::get_project_task_model_settings_command,
             commands::settings_commands::set_project_task_model_settings_command,
             commands::settings_commands::get_all_task_model_settings_for_project_command,
+            commands::settings_commands::get_server_default_task_model_settings_command,
+            commands::settings_commands::get_project_overrides_only_command,
+            commands::settings_commands::reset_project_setting_to_default_command,
+            commands::settings_commands::is_project_setting_customized_command,
             commands::settings_commands::validate_configuration_health,
             commands::settings_commands::set_onboarding_completed_command,
             commands::settings_commands::is_onboarding_completed_command,
@@ -271,18 +267,13 @@ fn main() {
             commands::settings_commands::set_workflow_setting_command,
             commands::settings_commands::delete_workflow_setting_command,
             commands::settings_commands::get_all_workflow_settings_command,
+            commands::settings_commands::get_project_system_prompt_command,
+            commands::settings_commands::set_project_system_prompt_command,
+            commands::settings_commands::reset_project_system_prompt_command,
+            commands::settings_commands::fetch_default_system_prompts_from_server,
+            commands::settings_commands::fetch_default_system_prompt_from_server,
+            commands::settings_commands::initialize_system_prompts_from_server,
             
-            // System prompt commands
-            commands::system_prompt_commands::get_system_prompt_command,
-            commands::system_prompt_commands::set_system_prompt_command,
-            commands::system_prompt_commands::reset_system_prompt_command,
-            commands::system_prompt_commands::get_default_system_prompts_command,
-            commands::system_prompt_commands::get_default_system_prompt_command,
-            commands::system_prompt_commands::has_custom_system_prompt_command,
-            commands::system_prompt_commands::update_default_system_prompt_command,
-            commands::system_prompt_commands::fetch_default_system_prompts_from_server,
-            commands::system_prompt_commands::fetch_default_system_prompt_from_server,
-            commands::system_prompt_commands::initialize_system_prompts_from_server,
             
             // Session commands
             commands::session_commands::create_session_command,

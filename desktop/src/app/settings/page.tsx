@@ -13,7 +13,7 @@ export default function SettingsPage() {
         <div className="text-sm text-muted-foreground mb-4 text-balance">
           Configure settings for the &apos;
           <span className="font-bold text-base text-foreground">{projectDirectory.split("/").pop()}</span>&apos; project. 
-          Model settings override global defaults, while system prompts are customized per session.
+          Model settings and system prompts are customized per project.
         </div>
       )}
       

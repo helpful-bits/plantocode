@@ -8,7 +8,8 @@ export async function transcribeAudioChunk(
   sessionId: string,
   language?: string,
   prompt?: string,
-  temperature?: number
+  temperature?: number,
+  model?: string
 ): Promise<{ text: string; chunkIndex: number; processingTimeMs?: number }> {
   try {
     if (!audioChunk) {
@@ -43,9 +44,10 @@ export async function transcribeAudioChunk(
       audioBase64,
       chunkIndex,
       durationMs: 5000,
-      language: language === "en" ? null : language,
+      language: language,
       prompt: prompt || null,
       temperature: temperature !== undefined ? temperature : null,
+      model: model || null,
     });
 
     return {
@@ -84,7 +86,8 @@ export async function transcribeAudioBlobViaBatch(
   sessionId: string,
   language?: string,
   prompt?: string,
-  temperature?: number
+  temperature?: number,
+  model?: string
 ): Promise<{ text: string }> {
   try {
     if (!audioBlob) {
@@ -97,7 +100,7 @@ export async function transcribeAudioBlobViaBatch(
       throw new Error("Session ID is required for transcription");
     }
 
-    const result = await transcribeAudioChunk(audioBlob, 0, sessionId, language, prompt, temperature);
+    const result = await transcribeAudioChunk(audioBlob, 0, sessionId, language, prompt, temperature, model);
     
     return { text: result.text };
   } catch (error) {
@@ -133,10 +136,11 @@ export async function transcribeAudioBlobAction(
   sessionId: string,
   language?: string,
   prompt?: string,
-  temperature?: number
+  temperature?: number,
+  model?: string
 ): Promise<ActionState<{ text: string }>> {
   try {
-    const result = await transcribeAudioBlobViaBatch(audioBlob, sessionId, language, prompt, temperature);
+    const result = await transcribeAudioBlobViaBatch(audioBlob, sessionId, language, prompt, temperature, model);
     
     return {
       isSuccess: true,

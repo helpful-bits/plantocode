@@ -33,7 +33,6 @@ use self::processors::{
     TaskEnhancementProcessor,
     TextCorrectionProcessor,
     GenericLlmStreamProcessor,
-    RegexSummaryGenerationProcessor,
     RegexPatternGenerationProcessor,
     // Individual workflow stage processors
     LocalFileFilteringProcessor,
@@ -76,7 +75,6 @@ pub async fn register_job_processors(app_handle: &AppHandle) -> AppResult<()> {
     let task_enhancement_processor = Arc::new(TaskEnhancementProcessor::new());
     let text_correction_processor = Arc::new(TextCorrectionProcessor::new());
     let generic_llm_stream_processor = Arc::new(GenericLlmStreamProcessor::new());
-    let regex_summary_generation_processor = Arc::new(RegexSummaryGenerationProcessor::new());
     let regex_pattern_generation_processor = Arc::new(RegexPatternGenerationProcessor::new());
     // Individual workflow stage processors
     let local_file_filtering_processor = Arc::new(LocalFileFilteringProcessor::new());
@@ -96,7 +94,6 @@ pub async fn register_job_processors(app_handle: &AppHandle) -> AppResult<()> {
     registry.register(task_enhancement_processor).await;
     registry.register(text_correction_processor).await;
     registry.register(generic_llm_stream_processor).await;
-    registry.register(regex_summary_generation_processor).await;
     registry.register(regex_pattern_generation_processor).await;
     // Individual workflow stage processors
     registry.register(local_file_filtering_processor).await;

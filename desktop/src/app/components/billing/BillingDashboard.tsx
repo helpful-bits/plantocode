@@ -11,7 +11,6 @@ import {
   DollarSign,
   BarChart3,
   RefreshCw,
-  Bell,
   FileText
 } from "lucide-react";
 
@@ -26,7 +25,6 @@ import { openBillingPortal } from "@/actions/billing/portal.actions";
 import { 
   CreditManager,
   PaymentMethodsManager,
-  SpendingAlertManager,
   InvoiceHistoryManager
 } from "./billing-components";
 
@@ -41,18 +39,20 @@ export function BillingDashboard({
   // Modal states
   const [isCreditManagerOpen, setIsCreditManagerOpen] = useState(false);
   const [isPaymentMethodsOpen, setIsPaymentMethodsOpen] = useState(false);
-  const [isAlertManagerOpen, setIsAlertManagerOpen] = useState(false);
   const [isInvoiceHistoryOpen, setIsInvoiceHistoryOpen] = useState(false);
 
   const { showNotification } = useNotification();
   const { 
-    spendingStatus,
-    subscriptionDetails,
-    creditBalance,
+    dashboardData,
     isLoading,
     error,
     refreshBillingData
   } = useBillingData();
+
+
+  // Check if we have any data at all
+  const hasAnyData = dashboardData !== null;
+  
 
 
   const formatCurrency = useCallback((amount: number, currency = "USD") => {
@@ -70,15 +70,14 @@ export function BillingDashboard({
     }
   }, [onBuyCredits]);
 
-  const handleChangePlan = useCallback(async () => {
-    // Open billing portal directly for plan changes
+  const openStripePortal = useCallback(async (actionType: string = "billing portal") => {
     try {
       const portalUrl = await openBillingPortal();
       window.open(portalUrl, '_blank');
       
       showNotification({
         title: "Billing Portal Opened",
-        message: "Plan changes are handled through Stripe's secure billing portal.",
+        message: `${actionType} access is handled through Stripe's secure billing portal.`,
         type: "success",
       });
     } catch (err) {
@@ -91,41 +90,33 @@ export function BillingDashboard({
     }
   }, [showNotification]);
 
-  const openStripePortal = useCallback(async () => {
-    try {
-      const portalUrl = await openBillingPortal();
-      window.open(portalUrl, '_blank');
-    } catch (err) {
-      const errorMessage = getErrorMessage(err);
-      showNotification({
-        title: "Portal Access Failed",
-        message: errorMessage,
-        type: "error",
-      });
-    }
-  }, [showNotification]);
+  const handleChangePlan = useCallback(() => {
+    openStripePortal("Plan changes");
+  }, [openStripePortal]);
 
-  if (isLoading) {
-    return (
-      <div className="space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {[...Array(3)].map((_, i) => (
-            <Card key={i} className="animate-pulse">
-              <CardHeader className="space-y-0 pb-4">
-                <div className="h-4 bg-muted rounded w-24"></div>
-              </CardHeader>
-              <CardContent>
-                <div className="h-8 bg-muted rounded w-32 mb-2"></div>
-                <div className="h-3 bg-muted rounded w-20"></div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      </div>
-    );
-  }
+  // Temporarily disable loading state to debug
+  // if (shouldShowLoading) {
+  //   return (
+  //     <div className="space-y-6">
+  //       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+  //         {[...Array(3)].map((_, i) => (
+  //           <Card key={i} className="animate-pulse">
+  //             <CardHeader className="space-y-0 pb-4">
+  //               <div className="h-4 bg-muted rounded w-24"></div>
+  //             </CardHeader>
+  //             <CardContent>
+  //               <div className="h-8 bg-muted rounded w-32 mb-2"></div>
+  //               <div className="h-3 bg-muted rounded w-20"></div>
+  //             </CardContent>
+  //           </Card>
+  //         ))}
+  //       </div>
+  //     </div>
+  //   );
+  // }
 
-  if (error) {
+  // Only show error alert for complete failures when we have no data at all
+  if (error && !hasAnyData) {
     return (
       <Alert variant="destructive" className="max-w-2xl">
         <AlertTriangle className="h-4 w-4" />
@@ -149,9 +140,31 @@ export function BillingDashboard({
 
   return (
     <div className="space-y-6" role="main" aria-label="Billing Dashboard">
+      
+      {/* Partial Data Loading Error Alert */}
+      {error && hasAnyData && (
+        <Alert variant="default" className="border-orange-200 bg-orange-50">
+          <AlertTriangle className="h-4 w-4 text-orange-600" />
+          <AlertTitle className="text-orange-800">Partial Data Loading Issue</AlertTitle>
+          <AlertDescription className="mt-2 text-orange-700">
+            <p className="mb-3">Some billing information could not be loaded: {error}</p>
+            <Button 
+              onClick={refreshBillingData} 
+              variant="outline" 
+              size="sm"
+              className="bg-background hover:bg-muted border-orange-300"
+              disabled={isLoading}
+            >
+              <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+              Retry Loading
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
 
       {/* Services Blocked Alert */}
-      {spendingStatus?.servicesBlocked && (
+      {dashboardData && 
+       dashboardData.spendingDetails.currentSpendingUsd >= dashboardData.spendingDetails.spendingLimitUsd && (
         <Alert variant="destructive">
           <AlertTriangle className="h-4 w-4" />
           <AlertTitle>AI Services Blocked</AlertTitle>
@@ -194,9 +207,9 @@ export function BillingDashboard({
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <div className="text-2xl font-bold">
-                  {subscriptionDetails?.planName || "Free"}
+                  {dashboardData ? dashboardData.planDetails.name : "Free"}
                 </div>
-                {subscriptionDetails?.status === 'active' && (
+                {dashboardData && (
                   <Badge className="bg-green-100 text-green-800 border-green-200">
                     <CheckCircle className="h-3 w-3 mr-1" />
                     Active
@@ -204,16 +217,14 @@ export function BillingDashboard({
                 )}
               </div>
               
-              {subscriptionDetails && subscriptionDetails.nextInvoiceAmount && subscriptionDetails.nextInvoiceAmount > 0 ? (
+              {dashboardData && dashboardData.planDetails.priceUsd > 0 ? (
                 <div className="space-y-2">
                   <div className="text-lg font-semibold">
-                    {formatCurrency(subscriptionDetails.nextInvoiceAmount, subscriptionDetails.currency)}/month
+                    {formatCurrency(dashboardData.planDetails.priceUsd, "USD")}/{dashboardData.planDetails.billingInterval}
                   </div>
-                  {subscriptionDetails.currentPeriodEndsAt && (
-                    <div className="text-sm text-muted-foreground">
-                      Next billing: {new Date(subscriptionDetails.currentPeriodEndsAt).toLocaleDateString()}
-                    </div>
-                  )}
+                  <div className="text-sm text-muted-foreground">
+                    Period ends: {new Date(dashboardData.spendingDetails.periodEnd).toLocaleDateString()}
+                  </div>
                 </div>
               ) : (
                 <div className="text-sm text-muted-foreground">
@@ -235,7 +246,9 @@ export function BillingDashboard({
           <CardContent>
             <div className="space-y-3">
               <div className="text-2xl font-bold">
-                {creditBalance !== null ? formatCurrency(creditBalance, spendingStatus?.currency || "USD") : "$0.00"}
+                {dashboardData ? formatCurrency(dashboardData.creditBalanceUsd, "USD") : (
+                  <span className="text-muted-foreground">Loading...</span>
+                )}
               </div>
               <Button 
                 size="sm" 
@@ -259,31 +272,31 @@ export function BillingDashboard({
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
-              {spendingStatus ? (
+              {dashboardData ? (
                 <>
                   <div className="flex items-center justify-between text-sm">
                     <span>
-                      {formatCurrency(spendingStatus.currentSpending, spendingStatus.currency)} / 
-                      {formatCurrency(spendingStatus.includedAllowance, spendingStatus.currency)}
+                      {formatCurrency(dashboardData.spendingDetails.currentSpendingUsd, "USD")} / 
+                      {formatCurrency(dashboardData.spendingDetails.spendingLimitUsd, "USD")}
                     </span>
                     <span className="font-medium">
-                      {spendingStatus.usagePercentage.toFixed(1)}%
+                      {((dashboardData.spendingDetails.currentSpendingUsd / dashboardData.spendingDetails.spendingLimitUsd) * 100).toFixed(1)}%
                     </span>
                   </div>
                   <div className="w-full bg-muted rounded-full h-2">
                     <div 
                       className={`h-2 rounded-full transition-all duration-500 ${
-                        spendingStatus.usagePercentage >= 90 ? 'bg-red-500' :
-                        spendingStatus.usagePercentage >= 70 ? 'bg-yellow-500' :
+                        (dashboardData.spendingDetails.currentSpendingUsd / dashboardData.spendingDetails.spendingLimitUsd) >= 0.9 ? 'bg-red-500' :
+                        (dashboardData.spendingDetails.currentSpendingUsd / dashboardData.spendingDetails.spendingLimitUsd) >= 0.7 ? 'bg-yellow-500' :
                         'bg-green-500'
                       }`}
-                      style={{ width: `${Math.min(spendingStatus.usagePercentage, 100)}%` }}
+                      style={{ width: `${Math.min((dashboardData.spendingDetails.currentSpendingUsd / dashboardData.spendingDetails.spendingLimitUsd) * 100, 100)}%` }}
                     />
                   </div>
                 </>
               ) : (
                 <div className="text-sm text-muted-foreground">
-                  No usage data available
+                  {isLoading ? 'Loading usage data...' : 'Usage data unavailable'}
                 </div>
               )}
             </div>
@@ -297,7 +310,7 @@ export function BillingDashboard({
           <CardTitle className="text-lg">Quick Actions</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             <Button 
               variant="outline" 
               onClick={handleChangePlan}
@@ -318,19 +331,19 @@ export function BillingDashboard({
               <CreditCard className="h-4 w-4 mr-3" />
               <div className="text-left">
                 <div className="font-medium">Payment Methods</div>
-                <div className="text-xs text-muted-foreground">Add, view & manage</div>
+                <div className="text-xs text-muted-foreground">Add, edit & set default</div>
               </div>
             </Button>
 
             <Button 
               variant="outline" 
-              onClick={openStripePortal}
+              onClick={() => openStripePortal()}
               className="justify-start h-auto p-4"
             >
               <ExternalLink className="h-4 w-4 mr-3" />
               <div className="text-left">
                 <div className="font-medium">Billing Portal</div>
-                <div className="text-xs text-muted-foreground">Full billing access</div>
+                <div className="text-xs text-muted-foreground">Complete billing control</div>
               </div>
             </Button>
 
@@ -342,19 +355,7 @@ export function BillingDashboard({
               <FileText className="h-4 w-4 mr-3" />
               <div className="text-left">
                 <div className="font-medium">Invoice History</div>
-                <div className="text-xs text-muted-foreground">View & download PDFs</div>
-              </div>
-            </Button>
-
-            <Button 
-              variant="outline" 
-              onClick={() => setIsAlertManagerOpen(true)}
-              className="justify-start h-auto p-4"
-            >
-              <Bell className="h-4 w-4 mr-3" />
-              <div className="text-left">
-                <div className="font-medium">Spending Alerts</div>
-                <div className="text-xs text-muted-foreground">Review notifications</div>
+                <div className="text-xs text-muted-foreground">View & download invoices</div>
               </div>
             </Button>
           </div>
@@ -372,13 +373,6 @@ export function BillingDashboard({
         isOpen={isPaymentMethodsOpen}
         onClose={() => setIsPaymentMethodsOpen(false)}
         onPaymentMethodsUpdated={refreshBillingData}
-      />
-
-      <SpendingAlertManager
-        isOpen={isAlertManagerOpen}
-        onClose={() => setIsAlertManagerOpen(false)}
-        currentSpending={spendingStatus}
-        onAlertsUpdated={refreshBillingData}
       />
 
       <InvoiceHistoryManager

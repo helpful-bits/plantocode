@@ -274,7 +274,7 @@ const VirtualizedCodeViewer = forwardRef<HTMLDivElement, VirtualizedCodeViewerPr
       );
     }
 
-    if (!content) {
+    if (!content && readOnly) {
       return (
         <div 
           ref={ref} 

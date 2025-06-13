@@ -22,7 +22,7 @@ import { Badge } from "@/ui/badge";
 import { useNotification } from "@/contexts/notification-context";
 import { getErrorMessage } from "@/utils/error-handling";
 import { 
-  getEnhancedInvoiceHistory,
+  getFormattedInvoiceHistory,
   downloadInvoicePdf,
   bulkDownloadInvoicePdfs,
   InvoiceHistoryRequest 
@@ -46,20 +46,12 @@ interface EnhancedInvoiceHistoryEntry extends InvoiceHistoryEntry {
   hasPdf: boolean;
 }
 
-interface InvoiceHistorySummary {
-  totalAmount: number;
-  paidAmount: number;
-  outstandingAmount: number;
-  overdueAmount: number;
-  overdueCount: number;
-}
 
 export function InvoiceHistoryManager({ 
   isOpen, 
   onClose 
 }: InvoiceHistoryManagerProps) {
   const [invoices, setInvoices] = useState<EnhancedInvoiceHistoryEntry[]>([]);
-  const [summary, setSummary] = useState<InvoiceHistorySummary | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [downloadingIds, setDownloadingIds] = useState<Set<string>>(new Set());
@@ -69,24 +61,20 @@ export function InvoiceHistoryManager({
 
   const { showNotification } = useNotification();
 
-  useEffect(() => {
-    if (isOpen) {
-      loadInvoiceHistory();
-    }
-  }, [isOpen]);
-
-  const loadInvoiceHistory = useCallback(async () => {
+  const loadInvoiceHistory = useCallback(async (sortField?: 'createdDate' | 'amount' | 'status', sortDirection?: 'asc' | 'desc') => {
     try {
       setIsLoading(true);
       setError(null);
 
       const request: InvoiceHistoryRequest = {
-        limit: 100 // Load up to 100 invoices for comprehensive history
+        limit: 100, // Load up to 100 invoices for comprehensive history
+        status: statusFilter === 'all' ? undefined : statusFilter,
+        sortField: sortField || undefined,
+        sortDirection: sortDirection || undefined
       };
 
-      const response = await getEnhancedInvoiceHistory(request);
+      const response = await getFormattedInvoiceHistory(request);
       setInvoices(response.invoices);
-      setSummary(response.summary);
     } catch (err) {
       const errorMessage = getErrorMessage(err);
       setError(errorMessage);
@@ -94,7 +82,13 @@ export function InvoiceHistoryManager({
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [statusFilter]);
+
+  useEffect(() => {
+    if (isOpen) {
+      loadInvoiceHistory(sortField, sortDirection);
+    }
+  }, [isOpen, statusFilter, sortField, sortDirection, loadInvoiceHistory]);
 
   const handleDownloadPdf = useCallback(async (invoice: EnhancedInvoiceHistoryEntry) => {
     if (!invoice.hasPdf) {
@@ -165,50 +159,34 @@ export function InvoiceHistoryManager({
   }, [invoices, showNotification]);
 
   const handleSort = useCallback((field: typeof sortField) => {
-    if (sortField === field) {
-      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortField(field);
-      setSortDirection('desc');
-    }
-  }, [sortField]);
+    const newDirection = sortField === field && sortDirection === 'desc' ? 'asc' : 'desc';
+    setSortField(field);
+    setSortDirection(newDirection);
+    // Trigger reload with new sort parameters
+    loadInvoiceHistory(field, newDirection);
+  }, [sortField, sortDirection, loadInvoiceHistory]);
 
-  const formatCurrency = useCallback((amount: number, currency = "USD") => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: currency,
-    }).format(amount);
+
+  const getStatusVariant = useCallback((status: string): "default" | "secondary" | "destructive" | "outline" | "warning" | "success" => {
+    switch (status?.toLowerCase()) {
+      case 'paid':
+        return 'success';
+      case 'open':
+        return 'default';
+      case 'past_due':
+        return 'destructive';
+      case 'draft':
+        return 'warning';
+      case 'void':
+      case 'uncollectible':
+        return 'secondary';
+      default:
+        return 'outline';
+    }
   }, []);
 
-  // Filter and sort invoices
-  const filteredAndSortedInvoices = invoices
-    .filter(invoice => statusFilter === 'all' || invoice.status?.toLowerCase() === statusFilter)
-    .sort((a, b) => {
-      let aValue: any, bValue: any;
-      
-      switch (sortField) {
-        case 'createdDate':
-          aValue = new Date(a.createdDate).getTime();
-          bValue = new Date(b.createdDate).getTime();
-          break;
-        case 'amount':
-          aValue = a.amount;
-          bValue = b.amount;
-          break;
-        case 'status':
-          aValue = a.status || '';
-          bValue = b.status || '';
-          break;
-        default:
-          return 0;
-      }
-      
-      if (sortDirection === 'asc') {
-        return aValue < bValue ? -1 : aValue > bValue ? 1 : 0;
-      } else {
-        return aValue > bValue ? -1 : aValue < bValue ? 1 : 0;
-      }
-    });
+  // Data is now sorted by backend, no client-side sorting needed
+  const filteredAndSortedInvoices = invoices;
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -231,41 +209,6 @@ export function InvoiceHistoryManager({
           </Alert>
         )}
 
-        {/* Summary Cards */}
-        {summary && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-            <Card>
-              <CardContent className="p-4">
-                <div className="text-2xl font-bold text-green-600">
-                  {formatCurrency(summary.paidAmount)}
-                </div>
-                <p className="text-sm text-muted-foreground">Total Paid</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-4">
-                <div className="text-2xl font-bold text-blue-600">
-                  {formatCurrency(summary.outstandingAmount)}
-                </div>
-                <p className="text-sm text-muted-foreground">Outstanding</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-4">
-                <div className="text-2xl font-bold text-red-600">
-                  {formatCurrency(summary.overdueAmount)}
-                </div>
-                <p className="text-sm text-muted-foreground">Overdue</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-4">
-                <div className="text-2xl font-bold">{invoices.length}</div>
-                <p className="text-sm text-muted-foreground">Total Invoices</p>
-              </CardContent>
-            </Card>
-          </div>
-        )}
 
         {/* Controls */}
         <div className="flex flex-wrap gap-4 items-center justify-between mb-4">
@@ -288,7 +231,7 @@ export function InvoiceHistoryManager({
           <div className="flex gap-2">
             <Button 
               variant="outline" 
-              onClick={loadInvoiceHistory} 
+              onClick={() => loadInvoiceHistory(sortField, sortDirection)} 
               disabled={isLoading}
               size="sm"
             >
@@ -382,7 +325,7 @@ export function InvoiceHistoryManager({
                       )}
                     </td>
                     <td className="p-4">
-                      <Badge className={invoice.statusColor}>
+                      <Badge variant={getStatusVariant(invoice.status || '')}>
                         {invoice.statusText}
                       </Badge>
                       {invoice.isOverdue && (
