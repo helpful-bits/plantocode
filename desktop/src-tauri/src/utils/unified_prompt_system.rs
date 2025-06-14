@@ -114,7 +114,6 @@ impl UnifiedPromptProcessor {
         app_handle: &AppHandle,
     ) -> AppResult<ComposedPrompt> {
         // Get the system prompt template from project settings or server defaults
-        let placeholders = self.create_placeholders(context)?;
         let (system_template, system_prompt_id) = self.get_effective_system_prompt(
             app_handle,
             &context.project_directory,
@@ -203,6 +202,27 @@ impl UnifiedPromptProcessor {
     fn substitute_basic_placeholders(&self, template: &str, context: &UnifiedPromptContext) -> AppResult<String> {
         let mut result = template.to_string();
         
+        // Pre-generate XML content to avoid borrow checker issues
+        let file_contents_xml = if let Some(ref file_contents) = context.file_contents {
+            if !file_contents.is_empty() {
+                self.generate_file_contents_xml(file_contents)
+            } else {
+                String::new()
+            }
+        } else {
+            String::new()
+        };
+        
+        let directory_tree_xml = if let Some(ref directory_tree) = context.directory_tree {
+            if !directory_tree.trim().is_empty() {
+                self.generate_project_structure_xml(directory_tree)
+            } else {
+                String::new()
+            }
+        } else {
+            String::new()
+        };
+        
         // Create substitution map
         let mut substitutions = HashMap::new();
         
@@ -227,6 +247,15 @@ impl UnifiedPromptProcessor {
             substitutions.insert("{{LANGUAGE}}", language.as_str());
         }
         
+        // Handle XML content placeholders - this was the missing piece!
+        if !file_contents_xml.is_empty() {
+            substitutions.insert("{{FILE_CONTENTS}}", file_contents_xml.as_str());
+        }
+        
+        if !directory_tree_xml.is_empty() {
+            substitutions.insert("{{DIRECTORY_TREE}}", directory_tree_xml.as_str());
+        }
+        
         // Apply substitutions
         for (placeholder, value) in substitutions {
             result = result.replace(placeholder, value);
@@ -243,19 +272,21 @@ impl UnifiedPromptProcessor {
     fn process_rich_content(&self, template: &str, context: &UnifiedPromptContext) -> AppResult<String> {
         let mut result = template.to_string();
         
-        // Process conditional sections - remove empty placeholders
-        let empty_placeholders = vec![
-            ("{{PROJECT_CONTEXT}}", context.project_directory.trim().is_empty()),
-            ("{{FILE_CONTENTS}}", context.file_contents.as_ref().map_or(true, |fc| fc.is_empty())),
-            ("{{DIRECTORY_TREE}}", context.directory_tree.as_ref().map_or(true, |dt| dt.trim().is_empty())),
-            ("{{CUSTOM_INSTRUCTIONS}}", context.custom_instructions.as_ref().map_or(true, |ci| ci.trim().is_empty())),
-            ("{{MODEL_NAME}}", context.model_name.as_ref().map_or(true, |mn| mn.trim().is_empty())),
-            ("{{SESSION_NAME}}", context.session_name.as_ref().map_or(true, |sn| sn.trim().is_empty())),
+        // Only remove placeholders that still exist in the result (meaning substitution failed)
+        // This prevents removing successfully substituted XML content
+        let placeholders_to_check = vec![
+            "{{PROJECT_CONTEXT}}",
+            "{{FILE_CONTENTS}}",
+            "{{DIRECTORY_TREE}}",
+            "{{CUSTOM_INSTRUCTIONS}}",
+            "{{MODEL_NAME}}",
+            "{{SESSION_NAME}}",
+            "{{LANGUAGE}}",
         ];
         
-        // Remove lines containing only empty placeholders and clean up remaining placeholder text
-        for (placeholder, is_empty) in empty_placeholders {
-            if is_empty {
+        // Remove lines containing unsubstituted placeholders and clean up remaining placeholder text
+        for placeholder in placeholders_to_check {
+            if result.contains(placeholder) {
                 // Remove entire lines that contain only this placeholder (with optional whitespace)
                 let lines: Vec<&str> = result.lines().collect();
                 let filtered_lines: Vec<&str> = lines.into_iter()

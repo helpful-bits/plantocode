@@ -244,7 +244,7 @@ export function ImplementationPlansPanel({
                     {estimatedTokens && runtimeConfig && (() => {
                       // Get the model config for implementation plan task
                       const implementationPlanModel = runtimeConfig.tasks?.implementationPlan?.model || runtimeConfig.defaultLlmModelId;
-                      const modelInfo = runtimeConfig.availableModels?.find(m => m.id === implementationPlanModel);
+                      const modelInfo = runtimeConfig.providers?.flatMap(p => p.models).find(m => m.id === implementationPlanModel);
                       const contextWindow = modelInfo?.contextWindow;
                       
                       if (!contextWindow) return null;
@@ -297,7 +297,7 @@ export function ImplementationPlansPanel({
                   // Disable if tokens exceed context window
                   if (!estimatedTokens || !runtimeConfig) return false;
                   const implementationPlanModel = runtimeConfig.tasks?.implementationPlan?.model || runtimeConfig.defaultLlmModelId;
-                  const modelInfo = runtimeConfig.availableModels?.find(m => m.id === implementationPlanModel);
+                  const modelInfo = runtimeConfig.providers?.flatMap(p => p.models).find(m => m.id === implementationPlanModel);
                   const contextWindow = modelInfo?.contextWindow;
                   return contextWindow ? estimatedTokens > contextWindow : false;
                 })()}

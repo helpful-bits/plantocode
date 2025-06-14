@@ -21,16 +21,18 @@ function HomeContent() {
       {/* GeneratePrompt Component */}
       <GeneratePromptForm />
 
-      {/* Merged Implementation Plans Panel */}
-      <ImplementationPlansPanel 
-        sessionId={activeSessionId}
-        projectDirectory={projectDirectory}
-        taskDescription={currentSession?.taskDescription}
-        includedPaths={currentSession?.includedFiles || []}
-        isCreatingPlan={planState.isCreatingPlan}
-        planCreationState={planState.planCreationState}
-        onCreatePlan={planActions.handleCreateImplementationPlan}
-      />
+      {/* Conditionally render Implementation Plans Panel */}
+      {activeSessionId && (
+        <ImplementationPlansPanel 
+          sessionId={activeSessionId}
+          projectDirectory={projectDirectory}
+          taskDescription={currentSession?.taskDescription}
+          includedPaths={currentSession?.includedFiles || []}
+          isCreatingPlan={planState.isCreatingPlan}
+          planCreationState={planState.planCreationState}
+          onCreatePlan={planActions.handleCreateImplementationPlan}
+        />
+      )}
 
     </div>
   );

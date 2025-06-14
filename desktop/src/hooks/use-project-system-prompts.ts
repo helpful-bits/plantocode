@@ -4,9 +4,9 @@ import {
   getProjectSystemPrompt,
   setProjectSystemPrompt,
   resetProjectSystemPrompt,
-  validateSystemPrompt
-} from '../actions/project-system-prompts.actions';
-import { getDefaultSystemPrompt } from '../actions/system-prompts.actions';
+  validateSystemPrompt,
+  getDefaultSystemPromptByTaskType
+} from '../actions/system-prompts.actions';
 
 interface UseProjectSystemPromptOptions {
   projectDirectory: string;
@@ -57,11 +57,10 @@ export function useProjectSystemPrompt({
       } else {
         // Get default prompt directly from server (no caching)
         try {
-          const defaultPrompt = await getDefaultSystemPrompt(taskType);
+          const defaultPrompt = await getDefaultSystemPromptByTaskType(taskType);
           if (defaultPrompt) {
-            // Try both field name formats (server might use either snake_case or camelCase)
-            const promptText = defaultPrompt.system_prompt !== undefined ? defaultPrompt.system_prompt : 
-                              defaultPrompt.systemPrompt !== undefined ? defaultPrompt.systemPrompt : '';
+            // Use the correct field name from the type definition
+            const promptText = defaultPrompt.systemPrompt || '';
             setPrompt(promptText);
           } else {
             setPrompt('');

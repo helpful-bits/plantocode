@@ -7,6 +7,20 @@ use crate::error::AppError;
 use crate::models::runtime_config::{TaskSpecificModelConfig, PathFinderSettings, AppState};
 use serde::{Serialize, Deserialize};
 
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderInfo {
+    pub code: String,
+    pub name: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderWithModels {
+    pub provider: ProviderInfo,
+    pub models: Vec<DesktopModelInfo>,
+}
+
 // Runtime config response format that matches the Tauri backend expectations
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -19,8 +33,8 @@ pub struct DesktopRuntimeAIConfig {
     pub default_transcription_model_id: String,
     /// Task-specific configurations - LOADED DIRECTLY FROM DATABASE
     pub tasks: std::collections::HashMap<String, TaskSpecificModelConfig>,
-    /// List of available models - LOADED DIRECTLY FROM DATABASE
-    pub available_models: Vec<DesktopModelInfo>,
+    /// List of providers with their models - LOADED DIRECTLY FROM DATABASE
+    pub providers: Vec<ProviderWithModels>,
     /// Path finder settings
     pub path_finder_settings: PathFinderSettings,
 }
@@ -34,6 +48,8 @@ pub struct DesktopModelInfo {
     pub name: String,
     /// Model provider
     pub provider: String,
+    /// Provider name
+    pub provider_name: String,
     /// Model description
     pub description: Option<String>,
     /// Context window size in tokens
@@ -60,8 +76,10 @@ pub async fn get_desktop_runtime_ai_config(
     let models_with_providers = app_state.model_repository.get_all_with_providers().await
         .map_err(|e| AppError::Internal(format!("Failed to fetch models from database: {}", e)))?;
     
-    // Convert to response format - collect Results and handle errors
-    let available_models: Result<Vec<_>, AppError> = models_with_providers.iter().map(|model| {
+    // Group models by provider
+    let mut provider_models: HashMap<String, ProviderWithModels> = HashMap::new();
+    
+    for model in models_with_providers.iter() {
         let input_price = model.price_input
             .to_f64()
             .ok_or_else(|| AppError::Internal(format!("Invalid input price for model {}", model.id)))?;
@@ -69,18 +87,29 @@ pub async fn get_desktop_runtime_ai_config(
             .to_f64()
             .ok_or_else(|| AppError::Internal(format!("Invalid output price for model {}", model.id)))?;
         
-        Ok(DesktopModelInfo {
+        let desktop_model = DesktopModelInfo {
             id: model.id.clone(),
             name: model.name.clone(),
             provider: model.provider_code.clone(),
+            provider_name: model.provider_name.clone(),
             description: model.description.clone(),
             context_window: Some(model.context_window as u32),
-            // Convert prices from per 1K tokens to per token - NO FALLBACKS!
             price_per_input_token: input_price / 1000.0,
             price_per_output_token: output_price / 1000.0,
-        })
-    }).collect();
-    let available_models = available_models?;
+        };
+        
+        provider_models.entry(model.provider_name.clone())
+            .or_insert_with(|| ProviderWithModels {
+                provider: ProviderInfo {
+                    code: model.provider_code.clone(),
+                    name: model.provider_name.clone(),
+                },
+                models: Vec::new(),
+            })
+            .models.push(desktop_model);
+    }
+    
+    let providers: Vec<ProviderWithModels> = provider_models.into_values().collect();
     
     // Get task-specific configs directly from database (NO JSON!)
     let task_configs = settings_repo.get_ai_model_settings().await
@@ -117,11 +146,11 @@ pub async fn get_desktop_runtime_ai_config(
         default_voice_model_id,
         default_transcription_model_id,
         tasks,
-        available_models,
+        providers,
         path_finder_settings,
     };
     
-    info!("Returning desktop runtime AI configuration with {} models (NO JSON storage used)", response.available_models.len());
+    info!("Returning desktop runtime AI configuration with {} providers (NO JSON storage used)", response.providers.len());
     
     Ok(HttpResponse::Ok().json(response))
 }

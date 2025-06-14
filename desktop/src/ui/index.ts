@@ -59,3 +59,6 @@ export { FilterModeToggle } from "./filter-mode-toggle";
 export { SearchScopeToggle } from "./search-scope-toggle";
 export { SidebarHeader } from "./sidebar-header";
 export { StatusMessages } from "./status-messages";
+
+// Settings components
+export { ModelSelector } from "../app/components/settings/model-selector";
