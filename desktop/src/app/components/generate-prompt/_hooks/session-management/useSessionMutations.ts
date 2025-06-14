@@ -10,7 +10,6 @@ import {
 import { type Session } from "@/types/session-types";
 import { normalizePath } from "@/utils/path-utils";
 import { generateUUID } from "@/utils/string-utils";
-import { DRAFT_SESSION_ID } from "@/contexts/session/_hooks/use-session-state";
 
 interface UseSessionMutationsProps {
   projectDirectory: string | null;
@@ -93,7 +92,7 @@ export function useSessionMutations({
       // Creating new session
 
       // Determine initial state for new session
-      let initialStateForNewSession: Partial<Session> = { 
+      const initialStateForNewSession: Partial<Session> = { 
         projectDirectory: normalizedProjectDir,
         taskDescription: "",
         searchTerm: "",
@@ -102,14 +101,6 @@ export function useSessionMutations({
         searchSelectedFilesOnly: false,
         createdAt: Date.now(),
       };
-
-      // If current session is a draft, use its state as the base
-      if (currentSession?.id === DRAFT_SESSION_ID) {
-        initialStateForNewSession = { 
-          ...currentSession, 
-          projectDirectory: normalizedProjectDir 
-        };
-      }
 
       // Create a temporary session object for optimistic UI update
       const tempSession: Session = {

@@ -558,6 +558,7 @@ pub struct ModelInfo {
     pub id: String,
     pub name: String,
     pub provider: String,
+    pub provider_name: String,
     pub description: Option<String>,
     #[serde(default)]
     pub context_window: Option<u32>,
@@ -567,12 +568,26 @@ pub struct ModelInfo {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ProviderInfo {
+    pub code: String,
+    pub name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderWithModels {
+    pub provider: ProviderInfo,
+    pub models: Vec<ModelInfo>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RuntimeAIConfig {
     pub default_llm_model_id: String,
     pub default_voice_model_id: String,
     pub default_transcription_model_id: String,
     pub tasks: HashMap<String, TaskSpecificModelConfig>,
-    pub available_models: Vec<ModelInfo>,
+    pub providers: Vec<ProviderWithModels>,
     
     // PathFinder specific configuration with optional fields (uses constants as fallbacks)
     #[serde(default)]

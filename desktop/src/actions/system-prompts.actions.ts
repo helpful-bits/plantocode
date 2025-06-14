@@ -1,24 +1,106 @@
-/**
- * System Prompts Actions
- *
- * Actions for managing default system prompts from the server.
- * These are the default system prompts that come from the backend
- * and are used when no project-specific prompt is set.
- */
+import { invoke } from '@tauri-apps/api/core';
+import { TaskType } from '../types/task-type-defs';
+import type { DefaultSystemPrompt } from '../types/system-prompts';
 
-import { invoke } from "@tauri-apps/api/core";
-import type { DefaultSystemPrompt } from "@/types/system-prompts";
-import type { TaskType } from "@/types/task-type-defs";
+/**
+ * Get system prompt for a task type at project level
+ */
+export async function getProjectSystemPrompt(
+  projectDirectory: string,
+  taskType: TaskType
+): Promise<string | null> {
+  try {
+    const response = await invoke<string | null>('get_project_system_prompt_command', {
+      projectDirectory,
+      taskType
+    });
+    return response;
+  } catch (error) {
+    console.error('Failed to get project system prompt:', error);
+    throw error;
+  }
+}
+
+/**
+ * Set system prompt for a task type at project level
+ */
+export async function setProjectSystemPrompt(
+  projectDirectory: string,
+  taskType: TaskType,
+  systemPrompt: string
+): Promise<void> {
+  try {
+    await invoke<void>('set_project_system_prompt_command', {
+      projectDirectory,
+      taskType,
+      systemPrompt
+    });
+  } catch (error) {
+    console.error('Failed to set project system prompt:', error);
+    throw error;
+  }
+}
+
+/**
+ * Reset system prompt to default for a task type at project level
+ */
+export async function resetProjectSystemPrompt(
+  projectDirectory: string,
+  taskType: TaskType
+): Promise<void> {
+  try {
+    await invoke<void>('reset_project_system_prompt_command', {
+      projectDirectory,
+      taskType
+    });
+  } catch (error) {
+    console.error('Failed to reset project system prompt:', error);
+    throw error;
+  }
+}
+
+/**
+ * Validate system prompt content
+ */
+export function validateSystemPrompt(prompt: string): { isValid: boolean; errors: string[] } {
+  const errors: string[] = [];
+  
+  if (prompt.length > 10000) {
+    errors.push('System prompt is too long (maximum 10,000 characters)');
+  }
+  
+  return {
+    isValid: errors.length === 0,
+    errors
+  };
+}
+
+/**
+ * Extract placeholders from a system prompt template
+ */
+export function extractPlaceholders(template: string): string[] {
+  const placeholderRegex = /\{\{([A-Z_]+)\}\}/g;
+  const placeholders: string[] = [];
+  let match;
+  
+  while ((match = placeholderRegex.exec(template)) !== null) {
+    if (!placeholders.includes(match[1])) {
+      placeholders.push(match[1]);
+    }
+  }
+  
+  return placeholders;
+}
 
 /**
  * Fetch all default system prompts from the server
  */
 export async function getDefaultSystemPrompts(): Promise<DefaultSystemPrompt[]> {
   try {
-    const response = await invoke<DefaultSystemPrompt[]>("fetch_default_system_prompts_from_server");
+    const response = await invoke<DefaultSystemPrompt[]>('fetch_default_system_prompts_from_server');
     return response;
   } catch (error) {
-    console.error("Failed to fetch default system prompts:", error);
+    console.error('Failed to fetch default system prompts:', error);
     throw error;
   }
 }
@@ -26,72 +108,14 @@ export async function getDefaultSystemPrompts(): Promise<DefaultSystemPrompt[]> 
 /**
  * Fetch a specific default system prompt from the server by task type
  */
-export async function getDefaultSystemPrompt(taskType: TaskType): Promise<DefaultSystemPrompt | null> {
+export async function getDefaultSystemPromptByTaskType(taskType: TaskType): Promise<DefaultSystemPrompt | null> {
   try {
-    const response = await invoke<DefaultSystemPrompt | null>("fetch_default_system_prompt_from_server", {
-      taskType,
+    const response = await invoke<DefaultSystemPrompt | null>('fetch_default_system_prompt_from_server', {
+      taskType
     });
     return response;
   } catch (error) {
     console.error(`Failed to fetch default system prompt for task type ${taskType}:`, error);
     throw error;
-  }
-}
-
-/**
- * Initialize system prompts from server
- * This command updates the local database with the latest default prompts from the server
- */
-export async function initializeSystemPromptsFromServer(): Promise<void> {
-  try {
-    await invoke<void>("initialize_system_prompts_from_server");
-  } catch (error) {
-    console.error("Failed to initialize system prompts from server:", error);
-    throw error;
-  }
-}
-
-/**
- * Get default system prompts with error handling and fallback
- * This function provides a safe way to get default prompts with appropriate error handling
- */
-export async function getDefaultSystemPromptsWithFallback(): Promise<{
-  isSuccess: boolean;
-  data?: DefaultSystemPrompt[];
-  message?: string;
-}> {
-  try {
-    const prompts = await getDefaultSystemPrompts();
-    return {
-      isSuccess: true,
-      data: prompts,
-    };
-  } catch (error) {
-    return {
-      isSuccess: false,
-      message: error instanceof Error ? error.message : "Failed to fetch default system prompts",
-    };
-  }
-}
-
-/**
- * Get a specific default system prompt with error handling and fallback
- */
-export async function getDefaultSystemPromptWithFallback(taskType: TaskType): Promise<{
-  isSuccess: boolean;
-  data?: DefaultSystemPrompt;
-  message?: string;
-}> {
-  try {
-    const prompt = await getDefaultSystemPrompt(taskType);
-    return {
-      isSuccess: true,
-      data: prompt || undefined,
-    };
-  } catch (error) {
-    return {
-      isSuccess: false,
-      message: error instanceof Error ? error.message : `Failed to fetch default system prompt for ${taskType}`,
-    };
   }
 }

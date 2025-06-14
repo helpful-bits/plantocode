@@ -7,7 +7,8 @@ import {
   getModelSettingsForProject,
   saveProjectTaskModelSettingsAction,
 } from "@/actions/project-settings.actions";
-import { getAvailableAIModels, type ModelInfo } from "@/actions/config.actions";
+import { getProvidersWithModels } from "@/actions/config.actions";
+import { type ProviderWithModels } from "@/types/config-types";
 import { useProject } from "@/contexts/project-context";
 import { type TaskSettings } from "@/types";
 import { Card, CardDescription, CardHeader, CardTitle, Tabs, TabsContent, TabsList, TabsTrigger } from "@/ui";
@@ -27,7 +28,7 @@ export default function SettingsForm({ sessionId }: SettingsFormProps) {
   const { projectDirectory } = useProject();
   const { showNotification } = useNotification();
   const [taskSettings, setTaskSettings] = useState<TaskSettings | null>(null);
-  const [availableModels, setAvailableModels] = useState<ModelInfo[] | null>(null);
+  const [providersWithModels, setProvidersWithModels] = useState<ProviderWithModels[] | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -44,7 +45,7 @@ export default function SettingsForm({ sessionId }: SettingsFormProps) {
       
       const [settingsResult, modelsResult] = await Promise.all([
         getModelSettingsForProject(projectDirectory),
-        getAvailableAIModels(),
+        getProvidersWithModels(),
       ]);
       
       if (settingsResult.isSuccess && settingsResult.data) {
@@ -54,7 +55,7 @@ export default function SettingsForm({ sessionId }: SettingsFormProps) {
         setTaskSettings(null);
       }
       
-      setAvailableModels(modelsResult || []);
+      setProvidersWithModels(modelsResult || []);
     } catch (err) {
       const errorInfo = extractErrorInfo(err);
       const userMessage = createUserFriendlyErrorMessage(errorInfo, "project settings");
@@ -157,7 +158,7 @@ export default function SettingsForm({ sessionId }: SettingsFormProps) {
           {taskSettings && (
             <TaskModelSettings
               taskSettings={taskSettings}
-              availableModels={availableModels}
+              providersWithModels={providersWithModels}
               onSettingsChange={handleSettingsChange}
               sessionId={sessionId}
               projectDirectory={projectDirectory}

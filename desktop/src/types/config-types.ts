@@ -7,6 +7,22 @@
 
 
 /**
+ * Provider information interface
+ */
+export interface ProviderInfo {
+  code: string;
+  name: string;
+}
+
+/**
+ * Provider with models interface
+ */
+export interface ProviderWithModels {
+  provider: ProviderInfo;
+  models: ModelInfo[];
+}
+
+/**
  * Runtime AI configuration interface
  * Must match the Rust backend RuntimeAIConfig struct
  */
@@ -15,7 +31,7 @@ export interface RuntimeAIConfig {
   defaultVoiceModelId: string;
   defaultTranscriptionModelId: string;
   tasks: Record<string, TaskModelSettings>; // Backend uses string keys, not TaskType enum
-  availableModels: ModelInfo[];
+  providers: ProviderWithModels[];
   pathFinderSettings: PathFinderSettings;
   limits: TokenLimits; // Remove optional since backend uses #[serde(default)]
   maxConcurrentJobs?: number;
@@ -29,6 +45,7 @@ export interface ModelInfo {
   id: string;
   name: string;
   provider: string;
+  providerName: string;
   description?: string;
   contextWindow?: number;
   pricePerInputToken: number;

@@ -9,6 +9,7 @@ use crate::config;
 use log;
 use heck::ToLowerCamelCase;
 use crate::api_clients::ServerProxyClient;
+use crate::models::DefaultSystemPrompt;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ConfigurationHealthReport {
@@ -420,7 +421,7 @@ pub async fn reset_project_system_prompt_command(
 }
 
 #[tauri::command]
-pub async fn fetch_default_system_prompts_from_server(app_handle: AppHandle) -> AppResult<Vec<serde_json::Value>> {
+pub async fn fetch_default_system_prompts_from_server(app_handle: AppHandle) -> AppResult<Vec<DefaultSystemPrompt>> {
     let server_client = app_handle.state::<Arc<ServerProxyClient>>().inner().clone();
     server_client.get_default_system_prompts().await
 }

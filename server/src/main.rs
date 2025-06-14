@@ -346,10 +346,31 @@ async fn main() -> std::io::Result<()> {
         strict_rate_limit_config.redis_key_prefix = Some("strict_api".to_string());
         let strict_rate_limiter = create_strict_rate_limiter(strict_rate_limit_config, rate_limit_storage.clone());
         
+        // Configure payload limits (5MB = 5,242,880 bytes)
+        // PayloadConfig: Controls raw payload size before extraction
+        let payload_config = web::PayloadConfig::new(5_242_880);
+            
+        // JsonConfig: Controls JSON deserialization limits
+        let json_config = web::JsonConfig::default()
+            .limit(5_242_880)
+            .error_handler(|err, _req| {
+                actix_web::error::InternalError::from_response(
+                    err,
+                    actix_web::HttpResponse::BadRequest().json(serde_json::json!({
+                        "error": {
+                            "type": "payload_too_large",
+                            "message": "Request payload exceeds the 5MB limit"
+                        }
+                    }))
+                ).into()
+            });
+
         // Create the App with common middleware and data
         App::new()
             .wrap(Logger::new("%a %t \"%r\" %s %b \"%{Referer}i\" \"%{User-Agent}i\" %T"))
             .wrap(cors)
+            .app_data(payload_config)
+            .app_data(json_config)
             .app_data(web::Data::new(db_pools.clone())) // Provide both pools
             .app_data(web::Data::new(db_pools.user_pool.clone())) // Provide user pool for handlers expecting PgPool
             .app_data(auth0_oauth_service)

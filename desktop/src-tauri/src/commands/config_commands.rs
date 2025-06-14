@@ -5,14 +5,14 @@ use log::{info, error, warn};
 use serde_json::Value;
 
 use crate::error::{AppError, AppResult};
-use crate::models::{ModelInfo, RuntimeAIConfig, TaskSpecificModelConfig};
+use crate::models::{RuntimeAIConfig, TaskSpecificModelConfig};
 use crate::utils::{read_env, read_env_bool, read_env_i64, read_env_f64};
 
-/// Retrieves the list of available AI models from the RuntimeAIConfig
+/// Retrieves the list of providers with their models from the RuntimeAIConfig
 #[tauri::command]
-pub async fn get_available_ai_models(app_handle: AppHandle) -> AppResult<Vec<ModelInfo>> {
+pub async fn get_providers_with_models(app_handle: AppHandle) -> AppResult<Vec<crate::models::ProviderWithModels>> {
     match crate::config::get_runtime_ai_config() {
-        Ok(Some(config)) => Ok(config.available_models),
+        Ok(Some(config)) => Ok(config.providers),
         Ok(None) => Err(AppError::ConfigError("Runtime AI configuration not found".to_string())),
         Err(e) => Err(AppError::ConfigError(format!("Failed to get runtime AI configuration: {}", e))),
     }

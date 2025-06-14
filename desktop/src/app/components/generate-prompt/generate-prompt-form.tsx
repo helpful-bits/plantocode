@@ -1,8 +1,9 @@
 "use client";
 
-import { H3, P, Subtle } from "@/ui/typography";
+import { H3 } from "@/ui/typography";
 
 import { useCorePromptContext } from "./_contexts/core-prompt-context";
+import { NoActiveSessionState } from "./no-active-session-state";
 import { useTaskContext } from "./_contexts/task-context";
 import ProjectSection from "./_sections/project-section";
 import TaskSection from "./_sections/task-section";
@@ -24,7 +25,7 @@ export default function GeneratePromptForm() {
 function GeneratePromptFormContent() {
   // Get data from contexts
   const {
-    state: { projectDirectory, activeSessionId },
+    state: { activeSessionId },
   } = useCorePromptContext();
 
   // Initialize task context
@@ -39,7 +40,7 @@ function GeneratePromptFormContent() {
           fallback={
             <div className="p-6 border border-destructive/20 bg-background/95 backdrop-blur-sm shadow-soft rounded-xl">
               <H3 className="text-destructive">Project Section Error</H3>
-              <P className="text-destructive text-sm mt-1">Unable to load project section. Please try refreshing.</P>
+              <p className="text-destructive text-sm mt-1">Unable to load project section. Please try refreshing.</p>
             </div>
           }
         >
@@ -49,53 +50,36 @@ function GeneratePromptFormContent() {
           </div>
         </ErrorBoundary>
 
-        {/* Task Description Section */}
         {activeSessionId ? (
-          <ErrorBoundary
-            fallback={
-              <div className="p-6 border border-destructive/20 bg-background/95 backdrop-blur-sm shadow-soft rounded-xl">
-                <H3 className="text-destructive">Task Section Error</H3>
-                <P className="text-destructive text-sm mt-1">Unable to load task section. Please try refreshing.</P>
-              </div>
-            }
-          >
-            <div className="relative">
-              <TaskSection disabled={false} />
-            </div>
-          </ErrorBoundary>
-        ) : (
-          <div className="text-center text-muted-foreground italic p-6 border border-dashed rounded-xl border-border/60 bg-background/80 backdrop-blur-sm shadow-soft">
-            <P>No active session selected.</P>
-            <Subtle className="mt-2">Please create or select a session in the Project section above.</Subtle>
-          </div>
-        )}
-
-        {/* Simple File Browser */}
-        {projectDirectory && activeSessionId ? (
-          <ErrorBoundary
-            fallback={
-              <div className="p-6 border border-destructive/20 bg-background/95 backdrop-blur-sm shadow-soft rounded-xl">
-                <H3 className="text-destructive">File Management Error</H3>
-                <P className="text-destructive text-sm mt-1">Unable to load file management. Please try selecting the project directory again.</P>
-              </div>
-            }
-          >
-            <div className="relative">
-              <FileSection />
-            </div>
-          </ErrorBoundary>
-        ) : (
-          <div className="text-center text-muted-foreground italic p-6 border border-dashed rounded-xl border-border/60 bg-background/80 backdrop-blur-sm shadow-soft">
-            <P>
-              {!projectDirectory && !activeSessionId 
-                ? "No project directory or session selected." 
-                : !projectDirectory 
-                  ? "No project directory selected."
-                  : "No active session selected."
+          <>
+            <ErrorBoundary
+              fallback={
+                <div className="p-6 border border-destructive/20 bg-background/95 backdrop-blur-sm shadow-soft rounded-xl">
+                  <H3 className="text-destructive">Task Section Error</H3>
+                  <p className="text-destructive text-sm mt-1">Unable to load task section. Please try refreshing.</p>
+                </div>
               }
-            </P>
-            <Subtle className="mt-2">Please select a project directory and create/select a session in the Project section above.</Subtle>
-          </div>
+            >
+              <div className="relative">
+                <TaskSection disabled={false} />
+              </div>
+            </ErrorBoundary>
+
+            <ErrorBoundary
+              fallback={
+                <div className="p-6 border border-destructive/20 bg-background/95 backdrop-blur-sm shadow-soft rounded-xl">
+                  <H3 className="text-destructive">File Management Error</H3>
+                  <p className="text-destructive text-sm mt-1">Unable to load file management. Please try selecting the project directory again.</p>
+                </div>
+              }
+            >
+              <div className="relative">
+                <FileSection />
+              </div>
+            </ErrorBoundary>
+          </>
+        ) : (
+          <NoActiveSessionState />
         )}
       </div>
     </div>

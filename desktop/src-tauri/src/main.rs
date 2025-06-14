@@ -172,7 +172,7 @@ fn main() {
             commands::billing_commands::create_billing_portal_session_command,
             
             // Config commands
-            commands::config_commands::get_available_ai_models,
+            commands::config_commands::get_providers_with_models,
             commands::config_commands::get_default_task_configurations,
             commands::config_commands::fetch_runtime_ai_config,
             commands::config_commands::get_server_url,

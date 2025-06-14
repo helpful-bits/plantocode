@@ -8,14 +8,13 @@ import { useActiveSessionManager } from "./_hooks/use-active-session-manager";
 import { useSessionActions } from "./_hooks/use-session-actions";
 import { useSessionLoader } from "./_hooks/use-session-loader";
 import { useAutoSessionLoader } from "./_hooks/use-auto-session-loader";
-import { useSessionState, DRAFT_SESSION_ID } from "./_hooks/use-session-state";
+import { useSessionState } from "./_hooks/use-session-state";
 import {
   type SessionStateContextType,
   type SessionActionsContextType,
 } from "./_types/session-context-types";
 
 import type { ReactNode } from "react";
-import type { Session } from "@/types";
 
 const SessionStateContext = createContext<SessionStateContextType | null>(null);
 const SessionActionsContext = createContext<SessionActionsContextType | null>(
@@ -64,9 +63,6 @@ export function SessionProvider({ children }: SessionProviderProps) {
     timestamp: 0,
   });
   
-  // Ref to prevent excessive draft session creation
-  const hasDraftInitializedRef = useRef<boolean>(false);
-  const lastProjectDirectoryRef = useRef<string | undefined>(undefined);
 
   // Initialize the active session manager
   const activeSessionManager = useActiveSessionManager({
@@ -216,47 +212,6 @@ export function SessionProvider({ children }: SessionProviderProps) {
     ]
   );
 
-  // Initialize draft session when no session is loaded but project is active
-  useEffect(() => {
-    // Reset draft initialization flag if project directory changes
-    if (lastProjectDirectoryRef.current !== projectDirectory) {
-      hasDraftInitializedRef.current = false;
-      lastProjectDirectoryRef.current = projectDirectory;
-    }
-    
-    if (
-      projectDirectory &&
-      !activeSessionManager.activeSessionId &&
-      !sessionStateHook.currentSession &&
-      !sessionStateHook.isSessionLoading &&
-      !hasDraftInitializedRef.current
-    ) {
-      const draftSession: Session = {
-        id: DRAFT_SESSION_ID,
-        name: "New Session Draft",
-        projectDirectory: projectDirectory,
-        taskDescription: "",
-        searchTerm: "",
-        searchSelectedFilesOnly: false,
-        modelUsed: undefined,
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-        includedFiles: [],
-        forceExcludedFiles: [],
-      };
-
-      sessionStateHook.setCurrentSession(draftSession);
-      sessionStateHook.setSessionModified(false);
-      hasDraftInitializedRef.current = true;
-    }
-  }, [
-    projectDirectory,
-    activeSessionManager.activeSessionId,
-    sessionStateHook.currentSession,
-    sessionStateHook.isSessionLoading,
-    sessionStateHook.setCurrentSession,
-    sessionStateHook.setSessionModified,
-  ]);
 
   // Listen for app close event to save modified sessions
   useEffect(() => {
