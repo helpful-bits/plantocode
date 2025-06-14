@@ -97,39 +97,17 @@ impl SystemPromptCacheService {
                 cache.clear(); // Clear old cache
                 
                 let mut cached_count = 0;
-                for prompt_value in server_prompts {
-                    // Parse the server response into our DefaultSystemPrompt structure
-                    if let Some(task_type) = prompt_value.get("task_type").and_then(|v| v.as_str()) {
-                        if let Some(system_prompt) = prompt_value.get("system_prompt").and_then(|v| v.as_str()) {
-                            let default_id = format!("default_{}", task_type);
-                            let id = prompt_value.get("id").and_then(|v| v.as_str())
-                                .unwrap_or(&default_id);
-                            let description = prompt_value.get("description").and_then(|v| v.as_str()).map(|s| s.to_string());
-                            let version = prompt_value.get("version").and_then(|v| v.as_str()).unwrap_or("1.0");
-                            
-                            let default_prompt = DefaultSystemPrompt {
-                                id: id.to_string(),
-                                task_type: task_type.to_string(),
-                                system_prompt: system_prompt.to_string(),
-                                description,
-                                version: version.to_string(),
-                                created_at: current_time as i64,
-                                updated_at: current_time as i64,
-                            };
-                            
-                            cache.insert(task_type.to_string(), CacheEntry {
-                                prompt: default_prompt,
-                                cached_at: current_time,
-                            });
-                            
-                            cached_count += 1;
-                            debug!("Cached system prompt for task type: {}", task_type);
-                        } else {
-                            warn!("System prompt missing system_prompt field for prompt: {:?}", prompt_value);
-                        }
-                    } else {
-                        warn!("System prompt missing task_type field for prompt: {:?}", prompt_value);
-                    }
+                
+                // Iterate over typed DefaultSystemPrompt structs
+                for prompt in server_prompts {
+                    let task_type = prompt.task_type.clone();
+                    cache.insert(task_type.clone(), CacheEntry {
+                        prompt,
+                        cached_at: current_time,
+                    });
+                    
+                    cached_count += 1;
+                    debug!("Cached system prompt for task type: {}", task_type);
                 }
                 
                 info!("Successfully cached {} default system prompts in memory", cached_count);

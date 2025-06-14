@@ -49,10 +49,11 @@ pub async fn fetch_and_update_runtime_ai_config(app_handle: &AppHandle) -> Resul
     // No hardcoded fallbacks allowed
     
     // Validate that we have models available
-    if runtime_config.available_models.is_empty() {
+    let total_models: usize = runtime_config.providers.iter().map(|p| p.models.len()).sum();
+    if total_models == 0 {
         warn!("No available models found in runtime AI configuration from server");
     } else {
-        info!("Loaded {} models from server", runtime_config.available_models.len());
+        info!("Loaded {} models from server", total_models);
     }
     
     if let Err(e) = config::update_runtime_ai_config(runtime_config) {

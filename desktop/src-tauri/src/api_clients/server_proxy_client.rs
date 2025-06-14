@@ -95,7 +95,7 @@ impl ServerProxyClient {
     }
     
     /// Get all default system prompts from the server
-    pub async fn get_default_system_prompts(&self) -> AppResult<Vec<serde_json::Value>> {
+    pub async fn get_default_system_prompts(&self) -> AppResult<Vec<crate::models::DefaultSystemPrompt>> {
         info!("Fetching all default system prompts from server");
         
         let prompts = self.try_fetch_default_system_prompts_from_server().await?;
@@ -104,7 +104,7 @@ impl ServerProxyClient {
     }
     
     /// Try to fetch default system prompts from server (can fail)
-    async fn try_fetch_default_system_prompts_from_server(&self) -> AppResult<Vec<serde_json::Value>> {
+    async fn try_fetch_default_system_prompts_from_server(&self) -> AppResult<Vec<crate::models::DefaultSystemPrompt>> {
         // Create the prompts endpoint URL - this is a public endpoint, no auth required
         let prompts_url = format!("{}/system-prompts/defaults", self.server_url);
         
@@ -123,8 +123,8 @@ impl ServerProxyClient {
             return Err(map_server_proxy_error(status.as_u16(), &error_text));
         }
         
-        // Parse the response
-        let prompts: Vec<serde_json::Value> = response.json().await
+        // Parse the response directly into DefaultSystemPrompt structs
+        let prompts: Vec<crate::models::DefaultSystemPrompt> = response.json().await
             .map_err(|e| AppError::ServerProxyError(format!("Failed to parse default system prompts response: {}", e)))?;
             
         Ok(prompts)

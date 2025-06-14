@@ -17,7 +17,6 @@ import {
   DatabaseErrorCategory,
   DatabaseErrorSeverity,
 } from "@/types/error-types";
-import { DRAFT_SESSION_ID } from "./use-session-state";
 
 /**
  * Hook for session mutation actions and field updates
@@ -99,13 +98,6 @@ export function useSessionActions({
       return true;
     }
 
-    // Prevent saving draft sessions to database
-    if (currentSessionRef.current.id === DRAFT_SESSION_ID) {
-      console.warn(
-        "[SessionActions] Attempted to save a draft session via saveCurrentSession. Drafts are persisted via createNewSession."
-      );
-      return true; // Considered 'saved' locally, no DB action
-    }
 
     try {
       if (!currentSessionRef.current) {
@@ -265,16 +257,7 @@ export function useSessionActions({
           await saveCurrentSession();
         }
 
-        // Check if current session is a draft and use its state as base
         let baseStateForNewSession = initialState;
-        if (currentSessionRef.current?.id === DRAFT_SESSION_ID) {
-          baseStateForNewSession = { 
-            ...currentSessionRef.current, 
-            projectDirectory 
-          };
-          // Remove the draft ID to let createSessionAction generate a new one
-          delete (baseStateForNewSession as any).id;
-        }
 
         const sessionData: Partial<Session> = {
           ...baseStateForNewSession,

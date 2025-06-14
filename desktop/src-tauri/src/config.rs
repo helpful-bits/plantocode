@@ -289,23 +289,28 @@ pub fn get_model_context_window(model_name: &str) -> AppResult<u32> {
     let config_guard = CONFIG.read().map_err(|e| AppError::InternalError(format!("Failed to acquire read lock: {}", e)))?;
     
     if let Some(runtime_config) = &*config_guard {
-        // Find model in available_models list by ID
-        for model_info in &runtime_config.available_models {
-            if model_info.id == model_name {
-                // First check if context_window is set directly in the model info
-                if let Some(context_window) = model_info.context_window {
-                    return Ok(context_window);
+        // Find model in providers list by ID
+        for provider in &runtime_config.providers {
+            for model_info in &provider.models {
+                if model_info.id == model_name {
+                    // First check if context_window is set directly in the model info
+                    if let Some(context_window) = model_info.context_window {
+                        return Ok(context_window);
+                    }
+                    
+                    // Model found but context_window is None - use a conservative fallback
+                    warn!("Model {} found but context_window is missing from server config, using fallback: 4096", model_name);
+                    return Ok(4096);  // Conservative fallback that works for most models
                 }
-                
-                // Model found but context_window is None - use a conservative fallback
-                warn!("Model {} found but context_window is missing from server config, using fallback: 4096", model_name);
-                return Ok(4096);  // Conservative fallback that works for most models
             }
         }
         
-        // Model not found in available_models list - this indicates the model selection is invalid
+        // Model not found in providers list - this indicates the model selection is invalid
         // and should be validated earlier in the workflow
-        let available_models = runtime_config.available_models.iter().map(|m| m.id.as_str()).collect::<Vec<_>>().join(", ");
+        let available_models = runtime_config.providers.iter()
+            .flat_map(|p| p.models.iter().map(|m| m.id.as_str()))
+            .collect::<Vec<_>>()
+            .join(", ");
         return Err(AppError::ConfigError(format!(
             "Model '{}' not found in server configuration. This model may not be available or properly configured. Available models: {}", 
             model_name, 
