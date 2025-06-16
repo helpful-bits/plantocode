@@ -273,7 +273,7 @@ async fn main() -> std::io::Result<()> {
         // Initialize services with dual pools
         let billing_service = BillingService::new(db_pools.clone(), app_settings.clone());
         let cost_based_billing_service = billing_service.get_cost_based_billing_service().clone();
-        let credit_service = CreditService::new(db_pools.user_pool.clone(), db_pools.system_pool.clone());
+        let credit_service = CreditService::new(db_pools.clone());
         let api_usage_repository = std::sync::Arc::new(api_usage_repository);
         let proxy_service = match ProxyService::new(
             std::sync::Arc::new(billing_service.clone()),
@@ -372,7 +372,6 @@ async fn main() -> std::io::Result<()> {
             .app_data(payload_config)
             .app_data(json_config)
             .app_data(web::Data::new(db_pools.clone())) // Provide both pools
-            .app_data(web::Data::new(db_pools.user_pool.clone())) // Provide user pool for handlers expecting PgPool
             .app_data(auth0_oauth_service)
             .app_data(web::Data::new(billing_service.clone()))
             .app_data(web::Data::new(cost_based_billing_service.as_ref().clone()))

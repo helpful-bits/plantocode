@@ -16,25 +16,7 @@ import {
 } from "@/ui";
 import { CheckCircle, Clock, AlertTriangle, ArrowRight } from "lucide-react";
 import { cn } from "@/utils/utils";
-
-interface BulkOperationChange {
-  task: string;
-  field: string;
-  from: any;
-  to: any;
-  impact: 'positive' | 'neutral' | 'needs-review';
-}
-
-interface BulkOperation {
-  id: string;
-  type: 'model-sync' | 'optimize-all' | 'reset-defaults' | 'apply-preset';
-  name: string;
-  description: string;
-  targetTasks: string[];
-  previewChanges: BulkOperationChange[];
-  estimatedTime: number;
-  riskLevel: 'low' | 'medium' | 'high';
-}
+import { BulkOperation } from "./enhancement-engine/types";
 
 interface BulkOperationPreviewModalProps {
   operation: BulkOperation | null;

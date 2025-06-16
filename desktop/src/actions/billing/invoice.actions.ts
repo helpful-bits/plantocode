@@ -9,14 +9,10 @@ import type {
 export type { InvoiceHistoryRequest };
 
 /**
- * Get invoice history with optional pagination and filtering
+ * Get invoice history using server default pagination
  */
-export async function getInvoiceHistory(
-  request: InvoiceHistoryRequest = {}
-): Promise<InvoiceHistoryResponse> {
-  // Only pass request if it has properties, otherwise pass undefined for optional parameter
-  const hasParams = Object.keys(request).length > 0;
-  return await invoke<InvoiceHistoryResponse>('get_invoice_history_command', hasParams ? request as Record<string, unknown> : undefined);
+export async function getInvoiceHistory(): Promise<InvoiceHistoryResponse> {
+  return await invoke<InvoiceHistoryResponse>('get_invoice_history_command');
 }
 
 /**
@@ -169,11 +165,9 @@ export function formatInvoice(invoice: InvoiceHistoryEntry): {
 
 /**
  * Get formatted invoice history with enhanced display data
- * Uses backend-provided summary data instead of frontend calculations
+ * Simplified to use server-provided data without frontend summary calculations
  */
-export async function getFormattedInvoiceHistory(
-  request: InvoiceHistoryRequest = {}
-): Promise<{
+export async function getFormattedInvoiceHistory(): Promise<{
   invoices: Array<InvoiceHistoryEntry & ReturnType<typeof formatInvoice>>;
   totalCount: number;
   hasMore: boolean;
@@ -185,14 +179,14 @@ export async function getFormattedInvoiceHistory(
     overdueCount: number;
   };
 }> {
-  const response = await getInvoiceHistory(request);
+  const response = await getInvoiceHistory();
   
   const enhancedInvoices = response.invoices.map(invoice => ({
     ...invoice,
     ...formatInvoice(invoice)
   }));
   
-  // Use backend-provided summary directly - no frontend calculations needed
+  // Use backend-provided summary directly
   return {
     invoices: enhancedInvoices,
     totalCount: response.totalCount,

@@ -385,9 +385,7 @@ impl StripeService {
         list_params.customer = Some(parsed_customer_id);
         
         // Pass pagination parameters directly to Stripe API
-        if let Some(limit_value) = limit {
-            list_params.limit = Some(limit_value);
-        }
+        list_params.limit = limit;
         if let Some(starting_after_value) = starting_after {
             list_params.starting_after = Some(starting_after_value.parse()
                 .map_err(|_| StripeServiceError::Configuration("Invalid starting_after invoice ID format".to_string()))?);
@@ -406,7 +404,7 @@ impl StripeService {
         }
 
         let invoices = Invoice::list(&self.client, &list_params).await?;
-        info!("Retrieved {} invoices for customer: {} with status filter: {:?}", invoices.data.len(), customer_id, status);
+        info!("Retrieved {} invoices for customer: {} with pagination (limit: {:?}, starting_after: {:?})", invoices.data.len(), customer_id, limit, starting_after);
         
         Ok(invoices.data)
     }

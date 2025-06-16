@@ -66,7 +66,7 @@ const taskSettingsKeyToTaskType: Record<keyof TaskSettings, TaskType> = {
   unknown: "unknown",
 };
 
-const TRANSCRIPTION_LANGUAGES = [
+export const TRANSCRIPTION_LANGUAGES = [
   { code: 'en', name: 'English', nativeName: 'English' },
   { code: 'es', name: 'Spanish', nativeName: 'Español' },
   { code: 'fr', name: 'French', nativeName: 'Français' },
@@ -103,6 +103,12 @@ export function TaskSettingsEditor({
   
   const isVoiceTranscription = taskKey === 'voiceTranscription';
   const currentLanguage = settings.languageCode || 'en';
+
+  const filteredProviders = providersWithModels ? 
+    (isVoiceTranscription 
+      ? providersWithModels.filter(p => p.provider.code === 'openai_transcription')
+      : providersWithModels.filter(p => p.provider.code !== 'openai_transcription')
+    ) : [];
 
   return (
     <div className="w-full space-y-6">
@@ -166,9 +172,10 @@ export function TaskSettingsEditor({
             )}
           </div>
 <ModelSelector
-            providers={providersWithModels || []}
+            providers={filteredProviders}
             selectedModelId={settings.model || (serverDefaults?.[taskKey]?.model || "")}
             onSelect={onModelChange}
+            disableTooltips={isVoiceTranscription}
           />
         </div>
 

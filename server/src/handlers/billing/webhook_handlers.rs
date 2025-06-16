@@ -1,6 +1,7 @@
 use actix_web::{web, HttpResponse, post, HttpRequest};
 use crate::error::AppError;
 use crate::services::billing_service::BillingService;
+use crate::services::audit_service::{AuditService, AuditContext};
 use crate::db::repositories::webhook_idempotency_repository::WebhookIdempotencyRepository;
 use crate::db::repositories::user_credit_repository::UserCreditRepository;
 use crate::db::repositories::credit_transaction_repository::{CreditTransactionRepository, CreditTransaction};
@@ -165,8 +166,9 @@ async fn process_stripe_webhook_event(
     app_state: &crate::models::runtime_config::AppState,
 ) -> Result<HttpResponse, AppError> {
     // Get repositories for webhook processing
-    let db_pool = billing_service.get_db_pool();
-    let email_service = crate::services::email_notification_service::EmailNotificationService::new(db_pool.clone())?;
+    let db_pools = billing_service.get_db_pools();
+    let email_service = crate::services::email_notification_service::EmailNotificationService::new(db_pools.clone())?;
+    let audit_service = billing_service.get_audit_service();
 
     // SIMPLIFIED WEBHOOK HANDLING - Only process essential sync events
     // Complex operations are delegated to Stripe Customer Portal
@@ -176,12 +178,53 @@ async fn process_stripe_webhook_event(
             info!("Subscription updated: {}", event.id);
             if let stripe::EventObject::Subscription(subscription) = &event.data.object {
                 billing_service.sync_subscription_from_webhook(subscription).await?;
+                
+                // Send plan change notification if applicable
+                let customer_id = subscription.customer.id().to_string();
+                let user_repo = crate::db::repositories::UserRepository::new(billing_service.get_db_pool().clone());
+                if let Ok(user) = user_repo.get_by_stripe_customer_id(&customer_id).await {
+                    let plan_id = subscription.items.data.first()
+                        .and_then(|item| item.price.as_ref())
+                        .map(|price| price.id.to_string())
+                        .unwrap_or_else(|| "unknown".to_string());
+                    
+                    let plan_name = subscription.items.data.first()
+                        .and_then(|item| item.price.as_ref())
+                        .and_then(|price| price.nickname.as_ref())
+                        .map(|name| name.clone())
+                        .unwrap_or_else(|| plan_id.clone());
+                    
+                    if let Err(e) = email_service.send_plan_change_notification(
+                        &user.id,
+                        &user.email,
+                        "previous_plan",
+                        &plan_id,
+                        &plan_name,
+                    ).await {
+                        error!("Failed to send plan change notification for user {}: {}", user.id, e);
+                    }
+                }
             }
         },
         "customer.subscription.deleted" => {
             info!("Subscription deleted: {}", event.id);
             if let stripe::EventObject::Subscription(subscription) = &event.data.object {
                 billing_service.sync_subscription_from_webhook(subscription).await?;
+                
+                // Send cancellation notification
+                let customer_id = subscription.customer.id().to_string();
+                let user_repo = crate::db::repositories::UserRepository::new(billing_service.get_db_pool().clone());
+                if let Ok(user) = user_repo.get_by_stripe_customer_id(&customer_id).await {
+                    if let Err(e) = email_service.send_subscription_cancellation_notification(
+                        &user.id,
+                        &user.email,
+                        false, // immediate cancellation
+                        None,
+                        None,
+                    ).await {
+                        error!("Failed to send subscription cancellation notification for user {}: {}", user.id, e);
+                    }
+                }
             }
         },
         
@@ -197,7 +240,7 @@ async fn process_stripe_webhook_event(
         "invoice.payment_succeeded" => {
             info!("Invoice payment succeeded: {}", event.id);
             if let stripe::EventObject::Invoice(invoice) = &event.data.object {
-                reset_usage_allowances(invoice, billing_service).await?;
+                reset_usage_allowances(invoice, billing_service, &audit_service).await?;
             }
         },
         
@@ -394,6 +437,7 @@ async fn process_credit_purchase(
 async fn reset_usage_allowances(
     invoice: &stripe::Invoice,
     billing_service: &BillingService,
+    audit_service: &crate::services::audit_service::AuditService,
 ) -> Result<(), AppError> {
     info!("Processing invoice payment for usage reset: {}", invoice.id);
     
@@ -421,7 +465,16 @@ async fn reset_usage_allowances(
         Ok(_) => {
             info!("Successfully reset monthly spending allowances for user {} after invoice {}", user.id, invoice.id);
             
-            // Create audit trail for the allowance reset
+            // Create formal audit trail for the allowance reset
+            let audit_context = AuditContext::new(user.id);
+            if let Err(e) = audit_service.log_spending_limit_reset(
+                &audit_context,
+                &user.id,
+                &invoice.id.to_string(),
+            ).await {
+                warn!("Failed to log spending limit reset audit for user {}: {}", user.id, e);
+            }
+            
             info!("Audit: Monthly spending allowances reset for user {} after successful subscription payment (invoice {})", 
                   user.id, invoice.id);
         }

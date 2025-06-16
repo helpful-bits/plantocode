@@ -18,7 +18,7 @@ import { Badge } from "@/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/ui/alert";
 import { useNotification } from "@/contexts/notification-context";
 import { getErrorMessage } from "@/utils/error-handling";
-import { acknowledgeSpendingAlert } from "@/actions/billing/spending-limits.actions";
+import { openBillingPortal } from "@/actions/billing/portal.actions";
 import { invoke } from "@tauri-apps/api/core";
 import type { SpendingStatusInfo, SpendingAlert } from "@/types/tauri-commands";
 
@@ -69,19 +69,19 @@ export function SpendingAlertManager({
     try {
       setActionLoading({ ...actionLoading, [alertId]: true });
       
-      await acknowledgeSpendingAlert(alertId);
+      // Spending management is now handled through Stripe Customer Portal
+      const portalUrl = await openBillingPortal();
+      window.open(portalUrl, '_blank');
       
       showNotification({
-        title: "Alert Acknowledged",
-        message: "Spending alert has been acknowledged.",
+        title: "Billing Portal Opened",
+        message: "Spending settings and alerts are managed through Stripe's billing portal.",
         type: "success",
       });
-      
-      await loadSpendingStatus();
     } catch (err) {
       const errorMessage = getErrorMessage(err);
       showNotification({
-        title: "Failed to Acknowledge Alert",
+        title: "Portal Access Failed",
         message: errorMessage,
         type: "error",
       });
@@ -97,18 +97,15 @@ export function SpendingAlertManager({
     try {
       setIsLoading(true);
       
-      // Simple sequential processing - no complex bulk operations
-      for (const alert of unreadAlerts) {
-        await acknowledgeSpendingAlert(alert.id);
-      }
+      // All spending management is now handled through Stripe Customer Portal
+      const portalUrl = await openBillingPortal();
+      window.open(portalUrl, '_blank');
       
       showNotification({
-        title: "All Alerts Acknowledged",
-        message: `${unreadAlerts.length} alerts acknowledged.`,
+        title: "Billing Portal Opened",
+        message: "Spending settings and alerts are managed through Stripe's billing portal.",
         type: "success",
       });
-      
-      await loadSpendingStatus();
     } catch (err) {
       const errorMessage = getErrorMessage(err);
       showNotification({

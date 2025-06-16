@@ -16,22 +16,20 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/ui/alert";
 import { useNotification } from "@/contexts/notification-context";
 import { getErrorMessage } from "@/utils/error-handling";
-import { resumeSubscription, reactivateSubscription } from "@/actions/billing/subscription-lifecycle.actions";
+import { manageSubscription } from "@/actions/billing/subscription-lifecycle.actions";
 import type { SubscriptionDetails } from "@/types/tauri-commands";
 
 export interface SubscriptionReactivationModalProps {
   isOpen: boolean;
   onClose: () => void;
   currentSubscription: SubscriptionDetails | null;
-  onReactivationComplete?: (subscription: SubscriptionDetails) => void;
 }
 
 
 export function SubscriptionReactivationModal({ 
   isOpen, 
   onClose, 
-  currentSubscription,
-  onReactivationComplete 
+  currentSubscription 
 }: SubscriptionReactivationModalProps) {
   const [isReactivating, setIsReactivating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -40,51 +38,27 @@ export function SubscriptionReactivationModal({
 
 
   const handleReactivate = async () => {
-    if (!currentSubscription) {
-        setError("Subscription details are not available. Please close and try again.");
-        showNotification({
-            title: "Reactivation Failed",
-            message: "Missing subscription details.",
-            type: "error",
-        });
-        setIsReactivating(false); // also ensure loading state is reset
-        return;
-    }
-
     try {
       setIsReactivating(true);
       setError(null);
 
-      let reactivatedSubscription;
-      let notificationTitle;
-
-      // Check subscription status and call correct action
-      if (currentSubscription?.cancelAtPeriodEnd === true) {
-        // Subscription is scheduled for cancellation - resume it
-        reactivatedSubscription = await resumeSubscription();
-        notificationTitle = "Subscription Resumed!";
-      } else if (currentSubscription?.status === 'canceled') {
-        // Subscription has already ended - reactivate it
-        reactivatedSubscription = await reactivateSubscription(currentSubscription.plan);
-        notificationTitle = "Subscription Reactivated!";
-      } else {
-        throw new Error("Invalid subscription state for reactivation");
-      }
+      // All subscription management is now handled through Stripe Customer Portal
+      const portalUrl = await manageSubscription();
+      window.open(portalUrl, '_blank');
 
       showNotification({
-        title: notificationTitle,
-        message: "Your subscription has been successfully restored and is now active.",
+        title: "Billing Portal Opened",
+        message: "Subscription management (resume/reactivate) is handled through Stripe's secure billing portal.",
         type: "success",
       });
 
-      onReactivationComplete?.(reactivatedSubscription);
       onClose();
     } catch (err) {
       const errorMessage = getErrorMessage(err);
       setError(errorMessage);
       
       showNotification({
-        title: "Reactivation Failed",
+        title: "Portal Access Failed",
         message: errorMessage,
         type: "error",
       });

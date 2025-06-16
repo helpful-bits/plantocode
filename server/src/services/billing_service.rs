@@ -46,40 +46,6 @@ pub struct InvoiceHistoryResponse {
     pub has_more: bool,
 }
 
-// Subscription details response structures
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SubscriptionDetailsResponse {
-    pub plan: String,
-    pub plan_name: Option<String>,
-    pub status: String,
-    pub trial_ends_at: Option<DateTime<Utc>>,
-    pub current_period_ends_at: Option<DateTime<Utc>>,
-    pub monthly_spending_allowance: Option<f64>,
-    pub hard_spending_limit: Option<f64>,
-    pub is_trialing: bool,
-    pub has_cancelled: bool,
-    pub next_invoice_amount: Option<f64>,
-    pub currency: String,
-    pub usage: UsageInfo,
-    pub credit_balance: f64,
-    pub pending_plan_id: Option<String>,
-    pub cancel_at_period_end: bool,
-    pub management_state: String,
-    pub subscription_id: Option<String>,
-    pub customer_id: Option<String>,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct UsageInfo {
-    pub total_cost: f64,
-    pub usage_percentage: f64,
-    pub services_blocked: bool,
-    pub monthly_limit: Option<f64>,
-    pub hard_limit: Option<f64>,
-    pub remaining_allowance: Option<f64>,
-}
 
 
 #[derive(Clone)]
@@ -105,13 +71,16 @@ impl BillingService {
         // User-specific operations use user pool (subject to RLS)
         let subscription_repository = Arc::new(SubscriptionRepository::new(db_pools.user_pool.clone()));
         let api_usage_repository = Arc::new(ApiUsageRepository::new(db_pools.user_pool.clone()));
-        let spending_repository = Arc::new(SpendingRepository::new(db_pools.user_pool.clone()));
+        let spending_repository = Arc::new(SpendingRepository::new(db_pools.system_pool.clone()));
         let credit_transaction_repository = Arc::new(CreditTransactionRepository::new(db_pools.user_pool.clone()));
         
         // System operations use system pool (including credit balance checks for billing)
         let subscription_plan_repository = Arc::new(SubscriptionPlanRepository::new(db_pools.system_pool.clone()));
         let user_credit_repository = Arc::new(UserCreditRepository::new(db_pools.system_pool.clone()));
         
+        
+        // Get default trial days from app settings
+        let default_trial_days = app_settings.subscription.default_trial_days as i64;
         
         // Create cost-based billing service with dual pools
         let cost_based_billing_service = Arc::new(CostBasedBillingService::new(
@@ -122,10 +91,11 @@ impl BillingService {
             spending_repository,
             user_credit_repository,
             credit_transaction_repository,
+            default_trial_days,
         ));
         
         // Create email notification service
-        let email_notification_service = match EmailNotificationService::new(db_pools.system_pool.clone()) {
+        let email_notification_service = match EmailNotificationService::new(db_pools.clone()) {
             Ok(service) => {
                 info!("Email notification service initialized successfully");
                 Some(Arc::new(service))
@@ -137,10 +107,7 @@ impl BillingService {
         };
         
         // Create audit service
-        let audit_service = Arc::new(AuditService::new(db_pools.system_pool.clone()));
-        
-        // Get default trial days from app settings
-        let default_trial_days = app_settings.subscription.default_trial_days as i64;
+        let audit_service = Arc::new(AuditService::new(db_pools.clone()));
         
         // Initialize Stripe service if environment variables are set
         let stripe_service = match (
@@ -185,6 +152,14 @@ impl BillingService {
             debug!("No subscription found for user {}, creating trial and initial limit", user_id);
             // Start a transaction for atomic subscription and spending limit creation
             let mut tx = self.get_db_pool().begin().await.map_err(AppError::from)?;
+            
+            // Set user context for RLS within the transaction
+            sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
+                .bind(user_id.to_string())
+                .execute(&mut *tx)
+                .await
+                .map_err(|e| AppError::Database(format!("Failed to set user context in transaction: {}", e)))?;
+            
             let new_subscription = self.create_trial_subscription_and_limit_in_tx(user_id, &mut tx).await?;
             tx.commit().await.map_err(AppError::from)?;
             sub_option = Some(new_subscription);
@@ -201,7 +176,7 @@ impl BillingService {
             "active" | "trialing" => {
                 // Check if trial or subscription has expired
                 if subscription.status == "trialing" {
-                    if let Some(trial_ends_at) = subscription.trial_ends_at {
+                    if let Some(trial_ends_at) = subscription.trial_end {
                         if trial_ends_at < Utc::now() {
                             debug!("Trial expired for user {}", user_id);
                             return Err(AppError::Payment("Trial period has expired".to_string()));
@@ -209,11 +184,10 @@ impl BillingService {
                     }
                 }
                 
-                if let Some(current_period_ends_at) = subscription.current_period_ends_at {
-                    if current_period_ends_at < Utc::now() {
-                        debug!("Subscription expired for user {}", user_id);
-                        return Err(AppError::Payment("Subscription has expired".to_string()));
-                    }
+                let current_period_ends_at = subscription.current_period_end;
+                if current_period_ends_at < Utc::now() {
+                    debug!("Subscription expired for user {}", user_id);
+                    return Err(AppError::Payment("Subscription has expired".to_string()));
                 }
                 
                 // COST-BASED ACCESS CHECK: Use spending limits instead of token limits
@@ -268,6 +242,13 @@ impl BillingService {
         tx: &mut sqlx::Transaction<'a, sqlx::Postgres>
     ) -> Result<Subscription, AppError>
     {
+        // Set user context for RLS within the transaction
+        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
+            .bind(user_id.to_string())
+            .execute(&mut **tx)
+            .await
+            .map_err(|e| AppError::Database(format!("Failed to set user context in transaction: {}", e)))?;
+        
         let now = Utc::now();
         let trial_ends_at = now + Duration::days(self.default_trial_days);
         
@@ -286,9 +267,24 @@ impl BillingService {
         // Create initial spending limit for the user using the same transaction
         self.cost_based_billing_service.get_or_create_current_spending_limit_in_tx(user_id, tx).await?;
         
-        // Fetch the created subscription to return it
-        let subscription = self.subscription_repository.get_by_user_id_with_executor(user_id, tx).await?
-            .ok_or_else(|| AppError::Internal("Failed to retrieve newly created subscription".to_string()))?;
+        // Instead of retrieving from database, construct the subscription from known data
+        let subscription = Subscription {
+            id: subscription_id,
+            user_id: *user_id,
+            stripe_customer_id: None,
+            stripe_subscription_id: None,
+            plan_id: "free".to_string(),
+            status: "trialing".to_string(),
+            cancel_at_period_end: false,
+            created_at: now,
+            updated_at: now,
+            stripe_plan_id: "free".to_string(),
+            current_period_start: now,
+            current_period_end: trial_ends_at,
+            trial_start: Some(now),
+            trial_end: Some(trial_ends_at),
+            pending_plan_id: None,
+        };
         
         info!("Created trial subscription and initial spending limit for user {}", user_id);
         Ok(subscription)
@@ -299,6 +295,13 @@ impl BillingService {
     pub async fn create_default_subscription_for_new_user(&self, user_id: &Uuid) -> Result<Subscription, AppError> {
         let mut tx = self.db_pools.user_pool.begin().await
             .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
+        
+        // Set user context for RLS within the transaction
+        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
+            .bind(user_id.to_string())
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| AppError::Database(format!("Failed to set user context in transaction: {}", e)))?;
             
         let subscription = self.create_trial_subscription_and_limit_in_tx(user_id, &mut tx).await?;
         
@@ -325,6 +328,11 @@ impl BillingService {
         self.subscription_repository.get_pool().clone()
     }
     
+    // Get the full database pools structure for use by other services
+    pub fn get_db_pools(&self) -> &DatabasePools {
+        &self.db_pools
+    }
+    
     // Get the system database pool for operations requiring vibe_manager_app role
     pub fn get_system_db_pool(&self) -> PgPool {
         self.db_pools.system_pool.clone()
@@ -336,24 +344,28 @@ impl BillingService {
     }
     
     
-    // Get or create a Stripe customer for a user (internal method)
-    async fn get_or_create_stripe_customer_internal(&self, user_id: &Uuid) -> Result<String, AppError> {
+    // Get or create a Stripe customer for a user within a transaction
+    async fn _get_or_create_stripe_customer_with_executor(
+        &self,
+        user_id: &Uuid,
+        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    ) -> Result<String, AppError> {
         // Ensure Stripe is configured
         let stripe_service = match &self.stripe_service {
             Some(service) => service,
             None => return Err(AppError::Configuration("Stripe not configured".to_string())),
         };
 
-        // Check if user already has a subscription with a Stripe customer ID
-        let subscription = self.subscription_repository.get_by_user_id(user_id).await?;
-        
-        if let Some(ref sub) = subscription {
-            if let Some(ref customer_id) = sub.stripe_customer_id {
-                return Ok(customer_id.clone());
-            }
+        // Fetch the user's subscription within the transaction
+        let subscription = self.subscription_repository.get_by_user_id_with_executor(user_id, tx).await?
+            .ok_or_else(|| AppError::NotFound(format!("No subscription found for user {}", user_id)))?;
+
+        // Check if subscription already has a Stripe customer ID
+        if let Some(ref customer_id) = subscription.stripe_customer_id {
+            return Ok(customer_id.clone());
         }
 
-        // Get user details from database
+        // Get user details from database using system pool (not affected by transaction)
         let user = crate::db::repositories::user_repository::UserRepository::new(
             self.db_pools.system_pool.clone()
         ).get_by_id(user_id).await?;
@@ -363,14 +375,12 @@ impl BillingService {
             user_id,
             &user.email,
             user.full_name.as_deref(),
-            subscription.as_ref().and_then(|s| s.stripe_customer_id.as_deref()),
+            subscription.stripe_customer_id.as_deref(),
         ).await.map_err(|e| AppError::External(format!("Failed to create Stripe customer: {}", e)))?;
 
-        // Update the subscription with the customer ID
-        if let Some(mut sub) = subscription {
-            sub.stripe_customer_id = Some(customer.id.to_string());
-            self.subscription_repository.update(&sub).await?;
-        }
+        // Update the subscription with the customer ID within the transaction
+        self.subscription_repository.set_stripe_customer_id_with_executor(&subscription.id, &customer.id, user_id, tx).await?;
+        info!("Updated subscription {} with Stripe customer ID: {}", subscription.id, customer.id);
 
         Ok(customer.id.to_string())
     }
@@ -390,30 +400,25 @@ impl BillingService {
         let mut tx = self.db_pools.user_pool.begin().await
             .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
 
+        // Set user context for RLS within the transaction
+        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
+            .bind(user_id.to_string())
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| AppError::Database(format!("Failed to set user context in transaction: {}", e)))?;
+
         // Ensure user has a subscription, create default one if missing
         let subscription = match self.subscription_repository.get_by_user_id_with_executor(user_id, &mut tx).await? {
             Some(subscription) => subscription,
             None => {
                 info!("User {} accessing billing portal has no subscription, creating default subscription", user_id);
-                // Commit current transaction and start fresh for subscription creation
-                tx.commit().await
-                    .map_err(|e| AppError::Database(format!("Failed to commit transaction: {}", e)))?;
-                
-                // Create default subscription
-                let subscription = self.create_default_subscription_for_new_user(user_id).await?;
-                
-                // Start new transaction for portal creation
-                tx = self.db_pools.user_pool.begin().await
-                    .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
-                
+                let subscription = self.create_trial_subscription_and_limit_in_tx(user_id, &mut tx).await?;
                 subscription
             }
         };
 
-        // Portal access is now simplified without state tracking
-
-        // Get customer ID
-        let customer_id = self.get_or_create_stripe_customer(user_id).await?;
+        // Get customer ID within the transaction
+        let customer_id = self._get_or_create_stripe_customer_with_executor(user_id, &mut tx).await?;
 
         // Create portal session
         let session = match stripe_service.create_billing_portal_session(
@@ -437,74 +442,79 @@ impl BillingService {
     }
     
     
-    // Get subscription details for a user (legacy method for backward compatibility)
-    pub async fn get_subscription_details(
-        &self,
-        user_id: &Uuid,
-    ) -> Result<serde_json::Value, AppError> {
-        // Use the new method and convert to JSON for backward compatibility
-        let response = self.get_subscription_details_for_client(user_id).await?;
-        Ok(serde_json::to_value(response)?)
-    }
+    // Get consolidated billing dashboard data
+    pub async fn get_billing_dashboard_data(&self, user_id: &Uuid) -> Result<BillingDashboardData, AppError> {
+        debug!("Fetching billing dashboard data for user: {}", user_id);
 
-    // Get subscription details for client with structured response
-    pub async fn get_subscription_details_for_client(
-        &self,
-        user_id: &Uuid,
-    ) -> Result<SubscriptionDetailsResponse, AppError> {
-        // Get subscription
-        let subscription = self.subscription_repository.get_by_user_id(user_id).await?;
-        
+        // Start transaction for atomic operations
+        let mut transaction = self.db_pools.user_pool.begin().await
+            .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
+
+        // Set user context for RLS within the transaction
+        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
+            .bind(user_id.to_string())
+            .execute(&mut *transaction)
+            .await
+            .map_err(|e| AppError::Database(format!("Failed to set user context in transaction: {}", e)))?;
+
+        // Get subscription details - create trial if none exists
+        let subscription = self.subscription_repository.get_by_user_id_with_executor(user_id, &mut transaction).await?;
         let subscription = match subscription {
-            Some(sub) => sub,
+            Some(sub) => {
+                // Check if subscription status is valid (active or trialing)
+                match sub.status.as_str() {
+                    "active" | "trialing" => sub,
+                    _ => {
+                        // Create a trial subscription for invalid status
+                        let subscription = self.create_trial_subscription_and_limit_in_tx(user_id, &mut transaction).await?;
+                        subscription
+                    }
+                }
+            },
             None => {
-                // Create a trial subscription and initial spending limit first
-                let mut tx = self.get_db_pool().begin().await.map_err(AppError::from)?;
-                let subscription = self.create_trial_subscription_and_limit_in_tx(user_id, &mut tx).await?;
-                tx.commit().await.map_err(AppError::from)?;
+                // Create a trial subscription and initial spending limit within the transaction
+                let subscription = self.create_trial_subscription_and_limit_in_tx(user_id, &mut transaction).await?;
                 subscription
             }
         };
-        
-        // COST-BASED BILLING: Get spending status instead of just usage cost
-        let spending_status = self.cost_based_billing_service.get_current_spending_status(user_id).await?;
-        
-        // Get plan details for allowance and currency
+
+        // Get plan details using system pool (not affected by user context)
         let plan = self.get_plan_by_id(&subscription.plan_id).await?;
+
+        // Get spending status within the same transaction context to ensure visibility
+        let spending_status = self.cost_based_billing_service.get_current_spending_status_in_tx(user_id, &mut transaction).await?;
         
-        // Calculate next invoice amount
-        let next_invoice_amount = self.calculate_next_invoice_amount(user_id, &spending_status).await?;
-        
-        // Build the structured response
-        let response = SubscriptionDetailsResponse {
-            plan: subscription.plan_id.clone(),
-            plan_name: Some(plan.name.clone()),
-            status: subscription.status.clone(),
-            trial_ends_at: subscription.trial_ends_at,
-            current_period_ends_at: subscription.current_period_ends_at,
-            monthly_spending_allowance: Some(plan.included_spending_monthly.to_f64().unwrap_or(0.0)),
-            hard_spending_limit: Some(spending_status.hard_limit.to_f64().unwrap_or(0.0)),
-            is_trialing: subscription.status == "trialing",
-            has_cancelled: subscription.status == "canceled",
-            next_invoice_amount,
-            currency: spending_status.currency.clone(),
-            usage: UsageInfo {
-                total_cost: spending_status.current_spending.to_f64().unwrap_or(0.0),
-                usage_percentage: spending_status.usage_percentage,
-                services_blocked: spending_status.services_blocked,
-                monthly_limit: Some(plan.included_spending_monthly.to_f64().unwrap_or(0.0)),
-                hard_limit: Some(spending_status.hard_limit.to_f64().unwrap_or(0.0)),
-                remaining_allowance: Some(spending_status.remaining_allowance.to_f64().unwrap_or(0.0)),
-            },
-            credit_balance: spending_status.credit_balance.to_f64().unwrap_or(0.0),
-            pending_plan_id: subscription.pending_plan_id.clone(),
-            cancel_at_period_end: subscription.cancel_at_period_end,
-            management_state: "in_sync".to_string(),
-            subscription_id: subscription.stripe_subscription_id.clone(),
-            customer_id: subscription.stripe_customer_id.clone(),
+        // Commit transaction after all operations
+        transaction.commit().await
+            .map_err(|e| AppError::Database(format!("Failed to commit transaction: {}", e)))?;
+
+        // Build plan details
+        let plan_details = BillingDashboardPlanDetails {
+            plan_id: plan.id.clone(),
+            name: plan.name.clone(),
+            price_usd: plan.base_price_monthly.to_f64().unwrap_or(0.0),
+            billing_interval: "monthly".to_string(),
         };
-        
-        Ok(response)
+
+        // Build spending details
+        let spending_details = BillingDashboardSpendingDetails {
+            current_spending_usd: spending_status.current_spending.to_f64().unwrap_or(0.0),
+            spending_limit_usd: spending_status.hard_limit.to_f64().unwrap_or(0.0),
+            period_start: spending_status.billing_period_start.to_rfc3339(),
+            period_end: spending_status.next_billing_date.to_rfc3339(),
+        };
+
+        // Build consolidated response
+        let dashboard_data = BillingDashboardData {
+            plan_details,
+            spending_details,
+            credit_balance_usd: spending_status.credit_balance.to_f64().unwrap_or(0.0),
+            subscription_status: subscription.status.clone(),
+            trial_ends_at: subscription.trial_end.map(|dt| dt.to_rfc3339()),
+        };
+
+        info!("Successfully assembled billing dashboard data for user: {}", user_id);
+        Ok(dashboard_data)
     }
 
     /// Calculate the next invoice amount based on overage and subscription
@@ -557,6 +567,11 @@ impl BillingService {
         &self.subscription_repository
     }
 
+    /// Get access to the audit service
+    pub fn get_audit_service(&self) -> &Arc<AuditService> {
+        &self.audit_service
+    }
+
     /// Create a PaymentIntent for purchasing credits (modern approach)
     pub async fn create_credit_payment_intent(
         &self,
@@ -570,6 +585,17 @@ impl BillingService {
             None => return Err(AppError::Configuration("Stripe not configured".to_string())),
         };
 
+        // Start transaction for atomic operations
+        let mut transaction = self.db_pools.user_pool.begin().await
+            .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
+
+        // Set user context for RLS within the transaction
+        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
+            .bind(user_id.to_string())
+            .execute(&mut *transaction)
+            .await
+            .map_err(|e| AppError::Database(format!("Failed to set user context in transaction: {}", e)))?;
+
         // Get credit pack details
         let credit_pack_repo = crate::db::repositories::credit_pack_repository::CreditPackRepository::new(
             self.db_pools.system_pool.clone()
@@ -577,8 +603,19 @@ impl BillingService {
         let selected_pack = credit_pack_repo.get_pack_by_id(credit_pack_id).await?
             .ok_or_else(|| AppError::InvalidArgument(format!("Invalid credit pack ID: {}", credit_pack_id)))?;
 
-        // Get or create Stripe customer
-        let customer_id = self.get_or_create_stripe_customer_internal(user_id).await?;
+        // Ensure user has subscription
+        let mut subscription = match self.subscription_repository.get_by_user_id_with_executor(user_id, &mut transaction).await? {
+            Some(subscription) => subscription,
+            None => self.create_trial_subscription_and_limit_in_tx(user_id, &mut transaction).await?,
+        };
+
+        // Get or create Stripe customer within transaction
+        let customer_id = self._get_or_create_stripe_customer_with_executor(user_id, &mut transaction).await?;
+        
+        // Refresh subscription to get any updates from customer creation
+        if let Some(updated_subscription) = self.subscription_repository.get_by_user_id_with_executor(user_id, &mut transaction).await? {
+            subscription = updated_subscription;
+        }
 
         // Convert BigDecimal to cents for Stripe
         let amount_cents = (selected_pack.price_amount * BigDecimal::from(100)).to_i64()
@@ -594,16 +631,25 @@ impl BillingService {
 
         let description = format!("Purchase {} credits", selected_pack.value_credits);
 
-
         // Create PaymentIntent
-        let payment_intent = stripe_service.create_payment_intent(
+        let payment_intent = match stripe_service.create_payment_intent(
             &customer_id,
             amount_cents,
             &selected_pack.currency,
             &description,
             metadata,
             save_payment_method,
-        ).await.map_err(|e| AppError::External(format!("Failed to create credit payment intent: {}", e)))?;
+        ).await {
+            Ok(intent) => intent,
+            Err(e) => {
+                let _ = transaction.rollback().await;
+                return Err(AppError::External(format!("Failed to create credit payment intent: {}", e)));
+            }
+        };
+
+        // Commit transaction after successful Stripe operations
+        transaction.commit().await
+            .map_err(|e| AppError::Database(format!("Failed to commit transaction: {}", e)))?;
 
         Ok(payment_intent)
     }
@@ -620,13 +666,35 @@ impl BillingService {
             None => return Err(AppError::Configuration("Stripe not configured".to_string())),
         };
 
+        // Start transaction for atomic operations
+        let mut transaction = self.db_pools.user_pool.begin().await
+            .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
+
+        // Set user context for RLS within the transaction
+        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
+            .bind(user_id.to_string())
+            .execute(&mut *transaction)
+            .await
+            .map_err(|e| AppError::Database(format!("Failed to set user context in transaction: {}", e)))?;
+
         // Get plan details
         let plan = self.get_plan_by_id(plan_id).await?;
         let price_id = plan.stripe_price_id_monthly.clone()
             .ok_or_else(|| AppError::Configuration(format!("No Stripe price ID for plan: {}", plan_id)))?;
 
-        // Get or create Stripe customer
-        let customer_id = self.get_or_create_stripe_customer_internal(user_id).await?;
+        // Ensure user has subscription
+        let mut subscription = match self.subscription_repository.get_by_user_id_with_executor(user_id, &mut transaction).await? {
+            Some(subscription) => subscription,
+            None => self.create_trial_subscription_and_limit_in_tx(user_id, &mut transaction).await?,
+        };
+
+        // Get or create Stripe customer within transaction
+        let customer_id = self._get_or_create_stripe_customer_with_executor(user_id, &mut transaction).await?;
+        
+        // Refresh subscription to get any updates from customer creation
+        if let Some(updated_subscription) = self.subscription_repository.get_by_user_id_with_executor(user_id, &mut transaction).await? {
+            subscription = updated_subscription;
+        }
 
         // Add metadata
         let mut metadata = std::collections::HashMap::new();
@@ -634,14 +702,23 @@ impl BillingService {
         metadata.insert("plan_id".to_string(), plan_id.to_string());
         metadata.insert("trial_days".to_string(), "1".to_string());
 
-
         // Create subscription with 1-day trial
-        let subscription = stripe_service.create_subscription_with_trial(
+        let subscription = match stripe_service.create_subscription_with_trial(
             &customer_id,
             &price_id,
             Some(1), // 1-day trial
             metadata,
-        ).await.map_err(|e| AppError::External(format!("Failed to create subscription: {}", e)))?;
+        ).await {
+            Ok(sub) => sub,
+            Err(e) => {
+                let _ = transaction.rollback().await;
+                return Err(AppError::External(format!("Failed to create subscription: {}", e)));
+            }
+        };
+
+        // Commit transaction after successful Stripe operations
+        transaction.commit().await
+            .map_err(|e| AppError::Database(format!("Failed to commit transaction: {}", e)))?;
 
         Ok(subscription)
     }
@@ -654,9 +731,31 @@ impl BillingService {
         }
     }
 
-    /// Get or create Stripe customer for a user (expose for handlers)
+
+    /// Get or create Stripe customer for a user (public method for handlers)
     pub async fn get_or_create_stripe_customer(&self, user_id: &Uuid) -> Result<String, AppError> {
-        self.get_or_create_stripe_customer_internal(user_id).await
+        let mut transaction = self.db_pools.user_pool.begin().await
+            .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
+        
+        // Set user context for RLS within the transaction
+        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
+            .bind(user_id.to_string())
+            .execute(&mut *transaction)
+            .await
+            .map_err(|e| AppError::Database(format!("Failed to set user context in transaction: {}", e)))?;
+        
+        // Ensure user has subscription
+        let subscription = match self.subscription_repository.get_by_user_id_with_executor(user_id, &mut transaction).await? {
+            Some(subscription) => subscription,
+            None => self.create_trial_subscription_and_limit_in_tx(user_id, &mut transaction).await?,
+        };
+        
+        let customer_id = self._get_or_create_stripe_customer_with_executor(user_id, &mut transaction).await?;
+        
+        transaction.commit().await
+            .map_err(|e| AppError::Database(format!("Failed to commit transaction: {}", e)))?;
+        
+        Ok(customer_id)
     }
 
     /// Get access to the StripeService for advanced operations
@@ -667,352 +766,9 @@ impl BillingService {
         }
     }
 
-    /// Get consolidated billing dashboard data
-    pub async fn get_billing_dashboard_data(&self, user_id: &Uuid) -> Result<BillingDashboardData, AppError> {
-        debug!("Fetching billing dashboard data for user: {}", user_id);
-
-        // Get subscription details
-        let subscription = self.subscription_repository.get_by_user_id(user_id).await?;
-        let subscription = match subscription {
-            Some(sub) => sub,
-            None => {
-                // Create a trial subscription and initial spending limit first
-                let mut tx = self.get_db_pool().begin().await.map_err(AppError::from)?;
-                let subscription = self.create_trial_subscription_and_limit_in_tx(user_id, &mut tx).await?;
-                tx.commit().await.map_err(AppError::from)?;
-                subscription
-            }
-        };
-
-        // Get plan details
-        let plan = self.get_plan_by_id(&subscription.plan_id).await?;
-
-        // Get spending status
-        let spending_status = self.cost_based_billing_service.get_current_spending_status(user_id).await?;
-
-        // Build plan details
-        let plan_details = BillingDashboardPlanDetails {
-            plan_id: plan.id.clone(),
-            name: plan.name.clone(),
-            price_usd: plan.base_price_monthly.to_f64().unwrap_or(0.0),
-            billing_interval: "monthly".to_string(),
-        };
-
-        // Build spending details
-        let spending_details = BillingDashboardSpendingDetails {
-            current_spending_usd: spending_status.current_spending.to_f64().unwrap_or(0.0),
-            spending_limit_usd: spending_status.hard_limit.to_f64().unwrap_or(0.0),
-            period_start: spending_status.billing_period_start.to_rfc3339(),
-            period_end: spending_status.next_billing_date.to_rfc3339(),
-        };
-
-        // Build consolidated response
-        let dashboard_data = BillingDashboardData {
-            plan_details,
-            spending_details,
-            credit_balance_usd: spending_status.credit_balance.to_f64().unwrap_or(0.0),
-        };
-
-        info!("Successfully assembled billing dashboard data for user: {}", user_id);
-        Ok(dashboard_data)
-    }
-
-
-    /// Cancel a subscription with option to cancel at period end
-    pub async fn cancel_subscription(
-        &self,
-        user_id: &Uuid,
-        at_period_end: bool,
-    ) -> Result<serde_json::Value, AppError> {
-        // Ensure Stripe is configured
-        let stripe_service = match &self.stripe_service {
-            Some(service) => service,
-            None => return Err(AppError::Configuration("Stripe not configured".to_string())),
-        };
-
-        // Start database transaction for atomic updates
-        let mut tx = self.db_pools.user_pool.begin().await
-            .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
-
-        // Get user's current subscription
-        let current_subscription = self.subscription_repository.get_by_user_id_with_executor(user_id, &mut tx).await?
-            .ok_or_else(|| AppError::InvalidArgument("User has no subscription".to_string()))?;
-
-        // Check if subscription can be canceled
-        if current_subscription.status == "canceled" {
-            let _ = tx.rollback().await;
-            return Err(AppError::InvalidArgument("Subscription is already canceled".to_string()));
-        }
-
-        // Only proceed if there's a Stripe subscription ID
-        let stripe_subscription_id = current_subscription.stripe_subscription_id.as_ref()
-            .ok_or_else(|| AppError::InvalidArgument("No Stripe subscription found".to_string()))?;
-
-        // Cancel the subscription in Stripe
-        let updated_stripe_subscription = match stripe_service.cancel_subscription(
-            stripe_subscription_id,
-            at_period_end,
-        ).await {
-            Ok(subscription) => subscription,
-            Err(e) => {
-                let _ = tx.rollback().await;
-                return Err(AppError::External(format!("Failed to cancel subscription in Stripe: {}", e)));
-            }
-        };
-
-        // Update local subscription record
-        let mut updated_subscription = current_subscription.clone();
-        if at_period_end {
-            updated_subscription.cancel_at_period_end = true;
-            // Status remains "active" until period ends
-        } else {
-            updated_subscription.status = "canceled".to_string();
-            updated_subscription.cancel_at_period_end = false;
-        }
-
-        // Save the updated subscription
-        if let Err(e) = self.subscription_repository.update_with_executor(&updated_subscription, &mut tx).await {
-            let _ = tx.rollback().await;
-            return Err(e);
-        }
-
-        // Create audit context for logging
-        let audit_context = AuditContext::new(*user_id);
-        
-        // Log the subscription cancellation audit event
-        if let Err(e) = self.audit_service.log_subscription_cancelled(
-            &audit_context,
-            &updated_subscription.id.to_string(),
-            at_period_end,
-            None, // No cancellation reason provided
-            Some(serde_json::json!({
-                "stripe_subscription_id": stripe_subscription_id,
-                "at_period_end": at_period_end
-            })),
-        ).await {
-            warn!("Failed to log subscription cancellation audit event: {}", e);
-        }
-
-        // Commit the transaction
-        tx.commit().await
-            .map_err(|e| {
-                error!("Critical error: Database transaction failed after successful Stripe subscription cancellation for user {}: {}. Manual intervention required to sync database with Stripe.", user_id, e);
-                AppError::Database(format!("Failed to commit transaction after successful Stripe cancellation: {}", e))
-            })?;
-
-        // Send cancellation notification email
-        if let Some(email_service) = &self.email_notification_service {
-            let user_repo = crate::db::repositories::user_repository::UserRepository::new(
-                self.db_pools.system_pool.clone()
-            );
-            if let Ok(user) = user_repo.get_by_id(user_id).await {
-                if let Ok(plan) = self.get_plan_by_id(&updated_subscription.plan_id).await {
-                    if let Err(e) = email_service.send_subscription_cancellation_notification(
-                        user_id,
-                        &user.email,
-                        at_period_end,
-                        current_subscription.current_period_ends_at.as_ref(),
-                        None, // No cancellation reason provided
-                    ).await {
-                        warn!("Failed to queue cancellation notification for user {}: {}", user_id, e);
-                    }
-                }
-            }
-        }
-
-        info!("Successfully canceled subscription for user {} (at_period_end: {})", user_id, at_period_end);
-
-        // Return updated subscription details
-        self.get_subscription_details(user_id).await
-    }
 
 
 
-    /// Resume a subscription that was set to cancel at period end
-    pub async fn resume_subscription(
-        &self,
-        user_id: &Uuid,
-    ) -> Result<serde_json::Value, AppError> {
-        // Ensure Stripe is configured
-        let stripe_service = match &self.stripe_service {
-            Some(service) => service,
-            None => return Err(AppError::Configuration("Stripe not configured".to_string())),
-        };
-
-        // Start database transaction for atomic updates
-        let mut tx = self.db_pools.user_pool.begin().await
-            .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
-
-        // Get user's current subscription
-        let current_subscription = self.subscription_repository.get_by_user_id_with_executor(user_id, &mut tx).await?
-            .ok_or_else(|| AppError::InvalidArgument("User has no subscription".to_string()))?;
-
-        // Check if subscription can be resumed (must be set to cancel at period end)
-        if !current_subscription.cancel_at_period_end {
-            let _ = tx.rollback().await;
-            return Err(AppError::InvalidArgument("Subscription is not set to cancel at period end".to_string()));
-        }
-
-        if current_subscription.status == "canceled" {
-            let _ = tx.rollback().await;
-            return Err(AppError::InvalidArgument("Cannot resume already canceled subscription".to_string()));
-        }
-
-        // Only proceed if there's a Stripe subscription ID
-        let stripe_subscription_id = current_subscription.stripe_subscription_id.as_ref()
-            .ok_or_else(|| AppError::InvalidArgument("No Stripe subscription found".to_string()))?;
-
-        // Resume the subscription in Stripe
-        let updated_stripe_subscription = match stripe_service.resume_subscription(
-            stripe_subscription_id,
-        ).await {
-            Ok(subscription) => subscription,
-            Err(e) => {
-                let _ = tx.rollback().await;
-                return Err(AppError::External(format!("Failed to resume subscription in Stripe: {}", e)));
-            }
-        };
-
-        // Update local subscription record
-        let mut updated_subscription = current_subscription.clone();
-        updated_subscription.cancel_at_period_end = false;
-        updated_subscription.status = "active".to_string();
-
-        // Save the updated subscription
-        if let Err(e) = self.subscription_repository.update_with_executor(&updated_subscription, &mut tx).await {
-            let _ = tx.rollback().await;
-            return Err(e);
-        }
-
-        // Create audit context for logging
-        let audit_context = AuditContext::new(*user_id);
-        
-        // Log the subscription resumption audit event
-        if let Err(e) = self.audit_service.log_subscription_resumed_with_tx(
-            &audit_context,
-            &updated_subscription.id.to_string(),
-            Some(serde_json::json!({
-                "stripe_subscription_id": stripe_subscription_id
-            })),
-            &mut tx,
-        ).await {
-            warn!("Failed to log subscription resumption audit event: {}", e);
-        }
-
-        // Commit the transaction
-        tx.commit().await
-            .map_err(|e| {
-                error!("Critical error: Database transaction failed after successful Stripe subscription resumption for user {}: {}. Manual intervention required to sync database with Stripe.", user_id, e);
-                AppError::Database(format!("Failed to commit transaction after successful Stripe resumption: {}", e))
-            })?;
-
-        // Send resumption notification email
-        if let Some(email_service) = &self.email_notification_service {
-            let user_repo = crate::db::repositories::user_repository::UserRepository::new(
-                self.db_pools.system_pool.clone()
-            );
-            if let Ok(user) = user_repo.get_by_id(user_id).await {
-                if let Ok(plan) = self.get_plan_by_id(&updated_subscription.plan_id).await {
-                    if let Err(e) = email_service.send_subscription_resumed_notification(
-                        user_id,
-                        &user.email,
-                        updated_subscription.current_period_ends_at.as_ref(),
-                    ).await {
-                        warn!("Failed to queue resumption notification for user {}: {}", user_id, e);
-                    }
-                }
-            }
-        }
-
-        info!("Successfully resumed subscription for user {}", user_id);
-
-        // Return updated subscription details
-        self.get_subscription_details(user_id).await
-    }
-
-    /// Reactivate a canceled subscription (creates new subscription)
-    pub async fn reactivate_subscription(
-        &self,
-        user_id: &Uuid,
-        plan_id: Option<String>,
-    ) -> Result<serde_json::Value, AppError> {
-        // Start database transaction for atomic updates
-        let mut tx = self.db_pools.user_pool.begin().await
-            .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
-
-        // Get user's current subscription
-        let current_subscription = self.subscription_repository.get_by_user_id_with_executor(user_id, &mut tx).await?
-            .ok_or_else(|| AppError::InvalidArgument("User has no subscription".to_string()))?;
-
-        // Check if subscription can be reactivated
-        if current_subscription.status != "canceled" {
-            let _ = tx.rollback().await;
-            return Err(AppError::InvalidArgument("Only canceled subscriptions can be reactivated".to_string()));
-        }
-
-        // For reactivation, we'll create a new subscription since Stripe doesn't support reactivating canceled subscriptions
-        let target_plan_id = plan_id.unwrap_or(current_subscription.plan_id);
-        
-        // Verify the target plan exists before creating a new subscription
-        let plan_repo = self.subscription_plan_repository.clone();
-        let _target_plan = plan_repo.get_plan_by_id(&target_plan_id).await?;
-        
-        // Create new subscription with trial
-        let new_subscription = match self.create_subscription_with_trial(user_id, &target_plan_id).await {
-            Ok(subscription) => subscription,
-            Err(e) => {
-                let _ = tx.rollback().await;
-                return Err(e);
-            }
-        };
-
-        // Create audit context for logging
-        let audit_context = AuditContext::new(*user_id);
-        
-        // Log the subscription reactivation audit event
-        if let Err(e) = self.audit_service.log_subscription_reactivated(
-            &audit_context,
-            &new_subscription.id.to_string(),
-            &target_plan_id,
-            Some(serde_json::json!({
-                "old_subscription_id": current_subscription.id.to_string(),
-                "stripe_subscription_id": new_subscription.id.to_string()
-            })),
-        ).await {
-            warn!("Failed to log subscription reactivation audit event: {}", e);
-        }
-
-        // Commit the transaction
-        tx.commit().await
-            .map_err(|e| {
-                error!("Critical error: Database transaction failed after successful Stripe subscription reactivation for user {}: {}. Manual intervention required to sync database with Stripe.", user_id, e);
-                AppError::Database(format!("Failed to commit transaction after successful Stripe reactivation: {}", e))
-            })?;
-
-        // Send reactivation notification email
-        if let Some(email_service) = &self.email_notification_service {
-            // Get user email and plan details
-            let user_repo = crate::db::repositories::user_repository::UserRepository::new(
-                self.db_pools.system_pool.clone()
-            );
-            if let Ok(user) = user_repo.get_by_id(user_id).await {
-                if let Ok(plan) = self.get_plan_by_id(&target_plan_id).await {
-                    if let Err(e) = email_service.send_reactivation_notification(
-                        user_id,
-                        &user.email,
-                        &plan.name,
-                    ).await {
-                        warn!("Failed to queue reactivation notification for user {}: {}", user_id, e);
-                    }
-                }
-            }
-        }
-
-        info!("Successfully reactivated subscription for user {} with plan {}", user_id, target_plan_id);
-
-        // Return updated subscription details
-        self.get_subscription_details(user_id).await
-    }
 
 
     /// Get detailed payment methods with default flag
@@ -1026,8 +782,29 @@ impl BillingService {
             None => return Err(AppError::Configuration("Stripe not configured".to_string())),
         };
 
-        // Get customer ID
-        let customer_id = self.get_or_create_stripe_customer(user_id).await?;
+        // Start transaction for atomic customer operations
+        let mut transaction = self.db_pools.user_pool.begin().await
+            .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
+
+        // Set user context for RLS within the transaction
+        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
+            .bind(user_id.to_string())
+            .execute(&mut *transaction)
+            .await
+            .map_err(|e| AppError::Database(format!("Failed to set user context in transaction: {}", e)))?;
+
+        // Ensure user has subscription
+        let subscription = match self.subscription_repository.get_by_user_id_with_executor(user_id, &mut transaction).await? {
+            Some(subscription) => subscription,
+            None => self.create_trial_subscription_and_limit_in_tx(user_id, &mut transaction).await?,
+        };
+
+        // Get customer ID within transaction
+        let customer_id = self._get_or_create_stripe_customer_with_executor(user_id, &mut transaction).await?;
+
+        // Commit transaction after customer operations
+        transaction.commit().await
+            .map_err(|e| AppError::Database(format!("Failed to commit transaction: {}", e)))?;
 
         // Concurrently fetch customer details and payment methods
         let (customer, payment_methods) = tokio::try_join!(
@@ -1083,91 +860,52 @@ impl BillingService {
             None => return Err(AppError::Configuration("Stripe not configured".to_string())),
         };
 
-        // Get customer ID
-        let customer_id = self.get_or_create_stripe_customer(user_id).await?;
+        // Start transaction for atomic customer operations
+        let mut transaction = self.db_pools.user_pool.begin().await
+            .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
 
-        // Calculate pagination parameters for Stripe API
-        let limit = Some(100u64); // Fixed limit for consistent pagination
-        let starting_after = if query.offset > 0 { 
-            // For simplicity, we'll use None for starting_after in this implementation
-            // In a full implementation, you would need to track the last invoice ID from previous page
-            None 
-        } else { 
-            None 
+        // Set user context for RLS within the transaction
+        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
+            .bind(user_id.to_string())
+            .execute(&mut *transaction)
+            .await
+            .map_err(|e| AppError::Database(format!("Failed to set user context in transaction: {}", e)))?;
+
+        // Get subscription within transaction
+        let subscription = match self.subscription_repository.get_by_user_id_with_executor(user_id, &mut transaction).await? {
+            Some(sub) => sub,
+            None => {
+                // Create a trial subscription and initial spending limit within the transaction
+                let subscription = self.create_trial_subscription_and_limit_in_tx(user_id, &mut transaction).await?;
+                subscription
+            }
         };
 
-        // Fetch invoices from Stripe with status filter and pagination
-        let mut invoices = stripe_service.list_invoices_with_filter(&customer_id, query.status.as_deref(), limit, starting_after).await
+        // Get customer ID within transaction
+        let customer_id = self._get_or_create_stripe_customer_with_executor(user_id, &mut transaction).await?;
+
+        // Commit transaction after customer operations
+        transaction.commit().await
+            .map_err(|e| AppError::Database(format!("Failed to commit transaction: {}", e)))?;
+
+        // Pass pagination parameters directly to Stripe API
+        let limit = Some(query.limit as u64);
+        let starting_after = if query.offset > 0 {
+            // For offset-based pagination, we'll need to fetch from the beginning
+            // This is a limitation of Stripe's cursor-based pagination
+            None
+        } else {
+            None
+        };
+
+        // Fetch invoices from Stripe with pagination
+        let invoices = stripe_service.list_invoices_with_filter(&customer_id, query.status.as_deref(), limit, starting_after).await
             .map_err(|e| AppError::External(format!("Failed to get invoices: {}", e)))?;
 
-        // Apply sorting if specified
-        if let Some(sort_field) = &query.sort_field {
-            let sort_desc = query.sort_direction.as_deref() == Some("desc");
-            
-            match sort_field.as_str() {
-                "amount" => {
-                    invoices.sort_by(|a, b| {
-                        let amount_a = a.amount_due.unwrap_or(0);
-                        let amount_b = b.amount_due.unwrap_or(0);
-                        if sort_desc {
-                            amount_b.cmp(&amount_a)
-                        } else {
-                            amount_a.cmp(&amount_b)
-                        }
-                    });
-                }
-                "created" | "createdDate" => {
-                    invoices.sort_by(|a, b| {
-                        let created_a = a.created.unwrap_or(0);
-                        let created_b = b.created.unwrap_or(0);
-                        if sort_desc {
-                            created_b.cmp(&created_a)
-                        } else {
-                            created_a.cmp(&created_b)
-                        }
-                    });
-                }
-                "dueDate" => {
-                    invoices.sort_by(|a, b| {
-                        let due_a = a.due_date.unwrap_or(0);
-                        let due_b = b.due_date.unwrap_or(0);
-                        if sort_desc {
-                            due_b.cmp(&due_a)
-                        } else {
-                            due_a.cmp(&due_b)
-                        }
-                    });
-                }
-                "status" => {
-                    invoices.sort_by(|a, b| {
-                        let status_a = a.status.as_ref().map(|s| format!("{:?}", s)).unwrap_or_default();
-                        let status_b = b.status.as_ref().map(|s| format!("{:?}", s)).unwrap_or_default();
-                        if sort_desc {
-                            status_b.cmp(&status_a)
-                        } else {
-                            status_a.cmp(&status_b)
-                        }
-                    });
-                }
-                _ => {
-                    // Default sort by created date descending for unknown fields
-                    invoices.sort_by(|a, b| {
-                        let created_a = a.created.unwrap_or(0);
-                        let created_b = b.created.unwrap_or(0);
-                        created_b.cmp(&created_a)
-                    });
-                }
-            }
-        } else {
-            // Default sort by created date descending if no sort specified
-            invoices.sort_by(|a, b| {
-                let created_a = a.created.unwrap_or(0);
-                let created_b = b.created.unwrap_or(0);
-                created_b.cmp(&created_a)
-            });
-        }
+        // Calculate has_more based on returned results
+        let has_more = invoices.len() == query.limit as usize;
 
-        // Set summary to default zero values (server-side calculation removed)
+        // Remove InvoiceSummary calculation - client-side responsibility
         let summary = InvoiceSummary {
             total_amount: 0.0,
             paid_amount: 0.0,
@@ -1176,20 +914,8 @@ impl BillingService {
             currency: "usd".to_string(),
         };
 
-        // Apply pagination
-        let total_count = invoices.len();
-        let offset = query.offset as usize;
-        let limit = query.limit as usize;
-        let has_more = offset + limit < total_count;
-
-        let paginated_invoices: Vec<stripe::Invoice> = invoices
-            .into_iter()
-            .skip(offset)
-            .take(limit)
-            .collect();
-
         // Map to the expected frontend structure
-        let invoice_entries: Vec<serde_json::Value> = paginated_invoices
+        let invoice_entries: Vec<serde_json::Value> = invoices
             .into_iter()
             .map(|invoice| {
                 serde_json::json!({
@@ -1217,11 +943,14 @@ impl BillingService {
             })
             .collect();
 
-        // Return structured response
+        // Get count before moving invoice_entries
+        let invoice_count = invoice_entries.len();
+        
+        // Return structured response without server-side total_count (client determines pagination)
         Ok(InvoiceHistoryResponse {
             invoices: invoice_entries,
             summary,
-            total_count,
+            total_count: invoice_count, // Only count of current page
             has_more,
         })
     }
@@ -1243,6 +972,13 @@ impl BillingService {
         // Start a database transaction for atomic updates
         let mut tx = self.db_pools.user_pool.begin().await
             .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
+        
+        // Set user context for RLS within the transaction
+        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
+            .bind(user.id.to_string())
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| AppError::Database(format!("Failed to set user context in transaction: {}", e)))?;
         
         // Find local subscription by user_id
         let mut local_subscription = self.subscription_repository.get_by_user_id_with_executor(&user.id, &mut tx).await?
@@ -1287,8 +1023,8 @@ impl BillingService {
             stripe::SubscriptionStatus::Paused => "paused".to_string(),
         };
         local_subscription.cancel_at_period_end = stripe_sub.cancel_at_period_end;
-        local_subscription.current_period_ends_at = Some(current_period_end);
-        local_subscription.trial_ends_at = trial_end;
+        local_subscription.current_period_end = current_period_end;
+        local_subscription.trial_end = trial_end;
         
         // Enhanced Stripe webhook synchronization fields
         local_subscription.stripe_plan_id = stripe_plan_id;

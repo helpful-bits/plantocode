@@ -104,19 +104,6 @@ impl BillingClient {
         Ok(result)
     }
 
-    /// Get subscription details for the current user
-    pub async fn get_subscription_details(&self) -> Result<SubscriptionDetails, AppError> {
-        debug!("Getting subscription details via BillingClient");
-        
-        let subscription_details = self.make_authenticated_request(
-            "GET",
-            "/api/billing/subscription",
-            None,
-        ).await?;
-        
-        info!("Successfully retrieved subscription details");
-        Ok(subscription_details)
-    }
 
     /// Get consolidated billing dashboard data
     pub async fn get_billing_dashboard_data(&self) -> Result<BillingDashboardData, AppError> {
@@ -413,7 +400,7 @@ impl BillingClient {
             pub balance: f64,
             pub currency: String,
             #[serde(rename = "lastUpdated")]
-            pub last_updated: String,
+            pub last_updated: Option<String>,
         }
         
         // Custom request with debugging to see what we actually get from server
@@ -497,11 +484,65 @@ impl BillingClient {
     pub async fn get_credit_packs(&self) -> Result<CreditPacksResponse, AppError> {
         debug!("Getting credit packs via BillingClient");
         
-        let credit_packs = self.make_authenticated_request(
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct ServerCreditPack {
+            pub id: String,
+            pub name: String,
+            pub value_credits: String,
+            pub price_amount: String,
+            pub currency: String,
+            pub stripe_price_id: String,
+            pub description: Option<String>,
+            pub recommended: bool,
+            pub bonus_percentage: Option<String>,
+            pub is_popular: Option<bool>,
+        }
+        
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct ServerCreditPacksResponse {
+            pub packs: Vec<ServerCreditPack>,
+        }
+        
+        let server_response: ServerCreditPacksResponse = self.make_authenticated_request(
             "GET",
             "/api/billing/credits/packs",
             None,
         ).await?;
+        
+        let packs = server_response.packs
+            .into_iter()
+            .map(|server_pack| {
+                let value_credits = server_pack.value_credits.parse::<f64>()
+                    .map_err(|_| AppError::InvalidResponse("Invalid value_credits format".to_string()))?;
+                
+                let price_amount = server_pack.price_amount.parse::<f64>()
+                    .map_err(|_| AppError::InvalidResponse("Invalid price_amount format".to_string()))?;
+                
+                let bonus_percentage = if let Some(bonus_str) = server_pack.bonus_percentage {
+                    Some(bonus_str.parse::<f64>()
+                        .map_err(|_| AppError::InvalidResponse("Invalid bonus_percentage format".to_string()))?)
+                } else {
+                    None
+                };
+                
+                Ok(crate::commands::billing_commands::CreditPack {
+                    id: server_pack.id,
+                    name: server_pack.name,
+                    value_credits,
+                    price_amount,
+                    currency: server_pack.currency,
+                    stripe_price_id: server_pack.stripe_price_id,
+                    description: server_pack.description,
+                    recommended: server_pack.recommended,
+                    bonus_percentage,
+                    is_popular: server_pack.is_popular,
+                })
+            })
+            .collect::<Result<Vec<_>, AppError>>()?;
+        
+        let credit_packs = CreditPacksResponse { packs };
         
         info!("Successfully retrieved credit packs");
         Ok(credit_packs)

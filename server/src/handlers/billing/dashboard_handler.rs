@@ -31,6 +31,8 @@ pub struct BillingDashboardData {
     pub plan_details: BillingDashboardPlanDetails,
     pub spending_details: BillingDashboardSpendingDetails,
     pub credit_balance_usd: f64,
+    pub subscription_status: String,
+    pub trial_ends_at: Option<String>,
 }
 
 /// Get consolidated billing dashboard data

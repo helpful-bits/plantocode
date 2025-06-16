@@ -95,8 +95,25 @@ pub async fn get_credit_packs(
     let credit_pack_repo = crate::db::repositories::CreditPackRepository::new(billing_service.get_db_pool());
     let credit_packs = credit_pack_repo.get_active_packs().await?;
     
+    let client_packs: Vec<ClientCreditPack> = credit_packs.into_iter().map(|pack| {
+        ClientCreditPack {
+            id: pack.id,
+            name: pack.name,
+            value_credits: pack.value_credits.to_f64().unwrap_or(0.0),
+            price_amount: pack.price_amount.to_f64().unwrap_or(0.0),
+            currency: pack.currency,
+            description: pack.description,
+            recommended: pack.recommended,
+            bonus_percentage: pack.bonus_percentage.map(|bp| bp.to_f64().unwrap_or(0.0)),
+            is_popular: pack.is_popular,
+            is_active: pack.is_active,
+            display_order: pack.display_order,
+            stripe_price_id: pack.stripe_price_id,
+        }
+    }).collect();
+    
     let response = CreditPacksResponse {
-        packs: credit_packs,
+        packs: client_packs,
     };
     
     Ok(HttpResponse::Ok().json(response))
@@ -118,13 +135,13 @@ pub async fn get_credit_balance(
             "userId": user_id.0,
             "balance": credit.balance.to_f64().unwrap_or(0.0),
             "currency": credit.currency,
-            "lastUpdated": credit.updated_at
+            "lastUpdated": credit.updated_at.map(|dt| dt.to_rfc3339())
         }),
         None => serde_json::json!({
             "userId": user_id.0,
             "balance": 0.0,
             "currency": "USD",
-            "lastUpdated": null
+            "lastUpdated": Option::<String>::None
         })
     };
     
@@ -235,8 +252,25 @@ pub struct PaymentIntentResponse {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ClientCreditPack {
+    pub id: String,
+    pub name: String,
+    pub value_credits: f64,
+    pub price_amount: f64,
+    pub currency: String,
+    pub description: Option<String>,
+    pub recommended: bool,
+    pub bonus_percentage: Option<f64>,
+    pub is_popular: Option<bool>,
+    pub is_active: bool,
+    pub display_order: i32,
+    pub stripe_price_id: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CreditPacksResponse {
-    pub packs: Vec<CreditPack>,
+    pub packs: Vec<ClientCreditPack>,
 }
 
 /// Get user's credit statistics

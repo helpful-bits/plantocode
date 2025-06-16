@@ -56,6 +56,14 @@ pub async fn create_billing_portal(
     Ok(HttpResponse::Ok().json(PortalResponse { url }))
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PaymentMethodsResponse {
+    pub total_methods: usize,
+    pub has_default: bool,
+    pub methods: Vec<serde_json::Value>,
+}
+
 /// Get payment methods from Stripe
 #[get("/payment-methods")]
 pub async fn get_payment_methods(
@@ -68,10 +76,11 @@ pub async fn get_payment_methods(
     // Get detailed payment methods with default flag from billing service
     let methods = billing_service.get_detailed_payment_methods(&user_id.0).await?;
     
-    let response = serde_json::json!({
-        "paymentMethods": methods,
-        "hasDefault": methods.iter().any(|m| m["isDefault"].as_bool().unwrap_or(false))
-    });
+    let response = PaymentMethodsResponse {
+        total_methods: methods.len(),
+        has_default: methods.iter().any(|m| m["isDefault"].as_bool().unwrap_or(false)),
+        methods,
+    };
     
     Ok(HttpResponse::Ok().json(response))
 }

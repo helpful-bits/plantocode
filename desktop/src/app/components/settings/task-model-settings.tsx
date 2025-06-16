@@ -13,7 +13,7 @@ import {
   resetProjectSettingToDefault,
 } from "@/actions/project-settings.actions";
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
-import SettingsEnhancementEngine from "./settings-enhancement-engine";
+import SettingsEnhancementEngine from "./enhancement-engine";
 import { TaskSettingsEditor } from "./task-settings-editor";
 
 
@@ -350,6 +350,18 @@ export default function TaskModelSettings({
 
   const [selectedCategory, setSelectedCategory] = useState<'workflow' | 'standalone' | 'bulk-optimization'>('workflow');
   const [selectedTask, setSelectedTask] = useState<string>('regexPatternGeneration');
+
+  const filteredProvidersWithModels = useMemo(() => {
+    if (!providersWithModels) return null;
+    
+    const taskType = taskSettingsKeyToTaskType[selectedTask as keyof TaskSettings];
+    
+    if (taskType === 'voice_transcription') {
+      return providersWithModels.filter(providerWithModels => providerWithModels.provider.code === 'openai_transcription');
+    } else {
+      return providersWithModels.filter(providerWithModels => providerWithModels.provider.code !== 'openai_transcription');
+    }
+  }, [providersWithModels, selectedTask]);
   
   useEffect(() => {
     // Only set default task if current selection doesn't exist in taskSettings
@@ -491,9 +503,6 @@ export default function TaskModelSettings({
               </div>
               
               <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <h3 className="text-sm font-semibold text-foreground">Bulk Optimization Available</h3>
-                </div>
                 <div className="space-y-1 pl-2">
                   <button
                     onClick={() => {
@@ -517,7 +526,7 @@ export default function TaskModelSettings({
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <span>Settings Enhancement</span>
+                        <span>AI Optimizer</span>
                       </div>
                     </div>
                   </button>
@@ -554,13 +563,8 @@ export default function TaskModelSettings({
                     const newSettings = { ...taskSettings };
                     const currentSettings = newSettings[recommendation.taskKey];
                     
-                    if (currentSettings) {
-                      if (recommendation.id.includes('temp')) {
-                        currentSettings.temperature = recommendation.recommendedValue;
-                      } else if (recommendation.id.includes('tokens')) {
-                        currentSettings.maxTokens = recommendation.recommendedValue;
-                      }
-                      
+                    if (currentSettings && recommendation.fieldToChange) {
+                      (currentSettings as any)[recommendation.fieldToChange] = recommendation.recommendedValue;
                       onSettingsChange(newSettings);
                     }
                   }}
@@ -617,7 +621,7 @@ export default function TaskModelSettings({
                   onResetToDefault={(settingName) => handleResetToDefault(taskSettingsKey, settingName)}
                   isDifferentFromDefault={(settingName) => isDifferentFromDefault(taskSettingsKey, settingName)}
                   getSliderValue={(settingName) => getSliderValue(taskSettingsKey, settingName)}
-                  providersWithModels={providersWithModels}
+                  providersWithModels={filteredProvidersWithModels}
                 />
               );
             })()}

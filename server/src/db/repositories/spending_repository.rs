@@ -30,7 +30,7 @@ pub struct UserSpendingLimit {
     pub billing_period_end: DateTime<Utc>,
     pub included_allowance: BigDecimal,
     pub current_spending: BigDecimal,
-    pub hard_limit: BigDecimal,
+    pub hard_limit: Option<BigDecimal>,
     pub services_blocked: bool,
     pub currency: String,
     pub created_at: Option<DateTime<Utc>>,
@@ -88,138 +88,167 @@ impl SpendingRepository {
     }
 
     // UserSpendingLimit methods
-    pub async fn get_user_spending_limit_for_period(&self, user_id: &Uuid, period_start: &DateTime<Utc>, period_end: &DateTime<Utc>) -> Result<Option<UserSpendingLimit>, AppError> {
-        let result = sqlx::query!(
+    pub async fn get_user_spending_limit_for_period(&self, user_id: &Uuid, period_start: &DateTime<Utc>, _period_end: &DateTime<Utc>) -> Result<Option<UserSpendingLimit>, AppError> {
+        let result = sqlx::query_as!(
+            UserSpendingLimit,
             r#"
-            SELECT s.id, s.user_id, s.plan_id, s.created_at, s.updated_at,
-                   sp.included_spending_monthly,
-                   sp.included_spending_weekly,
-                   sp.hard_limit_multiplier,
-                   sp.currency,
-                   COALESCE(SUM(au.cost), 0) as current_spending,
-                   false as services_blocked,
-                   COALESCE(s.current_period_end, s.current_period_ends_at) as current_period_ends_at
-            FROM subscriptions s
-            JOIN subscription_plans sp ON COALESCE(s.stripe_plan_id, s.plan_id) = sp.id
-            LEFT JOIN api_usage au ON s.user_id = au.user_id 
-                AND au.timestamp >= COALESCE(s.current_period_start, s.created_at) 
-                AND au.timestamp <= COALESCE(s.current_period_end, s.current_period_ends_at)
-            WHERE s.user_id = $1 AND s.status = 'active'
-            GROUP BY s.id, s.user_id, s.plan_id, s.created_at, s.updated_at,
-                     sp.included_spending_monthly, sp.included_spending_weekly, 
-                     sp.hard_limit_multiplier, sp.currency, s.current_period_start, 
-                     s.current_period_end, s.current_period_ends_at
+            SELECT id, user_id, plan_id, billing_period_start, billing_period_end,
+                   included_allowance as "included_allowance: BigDecimal", 
+                   current_spending as "current_spending: BigDecimal", 
+                   hard_limit, 
+                   services_blocked,
+                   currency, created_at, updated_at
+            FROM user_spending_limits
+            WHERE user_id = $1 AND billing_period_start = $2
             "#,
-            user_id
+            user_id,
+            period_start
         )
         .fetch_optional(&self.pool)
         .await
         .map_err(|e| AppError::Database(format!("Failed to get user spending limit: {}", e)))?;
 
-        if let Some(row) = result {
-            let included_allowance = row.included_spending_monthly.unwrap_or_else(|| BigDecimal::from(0));
-            let hard_limit = &included_allowance * row.hard_limit_multiplier.unwrap_or_else(|| BigDecimal::from(2));
-            
-            Ok(Some(UserSpendingLimit {
-                id: row.id,
-                user_id: *user_id,
-                plan_id: row.plan_id,
-                included_allowance,
-                hard_limit,
-                current_spending: row.current_spending.unwrap_or_default(),
-                services_blocked: row.services_blocked.unwrap_or(false),
-                currency: row.currency.unwrap_or_else(|| "USD".to_string()),
-                billing_period_start: *period_start,
-                billing_period_end: *period_end,
-                created_at: Some(row.created_at),
-                updated_at: Some(row.updated_at),
-            }))
-        } else {
-            Ok(None)
-        }
+        Ok(result)
     }
 
-    pub async fn get_user_spending_limit_for_period_with_executor(&self, user_id: &Uuid, period_start: &DateTime<Utc>, period_end: &DateTime<Utc>, executor: &mut sqlx::Transaction<'_, sqlx::Postgres>) -> Result<Option<UserSpendingLimit>, AppError> {
-        let result = sqlx::query!(
+    pub async fn get_user_spending_limit_for_period_with_executor(&self, user_id: &Uuid, period_start: &DateTime<Utc>, _period_end: &DateTime<Utc>, executor: &mut sqlx::Transaction<'_, sqlx::Postgres>) -> Result<Option<UserSpendingLimit>, AppError> {
+        let result = sqlx::query_as!(
+            UserSpendingLimit,
             r#"
-            SELECT s.id, s.user_id, s.plan_id, s.created_at, s.updated_at,
-                   sp.included_spending_monthly,
-                   sp.included_spending_weekly,
-                   sp.hard_limit_multiplier,
-                   sp.currency,
-                   COALESCE(SUM(au.cost), 0) as current_spending,
-                   false as services_blocked,
-                   COALESCE(s.current_period_end, s.current_period_ends_at) as current_period_ends_at
-            FROM subscriptions s
-            JOIN subscription_plans sp ON COALESCE(s.stripe_plan_id, s.plan_id) = sp.id
-            LEFT JOIN api_usage au ON s.user_id = au.user_id 
-                AND au.timestamp >= COALESCE(s.current_period_start, s.created_at) 
-                AND au.timestamp <= COALESCE(s.current_period_end, s.current_period_ends_at)
-            WHERE s.user_id = $1 AND s.status = 'active'
-            GROUP BY s.id, s.user_id, s.plan_id, s.created_at, s.updated_at,
-                     sp.included_spending_monthly, sp.included_spending_weekly, 
-                     sp.hard_limit_multiplier, sp.currency, s.current_period_start, 
-                     s.current_period_end, s.current_period_ends_at
+            SELECT id, user_id, plan_id, billing_period_start, billing_period_end,
+                   included_allowance as "included_allowance: BigDecimal", 
+                   current_spending as "current_spending: BigDecimal", 
+                   hard_limit, 
+                   services_blocked,
+                   currency, created_at, updated_at
+            FROM user_spending_limits
+            WHERE user_id = $1 AND billing_period_start = $2
             "#,
-            user_id
+            user_id,
+            period_start
         )
         .fetch_optional(&mut **executor)
         .await
         .map_err(|e| AppError::Database(format!("Failed to get user spending limit: {}", e)))?;
 
-        if let Some(row) = result {
-            let included_allowance = row.included_spending_monthly.unwrap_or_else(|| BigDecimal::from(0));
-            let hard_limit = &included_allowance * row.hard_limit_multiplier.unwrap_or_else(|| BigDecimal::from(2));
-            
-            Ok(Some(UserSpendingLimit {
-                id: row.id,
-                user_id: *user_id,
-                plan_id: row.plan_id,
-                included_allowance,
-                hard_limit,
-                current_spending: row.current_spending.unwrap_or_default(),
-                services_blocked: row.services_blocked.unwrap_or(false),
-                currency: row.currency.unwrap_or_else(|| "USD".to_string()),
-                billing_period_start: *period_start,
-                billing_period_end: *period_end,
-                created_at: Some(row.created_at),
-                updated_at: Some(row.updated_at),
-            }))
-        } else {
-            Ok(None)
-        }
+        Ok(result)
     }
 
-    pub async fn create_or_update_user_spending_limit(&self, user_id: &Uuid, limit_amount: &BigDecimal) -> Result<(), AppError> {
+    pub async fn create_or_update_user_spending_limit(&self, spending_limit: &UserSpendingLimit) -> Result<(), AppError> {
         sqlx::query!(
             r#"
-            UPDATE subscription_plans 
-            SET included_spending_monthly = $2
-            WHERE id = (SELECT plan_id FROM subscriptions WHERE user_id = $1 AND status = 'active')
+            INSERT INTO user_spending_limits (
+                id, user_id, plan_id, billing_period_start, billing_period_end,
+                included_allowance, current_spending, hard_limit, services_blocked, currency
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            ON CONFLICT (user_id, billing_period_start)
+            DO UPDATE SET
+                plan_id = EXCLUDED.plan_id,
+                billing_period_end = EXCLUDED.billing_period_end,
+                included_allowance = EXCLUDED.included_allowance,
+                current_spending = EXCLUDED.current_spending,
+                hard_limit = EXCLUDED.hard_limit,
+                services_blocked = EXCLUDED.services_blocked,
+                currency = EXCLUDED.currency,
+                updated_at = NOW()
             "#,
-            user_id,
-            limit_amount
+            spending_limit.id,
+            spending_limit.user_id,
+            spending_limit.plan_id,
+            spending_limit.billing_period_start,
+            spending_limit.billing_period_end,
+            spending_limit.included_allowance,
+            spending_limit.current_spending,
+            spending_limit.hard_limit,
+            spending_limit.services_blocked,
+            spending_limit.currency
         )
         .execute(&self.pool)
         .await
-        .map_err(|e| AppError::Database(format!("Failed to update spending limit: {}", e)))?;
+        .map_err(|e| AppError::Database(format!("Failed to create or update spending limit: {}", e)))?;
 
         Ok(())
     }
 
-    pub async fn create_or_update_user_spending_limit_with_executor(&self, user_id: &Uuid, limit_amount: &BigDecimal, executor: &mut sqlx::Transaction<'_, sqlx::Postgres>) -> Result<(), AppError> {
+    pub async fn create_or_update_user_spending_limit_with_executor(&self, spending_limit: &UserSpendingLimit, executor: &mut sqlx::Transaction<'_, sqlx::Postgres>) -> Result<(), AppError> {
         sqlx::query!(
             r#"
-            UPDATE subscription_plans 
-            SET included_spending_monthly = $2
-            WHERE id = (SELECT plan_id FROM subscriptions WHERE user_id = $1 AND status = 'active')
+            INSERT INTO user_spending_limits (
+                id, user_id, plan_id, billing_period_start, billing_period_end,
+                included_allowance, current_spending, hard_limit, services_blocked, currency
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            ON CONFLICT (user_id, billing_period_start)
+            DO UPDATE SET
+                plan_id = EXCLUDED.plan_id,
+                billing_period_end = EXCLUDED.billing_period_end,
+                included_allowance = EXCLUDED.included_allowance,
+                current_spending = EXCLUDED.current_spending,
+                hard_limit = EXCLUDED.hard_limit,
+                services_blocked = EXCLUDED.services_blocked,
+                currency = EXCLUDED.currency,
+                updated_at = NOW()
             "#,
-            user_id,
-            limit_amount
+            spending_limit.id,
+            spending_limit.user_id,
+            spending_limit.plan_id,
+            spending_limit.billing_period_start,
+            spending_limit.billing_period_end,
+            spending_limit.included_allowance,
+            spending_limit.current_spending,
+            spending_limit.hard_limit,
+            spending_limit.services_blocked,
+            spending_limit.currency
         )
         .execute(&mut **executor)
         .await
-        .map_err(|e| AppError::Database(format!("Failed to update spending limit: {}", e)))?;
+        .map_err(|e| AppError::Database(format!("Failed to create or update spending limit: {}", e)))?;
+
+        Ok(())
+    }
+
+    pub async fn increment_spending_with_executor(&self, user_id: &Uuid, billing_period_start: &DateTime<Utc>, amount: &BigDecimal, executor: &mut sqlx::Transaction<'_, sqlx::Postgres>) -> Result<UserSpendingLimit, AppError> {
+        let result = sqlx::query_as!(
+            UserSpendingLimit,
+            r#"
+            UPDATE user_spending_limits
+            SET current_spending = current_spending + $3,
+                updated_at = NOW()
+            WHERE user_id = $1 AND billing_period_start = $2
+            RETURNING id, user_id, plan_id, billing_period_start, billing_period_end,
+                      included_allowance as "included_allowance: BigDecimal", 
+                      current_spending as "current_spending: BigDecimal", 
+                      hard_limit, 
+                      services_blocked,
+                      currency, created_at, updated_at
+            "#,
+            user_id,
+            billing_period_start,
+            amount
+        )
+        .fetch_one(&mut **executor)
+        .await
+        .map_err(|e| AppError::Database(format!("Failed to increment spending: {}", e)))?;
+
+        Ok(result)
+    }
+
+    pub async fn update_services_blocked_status_with_executor(&self, user_id: &Uuid, billing_period_start: &DateTime<Utc>, services_blocked: bool, executor: &mut sqlx::Transaction<'_, sqlx::Postgres>) -> Result<(), AppError> {
+        sqlx::query!(
+            r#"
+            UPDATE user_spending_limits
+            SET services_blocked = $3,
+                updated_at = NOW()
+            WHERE user_id = $1 AND billing_period_start = $2
+            "#,
+            user_id,
+            billing_period_start,
+            services_blocked
+        )
+        .execute(&mut **executor)
+        .await
+        .map_err(|e| AppError::Database(format!("Failed to update services blocked status: {}", e)))?;
 
         Ok(())
     }

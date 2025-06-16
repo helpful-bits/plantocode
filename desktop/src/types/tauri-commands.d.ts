@@ -637,7 +637,6 @@ export type TauriInvoke = {
   "initialize_system_prompts_from_server": (args: InitializeSystemPromptsFromServerCommandArgs) => Promise<void>;
   
   // Billing commands
-  "get_subscription_details_command": () => Promise<SubscriptionDetails>;
   "get_subscription_plans_command": () => Promise<SubscriptionPlan[]>;
   "create_checkout_session_command": (args: { plan: string }) => Promise<CheckoutSessionResponse>;
   "create_billing_portal_command": () => Promise<BillingPortalResponse>;
@@ -861,7 +860,7 @@ export interface CreditBalanceResponse {
   userId: string;
   balance: number;
   currency: string;
-  lastUpdated: string;
+  lastUpdated: string | null;
 }
 
 export interface CreditTransactionEntry {
@@ -1060,13 +1059,14 @@ export interface PaymentMethod {
     expMonth: number;
     expYear: number;
   } | null;
+  created: number;
   isDefault: boolean;
-  createdDate: string;
 }
 
 export interface PaymentMethodsResponse {
-  paymentMethods: PaymentMethod[];
+  totalMethods: number;
   hasDefault: boolean;
+  methods: PaymentMethod[];
 }
 
 export interface BillingAddress {
@@ -1149,6 +1149,8 @@ export interface BillingDashboardData {
   planDetails: BillingDashboardPlanDetails;
   spendingDetails: BillingDashboardSpendingDetails;
   creditBalanceUsd: number;
+  subscriptionStatus: string;
+  trialEndsAt?: string;
 }
 
 // Strongly typed invoke function

@@ -56,13 +56,6 @@ impl CreditTransactionRepository {
         transaction: &CreditTransaction,
         executor: &mut sqlx::Transaction<'_, sqlx::Postgres>
     ) -> Result<CreditTransaction, AppError> {
-        // Set user context for RLS within this transaction
-        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
-            .bind(transaction.user_id.to_string())
-            .execute(&mut **executor)
-            .await
-            .map_err(|e| AppError::Database(format!("Failed to set user context for RLS: {}", e)))?;
-
         let result = sqlx::query_as!(
             CreditTransaction,
             r#"
@@ -108,13 +101,6 @@ impl CreditTransactionRepository {
         offset: i64,
         executor: &mut sqlx::Transaction<'_, sqlx::Postgres>
     ) -> Result<Vec<CreditTransaction>, AppError> {
-        // Set user context for RLS within this transaction
-        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
-            .bind(user_id.to_string())
-            .execute(&mut **executor)
-            .await
-            .map_err(|e| AppError::Database(format!("Failed to set user context for RLS: {}", e)))?;
-
         let results = sqlx::query_as!(
             CreditTransaction,
             r#"
@@ -154,13 +140,6 @@ impl CreditTransactionRepository {
         limit: i64,
         executor: &mut sqlx::Transaction<'_, sqlx::Postgres>
     ) -> Result<Vec<CreditTransaction>, AppError> {
-        // Set user context for RLS within this transaction
-        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
-            .bind(user_id.to_string())
-            .execute(&mut **executor)
-            .await
-            .map_err(|e| AppError::Database(format!("Failed to set user context for RLS: {}", e)))?;
-
         let results = sqlx::query_as!(
             CreditTransaction,
             r#"
@@ -198,13 +177,6 @@ impl CreditTransactionRepository {
         user_id: &Uuid,
         executor: &mut sqlx::Transaction<'_, sqlx::Postgres>
     ) -> Result<CreditTransactionStats, AppError> {
-        // Set user context for RLS within this transaction
-        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
-            .bind(user_id.to_string())
-            .execute(&mut **executor)
-            .await
-            .map_err(|e| AppError::Database(format!("Failed to set user context for RLS: {}", e)))?;
-
         let result = sqlx::query!(
             r#"
             SELECT 
@@ -247,13 +219,6 @@ impl CreditTransactionRepository {
         user_id: &Uuid,
         executor: &mut sqlx::Transaction<'_, sqlx::Postgres>
     ) -> Result<Option<CreditTransaction>, AppError> {
-        // Set user context for RLS within this transaction
-        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
-            .bind(user_id.to_string())
-            .execute(&mut **executor)
-            .await
-            .map_err(|e| AppError::Database(format!("Failed to set user context for RLS: {}", e)))?;
-
         let result = sqlx::query_as!(
             CreditTransaction,
             r#"
@@ -310,13 +275,6 @@ impl CreditTransactionRepository {
         user_id: &Uuid,
         executor: &mut sqlx::Transaction<'_, sqlx::Postgres>
     ) -> Result<Vec<CreditTransaction>, AppError> {
-        // Set user context for RLS within this transaction
-        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
-            .bind(user_id.to_string())
-            .execute(&mut **executor)
-            .await
-            .map_err(|e| AppError::Database(format!("Failed to set user context for RLS: {}", e)))?;
-
         let results = sqlx::query_as!(
             CreditTransaction,
             r#"
@@ -341,13 +299,6 @@ impl CreditTransactionRepository {
     pub async fn count_transactions(&self, user_id: &Uuid) -> Result<i64, AppError> {
         let mut tx = self.pool.begin().await
             .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
-
-        // Set user context for RLS within this transaction
-        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
-            .bind(user_id.to_string())
-            .execute(&mut *tx)
-            .await
-            .map_err(|e| AppError::Database(format!("Failed to set user context for RLS: {}", e)))?;
 
         let result = sqlx::query!(
             r#"

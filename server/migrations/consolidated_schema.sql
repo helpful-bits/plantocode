@@ -39,19 +39,20 @@ CREATE TABLE IF NOT EXISTS subscriptions (
     stripe_subscription_id VARCHAR(255),
     plan_id VARCHAR(50) NOT NULL,
     status VARCHAR(50) NOT NULL, -- 'trialing', 'active', 'canceled', 'past_due'
-    trial_ends_at TIMESTAMP WITH TIME ZONE,
-    current_period_ends_at TIMESTAMP WITH TIME ZONE NOT NULL,
     pending_plan_id VARCHAR(255),
     cancel_at_period_end BOOLEAN NOT NULL DEFAULT false,
-    services_blocked BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
     -- Enhanced subscription fields for better Stripe synchronization
-    stripe_plan_id VARCHAR(255) NOT NULL,
+    stripe_plan_id VARCHAR(255),
     current_period_start TIMESTAMP WITH TIME ZONE NOT NULL,
     current_period_end TIMESTAMP WITH TIME ZONE NOT NULL,
     trial_start TIMESTAMP WITH TIME ZONE,
     trial_end TIMESTAMP WITH TIME ZONE,
+    -- New subscription management fields
+    version INTEGER NOT NULL DEFAULT 1,
+    management_state VARCHAR(50) DEFAULT 'active',
+    pending_payment_intent_secret VARCHAR(255),
     CONSTRAINT fk_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
@@ -159,7 +160,6 @@ CREATE INDEX IF NOT EXISTS idx_users_auth0_user_id ON users(auth0_user_id);
 CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user_id ON refresh_tokens(user_id);
 CREATE INDEX IF NOT EXISTS idx_subscriptions_user_id ON subscriptions(user_id);
 CREATE INDEX IF NOT EXISTS idx_subscriptions_status ON subscriptions(status);
-CREATE INDEX IF NOT EXISTS idx_subscriptions_services_blocked ON subscriptions(services_blocked) WHERE services_blocked = TRUE;
 CREATE INDEX IF NOT EXISTS idx_subscriptions_stripe_plan_id ON subscriptions(stripe_plan_id);
 CREATE INDEX IF NOT EXISTS idx_subscriptions_current_period_end ON subscriptions(current_period_end);
 CREATE INDEX IF NOT EXISTS idx_subscriptions_trial_end ON subscriptions(trial_end);
@@ -208,8 +208,8 @@ INSERT INTO providers (code, name, description, website_url, api_base_url, capab
 ('anthropic', 'Anthropic', 'AI safety focused company providing Claude models', 'https://anthropic.com', 'https://api.anthropic.com', '{"text": true, "chat": true, "reasoning": true}', 'active'),
 ('openai', 'OpenAI', 'Leading AI research company providing GPT models', 'https://openai.com', 'https://api.openai.com', '{"text": true, "chat": true, "image": true, "code": true}', 'active'),
 ('google', 'Google', 'Google AI providing Gemini models', 'https://ai.google.dev', 'https://generativelanguage.googleapis.com', '{"text": true, "chat": true, "multimodal": true, "code": true}', 'active'),
-('groq', 'Groq', 'High-performance AI inference platform', 'https://groq.com', 'https://api.groq.com', '{"transcription": true, "fast_inference": true}', 'active'),
-('deepseek', 'DeepSeek', 'DeepSeek AI providing reasoning models', 'https://deepseek.com', 'https://api.deepseek.com', '{"reasoning": true, "code": true}', 'active')
+('deepseek', 'DeepSeek', 'DeepSeek AI providing reasoning models', 'https://deepseek.com', 'https://api.deepseek.com', '{"reasoning": true, "code": true}', 'active'),
+('openai_transcription', 'Transcription', 'Dedicated transcription services', 'https://openai.com', 'https://api.openai.com', '{"transcription": true, "audio_processing": true}', 'active')
 ON CONFLICT (code) DO NOTHING;
 
 -- Create models table with proper provider relationships
@@ -273,10 +273,8 @@ VALUES
 ('deepseek/deepseek-r1-distill-qwen-14b', 'DeepSeek R1 Distill Qwen 14B', 32768, 0.000070, 0.000140, 'token_based', 0.000000, 0, 'tokens', (SELECT id FROM providers WHERE code = 'deepseek'), 'reasoning', '{"text_generation": true, "code_generation": true, "reasoning": true}', 'active', 'DeepSeek R1 Distilled Qwen 14B - Compact reasoning model'),
 
 -- Transcription models
-('openai/gpt-4o-transcribe',       'GPT-4o Transcribe (OpenAI via Replicate)', 0, 0.000000, 0.000000, 'duration_based', 0.050000, 10, 'seconds', (SELECT id FROM providers WHERE code = 'openai'), 'transcription', '{"transcription": true, "audio_processing": true, "multi_language": true}', 'active', 'OpenAI GPT-4o based transcription model hosted on Replicate'),
-('groq/whisper-large-v3',          'Whisper Large V3 (Groq)',          0, 0.000000, 0.000000, 'duration_based', 0.111000, 10, 'hours', (SELECT id FROM providers WHERE code = 'groq'), 'transcription', '{"transcription": true, "audio_processing": true}', 'active', 'High-accuracy audio transcription model'),
-('groq/whisper-large-v3-turbo',    'Whisper Large V3 Turbo (Groq)',    0, 0.000000, 0.000000, 'duration_based', 0.040000, 10, 'hours', (SELECT id FROM providers WHERE code = 'groq'), 'transcription', '{"transcription": true, "audio_processing": true}', 'active', 'Fast audio transcription model'),
-('groq/distil-whisper-large-v3-en', 'Distil-Whisper Large V3 English (Groq)', 0, 0.000000, 0.000000, 'duration_based', 0.020000, 10, 'hours', (SELECT id FROM providers WHERE code = 'groq'), 'transcription', '{"transcription": true, "audio_processing": true}', 'active', 'Efficient English transcription model')
+('openai/gpt-4o-transcribe',       'GPT-4o Transcribe', 0, 0.000000, 0.000000, 'duration_based', 0.050000, 10, 'seconds', (SELECT id FROM providers WHERE code = 'openai_transcription'), 'transcription', '{"transcription": true, "audio_processing": true, "multi_language": true}', 'active', 'OpenAI GPT-4o based transcription model'),
+('openai/gpt-4o-mini-transcribe',  'GPT-4o Mini Transcribe', 0, 0.000000, 0.000000, 'duration_based', 0.025000, 10, 'seconds', (SELECT id FROM providers WHERE code = 'openai_transcription'), 'transcription', '{"transcription": true, "audio_processing": true, "multi_language": true}', 'active', 'OpenAI GPT-4o Mini based transcription model for cost-effective transcription')
 
 ON CONFLICT (id) DO UPDATE SET
 name                       = EXCLUDED.name,
@@ -749,6 +747,31 @@ ON CONFLICT (config_key) DO UPDATE SET
   description = EXCLUDED.description,
   updated_at = CURRENT_TIMESTAMP;
 
+-- User spending limits table for granular billing period tracking
+CREATE TABLE IF NOT EXISTS user_spending_limits (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    plan_id VARCHAR(50) NOT NULL REFERENCES subscription_plans(id) ON DELETE CASCADE,
+    billing_period_start TIMESTAMPTZ NOT NULL,
+    billing_period_end TIMESTAMPTZ NOT NULL,
+    included_allowance DECIMAL(12, 4) NOT NULL DEFAULT 0.0000,
+    current_spending DECIMAL(12, 4) NOT NULL DEFAULT 0.0000,
+    hard_limit DECIMAL(12, 4),
+    services_blocked BOOLEAN NOT NULL DEFAULT FALSE,
+    currency VARCHAR(3) NOT NULL DEFAULT 'USD',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT fk_user_spending_limits_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_user_spending_limits_plan FOREIGN KEY (plan_id) REFERENCES subscription_plans(id) ON DELETE CASCADE,
+    CONSTRAINT unique_user_billing_period UNIQUE (user_id, billing_period_start)
+);
+
+-- Indexes for user_spending_limits table
+CREATE INDEX IF NOT EXISTS idx_user_spending_limits_user_id ON user_spending_limits(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_spending_limits_billing_period_start ON user_spending_limits(billing_period_start);
+CREATE INDEX IF NOT EXISTS idx_user_spending_limits_services_blocked ON user_spending_limits(services_blocked) WHERE services_blocked = TRUE;
+CREATE INDEX IF NOT EXISTS idx_user_spending_limits_plan_id ON user_spending_limits(plan_id);
+
 -- Enhanced billing tables for 100% implementation
 
 -- Audit logs table for tracking subscription management operations
@@ -1185,6 +1208,30 @@ WITH CHECK (user_id = get_current_user_id());
 
 -- user_preferences.user_id is PK, indexed.
 
+-- RLS for user_spending_limits table
+ALTER TABLE user_spending_limits ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can select their own spending limits"
+ON user_spending_limits FOR SELECT
+TO authenticated
+USING (user_id = get_current_user_id());
+
+CREATE POLICY "Users can insert their own spending limits"
+ON user_spending_limits FOR INSERT
+TO authenticated
+WITH CHECK (user_id = get_current_user_id());
+
+CREATE POLICY "Users can update their own spending limits"
+ON user_spending_limits FOR UPDATE
+TO authenticated
+USING (user_id = get_current_user_id())
+WITH CHECK (user_id = get_current_user_id());
+
+CREATE POLICY "App can manage user spending limits"
+ON user_spending_limits FOR ALL
+TO vibe_manager_app
+USING (true);
+
 -- RLS for providers table
 ALTER TABLE providers ENABLE ROW LEVEL SECURITY;
 
@@ -1607,8 +1654,10 @@ GRANT SELECT, INSERT, UPDATE ON api_quotas TO authenticated;
 GRANT SELECT, INSERT, UPDATE ON user_credits TO authenticated;
 GRANT SELECT, INSERT ON credit_transactions TO authenticated;
 GRANT SELECT ON audit_logs TO authenticated;
+GRANT SELECT, INSERT, UPDATE ON user_spending_limits TO authenticated;
 GRANT SELECT, INSERT, UPDATE ON webhook_idempotency TO vibe_manager_app;
 GRANT SELECT, INSERT, UPDATE ON audit_logs TO vibe_manager_app;
+GRANT SELECT, INSERT, UPDATE ON user_spending_limits TO vibe_manager_app;
 
 -- User billing details table for invoice customization
 
@@ -1639,10 +1688,8 @@ ON CONFLICT (language_code) DO UPDATE SET
 -- Insert available transcription models
 INSERT INTO transcription_model_preferences (model_id, model_name, provider_name, is_available, supports_prompt, supports_temperature, supports_language_detection, max_audio_duration_seconds, supported_formats, pricing_type, cost_per_minute, display_order)
 VALUES 
-('openai/gpt-4o-transcribe', 'GPT-4o Transcribe (OpenAI via Replicate)', 'OpenAI', TRUE, TRUE, TRUE, TRUE, 600, 'mp3,wav,m4a,webm,ogg,flac', 'duration_based', 0.050, 1),
-('groq/whisper-large-v3-turbo', 'Whisper Large V3 Turbo', 'Groq', TRUE, TRUE, TRUE, TRUE, 600, 'mp3,wav,m4a,webm,ogg,flac', 'duration_based', 0.040, 2),
-('groq/whisper-large-v3', 'Whisper Large V3', 'Groq', TRUE, TRUE, TRUE, TRUE, 600, 'mp3,wav,m4a,webm,ogg,flac', 'duration_based', 0.111, 3),
-('groq/distil-whisper-large-v3-en', 'Distil-Whisper Large V3 (English)', 'Groq', TRUE, TRUE, TRUE, FALSE, 600, 'mp3,wav,m4a,webm,ogg,flac', 'duration_based', 0.020, 4)
+('openai/gpt-4o-transcribe', 'GPT-4o Transcribe (OpenAI via Replicate)', 'Transcription', TRUE, TRUE, TRUE, TRUE, 600, 'mp3,wav,m4a,webm,ogg,flac', 'duration_based', 0.050, 1),
+('openai/gpt-4o-mini-transcribe', 'GPT-4o Mini Transcribe', 'Transcription', TRUE, TRUE, TRUE, TRUE, 600, 'mp3,wav,m4a,webm,ogg,flac', 'duration_based', 0.025, 2)
 ON CONFLICT (model_id) DO UPDATE SET
     model_name = EXCLUDED.model_name,
     provider_name = EXCLUDED.provider_name,

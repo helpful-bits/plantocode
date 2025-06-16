@@ -70,13 +70,20 @@ export function useBillingData(): UseBillingDataReturn {
           message: 'AI services are currently blocked due to spending limits.',
           type: 'error',
         });
+      } else if (!errorMessage.includes('spending_limit_exceeded') && !errorMessage.includes('services_blocked')) {
+        // Show toast notification for non-critical errors
+        showNotification({
+          title: 'Billing Data Update',
+          message: 'Unable to fetch latest billing data. Showing cached information.',
+          type: 'warning',
+        });
       }
     } finally {
       if (isMountedRef.current && !signal.aborted) {
         setIsLoading(false);
       }
     }
-  }, []); // Remove showNotification dependency to prevent re-renders
+  }, [showNotification]); // Include showNotification dependency for toast notifications
 
   const refreshBillingData = useCallback(async () => {
     // Always fetch fresh data - no caching for billing information

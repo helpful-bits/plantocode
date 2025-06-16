@@ -76,10 +76,15 @@ pub async fn get_desktop_runtime_ai_config(
     let models_with_providers = app_state.model_repository.get_all_with_providers().await
         .map_err(|e| AppError::Internal(format!("Failed to fetch models from database: {}", e)))?;
     
-    // Group models by provider
+    // Partition models by type: transcription vs others
+    let (transcription_models, regular_models): (Vec<_>, Vec<_>) = models_with_providers
+        .into_iter()
+        .partition(|model| model.model_type == "transcription");
+    
+    // Group regular models by provider
     let mut provider_models: HashMap<String, ProviderWithModels> = HashMap::new();
     
-    for model in models_with_providers.iter() {
+    for model in regular_models.iter() {
         let input_price = model.price_input
             .to_f64()
             .ok_or_else(|| AppError::Internal(format!("Invalid input price for model {}", model.id)))?;
@@ -109,7 +114,44 @@ pub async fn get_desktop_runtime_ai_config(
             .models.push(desktop_model);
     }
     
-    let providers: Vec<ProviderWithModels> = provider_models.into_values().collect();
+    let mut providers: Vec<ProviderWithModels> = provider_models.into_values().collect();
+    
+    // Create synthetic transcription provider if there are transcription models
+    if !transcription_models.is_empty() {
+        let mut transcription_provider_models = Vec::new();
+        
+        for model in transcription_models.iter() {
+            let input_price = model.price_input
+                .to_f64()
+                .ok_or_else(|| AppError::Internal(format!("Invalid input price for model {}", model.id)))?;
+            let output_price = model.price_output
+                .to_f64()
+                .ok_or_else(|| AppError::Internal(format!("Invalid output price for model {}", model.id)))?;
+            
+            let desktop_model = DesktopModelInfo {
+                id: model.id.clone(),
+                name: model.name.clone(),
+                provider: model.provider_code.clone(),
+                provider_name: model.provider_name.clone(),
+                description: model.description.clone(),
+                context_window: Some(model.context_window as u32),
+                price_per_input_token: input_price / 1000.0,
+                price_per_output_token: output_price / 1000.0,
+            };
+            
+            transcription_provider_models.push(desktop_model);
+        }
+        
+        let transcription_provider = ProviderWithModels {
+            provider: ProviderInfo {
+                code: "openai_transcription".to_string(),
+                name: "Transcription".to_string(),
+            },
+            models: transcription_provider_models,
+        };
+        
+        providers.push(transcription_provider);
+    }
     
     // Get task-specific configs directly from database (NO JSON!)
     let task_configs = settings_repo.get_ai_model_settings().await
