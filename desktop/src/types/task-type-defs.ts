@@ -23,7 +23,6 @@ export type TaskType =
   | "local_file_filtering"
   | "file_relevance_assessment"
   | "extended_path_finder"
-  | "subscription_lifecycle"
   | "unknown";
 
 // Task types that support system prompts (LLM tasks only)
@@ -56,7 +55,6 @@ export const ALL_TASK_TYPES: readonly TaskType[] = [
   "local_file_filtering",
   "file_relevance_assessment",
   "extended_path_finder",
-  "subscription_lifecycle",
   "unknown",
 ] as const;
 
@@ -203,14 +201,6 @@ export const TaskTypeDetails: Record<TaskType, {
     category: "Workflow Stage",
     description: "Comprehensive file discovery with deeper analysis",
     defaultProvider: "google"
-  },
-  subscription_lifecycle: { 
-    requiresLlm: false, 
-    displayName: "Subscription Lifecycle", 
-    category: "Billing",
-    description: "Subscription management operations",
-    hidden: true,
-    apiType: "local"
   },
   
   // Fallback

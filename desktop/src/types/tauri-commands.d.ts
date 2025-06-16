@@ -552,7 +552,6 @@ export interface BatchTranscriptionResponse {
 // Tauri invoke function type
 export type TauriInvoke = {
   "get_database_info_command": () => Promise<DatabaseInfo>;
-  "is_keyring_onboarding_required": () => Promise<boolean>;
   "trigger_initial_keychain_access": () => Promise<void>;
   "get_storage_mode": () => Promise<boolean>;
   "start_auth0_login_flow": (args: StartAuth0LoginFlowArgs) => Promise<Auth0LoginResult>;
@@ -637,52 +636,35 @@ export type TauriInvoke = {
   "initialize_system_prompts_from_server": (args: InitializeSystemPromptsFromServerCommandArgs) => Promise<void>;
   
   // Billing commands
+  "get_billing_dashboard_data_command": () => Promise<BillingDashboardData>;
   "get_subscription_plans_command": () => Promise<SubscriptionPlan[]>;
-  "create_checkout_session_command": (args: { plan: string }) => Promise<CheckoutSessionResponse>;
-  "create_billing_portal_command": () => Promise<BillingPortalResponse>;
-  "create_billing_portal_session_command": () => Promise<string>;
-  "get_spending_status_command": () => Promise<SpendingStatusInfo>;
-  "acknowledge_spending_alert_command": (args: { alertId: string }) => Promise<boolean>;
-  "update_spending_limits_command": (args: UpdateSpendingLimitsRequest) => Promise<UpdateSpendingLimitsResponse>;
-  "get_invoice_history_command": (args?: InvoiceHistoryRequest) => Promise<InvoiceHistoryResponse>;
   "get_spending_history_command": () => Promise<SpendingHistoryResponse>;
+  "check_service_access_command": () => Promise<ServiceAccessResponse>;
   "get_spending_analytics_command": (args?: { periodMonths?: number }) => Promise<SpendingAnalyticsResponse>;
   "get_spending_forecast_command": (args?: { monthsAhead?: number }) => Promise<SpendingForecastResponse>;
   "get_payment_methods_command": () => Promise<PaymentMethodsResponse>;
-  "check_service_access_command": () => Promise<ServiceAccessResponse>;
   
   // Credit system commands
-  "get_credit_balance_command": () => Promise<CreditBalanceResponse>;
   "get_credit_history_command": (args: { limit?: number; offset?: number }) => Promise<CreditHistoryResponse>;
   "get_credit_packs_command": () => Promise<CreditPacksResponse>;
+  "get_credit_balance_command": () => Promise<CreditBalanceResponse>;
   "get_credit_stats_command": () => Promise<CreditStats>;
-  "purchase_credits_command": (args: { stripePriceId: string }) => Promise<CheckoutSessionResponse>;
   
-  // Modern PaymentIntent-based commands (2024)
   "create_credit_payment_intent_command": (args: CreatePaymentIntentRequest) => Promise<PaymentIntentResponse>;
   "create_subscription_intent_command": (args: CreateSubscriptionIntentRequest) => Promise<SubscriptionIntentResponse>;
   "create_setup_intent_command": () => Promise<SetupIntentResponse>;
   "confirm_payment_status_command": (args: { paymentIntentId: string }) => Promise<any>;
   "get_stripe_publishable_key_command": () => Promise<string>;
   
-  // Subscription lifecycle management
-  "change_subscription_plan_command": (args: ChangeSubscriptionPlanRequest) => Promise<SubscriptionDetails>;
-  "preview_subscription_change_command": (args: { newPlanId: string }) => Promise<PreviewSubscriptionChangeResponse>;
-  "cancel_subscription_command": (args: CancelSubscriptionRequest) => Promise<SubscriptionDetails>;
-  "resume_subscription_command": () => Promise<SubscriptionDetails>;
-  "reactivate_subscription_command": (args?: { planId?: string }) => Promise<SubscriptionDetails>;
-  "get_subscription_pending_payment_command": () => Promise<PendingPaymentInfo>;
-  "complete_pending_payment_command": () => Promise<CompletePendingPaymentResponse>;
+  // Billing health monitoring
+  "check_billing_health_command": (args: CheckBillingHealthCommandArgs) => Promise<BillingHealthStatus>;
+  "ping_billing_service_command": (args: PingBillingServiceCommandArgs) => Promise<boolean>;
   
-  // Billing details and invoice customization
-  "get_billing_details_command": () => Promise<BillingDetails>;
-  "update_billing_details_command": (args: UpdateBillingDetailsRequest) => Promise<BillingDetails>;
-  "get_invoice_settings_command": () => Promise<InvoiceSettings>;
-  "update_invoice_settings_command": (args: UpdateInvoiceSettingsRequest) => Promise<InvoiceSettings>;
+  // Subscription lifecycle management
+  "get_usage_summary_command": () => Promise<any>;
+  "create_billing_portal_session_command": () => Promise<BillingPortalResponse>;
   
   // Payment method management commands
-  "delete_payment_method_command": (args: { id: string }) => Promise<void>;
-  "set_default_payment_method_command": (args: { id: string }) => Promise<void>;
   
   // File Finder Workflow commands
   "start_file_finder_workflow": (args: StartFileFinderWorkflowCommandArgs) => Promise<import("@/types/workflow-types").WorkflowCommandResponse>;
@@ -695,12 +677,6 @@ export type TauriInvoke = {
   "get_workflow_details_command": (args: GetWorkflowDetailsCommandArgs) => Promise<import("@/types/workflow-types").WorkflowStatusResponse | null>;
   "retry_workflow_stage_command": (args: RetryWorkflowStageCommandArgs) => Promise<string>;
   "cancel_workflow_stage_command": (args: CancelWorkflowStageCommandArgs) => Promise<void>;
-  // Billing health monitoring commands
-  "check_billing_health_command": (args: CheckBillingHealthCommandArgs) => Promise<BillingHealthStatus>;
-  "ping_billing_service_command": (args: PingBillingServiceCommandArgs) => Promise<boolean>;
-  
-  // Consolidated billing dashboard command
-  "get_billing_dashboard_data_command": () => Promise<BillingDashboardData>;
 };
 
 // Billing-related types
@@ -747,63 +723,11 @@ export interface UsageInfo {
   currency: string;
 }
 
-export interface CheckoutSessionResponse {
-  url: string;
-}
-
 export interface BillingPortalResponse {
   url: string;
 }
 
-export interface SpendingStatusInfo {
-  currentSpending: number;
-  includedAllowance: number;
-  remainingAllowance: number;
-  overageAmount: number;
-  usagePercentage: number;
-  servicesBlocked: boolean;
-  hardLimit: number;
-  nextBillingDate: string;
-  currency: string;
-  alerts: SpendingAlert[];
-  creditBalance: number;
-}
 
-export interface SpendingAlert {
-  id: string;
-  alertType: string;
-  thresholdAmount: number;
-  currentSpending: number;
-  alertSentAt: string;
-  acknowledged: boolean;
-}
-
-export interface InvoiceHistoryEntry {
-  id: string;
-  amount: number;
-  currency: string;
-  status: string;
-  createdDate: string;
-  dueDate?: string;
-  paidDate?: string;
-  invoicePdf?: string;
-  description: string;
-}
-
-export interface InvoiceSummary {
-  totalAmount: number;
-  paidAmount: number;
-  outstandingAmount: number;
-  overdueAmount: number;
-  overdueCount: number;
-}
-
-export interface InvoiceHistoryResponse {
-  invoices: InvoiceHistoryEntry[];
-  totalCount: number;
-  hasMore: boolean;
-  summary?: InvoiceSummary;
-}
 
 // Database health and maintenance result types
 export interface DatabaseHealthResult {
@@ -906,7 +830,6 @@ export interface CreditStats {
   currency: string;
 }
 
-// Modern PaymentIntent types (2024)
 export interface PaymentIntentResponse {
   clientSecret: string;
   publishableKey: string;
@@ -939,25 +862,6 @@ export interface SubscriptionIntentResponse {
 }
 
 // Subscription lifecycle management types
-export interface ChangeSubscriptionPlanRequest {
-  newPlanId?: string;
-  cancelAtPeriodEnd?: boolean;
-  prorationBehavior?: string; // "create_prorations", "none", "always_invoice"
-}
-
-export interface PreviewSubscriptionChangeResponse {
-  immediateCharge?: number;
-  prorationCredit?: number;
-  netAmount: number;
-  currency: string;
-  invoicePreview: any;
-}
-
-export interface CancelSubscriptionRequest {
-  immediate: boolean;
-  invoiceNow?: boolean;
-  prorate?: boolean;
-}
 
 export interface PendingPaymentInfo {
   hasPendingPayment: boolean;
@@ -975,31 +879,17 @@ export interface CompletePendingPaymentResponse {
 }
 
 // Advanced billing types for new commands
-export interface UpdateSpendingLimitsRequest {
-  monthlySpendingLimit?: number;
-  hardLimit?: number;
-}
 
-export interface UpdateSpendingLimitsResponse {
-  success: boolean;
-  message: string;
-  updatedLimits: {
-    monthlyAllowance: number;
-    hardLimit: number;
-    currentSpending: number;
-    servicesBlocked: boolean;
-  };
-}
 
-export interface InvoiceHistoryRequest {
-  limit?: number;
-  offset?: number;
-  startDate?: string;
-  endDate?: string;
-  status?: string;
-  search?: string;
-  sortField?: 'createdDate' | 'amount' | 'status';
-  sortDirection?: 'asc' | 'desc';
+export interface SpendingStatusInfo {
+  currentSpending: number;
+  spendingLimit: number;
+  remainingBudget: number;
+  usagePercentage: number;
+  daysRemaining: number;
+  isNearLimit: boolean;
+  isOverLimit: boolean;
+  currency: string;
 }
 
 export interface SpendingAnalyticsResponse {
@@ -1122,8 +1012,8 @@ export interface BillingHealthStatus {
   serverConnectivity: boolean;
   authenticationStatus: boolean;
   subscriptionAccessible: boolean;
-  spendingStatusAccessible: boolean;
   paymentMethodsAccessible: boolean;
+  creditSystemAccessible: boolean;
   lastChecked: string;
   errorDetails: string[];
   warnings: string[];

@@ -6,13 +6,48 @@
 use log::debug;
 use crate::error::AppResult;
 
+/// Attempts to parse JSON array from LLM response, using centralized JSON extraction
+fn parse_json_paths_from_response(response_text: &str) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+    // Use centralized JSON extraction utility
+    let json_content = crate::utils::markdown_utils::extract_json_from_markdown(response_text);
+    
+    if json_content.is_empty() {
+        return Err("No JSON content found".into());
+    }
+    
+    // Parse the JSON array
+    let json_value: serde_json::Value = serde_json::from_str(&json_content)?;
+    
+    if let serde_json::Value::Array(array) = json_value {
+        let mut paths = Vec::new();
+        for item in array {
+            if let serde_json::Value::String(path) = item {
+                if !path.is_empty() {
+                    paths.push(path);
+                }
+            }
+        }
+        Ok(paths)
+    } else {
+        Err("JSON is not an array".into())
+    }
+}
+
 /// Parses paths from LLM text response with robust format handling
-/// Handles numbered lists, bullet points, quotes, and various line endings
+/// Handles JSON arrays, numbered lists, bullet points, quotes, and various line endings
 pub fn parse_paths_from_text_response(
     response_text: &str,
     project_directory: &str,
 ) -> AppResult<Vec<String>> {
     debug!("Parsing paths from text response");
+    
+    // First try to parse as JSON array (common LLM response format)
+    if let Ok(json_paths) = parse_json_paths_from_response(response_text) {
+        debug!("Successfully parsed {} paths from JSON response", json_paths.len());
+        return Ok(json_paths);
+    }
+    
+    // Fall back to line-by-line parsing for other formats
     let mut paths = Vec::new();
     
     // Normalize line endings (handle \r\n, \n, \r)
@@ -22,7 +57,7 @@ pub fn parse_paths_from_text_response(
     for line in normalized_text.lines() {
         let line = line.trim();
         
-        // Filter out empty lines or lines that are clearly not paths
+        // Filter out empty lines, code block markers, or lines that are clearly not paths
         if line.is_empty()
             || line.starts_with("//")
             || line.starts_with("#")
@@ -31,6 +66,9 @@ pub fn parse_paths_from_text_response(
             || line.starts_with("Here are")
             || line.starts_with("The following")
             || line.starts_with("Based on")
+            || line.starts_with("```")
+            || line == "json"
+            || line == "JSON"
             || line.len() < 2
         {
             continue;

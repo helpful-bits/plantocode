@@ -4,13 +4,9 @@ import { Button } from "@/ui/button";
 import { Card, CardContent, CardHeader } from "@/ui/card";
 
 
-/**
- * Loading skeleton component - Aligned with app design
- */
 export function LoadingSkeleton() {
   return (
     <div className="space-y-6">
-      {/* Usage card skeleton */}
       <Card className="rounded-xl border border-border/60 bg-card text-card-foreground shadow-soft backdrop-blur-sm">
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
@@ -38,7 +34,6 @@ export function LoadingSkeleton() {
         </CardContent>
       </Card>
 
-      {/* Plan details skeleton */}
       <Card className="rounded-xl border border-border/60 bg-card text-card-foreground shadow-soft backdrop-blur-sm">
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
@@ -63,15 +58,11 @@ export function LoadingSkeleton() {
         </CardContent>
       </Card>
 
-      {/* Action button skeleton */}
       <div className="h-10 w-full bg-muted rounded-lg animate-pulse" />
     </div>
   );
 }
 
-/**
- * Error state component - Aligned with app design
- */
 interface ErrorStateProps {
   message: string;
   onRetry: () => void;
@@ -102,9 +93,6 @@ export function ErrorState({ message, onRetry }: ErrorStateProps) {
   );
 }
 
-/**
- * No subscription state component - Aligned with app design
- */
 interface NoSubscriptionStateProps {
   onUpgrade: () => void;
 }
@@ -135,9 +123,6 @@ export function NoSubscriptionState({
   );
 }
 
-/**
- * Processing state for async operations
- */
 interface ProcessingStateProps {
   title: string;
   description?: string;

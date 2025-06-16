@@ -265,16 +265,10 @@ export function GeneratePromptFeatureProvider({
         // Implementation plan state
         isCreatingPlan: planState.isCreatingPlan,
         planCreationState: planState.planCreationState,
-        isCopyingPlanPrompt: planState.isCopyingPlanPrompt,
-        isEstimatingTokens: planState.isEstimatingTokens,
-        estimatedTokens: planState.estimatedTokens,
       },
       actions: {
         // Implementation plan actions
         handleCreateImplementationPlan: planState.handleCreateImplementationPlan,
-        handleCopyImplementationPlanPrompt: planState.handleCopyImplementationPlanPrompt,
-        handleGetImplementationPlanPrompt: planState.handleGetImplementationPlanPrompt,
-        handleEstimatePlanTokens: planState.handleEstimatePlanTokens,
       },
     }),
     [

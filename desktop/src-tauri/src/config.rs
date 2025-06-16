@@ -3,7 +3,6 @@ use serde::{Deserialize, Serialize};
 use std::sync::RwLock;
 use log::{info, warn};
 use tauri::{AppHandle, Manager};
-use crate::constants::SERVER_API_URL;
 use crate::utils::env_utils::read_env;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -14,7 +13,7 @@ pub struct RuntimeConfig {
 impl Default for RuntimeConfig {
     fn default() -> Self {
         Self {
-            server_url: read_env("MAIN_SERVER_BASE_URL", &read_env("SERVER_URL", SERVER_API_URL, false), true),
+            server_url: std::env::var("MAIN_SERVER_BASE_URL").expect("MAIN_SERVER_BASE_URL environment variable must be set"),
         }
     }
 }

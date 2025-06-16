@@ -294,9 +294,9 @@ export function TaskSettingsEditor({
               </SelectTrigger>
               <SelectContent>
                 <SelectGroup>
-                  <SelectLabel>Available Languages</SelectLabel>
+                  <SelectLabel key={`${taskKey}-languages-label`}>Available Languages</SelectLabel>
                   {TRANSCRIPTION_LANGUAGES.map((lang) => (
-                    <SelectItem key={lang.code} value={lang.code}>
+                    <SelectItem key={`${taskKey}-${lang.code}`} value={lang.code}>
                       <div className="flex items-center gap-2">
                         <span>{lang.nativeName}</span>
                         <span className="text-xs text-muted-foreground">({lang.name})</span>

@@ -28,45 +28,6 @@ pub struct ClientSubscriptionPlan {
 // SUBSCRIPTION MANAGEMENT HANDLERS
 // ========================================
 
-
-
-
-
-
-
-
-fn default_proration_behavior() -> String {
-    "create_prorations".to_string()
-}
-
-fn default_at_period_end() -> bool {
-    true
-}
-
-fn parse_proration_behavior(behavior: &str) -> Result<crate::services::stripe_service::ProrationBehavior, AppError> {
-    match behavior.to_lowercase().as_str() {
-        "create_prorations" => Ok(crate::services::stripe_service::ProrationBehavior::CreateProrations),
-        "none" => Ok(crate::services::stripe_service::ProrationBehavior::None),
-        "always_invoice" => Ok(crate::services::stripe_service::ProrationBehavior::AlwaysInvoice),
-        _ => Err(AppError::InvalidArgument(format!("Invalid proration behavior: {}", behavior))),
-    }
-}
-
-fn parse_billing_cycle_anchor(anchor: Option<&str>) -> Result<Option<crate::services::stripe_service::BillingCycleAnchor>, AppError> {
-    match anchor {
-        Some("now") => Ok(Some(crate::services::stripe_service::BillingCycleAnchor::Now)),
-        Some("unchanged") => Ok(Some(crate::services::stripe_service::BillingCycleAnchor::Unchanged)),
-        None => Ok(None),
-        Some(other) => Err(AppError::InvalidArgument(format!("Invalid billing cycle anchor: {}", other))),
-    }
-}
-
-
-
-
-
-
-
 /// Get API usage summary
 #[get("/usage")]
 pub async fn get_usage_summary(

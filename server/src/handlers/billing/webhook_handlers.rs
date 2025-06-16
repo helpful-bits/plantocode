@@ -6,18 +6,18 @@ use crate::db::repositories::webhook_idempotency_repository::WebhookIdempotencyR
 use crate::db::repositories::user_credit_repository::UserCreditRepository;
 use crate::db::repositories::credit_transaction_repository::{CreditTransactionRepository, CreditTransaction};
 use crate::db::repositories::credit_pack_repository::CreditPackRepository;
-use crate::utils::stripe_currency_utils::{stripe_cents_to_decimal, validate_stripe_amount_matches};
+use crate::utils::stripe_currency_utils::validate_stripe_amount_matches;
 use uuid::Uuid;
-use log::{debug, error, info, warn};
-use chrono::{DateTime, Utc, Duration};
+use log::{error, info, warn};
+use chrono::Utc;
 use bigdecimal::BigDecimal;
-use stripe::{Event, EventObject, Webhook, Client, Subscription as StripeSubscription, Expandable, PaymentIntent};
+use stripe::{Event, EventObject, Webhook, PaymentIntent};
 
 // ========================================
 // SIMPLIFIED STRIPE WEBHOOK HANDLERS
 // ========================================
 
-/// Handle Stripe webhook events (optimized for Customer Portal integration)
+/// Handle Stripe webhook events (simplified for Customer Portal integration)
 #[post("/stripe")]
 pub async fn stripe_webhook(
     req: HttpRequest,
@@ -25,181 +25,173 @@ pub async fn stripe_webhook(
     billing_service: web::Data<BillingService>,
     app_state: web::Data<crate::models::runtime_config::AppState>,
 ) -> Result<HttpResponse, AppError> {
-    // Get the Stripe signature from the request header
     let stripe_signature = req.headers()
         .get("Stripe-Signature")
         .ok_or(AppError::InvalidArgument("Missing Stripe-Signature header".to_string()))?
         .to_str()
         .map_err(|_| AppError::InvalidArgument("Invalid Stripe-Signature header".to_string()))?;
     
-    // Verify and process the webhook
-    {
-        // Get webhook secret from app_state
-        let webhook_secret = &app_state.settings.stripe.webhook_secret;
+    let webhook_secret = &app_state.settings.stripe.webhook_secret;
+    let body_str = std::str::from_utf8(&body)
+        .map_err(|_| AppError::InvalidArgument("Invalid UTF-8 in webhook body".to_string()))?;
 
-        // Convert body bytes to string for construct_event
-        let body_str = std::str::from_utf8(&body)
-            .map_err(|_| AppError::InvalidArgument("Invalid UTF-8 in webhook body".to_string()))?;
+    let event = stripe::Webhook::construct_event(body_str, stripe_signature, webhook_secret)
+        .map_err(|e| {
+            error!("Stripe webhook signature verification failed: {}", e);
+            AppError::Auth(format!("Invalid Stripe webhook signature: {}", e))
+        })?;
 
-        // Construct and verify the event using the stripe-rs utility
-        let event = stripe::Webhook::construct_event(body_str, stripe_signature, webhook_secret)
-            .map_err(|e| {
-                error!("Stripe webhook signature verification or parsing failed: {}", e);
-                AppError::Auth(format!("Invalid Stripe webhook signature or payload: {}", e))
-            })?;
-
-        // Initialize webhook idempotency repository
-        let webhook_repo = WebhookIdempotencyRepository::new(billing_service.get_db_pool().clone());
-        
-        // Generate a unique worker ID for this instance
-        let worker_id = format!("webhook-handler-{}", uuid::Uuid::new_v4().to_string()[..8].to_string());
-        
-        // Attempt to acquire a lock on the webhook event
-        let _webhook_record = match webhook_repo.acquire_webhook_lock(
-            &event.id,
-            "stripe",
-            &event.type_.to_string(),
-            &worker_id,
-            5, // 5 minute lock duration
-            Some(serde_json::json!({
-                "stripe_event_id": event.id,
-                "stripe_event_type": event.type_,
-                "created": event.created,
-                "livemode": event.livemode,
-                "api_version": event.api_version
-            }))
-        ).await {
-            Ok(record) => {
-                info!("Successfully acquired lock for webhook event {} (worker: {})", event.id, worker_id);
-                record
+    let webhook_repo = WebhookIdempotencyRepository::new(billing_service.get_db_pool().clone());
+    let worker_id = format!("webhook-handler-{}", uuid::Uuid::new_v4().to_string()[..8].to_string());
+    
+    let _webhook_record = match webhook_repo.acquire_webhook_lock(
+        &event.id,
+        "stripe",
+        &event.type_.to_string(),
+        &worker_id,
+        5,
+        Some(serde_json::json!({
+            "stripe_event_id": event.id,
+            "stripe_event_type": event.type_,
+            "created": event.created,
+            "livemode": event.livemode,
+            "api_version": event.api_version
+        }))
+    ).await {
+        Ok(record) => {
+            info!("Acquired lock for webhook event {} (worker: {})", event.id, worker_id);
+            record
+        }
+        Err(AppError::Database(msg)) if msg.contains("already locked") => {
+            info!("Webhook event {} already being processed, skipping", event.id);
+            return Ok(HttpResponse::Ok().finish());
+        }
+        Err(e) => {
+            error!("Failed to acquire lock for webhook event {}: {}", event.id, e);
+            return Err(e);
+        }
+    };
+    
+    match process_stripe_webhook_event(&event, &billing_service, &app_state).await {
+        Ok(response) => {
+            if let Err(e) = webhook_repo.mark_as_completed(
+                &event.id,
+                Some(serde_json::json!({
+                    "completed_at": Utc::now().to_rfc3339(),
+                    "status": "success",
+                    "worker_id": worker_id
+                }))
+            ).await {
+                warn!("Failed to mark webhook processing as completed for event {}: {}", event.id, e);
             }
-            Err(AppError::Database(msg)) if msg.contains("already locked") => {
-                info!("Webhook event {} is already being processed by another worker, skipping", event.id);
-                return Ok(HttpResponse::Ok().finish());
-            }
-            Err(e) => {
-                error!("Failed to acquire lock for webhook event {}: {}", event.id, e);
-                return Err(e);
-            }
-        };
-        
-        // Process the webhook event with proper error handling
-        match process_stripe_webhook_event(&event, &billing_service, &app_state).await {
-            Ok(response) => {
-                // Mark webhook processing as completed successfully
-                if let Err(e) = webhook_repo.mark_as_completed(
-                    &event.id,
-                    Some(serde_json::json!({
-                        "completed_at": Utc::now().to_rfc3339(),
-                        "status": "success",
-                        "worker_id": worker_id
-                    }))
-                ).await {
-                    warn!("Failed to mark webhook processing as completed for event {}: {}", event.id, e);
-                }
-                info!("Successfully processed webhook event {} (worker: {})", event.id, worker_id);
-                Ok(response)
-            }
-            Err(e) => {
-                let error_message = format!("{}", e);
-                error!("Failed to process webhook event {}: {}", event.id, error_message);
-                
-                // Send admin alert for webhook failure
-                crate::utils::admin_alerting::send_stripe_webhook_failure_alert(
+            info!("Successfully processed webhook event {} (worker: {})", event.id, worker_id);
+            Ok(response)
+        }
+        Err(e) => {
+            let error_message = format!("{}", e);
+            error!("Failed to process webhook event {}: {}", event.id, error_message);
+            
+            crate::utils::admin_alerting::send_stripe_webhook_failure_alert(
+                &event.id,
+                &error_message,
+                &event.type_.to_string(),
+            ).await;
+            
+            let should_retry = !is_permanent_error(&e);
+            
+            if should_retry {
+                if let Err(mark_error) = webhook_repo.release_webhook_lock_with_failure(
                     &event.id,
                     &error_message,
-                    &event.type_.to_string(),
-                ).await;
-                
-                // Check if we should retry or mark as permanently failed
-                const MAX_RETRIES: i32 = 3;
-                const RETRY_DELAY_MINUTES: i32 = 5;
-                
-                // For critical errors, mark as failed immediately
-                // For transient errors, schedule retry
-                let should_retry = !is_permanent_error(&e);
-                
-                if should_retry {
-                    if let Err(mark_error) = webhook_repo.release_webhook_lock_with_failure(
-                        &event.id,
-                        &error_message,
-                        RETRY_DELAY_MINUTES,
-                        Some(serde_json::json!({
-                            "failed_at": Utc::now().to_rfc3339(),
-                            "error": error_message,
-                            "worker_id": worker_id,
-                            "will_retry": true
-                        }))
-                    ).await {
-                        warn!("Failed to schedule retry for webhook event {}: {}", event.id, mark_error);
-                    } else {
-                        info!("Scheduled retry for webhook event {} (worker: {})", event.id, worker_id);
-                    }
+                    5,
+                    Some(serde_json::json!({
+                        "failed_at": Utc::now().to_rfc3339(),
+                        "error": error_message,
+                        "worker_id": worker_id,
+                        "will_retry": true
+                    }))
+                ).await {
+                    warn!("Failed to schedule retry for webhook event {}: {}", event.id, mark_error);
                 } else {
-                    // Mark as permanently failed
-                    if let Err(mark_error) = webhook_repo.mark_as_failed(
-                        &event.id,
-                        &error_message,
-                        Some(serde_json::json!({
-                            "failed_at": Utc::now().to_rfc3339(),
-                            "error": error_message,
-                            "worker_id": worker_id,
-                            "permanent_failure": true
-                        }))
-                    ).await {
-                        warn!("Failed to mark webhook as permanently failed for event {}: {}", event.id, mark_error);
-                    } else {
-                        info!("Marked webhook event {} as permanently failed (worker: {})", event.id, worker_id);
-                    }
+                    info!("Scheduled retry for webhook event {} (worker: {})", event.id, worker_id);
                 }
-                
-                Err(e)
+            } else {
+                if let Err(mark_error) = webhook_repo.mark_as_failed(
+                    &event.id,
+                    &error_message,
+                    Some(serde_json::json!({
+                        "failed_at": Utc::now().to_rfc3339(),
+                        "error": error_message,
+                        "worker_id": worker_id,
+                        "permanent_failure": true
+                    }))
+                ).await {
+                    warn!("Failed to mark webhook as permanently failed for event {}: {}", event.id, mark_error);
+                } else {
+                    info!("Marked webhook event {} as permanently failed (worker: {})", event.id, worker_id);
+                }
             }
+            
+            Err(e)
         }
     }
 }
 
-/// Process a Stripe webhook event (simplified for Customer Portal integration)
 async fn process_stripe_webhook_event(
     event: &stripe::Event,
     billing_service: &BillingService,
-    app_state: &crate::models::runtime_config::AppState,
+    _app_state: &crate::models::runtime_config::AppState,
 ) -> Result<HttpResponse, AppError> {
-    // Get repositories for webhook processing
     let db_pools = billing_service.get_db_pools();
     let email_service = crate::services::email_notification_service::EmailNotificationService::new(db_pools.clone())?;
     let audit_service = billing_service.get_audit_service();
 
-    // SIMPLIFIED WEBHOOK HANDLING - Only process essential sync events
-    // Complex operations are delegated to Stripe Customer Portal
     match event.type_.to_string().as_str() {
-        // Essential subscription sync events
         "customer.subscription.updated" => {
-            info!("Subscription updated: {}", event.id);
+            info!("Processing subscription updated: {}", event.id);
             if let stripe::EventObject::Subscription(subscription) = &event.data.object {
                 billing_service.sync_subscription_from_webhook(subscription).await?;
                 
-                // Send plan change notification if applicable
                 let customer_id = subscription.customer.id().to_string();
-                let user_repo = crate::db::repositories::UserRepository::new(billing_service.get_db_pool().clone());
+                let user_repo = crate::db::repositories::user_repository::UserRepository::new(billing_service.get_db_pool().clone());
                 if let Ok(user) = user_repo.get_by_stripe_customer_id(&customer_id).await {
-                    let plan_id = subscription.items.data.first()
+                    let new_plan_id = subscription.items.data.first()
                         .and_then(|item| item.price.as_ref())
                         .map(|price| price.id.to_string())
                         .unwrap_or_else(|| "unknown".to_string());
                     
-                    let plan_name = subscription.items.data.first()
+                    let new_plan_name = subscription.items.data.first()
                         .and_then(|item| item.price.as_ref())
                         .and_then(|price| price.nickname.as_ref())
                         .map(|name| name.clone())
-                        .unwrap_or_else(|| plan_id.clone());
+                        .unwrap_or_else(|| new_plan_id.clone());
+                    
+                    // Log audit event for subscription update
+                    let audit_context = crate::services::audit_service::AuditContext::new(user.id);
+                    if let Err(e) = audit_service.log_event(
+                        &audit_context,
+                        crate::services::audit_service::AuditEvent::new(
+                            "subscription_updated",
+                            "subscription"
+                        )
+                        .with_entity_id(subscription.id.to_string())
+                        .with_metadata(serde_json::json!({
+                            "new_plan_id": new_plan_id,
+                            "new_plan_name": new_plan_name,
+                            "status": format!("{:?}", subscription.status),
+                            "customer_id": customer_id,
+                            "event_id": event.id
+                        }))
+                    ).await {
+                        warn!("Failed to log subscription update audit for user {}: {}", user.id, e);
+                    }
                     
                     if let Err(e) = email_service.send_plan_change_notification(
                         &user.id,
                         &user.email,
                         "previous_plan",
-                        &plan_id,
-                        &plan_name,
+                        &new_plan_id,
+                        &new_plan_name,
                     ).await {
                         error!("Failed to send plan change notification for user {}: {}", user.id, e);
                     }
@@ -207,18 +199,39 @@ async fn process_stripe_webhook_event(
             }
         },
         "customer.subscription.deleted" => {
-            info!("Subscription deleted: {}", event.id);
+            info!("Processing subscription deleted: {}", event.id);
             if let stripe::EventObject::Subscription(subscription) = &event.data.object {
                 billing_service.sync_subscription_from_webhook(subscription).await?;
                 
-                // Send cancellation notification
                 let customer_id = subscription.customer.id().to_string();
-                let user_repo = crate::db::repositories::UserRepository::new(billing_service.get_db_pool().clone());
+                let user_repo = crate::db::repositories::user_repository::UserRepository::new(billing_service.get_db_pool().clone());
                 if let Ok(user) = user_repo.get_by_stripe_customer_id(&customer_id).await {
+                    // Log audit event for subscription deletion
+                    let audit_context = crate::services::audit_service::AuditContext::new(user.id);
+                    if let Err(e) = audit_service.log_event(
+                        &audit_context,
+                        crate::services::audit_service::AuditEvent::new(
+                            "subscription_deleted",
+                            "subscription"
+                        )
+                        .with_entity_id(subscription.id.to_string())
+                        .with_metadata(serde_json::json!({
+                            "deleted_plan_id": subscription.items.data.first()
+                                .and_then(|item| item.price.as_ref())
+                                .map(|price| price.id.to_string())
+                                .unwrap_or_else(|| "unknown".to_string()),
+                            "customer_id": customer_id,
+                            "cancellation_reason": "customer_portal",
+                            "event_id": event.id
+                        }))
+                    ).await {
+                        warn!("Failed to log subscription deletion audit for user {}: {}", user.id, e);
+                    }
+                    
                     if let Err(e) = email_service.send_subscription_cancellation_notification(
                         &user.id,
                         &user.email,
-                        false, // immediate cancellation
+                        false,
                         None,
                         None,
                     ).await {
@@ -227,52 +240,64 @@ async fn process_stripe_webhook_event(
                 }
             }
         },
-        
-        // Essential payment events for credit purchases
         "payment_intent.succeeded" => {
-            info!("Payment intent succeeded: {}", event.id);
+            info!("Processing payment intent succeeded: {}", event.id);
             if let stripe::EventObject::PaymentIntent(payment_intent) = &event.data.object {
+                // Log audit event for successful payment
+                if let Some(user_id_str) = payment_intent.metadata.get("user_id") {
+                    if let Ok(user_id) = Uuid::parse_str(user_id_str) {
+                        let audit_context = crate::services::audit_service::AuditContext::new(user_id);
+                        if let Err(e) = audit_service.log_event(
+                            &audit_context,
+                            crate::services::audit_service::AuditEvent::new(
+                                "payment_succeeded",
+                                "payment"
+                            )
+                            .with_entity_id(payment_intent.id.to_string())
+                            .with_metadata(serde_json::json!({
+                                "amount": payment_intent.amount,
+                                "currency": payment_intent.currency,
+                                "payment_type": payment_intent.metadata.get("type").unwrap_or(&"unknown".to_string()),
+                                "event_id": event.id
+                            }))
+                        ).await {
+                            warn!("Failed to log payment success audit for user {}: {}", user_id, e);
+                        }
+                    }
+                }
+                
                 process_credit_purchase(payment_intent, billing_service, &email_service).await?;
             }
         },
-        
-        // Essential billing events
         "invoice.payment_succeeded" => {
-            info!("Invoice payment succeeded: {}", event.id);
+            info!("Processing invoice payment succeeded: {}", event.id);
             if let stripe::EventObject::Invoice(invoice) = &event.data.object {
                 reset_usage_allowances(invoice, billing_service, &audit_service).await?;
             }
         },
-        
-        // Payment method events
         "payment_method.attached" => {
-            info!("Payment method attached: {}", event.id);
+            info!("Processing payment method attached: {}", event.id);
             if let stripe::EventObject::PaymentMethod(payment_method) = &event.data.object {
                 handle_payment_method_attached(payment_method, billing_service).await?;
             }
         },
         "payment_method.detached" => {
-            info!("Payment method detached: {}", event.id);
+            info!("Processing payment method detached: {}", event.id);
             if let stripe::EventObject::PaymentMethod(payment_method) = &event.data.object {
                 handle_payment_method_detached(payment_method, billing_service).await?;
             }
         },
-        
-        // Customer default source events  
         "customer.default_source_updated" => {
-            info!("Customer default source updated: {}", event.id);
+            info!("Processing customer default source updated: {}", event.id);
             if let stripe::EventObject::Customer(customer) = &event.data.object {
                 handle_customer_default_source_updated(customer, billing_service).await?;
             }
         },
-        
-        // All other events are handled by Stripe Customer Portal
         _ => {
             info!("Ignoring Stripe event type: {} - handled by Customer Portal", event.type_);
         }
     }
     
-    // Return success
     Ok(HttpResponse::Ok().finish())
 }
 
@@ -344,7 +369,7 @@ async fn process_credit_purchase(
           user_uuid, credit_pack_id, credit_value);
     
     // Security: Fetch the corresponding CreditPack from the database and validate amount
-    let credit_pack_repo = crate::db::repositories::CreditPackRepository::new(billing_service.get_db_pool().clone());
+    let credit_pack_repo = crate::db::repositories::credit_pack_repository::CreditPackRepository::new(billing_service.get_db_pool().clone());
     let selected_pack = match credit_pack_repo.get_pack_by_id(credit_pack_id).await? {
         Some(pack) => pack,
         None => {
@@ -410,7 +435,7 @@ async fn process_credit_purchase(
           payment_intent.id, user_uuid, credit_value);
     
     // Send success email notification
-    let user_repo = crate::db::repositories::UserRepository::new(billing_service.get_db_pool().clone());
+    let user_repo = crate::db::repositories::user_repository::UserRepository::new(billing_service.get_db_pool().clone());
     if let Ok(user) = user_repo.get_by_id(&user_uuid).await {
         email_service.send_credit_purchase_notification(
             &user_uuid,
@@ -448,7 +473,7 @@ async fn reset_usage_allowances(
     }
     
     // Find user by Stripe customer ID
-    let user_repo = crate::db::repositories::UserRepository::new(billing_service.get_db_pool().clone());
+    let user_repo = crate::db::repositories::user_repository::UserRepository::new(billing_service.get_db_pool().clone());
     let customer_id = invoice.customer.as_ref()
         .ok_or_else(|| AppError::InvalidArgument("Invoice missing customer information".to_string()))?
         .id().to_string();
@@ -457,15 +482,12 @@ async fn reset_usage_allowances(
     
     info!("Resetting monthly usage allowances for user {} after successful invoice payment {}", user.id, invoice.id);
     
-    // CRITICAL: Actually reset the user's spending allowances for the new billing period
-    // This is essential for subscription billing - users should get fresh allowances each month
     let cost_based_billing_service = billing_service.get_cost_based_billing_service();
     
     match cost_based_billing_service.reset_billing_period(&user.id).await {
         Ok(_) => {
             info!("Successfully reset monthly spending allowances for user {} after invoice {}", user.id, invoice.id);
             
-            // Create formal audit trail for the allowance reset
             let audit_context = AuditContext::new(user.id);
             if let Err(e) = audit_service.log_spending_limit_reset(
                 &audit_context,
@@ -482,12 +504,13 @@ async fn reset_usage_allowances(
             error!("CRITICAL: Failed to reset monthly spending allowances for user {} after successful invoice payment {}: {}", 
                    user.id, invoice.id, e);
             
-            // This is a critical error - user paid but didn't get fresh allowances
-            // We should continue processing but log this as a critical issue
             error!("BILLING ALERT: User {} paid subscription but allowances not reset - manual intervention required", user.id);
             
-            // Don't fail the webhook - we want Stripe to consider it processed
-            // But the error logs will alert operators to the issue
+            crate::utils::admin_alerting::send_billing_allowance_reset_failure_alert(
+                &user.id,
+                &invoice.id.to_string(),
+                &format!("{}", e),
+            ).await;
         }
     }
     
@@ -501,17 +524,15 @@ async fn handle_payment_method_attached(
 ) -> Result<(), AppError> {
     info!("Handling payment method attached: {}", payment_method.id);
     
-    // Get the customer ID from the payment method
     let customer_id = match &payment_method.customer {
         Some(customer) => customer.id().to_string(),
         None => {
-            warn!("Payment method {} has no associated customer, skipping sync", payment_method.id);
+            warn!("Payment method {} has no associated customer, skipping audit", payment_method.id);
             return Ok(());
         }
     };
     
-    // Find the user by Stripe customer ID
-    let user_repo = crate::db::repositories::UserRepository::new(billing_service.get_db_pool().clone());
+    let user_repo = crate::db::repositories::user_repository::UserRepository::new(billing_service.get_db_pool().clone());
     let user = match user_repo.get_by_stripe_customer_id(&customer_id).await {
         Ok(user) => user,
         Err(_) => {
@@ -522,31 +543,26 @@ async fn handle_payment_method_attached(
     
     info!("Payment method {} attached for user {}", payment_method.id, user.id);
     
-    // Get Stripe service to check current payment methods
-    let stripe_service = billing_service.get_stripe_service()?;
-    let current_payment_methods = stripe_service.list_payment_methods(&customer_id).await
-        .map_err(|e| AppError::External(format!("Failed to list payment methods: {}", e)))?;
+    let audit_service = billing_service.get_audit_service();
+    let audit_context = crate::services::audit_service::AuditContext::new(user.id);
     
-    // If this is the user's first payment method, set it as default
-    if current_payment_methods.len() == 1 {
-        info!("Setting payment method {} as default for user {} (first payment method)", payment_method.id, user.id);
-        if let Err(e) = stripe_service.set_default_payment_method(&customer_id, &payment_method.id.to_string()).await {
-            error!("Failed to set payment method {} as default: {}", payment_method.id, e);
-        } else {
-            info!("Successfully set payment method {} as default for user {}", payment_method.id, user.id);
-        }
+    let audit_event = crate::services::audit_service::AuditEvent::new("payment_method_attached", "payment_method")
+        .with_entity_id(payment_method.id.to_string())
+        .with_metadata(serde_json::json!({
+            "payment_method_type": format!("{:?}", payment_method.type_),
+            "customer_id": customer_id,
+            "source": "stripe_customer_portal"
+        }));
+    
+    if let Err(e) = audit_service.log_event(&audit_context, audit_event).await {
+        warn!("Failed to log payment method attachment audit for user {}: {}", user.id, e);
     }
     
-    // Create an audit trail for security - this gives us visibility into payment method changes
     info!("Audit: Payment method {} of type {:?} attached to customer {} (user {}) via Stripe Customer Portal", 
           payment_method.id, 
           payment_method.type_, 
           customer_id, 
           user.id);
-    
-    // Clear any cached payment method data so frontend gets fresh data
-    // This is critical for keeping the frontend in sync with Stripe
-    info!("Payment method {} attached successfully for user {} - frontend will refresh payment methods", payment_method.id, user.id);
     
     Ok(())
 }
@@ -558,17 +574,15 @@ async fn handle_payment_method_detached(
 ) -> Result<(), AppError> {
     info!("Handling payment method detached: {}", payment_method.id);
     
-    // Get the customer ID from the payment method
     let customer_id = match &payment_method.customer {
         Some(customer) => customer.id().to_string(),
         None => {
-            warn!("Payment method {} has no associated customer, skipping sync", payment_method.id);
+            warn!("Payment method {} has no associated customer, skipping audit", payment_method.id);
             return Ok(());
         }
     };
     
-    // Find the user by Stripe customer ID
-    let user_repo = crate::db::repositories::UserRepository::new(billing_service.get_db_pool().clone());
+    let user_repo = crate::db::repositories::user_repository::UserRepository::new(billing_service.get_db_pool().clone());
     let user = match user_repo.get_by_stripe_customer_id(&customer_id).await {
         Ok(user) => user,
         Err(_) => {
@@ -579,16 +593,26 @@ async fn handle_payment_method_detached(
     
     info!("Payment method {} detached for user {}", payment_method.id, user.id);
     
-    // Create an audit trail for security - this gives us visibility into payment method removal
+    let audit_service = billing_service.get_audit_service();
+    let audit_context = crate::services::audit_service::AuditContext::new(user.id);
+    
+    let audit_event = crate::services::audit_service::AuditEvent::new("payment_method_detached", "payment_method")
+        .with_entity_id(payment_method.id.to_string())
+        .with_metadata(serde_json::json!({
+            "payment_method_type": format!("{:?}", payment_method.type_),
+            "customer_id": customer_id,
+            "source": "stripe_customer_portal"
+        }));
+    
+    if let Err(e) = audit_service.log_event(&audit_context, audit_event).await {
+        warn!("Failed to log payment method detachment audit for user {}: {}", user.id, e);
+    }
+    
     info!("Audit: Payment method {} of type {:?} detached from customer {} (user {}) via Stripe Customer Portal", 
           payment_method.id, 
           payment_method.type_, 
           customer_id, 
           user.id);
-    
-    // When a payment method is removed, the frontend needs to refresh to show accurate data
-    // This is critical for keeping the frontend in sync with Stripe
-    info!("Payment method {} detached successfully for user {} - frontend will refresh payment methods", payment_method.id, user.id);
     
     Ok(())
 }
@@ -600,8 +624,7 @@ async fn handle_customer_default_source_updated(
 ) -> Result<(), AppError> {
     info!("Handling customer default source updated: {}", customer.id);
     
-    // Find the user by Stripe customer ID
-    let user_repo = crate::db::repositories::UserRepository::new(billing_service.get_db_pool().clone());
+    let user_repo = crate::db::repositories::user_repository::UserRepository::new(billing_service.get_db_pool().clone());
     let user = match user_repo.get_by_stripe_customer_id(&customer.id.to_string()).await {
         Ok(user) => user,
         Err(_) => {
@@ -610,7 +633,6 @@ async fn handle_customer_default_source_updated(
         }
     };
     
-    // Get the new default payment method ID
     let default_payment_method_id = customer.invoice_settings
         .as_ref()
         .and_then(|settings| settings.default_payment_method.as_ref())
@@ -619,26 +641,44 @@ async fn handle_customer_default_source_updated(
             stripe::Expandable::Object(pm_obj) => pm_obj.id.to_string(),
         });
     
+    let audit_service = billing_service.get_audit_service();
+    let audit_context = crate::services::audit_service::AuditContext::new(user.id);
+    
     match default_payment_method_id {
         Some(pm_id) => {
             info!("Customer {} (user {}) default payment method changed to {}", customer.id, user.id, pm_id);
             
-            // Create audit trail for security
+            let audit_event = crate::services::audit_service::AuditEvent::new("default_payment_method_updated", "customer")
+                .with_entity_id(customer.id.to_string())
+                .with_metadata(serde_json::json!({
+                    "new_default_payment_method_id": pm_id,
+                    "source": "stripe_customer_portal"
+                }));
+            
+            if let Err(e) = audit_service.log_event(&audit_context, audit_event).await {
+                warn!("Failed to log default payment method update audit for user {}: {}", user.id, e);
+            }
+            
             info!("Audit: Customer {} (user {}) default payment method changed to {} via Stripe Customer Portal", 
                   customer.id, user.id, pm_id);
         }
         None => {
             info!("Customer {} (user {}) default payment method was removed", customer.id, user.id);
             
-            // Create audit trail
+            let audit_event = crate::services::audit_service::AuditEvent::new("default_payment_method_removed", "customer")
+                .with_entity_id(customer.id.to_string())
+                .with_metadata(serde_json::json!({
+                    "source": "stripe_customer_portal"
+                }));
+            
+            if let Err(e) = audit_service.log_event(&audit_context, audit_event).await {
+                warn!("Failed to log default payment method removal audit for user {}: {}", user.id, e);
+            }
+            
             info!("Audit: Customer {} (user {}) default payment method removed via Stripe Customer Portal", 
                   customer.id, user.id);
         }
     }
-    
-    // This webhook ensures that when users change their default payment method via Customer Portal,
-    // the frontend will show the correct default when it fetches fresh payment method data
-    info!("Customer {} default source updated successfully - frontend will refresh payment methods", customer.id);
     
     Ok(())
 }

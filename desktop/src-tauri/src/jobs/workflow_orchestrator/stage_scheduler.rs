@@ -58,6 +58,11 @@ pub(super) async fn find_next_abstract_stages_to_execute_internal<'a>(
             }
         }
 
+        // Skip PathCorrection stage if there are no unverified paths to correct
+        if stage_def.task_type == TaskType::PathCorrection && workflow_state.intermediate_data.extended_unverified_paths.is_empty() {
+            continue;
+        }
+
         // Check if dependencies are met
         let dependencies_met = abstract_stage_dependencies_met_internal(stage_def, workflow_state, workflow_definition);
         debug!("Stage {} dependencies met: {}", stage_def.stage_name, dependencies_met);
@@ -104,35 +109,6 @@ pub(super) fn abstract_stage_dependencies_met_internal(
     true // All dependencies are met
 }
 
-/// Check if dependencies for an abstract stage are met (internal helper)
-pub(super) fn abstract_stage_dependencies_met_enhanced_internal(
-    stage_def: &WorkflowStageDefinition, 
-    workflow_state: &WorkflowState,
-    workflow_definition: &WorkflowDefinition
-) -> bool {
-    if stage_def.dependencies.is_empty() {
-        return true; // No dependencies, can execute
-    }
-
-    // Check that all dependency stages are completed
-    for dep_stage_name in &stage_def.dependencies {
-        if let Some(dep_stage_def) = workflow_definition.get_stage(dep_stage_name) {
-            // Find if this dependency stage has been completed
-            let dep_completed = workflow_state.stage_jobs.iter().any(|job| {
-                // Match by task type and check if completed
-                job.task_type == dep_stage_def.task_type && job.status == JobStatus::Completed
-            });
-
-            if !dep_completed {
-                return false; // Dependency not completed
-            }
-        } else {
-            return false; // Dependency stage not found
-        }
-    }
-
-    true // All dependencies are met
-}
 
 /// Get maximum concurrent stages allowed per workflow
 pub(super) async fn get_max_concurrent_stages_internal() -> usize {

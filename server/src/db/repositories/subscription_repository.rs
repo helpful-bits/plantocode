@@ -173,11 +173,6 @@ impl SubscriptionRepository {
     // Get subscription by user ID with custom executor
     pub async fn get_by_user_id_with_executor(&self, user_id: &Uuid, executor: &mut sqlx::Transaction<'_, sqlx::Postgres>) -> Result<Option<Subscription>, AppError>
     {
-        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
-            .bind(user_id.to_string())
-            .execute(&mut **executor)
-            .await?;
-            
         let record = query_as!(
             Subscription,
             r#"
@@ -306,7 +301,6 @@ impl SubscriptionRepository {
         &self,
         id: &Uuid,
         stripe_customer_id: &str,
-        user_id: &Uuid,
         executor: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     ) -> Result<(), AppError> {
         let result = query!(
@@ -314,11 +308,10 @@ impl SubscriptionRepository {
             UPDATE subscriptions 
             SET stripe_customer_id = $1,
                 updated_at = CURRENT_TIMESTAMP
-            WHERE id = $2 AND user_id = $3
+            WHERE id = $2
             "#,
             stripe_customer_id,
-            id,
-            user_id
+            id
         )
         .execute(&mut **executor)
         .await

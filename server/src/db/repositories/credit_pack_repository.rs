@@ -36,7 +36,7 @@ impl CreditPackRepository {
     }
 
     /// Get all active credit packs for current environment with Stripe config
-    pub async fn get_active_packs(&self) -> Result<Vec<CreditPack>, AppError> {
+    pub async fn get_available_credit_packs(&self) -> Result<Vec<CreditPack>, AppError> {
         let environment = std::env::var("ENVIRONMENT").unwrap_or_else(|_| "production".to_string());
         
         let packs = sqlx::query!(
@@ -135,7 +135,7 @@ impl CreditPackRepository {
     }
 
     /// Get credit pack by Stripe price ID for current environment
-    pub async fn get_pack_by_stripe_price_id(&self, stripe_price_id: &str) -> Result<Option<CreditPack>, AppError> {
+    pub async fn get_credit_pack_by_stripe_price_id(&self, stripe_price_id: &str) -> Result<Option<CreditPack>, AppError> {
         let environment = std::env::var("ENVIRONMENT").unwrap_or_else(|_| "production".to_string());
         
         let pack = sqlx::query!(

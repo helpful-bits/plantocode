@@ -10,16 +10,10 @@ const defaultValue: PlanContextValue = {
   state: {
     isCreatingPlan: false,
     planCreationState: "idle",
-    isCopyingPlanPrompt: false,
-    isEstimatingTokens: false,
-    estimatedTokens: null,
   },
   actions: {
     // These default implementations will be replaced by actual implementations
     handleCreateImplementationPlan: async () => Promise.resolve(),
-    handleCopyImplementationPlanPrompt: async () => Promise.resolve(),
-    handleGetImplementationPlanPrompt: () => "",
-    handleEstimatePlanTokens: async () => Promise.resolve(0),
   },
 };
 

@@ -151,15 +151,6 @@ pub struct FileRelevanceAssessmentPayload {
     pub locally_filtered_files: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SubscriptionLifecyclePayload {
-    pub user_id: String,
-    pub action: String, // 'change_plan', 'cancel', etc.
-    pub new_plan_id: Option<String>,
-    pub effective_immediately: Option<bool>,
-    pub context: Option<serde_json::Value>, // Additional context for the operation
-}
 
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -179,7 +170,6 @@ pub enum JobPayload {
     ExtendedPathFinder(ExtendedPathFinderPayload),
     RegexPatternGenerationWorkflow(RegexPatternGenerationWorkflowPayload),
     FileRelevanceAssessment(FileRelevanceAssessmentPayload),
-    SubscriptionLifecycle(SubscriptionLifecyclePayload),
 }
 
 // Structured types for Implementation Plan parsing

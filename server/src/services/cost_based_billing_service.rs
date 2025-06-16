@@ -464,12 +464,20 @@ impl CostBasedBillingService {
         .await
         .map_err(AppError::from)?;
         
-        let included_allowance: BigDecimal = plan.included_spending_monthly
-            .unwrap_or_else(|| safe_bigdecimal_from_str("0").unwrap_or_else(|_| BigDecimal::from(0)));
+        let included_allowance: BigDecimal = if subscription.plan_id == "free" {
+            safe_bigdecimal_from_str("2")?  // Set to exactly $2 for free plan
+        } else {
+            plan.included_spending_monthly
+                .unwrap_or_else(|| safe_bigdecimal_from_str("0").unwrap_or_else(|_| BigDecimal::from(0)))
+        };
         let hard_limit_multiplier: BigDecimal = plan.hard_limit_multiplier
             .unwrap_or_else(|| safe_bigdecimal_from_str("2.0").unwrap_or_else(|_| BigDecimal::from(2)));
 
-        let hard_limit: BigDecimal = &included_allowance * &hard_limit_multiplier;
+        let hard_limit: BigDecimal = if subscription.plan_id == "free" {
+            safe_bigdecimal_from_str("2")?  // Set hard limit to exactly $2 for free plan
+        } else {
+            &included_allowance * &hard_limit_multiplier
+        };
 
         // Create new spending limit struct and save using create_or_update_user_spending_limit_with_executor
         let new_spending_limit = UserSpendingLimit {

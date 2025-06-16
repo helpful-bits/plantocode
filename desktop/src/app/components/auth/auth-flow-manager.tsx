@@ -49,41 +49,16 @@ export function AuthFlowManager({ children }: AuthFlowManagerProps) {
     useEffect(() => {
       const checkOnboardingStatus = async () => {
         try {
-          // First check storage mode with timeout
-          let timeoutId: ReturnType<typeof setTimeout>;
-          const timeoutPromise = new Promise<never>((_, reject) => {
-            timeoutId = setTimeout(() => reject(new Error('Storage mode check timeout')), 10000);
-          });
-
-          let storageMode: string;
-          try {
-            storageMode = await Promise.race([
-              invoke<string>('get_storage_mode'),
-              timeoutPromise
-            ]);
-          } finally {
-            clearTimeout(timeoutId!);
-          }
+          // First check storage mode
+          const sessionStorageMode = await invoke<boolean>('get_storage_mode');
           
-          const isKeyringRequired = storageMode === 'keyring';
-          
-          if (isKeyringRequired) {
-            // If keyring is required, check if onboarding has been completed
+          if (sessionStorageMode) {
+            // If session storage is used, skip onboarding
+            setIsOnboardingNeeded(false);
+          } else {
+            // If keychain is used, check if onboarding has been completed
             try {
-              let onboardingTimeoutId: ReturnType<typeof setTimeout>;
-              const onboardingTimeoutPromise = new Promise<never>((_, reject) => {
-                onboardingTimeoutId = setTimeout(() => reject(new Error('Onboarding check timeout')), 5000);
-              });
-
-              let hasSetup: boolean;
-              try {
-                hasSetup = await Promise.race([
-                  invoke<boolean>('is_onboarding_completed_command'),
-                  onboardingTimeoutPromise
-                ]);
-              } finally {
-                clearTimeout(onboardingTimeoutId!);
-              }
+              const hasSetup = await invoke<boolean>('is_onboarding_completed_command');
               setIsOnboardingNeeded(!hasSetup);
             } catch (storeError) {
               const errorInfo = extractErrorInfo(storeError);
@@ -98,9 +73,6 @@ export function AuthFlowManager({ children }: AuthFlowManagerProps) {
                 type: "warning"
               });
             }
-          } else {
-            // If keyring is not required (debug mode), skip onboarding
-            setIsOnboardingNeeded(false);
           }
         } catch (e) {
           const errorInfo = extractErrorInfo(e);
@@ -121,19 +93,7 @@ export function AuthFlowManager({ children }: AuthFlowManagerProps) {
 
     const handleOnboardingComplete = async () => {
       try {
-        let saveTimeoutId: ReturnType<typeof setTimeout>;
-        const saveTimeoutPromise = new Promise<never>((_, reject) => {
-          saveTimeoutId = setTimeout(() => reject(new Error('Onboarding save timeout')), 5000);
-        });
-
-        try {
-          await Promise.race([
-            invoke('set_onboarding_completed_command'),
-            saveTimeoutPromise
-          ]);
-        } finally {
-          clearTimeout(saveTimeoutId!);
-        }
+        await invoke('set_onboarding_completed_command');
         setIsOnboardingNeeded(false);
         showNotification({
           title: "Setup Complete",

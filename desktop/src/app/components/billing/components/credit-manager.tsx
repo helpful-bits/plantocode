@@ -19,7 +19,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/ui/alert";
 import { Badge } from "@/ui/badge";
 import { getErrorMessage } from "@/utils/error-handling";
-import { getCreditBalance, getCreditPacks, purchaseCredits, type CreditPack } from "@/actions/billing/credit.actions";
+import { getCreditBalance, getCreditPacks, createCreditPurchaseIntent, type CreditPack } from "@/actions/billing/credit.actions";
 import { 
   isValidCreditPackId, 
   validateRateLimit,
@@ -29,7 +29,6 @@ import { useNotification } from "@/contexts/notification-context";
 import StripeProvider from '../stripe/StripeProvider';
 import PaymentElementForm from '../stripe/PaymentElementForm';
 
-// Types for modern PaymentIntent flow
 interface PaymentIntentResponse {
   clientSecret: string;
   publishableKey: string;
@@ -55,7 +54,6 @@ export const CreditManager = ({
   const [selectedPackId, setSelectedPackId] = useState<string | null>(null);
   const [isPurchasing, setIsPurchasing] = useState(false);
   
-  // New state for modern payment flow
   const [paymentFlow, setPaymentFlow] = useState<'selection' | 'payment'>('selection');
   const [paymentIntent, setPaymentIntent] = useState<PaymentIntentResponse | null>(null);
   const [savePaymentMethod, setSavePaymentMethod] = useState(false);
@@ -78,11 +76,14 @@ export const CreditManager = ({
         setCurrency(balanceResult.value.currency || 'USD');
       }
       
-      if (packsResult.status === 'fulfilled') {
+      if (packsResult.status === 'fulfilled' && packsResult.value && Array.isArray(packsResult.value)) {
         setCreditPacks(packsResult.value);
-        // Auto-select the first pack or the popular one
         const popularPack = packsResult.value.find(pack => pack.recommended);
         setSelectedPackId(popularPack?.id || packsResult.value[0]?.id || null);
+      } else {
+        console.error('Failed to load credit packs:', packsResult.status === 'rejected' ? packsResult.reason : 'Unknown error');
+        setError('Unable to load credit packs. Please refresh to try again.');
+        setCreditPacks([]); // Set empty array as fallback
       }
     } catch (err) {
       const errorMessage = getErrorMessage(err);
@@ -110,7 +111,6 @@ export const CreditManager = ({
     loadCreditData();
   };
 
-  // Modern PaymentIntent flow (preferred)
   const handlePurchasePaymentIntent = async (pack: CreditPack) => {
     try {
       setIsPurchasing(true);
@@ -131,7 +131,7 @@ export const CreditManager = ({
 
       setLastRequestTime(Date.now());
       
-      const response = await purchaseCredits(pack.id, savePaymentMethod);
+      const response = await createCreditPurchaseIntent(pack.id, savePaymentMethod);
       
       setPaymentIntent({
         clientSecret: response.clientSecret,
@@ -188,7 +188,7 @@ export const CreditManager = ({
   };
 
   const handlePurchase = () => {
-    const selectedPack = creditPacks.find(pack => pack.id === selectedPackId);
+    const selectedPack = creditPacks?.find(pack => pack.id === selectedPackId);
     if (selectedPack) {
       handlePurchasePaymentIntent(selectedPack);
     }
@@ -202,13 +202,12 @@ export const CreditManager = ({
     onClose();
   };
 
-  const selectedPack = creditPacks.find(pack => pack.id === selectedPackId);
+  const selectedPack = creditPacks?.find(pack => pack.id === selectedPackId);
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
       <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
         {paymentFlow === 'selection' ? (
-          // Credit Pack Selection Flow
           <>
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
@@ -235,7 +234,6 @@ export const CreditManager = ({
           </div>
         ) : (
           <div className="space-y-6">
-            {/* Current Balance */}
             <Card className="transition-all duration-300 hover:shadow-lg">
               <CardHeader>
                 <CardTitle className="text-lg flex items-center gap-2">
@@ -261,7 +259,6 @@ export const CreditManager = ({
               </CardContent>
             </Card>
 
-            {/* Purchase Credits */}
             <Card className="transition-all duration-300 hover:shadow-lg">
               <CardHeader>
                 <CardTitle className="text-lg flex items-center gap-2">
@@ -270,7 +267,7 @@ export const CreditManager = ({
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                {creditPacks.length === 0 ? (
+                {!creditPacks || creditPacks.length === 0 ? (
                   <div className="text-center py-8">
                     <CreditCard className="h-12 w-12 text-gray-400 mx-auto mb-4" />
                     <h3 className="text-lg font-medium mb-2">No Credit Packs Available</h3>
@@ -280,46 +277,57 @@ export const CreditManager = ({
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    {/* Credit Pack Selection */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      {creditPacks.map((pack) => (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {creditPacks?.map((pack) => (
                         <Card 
                           key={pack.id} 
-                          className={`cursor-pointer transition-all duration-300 border-2 hover:shadow-lg ${
+                          className={`cursor-pointer transition-all duration-300 border-2 relative hover:shadow-lg ${
                             selectedPackId === pack.id 
-                              ? 'border-blue-500 bg-blue-50 shadow-md scale-105 ring-2 ring-blue-200' 
+                              ? 'border-blue-500 bg-blue-50/50 shadow-lg scale-105 ring-2 ring-blue-200' 
                               : 'border-border hover:border-blue-300 hover:scale-102'
-                          }`}
+                          } ${pack.recommended ? 'ring-2 ring-yellow-400 ring-offset-2' : ''}`}
                           onClick={() => setSelectedPackId(pack.id)}
                         >
-                          <CardContent className="p-4">
+                          {pack.recommended && (
+                            <div className="absolute -top-3 left-1/2 transform -translate-x-1/2">
+                              <Badge className="bg-yellow-500 text-yellow-900">
+                                <Star className="h-3 w-3 mr-1" />
+                                Recommended
+                              </Badge>
+                            </div>
+                          )}
+                          
+                          <CardContent className="p-5">
                             <div className="flex items-start justify-between">
                               <div className="flex-1">
-                                <div className="flex items-center gap-2 mb-1">
-                                  <h3 className="font-semibold">{sanitizeHtml(pack.name)}</h3>
-                                  {pack.recommended && (
-                                    <Badge variant="secondary" className="text-xs">
-                                      <Star className="h-3 w-3 mr-1" />
-                                      Popular
-                                    </Badge>
-                                  )}
+                                <div className="flex items-center gap-2 mb-3">
+                                  <h3 className="font-semibold text-lg">{sanitizeHtml(pack.name)}</h3>
                                 </div>
-                                <div className="space-y-1">
-                                  <p className="text-lg font-bold text-blue-600">
-                                    {formatCurrency(pack.valueCredits)} credits
-                                  </p>
-                                  <p className="text-sm text-muted-foreground">
-                                    for {formatCurrency(pack.priceAmount)}
-                                  </p>
-                                  {pack.bonusPercentage && pack.bonusPercentage > 0 && (
-                                    <p className="text-xs text-green-600 font-medium">
-                                      +{pack.bonusPercentage}% bonus included!
+                                <div className="space-y-2">
+                                  <div className="text-center mb-3">
+                                    <p className="text-2xl font-bold text-blue-600">
+                                      {formatCurrency(pack.valueCredits)}
                                     </p>
-                                  )}
+                                    <p className="text-xs text-muted-foreground">credits</p>
+                                  </div>
+                                  <div className="text-center">
+                                    <p className="text-lg font-semibold">
+                                      {formatCurrency(pack.priceAmount)}
+                                    </p>
+                                    {pack.bonusPercentage && pack.bonusPercentage > 0 && (
+                                      <p className="text-xs text-green-600 font-medium mt-1">
+                                        +{pack.bonusPercentage}% bonus included!
+                                      </p>
+                                    )}
+                                  </div>
                                 </div>
                               </div>
                               {selectedPackId === pack.id && (
-                                <Check className="h-5 w-5 text-blue-600 flex-shrink-0" />
+                                <div className="absolute top-3 right-3">
+                                  <div className="bg-blue-500 rounded-full p-1">
+                                    <Check className="h-4 w-4 text-white" />
+                                  </div>
+                                </div>
                               )}
                             </div>
                           </CardContent>
@@ -327,7 +335,6 @@ export const CreditManager = ({
                       ))}
                     </div>
 
-                    {/* Purchase Summary */}
                     {selectedPack && (
                       <Card className="bg-muted/50">
                         <CardContent className="p-4">
@@ -366,7 +373,6 @@ export const CreditManager = ({
                       </Card>
                     )}
 
-                    {/* Save Payment Method Option */}
                     <div className="flex items-center space-x-2">
                       <input
                         type="checkbox"
@@ -382,7 +388,6 @@ export const CreditManager = ({
                   </div>
                 )}
                 
-                {/* Action Buttons */}
                 <div className="flex gap-3 pt-4">
                   <Button 
                     variant="outline" 
@@ -411,7 +416,6 @@ export const CreditManager = ({
                   </Button>
                 </div>
 
-                {/* Payment Info */}
                 <div className="text-xs text-muted-foreground text-center pt-2">
                   <p>
                     Secure payment processed by Stripe. Credits are added to your account instantly.
@@ -422,7 +426,6 @@ export const CreditManager = ({
           </div>
         )}
 
-            {/* Footer */}
             <div className="flex justify-between pt-4 border-t">
               <Button 
                 variant="outline" 
@@ -443,10 +446,8 @@ export const CreditManager = ({
             </div>
           </>
         ) : (
-          // Payment Flow with Stripe Elements
           <StripeProvider>
             <div className="space-y-4">
-              {/* Back Button */}
               <div className="flex items-center gap-2">
                 <Button
                   variant="ghost"
@@ -459,7 +460,6 @@ export const CreditManager = ({
                 </Button>
               </div>
 
-              {/* Payment Form */}
               {paymentIntent && selectedPack && (
                 <PaymentElementForm
                   clientSecret={paymentIntent.clientSecret}

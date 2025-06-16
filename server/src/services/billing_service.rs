@@ -26,25 +26,6 @@ use crate::services::stripe_service::{StripeService, StripeServiceError};
 // Import Stripe types directly for enum matching
 use stripe::InvoiceStatus;
 
-// Invoice response structures
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct InvoiceSummary {
-    pub total_amount: f64,
-    pub paid_amount: f64,
-    pub outstanding_amount: f64,
-    pub overdue_amount: f64,
-    pub currency: String,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct InvoiceHistoryResponse {
-    pub invoices: Vec<serde_json::Value>,
-    pub summary: InvoiceSummary,
-    pub total_count: usize,
-    pub has_more: bool,
-}
 
 
 
@@ -379,7 +360,7 @@ impl BillingService {
         ).await.map_err(|e| AppError::External(format!("Failed to create Stripe customer: {}", e)))?;
 
         // Update the subscription with the customer ID within the transaction
-        self.subscription_repository.set_stripe_customer_id_with_executor(&subscription.id, &customer.id, user_id, tx).await?;
+        self.subscription_repository.set_stripe_customer_id_with_executor(&subscription.id, &customer.id, tx).await?;
         info!("Updated subscription {} with Stripe customer ID: {}", subscription.id, customer.id);
 
         Ok(customer.id.to_string())
@@ -417,13 +398,17 @@ impl BillingService {
             }
         };
 
-        // Get customer ID within the transaction
-        let customer_id = self._get_or_create_stripe_customer_with_executor(user_id, &mut tx).await?;
+        // Get or create Stripe customer ID within the transaction
+        let customer_id = if let Some(existing_customer_id) = &subscription.stripe_customer_id {
+            existing_customer_id.clone()
+        } else {
+            self._get_or_create_stripe_customer_with_executor(user_id, &mut tx).await?
+        };
 
         // Create portal session
         let session = match stripe_service.create_billing_portal_session(
             &customer_id,
-            &self.app_settings.stripe.success_url,
+            &self.app_settings.stripe.portal_return_url,
         ).await {
             Ok(session) => session,
             Err(e) => {
@@ -621,13 +606,16 @@ impl BillingService {
         let amount_cents = (selected_pack.price_amount * BigDecimal::from(100)).to_i64()
             .ok_or_else(|| AppError::InvalidArgument("Invalid price amount".to_string()))?;
 
-        // Add metadata
+        // Add comprehensive metadata for transaction tracking
         let mut metadata = std::collections::HashMap::new();
         metadata.insert("type".to_string(), "credit_purchase".to_string());
         metadata.insert("user_id".to_string(), user_id.to_string());
         metadata.insert("credit_pack_id".to_string(), credit_pack_id.to_string());
         metadata.insert("credit_value".to_string(), selected_pack.value_credits.to_string());
         metadata.insert("currency".to_string(), selected_pack.currency.clone());
+        metadata.insert("pack_name".to_string(), selected_pack.name.clone());
+        metadata.insert("transaction_id".to_string(), Uuid::new_v4().to_string());
+        metadata.insert("created_at".to_string(), Utc::now().to_rfc3339());
 
         let description = format!("Purchase {} credits", selected_pack.value_credits);
 
@@ -696,11 +684,14 @@ impl BillingService {
             subscription = updated_subscription;
         }
 
-        // Add metadata
+        // Add comprehensive metadata for subscription tracking
         let mut metadata = std::collections::HashMap::new();
         metadata.insert("user_id".to_string(), user_id.to_string());
         metadata.insert("plan_id".to_string(), plan_id.to_string());
         metadata.insert("trial_days".to_string(), "1".to_string());
+        metadata.insert("subscription_type".to_string(), "trial_to_paid".to_string());
+        metadata.insert("created_at".to_string(), Utc::now().to_rfc3339());
+        metadata.insert("source".to_string(), "billing_service".to_string());
 
         // Create subscription with 1-day trial
         let subscription = match stripe_service.create_subscription_with_trial(
@@ -765,11 +756,6 @@ impl BillingService {
             None => Err(AppError::Configuration("Stripe not configured".to_string())),
         }
     }
-
-
-
-
-
 
     /// Get detailed payment methods with default flag
     pub async fn get_detailed_payment_methods(
@@ -848,112 +834,6 @@ impl BillingService {
         Ok(detailed_methods)
     }
 
-    /// Get invoice history with structured data and summary
-    pub async fn get_invoice_history(
-        &self,
-        user_id: &Uuid,
-        query: crate::handlers::billing::payment_handlers::InvoiceFilterQuery,
-    ) -> Result<InvoiceHistoryResponse, AppError> {
-        // Ensure Stripe is configured
-        let stripe_service = match &self.stripe_service {
-            Some(service) => service,
-            None => return Err(AppError::Configuration("Stripe not configured".to_string())),
-        };
-
-        // Start transaction for atomic customer operations
-        let mut transaction = self.db_pools.user_pool.begin().await
-            .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
-
-        // Set user context for RLS within the transaction
-        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
-            .bind(user_id.to_string())
-            .execute(&mut *transaction)
-            .await
-            .map_err(|e| AppError::Database(format!("Failed to set user context in transaction: {}", e)))?;
-
-        // Get subscription within transaction
-        let subscription = match self.subscription_repository.get_by_user_id_with_executor(user_id, &mut transaction).await? {
-            Some(sub) => sub,
-            None => {
-                // Create a trial subscription and initial spending limit within the transaction
-                let subscription = self.create_trial_subscription_and_limit_in_tx(user_id, &mut transaction).await?;
-                subscription
-            }
-        };
-
-        // Get customer ID within transaction
-        let customer_id = self._get_or_create_stripe_customer_with_executor(user_id, &mut transaction).await?;
-
-        // Commit transaction after customer operations
-        transaction.commit().await
-            .map_err(|e| AppError::Database(format!("Failed to commit transaction: {}", e)))?;
-
-        // Pass pagination parameters directly to Stripe API
-        let limit = Some(query.limit as u64);
-        let starting_after = if query.offset > 0 {
-            // For offset-based pagination, we'll need to fetch from the beginning
-            // This is a limitation of Stripe's cursor-based pagination
-            None
-        } else {
-            None
-        };
-
-        // Fetch invoices from Stripe with pagination
-        let invoices = stripe_service.list_invoices_with_filter(&customer_id, query.status.as_deref(), limit, starting_after).await
-            .map_err(|e| AppError::External(format!("Failed to get invoices: {}", e)))?;
-
-        // Calculate has_more based on returned results
-        let has_more = invoices.len() == query.limit as usize;
-
-        // Remove InvoiceSummary calculation - client-side responsibility
-        let summary = InvoiceSummary {
-            total_amount: 0.0,
-            paid_amount: 0.0,
-            outstanding_amount: 0.0,
-            overdue_amount: 0.0,
-            currency: "usd".to_string(),
-        };
-
-        // Map to the expected frontend structure
-        let invoice_entries: Vec<serde_json::Value> = invoices
-            .into_iter()
-            .map(|invoice| {
-                serde_json::json!({
-                    "id": invoice.id,
-                    "amount": invoice.amount_due.unwrap_or(0) as f64 / 100.0,
-                    "currency": invoice.currency.map(|c| c.to_string()).unwrap_or_else(|| "usd".to_string()),
-                    "status": invoice.status.map(|s| format!("{:?}", s)).unwrap_or_else(|| "unknown".to_string()),
-                    "createdDate": invoice.created.and_then(|timestamp| {
-                        chrono::DateTime::from_timestamp(timestamp, 0)
-                            .map(|dt| dt.to_rfc3339())
-                    }).unwrap_or_else(|| chrono::Utc::now().to_rfc3339()),
-                    "dueDate": invoice.due_date.and_then(|timestamp| {
-                        chrono::DateTime::from_timestamp(timestamp, 0)
-                            .map(|dt| dt.to_rfc3339())
-                    }),
-                    "paidDate": invoice.status_transitions.as_ref()
-                        .and_then(|transitions| transitions.paid_at)
-                        .and_then(|timestamp| {
-                            chrono::DateTime::from_timestamp(timestamp, 0)
-                                .map(|dt| dt.to_rfc3339())
-                        }),
-                    "invoicePdf": invoice.invoice_pdf,
-                    "description": invoice.description.unwrap_or_else(|| "Subscription".to_string())
-                })
-            })
-            .collect();
-
-        // Get count before moving invoice_entries
-        let invoice_count = invoice_entries.len();
-        
-        // Return structured response without server-side total_count (client determines pagination)
-        Ok(InvoiceHistoryResponse {
-            invoices: invoice_entries,
-            summary,
-            total_count: invoice_count, // Only count of current page
-            has_more,
-        })
-    }
 
     /// Comprehensive subscription synchronization from Stripe webhooks
     /// This method ensures the local database is an accurate mirror of Stripe's subscription state
@@ -1009,7 +889,6 @@ impl BillingService {
         let trial_end = stripe_sub.trial_end
             .and_then(|ts| DateTime::from_timestamp(ts, 0));
         
-        // Update ALL the enhanced synchronization fields from the Stripe subscription object
         local_subscription.stripe_customer_id = Some(customer_id);
         local_subscription.stripe_subscription_id = Some(stripe_sub.id.to_string());
         local_subscription.status = match stripe_sub.status {
@@ -1023,17 +902,11 @@ impl BillingService {
             stripe::SubscriptionStatus::Paused => "paused".to_string(),
         };
         local_subscription.cancel_at_period_end = stripe_sub.cancel_at_period_end;
-        local_subscription.current_period_end = current_period_end;
-        local_subscription.trial_end = trial_end;
-        
-        // Enhanced Stripe webhook synchronization fields
         local_subscription.stripe_plan_id = stripe_plan_id;
         local_subscription.current_period_start = current_period_start;
         local_subscription.current_period_end = current_period_end;
         local_subscription.trial_start = trial_start;
         local_subscription.trial_end = trial_end;
-        // Keep existing pending_plan_id (this is managed by the application, not by Stripe directly)
-        // local_subscription.pending_plan_id = local_subscription.pending_plan_id;
         
         // Update the subscription in the database
         self.subscription_repository.update_with_executor(&local_subscription, &mut tx).await
@@ -1060,6 +933,78 @@ impl BillingService {
               local_subscription.cancel_at_period_end);
         
         Ok(())
+    }
+
+    /// List invoices for a user with pagination
+    pub async fn list_invoices_for_user(
+        &self,
+        user_id: Uuid,
+        limit: i32,
+        offset: i32,
+    ) -> Result<crate::models::ListInvoicesResponse, AppError> {
+        debug!("Listing invoices for user: {}", user_id);
+
+        // Get user's subscription to find Stripe customer ID
+        let subscription = self.subscription_repository.get_by_user_id(&user_id).await?
+            .ok_or_else(|| AppError::NotFound("User has no subscription".to_string()))?;
+        
+        let customer_id = subscription.stripe_customer_id
+            .ok_or_else(|| AppError::NotFound("User has no Stripe customer ID".to_string()))?;
+
+        // Get the Stripe service
+        let stripe_service = self.stripe_service.as_ref()
+            .ok_or_else(|| AppError::Internal("Stripe service not configured".to_string()))?;
+
+        // List invoices from Stripe
+        let stripe_invoices = stripe_service.list_invoices(&customer_id).await
+            .map_err(|e| AppError::External(format!("Failed to list invoices from Stripe: {:?}", e)))?;
+
+        // Convert Stripe invoices to our Invoice model
+        let invoices: Result<Vec<crate::models::Invoice>, AppError> = stripe_invoices
+            .into_iter()
+            .skip(offset as usize)
+            .take(limit as usize)
+            .map(|stripe_invoice| {
+                // Validate critical fields that should never be missing
+                let created = stripe_invoice.created
+                    .ok_or_else(|| AppError::External("Invalid invoice: missing created timestamp".to_string()))?;
+                
+                let currency = stripe_invoice.currency
+                    .ok_or_else(|| AppError::External("Invalid invoice: missing currency".to_string()))?
+                    .to_string();
+                
+                // amount_due and amount_paid can legitimately be 0, but shouldn't be missing
+                let amount_due = stripe_invoice.amount_due
+                    .ok_or_else(|| AppError::External("Invalid invoice: missing amount_due".to_string()))?;
+                    
+                let amount_paid = stripe_invoice.amount_paid
+                    .ok_or_else(|| AppError::External("Invalid invoice: missing amount_paid".to_string()))?;
+
+                Ok(crate::models::Invoice {
+                    id: stripe_invoice.id.to_string(),
+                    created,
+                    due_date: stripe_invoice.due_date,
+                    amount_due,
+                    amount_paid,
+                    currency,
+                    status: format!("{:?}", stripe_invoice.status.unwrap_or(InvoiceStatus::Draft)),
+                    invoice_pdf_url: stripe_invoice.invoice_pdf,
+                })
+            })
+            .collect();
+            
+        let invoices = invoices?;
+
+        // For simplicity, assume total_invoices equals the current batch size
+        // In a real implementation, you'd make a separate count query
+        let total_invoices = invoices.len() as i32;
+        let has_more = invoices.len() == limit as usize;
+
+        Ok(crate::models::ListInvoicesResponse {
+            invoices,
+            total_invoices,
+            has_more,
+        })
     }
 
 }

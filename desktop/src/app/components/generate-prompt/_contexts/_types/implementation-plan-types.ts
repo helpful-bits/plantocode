@@ -2,9 +2,6 @@ export interface PlanContextState {
   // Implementation plan state
   isCreatingPlan: boolean;
   planCreationState: "idle" | "submitting" | "submitted";
-  isCopyingPlanPrompt: boolean;
-  isEstimatingTokens: boolean;
-  estimatedTokens: number | null;
 }
 
 export interface PlanContextActions {
@@ -13,9 +10,6 @@ export interface PlanContextActions {
     taskDescription: string,
     includedPaths: string[]
   ) => Promise<void>;
-  handleCopyImplementationPlanPrompt: () => void;
-  handleGetImplementationPlanPrompt: () => string;
-  handleEstimatePlanTokens: () => Promise<number>;
 }
 
 export interface PlanContextValue {

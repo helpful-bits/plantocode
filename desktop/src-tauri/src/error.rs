@@ -94,7 +94,7 @@ pub enum AppError {
     #[error("Token limit exceeded: {0}")]
     TokenLimitExceededError(String),
     
-    // Billing-specific errors
+    // Billing-specific errors matching server error types
     #[error("Payment failed: {0}")]
     PaymentFailed(String),
     
@@ -122,9 +122,6 @@ pub enum AppError {
     #[error("Billing address required: {0}")]
     BillingAddressRequired(String),
     
-    #[error("Stripe error: {0}")]
-    StripeError(String),
-    
     #[error("Subscription conflict: {0}")]
     SubscriptionConflict(String),
     
@@ -133,6 +130,9 @@ pub enum AppError {
     
     #[error("Invoice error: {0}")]
     InvoiceError(String),
+    
+    #[error("Stripe error: {0}")]
+    StripeError(String),
 }
 
 impl From<std::io::Error> for AppError {
@@ -237,10 +237,10 @@ impl From<AppError> for SerializableError {
             AppError::PlanUpgradeRequired(_) => "PLAN_UPGRADE_REQUIRED",
             AppError::PaymentMethodRequired(_) => "PAYMENT_METHOD_REQUIRED",
             AppError::BillingAddressRequired(_) => "BILLING_ADDRESS_REQUIRED",
-            AppError::StripeError(_) => "STRIPE_ERROR",
             AppError::SubscriptionConflict(_) => "SUBSCRIPTION_CONFLICT",
             AppError::SpendingLimitExceeded(_) => "SPENDING_LIMIT_EXCEEDED",
             AppError::InvoiceError(_) => "INVOICE_ERROR",
+            AppError::StripeError(_) => "STRIPE_ERROR",
         }.to_string();
         
         SerializableError {

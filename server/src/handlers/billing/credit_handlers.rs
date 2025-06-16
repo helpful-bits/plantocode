@@ -7,7 +7,6 @@ use crate::services::billing_service::BillingService;
 use crate::services::credit_service::CreditService;
 use crate::db::repositories::user_credit_repository::UserCreditRepository;
 use crate::db::repositories::credit_transaction_repository::CreditTransactionRepository;
-use crate::db::repositories::{CreditPackRepository, credit_pack_repository::CreditPack};
 use crate::middleware::secure_auth::UserId;
 use crate::models::auth_jwt_claims::Claims;
 use log::{debug, info};
@@ -88,23 +87,22 @@ pub async fn get_credit_summary(
 /// Get available credit packs
 #[get("/packs")]
 pub async fn get_credit_packs(
-    billing_service: web::Data<BillingService>,
+    credit_service: web::Data<CreditService>,
 ) -> Result<HttpResponse, AppError> {
     debug!("Getting available credit packs");
     
-    let credit_pack_repo = crate::db::repositories::CreditPackRepository::new(billing_service.get_db_pool());
-    let credit_packs = credit_pack_repo.get_active_packs().await?;
+    let credit_packs = credit_service.get_available_credit_packs().await?;
     
     let client_packs: Vec<ClientCreditPack> = credit_packs.into_iter().map(|pack| {
         ClientCreditPack {
             id: pack.id,
             name: pack.name,
-            value_credits: pack.value_credits.to_f64().unwrap_or(0.0),
-            price_amount: pack.price_amount.to_f64().unwrap_or(0.0),
+            value_credits: pack.value_credits.to_string(),
+            price_amount: pack.price_amount.to_string(),
             currency: pack.currency,
             description: pack.description,
             recommended: pack.recommended,
-            bonus_percentage: pack.bonus_percentage.map(|bp| bp.to_f64().unwrap_or(0.0)),
+            bonus_percentage: pack.bonus_percentage.map(|bp| bp.to_string()),
             is_popular: pack.is_popular,
             is_active: pack.is_active,
             display_order: pack.display_order,
@@ -255,12 +253,12 @@ pub struct PaymentIntentResponse {
 pub struct ClientCreditPack {
     pub id: String,
     pub name: String,
-    pub value_credits: f64,
-    pub price_amount: f64,
+    pub value_credits: String,
+    pub price_amount: String,
     pub currency: String,
     pub description: Option<String>,
     pub recommended: bool,
-    pub bonus_percentage: Option<f64>,
+    pub bonus_percentage: Option<String>,
     pub is_popular: Option<bool>,
     pub is_active: bool,
     pub display_order: i32,
@@ -286,10 +284,10 @@ pub async fn get_credit_stats(
 /// Get specific credit pack by ID
 pub async fn get_credit_pack_by_id(
     path: web::Path<String>,
-    credit_pack_repo: web::Data<CreditPackRepository>,
+    credit_service: web::Data<CreditService>,
 ) -> Result<HttpResponse, AppError> {
     let pack_id = path.into_inner();
-    let pack = credit_pack_repo.get_pack_by_id(&pack_id).await?
+    let pack = credit_service.get_credit_pack_by_id(&pack_id).await?
         .ok_or_else(|| AppError::NotFound(format!("Credit pack not found: {}", pack_id)))?;
     
     Ok(HttpResponse::Ok().json(pack))

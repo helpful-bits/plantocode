@@ -38,11 +38,7 @@ use self::processors::{
     LocalFileFilteringProcessor,
     ExtendedPathFinderProcessor,
     // File relevance assessment processor
-    FileRelevanceAssessmentProcessor,
-    // Subscription lifecycle processor
-    SubscriptionLifecycleProcessor,
-    // Stale portal session cleanup processor
-    StalePortalSessionCleanupProcessor
+    FileRelevanceAssessmentProcessor
 };
 use self::registry::get_job_registry;
 use self::workflow_orchestrator::{init_workflow_orchestrator, get_workflow_orchestrator};
@@ -81,10 +77,6 @@ pub async fn register_job_processors(app_handle: &AppHandle) -> AppResult<()> {
     let extended_path_finder_processor = Arc::new(ExtendedPathFinderProcessor::new());
     // File relevance assessment processor
     let file_relevance_assessment_processor = Arc::new(FileRelevanceAssessmentProcessor::new());
-    // Subscription lifecycle processor
-    let subscription_lifecycle_processor = Arc::new(SubscriptionLifecycleProcessor::new());
-    // Stale portal session cleanup processor
-    let stale_portal_session_cleanup_processor = Arc::new(StalePortalSessionCleanupProcessor::new());
     
     // Register processors
     registry.register(path_finder_processor).await;
@@ -100,10 +92,6 @@ pub async fn register_job_processors(app_handle: &AppHandle) -> AppResult<()> {
     registry.register(extended_path_finder_processor).await;
     // File relevance assessment processor
     registry.register(file_relevance_assessment_processor).await;
-    // Subscription lifecycle processor
-    registry.register(subscription_lifecycle_processor).await;
-    // Stale portal session cleanup processor
-    registry.register(stale_portal_session_cleanup_processor).await;
     
     debug!("Job processors registered");
     Ok(())

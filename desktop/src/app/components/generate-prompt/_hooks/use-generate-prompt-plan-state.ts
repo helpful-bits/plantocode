@@ -18,8 +18,7 @@ export function useGeneratePromptPlanState() {
       planCreationState: implementationPlanActions.planCreationState,
 
       // Implementation plan actions
-      handleCreateImplementationPlan:
-        implementationPlanActions.handleCreateImplementationPlan,
+      handleCreateImplementationPlan: implementationPlanActions.handleCreateImplementationPlan,
     }),
     [
       implementationPlanActions.isCreatingPlan,

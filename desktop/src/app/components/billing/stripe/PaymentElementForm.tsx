@@ -139,25 +139,31 @@ export function PaymentElementForm({
           <CreditCard className="h-5 w-5" />
           Complete Your Purchase
         </CardTitle>
-        <div className="space-y-2">
-          <div className="flex justify-between text-sm">
-            <span>Amount:</span>
-            <span className="font-semibold">{formatCurrency(amount, currency)}</span>
+        <div className="bg-muted/50 rounded-lg p-4 space-y-3">
+          <div className="text-center">
+            <div className="text-2xl font-bold text-blue-600">
+              {formatCurrency(amount, currency)}
+            </div>
+            <div className="text-sm text-muted-foreground mt-1">
+              {description}
+            </div>
           </div>
-          <div className="flex justify-between text-sm">
-            <span>Description:</span>
-            <span className="text-muted-foreground">{description}</span>
+          <div className="flex items-center justify-center gap-1 text-xs text-muted-foreground">
+            <Shield className="h-3 w-3" />
+            <span>Secure payment via Stripe</span>
           </div>
         </div>
       </CardHeader>
 
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Payment Element */}
           <div className="space-y-3">
             <label className="text-sm font-medium text-gray-700">
               Payment Information
             </label>
+            <div className="text-xs text-muted-foreground mb-2">
+              Enter your payment details to complete this purchase
+            </div>
             <div className="border rounded-lg p-4 bg-gray-50">
               <PaymentElement 
                 onChange={handlePaymentElementChange}
@@ -169,15 +175,15 @@ export function PaymentElementForm({
             </div>
           </div>
 
-          {/* Save payment method option */}
           {savePaymentMethod && (
-            <div className="flex items-center space-x-2 text-sm text-muted-foreground">
-              <Shield className="h-4 w-4" />
-              <span>Your payment method will be securely saved for future purchases</span>
+            <div className="bg-blue-50 p-3 rounded-lg">
+              <div className="flex items-center space-x-2 text-sm text-blue-700">
+                <Shield className="h-4 w-4" />
+                <span>Your payment method will be securely saved for future purchases</span>
+              </div>
             </div>
           )}
 
-          {/* Message display */}
           {message && (
             <Alert variant={messageType === 'error' ? 'destructive' : 'default'}>
               {messageType === 'success' ? (
@@ -191,7 +197,6 @@ export function PaymentElementForm({
             </Alert>
           )}
 
-          {/* Action buttons */}
           <div className="flex gap-3">
             <Button
               type="button"
@@ -221,7 +226,6 @@ export function PaymentElementForm({
             </Button>
           </div>
 
-          {/* Security notice */}
           <div className="text-xs text-center text-muted-foreground">
             <div className="flex items-center justify-center gap-1">
               <Shield className="h-3 w-3" />

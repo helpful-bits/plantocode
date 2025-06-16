@@ -33,7 +33,13 @@ export function JobDetailsErrorSection() {
   );
   
   // Prioritize structured error information from extractErrorInfo
-  const isBillingError = errorInfo.type === ErrorType.BILLING_ERROR || isMetadataBillingError || isStringMatchBillingError;
+  const isBillingError = errorInfo.type === ErrorType.PAYMENT_FAILED || 
+    errorInfo.type === ErrorType.PLAN_UPGRADE_REQUIRED || 
+    errorInfo.type === ErrorType.CREDIT_INSUFFICIENT ||
+    errorInfo.type === ErrorType.SUBSCRIPTION_EXPIRED ||
+    errorInfo.type === ErrorType.SPENDING_LIMIT_EXCEEDED ||
+    isMetadataBillingError || 
+    isStringMatchBillingError;
   
   // Check for workflow errors
   const isWorkflowError = errorInfo.type === ErrorType.WORKFLOW_ERROR;
@@ -174,30 +180,38 @@ export function JobDetailsErrorSection() {
           </Card>
           
           {isBillingError && (
-            <div className="mt-4 p-3 bg-warning/10 border border-border/60 rounded">
-              <div className="flex items-start gap-2">
-                <CreditCard className="h-4 w-4 text-warning mt-0.5 flex-shrink-0" />
+            <div className="mt-4 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20 border-2 border-blue-200 dark:border-blue-800 rounded-lg">
+              <div className="flex items-start gap-3">
+                <CreditCard className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
                 <div className="flex-1">
-                  <p className="text-sm font-medium text-warning-foreground mb-1">
-                    Subscription Required
+                  <p className="text-base font-semibold text-blue-900 dark:text-blue-100 mb-2">
+                    {errorInfo.type === ErrorType.CREDIT_INSUFFICIENT 
+                      ? 'Insufficient Credits' 
+                      : errorInfo.type === ErrorType.PLAN_UPGRADE_REQUIRED 
+                        ? 'Plan Upgrade Required'
+                        : 'Billing Action Required'
+                    }
                   </p>
-                  <p className="text-sm text-warning-foreground/90 mb-3">
+                  <p className="text-sm text-blue-800 dark:text-blue-200 mb-4">
                     {userFriendlyMessage}
                   </p>
-                  <div className="flex gap-2">
+                  <div className="flex flex-col sm:flex-row gap-2">
                     <Button 
                       variant="default"
                       size="sm" 
-                      onClick={() => window.location.pathname = '/settings'}
-                      className="bg-warning text-warning-foreground hover:bg-warning/90"
+                      onClick={() => window.location.pathname = '/account'}
+                      className="bg-blue-600 hover:bg-blue-700 text-white font-medium shadow-md hover:shadow-lg transition-all duration-200"
                     >
-                      View Billing
+                      <CreditCard className="h-4 w-4 mr-2" />
+                      Manage Billing
                     </Button>
                     <Button 
                       variant="outline"
                       size="sm" 
-                      onClick={() => window.location.pathname = '/account'}
+                      onClick={() => window.location.pathname = '/settings'}
+                      className="border-blue-300 dark:border-blue-600 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/20"
                     >
+                      <Settings className="h-4 w-4 mr-2" />
                       Account Settings
                     </Button>
                   </div>

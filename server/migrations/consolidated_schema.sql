@@ -1074,7 +1074,25 @@ ON subscriptions FOR INSERT
 TO authenticated
 WITH CHECK (user_id = get_current_user_id());
 
--- UPDATE, DELETE typically handled by backend/service roles.
+CREATE POLICY "Users can update their own subscription"
+ON subscriptions FOR UPDATE
+TO authenticated
+USING (user_id = get_current_user_id())
+WITH CHECK (user_id = get_current_user_id());
+
+-- App service policies for system operations
+CREATE POLICY "App can select all subscriptions"
+ON subscriptions FOR SELECT
+TO vibe_manager_app
+USING (true);
+
+CREATE POLICY "App can update subscriptions"
+ON subscriptions FOR UPDATE
+TO vibe_manager_app
+USING (true)
+WITH CHECK (true);
+
+-- DELETE typically handled by backend/service roles.
 -- Index idx_subscriptions_user_id already exists.
 
 -- RLS for api_usage table

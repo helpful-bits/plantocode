@@ -77,6 +77,7 @@ const SessionList = ({
           role="button"
           tabIndex={0}
           onKeyDown={(e) => {
+            if (editingSessionId === session.id) return;
             if (e.key === 'Enter' || e.key === ' ') {
               e.preventDefault();
               if (!globalIsSwitching) {

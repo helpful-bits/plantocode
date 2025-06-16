@@ -170,7 +170,7 @@ impl AppSettings {
         
         // Subscription defaults
         let default_trial_days = env::var("DEFAULT_TRIAL_DAYS")
-            .unwrap_or_else(|_| "7".to_string())
+            .unwrap_or_else(|_| "1".to_string())
             .parse::<u32>()
             .map_err(|_| AppError::Configuration("DEFAULT_TRIAL_DAYS must be a valid number".to_string()))?;
 

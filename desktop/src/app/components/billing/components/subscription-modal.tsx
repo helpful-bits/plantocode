@@ -21,7 +21,6 @@ import { getErrorMessage } from '@/utils/error-handling';
 import StripeProvider from '../stripe/StripeProvider';
 import SetupElementForm from '../stripe/SetupElementForm';
 import { getAvailablePlans } from '@/actions/billing/plan.actions';
-// Note: openBillingPortal removed as this component is now for new subscriptions only
 import { invoke } from '@tauri-apps/api/core';
 import type { SubscriptionPlan } from '@/types/tauri-commands';
 
@@ -45,14 +44,12 @@ export interface SubscriptionModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSubscriptionComplete?: (subscriptionId: string, shouldStartPolling?: boolean) => void;
-  currentStatus?: string;
 }
 
 export function SubscriptionModal({ 
   isOpen, 
   onClose, 
-  onSubscriptionComplete,
-  currentStatus
+  onSubscriptionComplete
 }: SubscriptionModalProps) {
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -61,7 +58,6 @@ export function SubscriptionModal({
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
   const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'yearly'>('monthly');
   
-  // New state for subscription flow
   const [subscriptionFlow, setSubscriptionFlow] = useState<'selection' | 'payment'>('selection');
   const [subscriptionIntent, setSubscriptionIntent] = useState<SubscriptionIntentResponse | null>(null);
   
@@ -81,15 +77,11 @@ export function SubscriptionModal({
       setIsLoading(true);
       setError(null);
       
-      // Fetch real subscription plans from the server
       const fetchedPlans = await getAvailablePlans();
-      
-      // Filter only active plans
       const activePlans = fetchedPlans.filter(plan => plan.active);
       
       setPlans(activePlans);
       
-      // Auto-select recommended plan
       const recommendedPlan = activePlans.find(plan => plan.recommended);
       setSelectedPlanId(recommendedPlan?.id || activePlans[0]?.id || null);
       
@@ -98,7 +90,6 @@ export function SubscriptionModal({
       setError(errorMessage);
       console.error('Failed to fetch subscription plans:', err);
       
-      // Show user-friendly error message
       showNotification({
         title: 'Failed to Load Plans',
         message: 'Unable to fetch subscription plans. Please try again later.',
@@ -115,7 +106,6 @@ export function SubscriptionModal({
       setIsCreating(true);
       setError(null);
       
-      // For new subscriptions
       const request: CreateSubscriptionIntentRequest = {
         planId: plan.id,
         trialDays: plan.trialDays,
@@ -148,7 +138,6 @@ export function SubscriptionModal({
     });
     
     onClose();
-    // Pass true to indicate polling should be started to monitor subscription activation
     onSubscriptionComplete?.(subscriptionIntent?.subscriptionId || '', true);
   };
 
@@ -199,15 +188,14 @@ export function SubscriptionModal({
         aria-describedby="subscription-modal-description"
       >
         {subscriptionFlow === 'selection' ? (
-          // Plan Selection Flow
           <>
             <DialogHeader>
               <DialogTitle id="subscription-modal-title" className="flex items-center gap-2">
                 <Crown className="h-5 w-5 text-yellow-500" />
-                Choose Your Plan
+                Start Your Free Trial
               </DialogTitle>
               <DialogDescription id="subscription-modal-description">
-                Choose the plan that's right for you. Your new billing cycle will start after your trial ends.
+                Choose a plan to start your free trial. You can manage your subscription anytime through your account settings.
               </DialogDescription>
             </DialogHeader>
 
@@ -224,7 +212,6 @@ export function SubscriptionModal({
               </div>
             ) : (
               <div className="space-y-6">
-                {/* Billing Period Toggle */}
                 <div className="flex items-center justify-center">
                   <div className="flex items-center bg-muted rounded-lg p-1">
                     <Button
@@ -251,7 +238,6 @@ export function SubscriptionModal({
                   </div>
                 </div>
 
-                {/* Plan Cards */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   {plans.map((plan) => {
                     const price = billingPeriod === 'monthly' ? plan.monthlyPrice : plan.yearlyPrice;
@@ -262,7 +248,7 @@ export function SubscriptionModal({
                         key={plan.id} 
                         className={`cursor-pointer transition-all duration-300 border-2 relative hover:shadow-lg ${
                           selectedPlanId === plan.id 
-                            ? 'border-blue-500 shadow-lg scale-105 bg-blue-50/30' 
+                            ? 'border-blue-500 shadow-lg scale-105 bg-blue-50/50 ring-2 ring-blue-200' 
                             : 'border-border hover:border-blue-300 hover:scale-102'
                         } ${plan.recommended ? 'ring-2 ring-yellow-400 ring-offset-2' : ''}`}
                         onClick={() => setSelectedPlanId(plan.id)}
@@ -321,25 +307,32 @@ export function SubscriptionModal({
                           </ul>
                           
                           {selectedPlanId === plan.id && (
-                            <div className="pt-3">
-                              <Button
-                                onClick={() => handleStartTrial(plan)}
-                                disabled={isCreating}
-                                className="w-full transition-all duration-200 hover:scale-105 hover:shadow-md"
-                              >
-                                {isCreating ? (
-                                  <>
-                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                    Setting up...
-                                  </>
-                                ) : (
-                                  <>
-                                    <Zap className="h-4 w-4 mr-2" />
-                                    {currentStatus === 'trialing' ? 'Upgrade to this Plan' : 'Start Free Trial'}
-                                  </>
-                                )}
-                              </Button>
-                            </div>
+                            <>
+                              <div className="absolute top-3 right-3">
+                                <div className="bg-blue-500 rounded-full p-1">
+                                  <Check className="h-4 w-4 text-white" />
+                                </div>
+                              </div>
+                              <div className="pt-3">
+                                <Button
+                                  onClick={() => handleStartTrial(plan)}
+                                  disabled={isCreating}
+                                  className="w-full transition-all duration-200 hover:scale-105 hover:shadow-md"
+                                >
+                                  {isCreating ? (
+                                    <>
+                                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                      Setting up...
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Zap className="h-4 w-4 mr-2" />
+                                      Start Free Trial
+                                    </>
+                                  )}
+                                </Button>
+                              </div>
+                            </>
                           )}
                         </CardContent>
                       </Card>
@@ -347,7 +340,6 @@ export function SubscriptionModal({
                   })}
                 </div>
 
-                {/* Bottom Actions */}
                 <div className="flex justify-center pt-4">
                   <Button 
                     variant="outline" 
@@ -358,10 +350,9 @@ export function SubscriptionModal({
                   </Button>
                 </div>
 
-                {/* Trial Info */}
                 <div className="text-xs text-center text-muted-foreground">
                   <p>
-                    Your trial starts immediately. We'll notify you before it ends.
+                    Your trial starts immediately with full access to all features.
                     Cancel anytime during the trial at no charge.
                   </p>
                 </div>
@@ -369,7 +360,6 @@ export function SubscriptionModal({
             )}
           </>
         ) : (
-          // Payment Setup Flow with Stripe Elements
           <>
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
@@ -383,7 +373,6 @@ export function SubscriptionModal({
 
             <StripeProvider>
               <div className="space-y-4">
-                {/* Back Button */}
                 <div className="flex items-center gap-2">
                   <Button
                     variant="ghost"
@@ -396,7 +385,6 @@ export function SubscriptionModal({
                   </Button>
                 </div>
 
-                {/* Setup Form */}
                 {subscriptionIntent && selectedPlan && (
                   <SetupElementForm
                     clientSecret={subscriptionIntent.clientSecret || ''}

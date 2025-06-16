@@ -102,58 +102,21 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const showError = useCallback((error: unknown, context?: string, userContext?: string) => {
-    // Log error for debugging/monitoring
-    void logError(error, context || 'User Notification');
-    
-    // Extract structured error information
-    const errorInfo = extractErrorInfo(error);
-    
-    // Create user-friendly message
-    const userMessage = createUserFriendlyErrorMessage(errorInfo, userContext);
-    
-    // Determine specific error types for enhanced handling
-    const isBillingError = errorInfo.type === ErrorType.BILLING_ERROR;
-    const isActionRequired = errorInfo.type === ErrorType.ACTION_REQUIRED;
-    const isPermissionError = errorInfo.type === ErrorType.PERMISSION_ERROR;
-    const isConfigError = errorInfo.type === ErrorType.CONFIGURATION_ERROR;
-    const isNetworkError = errorInfo.type === ErrorType.NETWORK_ERROR;
-    const isDatabaseError = errorInfo.type === ErrorType.DATABASE_ERROR;
-    const isWorkflowError = errorInfo.type === ErrorType.WORKFLOW_ERROR;
-    const isValidationError = errorInfo.type === ErrorType.VALIDATION_ERROR;
-    const isNotFoundError = errorInfo.type === ErrorType.NOT_FOUND_ERROR;
-    const isInternalError = errorInfo.type === ErrorType.INTERNAL_ERROR;
-    const isUnknownError = errorInfo.type === ErrorType.UNKNOWN_ERROR;
-    
-    // Create enhanced title based on error type
-    const getErrorTitle = () => {
-      if (isBillingError) return "Billing Error";
-      if (isActionRequired) return "Action Required";
-      if (isPermissionError) return "Access Denied";
-      if (isConfigError) return "Configuration Error";
-      if (isNetworkError) return "Connection Error";
-      if (isDatabaseError) return "Database Error";
-      if (isWorkflowError) return "Workflow Error";
-      if (isValidationError) return "Invalid Input";
-      if (isNotFoundError) return "Not Found";
-      if (isInternalError) return "System Error";
-      if (isUnknownError) return "Unexpected Error";
-      return "Error";
-    };
-    
-    // Create action button based on error type
-    const getActionButton = () => {
-      if (isBillingError) {
+  // Helper function to create action buttons for billing errors
+  const getActionButton = useCallback((errorType: ErrorType, workflowContext?: any) => {
+    switch (errorType) {
+      case ErrorType.PAYMENT_FAILED:
+      case ErrorType.PAYMENT_DECLINED:
         return {
-          label: "View Billing",
+          label: "Manage Billing",
           onClick: () => {
             window.location.pathname = '/settings';
           },
           variant: "default" as const
         };
-      }
       
-      if (isActionRequired) {
+      case ErrorType.PAYMENT_METHOD_REQUIRED:
+      case ErrorType.BILLING_ADDRESS_REQUIRED:
         return {
           label: "Add Payment Method",
           onClick: () => {
@@ -161,9 +124,96 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
           },
           variant: "default" as const
         };
-      }
       
-      if (isPermissionError || isConfigError) {
+      case ErrorType.PAYMENT_AUTHENTICATION_REQUIRED:
+        return {
+          label: "Complete Authentication",
+          onClick: () => {
+            window.location.pathname = '/settings';
+          },
+          variant: "default" as const
+        };
+      
+      case ErrorType.SUBSCRIPTION_EXPIRED:
+        return {
+          label: "Upgrade Plan",
+          onClick: () => {
+            // Try to open subscription modal if on account page
+            if (window.location.pathname === '/account') {
+              const event = new CustomEvent('open-subscription-modal');
+              window.dispatchEvent(event);
+            } else {
+              // Navigate to account page with upgrade parameter
+              window.location.href = '/account?upgrade=true';
+            }
+          },
+          variant: "default" as const
+        };
+      
+      case ErrorType.SUBSCRIPTION_CANCELLED:
+        return {
+          label: "Renew Subscription",
+          onClick: () => {
+            window.location.pathname = '/settings';
+          },
+          variant: "default" as const
+        };
+      
+      case ErrorType.CREDIT_INSUFFICIENT:
+        return {
+          label: "Buy Credits",
+          onClick: () => {
+            window.location.pathname = '/settings';
+          },
+          variant: "default" as const
+        };
+      
+      case ErrorType.PLAN_UPGRADE_REQUIRED:
+        return {
+          label: "Upgrade Plan",
+          onClick: () => {
+            window.location.pathname = '/settings';
+          },
+          variant: "default" as const
+        };
+      
+      case ErrorType.SPENDING_LIMIT_EXCEEDED:
+        return {
+          label: "Upgrade Plan",
+          onClick: () => {
+            // Try to open subscription modal if on account page
+            if (window.location.pathname === '/account') {
+              const event = new CustomEvent('open-subscription-modal');
+              window.dispatchEvent(event);
+            } else {
+              // Navigate to account page with upgrade parameter
+              window.location.href = '/account?upgrade=true';
+            }
+          },
+          variant: "default" as const
+        };
+      
+      case ErrorType.SUBSCRIPTION_CONFLICT:
+      case ErrorType.INVOICE_ERROR:
+        return {
+          label: "Contact Support",
+          onClick: () => {
+            window.location.pathname = '/settings';
+          },
+          variant: "outline" as const
+        };
+      
+      case ErrorType.ACTION_REQUIRED:
+        return {
+          label: "Take Action",
+          onClick: () => {
+            window.location.pathname = '/settings';
+          },
+          variant: "default" as const
+        };
+      
+      case ErrorType.PERMISSION_ERROR:
+      case ErrorType.CONFIGURATION_ERROR:
         return {
           label: "Check Settings",
           onClick: () => {
@@ -171,9 +221,9 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
           },
           variant: "outline" as const
         };
-      }
       
-      if (isDatabaseError || isInternalError) {
+      case ErrorType.DATABASE_ERROR:
+      case ErrorType.INTERNAL_ERROR:
         return {
           label: "Refresh Page",
           onClick: () => {
@@ -181,9 +231,8 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
           },
           variant: "outline" as const
         };
-      }
       
-      if (isNetworkError) {
+      case ErrorType.NETWORK_ERROR:
         return {
           label: "Retry",
           onClick: () => {
@@ -191,13 +240,11 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
           },
           variant: "outline" as const
         };
-      }
       
-      if (isValidationError) {
+      case ErrorType.VALIDATION_ERROR:
         return {
           label: "Review Input",
           onClick: () => {
-            // Focus on the active form or input area
             const activeElement = document.activeElement;
             if (activeElement && 'focus' in activeElement) {
               (activeElement as HTMLElement).focus();
@@ -205,53 +252,25 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
           },
           variant: "outline" as const
         };
-      }
       
-      if (isWorkflowError) {
-        // Enhanced workflow error handling with context-aware actions
-        if (errorInfo.workflowContext?.workflowId) {
+      case ErrorType.WORKFLOW_ERROR:
+        if (workflowContext?.workflowId) {
           return {
             label: "View Workflow Details",
             onClick: () => {
-              // Try to open the background jobs sidebar or workflow panel
-              // This could trigger a custom event or state update
               const event = new CustomEvent('show-workflow-details', {
-                detail: { workflowId: errorInfo.workflowContext?.workflowId }
+                detail: { workflowId: workflowContext.workflowId }
               });
               window.dispatchEvent(event);
             },
             variant: "outline" as const
           };
-        } else if (errorInfo.workflowContext?.stageJobId) {
+        } else if (workflowContext?.stageJobId) {
           return {
             label: "View Stage Job",
             onClick: () => {
               const event = new CustomEvent('show-job-details', {
-                detail: { jobId: errorInfo.workflowContext?.stageJobId }
-              });
-              window.dispatchEvent(event);
-            },
-            variant: "outline" as const
-          };
-        } else if (errorInfo.workflowContext?.stageId) {
-          return {
-            label: "View Stage Details",
-            onClick: () => {
-              const event = new CustomEvent('show-stage-details', {
-                detail: { stageId: errorInfo.workflowContext?.stageId }
-              });
-              window.dispatchEvent(event);
-            },
-            variant: "outline" as const
-          };
-        } else if (errorInfo.workflowContext?.retryAttempt && errorInfo.workflowContext.retryAttempt > 1) {
-          return {
-            label: "View Retry History",
-            onClick: () => {
-              const event = new CustomEvent('show-background-jobs', {
-                detail: { 
-                  filter: { originalJobId: errorInfo.workflowContext?.originalJobId || errorInfo.workflowContext?.workflowId }
-                }
+                detail: { jobId: workflowContext.stageJobId }
               });
               window.dispatchEvent(event);
             },
@@ -267,9 +286,8 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
             variant: "outline" as const
           };
         }
-      }
       
-      if (isNotFoundError) {
+      case ErrorType.NOT_FOUND_ERROR:
         return {
           label: "Go Back",
           onClick: () => {
@@ -277,28 +295,91 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
           },
           variant: "outline" as const
         };
-      }
       
-      return undefined;
-    };
+      default:
+        return undefined;
+    }
+  }, []);
+
+  // Helper function to get error titles
+  const getErrorTitle = useCallback((errorType: ErrorType) => {
+    switch (errorType) {
+      case ErrorType.PAYMENT_FAILED:
+      case ErrorType.PAYMENT_DECLINED:
+        return "Billing Error";
+      case ErrorType.ACTION_REQUIRED:
+      case ErrorType.PAYMENT_METHOD_REQUIRED:
+      case ErrorType.BILLING_ADDRESS_REQUIRED:
+      case ErrorType.PAYMENT_AUTHENTICATION_REQUIRED:
+        return "Action Required";
+      case ErrorType.SUBSCRIPTION_EXPIRED:
+        return "Subscription Expired";
+      case ErrorType.SUBSCRIPTION_CANCELLED:
+        return "Subscription Cancelled";
+      case ErrorType.CREDIT_INSUFFICIENT:
+        return "Insufficient Credits";
+      case ErrorType.PLAN_UPGRADE_REQUIRED:
+        return "Upgrade Required";
+      case ErrorType.SPENDING_LIMIT_EXCEEDED:
+        return "Spending Limit Exceeded";
+      case ErrorType.SUBSCRIPTION_CONFLICT:
+        return "Subscription Conflict";
+      case ErrorType.INVOICE_ERROR:
+        return "Invoice Error";
+      case ErrorType.PERMISSION_ERROR:
+        return "Access Denied";
+      case ErrorType.CONFIGURATION_ERROR:
+        return "Configuration Error";
+      case ErrorType.NETWORK_ERROR:
+        return "Connection Error";
+      case ErrorType.DATABASE_ERROR:
+        return "Database Error";
+      case ErrorType.WORKFLOW_ERROR:
+        return "Workflow Error";
+      case ErrorType.VALIDATION_ERROR:
+        return "Invalid Input";
+      case ErrorType.NOT_FOUND_ERROR:
+        return "Not Found";
+      case ErrorType.INTERNAL_ERROR:
+        return "System Error";
+      case ErrorType.UNKNOWN_ERROR:
+        return "Unexpected Error";
+      default:
+        return "Error";
+    }
+  }, []);
+
+  const showError = useCallback((error: unknown, context?: string, userContext?: string) => {
+    void logError(error, context || 'User Notification');
     
-    // Determine duration based on error severity
+    const errorInfo = extractErrorInfo(error);
+    const userMessage = createUserFriendlyErrorMessage(errorInfo, userContext);
+    
     const getDuration = () => {
-      if (isBillingError || isActionRequired || isConfigError || isDatabaseError || isInternalError) return 0; // Don't auto-dismiss critical errors
-      if (isPermissionError || isWorkflowError || isNotFoundError) return 10000; // Longer for actionable errors
-      if (isValidationError) return 8000; // Medium duration for user input errors
-      if (isNetworkError) return 6000; // Shorter for network issues that might resolve
-      return 8000; // Default duration
+      const criticalErrors = [
+        ErrorType.PAYMENT_FAILED, ErrorType.PAYMENT_DECLINED, ErrorType.SUBSCRIPTION_EXPIRED,
+        ErrorType.SUBSCRIPTION_CANCELLED, ErrorType.CREDIT_INSUFFICIENT, ErrorType.PLAN_UPGRADE_REQUIRED,
+        ErrorType.PAYMENT_METHOD_REQUIRED, ErrorType.BILLING_ADDRESS_REQUIRED, ErrorType.PAYMENT_AUTHENTICATION_REQUIRED,
+        ErrorType.SPENDING_LIMIT_EXCEEDED, ErrorType.SUBSCRIPTION_CONFLICT, ErrorType.INVOICE_ERROR,
+        ErrorType.ACTION_REQUIRED, ErrorType.CONFIGURATION_ERROR, ErrorType.DATABASE_ERROR, ErrorType.INTERNAL_ERROR
+      ];
+      
+      if (criticalErrors.includes(errorInfo.type)) return 0;
+      if ([ErrorType.PERMISSION_ERROR, ErrorType.WORKFLOW_ERROR, ErrorType.NOT_FOUND_ERROR].includes(errorInfo.type)) return 10000;
+      if (errorInfo.type === ErrorType.VALIDATION_ERROR) return 8000;
+      if (errorInfo.type === ErrorType.NETWORK_ERROR) return 6000;
+      
+      return 8000;
     };
     
     showNotification({
-      title: getErrorTitle(),
+      title: getErrorTitle(errorInfo.type),
       message: userMessage,
       type: "error",
       duration: getDuration(),
-      actionButton: getActionButton()
+      actionButton: getActionButton(errorInfo.type, errorInfo.workflowContext)
     });
-  }, [showNotification]);
+  }, [showNotification, getActionButton, getErrorTitle]);
   
   const showSuccess = useCallback((message: string, title?: string) => {
     showNotification({

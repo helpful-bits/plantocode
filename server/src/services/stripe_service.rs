@@ -1,12 +1,12 @@
 use stripe::{
     Client, CreateCustomer, CreatePaymentIntent, CreateSetupIntent, CreateSubscription,
-    CreateCheckoutSession, CreateBillingPortalSession, PaymentIntent, SetupIntent, 
-    Subscription, Customer, CheckoutSession, BillingPortalSession, Event, EventType,
-    PaymentIntentStatus, SubscriptionStatus, Currency, CheckoutSessionMode,
+    CreateBillingPortalSession, PaymentIntent, SetupIntent, 
+    Subscription, Customer, BillingPortalSession, Event, EventType,
+    PaymentIntentStatus, SubscriptionStatus, Currency,
     PaymentIntentConfirmationMethod, SubscriptionItem,
     CreateSubscriptionItem, Price, Expandable, Invoice, PaymentMethod,
     ListPaymentMethods, CreatePrice, Product, CreateProduct, CreatePriceRecurringInterval, CreatePriceRecurring,
-    ApiVersion, UpdateSubscription, UpdateSubscriptionItems, CreateCheckoutSessionLineItems,
+    ApiVersion,
     CreateInvoice, InvoiceStatus, ListInvoices,
 };
 use chrono::{DateTime, Utc};
@@ -32,19 +32,6 @@ pub enum StripeServiceError {
 
 type HmacSha256 = Hmac<Sha256>;
 
-// Public enums for proration and billing cycle anchor behavior
-#[derive(Debug, Clone)]
-pub enum ProrationBehavior {
-    CreateProrations,
-    None,
-    AlwaysInvoice,
-}
-
-#[derive(Debug, Clone)]
-pub enum BillingCycleAnchor {
-    Now,
-    Unchanged,
-}
 
 // Stripe Customer Portal Configuration Required:
 // 1. Enable subscription cancellation
@@ -174,8 +161,6 @@ impl StripeService {
         Ok(customer)
     }
 
-    /// Create a PaymentIntent for one-time payments (like credit purchases)
-    /// This is kept for in-app credit purchase functionality
     pub async fn create_payment_intent(
         &self,
         customer_id: &str,
@@ -185,10 +170,12 @@ impl StripeService {
         metadata: HashMap<String, String>,
         save_payment_method: bool,
     ) -> Result<PaymentIntent, StripeServiceError> {
-        let mut create_intent = CreatePaymentIntent::new(amount_cents, currency_from_str(currency).unwrap_or(Currency::USD));
+        let parsed_customer_id = customer_id.parse()
+            .map_err(|_| StripeServiceError::Configuration("Invalid Stripe customer ID format".to_string()))?;
+        let currency_enum = currency_from_str(currency)?;
         
-        create_intent.customer = Some(customer_id.parse()
-            .map_err(|_| StripeServiceError::Configuration("Invalid Stripe customer ID format".to_string()))?);
+        let mut create_intent = CreatePaymentIntent::new(amount_cents, currency_enum);
+        create_intent.customer = Some(parsed_customer_id);
         create_intent.description = Some(description);
         create_intent.metadata = Some(metadata);
         create_intent.confirmation_method = Some(PaymentIntentConfirmationMethod::Manual);
@@ -197,9 +184,10 @@ impl StripeService {
             create_intent.setup_future_usage = Some(stripe::PaymentIntentSetupFutureUsage::OffSession);
         }
 
-        let payment_intent = PaymentIntent::create(&self.client, create_intent).await?;
-        info!("Created PaymentIntent: {} for customer: {}", payment_intent.id, customer_id);
+        let payment_intent = PaymentIntent::create(&self.client, create_intent).await
+            .map_err(|e| StripeServiceError::StripeApi(e))?;
         
+        info!("Created PaymentIntent: {} for customer: {}", payment_intent.id, customer_id);
         Ok(payment_intent)
     }
 
@@ -216,10 +204,11 @@ impl StripeService {
             .map_err(|_| StripeServiceError::Configuration("Invalid Stripe customer ID format".to_string()))?;
         let mut create_sub = CreateSubscription::new(parsed_customer_id);
         
-        // Add subscription item
+        let parsed_price_id = price_id.parse()
+            .map_err(|_| StripeServiceError::Configuration("Invalid Stripe price ID format".to_string()))?;
+        
         let items = vec![stripe::CreateSubscriptionItems {
-            price: Some(price_id.parse()
-                .map_err(|_| StripeServiceError::Configuration("Invalid Stripe price ID format".to_string()))?),
+            price: Some(parsed_price_id),
             quantity: Some(1),
             ..Default::default()
         }];
@@ -234,9 +223,10 @@ impl StripeService {
         create_sub.metadata = Some(metadata);
         create_sub.expand = &["latest_invoice.payment_intent"];
 
-        let subscription = Subscription::create(&self.client, create_sub).await?;
-        info!("Created subscription: {} for customer: {}", subscription.id, customer_id);
+        let subscription = Subscription::create(&self.client, create_sub).await
+            .map_err(|e| StripeServiceError::StripeApi(e))?;
         
+        info!("Created subscription: {} for customer: {}", subscription.id, customer_id);
         Ok(subscription)
     }
 
@@ -252,9 +242,10 @@ impl StripeService {
         let mut create_session = CreateBillingPortalSession::new(parsed_customer_id);
         create_session.return_url = Some(return_url);
 
-        let session = BillingPortalSession::create(&self.client, create_session).await?;
-        info!("Created billing portal session for customer: {}", customer_id);
+        let session = BillingPortalSession::create(&self.client, create_session).await
+            .map_err(|e| StripeServiceError::StripeApi(e))?;
         
+        info!("Created billing portal session for customer: {}", customer_id);
         Ok(session)
     }
 
@@ -274,77 +265,8 @@ impl StripeService {
         Ok(subscription)
     }
 
-    /// Simple subscription update for immediate plan changes only
-    /// For complex operations, redirect to Stripe Customer Portal
-    pub async fn update_subscription_immediate(
-        &self,
-        subscription_id: &str,
-        new_price_id: &str,
-        metadata: Option<HashMap<String, String>>,
-    ) -> Result<Subscription, StripeServiceError> {
-        // Get current subscription to retrieve existing item IDs
-        let current_subscription = self.get_subscription(subscription_id).await?;
-        
-        let mut update_sub = UpdateSubscription::new();
-        
-        // Update the subscription item with the new price
-        if let Some(items) = current_subscription.items.data.first() {
-            let mut update_items = Vec::new();
-            let mut item_update = UpdateSubscriptionItems::default();
-            item_update.id = Some(items.id.to_string());
-            item_update.price = Some(new_price_id.to_string());
-            update_items.push(item_update);
-            update_sub.items = Some(update_items);
-        }
-        
-        if let Some(meta) = metadata {
-            update_sub.metadata = Some(meta);
-        }
 
-        let parsed_subscription_id = subscription_id.parse()
-            .map_err(|_| StripeServiceError::Configuration("Invalid Stripe subscription ID format".to_string()))?;
-        let subscription = Subscription::update(&self.client, &parsed_subscription_id, update_sub).await?;
-        info!("Updated subscription immediately: {}", subscription_id);
-        
-        Ok(subscription)
-    }
-
-    /// Generate Stripe Customer Portal URL for complex billing operations
-    /// This redirects users to Stripe's hosted portal for:
-    /// - Complex subscription changes with proration
-    /// - Payment method management  
-    /// - Billing address updates
-    /// - Invoice downloads
-    /// - Payment failure resolution
-    pub fn generate_portal_url(
-        &self,
-        customer_id: &str,
-        return_url: &str,
-    ) -> String {
-        format!(
-            "https://billing.stripe.com/p/session/{}/{}?return_url={}",
-            customer_id,
-            "portal_session_id", // This would be replaced with actual portal session creation
-            urlencoding::encode(return_url)
-        )
-    }
     
-    /// Utility function to check if an operation should redirect to Customer Portal
-    pub fn should_redirect_to_portal(operation: &str) -> bool {
-        match operation {
-            "payment_method_management" => true,
-            "complex_subscription_change" => true,
-            "billing_address_update" => true,
-            "invoice_download" => true,
-            "payment_failure_resolution" => true,
-            // Keep these operations in-app
-            "credit_purchase" => false,
-            "basic_plan_upgrade" => false,
-            "subscription_status_display" => false,
-            "trial_creation" => false,
-            _ => true, // Default to portal for unknown operations
-        }
-    }
 
     /// List payment methods for a customer from Stripe
     pub async fn list_payment_methods(&self, customer_id: &str) -> Result<Vec<PaymentMethod>, StripeServiceError> {
@@ -469,37 +391,6 @@ impl StripeService {
         Ok((product, price))
     }
 
-    /// Create a checkout session for subscription (required by handlers)
-    pub async fn create_checkout_session(
-        &self,
-        customer_id: &str,
-        price_id: &str,
-        mode: CheckoutSessionMode,
-        success_url: &str,
-        cancel_url: &str,
-    ) -> Result<CheckoutSession, StripeServiceError> {
-        let parsed_customer_id = customer_id.parse()
-            .map_err(|_| StripeServiceError::Configuration("Invalid Stripe customer ID format".to_string()))?;
-        
-        let mut create_session = CreateCheckoutSession::new();
-        create_session.customer = Some(parsed_customer_id);
-        create_session.mode = Some(mode);
-        create_session.success_url = Some(success_url);
-        create_session.cancel_url = Some(cancel_url);
-        
-        // Add line items for subscription
-        let line_items = vec![stripe::CreateCheckoutSessionLineItems {
-            price: Some(price_id.to_string()),
-            quantity: Some(1),
-            ..Default::default()
-        }];
-        create_session.line_items = Some(line_items);
-
-        let session = CheckoutSession::create(&self.client, create_session).await?;
-        info!("Created checkout session for customer: {}", customer_id);
-        
-        Ok(session)
-    }
 
     /// Create a SetupIntent for saving payment method without charging (required by handlers)
     pub async fn create_setup_intent(
@@ -514,82 +405,15 @@ impl StripeService {
         create_intent.customer = Some(parsed_customer_id);
         create_intent.metadata = Some(metadata);
 
-        let setup_intent = SetupIntent::create(&self.client, create_intent).await?;
-        info!("Created SetupIntent for customer: {}", customer_id);
+        let setup_intent = SetupIntent::create(&self.client, create_intent).await
+            .map_err(|e| StripeServiceError::StripeApi(e))?;
         
+        info!("Created SetupIntent for customer: {}", customer_id);
         Ok(setup_intent)
     }
 
-    /// Preview subscription update (required by handlers)
-    pub async fn preview_subscription_update(
-        &self,
-        subscription_id: &str,
-        new_price_id: &str,
-        proration_behavior: ProrationBehavior,
-    ) -> Result<Invoice, StripeServiceError> {
-        // Get current subscription
-        let current_subscription = self.get_subscription(subscription_id).await?;
-        
-        // Create preview parameters
-        let mut preview_params = stripe::CreateInvoice::new();
-        preview_params.customer = Some(current_subscription.customer.id().clone());
-        preview_params.subscription = Some(subscription_id.parse()
-            .map_err(|_| StripeServiceError::Configuration("Invalid Stripe subscription ID format".to_string()))?);
-        
-        // This is a simplified preview - in production you'd use the upcoming invoice API
-        // For now, return a basic response indicating the preview is complex
-        return Err(StripeServiceError::SubscriptionManagement(
-            "Preview functionality requires Stripe Customer Portal for complex calculations".to_string()
-        ));
-    }
 
-    /// Cancel a subscription either immediately or at period end (required by handlers)
-    pub async fn cancel_subscription(
-        &self,
-        subscription_id: &str,
-        at_period_end: bool,
-    ) -> Result<Subscription, StripeServiceError> {
-        let mut update_sub = UpdateSubscription::new();
-        
-        if at_period_end {
-            // Set to cancel at the end of the current period
-            update_sub.cancel_at_period_end = Some(true);
-        } else {
-            // Cancel immediately
-            update_sub.cancel_at_period_end = Some(false);
-        }
 
-        let parsed_subscription_id = subscription_id.parse()
-            .map_err(|_| StripeServiceError::Configuration("Invalid Stripe subscription ID format".to_string()))?;
-        
-        let subscription = if at_period_end {
-            // Just update the subscription to cancel at period end
-            Subscription::update(&self.client, &parsed_subscription_id, update_sub).await?
-        } else {
-            // Actually cancel the subscription immediately
-            Subscription::cancel(&self.client, &parsed_subscription_id, stripe::CancelSubscription::default()).await?
-        };
-        
-        info!("Canceled subscription {} (at_period_end: {})", subscription_id, at_period_end);
-        
-        Ok(subscription)
-    }
-
-    /// Resume a subscription by removing cancel_at_period_end flag (required by handlers)
-    pub async fn resume_subscription(
-        &self,
-        subscription_id: &str,
-    ) -> Result<Subscription, StripeServiceError> {
-        let mut update_sub = UpdateSubscription::new();
-        update_sub.cancel_at_period_end = Some(false);
-
-        let parsed_subscription_id = subscription_id.parse()
-            .map_err(|_| StripeServiceError::Configuration("Invalid Stripe subscription ID format".to_string()))?;
-        let subscription = Subscription::update(&self.client, &parsed_subscription_id, update_sub).await?;
-        info!("Resumed subscription: {}", subscription_id);
-        
-        Ok(subscription)
-    }
 }
 
 /// Helper function to convert Currency enum from string
