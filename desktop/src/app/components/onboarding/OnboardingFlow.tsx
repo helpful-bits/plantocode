@@ -19,12 +19,17 @@ export function OnboardingFlow({ onOnboardingComplete }: OnboardingFlowProps) {
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [useSessionStorage, setUseSessionStorage] = useState<boolean>(false);
 
-  // Check storage mode on component mount
+  // Check storage mode on component mount and skip to completed if session storage
   useEffect(() => {
     const checkStorageMode = async () => {
       try {
-        const sessionStorageMode = await invoke('get_storage_mode');
-        setUseSessionStorage(Boolean(sessionStorageMode));
+        const sessionStorageMode = await invoke<boolean>('get_storage_mode');
+        setUseSessionStorage(sessionStorageMode);
+        
+        // If session storage is used, skip directly to completed state
+        if (sessionStorageMode) {
+          setCurrentState('completed');
+        }
       } catch (error) {
         console.error('Failed to get storage mode:', error);
         // Default to false (use keychain) if we can't determine the mode

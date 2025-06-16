@@ -101,42 +101,27 @@ export function useSidebarStateManager(): SidebarManager {
 
   // Auto-collapse sidebar when navigating to settings to maximize horizontal space
   useEffect(() => {
-    let routeChangeTimeout: number | null = null;
-    
     const handleRouteChange = (event: CustomEvent) => {
-      // Debounce route changes to prevent rapid state changes
-      if (routeChangeTimeout) {
-        clearTimeout(routeChangeTimeout);
-      }
+      const newPath = event.detail.path;
+      if (!newPath) return;
+      const isSettingsRoute = newPath === '/settings';
       
-      routeChangeTimeout = window.setTimeout(() => {
-        const newPath = event.detail?.path;
-        if (!newPath) return; // Guard against undefined path
-        const isSettingsRoute = newPath === '/settings';
+      if (isSettingsRoute && !isAutoCollapsedForSettings) {
+        setPreviousCollapsedState(state.activeCollapsed);
+        setIsAutoCollapsedForSettings(true);
+        setState((prev: SidebarState) => ({ ...prev, activeCollapsed: true }));
+      } else if (!isSettingsRoute && isAutoCollapsedForSettings) {
+        setIsAutoCollapsedForSettings(false);
         
-        if (isSettingsRoute && !isAutoCollapsedForSettings) {
-          // Store current sidebar state before auto-collapsing
-          setPreviousCollapsedState(state.activeCollapsed);
-          setIsAutoCollapsedForSettings(true);
-          
-          // Auto-collapse to give maximum horizontal space for settings
-          setState((prev: SidebarState) => ({ ...prev, activeCollapsed: true }));
-        } else if (!isSettingsRoute && isAutoCollapsedForSettings) {
-          // Restore previous sidebar state when leaving settings
-          setIsAutoCollapsedForSettings(false);
-          
-          if (previousCollapsedState !== null) {
-            setState((prev: SidebarState) => ({ ...prev, activeCollapsed: previousCollapsedState }));
-            setPreviousCollapsedState(null);
-          }
+        if (previousCollapsedState !== null) {
+          setState((prev: SidebarState) => ({ ...prev, activeCollapsed: previousCollapsedState }));
+          setPreviousCollapsedState(null);
         }
-      }, 50); // Small debounce to smooth transitions
+      }
     };
 
-    // Listen for route changes
     window.addEventListener('routeChange', handleRouteChange as EventListener);
     
-    // Check initial route
     const currentPath = window.location.pathname;
     if (currentPath === '/settings' && !isAutoCollapsedForSettings) {
       setPreviousCollapsedState(state.activeCollapsed);
@@ -146,9 +131,6 @@ export function useSidebarStateManager(): SidebarManager {
 
     return () => {
       window.removeEventListener('routeChange', handleRouteChange as EventListener);
-      if (routeChangeTimeout) {
-        clearTimeout(routeChangeTimeout);
-      }
     };
   }, [state.activeCollapsed, isAutoCollapsedForSettings, previousCollapsedState]);
 

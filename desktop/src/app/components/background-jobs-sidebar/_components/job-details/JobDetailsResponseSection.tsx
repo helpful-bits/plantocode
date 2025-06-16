@@ -9,7 +9,6 @@ import { VirtualizedCodeViewer } from "@/ui/virtualized-code-viewer";
 import { useJobDetailsContext } from "../../_contexts/job-details-context";
 import { parsePlanResponseContent, extractStepsFromPlan, createPlanWithOnlyStep } from "../../../implementation-plans-panel/_utils/plan-content-parser";
 import { Button } from "@/ui/button";
-import { SubscriptionLifecycleJobDetails } from "./SubscriptionLifecycleJobDetails";
 
 import { getStreamingProgressValue } from "../../utils";
 
@@ -143,14 +142,6 @@ export function JobDetailsResponseSection() {
               </div>
             )}
 
-            {job.taskType === "subscription_lifecycle" ? (
-              <SubscriptionLifecycleJobDetails
-                payload={parsedMetadata?.jobPayloadForWorker?.data}
-                error={job.errorMessage}
-                status={job.status}
-                response={job.response}
-              />
-            ) : (
               <VirtualizedCodeViewer
                 content={displayContentForViewer}
                 language={viewerLanguage}
@@ -180,7 +171,6 @@ export function JobDetailsResponseSection() {
                   </div>
                 }
               />
-            )}
           </CardContent>
         </CollapsibleContent>
       </Collapsible>

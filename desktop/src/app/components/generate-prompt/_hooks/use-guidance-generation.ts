@@ -87,17 +87,34 @@ export function useGuidanceGeneration({
       const errorInfo = extractErrorInfo(errorMessage);
       const userFriendlyMessage = createUserFriendlyErrorMessage(errorInfo, 'guidance generation');
       
-      if (errorInfo.type === ErrorType.BILLING_ERROR) {
+      // Handle billing-related errors with enhanced notifications
+      if (errorInfo.type === ErrorType.PAYMENT_FAILED || 
+          errorInfo.type === ErrorType.PLAN_UPGRADE_REQUIRED ||
+          errorInfo.type === ErrorType.CREDIT_INSUFFICIENT ||
+          errorInfo.type === ErrorType.SPENDING_LIMIT_EXCEEDED) {
         showNotification({
-          title: "Upgrade Required",
+          title: "Billing Issue",
           message: userFriendlyMessage,
           type: "warning",
-          duration: 10000,
+          duration: 0,
           actionButton: {
-            label: "View Subscription",
+            label: "Manage Billing",
             onClick: () => window.location.pathname = '/settings',
             variant: "default",
             className: "bg-primary text-primary-foreground hover:bg-primary/90"
+          }
+        });
+      } else if ([ErrorType.PAYMENT_FAILED, ErrorType.PAYMENT_DECLINED, 
+                 ErrorType.SUBSCRIPTION_EXPIRED, ErrorType.SUBSCRIPTION_CANCELLED].includes(errorInfo.type)) {
+        showNotification({
+          title: "Payment Issue",
+          message: userFriendlyMessage,
+          type: "error",
+          duration: 0,
+          actionButton: {
+            label: "Fix Payment",
+            onClick: () => window.location.pathname = '/settings',
+            variant: "default"
           }
         });
       } else {
@@ -187,22 +204,46 @@ export function useGuidanceGeneration({
         // Use standardized error handling to get ActionState
         const errorState = handleActionError(error);
         
-        // Check for billing errors
-        if (errorState.error instanceof AppError && errorState.error.type === ErrorType.BILLING_ERROR) {
-          showNotification({
-            title: "Upgrade Required",
-            message: errorState.error.message || "This feature or model requires a higher subscription plan.",
-            type: "warning",
-            duration: 10000,
-            actionButton: {
-              label: "View Subscription",
-              onClick: () => window.location.pathname = '/settings',
-              variant: "default",
-              className: "bg-primary text-primary-foreground hover:bg-primary/90"
-            }
-          });
-          setIsGeneratingGuidance(false);
-          return;
+        // Check for billing errors and handle with enhanced notifications
+        if (errorState.error instanceof AppError) {
+          const errorType = errorState.error.type;
+          
+          if ([ErrorType.PAYMENT_FAILED, ErrorType.PLAN_UPGRADE_REQUIRED,
+               ErrorType.CREDIT_INSUFFICIENT, ErrorType.SPENDING_LIMIT_EXCEEDED].includes(errorType)) {
+            showNotification({
+              title: "Billing Issue",
+              message: errorState.error.message || "This feature requires a billing upgrade.",
+              type: "warning",
+              duration: 0,
+              actionButton: {
+                label: "Manage Billing",
+                onClick: () => window.location.pathname = '/settings',
+                variant: "default",
+                className: "bg-primary text-primary-foreground hover:bg-primary/90"
+              }
+            });
+            setIsGeneratingGuidance(false);
+            return;
+          }
+          
+          if (errorType === ErrorType.PAYMENT_FAILED ||
+              errorType === ErrorType.PAYMENT_DECLINED ||
+              errorType === ErrorType.SUBSCRIPTION_EXPIRED ||
+              errorType === ErrorType.SUBSCRIPTION_CANCELLED) {
+            showNotification({
+              title: "Payment Issue",
+              message: errorState.error.message || "There's an issue with your payment or subscription.",
+              type: "error",
+              duration: 0,
+              actionButton: {
+                label: "Fix Payment",
+                onClick: () => window.location.pathname = '/settings',
+                variant: "default"
+              }
+            });
+            setIsGeneratingGuidance(false);
+            return;
+          }
         }
 
         // Extract error info and create user-friendly message

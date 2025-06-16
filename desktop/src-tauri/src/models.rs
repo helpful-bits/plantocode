@@ -181,7 +181,6 @@ pub enum TaskType {
     LocalFileFiltering,
     FileRelevanceAssessment,
     ExtendedPathFinder,
-    SubscriptionLifecycle,
     Streaming,
     Unknown,
 }
@@ -202,7 +201,6 @@ impl ToString for TaskType {
             TaskType::LocalFileFiltering => "local_file_filtering".to_string(),
             TaskType::FileRelevanceAssessment => "file_relevance_assessment".to_string(),
             TaskType::ExtendedPathFinder => "extended_path_finder".to_string(),
-            TaskType::SubscriptionLifecycle => "subscription_lifecycle".to_string(),
             TaskType::Streaming => "streaming".to_string(),
             TaskType::Unknown => "unknown".to_string(),
         }
@@ -227,7 +225,6 @@ impl std::str::FromStr for TaskType {
             "local_file_filtering" => Ok(TaskType::LocalFileFiltering),
             "file_relevance_assessment" => Ok(TaskType::FileRelevanceAssessment),
             "extended_path_finder" => Ok(TaskType::ExtendedPathFinder),
-            "subscription_lifecycle" => Ok(TaskType::SubscriptionLifecycle),
             "streaming" => Ok(TaskType::Streaming),
             _ => Ok(TaskType::Unknown),
         }
@@ -242,7 +239,7 @@ impl TaskType {
             TaskType::LocalFileFiltering 
             | TaskType::FileFinderWorkflow
             | TaskType::VoiceTranscription
-            | TaskType::SubscriptionLifecycle => false,
+ => false,
             // LLM tasks that require configuration
             TaskType::FileRelevanceAssessment
             | TaskType::ExtendedPathFinder
@@ -267,7 +264,7 @@ impl TaskType {
             TaskType::LocalFileFiltering 
             | TaskType::FileFinderWorkflow
             | TaskType::VoiceTranscription
-            | TaskType::SubscriptionLifecycle => ApiType::FileSystem,
+ => ApiType::FileSystem,
             // Extended workflow stages use OpenRouter API
             TaskType::FileRelevanceAssessment
             | TaskType::ExtendedPathFinder

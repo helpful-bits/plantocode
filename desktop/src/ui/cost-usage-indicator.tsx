@@ -51,7 +51,7 @@ export function CostUsageIndicator({
 }: CostUsageIndicatorProps) {
   // Fetch usage data if no override props provided
   const shouldFetch = currentSpending === undefined || monthlyAllowance === undefined;
-  const { spendingStatus, isLoading, error, refreshBillingData } = useBillingData();
+  const { spendingStatus, trialDaysLeft: fetchedTrialDaysLeft, isLoading, error, refreshBillingData } = useBillingData();
 
   // Use provided values or fetched values with safe fallbacks
   const actualCurrentSpending = (currentSpending ?? spendingStatus?.currentSpending) ?? 0;
@@ -59,7 +59,7 @@ export function CostUsageIndicator({
   const actualUsagePercentage = (usagePercentage ?? spendingStatus?.usagePercentage) ?? 0;
   const actualServicesBlocked = (servicesBlocked ?? spendingStatus?.servicesBlocked) ?? false;
   const actualCurrency = currency ?? spendingStatus?.currency ?? "USD";
-  const actualTrialDaysLeft = trialDaysLeft;
+  const actualTrialDaysLeft = trialDaysLeft ?? fetchedTrialDaysLeft;
 
   // Format currency with 2 decimal places
   const formattedSpending = actualCurrentSpending.toFixed(2);
@@ -72,9 +72,12 @@ export function CostUsageIndicator({
   if (compact) {
     return (
       <div className={`flex items-center gap-2 ${className}`}>
-        {actualTrialDaysLeft !== undefined && (
-          <Badge variant="outline" className="bg-primary/10 border-primary/20 text-primary">
-            {actualTrialDaysLeft} day{actualTrialDaysLeft !== 1 ? "s" : ""} left
+        {actualTrialDaysLeft !== undefined && actualTrialDaysLeft !== null && (
+          <Badge 
+            variant={actualTrialDaysLeft === 0 ? "destructive" : actualTrialDaysLeft < 3 ? "warning" : "outline"} 
+            className={actualTrialDaysLeft === 0 ? "" : "bg-primary/10 border-primary/20 text-primary"}
+          >
+            {actualTrialDaysLeft === 0 ? "Trial expired" : `${actualTrialDaysLeft} day${actualTrialDaysLeft !== 1 ? "s" : ""} left`}
           </Badge>
         )}
 
@@ -178,19 +181,17 @@ export function CostUsageIndicator({
         )}
 
         {/* Trial days left indicator */}
-        {actualTrialDaysLeft !== undefined && (
+        {actualTrialDaysLeft !== undefined && actualTrialDaysLeft !== null && (
           <div className="mt-2">
             <Badge
               variant={
-                typeof actualTrialDaysLeft === "number" &&
-                actualTrialDaysLeft < 5
-                  ? "warning"
-                  : "secondary"
+                actualTrialDaysLeft === 0 ? "destructive" :
+                actualTrialDaysLeft < 3 ? "destructive" :
+                actualTrialDaysLeft < 7 ? "warning" : "secondary"
               }
               className="w-full justify-center text-xs"
             >
-              {actualTrialDaysLeft} day{actualTrialDaysLeft !== 1 ? "s" : ""}{" "}
-              left in trial
+              {actualTrialDaysLeft === 0 ? "Trial expired" : `${actualTrialDaysLeft} day${actualTrialDaysLeft !== 1 ? "s" : ""} left in trial`}
             </Badge>
           </div>
         )}

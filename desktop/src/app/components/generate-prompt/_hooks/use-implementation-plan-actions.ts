@@ -90,28 +90,51 @@ export function useImplementationPlanActions() {
         // Use standardized error handling to get ActionState
         const errorState = handleActionError(error);
         
-        // Check for billing errors
-        if (errorState.error instanceof AppError && errorState.error.type === ErrorType.BILLING_ERROR) {
-          showNotification({
-            title: "Upgrade Required",
-            message: errorState.error.message || "This feature or model requires a higher subscription plan.",
-            type: "warning",
-            duration: 10000,
-            actionButton: {
-              label: "View Subscription",
-              onClick: () => window.location.pathname = '/settings',
-              variant: "default",
-              className: "bg-primary text-primary-foreground hover:bg-primary/90"
-            }
-          });
-          return;
+        // Check for billing errors and handle with enhanced notifications
+        if (errorState.error instanceof AppError) {
+          const errorType = errorState.error.type;
+          
+          if ([ErrorType.PAYMENT_FAILED, ErrorType.PLAN_UPGRADE_REQUIRED,
+               ErrorType.CREDIT_INSUFFICIENT, ErrorType.SPENDING_LIMIT_EXCEEDED].includes(errorType)) {
+            showNotification({
+              title: "Billing Issue",
+              message: errorState.error.message || "This feature requires a billing upgrade.",
+              type: "warning",
+              duration: 0,
+              actionButton: {
+                label: "Manage Billing",
+                onClick: () => window.location.pathname = '/settings',
+                variant: "default",
+                className: "bg-primary text-primary-foreground hover:bg-primary/90"
+              }
+            });
+            return;
+          }
+          
+          if (errorType === ErrorType.PAYMENT_FAILED ||
+              errorType === ErrorType.PAYMENT_DECLINED ||
+              errorType === ErrorType.SUBSCRIPTION_EXPIRED ||
+              errorType === ErrorType.SUBSCRIPTION_CANCELLED) {
+            showNotification({
+              title: "Payment Issue",
+              message: errorState.error.message || "There's an issue with your payment or subscription.",
+              type: "error",
+              duration: 0,
+              actionButton: {
+                label: "Fix Payment",
+                onClick: () => window.location.pathname = '/settings',
+                variant: "default"
+              }
+            });
+            return;
+          }
         }
 
         // Extract error info and create user-friendly message
         const errorInfo = extractErrorInfo(error);
         const userFriendlyMessage = createUserFriendlyErrorMessage(errorInfo, 'implementation plan');
         
-        // Notify the user
+        // Show error with enhanced error handling
         showNotification({
           title: "Implementation Plan Creation Failed",
           message: userFriendlyMessage,

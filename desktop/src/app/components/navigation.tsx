@@ -23,8 +23,13 @@ export function Navigation() {
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    const handlePathChange = () => {
-      setPathname(window.location.pathname);
+    const handlePathChange = (event?: Event) => {
+      let newPath = window.location.pathname;
+      if (event && 'detail' in event) {
+        const customEvent = event as CustomEvent<{ path: string }>;
+        newPath = customEvent.detail?.path || window.location.pathname;
+      }
+      setPathname(newPath);
     };
     
     // Set initial pathname
@@ -34,11 +39,11 @@ export function Navigation() {
     window.addEventListener('popstate', handlePathChange);
     
     // Custom event for programmatic navigation
-    window.addEventListener('routeChange', handlePathChange as EventListener);
+    window.addEventListener('routeChange', handlePathChange);
 
     return () => {
       window.removeEventListener('popstate', handlePathChange);
-      window.removeEventListener('routeChange', handlePathChange as EventListener);
+      window.removeEventListener('routeChange', handlePathChange);
     };
   }, []);
   const { isAppBusy, busyMessage } = useUILayout();
@@ -63,7 +68,7 @@ export function Navigation() {
                   onClick={() => {
                     if (typeof window !== 'undefined') {
                       window.history.pushState({}, '', path);
-                      window.dispatchEvent(new Event('routeChange'));
+                      window.dispatchEvent(new CustomEvent('routeChange', { detail: { path } }));
                     }
                   }}
                   className={`

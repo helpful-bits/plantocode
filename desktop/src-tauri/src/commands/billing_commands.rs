@@ -8,6 +8,25 @@ use log::{debug, info, warn, error};
 use regex::Regex;
 use once_cell::sync::Lazy;
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Invoice {
+    pub id: String,
+    pub created: i64,
+    pub due_date: Option<i64>,
+    pub amount_due: i64,
+    pub amount_paid: i64,
+    pub currency: String,
+    pub status: String,
+    pub invoice_pdf_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ListInvoicesResponse {
+    pub invoices: Vec<Invoice>,
+    pub total_invoices: i32,
+    pub has_more: bool,
+}
+
 // ========================================
 // VALIDATION UTILITIES FOR BILLING SECURITY
 // ========================================
@@ -295,99 +314,8 @@ pub struct BillingPortalResponse {
     pub url: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SpendingStatusInfo {
-    pub current_spending: f64,
-    pub included_allowance: f64,
-    pub remaining_allowance: f64,
-    pub overage_amount: f64,
-    pub usage_percentage: f64,
-    pub services_blocked: bool,
-    pub hard_limit: f64,
-    pub next_billing_date: String,
-    pub currency: String,
-    pub alerts: Vec<SpendingAlert>,
-    pub credit_balance: f64,
-}
 
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SpendingAlert {
-    pub id: String,
-    pub alert_type: String,
-    pub threshold_amount: f64,
-    pub current_spending: f64,
-    pub alert_sent_at: String,
-    pub acknowledged: bool,
-}
 
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct UpdateSpendingLimitsRequest {
-    pub monthly_spending_limit: Option<f64>,
-    pub hard_limit: Option<f64>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct UpdateSpendingLimitsResponse {
-    pub success: bool,
-    pub message: String,
-    pub updated_limits: UpdatedLimitsInfo,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct UpdatedLimitsInfo {
-    pub monthly_allowance: f64,
-    pub hard_limit: f64,
-    pub current_spending: f64,
-    pub services_blocked: bool,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct InvoiceHistoryEntry {
-    pub id: String,
-    pub amount: f64,
-    pub currency: String,
-    pub status: String,
-    pub created_date: String,
-    pub due_date: Option<String>,
-    pub paid_date: Option<String>,
-    pub invoice_pdf: Option<String>,
-    pub description: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct InvoiceHistoryRequest {
-    pub limit: Option<i32>,
-    pub offset: Option<i32>,
-    pub status: Option<String>,
-    pub search: Option<String>,
-    pub sort_field: Option<String>,
-    pub sort_direction: Option<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct InvoiceSummary {
-    pub total_amount: f64,
-    pub paid_amount: f64,
-    pub unpaid_amount: f64,
-    pub currency: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct InvoiceHistoryResponse {
-    pub invoices: Vec<InvoiceHistoryEntry>,
-    pub total_count: usize,
-    pub has_more: bool,
-    pub summary: InvoiceSummary,
-}
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -482,25 +410,6 @@ pub async fn get_subscription_plans_command(
 
 
 
-/// Get invoice history with optional filtering
-#[tauri::command]
-pub async fn get_invoice_history_command(
-    request: Option<InvoiceHistoryRequest>,
-    billing_client: State<'_, Arc<BillingClient>>,
-) -> Result<InvoiceHistoryResponse, AppError> {
-    debug!("Getting invoice history via Tauri command with request: {:?}", request);
-    
-    let (limit, offset, status, search, sort_field, sort_direction) = if let Some(req) = request {
-        (req.limit, req.offset, req.status, req.search, req.sort_field, req.sort_direction)
-    } else {
-        (None, None, None, None, None, None)
-    };
-    
-    let invoice_history = billing_client.get_invoice_history(limit, offset, status, search, sort_field, sort_direction).await?;
-    
-    info!("Successfully retrieved invoice history");
-    Ok(invoice_history)
-}
 
 /// Get spending history
 #[tauri::command]
@@ -840,7 +749,6 @@ pub struct BillingHealthStatus {
     pub subscription_accessible: bool,
     pub payment_methods_accessible: bool,
     pub credit_system_accessible: bool,
-    pub invoice_system_accessible: bool,
     pub last_checked: String,
     pub error_details: Vec<String>,
     pub warnings: Vec<String>,
@@ -869,7 +777,6 @@ pub async fn check_billing_health_command(
         subscription_accessible: false,
         payment_methods_accessible: false,
         credit_system_accessible: false,
-        invoice_system_accessible: false,
         last_checked: std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
@@ -897,7 +804,6 @@ pub async fn check_billing_health_command(
             status.error_details.push(error_msg.clone());
             error!("Billing health check error: {}", error_msg);
             
-            // Try to determine if it's a connectivity or auth issue
             if format!("{}", e).contains("network") || format!("{}", e).contains("connection") {
                 status.recommendations.push("Check internet connection and server availability".to_string());
             } else if format!("{}", e).contains("auth") || format!("{}", e).contains("token") {
@@ -908,7 +814,6 @@ pub async fn check_billing_health_command(
             }
         }
     }
-    
     
     // Test payment methods accessibility  
     match billing_client.get_payment_methods().await {
@@ -938,19 +843,6 @@ pub async fn check_billing_health_command(
         }
     }
     
-    // Test invoice system accessibility
-    match billing_client.get_invoice_history(Some(1), Some(0), None, None, None, None).await {
-        Ok(_) => {
-            status.invoice_system_accessible = true;
-            info!("Billing health check: Invoice system accessible");
-        }
-        Err(e) => {
-            warnings += 1;
-            let warning_msg = format!("Invoice system not accessible: {}", e);
-            status.warnings.push(warning_msg.clone());
-            warn!("Billing health check warning: {}", warning_msg);
-        }
-    }
     
     // Determine overall health status
     status.overall_status = if errors > 0 {
@@ -987,7 +879,6 @@ pub async fn ping_billing_service_command(
 ) -> Result<bool, AppError> {
     debug!("Running quick billing service connectivity test");
     
-    // Try a lightweight call to test connectivity
     match billing_client.get_stripe_publishable_key().await {
         Ok(_) => {
             info!("Billing service ping successful");
@@ -998,5 +889,17 @@ pub async fn ping_billing_service_command(
             Ok(false)
         }
     }
+}
+
+/// List invoices with optional pagination
+#[tauri::command]
+pub async fn list_invoices_command(
+    limit: Option<i32>,
+    offset: Option<i32>,
+    billing_client: State<'_, Arc<BillingClient>>,
+) -> Result<ListInvoicesResponse, AppError> {
+    billing_client
+        .list_invoices(limit, offset)
+        .await
 }
 

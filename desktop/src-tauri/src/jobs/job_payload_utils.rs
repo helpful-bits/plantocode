@@ -104,11 +104,6 @@ pub fn deserialize_value_to_job_payload(json_value: &serde_json::Value, task_typ
         TaskType::FileFinderWorkflow => {
             Err(AppError::JobError("FileFinderWorkflow should be handled by WorkflowOrchestrator, not individual payload deserialization".to_string()))
         }
-        TaskType::SubscriptionLifecycle => {
-            let payload: crate::jobs::types::SubscriptionLifecyclePayload = serde_json::from_value(json_value.clone())
-                .map_err(|e| AppError::JobError(format!("Failed to deserialize SubscriptionLifecyclePayload: {}", e)))?;
-            Ok(JobPayload::SubscriptionLifecycle(payload))
-        }
         // VoiceTranscription uses direct API calls, not background jobs
         TaskType::VoiceTranscription => {
             Err(AppError::JobError("VoiceTranscription uses direct API calls instead of background job system".to_string()))
