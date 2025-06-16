@@ -14,15 +14,15 @@ async function testEndpoints() {
     });
     console.log('Spending status result:', spendingResult);
     
-    console.log('Testing subscription details...');
-    const subscriptionResult = await fetch('ipc://localhost/get_subscription_details_command', {
+    console.log('Testing billing dashboard data...');
+    const dashboardResult = await fetch('ipc://localhost/get_billing_dashboard_data_command', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: '{}'
     });
-    console.log('Subscription details result:', subscriptionResult);
+    console.log('Billing dashboard data result:', dashboardResult);
     
   } catch (error) {
     console.error('Error testing endpoints:', error);

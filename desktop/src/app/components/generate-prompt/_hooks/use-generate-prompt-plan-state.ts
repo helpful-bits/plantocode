@@ -5,9 +5,7 @@ import { useImplementationPlanActions } from "./use-implementation-plan-actions"
 
 /**
  * Hook for managing implementation plan state for the generate prompt feature.
- * This hook wraps useImplementationPlanActions and provides a consistent interface
- * for the plan context. It accesses session data directly through the implementation
- * plan actions hook.
+ * This hook is a clean wrapper around useImplementationPlanActions.
  */
 export function useGeneratePromptPlanState() {
   // Initialize implementation plan actions (which internally uses session context)
@@ -19,21 +17,9 @@ export function useGeneratePromptPlanState() {
       isCreatingPlan: implementationPlanActions.isCreatingPlan,
       planCreationState: implementationPlanActions.planCreationState,
 
-      // These properties are no longer provided by useImplementationPlanActions,
-      // so we provide default values
-      isCopyingPlanPrompt: false,
-      isEstimatingTokens: false,
-      estimatedTokens: 0,
-
       // Implementation plan actions
       handleCreateImplementationPlan:
         implementationPlanActions.handleCreateImplementationPlan,
-
-      // These methods are no longer provided by useImplementationPlanActions,
-      // so we provide empty implementations
-      handleCopyImplementationPlanPrompt: () => {},
-      handleGetImplementationPlanPrompt: () => "",
-      handleEstimatePlanTokens: () => Promise.resolve(0),
     }),
     [
       implementationPlanActions.isCreatingPlan,

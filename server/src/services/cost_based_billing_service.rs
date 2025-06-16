@@ -11,7 +11,8 @@ use chrono::{DateTime, Utc, Datelike, NaiveDate, Duration};
 use std::sync::Arc;
 use sqlx::PgPool;
 use crate::db::connection::DatabasePools;
-use bigdecimal::{BigDecimal, ToPrimitive, FromPrimitive};
+use sqlx::types::{BigDecimal};
+use bigdecimal::{ToPrimitive, FromPrimitive};
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 
@@ -52,7 +53,8 @@ pub struct SpendingAlert {
 
 // Helper functions for safe operations
 fn safe_bigdecimal_from_str(s: &str) -> Result<BigDecimal, AppError> {
-    BigDecimal::from_str(s).map_err(AppError::from)
+    use std::str::FromStr;
+    BigDecimal::from_str(s).map_err(|e| AppError::Internal(format!("Invalid BigDecimal: {}", e)))
 }
 
 fn safe_date_from_components(year: i32, month: u32, day: u32) -> Result<NaiveDate, AppError> {
@@ -91,6 +93,7 @@ pub struct CostBasedBillingService {
     spending_repository: Arc<SpendingRepository>,
     user_credit_repository: Arc<UserCreditRepository>,
     credit_transaction_repository: Arc<CreditTransactionRepository>,
+    default_trial_days: i64,
 }
 
 impl CostBasedBillingService {
@@ -102,6 +105,7 @@ impl CostBasedBillingService {
         spending_repository: Arc<SpendingRepository>,
         user_credit_repository: Arc<UserCreditRepository>,
         credit_transaction_repository: Arc<CreditTransactionRepository>,
+        default_trial_days: i64,
     ) -> Self {
         Self {
             db_pools,
@@ -111,6 +115,7 @@ impl CostBasedBillingService {
             spending_repository,
             user_credit_repository,
             credit_transaction_repository,
+            default_trial_days,
         }
     }
 
@@ -119,6 +124,7 @@ impl CostBasedBillingService {
         // Get current spending status
         let spending_status = self.get_current_spending_status(user_id).await?;
         
+        // Use services_blocked flag from UserSpendingLimit struct returned by get_current_spending_status
         if spending_status.services_blocked {
             debug!("Services blocked for user {} - spending limit exceeded", user_id);
             return Ok(false);
@@ -160,6 +166,13 @@ impl CostBasedBillingService {
         // Start a transaction for atomic billing operations
         let mut tx = self.db_pools.user_pool.begin().await.map_err(AppError::from)?;
         
+        // Set user context for RLS within the transaction
+        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
+            .bind(user_id.to_string())
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| AppError::Database(format!("Failed to set user context in transaction: {}", e)))?;
+        
         let result = self._record_usage_and_update_spending_in_tx(
             user_id,
             service_name,
@@ -176,6 +189,10 @@ impl CostBasedBillingService {
         match result {
             Ok(_) => {
                 tx.commit().await.map_err(AppError::from)?;
+                
+                // Check spending thresholds and send alerts after transaction is committed
+                self.check_spending_thresholds(user_id).await?;
+                
                 Ok(())
             }
             Err(e) => {
@@ -214,25 +231,18 @@ impl CostBasedBillingService {
         
         let api_usage_record = self.api_usage_repository.record_usage_with_executor(entry_dto, executor).await?;
 
-        // Get current spending limit
-        let spending_limit = self.get_or_create_current_spending_limit_in_tx(user_id, executor).await?;
+        // After recording in api_usage, call spending_repository.increment_spending_with_executor
+        // The increment should be atomic - removing ALL manual calculation logic
+        self.increment_spending_with_executor(user_id, cost, executor).await?;
         
-        // Calculate how much of the cost is covered by included allowance
-        let cost_covered_by_allowance = cost.clone().min(
-            (&spending_limit.included_allowance - &spending_limit.current_spending).max(safe_bigdecimal_from_str("0")?)
-        );
-        let remaining_cost_after_allowance = cost - &cost_covered_by_allowance;
+        // Handle remaining cost with credits (simplified logic)
+        let credit_balance_option = self.user_credit_repository.get_balance_with_executor(user_id, executor).await?;
+        let credit_balance = credit_balance_option
+            .map(|uc| uc.balance)
+            .unwrap_or_else(|| safe_bigdecimal_from_str("0").unwrap_or_else(|_| BigDecimal::from(0)));
         
-        // Note: Spending is tracked through API usage records, no need to separately update spending limits
-        
-        // Handle remaining cost with credits
-        if remaining_cost_after_allowance > safe_bigdecimal_from_str("0")? {
-            // Get credit balance
-            let credit_balance_option = self.user_credit_repository.get_balance_with_executor(user_id, executor).await?;
-            let credit_balance = credit_balance_option
-                .map(|uc| uc.balance)
-                .unwrap_or_else(|| safe_bigdecimal_from_str("0").unwrap_or_else(|_| BigDecimal::from(0)));
-            let cost_covered_by_credits = remaining_cost_after_allowance.clone().min(credit_balance);
+        if credit_balance > safe_bigdecimal_from_str("0")? {
+            let cost_covered_by_credits = cost.clone().min(credit_balance);
             
             if cost_covered_by_credits > safe_bigdecimal_from_str("0")? {
                 // Deduct credits
@@ -248,41 +258,48 @@ impl CostBasedBillingService {
                     Some(format!("Credit consumption for {} usage", service_name)),
                     executor,
                 ).await?;
-                
-                // Note: Spending is tracked through API usage records
-            }
-            
-            // Any remaining cost becomes actual overage
-            let actual_overage_cost = &remaining_cost_after_allowance - &cost_covered_by_credits;
-            if actual_overage_cost > safe_bigdecimal_from_str("0")? {
-                // Note: Overage spending is tracked through API usage records
             }
         }
 
-        // Drop executor reference before calling non-transactional method
-        drop(executor);
-        
-        // Check spending thresholds and send alerts (non-transactional)
-        self.check_spending_thresholds(user_id).await?;
-
-        debug!("Processed API usage for user {}: cost=${}, covered by allowance=${}, covered by credits=${}", 
-               user_id, cost, cost_covered_by_allowance, 
-               if remaining_cost_after_allowance > safe_bigdecimal_from_str("0")? {
-                   cost - &cost_covered_by_allowance
-               } else {
-                   safe_bigdecimal_from_str("0")?
-               });
+        debug!("Processed API usage for user {}: cost=${}", user_id, cost);
 
         Ok(())
     }
 
     /// Get current spending status for user
     pub async fn get_current_spending_status(&self, user_id: &Uuid) -> Result<SpendingStatus, AppError> {
-        // Get or create current billing period spending limit
-        let spending_limit = self.get_or_create_current_spending_limit(user_id).await?;
+        let mut tx = self.db_pools.user_pool.begin().await.map_err(AppError::from)?;
         
-        // Get user's credit balance
-        let credit_balance_option = self.user_credit_repository.get_balance(user_id).await?;
+        // Set user context for RLS within the transaction
+        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
+            .bind(user_id.to_string())
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| AppError::Database(format!("Failed to set user context in transaction: {}", e)))?;
+        
+        let result = self.get_current_spending_status_in_tx(user_id, &mut tx).await?;
+        tx.commit().await.map_err(AppError::from)?;
+        
+        // Add alerts for non-transaction version
+        let alerts = self.get_recent_alerts(user_id, &result.billing_period_start).await?;
+        
+        Ok(SpendingStatus {
+            alerts,
+            ..result
+        })
+    }
+
+    /// Get current spending status for user (transaction-aware)
+    pub async fn get_current_spending_status_in_tx(
+        &self, 
+        user_id: &Uuid, 
+        executor: &mut sqlx::Transaction<'_, sqlx::Postgres>
+    ) -> Result<SpendingStatus, AppError> {
+        // Get or create current billing period spending limit within transaction
+        let spending_limit = self.get_or_create_current_spending_limit_in_tx(user_id, executor).await?;
+        
+        // Get user's credit balance within transaction
+        let credit_balance_option = self.user_credit_repository.get_balance_with_executor(user_id, executor).await?;
         let credit_balance = credit_balance_option
             .map(|uc| uc.balance)
             .unwrap_or_else(|| safe_bigdecimal_from_str("0").unwrap_or_else(|_| BigDecimal::from(0)));
@@ -315,13 +332,13 @@ impl CostBasedBillingService {
             0.0
         };
 
-        // Get recent alerts
-        let alerts = self.get_recent_alerts(user_id, &spending_limit.billing_period_start).await?;
+        // Get recent alerts (simplified version for transaction context)
+        let alerts = vec![]; // Skip alerts in transaction context for simplicity
 
         Ok(SpendingStatus {
             current_spending: spending_limit.current_spending,
             included_allowance: spending_limit.included_allowance,
-            hard_limit: spending_limit.hard_limit,
+            hard_limit: spending_limit.hard_limit.clone().unwrap_or_else(|| safe_bigdecimal_from_str("0").unwrap_or_else(|_| BigDecimal::from(0))),
             remaining_allowance,
             overage_amount,
             credit_balance,
@@ -363,6 +380,14 @@ impl CostBasedBillingService {
     async fn get_or_create_current_spending_limit(&self, user_id: &Uuid) -> Result<UserSpendingLimit, AppError> {
         // Start a transaction and call the _in_tx version
         let mut tx = self.db_pools.user_pool.begin().await.map_err(AppError::from)?;
+        
+        // Set user context for RLS within the transaction
+        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
+            .bind(user_id.to_string())
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| AppError::Database(format!("Failed to set user context in transaction: {}", e)))?;
+        
         let result = self.get_or_create_current_spending_limit_in_tx(user_id, &mut tx).await?;
         tx.commit().await.map_err(AppError::from)?;
         Ok(result)
@@ -391,14 +416,39 @@ impl CostBasedBillingService {
             .ok_or_else(|| AppError::Internal("Failed to construct time for billing_period_end".to_string()))?
             .and_utc();
 
-        // Try to get existing spending limit using repository
+        // First call spending_repository.get_user_spending_limit_for_period_with_executor
         if let Some(spending_limit) = self.spending_repository.get_user_spending_limit_for_period_with_executor(user_id, &billing_period_start, &billing_period_end, executor).await? {
             return Ok(spending_limit);
         }
 
-        // Create new spending limit based on user's subscription
-        let subscription = self.subscription_repository.get_by_user_id_with_executor(user_id, executor).await?
-            .ok_or_else(|| AppError::Internal("No subscription found for user".to_string()))?;
+        // If not found, calculate limits from user's plan and create using create_or_update_user_spending_limit_with_executor
+        let subscription = match self.subscription_repository.get_by_user_id_with_executor(user_id, executor).await? {
+            Some(sub) => sub,
+            None => {
+                info!("Creating new trial subscription for user {}", user_id);
+                let subscription_id = self._create_trial_subscription_in_tx(user_id, executor).await?;
+                // Instead of retrieving, construct subscription from known data to avoid RLS transaction isolation issue
+                let now = Utc::now();
+                let trial_end_date = now + Duration::days(self.default_trial_days);
+                crate::db::repositories::subscription_repository::Subscription {
+                    id: subscription_id,
+                    user_id: *user_id,
+                    stripe_customer_id: None,
+                    stripe_subscription_id: None,
+                    plan_id: "free".to_string(),
+                    status: "trialing".to_string(),
+                    cancel_at_period_end: false,
+                    created_at: now,
+                    updated_at: now,
+                    stripe_plan_id: "free".to_string(),
+                    current_period_start: now,
+                    current_period_end: trial_end_date,
+                    trial_start: Some(now),
+                    trial_end: Some(trial_end_date),
+                    pending_plan_id: None,
+                }
+            }
+        };
 
         // Get plan using direct SQL since subscription_plan_repository doesn't have _with_executor variant
         let plan = sqlx::query!(
@@ -421,8 +471,8 @@ impl CostBasedBillingService {
 
         let hard_limit: BigDecimal = &included_allowance * &hard_limit_multiplier;
 
-        // Create new UserSpendingLimit struct and use repository
-        let new_limit = UserSpendingLimit {
+        // Create new spending limit struct and save using create_or_update_user_spending_limit_with_executor
+        let new_spending_limit = UserSpendingLimit {
             id: Uuid::new_v4(),
             user_id: *user_id,
             plan_id: subscription.plan_id.clone(),
@@ -430,19 +480,19 @@ impl CostBasedBillingService {
             billing_period_end,
             included_allowance: included_allowance.clone(),
             current_spending: safe_bigdecimal_from_str("0")?,
-            hard_limit: hard_limit.clone(),
+            hard_limit: Some(hard_limit.clone()),
             services_blocked: false,
-            currency: plan.currency.unwrap_or_else(|| "USD".to_string()),
+            currency: plan.currency.clone().unwrap_or_else(|| "USD".to_string()),
             created_at: Some(Utc::now()),
             updated_at: Some(Utc::now()),
         };
-
-        let _result = self.spending_repository.create_or_update_user_spending_limit_with_executor(user_id, &included_allowance, executor).await?;
+        
+        let _result = self.spending_repository.create_or_update_user_spending_limit_with_executor(&new_spending_limit, executor).await?;
 
         info!("Created new spending limit for user {}: allowance=${}, hard_limit=${}", 
               user_id, included_allowance, hard_limit);
 
-        Ok(new_limit)
+        Ok(new_spending_limit)
     }
 
     /// Check spending thresholds and send alerts
@@ -485,15 +535,20 @@ impl CostBasedBillingService {
 
     /// Block AI services for user
     async fn block_services(&self, user_id: &Uuid) -> Result<(), AppError> {
-        let now = Utc::now();
-        let billing_period_start = safe_date_from_components(now.year(), now.month(), 1)?
-            .and_hms_opt(0, 0, 0)
-            .ok_or_else(|| AppError::Internal("Failed to construct time for billing_period_start".to_string()))?
-            .and_utc();
+        // Call spending_repository.update_services_blocked_status_with_executor with true
+        let mut tx = self.db_pools.user_pool.begin().await.map_err(AppError::from)?;
+        
+        // Set user context for RLS within the transaction
+        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
+            .bind(user_id.to_string())
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| AppError::Database(format!("Failed to set user context in transaction: {}", e)))?;
+        
+        self.update_services_blocked_status_with_executor(user_id, true, &mut tx).await?;
+        tx.commit().await.map_err(AppError::from)?;
 
-        // Log service blocking (services are blocked by checking spending status)
         warn!("Services blocked for user {} due to spending limit exceeded", user_id);
-
         error!("SERVICES BLOCKED for user {} due to spending limit exceeded", user_id);
         Ok(())
     }
@@ -501,15 +556,20 @@ impl CostBasedBillingService {
 
     /// Unblock AI services for user (manual override or new billing period)
     pub async fn unblock_services(&self, user_id: &Uuid) -> Result<(), AppError> {
-        let now = Utc::now();
-        let billing_period_start = safe_date_from_components(now.year(), now.month(), 1)?
-            .and_hms_opt(0, 0, 0)
-            .ok_or_else(|| AppError::Internal("Failed to construct time for billing_period_start".to_string()))?
-            .and_utc();
+        // Call spending_repository.update_services_blocked_status_with_executor with false
+        let mut tx = self.db_pools.user_pool.begin().await.map_err(AppError::from)?;
+        
+        // Set user context for RLS within the transaction
+        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
+            .bind(user_id.to_string())
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| AppError::Database(format!("Failed to set user context in transaction: {}", e)))?;
+        
+        self.update_services_blocked_status_with_executor(user_id, false, &mut tx).await?;
+        tx.commit().await.map_err(AppError::from)?;
 
-        // Log service unblocking (services are unblocked by checking spending status)
         info!("Services unblocked for user {} - manual override", user_id);
-
         info!("Services unblocked for user {}", user_id);
         Ok(())
     }
@@ -535,7 +595,7 @@ impl CostBasedBillingService {
                 Ok::<BigDecimal, AppError>(user_spending_limit.included_allowance.clone())
             },
             "services_blocked" => {
-                Ok::<BigDecimal, AppError>(user_spending_limit.hard_limit.clone())
+                Ok::<BigDecimal, AppError>(user_spending_limit.hard_limit.clone().unwrap_or_else(|| safe_bigdecimal_from_str("0").unwrap_or_else(|_| BigDecimal::from(0))))
             },
             _ => Ok::<BigDecimal, AppError>(safe_bigdecimal_from_str("0")?),
         }?;
@@ -585,7 +645,7 @@ impl CostBasedBillingService {
         let spending_status = self.get_current_spending_status(user_id).await?;
 
         // Use email notification service to send the notification directly
-        let email_service = crate::services::email_notification_service::EmailNotificationService::new(self.db_pools.user_pool.clone())?;
+        let email_service = crate::services::email_notification_service::EmailNotificationService::new(self.db_pools.clone())?;
         
         email_service.send_spending_alert(
             user_id,
@@ -614,10 +674,8 @@ impl CostBasedBillingService {
 
     /// Reset spending for new billing period (called by billing cycle job)
     pub async fn reset_billing_period(&self, user_id: &Uuid) -> Result<(), AppError> {
-        // Start a database transaction
-        let mut tx = self.db_pools.user_pool.begin().await.map_err(AppError::from)?;
-
-        // Calculate the previous billing period dates
+        // Simplify to just log the event
+        // Remove archiving logic (new records created lazily by get_or_create_current_spending_limit)
         let now = Utc::now();
         let previous_period_start = if now.month() == 1 {
             safe_date_from_components(now.year() - 1, 12, 1)?
@@ -628,15 +686,7 @@ impl CostBasedBillingService {
             .ok_or_else(|| AppError::Internal("Failed to construct time for previous_period_start".to_string()))?
             .and_utc();
 
-        // Simply log the billing period reset - no archiving needed
         info!("BILLING PERIOD RESET: User {} - Previous period: {}", user_id, previous_period_start);
-
-        // Create new spending limit for current period
-        let _new_spending_limit = self.get_or_create_current_spending_limit_in_tx(user_id, &mut tx).await?;
-        
-        // Commit the transaction
-        tx.commit().await.map_err(AppError::from)?;
-        
         info!("Reset billing period for user {}", user_id);
         Ok(())
     }
@@ -861,6 +911,91 @@ impl CostBasedBillingService {
         (1.0f64 - coefficient_of_variation.min(1.0f64)).max(0.1f64)
     }
 
+    /// Create a trial subscription for new users
+    async fn _create_trial_subscription_in_tx(
+        &self,
+        user_id: &Uuid,
+        executor: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    ) -> Result<Uuid, AppError> {
+        // Set user context for RLS within the transaction
+        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
+            .bind(user_id.to_string())
+            .execute(&mut **executor)
+            .await
+            .map_err(|e| AppError::Database(format!("Failed to set user context in transaction: {}", e)))?;
+        
+        let free_plan = sqlx::query!(
+            r#"
+            SELECT id, name, base_price_monthly, included_spending_monthly, overage_rate,
+                   hard_limit_multiplier, currency, features, created_at, updated_at
+            FROM subscription_plans 
+            WHERE id = 'free'
+            "#
+        )
+        .fetch_one(&mut **executor)
+        .await
+        .map_err(AppError::from)?;
+        
+        let trial_end_date = Utc::now() + Duration::days(self.default_trial_days);
+        let current_period_end = trial_end_date;
+        
+        let subscription_id = self.subscription_repository.create_with_executor(
+            user_id,
+            &free_plan.id,
+            "trialing",
+            None,
+            None,
+            Some(trial_end_date),
+            current_period_end,
+            executor,
+        ).await?;
+        
+        Ok(subscription_id)
+    }
+
+    /// Helper method to increment spending atomically
+    async fn increment_spending_with_executor(
+        &self,
+        user_id: &Uuid,
+        amount: &BigDecimal,
+        executor: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    ) -> Result<(), AppError> {
+        // Get current billing period start
+        let now = Utc::now();
+        let billing_period_start = safe_date_from_components(now.year(), now.month(), 1)?
+            .and_hms_opt(0, 0, 0)
+            .ok_or_else(|| AppError::Internal("Failed to construct time for billing_period_start".to_string()))?
+            .and_utc();
+
+        // Call the repository method to atomically increment spending
+        let _updated_limit = self.spending_repository.increment_spending_with_executor(user_id, &billing_period_start, amount, executor).await?;
+        
+        debug!("Spending incremented atomically for user {}: +${}", user_id, amount);
+        Ok(())
+    }
+
+    /// Helper method to update services blocked status
+    async fn update_services_blocked_status_with_executor(
+        &self,
+        user_id: &Uuid,
+        blocked: bool,
+        executor: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    ) -> Result<(), AppError> {
+        // Get current billing period start
+        let now = Utc::now();
+        let billing_period_start = safe_date_from_components(now.year(), now.month(), 1)?
+            .and_hms_opt(0, 0, 0)
+            .ok_or_else(|| AppError::Internal("Failed to construct time for billing_period_start".to_string()))?
+            .and_utc();
+
+        // Call the repository method to update services blocked status
+        self.spending_repository.update_services_blocked_status_with_executor(user_id, &billing_period_start, blocked, executor).await?;
+        
+        let status_text = if blocked { "blocked" } else { "unblocked" };
+        info!("Services {} for user {} via repository update", status_text, user_id);
+        Ok(())
+    }
+
     /// Update spending limits when user changes subscription plans
     pub async fn update_spending_limits_for_plan_change(
         &self,
@@ -869,6 +1004,13 @@ impl CostBasedBillingService {
     ) -> Result<(), AppError> {
         // Start transaction for atomic update
         let mut tx = self.db_pools.user_pool.begin().await.map_err(AppError::from)?;
+        
+        // Set user context for RLS within the transaction
+        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
+            .bind(user_id.to_string())
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| AppError::Database(format!("Failed to set user context in transaction: {}", e)))?;
         
         // Calculate current billing period start
         let now = Utc::now();
@@ -912,7 +1054,7 @@ impl CostBasedBillingService {
         let new_spending_limit = self.get_or_create_current_spending_limit_in_tx(user_id, &mut tx).await?;
         
         info!("Created fresh spending limit for user {} with plan {} (allowance: {}, hard limit: {})", 
-              user_id, new_plan_id, new_spending_limit.included_allowance, new_spending_limit.hard_limit);
+              user_id, new_plan_id, new_spending_limit.included_allowance, new_spending_limit.hard_limit.as_ref().unwrap_or(&safe_bigdecimal_from_str("0").unwrap_or_else(|_| BigDecimal::from(0))));
         
         // Commit transaction
         tx.commit().await.map_err(AppError::from)?;

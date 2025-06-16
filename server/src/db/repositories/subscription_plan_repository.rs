@@ -14,6 +14,7 @@ pub struct SpendingDetails {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PlanFeatures {
+    #[serde(default)]
     pub core_features: Vec<String>,
     pub allowed_models: Vec<String>,
     pub support_level: String,

@@ -45,12 +45,14 @@ export interface SubscriptionModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSubscriptionComplete?: (subscriptionId: string, shouldStartPolling?: boolean) => void;
+  currentStatus?: string;
 }
 
 export function SubscriptionModal({ 
   isOpen, 
   onClose, 
-  onSubscriptionComplete
+  onSubscriptionComplete,
+  currentStatus
 }: SubscriptionModalProps) {
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -205,7 +207,7 @@ export function SubscriptionModal({
                 Choose Your Plan
               </DialogTitle>
               <DialogDescription id="subscription-modal-description">
-                Start your free trial today. A payment method is required to begin, but you won't be charged until your trial ends. Cancel anytime.
+                Choose the plan that's right for you. Your new billing cycle will start after your trial ends.
               </DialogDescription>
             </DialogHeader>
 
@@ -333,7 +335,7 @@ export function SubscriptionModal({
                                 ) : (
                                   <>
                                     <Zap className="h-4 w-4 mr-2" />
-                                    Start Free Trial
+                                    {currentStatus === 'trialing' ? 'Upgrade to this Plan' : 'Start Free Trial'}
                                   </>
                                 )}
                               </Button>
@@ -368,39 +370,51 @@ export function SubscriptionModal({
           </>
         ) : (
           // Payment Setup Flow with Stripe Elements
-          <StripeProvider>
-            <div className="space-y-4">
-              {/* Back Button */}
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleBackToSelection}
-                  className="flex items-center gap-1"
-                >
-                  <ArrowLeft className="h-4 w-4" />
-                  Back to plans
-                </Button>
-              </div>
+          <>
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Crown className="h-5 w-5 text-yellow-500" />
+                Setup Payment Method
+              </DialogTitle>
+              <DialogDescription>
+                {selectedPlan ? `Complete your ${selectedPlan.name} plan setup by adding a payment method.` : 'Complete your plan setup by adding a payment method.'}
+              </DialogDescription>
+            </DialogHeader>
 
-              {/* Setup Form */}
-              {subscriptionIntent && selectedPlan && (
-                <SetupElementForm
-                  clientSecret={subscriptionIntent.clientSecret || ''}
-                  subscriptionDetails={{
-                    planName: selectedPlan.name,
-                    monthlyPrice: currentPrice || 0,
-                    currency: selectedPlan.currency,
-                    trialDays: selectedPlan.trialDays,
-                    features: selectedPlan.features,
-                  }}
-                  onSuccess={handleSubscriptionSuccess}
-                  onError={handleSubscriptionError}
-                  onCancel={handleBackToSelection}
-                />
-              )}
-            </div>
-          </StripeProvider>
+            <StripeProvider>
+              <div className="space-y-4">
+                {/* Back Button */}
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleBackToSelection}
+                    className="flex items-center gap-1"
+                  >
+                    <ArrowLeft className="h-4 w-4" />
+                    Back to plans
+                  </Button>
+                </div>
+
+                {/* Setup Form */}
+                {subscriptionIntent && selectedPlan && (
+                  <SetupElementForm
+                    clientSecret={subscriptionIntent.clientSecret || ''}
+                    subscriptionDetails={{
+                      planName: selectedPlan.name,
+                      monthlyPrice: currentPrice || 0,
+                      currency: selectedPlan.currency,
+                      trialDays: selectedPlan.trialDays,
+                      features: selectedPlan.features,
+                    }}
+                    onSuccess={handleSubscriptionSuccess}
+                    onError={handleSubscriptionError}
+                    onCancel={handleBackToSelection}
+                  />
+                )}
+              </div>
+            </StripeProvider>
+          </>
         )}
       </DialogContent>
     </Dialog>

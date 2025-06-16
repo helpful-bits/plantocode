@@ -8,6 +8,7 @@ use log::{debug, error, info, warn};
 use sha2::{Sha256, Digest};
 
 use crate::error::AppError;
+use crate::db::connection::DatabasePools;
 use crate::db::repositories::audit_log_repository::{
     AuditLogRepository, AuditLog, CreateAuditLogRequest, AuditLogFilter
 };
@@ -132,9 +133,9 @@ impl AuditEvent {
 }
 
 impl AuditService {
-    pub fn new(pool: PgPool) -> Self {
+    pub fn new(db_pools: DatabasePools) -> Self {
         Self {
-            audit_log_repository: Arc::new(AuditLogRepository::new(pool)),
+            audit_log_repository: Arc::new(AuditLogRepository::new(db_pools.system_pool)),
         }
     }
 
@@ -807,4 +808,26 @@ impl AuditService {
 
         self.log_event(context, event).await
     }
+
+    /// Log spending limit reset after successful subscription payment
+    pub async fn log_spending_limit_reset(
+        &self,
+        context: &AuditContext,
+        user_id: &Uuid,
+        invoice_id: &str,
+    ) -> Result<AuditLog, AppError> {
+        let metadata = serde_json::json!({
+            "invoice_id": invoice_id,
+            "reset_reason": "successful_subscription_payment",
+            "action_timestamp": Utc::now().to_rfc3339()
+        });
+
+        let event = AuditEvent::new("spending_limit_reset", "spending_limit")
+            .with_entity_id(&user_id.to_string())
+            .with_metadata(metadata)
+            .with_performed_by("stripe_webhook");
+
+        self.log_event(context, event).await
+    }
+
 }

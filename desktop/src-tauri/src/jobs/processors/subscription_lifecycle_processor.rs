@@ -19,49 +19,6 @@ impl SubscriptionLifecycleProcessor {
     pub fn new() -> Self {
         Self {}
     }
-    
-    /// Execute subscription change action by getting portal URL
-    async fn execute_change_plan(
-        &self,
-        billing_client: &BillingClient,
-        user_id: &str,
-        new_plan_id: &str,
-        _effective_immediately: bool,
-    ) -> AppResult<String> {
-        debug!("Getting billing portal URL for subscription change for user {} to plan {}", user_id, new_plan_id);
-        
-        match billing_client.create_billing_portal().await {
-            Ok(response) => {
-                info!("Successfully retrieved billing portal URL for subscription change for user {}", user_id);
-                Ok(format!("Billing portal URL retrieved for subscription change: {}", response.url))
-            },
-            Err(e) => {
-                error!("Failed to get billing portal URL for subscription change for user {}: {}", user_id, e);
-                Err(e)
-            }
-        }
-    }
-    
-    /// Execute subscription cancellation action by getting portal URL
-    async fn execute_cancel_subscription(
-        &self,
-        billing_client: &BillingClient,
-        user_id: &str,
-        _effective_immediately: bool,
-    ) -> AppResult<String> {
-        debug!("Getting billing portal URL for subscription cancellation for user {}", user_id);
-        
-        match billing_client.create_billing_portal().await {
-            Ok(response) => {
-                info!("Successfully retrieved billing portal URL for subscription cancellation for user {}", user_id);
-                Ok(format!("Billing portal URL retrieved for subscription cancellation: {}", response.url))
-            },
-            Err(e) => {
-                error!("Failed to get billing portal URL for subscription cancellation for user {}: {}", user_id, e);
-                Err(e)
-            }
-        }
-    }
 }
 
 #[async_trait]
@@ -92,24 +49,15 @@ impl JobProcessor for SubscriptionLifecycleProcessor {
             .inner()
             .clone();
         
-        // Execute the appropriate action based on the payload
-        let result = match payload.action.as_str() {
-            "change_plan" => {
-                let new_plan_id = payload.new_plan_id.as_ref()
-                    .ok_or_else(|| AppError::JobError("new_plan_id is required for change_plan action".to_string()))?;
-                let effective_immediately = payload.effective_immediately.unwrap_or(false);
-                
-                self.execute_change_plan(&billing_client, &payload.user_id, new_plan_id, effective_immediately).await
+        // All subscription management now goes through the billing portal
+        let result = match billing_client.create_billing_portal().await {
+            Ok(response) => {
+                info!("Successfully retrieved billing portal URL for user {}", payload.user_id);
+                Ok(format!("Billing portal URL retrieved: {}", response.url))
             },
-            "cancel" => {
-                let effective_immediately = payload.effective_immediately.unwrap_or(false);
-                
-                self.execute_cancel_subscription(&billing_client, &payload.user_id, effective_immediately).await
-            },
-            _ => {
-                let error_msg = format!("Unsupported subscription action: {}", payload.action);
-                error!("{}", error_msg);
-                Err(AppError::JobError(error_msg))
+            Err(e) => {
+                error!("Failed to get billing portal URL for user {}: {}", payload.user_id, e);
+                Err(e)
             }
         };
         
@@ -119,11 +67,8 @@ impl JobProcessor for SubscriptionLifecycleProcessor {
                 // Create metadata for the successful operation
                 let metadata = json!({
                     "job_type": "SUBSCRIPTION_LIFECYCLE",
-                    "action": payload.action,
                     "user_id": payload.user_id,
-                    "new_plan_id": payload.new_plan_id,
-                    "effective_immediately": payload.effective_immediately,
-                    "context": payload.context
+                    "portal_access": true
                 });
                 
                 // Finalize job success - using empty string for model and system_prompt_id since this isn't an LLM job

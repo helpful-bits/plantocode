@@ -29,7 +29,6 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig, strict_rate_limiter: RateL
             // Dashboard route
             .route("/dashboard", web::get().to(handlers::billing::dashboard_handler::get_billing_dashboard_data_handler))
             // Subscription management routes
-            .service(handlers::billing::subscription_handlers::get_subscription)
             .service(handlers::billing::subscription_handlers::get_available_plans)
             .service(handlers::billing::subscription_handlers::get_usage_summary)
             .service(handlers::billing::subscription_handlers::create_subscription_with_intent)
@@ -54,40 +53,9 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig, strict_rate_limiter: RateL
                     .route("/admin/adjust", web::post().to(handlers::billing::credit_handlers::admin_adjust_credits))
             )
             // Note: Billing details and invoice customization now handled via Stripe Customer Portal
-            // Subscription lifecycle management endpoints - with strict rate limiting
-            .service(
-                web::resource("/subscription/cancel")
-                    .wrap(strict_rate_limiter.clone())
-                    .route(web::post().to(handlers::billing::subscription_handlers::cancel_subscription))
-            )
-            .service(
-                web::resource("/subscription/resume")
-                    .wrap(strict_rate_limiter.clone())
-                    .route(web::post().to(handlers::billing::subscription_handlers::resume_subscription))
-            )
-            .service(
-                web::resource("/subscription/reactivate")
-                    .wrap(strict_rate_limiter.clone())
-                    .route(web::post().to(handlers::billing::subscription_handlers::reactivate_subscription))
-            )
-            // Move spending routes under billing scope (/api/billing/spending/*)
-            .service(
-                web::scope("/spending")
-                    .service(handlers::spending_handlers::get_spending_status)
-                    .service(handlers::spending_handlers::check_service_access)
-                    .service(handlers::spending_handlers::update_spending_limits)
-                    .service(handlers::spending_handlers::acknowledge_alert)
-                    .service(handlers::spending_handlers::get_spending_history)
-                    .service(handlers::spending_handlers::get_spending_analytics)
-                    .service(handlers::spending_handlers::get_spending_forecast)
-            )
+            // Subscription lifecycle management is now handled exclusively through Stripe Customer Portal
     );
     
-    // Usage routes (/api/usage/*) - DEPRECATED: functionality moved to billing dashboard
-    // cfg.service(
-    //     web::scope("/usage")
-    //         .route("/summary", web::get().to(handlers::usage_handlers::get_usage_summary_handler))
-    // );
     
     // AI proxy endpoint for direct model access (/api/ai-proxy/*)
     cfg.service(

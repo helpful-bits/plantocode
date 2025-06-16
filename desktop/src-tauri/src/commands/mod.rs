@@ -190,8 +190,6 @@ pub use server_config_commands::{
 pub use billing_commands::{
     get_billing_dashboard_data_command,
     get_subscription_plans_command,
-    acknowledge_spending_alert_command,
-    update_spending_limits_command,
     get_invoice_history_command,
     get_spending_history_command,
     check_service_access_command,
@@ -201,18 +199,13 @@ pub use billing_commands::{
     get_spending_analytics_command,
     get_spending_forecast_command,
     get_payment_methods_command,
-    delete_payment_method_command,
-    set_default_payment_method_command,
     // Modern PaymentIntent-based commands (2024)
     create_credit_payment_intent_command,
     create_subscription_intent_command,
     create_setup_intent_command,
     confirm_payment_status_command,
     get_stripe_publishable_key_command,
-    // Subscription lifecycle management
-    cancel_subscription_command,
-    resume_subscription_command,
-    reactivate_subscription_command,
+    // Subscription lifecycle management now handled via Stripe Portal
     get_usage_summary_command,
     create_billing_portal_session_command,
     // Billing health monitoring

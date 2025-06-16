@@ -11,7 +11,9 @@ import {
   DollarSign,
   Eye,
   Filter,
-  ArrowUpDown
+  ArrowUpDown,
+  ChevronLeft,
+  ChevronRight
 } from "lucide-react";
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/ui/dialog";
@@ -24,8 +26,7 @@ import { getErrorMessage } from "@/utils/error-handling";
 import { 
   getFormattedInvoiceHistory,
   downloadInvoicePdf,
-  bulkDownloadInvoicePdfs,
-  InvoiceHistoryRequest 
+  bulkDownloadInvoicePdfs
 } from "@/actions/billing/invoice.actions";
 import type { InvoiceHistoryEntry } from "@/types/tauri-commands";
 
@@ -58,23 +59,24 @@ export function InvoiceHistoryManager({
   const [sortField, setSortField] = useState<'createdDate' | 'amount' | 'status'>('createdDate');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize] = useState(25);
+  const [totalInvoices, setTotalInvoices] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
 
   const { showNotification } = useNotification();
 
-  const loadInvoiceHistory = useCallback(async (sortField?: 'createdDate' | 'amount' | 'status', sortDirection?: 'asc' | 'desc') => {
+  const loadInvoiceHistory = useCallback(async (page: number = currentPage) => {
     try {
       setIsLoading(true);
       setError(null);
 
-      const request: InvoiceHistoryRequest = {
-        limit: 100, // Load up to 100 invoices for comprehensive history
-        status: statusFilter === 'all' ? undefined : statusFilter,
-        sortField: sortField || undefined,
-        sortDirection: sortDirection || undefined
-      };
-
-      const response = await getFormattedInvoiceHistory(request);
+      const response = await getFormattedInvoiceHistory();
+      
       setInvoices(response.invoices);
+      setTotalInvoices(response.totalCount || 0);
+      setHasMore(response.hasMore || false);
+      setCurrentPage(page);
     } catch (err) {
       const errorMessage = getErrorMessage(err);
       setError(errorMessage);
@@ -82,13 +84,20 @@ export function InvoiceHistoryManager({
     } finally {
       setIsLoading(false);
     }
-  }, [statusFilter]);
+  }, [currentPage, pageSize, statusFilter, sortField, sortDirection]);
 
   useEffect(() => {
     if (isOpen) {
-      loadInvoiceHistory(sortField, sortDirection);
+      setCurrentPage(1);
+      loadInvoiceHistory(1);
     }
-  }, [isOpen, statusFilter, sortField, sortDirection, loadInvoiceHistory]);
+  }, [isOpen, statusFilter, sortField, sortDirection]);
+
+  useEffect(() => {
+    if (isOpen && currentPage > 1) {
+      loadInvoiceHistory(currentPage);
+    }
+  }, [currentPage]);
 
   const handleDownloadPdf = useCallback(async (invoice: EnhancedInvoiceHistoryEntry) => {
     if (!invoice.hasPdf) {
@@ -162,9 +171,20 @@ export function InvoiceHistoryManager({
     const newDirection = sortField === field && sortDirection === 'desc' ? 'asc' : 'desc';
     setSortField(field);
     setSortDirection(newDirection);
-    // Trigger reload with new sort parameters
-    loadInvoiceHistory(field, newDirection);
-  }, [sortField, sortDirection, loadInvoiceHistory]);
+    setCurrentPage(1);
+  }, [sortField, sortDirection]);
+
+  const handlePreviousPage = useCallback(() => {
+    if (currentPage > 1) {
+      setCurrentPage(currentPage - 1);
+    }
+  }, [currentPage]);
+
+  const handleNextPage = useCallback(() => {
+    if (hasMore) {
+      setCurrentPage(currentPage + 1);
+    }
+  }, [currentPage, hasMore]);
 
 
   const getStatusVariant = useCallback((status: string): "default" | "secondary" | "destructive" | "outline" | "warning" | "success" => {
@@ -185,7 +205,6 @@ export function InvoiceHistoryManager({
     }
   }, []);
 
-  // Data is now sorted by backend, no client-side sorting needed
   const filteredAndSortedInvoices = invoices;
 
   return (
@@ -216,7 +235,10 @@ export function InvoiceHistoryManager({
             <Filter className="h-4 w-4" />
             <select
               value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
+              onChange={(e) => {
+                setStatusFilter(e.target.value);
+                setCurrentPage(1);
+              }}
               className="px-3 py-1 border rounded-md text-sm"
             >
               <option value="all">All Statuses</option>
@@ -231,7 +253,10 @@ export function InvoiceHistoryManager({
           <div className="flex gap-2">
             <Button 
               variant="outline" 
-              onClick={() => loadInvoiceHistory(sortField, sortDirection)} 
+              onClick={() => {
+                setCurrentPage(1);
+                loadInvoiceHistory(1);
+              }} 
               disabled={isLoading}
               size="sm"
             >
@@ -363,6 +388,38 @@ export function InvoiceHistoryManager({
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {/* Pagination Controls */}
+        {!isLoading && filteredAndSortedInvoices.length > 0 && (
+          <div className="flex items-center justify-between pt-4">
+            <div className="text-sm text-muted-foreground">
+              Showing {((currentPage - 1) * pageSize) + 1} to {Math.min(currentPage * pageSize, totalInvoices)} of {totalInvoices} invoices
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handlePreviousPage}
+                disabled={currentPage === 1 || isLoading}
+              >
+                <ChevronLeft className="h-4 w-4" />
+                Previous
+              </Button>
+              <span className="text-sm text-muted-foreground px-2">
+                Page {currentPage}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleNextPage}
+                disabled={!hasMore || isLoading}
+              >
+                Next
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
         )}
 

@@ -23,6 +23,7 @@ pub enum AppError {
     NotImplemented(String),
     ActionRequired(String),
     TooManyRequests(String),
+    Billing(String),
 }
 
 #[derive(Serialize, Deserialize)]
@@ -52,6 +53,7 @@ impl fmt::Display for AppError {
             AppError::NotImplemented(e) => write!(f, "Not implemented: {}", e),
             AppError::ActionRequired(e) => write!(f, "Action required: {}", e),
             AppError::TooManyRequests(e) => write!(f, "Too many requests: {}", e),
+            AppError::Billing(e) => write!(f, "Billing error: {}", e),
         }
     }
 }
@@ -78,6 +80,7 @@ impl ResponseError for AppError {
             AppError::NotImplemented(_) => (StatusCode::NOT_IMPLEMENTED, "not_implemented"),
             AppError::ActionRequired(_) => (StatusCode::BAD_REQUEST, "action_required"),
             AppError::TooManyRequests(_) => (StatusCode::TOO_MANY_REQUESTS, "too_many_requests"),
+            AppError::Billing(_) => (StatusCode::PAYMENT_REQUIRED, "billing_error"),
         };
 
         let error_response = ErrorResponse {
@@ -108,6 +111,7 @@ impl ResponseError for AppError {
             AppError::NotImplemented(_) => StatusCode::NOT_IMPLEMENTED,
             AppError::ActionRequired(_) => StatusCode::BAD_REQUEST,
             AppError::TooManyRequests(_) => StatusCode::TOO_MANY_REQUESTS,
+            AppError::Billing(_) => StatusCode::PAYMENT_REQUIRED,
         }
     }
 }

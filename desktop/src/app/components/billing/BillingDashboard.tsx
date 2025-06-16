@@ -5,28 +5,23 @@ import {
   CreditCard, 
   Zap, 
   Plus,
-  ExternalLink,
   AlertTriangle,
   CheckCircle,
   DollarSign,
   BarChart3,
-  RefreshCw,
-  FileText
+  RefreshCw
 } from "lucide-react";
 
 import { Button } from "@/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/ui/card";
 import { Badge } from "@/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/ui/alert";
-import { useNotification } from "@/contexts/notification-context";
 import { useBillingData } from "@/hooks/use-billing-data";
-import { getErrorMessage } from "@/utils/error-handling";
-import { openBillingPortal } from "@/actions/billing/portal.actions";
 import { 
   CreditManager,
-  PaymentMethodsManager,
-  InvoiceHistoryManager
+  SubscriptionModal
 } from "./billing-components";
+import { BillingActions } from "./components/billing-actions";
 
 interface BillingDashboardProps {
   onBuyCredits?: () => void;
@@ -38,10 +33,8 @@ export function BillingDashboard({
   
   // Modal states
   const [isCreditManagerOpen, setIsCreditManagerOpen] = useState(false);
-  const [isPaymentMethodsOpen, setIsPaymentMethodsOpen] = useState(false);
-  const [isInvoiceHistoryOpen, setIsInvoiceHistoryOpen] = useState(false);
+  const [isSubscriptionModalOpen, setIsSubscriptionModalOpen] = useState(false);
 
-  const { showNotification } = useNotification();
   const { 
     dashboardData,
     isLoading,
@@ -70,29 +63,6 @@ export function BillingDashboard({
     }
   }, [onBuyCredits]);
 
-  const openStripePortal = useCallback(async (actionType: string = "billing portal") => {
-    try {
-      const portalUrl = await openBillingPortal();
-      window.open(portalUrl, '_blank');
-      
-      showNotification({
-        title: "Billing Portal Opened",
-        message: `${actionType} access is handled through Stripe's secure billing portal.`,
-        type: "success",
-      });
-    } catch (err) {
-      const errorMessage = getErrorMessage(err);
-      showNotification({
-        title: "Portal Access Failed",
-        message: errorMessage,
-        type: "error",
-      });
-    }
-  }, [showNotification]);
-
-  const handleChangePlan = useCallback(() => {
-    openStripePortal("Plan changes");
-  }, [openStripePortal]);
 
   // Temporarily disable loading state to debug
   // if (shouldShowLoading) {
@@ -183,7 +153,7 @@ export function BillingDashboard({
               <Button 
                 size="sm" 
                 variant="outline" 
-                onClick={handleChangePlan}
+                onClick={handleBuyCredits}
               >
                 <Zap className="h-4 w-4 mr-2" />
                 Upgrade Plan
@@ -210,10 +180,17 @@ export function BillingDashboard({
                   {dashboardData ? dashboardData.planDetails.name : "Free"}
                 </div>
                 {dashboardData && (
-                  <Badge className="bg-green-100 text-green-800 border-green-200">
-                    <CheckCircle className="h-3 w-3 mr-1" />
-                    Active
-                  </Badge>
+                  dashboardData.subscriptionStatus === 'trialing' ? (
+                    <Badge className="bg-blue-100 text-blue-800 border-blue-200">
+                      <CheckCircle className="h-3 w-3 mr-1" />
+                      Trial
+                    </Badge>
+                  ) : (
+                    <Badge className="bg-green-100 text-green-800 border-green-200">
+                      <CheckCircle className="h-3 w-3 mr-1" />
+                      Active
+                    </Badge>
+                  )
                 )}
               </div>
               
@@ -223,7 +200,11 @@ export function BillingDashboard({
                     {formatCurrency(dashboardData.planDetails.priceUsd, "USD")}/{dashboardData.planDetails.billingInterval}
                   </div>
                   <div className="text-sm text-muted-foreground">
-                    Period ends: {new Date(dashboardData.spendingDetails.periodEnd).toLocaleDateString()}
+                    {dashboardData.subscriptionStatus === 'trialing' && dashboardData.trialEndsAt ? (
+                      `Trial ends on ${new Date(dashboardData.trialEndsAt).toLocaleDateString()}`
+                    ) : (
+                      `Period ends: ${new Date(dashboardData.spendingDetails.periodEnd).toLocaleDateString()}`
+                    )}
                   </div>
                 </div>
               ) : (
@@ -231,6 +212,15 @@ export function BillingDashboard({
                   No active subscription
                 </div>
               )}
+              
+              <Button 
+                size="sm" 
+                onClick={() => setIsSubscriptionModalOpen(true)}
+                className="w-full mt-3"
+              >
+                <Zap className="h-4 w-4 mr-2" />
+                Upgrade Plan
+              </Button>
             </div>
           </CardContent>
         </Card>
@@ -304,80 +294,19 @@ export function BillingDashboard({
         </Card>
       </div>
 
-      {/* Quick Actions */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">Quick Actions</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            <Button 
-              variant="outline" 
-              onClick={handleChangePlan}
-              className="justify-start h-auto p-4"
-            >
-              <ExternalLink className="h-4 w-4 mr-3" />
-              <div className="text-left">
-                <div className="font-medium">Change Plan</div>
-                <div className="text-xs text-muted-foreground">Manage in billing portal</div>
-              </div>
-            </Button>
-
-            <Button 
-              variant="outline" 
-              onClick={() => setIsPaymentMethodsOpen(true)}
-              className="justify-start h-auto p-4"
-            >
-              <CreditCard className="h-4 w-4 mr-3" />
-              <div className="text-left">
-                <div className="font-medium">Payment Methods</div>
-                <div className="text-xs text-muted-foreground">Add, edit & set default</div>
-              </div>
-            </Button>
-
-            <Button 
-              variant="outline" 
-              onClick={() => openStripePortal()}
-              className="justify-start h-auto p-4"
-            >
-              <ExternalLink className="h-4 w-4 mr-3" />
-              <div className="text-left">
-                <div className="font-medium">Billing Portal</div>
-                <div className="text-xs text-muted-foreground">Complete billing control</div>
-              </div>
-            </Button>
-
-            <Button 
-              variant="outline" 
-              onClick={() => setIsInvoiceHistoryOpen(true)}
-              className="justify-start h-auto p-4"
-            >
-              <FileText className="h-4 w-4 mr-3" />
-              <div className="text-left">
-                <div className="font-medium">Invoice History</div>
-                <div className="text-xs text-muted-foreground">View & download invoices</div>
-              </div>
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+      {/* Billing Actions */}
+      <BillingActions />
 
       {/* Modal Components */}
       <CreditManager
         isOpen={isCreditManagerOpen}
         onClose={() => setIsCreditManagerOpen(false)}
       />
-
-
-      <PaymentMethodsManager
-        isOpen={isPaymentMethodsOpen}
-        onClose={() => setIsPaymentMethodsOpen(false)}
-        onPaymentMethodsUpdated={refreshBillingData}
-      />
-
-      <InvoiceHistoryManager
-        isOpen={isInvoiceHistoryOpen}
-        onClose={() => setIsInvoiceHistoryOpen(false)}
+      
+      <SubscriptionModal
+        isOpen={isSubscriptionModalOpen}
+        onClose={() => setIsSubscriptionModalOpen(false)}
+        currentStatus={dashboardData?.subscriptionStatus}
       />
     </div>
   );

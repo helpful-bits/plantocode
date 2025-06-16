@@ -57,13 +57,6 @@ impl ApiUsageRepository {
 
     /// Records API usage for billing purposes with executor
     pub async fn record_usage_with_executor(&self, entry: ApiUsageEntryDto, executor: &mut sqlx::Transaction<'_, sqlx::Postgres>) -> Result<ApiUsageRecord, AppError> {
-        // Set user context for RLS within this transaction
-        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
-            .bind(entry.user_id.to_string())
-            .execute(&mut **executor)
-            .await
-            .map_err(|e| AppError::Database(format!("Failed to set user context for RLS: {}", e)))?;
-
         let metadata_to_store = match entry.metadata {
             Some(serde_json::Value::Object(ref map)) if map.is_empty() => None,
             other => other,
@@ -121,13 +114,6 @@ impl ApiUsageRepository {
     ) -> Result<(i64, i64, BigDecimal), AppError> {
         let mut tx = self.db_pool.begin().await.map_err(AppError::from)?;
         
-        // Set user context for RLS within this transaction
-        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
-            .bind(user_id.to_string())
-            .execute(&mut *tx)
-            .await
-            .map_err(|e| AppError::Database(format!("Failed to set user context for RLS: {}", e)))?;
-
         let result = sqlx::query(
             r#"
             SELECT 
@@ -163,13 +149,6 @@ impl ApiUsageRepository {
     ) -> Result<ApiUsageReport, AppError> {
         let mut tx = self.db_pool.begin().await.map_err(AppError::from)?;
         
-        // Set user context for RLS within this transaction
-        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
-            .bind(user_id.to_string())
-            .execute(&mut *tx)
-            .await
-            .map_err(|e| AppError::Database(format!("Failed to set user context for RLS: {}", e)))?;
-
         let result = sqlx::query(
             r#"
             SELECT 

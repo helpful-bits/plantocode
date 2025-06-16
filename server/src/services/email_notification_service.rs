@@ -4,6 +4,7 @@ use chrono::{DateTime, Utc};
 use serde_json::{json, Value as JsonValue};
 use log::{debug, error, info, warn};
 use sqlx::PgPool;
+use crate::db::connection::DatabasePools;
 use bigdecimal::BigDecimal;
 use mailgun_v3::{Credentials, EmailAddress};
 use mailgun_v3::email::{Message, MessageBody, send_email};
@@ -40,7 +41,7 @@ impl MailgunConfig {
 }
 
 impl EmailNotificationService {
-    pub fn new(_db_pool: PgPool) -> Result<Self, AppError> {
+    pub fn new(db_pools: DatabasePools) -> Result<Self, AppError> {
         let mailgun_config = MailgunConfig::from_env()?;
         
         // Initialize Mailgun credentials

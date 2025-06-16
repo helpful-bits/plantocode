@@ -9,6 +9,7 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use sqlx::PgPool;
+use crate::db::connection::DatabasePools;
 use log::{info, warn, error};
 
 #[derive(Debug, Clone)]
@@ -19,11 +20,11 @@ pub struct CreditService {
 }
 
 impl CreditService {
-    pub fn new(user_pool: PgPool, system_pool: PgPool) -> Self {
+    pub fn new(db_pools: DatabasePools) -> Self {
         Self {
-            user_credit_repository: Arc::new(UserCreditRepository::new(user_pool.clone())),
-            credit_transaction_repository: Arc::new(CreditTransactionRepository::new(system_pool.clone())),
-            credit_pack_repository: Arc::new(CreditPackRepository::new(system_pool)),
+            user_credit_repository: Arc::new(UserCreditRepository::new(db_pools.user_pool.clone())),
+            credit_transaction_repository: Arc::new(CreditTransactionRepository::new(db_pools.system_pool.clone())),
+            credit_pack_repository: Arc::new(CreditPackRepository::new(db_pools.system_pool)),
         }
     }
 
@@ -187,7 +188,7 @@ impl CreditService {
         })
     }
 
-    /// Refund credits (for failed transactions or cancellations)
+    /// Refund credits (for failed transactions or cancellations) - atomic operation
     pub async fn refund_credits(
         &self,
         user_id: &Uuid,
@@ -196,17 +197,21 @@ impl CreditService {
         description: Option<String>,
         metadata: Option<serde_json::Value>,
     ) -> Result<UserCredit, AppError> {
-        // Ensure user has a credit record
+        // Start a database transaction to ensure atomicity
+        let pool = self.user_credit_repository.get_pool();
+        let mut tx = pool.begin().await.map_err(AppError::from)?;
+
+        // Ensure user has a credit record within the transaction
         let _ = self.user_credit_repository
-            .ensure_balance_record_exists(user_id, "USD")
+            .ensure_balance_record_exists_with_executor(user_id, "USD", &mut tx)
             .await?;
 
-        // Add the refunded credits to user balance
+        // Add the refunded credits to user balance within the transaction
         let updated_balance = self.user_credit_repository
-            .increment_balance(user_id, amount)
+            .increment_balance_with_executor(user_id, amount, &mut tx)
             .await?;
 
-        // Record the refund transaction
+        // Record the refund transaction within the same transaction
         let transaction = CreditTransaction {
             id: Uuid::new_v4(),
             user_id: *user_id,
@@ -217,18 +222,21 @@ impl CreditService {
             stripe_charge_id: Some(stripe_charge_id.to_string()),
             related_api_usage_id: None,
             metadata,
-            created_at: None, // Will be set in the database
+            created_at: Some(Utc::now()),
         };
 
         let _created_transaction = self.credit_transaction_repository
-            .create_transaction(&transaction)
+            .create_transaction_with_executor(&transaction, &mut tx)
             .await?;
 
-        info!("Refunded {} credits for user {} via Stripe charge {}", amount, user_id, stripe_charge_id);
+        // Commit the transaction
+        tx.commit().await.map_err(AppError::from)?;
+
+        info!("Atomically refunded {} credits for user {} via Stripe charge {}", amount, user_id, stripe_charge_id);
         Ok(updated_balance)
     }
 
-    /// Admin function to adjust credits (for manual adjustments)
+    /// Admin function to adjust credits (for manual adjustments) - atomic operation
     pub async fn adjust_credits(
         &self,
         user_id: &Uuid,
@@ -236,17 +244,21 @@ impl CreditService {
         description: String,
         admin_metadata: Option<serde_json::Value>,
     ) -> Result<UserCredit, AppError> {
-        // Ensure user has a credit record
+        // Start a database transaction to ensure atomicity
+        let pool = self.user_credit_repository.get_pool();
+        let mut tx = pool.begin().await.map_err(AppError::from)?;
+
+        // Ensure user has a credit record within the transaction
         let _ = self.user_credit_repository
-            .ensure_balance_record_exists(user_id, "USD")
+            .ensure_balance_record_exists_with_executor(user_id, "USD", &mut tx)
             .await?;
 
-        // Adjust the credits (can be positive or negative)
+        // Adjust the credits (can be positive or negative) within the transaction
         let updated_balance = self.user_credit_repository
-            .increment_balance(user_id, amount)
+            .increment_balance_with_executor(user_id, amount, &mut tx)
             .await?;
 
-        // Record the adjustment transaction
+        // Record the adjustment transaction within the same transaction
         let transaction = CreditTransaction {
             id: Uuid::new_v4(),
             user_id: *user_id,
@@ -257,14 +269,17 @@ impl CreditService {
             stripe_charge_id: None,
             related_api_usage_id: None,
             metadata: admin_metadata,
-            created_at: None, // Will be set in the database
+            created_at: Some(Utc::now()),
         };
 
         let _created_transaction = self.credit_transaction_repository
-            .create_transaction(&transaction)
+            .create_transaction_with_executor(&transaction, &mut tx)
             .await?;
 
-        info!("Adjusted {} credits for user {} (admin action)", amount, user_id);
+        // Commit the transaction
+        tx.commit().await.map_err(AppError::from)?;
+
+        info!("Atomically adjusted {} credits for user {} (admin action)", amount, user_id);
         Ok(updated_balance)
     }
 

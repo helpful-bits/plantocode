@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { SubscriptionDetails, SubscriptionPlan } from '@/types/tauri-commands';
+import type { BillingDashboardData, SubscriptionPlan } from '@/types/tauri-commands';
 
 
 
@@ -7,10 +7,10 @@ import type { SubscriptionDetails, SubscriptionPlan } from '@/types/tauri-comman
 export type { SubscriptionPlan };
 
 /**
- * Get current subscription details
+ * Get consolidated billing dashboard data
  */
-export async function getSubscriptionDetails(): Promise<SubscriptionDetails> {
-  return await invoke<SubscriptionDetails>('get_subscription_details_command');
+export async function getBillingDashboardData(): Promise<BillingDashboardData> {
+  return await invoke<BillingDashboardData>('get_billing_dashboard_data_command');
 }
 
 /**
