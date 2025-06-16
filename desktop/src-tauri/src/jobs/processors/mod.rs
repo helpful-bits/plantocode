@@ -14,8 +14,6 @@ pub mod regex_pattern_generation_processor;
 pub mod local_file_filtering_processor;
 pub mod extended_path_finder_processor;
 pub mod file_relevance_assessment_processor;
-pub mod subscription_lifecycle_processor;
-pub mod stale_portal_session_cleanup_processor;
 
 pub use base_processor::BaseProcessor;
 pub use abstract_llm_processor::{LlmTaskRunner, LlmTaskConfig, LlmTaskConfigBuilder, LlmTaskResult, LlmPromptContext};
@@ -32,5 +30,3 @@ pub use regex_pattern_generation_processor::RegexPatternGenerationProcessor;
 pub use local_file_filtering_processor::LocalFileFilteringProcessor;
 pub use extended_path_finder_processor::ExtendedPathFinderProcessor;
 pub use file_relevance_assessment_processor::FileRelevanceAssessmentProcessor;
-pub use subscription_lifecycle_processor::SubscriptionLifecycleProcessor;
-pub use stale_portal_session_cleanup_processor::StalePortalSessionCleanupProcessor;

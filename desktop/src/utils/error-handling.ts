@@ -17,7 +17,6 @@ export enum ErrorType {
   NOT_FOUND_ERROR = "NOT_FOUND_ERROR",
   DATABASE_ERROR = "DATABASE_ERROR",
   INTERNAL_ERROR = "INTERNAL_ERROR",
-  BILLING_ERROR = "BILLING_ERROR",
   CONFIGURATION_ERROR = "CONFIGURATION_ERROR",
   WORKFLOW_ERROR = "WORKFLOW_ERROR",
   TOKEN_LIMIT_ERROR = "TOKEN_LIMIT_ERROR",
@@ -33,7 +32,6 @@ export enum ErrorType {
   PLAN_UPGRADE_REQUIRED = "PLAN_UPGRADE_REQUIRED",
   PAYMENT_METHOD_REQUIRED = "PAYMENT_METHOD_REQUIRED",
   BILLING_ADDRESS_REQUIRED = "BILLING_ADDRESS_REQUIRED",
-  STRIPE_ERROR = "STRIPE_ERROR",
   SUBSCRIPTION_CONFLICT = "SUBSCRIPTION_CONFLICT",
   SPENDING_LIMIT_EXCEEDED = "SPENDING_LIMIT_EXCEEDED",
   INVOICE_ERROR = "INVOICE_ERROR",
@@ -464,9 +462,9 @@ function applyContextSpecificTransformations(
   
   const workflowContext = appErrorInfo?.workflowContext || parsedTauriError?.workflowContext;
   
-  // Handle billing errors from AppError or structured Tauri errors
-  if (errorType === ErrorType.BILLING_ERROR || parsedTauriError?.errorCategory === 'billing') {
-    return "This feature is not available on your current plan. Please upgrade to access this functionality.";
+  // Handle billing errors from structured Tauri errors
+  if (parsedTauriError?.errorCategory === 'billing') {
+    return "This feature requires a billing upgrade. Please visit your account page to manage your subscription.";
   }
   
   // Handle specific billing error types with detailed user-friendly messages
@@ -482,16 +480,16 @@ function applyContextSpecificTransformations(
         return "Additional authentication is required for this payment. Please complete the verification process.";
       
       case ErrorType.SUBSCRIPTION_EXPIRED:
-        return "Your subscription has expired. Please renew to continue using premium features.";
+        return "Your subscription has expired. Please upgrade your plan to continue using premium features.";
       
       case ErrorType.SUBSCRIPTION_CANCELLED:
         return "Your subscription has been cancelled. You can reactivate it anytime from your account settings.";
       
       case ErrorType.CREDIT_INSUFFICIENT:
-        return "Insufficient credits to complete this operation. Please purchase more credits or upgrade your plan.";
+        return "Insufficient credits to complete this operation. Please purchase more credits from your account page.";
       
       case ErrorType.PLAN_UPGRADE_REQUIRED:
-        return "This feature requires a plan upgrade. Please upgrade to access this functionality.";
+        return "This feature requires a plan upgrade. Please upgrade your subscription to continue.";
       
       case ErrorType.PAYMENT_METHOD_REQUIRED:
         return "A valid payment method is required. Please add a payment method to your account.";
@@ -499,14 +497,11 @@ function applyContextSpecificTransformations(
       case ErrorType.BILLING_ADDRESS_REQUIRED:
         return "A billing address is required to complete this transaction. Please update your billing information.";
       
-      case ErrorType.STRIPE_ERROR:
-        return "Payment processing error occurred. Please try again or contact support if the issue persists.";
-      
       case ErrorType.SUBSCRIPTION_CONFLICT:
         return "There's a conflict with your subscription status. Please refresh and try again, or contact support.";
       
       case ErrorType.SPENDING_LIMIT_EXCEEDED:
-        return "Your spending limit has been exceeded. Please increase your limit or wait for the next billing cycle.";
+        return "Your spending limit has been exceeded. Please upgrade your plan or increase your limit.";
       
       case ErrorType.INVOICE_ERROR:
         return "There was an error processing your invoice. Please contact support for assistance.";
@@ -753,8 +748,6 @@ function normalizeWorkflowContext(context: any): WorkflowErrorContext | undefine
  */
 export function mapRustErrorCodeToErrorType(code: string): ErrorType {
   switch (code.toUpperCase()) {
-    case "BILLING_ERROR":
-      return ErrorType.BILLING_ERROR;
     case "ACTION_REQUIRED":
       return ErrorType.ACTION_REQUIRED;
     case "TOKEN_LIMIT_EXCEEDED_ERROR":
@@ -820,7 +813,8 @@ export function mapRustErrorCodeToErrorType(code: string): ErrorType {
     case "BILLING_ADDRESS_REQUIRED":
       return ErrorType.BILLING_ADDRESS_REQUIRED;
     case "STRIPE_ERROR":
-      return ErrorType.STRIPE_ERROR;
+    case "BILLING_ERROR":
+      return ErrorType.PAYMENT_FAILED;
     case "SUBSCRIPTION_CONFLICT":
       return ErrorType.SUBSCRIPTION_CONFLICT;
     case "SPENDING_LIMIT_EXCEEDED":
@@ -843,9 +837,6 @@ export function createUserFriendlyErrorMessage(
   const { type, message, workflowContext } = errorInfo;
 
   switch (type) {
-    case ErrorType.BILLING_ERROR:
-      return "This feature requires a subscription upgrade. Please check your billing settings.";
-    
     case ErrorType.ACTION_REQUIRED:
       return message || "Action required to complete this operation. Please review your settings.";
     
@@ -859,16 +850,16 @@ export function createUserFriendlyErrorMessage(
       return "Additional authentication is required for this payment. Please complete the verification process.";
     
     case ErrorType.SUBSCRIPTION_EXPIRED:
-      return "Your subscription has expired. Please renew to continue using premium features.";
+      return "Your subscription has expired. Please upgrade your plan to continue using premium features.";
     
     case ErrorType.SUBSCRIPTION_CANCELLED:
       return "Your subscription has been cancelled. You can reactivate it anytime from your account settings.";
     
     case ErrorType.CREDIT_INSUFFICIENT:
-      return "Insufficient credits to complete this operation. Please purchase more credits or upgrade your plan.";
+      return "Insufficient credits to complete this operation. Please purchase more credits from your account page.";
     
     case ErrorType.PLAN_UPGRADE_REQUIRED:
-      return "This feature requires a plan upgrade. Please upgrade to access this functionality.";
+      return "This feature requires a plan upgrade. Please upgrade your subscription to continue.";
     
     case ErrorType.PAYMENT_METHOD_REQUIRED:
       return "A valid payment method is required. Please add a payment method to your account.";
@@ -876,14 +867,11 @@ export function createUserFriendlyErrorMessage(
     case ErrorType.BILLING_ADDRESS_REQUIRED:
       return "A billing address is required to complete this transaction. Please update your billing information.";
     
-    case ErrorType.STRIPE_ERROR:
-      return "Payment processing error occurred. Please try again or contact support if the issue persists.";
-    
     case ErrorType.SUBSCRIPTION_CONFLICT:
       return "There's a conflict with your subscription status. Please refresh and try again, or contact support.";
     
     case ErrorType.SPENDING_LIMIT_EXCEEDED:
-      return "Your spending limit has been exceeded. Please increase your limit or wait for the next billing cycle.";
+      return "Your spending limit has been exceeded. Please upgrade your plan or increase your limit.";
     
     case ErrorType.INVOICE_ERROR:
       return "There was an error processing your invoice. Please contact support for assistance.";

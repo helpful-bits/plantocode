@@ -236,11 +236,6 @@ fn inject_job_id_into_payload(payload: &mut JobPayload, job_id: &str) {
             // as it is processed by external services and doesn't need internal job tracking
         }
         
-        // Subscription lifecycle payloads
-        JobPayload::SubscriptionLifecycle(_) => {
-            // SubscriptionLifecycle payloads are handled by specific processors
-            // and don't need background_job_id field injection
-        }
     }
 }
 

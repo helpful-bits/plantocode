@@ -2,11 +2,11 @@ use crate::error::AppError;
 use crate::auth::token_manager::TokenManager;
 use crate::models::SubscriptionPlan;
 use crate::commands::billing_commands::{
-    SubscriptionDetails, BillingPortalResponse, SpendingStatusInfo,
-    InvoiceHistoryResponse, CreditBalanceResponse, CreditHistoryResponse, CreditPacksResponse,
+    SubscriptionDetails, BillingPortalResponse,
+    CreditBalanceResponse, CreditHistoryResponse, CreditPacksResponse,
     CreditStats, PaymentIntentResponse, SetupIntentResponse, SubscriptionIntentResponse,
-    UpdateSpendingLimitsResponse, PaymentMethodsResponse, PaymentMethod, PaymentMethodCard,
-    BillingDashboardData
+    PaymentMethodsResponse, PaymentMethod, PaymentMethodCard,
+    BillingDashboardData, ListInvoicesResponse
 };
 use serde::{Deserialize, Serialize};
 use reqwest::Client;
@@ -139,8 +139,8 @@ impl BillingClient {
         debug!("Creating billing portal session");
         
         let portal_response = self.make_authenticated_request(
-            "GET",
-            "/api/billing/portal",
+            "POST",
+            "/api/billing/create-portal-session",
             None,
         ).await?;
         
@@ -148,150 +148,8 @@ impl BillingClient {
         Ok(portal_response)
     }
 
-    /// Get current spending status with robust error handling
-    pub async fn get_spending_status(&self) -> Result<SpendingStatusInfo, AppError> {
-        debug!("Getting spending status via BillingClient");
-        
-        let spending_status = self.make_authenticated_request(
-            "GET",
-            "/api/billing/spending/status",
-            None,
-        ).await.map_err(|e| {
-            error!("Failed to retrieve spending status: {}", e);
-            match &e {
-                AppError::NetworkError(_) => AppError::NetworkError("Unable to connect to billing service for spending status".to_string()),
-                AppError::AuthError(_) => AppError::AuthError("Authentication required to access spending status".to_string()),
-                _ => e,
-            }
-        })?;
-        
-        info!("Successfully retrieved spending status");
-        Ok(spending_status)
-    }
 
-    /// Acknowledge a spending alert
-    pub async fn acknowledge_spending_alert(&self, alert_id: String) -> Result<serde_json::Value, AppError> {
-        debug!("Acknowledging spending alert: {}", alert_id);
-        
-        let request_body = serde_json::json!({
-            "alertId": alert_id
-        });
-        
-        let response = self.make_authenticated_request(
-            "POST",
-            "/api/billing/spending/alerts/acknowledge",
-            Some(request_body),
-        ).await?;
-        
-        info!("Successfully acknowledged spending alert: {}", alert_id);
-        Ok(response)
-    }
 
-    /// Update spending limits
-    pub async fn update_spending_limits(
-        &self,
-        monthly_spending_limit: Option<f64>,
-        hard_limit: Option<f64>,
-    ) -> Result<UpdateSpendingLimitsResponse, AppError> {
-        debug!("Updating spending limits");
-        
-        let request_body = serde_json::json!({
-            "monthlySpendingLimit": monthly_spending_limit,
-            "hardLimit": hard_limit,
-        });
-        
-        // Use intermediate struct to handle server response format (strings for monetary values)
-        #[derive(Deserialize)]
-        #[serde(rename_all = "camelCase")]
-        struct ServerUpdateLimitsResponse {
-            pub success: bool,
-            pub message: String,
-            pub updated_limits: ServerUpdatedLimitsInfo,
-        }
-        
-        #[derive(Deserialize)]
-        #[serde(rename_all = "camelCase")]
-        struct ServerUpdatedLimitsInfo {
-            pub monthly_allowance: String,
-            pub hard_limit: String,
-            pub current_spending: String,
-            pub services_blocked: bool,
-        }
-        
-        let server_response: ServerUpdateLimitsResponse = self.make_authenticated_request(
-            "PUT",
-            "/api/billing/spending/limits",
-            Some(request_body),
-        ).await?;
-        
-        // Convert string monetary values to f64
-        let response = UpdateSpendingLimitsResponse {
-            success: server_response.success,
-            message: server_response.message,
-            updated_limits: crate::commands::billing_commands::UpdatedLimitsInfo {
-                monthly_allowance: server_response.updated_limits.monthly_allowance.parse()
-                    .map_err(|_| AppError::InvalidResponse("Invalid monthly allowance format".to_string()))?,
-                hard_limit: server_response.updated_limits.hard_limit.parse()
-                    .map_err(|_| AppError::InvalidResponse("Invalid hard limit format".to_string()))?,
-                current_spending: server_response.updated_limits.current_spending.parse()
-                    .map_err(|_| AppError::InvalidResponse("Invalid current spending format".to_string()))?,
-                services_blocked: server_response.updated_limits.services_blocked,
-            },
-        };
-        
-        info!("Successfully updated spending limits");
-        Ok(response)
-    }
-
-    /// Get invoice history with optional filtering
-    pub async fn get_invoice_history(
-        &self,
-        limit: Option<i32>,
-        offset: Option<i32>,
-        status: Option<String>,
-        search: Option<String>,
-        sort_field: Option<String>,
-        sort_direction: Option<String>,
-    ) -> Result<InvoiceHistoryResponse, AppError> {
-        debug!("Getting invoice history via BillingClient with filters");
-        
-        let mut query_params = Vec::new();
-        if let Some(limit) = limit {
-            query_params.push(format!("limit={}", limit));
-        }
-        if let Some(offset) = offset {
-            query_params.push(format!("offset={}", offset));
-        }
-        if let Some(status) = status {
-            query_params.push(format!("status={}", urlencoding::encode(&status)));
-        }
-        if let Some(search) = search {
-            query_params.push(format!("search={}", urlencoding::encode(&search)));
-        }
-        if let Some(sort_field) = sort_field {
-            query_params.push(format!("sortField={}", urlencoding::encode(&sort_field)));
-        }
-        if let Some(sort_direction) = sort_direction {
-            query_params.push(format!("sortDirection={}", urlencoding::encode(&sort_direction)));
-        }
-        
-        let query_string = if query_params.is_empty() {
-            String::new()
-        } else {
-            format!("?{}", query_params.join("&"))
-        };
-        
-        let endpoint = format!("/api/billing/invoices{}", query_string);
-        
-        let invoice_history = self.make_authenticated_request(
-            "GET",
-            &endpoint,
-            None,
-        ).await?;
-        
-        info!("Successfully retrieved invoice history");
-        Ok(invoice_history)
-    }
 
     /// Get spending history
     pub async fn get_spending_history(&self) -> Result<serde_json::Value, AppError> {
@@ -392,55 +250,11 @@ impl BillingClient {
     pub async fn get_credit_balance(&self) -> Result<CreditBalanceResponse, AppError> {
         debug!("Getting credit balance via BillingClient");
         
-        // Use intermediate struct to handle server response format if needed
-        #[derive(Deserialize)]
-        struct ServerCreditBalanceResponse {
-            #[serde(rename = "userId")]
-            pub user_id: String,
-            pub balance: f64,
-            pub currency: String,
-            #[serde(rename = "lastUpdated")]
-            pub last_updated: Option<String>,
-        }
-        
-        // Custom request with debugging to see what we actually get from server
-        let server_url = std::env::var("MAIN_SERVER_BASE_URL")
-            .unwrap_or_else(|_| "http://localhost:8080".to_string());
-        
-        let token = self.token_manager.get().await
-            .ok_or_else(|| AppError::AuthError("No authentication token available".to_string()))?;
-        
-        let response = self.http_client
-            .get(&format!("{}/api/billing/credits/balance", server_url))
-            .header("Authorization", format!("Bearer {}", token))
-            .send()
-            .await
-            .map_err(|e| AppError::NetworkError(format!("Request failed: {}", e)))?;
-        
-        let status = response.status();
-        let response_text = response.text().await
-            .map_err(|e| AppError::NetworkError(format!("Failed to read response: {}", e)))?;
-        
-        debug!("Credit balance response status: {}", status);
-        debug!("Credit balance raw response: {}", response_text);
-        
-        if !status.is_success() {
-            error!("Server returned error status {}: {}", status, response_text);
-            return Err(AppError::ExternalServiceError(format!("Server error {}: {}", status, response_text)));
-        }
-        
-        let server_response: ServerCreditBalanceResponse = serde_json::from_str(&response_text)
-            .map_err(|e| {
-                error!("Failed to parse credit balance response: {}. Raw response: {}", e, response_text);
-                AppError::SerializationError(format!("Failed to parse credit balance response: {}", e))
-            })?;
-        
-        let credit_balance = CreditBalanceResponse {
-            user_id: server_response.user_id,
-            balance: server_response.balance,
-            currency: server_response.currency,
-            last_updated: server_response.last_updated,
-        };
+        let credit_balance = self.make_authenticated_request(
+            "GET",
+            "/api/billing/credits/balance",
+            None,
+        ).await?;
         
         info!("Successfully retrieved credit balance");
         Ok(credit_balance)
@@ -664,56 +478,6 @@ impl BillingClient {
     // SUBSCRIPTION LIFECYCLE MANAGEMENT
     // ========================================
 
-    /// Cancel a subscription
-    pub async fn cancel_subscription(&self, at_period_end: bool) -> Result<serde_json::Value, AppError> {
-        debug!("Cancelling subscription with at_period_end: {}", at_period_end);
-        
-        let request_body = serde_json::json!({
-            "atPeriodEnd": at_period_end
-        });
-        
-        let response = self.make_authenticated_request(
-            "POST",
-            "/api/billing/subscription/cancel",
-            Some(request_body),
-        ).await?;
-        
-        info!("Successfully cancelled subscription");
-        Ok(response)
-    }
-
-    /// Resume a subscription
-    pub async fn resume_subscription(&self) -> Result<serde_json::Value, AppError> {
-        debug!("Resuming subscription");
-        
-        let response = self.make_authenticated_request(
-            "POST",
-            "/api/billing/subscription/resume",
-            None,
-        ).await?;
-        
-        info!("Successfully resumed subscription");
-        Ok(response)
-    }
-
-    /// Reactivate a subscription
-    pub async fn reactivate_subscription(&self, plan_id: Option<String>) -> Result<serde_json::Value, AppError> {
-        debug!("Reactivating subscription");
-        
-        let request_body = serde_json::json!({
-            "planId": plan_id
-        });
-
-        let response = self.make_authenticated_request(
-            "POST",
-            "/api/billing/subscription/reactivate",
-            Some(request_body),
-        ).await?;
-        
-        info!("Successfully reactivated subscription");
-        Ok(response)
-    }
-
     /// Get usage summary
     pub async fn get_usage_summary(&self) -> Result<serde_json::Value, AppError> {
         debug!("Getting usage summary via BillingClient");
@@ -733,36 +497,30 @@ impl BillingClient {
     // PAYMENT METHOD MANAGEMENT
     // ========================================
 
-    /// Delete a payment method
-    pub async fn delete_payment_method(&self, payment_method_id: &str) -> Result<(), AppError> {
-        debug!("Deleting payment method: {}", payment_method_id);
+    /// List invoices with optional pagination
+    pub async fn list_invoices(
+        &self,
+        limit: Option<i32>,
+        offset: Option<i32>,
+    ) -> Result<ListInvoicesResponse, AppError> {
+        let mut query_params = Vec::new();
+        if let Some(limit) = limit {
+            query_params.push(format!("limit={}", limit));
+        }
+        if let Some(offset) = offset {
+            query_params.push(format!("offset={}", offset));
+        }
         
-        let endpoint = format!("/api/billing/payment-methods/{}", payment_method_id);
+        let query_string = if query_params.is_empty() {
+            String::new()
+        } else {
+            format!("?{}", query_params.join("&"))
+        };
         
-        let _response: serde_json::Value = self.make_authenticated_request(
-            "DELETE",
-            &endpoint,
-            None,
-        ).await?;
+        let endpoint = format!("/api/billing/invoices{}", query_string);
         
-        info!("Successfully deleted payment method: {}", payment_method_id);
-        Ok(())
-    }
-
-    /// Set default payment method
-    pub async fn set_default_payment_method(&self, payment_method_id: &str) -> Result<(), AppError> {
-        debug!("Setting default payment method: {}", payment_method_id);
-        
-        let endpoint = format!("/api/billing/payment-methods/{}/set-default", payment_method_id);
-        
-        let _response: serde_json::Value = self.make_authenticated_request(
-            "POST",
-            &endpoint,
-            None,
-        ).await?;
-        
-        info!("Successfully set default payment method: {}", payment_method_id);
-        Ok(())
+        self.make_authenticated_request::<ListInvoicesResponse>("GET", &endpoint, None)
+            .await
     }
 
 }

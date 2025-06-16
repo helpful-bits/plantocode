@@ -506,3 +506,29 @@ pub async fn send_suspicious_activity_alert(
 
     alerting_service.send_alert(alert).await;
 }
+
+/// Convenience function to send billing allowance reset failure alert
+pub async fn send_billing_allowance_reset_failure_alert(
+    user_id: &Uuid,
+    invoice_id: &str,
+    error_message: &str,
+) {
+    let alerting_service = AdminAlertingService::new();
+    
+    let alert = AdminAlert::new(
+        AlertSeverity::Critical,
+        AlertType::PaymentProcessingError,
+        "Billing Allowance Reset Failed After Payment".to_string(),
+        format!(
+            "CRITICAL: User {} paid subscription (invoice {}) but monthly spending allowances failed to reset. Manual intervention required. Error: {}",
+            user_id, invoice_id, error_message
+        ),
+    )
+    .with_metadata("user_id".to_string(), user_id.to_string())
+    .with_metadata("invoice_id".to_string(), invoice_id.to_string())
+    .with_metadata("error_message".to_string(), error_message.to_string())
+    .with_metadata("requires_manual_intervention".to_string(), "true".to_string())
+    .with_immediate_attention(true);
+
+    alerting_service.send_alert(alert).await;
+}

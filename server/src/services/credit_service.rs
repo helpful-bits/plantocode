@@ -99,15 +99,38 @@ impl CreditService {
         Ok(updated_balance)
     }
 
-    /// Add credits to user balance (for purchases) - atomic operation
+    /// Add credits to user balance (for purchases) - atomic operation with validation
     pub async fn add_credits(
         &self,
         user_id: &Uuid,
         amount: &BigDecimal,
         stripe_charge_id: &str,
+        stripe_price_id: Option<&str>,
         description: Option<String>,
         metadata: Option<serde_json::Value>,
     ) -> Result<UserCredit, AppError> {
+        // Validate against credit pack if Stripe price ID is provided
+        if let Some(price_id) = stripe_price_id {
+            if let Some(credit_pack) = self.credit_pack_repository
+                .get_credit_pack_by_stripe_price_id(price_id)
+                .await?
+            {
+                // Validate that the amount matches the credit pack value
+                if credit_pack.value_credits != *amount {
+                    return Err(AppError::Payment(
+                        format!(
+                            "Credit amount mismatch: expected {}, got {}",
+                            credit_pack.value_credits, amount
+                        )
+                    ));
+                }
+            } else {
+                return Err(AppError::Payment(
+                    format!("Invalid Stripe price ID: {}", price_id)
+                ));
+            }
+        }
+
         // Start a database transaction to ensure atomicity
         let pool = self.user_credit_repository.get_pool();
         let mut tx = pool.begin().await.map_err(AppError::from)?;
@@ -150,7 +173,7 @@ impl CreditService {
     /// Get available credit packs
     pub async fn get_available_credit_packs(&self) -> Result<Vec<CreditPack>, AppError> {
         self.credit_pack_repository
-            .get_active_packs()
+            .get_available_credit_packs()
             .await
     }
 
@@ -293,7 +316,7 @@ impl CreditService {
     /// Validate if a Stripe price ID corresponds to a configured credit pack
     pub async fn get_credit_pack_by_stripe_price_id(&self, stripe_price_id: &str) -> Result<Option<CreditPack>, AppError> {
         self.credit_pack_repository
-            .get_pack_by_stripe_price_id(stripe_price_id)
+            .get_credit_pack_by_stripe_price_id(stripe_price_id)
             .await
     }
 

@@ -18,17 +18,6 @@ pub struct PaginationQuery {
     pub offset: i32,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct InvoiceFilterQuery {
-    #[serde(default = "default_limit")]
-    pub limit: i32,
-    #[serde(default = "default_offset")]
-    pub offset: i32,
-    pub status: Option<String>,
-    pub search: Option<String>,
-    pub sort_field: Option<String>,
-    pub sort_direction: Option<String>, // 'asc' or 'desc'
-}
 
 fn default_limit() -> i32 { 20 }
 fn default_offset() -> i32 { 0 }
@@ -42,17 +31,15 @@ pub struct PortalResponse {
 
 
 /// Create a billing portal session for managing subscription
-#[get("/portal")]
-pub async fn create_billing_portal(
+#[post("/create-portal-session")]
+pub async fn create_billing_portal_session(
     user_id: UserId,
     billing_service: web::Data<BillingService>,
 ) -> Result<HttpResponse, AppError> {
     debug!("Creating billing portal for user: {}", user_id.0);
     
-    // Create the billing portal session
     let url = billing_service.create_billing_portal_session(&user_id.0).await?;
     
-    // Return the billing portal URL
     Ok(HttpResponse::Ok().json(PortalResponse { url }))
 }
 
@@ -85,21 +72,6 @@ pub async fn get_payment_methods(
     Ok(HttpResponse::Ok().json(response))
 }
 
-/// Get invoice history from Stripe
-#[get("/invoices")]
-pub async fn get_invoice_history(
-    user_id: UserId,
-    billing_service: web::Data<BillingService>,
-    query: web::Query<InvoiceFilterQuery>,
-) -> Result<HttpResponse, AppError> {
-    debug!("Getting invoice history from Stripe for user: {}", user_id.0);
-    
-    // Get structured invoice history with summary from billing service
-    let invoice_response = billing_service.get_invoice_history(&user_id.0, query.into_inner()).await?;
-    
-    // The response now includes both invoices list and summary calculated on the backend
-    Ok(HttpResponse::Ok().json(invoice_response))
-}
 
 // ========================================
 // MODERN PAYMENT INTENT HANDLERS (2024)

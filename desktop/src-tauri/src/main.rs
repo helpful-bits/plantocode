@@ -121,7 +121,6 @@ fn main() {
             commands::app_commands::get_app_info,
             commands::app_commands::get_config_load_error,
             commands::app_commands::get_database_info_command,
-            commands::app_commands::is_keyring_onboarding_required,
             
             // Auth0 commands (includes JWT token management)
             commands::auth0_commands::start_auth0_login_flow,
@@ -136,7 +135,6 @@ fn main() {
             // Billing commands
             commands::billing_commands::get_billing_dashboard_data_command,
             commands::billing_commands::get_subscription_plans_command,
-            commands::billing_commands::get_invoice_history_command,
             commands::billing_commands::get_spending_history_command,
             commands::billing_commands::check_service_access_command,
             commands::billing_commands::get_spending_analytics_command,

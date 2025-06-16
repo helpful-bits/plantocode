@@ -11,11 +11,10 @@ import { getProvidersWithModels } from "@/actions/config.actions";
 import { type ProviderWithModels } from "@/types/config-types";
 import { useProject } from "@/contexts/project-context";
 import { type TaskSettings } from "@/types";
-import { Card, CardDescription, CardHeader, CardTitle, Tabs, TabsContent, TabsList, TabsTrigger } from "@/ui";
+import { Card, CardDescription, CardHeader, CardTitle } from "@/ui";
 import { extractErrorInfo, createUserFriendlyErrorMessage, logError } from "@/utils/error-handling";
 import { useNotification } from "@/contexts/notification-context";
 
-import SystemSettings from "./system-settings";
 import TaskModelSettings from "./task-model-settings";
 
 
@@ -148,40 +147,27 @@ export default function SettingsForm({ sessionId }: SettingsFormProps) {
 
   return (
     <div className="space-y-6">
-      <Tabs defaultValue="models" className="w-full">
-        <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="models">Model Settings</TabsTrigger>
-          <TabsTrigger value="system">System Settings</TabsTrigger>
-        </TabsList>
-        
-        <TabsContent value="models" className="space-y-4 mt-6">
-          {taskSettings && (
-            <TaskModelSettings
-              taskSettings={taskSettings}
-              providersWithModels={providersWithModels}
-              onSettingsChange={handleSettingsChange}
-              sessionId={sessionId}
-              projectDirectory={projectDirectory}
-              onRefresh={refreshProjectSettings}
-            />
-          )}
+      {taskSettings && (
+        <TaskModelSettings
+          taskSettings={taskSettings}
+          providersWithModels={providersWithModels}
+          onSettingsChange={handleSettingsChange}
+          sessionId={sessionId}
+          projectDirectory={projectDirectory}
+          onRefresh={refreshProjectSettings}
+        />
+      )}
 
-          {!taskSettings && !isLoading && (
-            <Card className="bg-card/80 backdrop-blur-sm border border-border shadow-soft rounded-xl">
-              <CardHeader>
-                <CardTitle>Unable to Load Settings</CardTitle>
-                <CardDescription>
-                  {error || "Failed to load AI model settings from server. Please ensure the server is running and try refreshing the page."}
-                </CardDescription>
-              </CardHeader>
-            </Card>
-          )}
-        </TabsContent>
-        
-        <TabsContent value="system" className="space-y-4 mt-6">
-          <SystemSettings projectDirectory={projectDirectory} />
-        </TabsContent>
-      </Tabs>
+      {!taskSettings && !isLoading && (
+        <Card className="bg-card/80 backdrop-blur-sm border border-border shadow-soft rounded-xl">
+          <CardHeader>
+            <CardTitle>Unable to Load Settings</CardTitle>
+            <CardDescription>
+              {error || "Failed to load AI model settings from server. Please ensure the server is running and try refreshing the page."}
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      )}
     </div>
   );
 }

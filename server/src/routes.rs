@@ -33,12 +33,13 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig, strict_rate_limiter: RateL
             .service(handlers::billing::subscription_handlers::get_usage_summary)
             .service(handlers::billing::subscription_handlers::create_subscription_with_intent)
             // Payment and billing portal routes
-            .service(handlers::billing::payment_handlers::create_billing_portal)
-            .service(handlers::billing::payment_handlers::get_invoice_history)
+            .service(handlers::billing::payment_handlers::create_billing_portal_session)
             .service(handlers::billing::payment_handlers::get_payment_methods)
             .service(handlers::billing::payment_handlers::create_setup_intent)
             .service(handlers::billing::payment_handlers::get_payment_intent_status)
             .service(handlers::billing::payment_handlers::get_stripe_publishable_key)
+            // Invoice management routes
+            .service(handlers::billing::invoice_handlers::list_invoices)
             // Credit system routes (/api/billing/credits/*)
             .service(
                 web::scope("/credits")
@@ -52,8 +53,8 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig, strict_rate_limiter: RateL
                     .route("/packs/{pack_id}", web::get().to(handlers::billing::credit_handlers::get_credit_pack_by_id))
                     .route("/admin/adjust", web::post().to(handlers::billing::credit_handlers::admin_adjust_credits))
             )
-            // Note: Billing details and invoice customization now handled via Stripe Customer Portal
-            // Subscription lifecycle management is now handled exclusively through Stripe Customer Portal
+            // Subscription lifecycle actions (cancel, resume, update) are handled by the billing portal
+            // This prevents future additions of direct subscription modification endpoints
     );
     
     

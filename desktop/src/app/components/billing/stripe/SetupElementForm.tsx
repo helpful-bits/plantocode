@@ -140,36 +140,42 @@ export function SetupElementForm({
         </CardTitle>
         
         {subscriptionDetails && (
-          <div className="space-y-3">
-            <div className="flex justify-between items-center">
-              <span className="font-medium">{subscriptionDetails.planName}</span>
-              <Badge variant="secondary" className="bg-green-100 text-green-800">
+          <div className="bg-muted/50 rounded-lg p-4 space-y-4">
+            <div className="text-center">
+              <div className="font-semibold text-lg text-blue-600">
+                {subscriptionDetails.planName}
+              </div>
+              <Badge variant="secondary" className="bg-green-100 text-green-800 mt-2">
+                <Clock className="h-3 w-3 mr-1" />
                 {subscriptionDetails.trialDays}-day free trial
               </Badge>
             </div>
             
-            <div className="text-sm text-muted-foreground">
-              <div className="flex items-center gap-1 mb-2">
-                <Clock className="h-4 w-4" />
-                <span>
-                  Trial for {subscriptionDetails.trialDays} days, then {formatCurrency(subscriptionDetails.monthlyPrice, subscriptionDetails.currency)}/month
-                </span>
+            <div className="text-center space-y-2">
+              <div className="text-2xl font-bold">
+                {formatCurrency(subscriptionDetails.monthlyPrice, subscriptionDetails.currency)}
+                <span className="text-sm font-normal text-muted-foreground">/month</span>
               </div>
-              <div className="text-xs">
-                Cancel anytime during your trial at no charge
+              <div className="text-xs text-muted-foreground">
+                No charge during trial • Cancel anytime
               </div>
             </div>
 
-            <div className="space-y-1">
-              <div className="text-sm font-medium">What's included:</div>
-              <ul className="text-xs text-muted-foreground space-y-1">
-                {subscriptionDetails.features.map((feature, index) => (
-                  <li key={index} className="flex items-center gap-2">
+            <div className="space-y-2">
+              <div className="text-sm font-medium text-center">Plan Features:</div>
+              <div className="grid grid-cols-1 gap-1">
+                {subscriptionDetails.features.slice(0, 3).map((feature, index) => (
+                  <div key={index} className="flex items-center gap-2 text-xs">
                     <CheckCircle className="h-3 w-3 text-green-500 flex-shrink-0" />
-                    {feature}
-                  </li>
+                    <span>{feature}</span>
+                  </div>
                 ))}
-              </ul>
+                {subscriptionDetails.features.length > 3 && (
+                  <div className="text-xs text-muted-foreground text-center mt-1">
+                    +{subscriptionDetails.features.length - 3} more features
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         )}
@@ -177,13 +183,12 @@ export function SetupElementForm({
 
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Payment Element for setup */}
           <div className="space-y-3">
             <label className="text-sm font-medium text-gray-700">
-              Payment Method
+              Payment Method for After Trial
             </label>
             <div className="text-xs text-muted-foreground mb-2">
-              We'll save your payment method securely. You won't be charged until your trial ends.
+              We'll save your payment method securely. You won't be charged until your {subscriptionDetails?.trialDays}-day trial ends.
             </div>
             <div className="border rounded-lg p-4 bg-gray-50">
               <PaymentElement 
@@ -196,13 +201,13 @@ export function SetupElementForm({
             </div>
           </div>
 
-          {/* Security notice */}
-          <div className="flex items-center space-x-2 text-sm text-muted-foreground">
-            <Shield className="h-4 w-4" />
-            <span>Your payment method will be securely saved. No charge until trial ends.</span>
+          <div className="bg-green-50 p-3 rounded-lg">
+            <div className="flex items-center space-x-2 text-sm text-green-700">
+              <Shield className="h-4 w-4" />
+              <span>Your payment method will be securely saved. No charge until trial ends.</span>
+            </div>
           </div>
 
-          {/* Message display */}
           {message && (
             <Alert variant={messageType === 'error' ? 'destructive' : 'default'}>
               {messageType === 'success' ? (
@@ -216,7 +221,6 @@ export function SetupElementForm({
             </Alert>
           )}
 
-          {/* Action buttons */}
           <div className="flex gap-3">
             <Button
               type="button"
@@ -246,13 +250,12 @@ export function SetupElementForm({
             </Button>
           </div>
 
-          {/* Terms notice */}
-          <div className="text-xs text-center text-muted-foreground">
+          <div className="text-xs text-center text-muted-foreground space-y-2">
             <div className="flex items-center justify-center gap-1">
               <Shield className="h-3 w-3" />
               <span>Secure setup powered by Stripe</span>
             </div>
-            <div className="mt-1">
+            <div className="bg-gray-50 p-2 rounded text-xs">
               By starting your trial, you agree to our terms of service and privacy policy
             </div>
           </div>

@@ -190,7 +190,6 @@ pub use server_config_commands::{
 pub use billing_commands::{
     get_billing_dashboard_data_command,
     get_subscription_plans_command,
-    get_invoice_history_command,
     get_spending_history_command,
     check_service_access_command,
     get_credit_history_command,
@@ -211,6 +210,7 @@ pub use billing_commands::{
     // Billing health monitoring
     check_billing_health_command,
     ping_billing_service_command,
+    list_invoices_command,
 };
 
 
