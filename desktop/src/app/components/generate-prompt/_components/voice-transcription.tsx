@@ -27,6 +27,7 @@ import { TaskModelSettings } from "@/types";
 import { transcribeAudioBlobAction } from "@/actions/voice-transcription";
 import { useCorePromptContext } from "../_contexts/core-prompt-context";
 import { type TaskDescriptionHandle } from "./task-description";
+import { TRANSCRIPTION_LANGUAGES } from "@/app/components/settings/task-settings-editor";
 
 interface VoiceTranscriptionProps {
   onTranscribed: (text: string) => void;
@@ -35,21 +36,6 @@ interface VoiceTranscriptionProps {
   disabled?: boolean;
 }
 
-// Enhanced language options with more languages
-const ENHANCED_TRANSCRIPTION_LANGUAGES = [
-  { code: 'en', name: 'English', nativeName: 'English' },
-  { code: 'es', name: 'Spanish', nativeName: 'Español' },
-  { code: 'fr', name: 'French', nativeName: 'Français' },
-  { code: 'de', name: 'German', nativeName: 'Deutsch' },
-  { code: 'it', name: 'Italian', nativeName: 'Italiano' },
-  { code: 'pt', name: 'Portuguese', nativeName: 'Português' },
-  { code: 'ru', name: 'Russian', nativeName: 'Русский' },
-  { code: 'ja', name: 'Japanese', nativeName: '日本語' },
-  { code: 'ko', name: 'Korean', nativeName: '한국어' },
-  { code: 'zh', name: 'Chinese', nativeName: '中文' },
-  { code: 'ar', name: 'Arabic', nativeName: 'العربية' },
-  { code: 'hi', name: 'Hindi', nativeName: 'हिन्दी' },
-] as const;
 
 const VoiceTranscription = function VoiceTranscription({
   onTranscribed,
@@ -394,7 +380,7 @@ const VoiceTranscription = function VoiceTranscription({
                   <SelectValue placeholder="Select language" />
                 </SelectTrigger>
                 <SelectContent>
-                  {ENHANCED_TRANSCRIPTION_LANGUAGES.map((lang) => (
+                  {TRANSCRIPTION_LANGUAGES.map((lang) => (
                     <SelectItem key={lang.code} value={lang.code}>
                       <div className="flex items-center gap-2">
                         <span>{lang.nativeName}</span>

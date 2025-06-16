@@ -255,6 +255,8 @@ pub struct BillingDashboardData {
     pub plan_details: BillingDashboardPlanDetails,
     pub spending_details: BillingDashboardSpendingDetails,
     pub credit_balance_usd: f64,
+    pub subscription_status: String,
+    pub trial_ends_at: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -393,7 +395,7 @@ pub struct CreditBalanceResponse {
     pub user_id: String,
     pub balance: f64, // Proper numeric type
     pub currency: String,
-    pub last_updated: String,
+    pub last_updated: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -479,39 +481,6 @@ pub async fn get_subscription_plans_command(
 
 
 
-/// Acknowledge a spending alert
-#[tauri::command]
-pub async fn acknowledge_spending_alert_command(
-    billing_client: State<'_, Arc<BillingClient>>,
-    alert_id: String,
-) -> Result<bool, AppError> {
-    debug!("Acknowledging spending alert: {}", alert_id);
-    
-    let _response = billing_client.acknowledge_spending_alert(alert_id.clone()).await?;
-    
-    info!("Successfully acknowledged spending alert: {}", alert_id);
-    Ok(true)
-}
-
-/// Update spending limits
-#[tauri::command]
-pub async fn update_spending_limits_command(
-    billing_client: State<'_, Arc<BillingClient>>,
-    monthly_spending_limit: Option<f64>,
-    hard_limit: Option<f64>,
-) -> Result<UpdateSpendingLimitsResponse, AppError> {
-    debug!("Updating spending limits");
-    
-    // Security validation
-    check_rate_limit("update_spending_limits")?;
-    validate_spending_limit(monthly_spending_limit)?;
-    validate_spending_limit(hard_limit)?;
-    
-    let response = billing_client.update_spending_limits(monthly_spending_limit, hard_limit).await?;
-    
-    info!("Successfully updated spending limits");
-    Ok(response)
-}
 
 /// Get invoice history with optional filtering
 #[tauri::command]
@@ -763,55 +732,6 @@ pub async fn get_stripe_publishable_key_command(
 // SUBSCRIPTION LIFECYCLE MANAGEMENT
 // ========================================
 
-/// Cancel a subscription
-#[tauri::command]
-pub async fn cancel_subscription_command(
-    billing_client: State<'_, Arc<BillingClient>>,
-    at_period_end: bool,
-) -> Result<serde_json::Value, AppError> {
-    debug!("Cancelling subscription with at_period_end: {}", at_period_end);
-    
-    // Security validation
-    check_rate_limit("cancel_subscription")?;
-    
-    let response = billing_client.cancel_subscription(at_period_end).await?;
-    
-    info!("Successfully cancelled subscription");
-    Ok(response)
-}
-
-/// Resume a subscription
-#[tauri::command]
-pub async fn resume_subscription_command(
-    billing_client: State<'_, Arc<BillingClient>>,
-) -> Result<serde_json::Value, AppError> {
-    debug!("Resuming subscription");
-    
-    // Security validation
-    check_rate_limit("resume_subscription")?;
-    
-    let response = billing_client.resume_subscription().await?;
-    
-    info!("Successfully resumed subscription");
-    Ok(response)
-}
-
-/// Reactivate a subscription
-#[tauri::command]
-pub async fn reactivate_subscription_command(
-    billing_client: State<'_, Arc<BillingClient>>,
-    plan_id: Option<String>,
-) -> Result<serde_json::Value, AppError> {
-    debug!("Reactivating subscription");
-    
-    // Security validation
-    check_rate_limit("reactivate_subscription")?;
-    
-    let response = billing_client.reactivate_subscription(plan_id).await?;
-    
-    info!("Successfully reactivated subscription");
-    Ok(response)
-}
 
 /// Get usage summary
 #[tauri::command]
@@ -905,41 +825,6 @@ pub async fn get_payment_methods_command(
     Ok(payment_methods)
 }
 
-/// Delete a payment method
-#[tauri::command]
-pub async fn delete_payment_method_command(
-    billing_client: State<'_, Arc<BillingClient>>,
-    id: String,
-) -> Result<bool, AppError> {
-    debug!("Deleting payment method: {}", id);
-    
-    // Security validation
-    check_rate_limit("delete_payment_method")?;
-    validate_payment_method_id(&id)?;
-    
-    billing_client.delete_payment_method(&id).await?;
-    
-    info!("Successfully deleted payment method: {}", id);
-    Ok(true)
-}
-
-/// Set default payment method
-#[tauri::command]
-pub async fn set_default_payment_method_command(
-    billing_client: State<'_, Arc<BillingClient>>,
-    id: String,
-) -> Result<bool, AppError> {
-    debug!("Setting default payment method: {}", id);
-    
-    // Security validation
-    check_rate_limit("set_default_payment_method")?;
-    validate_payment_method_id(&id)?;
-    
-    billing_client.set_default_payment_method(&id).await?;
-    
-    info!("Successfully set default payment method: {}", id);
-    Ok(true)
-}
 
 // ========================================
 // BILLING HEALTH MONITORING
@@ -998,17 +883,17 @@ pub async fn check_billing_health_command(
     let mut errors = 0;
     let mut warnings = 0;
     
-    // Test server connectivity and authentication by trying to get subscription details
-    match billing_client.get_subscription_details().await {
+    // Test server connectivity and authentication by trying to get billing dashboard data
+    match billing_client.get_billing_dashboard_data().await {
         Ok(_) => {
             status.server_connectivity = true;
             status.authentication_status = true;
             status.subscription_accessible = true;
-            info!("Billing health check: Subscription details accessible");
+            info!("Billing health check: Billing dashboard data accessible");
         }
         Err(e) => {
             errors += 1;
-            let error_msg = format!("Failed to access subscription details: {}", e);
+            let error_msg = format!("Failed to access billing dashboard data: {}", e);
             status.error_details.push(error_msg.clone());
             error!("Billing health check error: {}", error_msg);
             

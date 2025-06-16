@@ -7,11 +7,6 @@ import { Loader2 } from 'lucide-react';
 
 // Async load heavy billing components
 
-export const PaymentMethodsManagerAsync = lazy(() => 
-  import('./components/payment-methods-manager').then(module => ({ 
-    default: module.PaymentMethodsManager 
-  }))
-);
 
 export const SubscriptionReactivationModalAsync = lazy(() => 
   import('./components/subscription-reactivation-modal').then(module => ({ 
@@ -64,7 +59,6 @@ export function withBillingSuspense<T extends object>(
 }
 
 // Pre-wrapped components ready to use (clean naming without "Async" suffix)
-export const PaymentMethodsManager = withBillingSuspense(PaymentMethodsManagerAsync);
 export const SubscriptionReactivationModal = withBillingSuspense(SubscriptionReactivationModalAsync);
 export const CreditManager = withBillingSuspense(CreditManagerAsync);
 export const SubscriptionModal = withBillingSuspense(SubscriptionModalAsync);
@@ -72,11 +66,6 @@ export const InvoiceHistoryManager = withBillingSuspense(InvoiceHistoryManagerAs
 
 // Preload function for likely-to-be-used components
 export function preloadBillingComponents(): void {
-  // Preload the most commonly used components
-  setTimeout(() => {
-    import('./components/payment-methods-manager');
-  }, 100);
-  
   // Preload other components after a delay
   setTimeout(() => {
     import('./components/credit-manager');

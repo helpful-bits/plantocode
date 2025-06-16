@@ -136,16 +136,12 @@ fn main() {
             // Billing commands
             commands::billing_commands::get_billing_dashboard_data_command,
             commands::billing_commands::get_subscription_plans_command,
-            commands::billing_commands::acknowledge_spending_alert_command,
-            commands::billing_commands::update_spending_limits_command,
             commands::billing_commands::get_invoice_history_command,
             commands::billing_commands::get_spending_history_command,
             commands::billing_commands::check_service_access_command,
             commands::billing_commands::get_spending_analytics_command,
             commands::billing_commands::get_spending_forecast_command,
             commands::billing_commands::get_payment_methods_command,
-            commands::billing_commands::delete_payment_method_command,
-            commands::billing_commands::set_default_payment_method_command,
             
             // Credit system commands
             commands::billing_commands::get_credit_history_command,
@@ -165,9 +161,6 @@ fn main() {
             commands::billing_commands::ping_billing_service_command,
             
             // Subscription lifecycle management
-            commands::billing_commands::cancel_subscription_command,
-            commands::billing_commands::resume_subscription_command,
-            commands::billing_commands::reactivate_subscription_command,
             commands::billing_commands::get_usage_summary_command,
             commands::billing_commands::create_billing_portal_session_command,
             

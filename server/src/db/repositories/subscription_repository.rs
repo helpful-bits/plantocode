@@ -13,9 +13,6 @@ pub struct Subscription {
     pub stripe_subscription_id: Option<String>,
     pub plan_id: String,
     pub status: String,
-    pub is_trial: bool,
-    pub trial_ends_at: Option<DateTime<Utc>>,
-    pub current_period_ends_at: Option<DateTime<Utc>>,
     pub cancel_at_period_end: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -51,8 +48,8 @@ impl SubscriptionRepository {
         status: &str,
         stripe_customer_id: Option<&str>,
         stripe_subscription_id: Option<&str>,
-        trial_ends_at: Option<DateTime<Utc>>,
-        current_period_ends_at: DateTime<Utc>,
+        trial_end: Option<DateTime<Utc>>,
+        current_period_end: DateTime<Utc>,
     ) -> Result<Uuid, AppError> {
         let mut tx = self.db_pool.begin().await
             .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
@@ -62,8 +59,8 @@ impl SubscriptionRepository {
             status,
             stripe_customer_id,
             stripe_subscription_id,
-            trial_ends_at,
-            current_period_ends_at,
+            trial_end,
+            current_period_end,
             &mut tx,
         ).await?;
         tx.commit().await
@@ -79,8 +76,8 @@ impl SubscriptionRepository {
         status: &str,
         stripe_customer_id: Option<&str>,
         stripe_subscription_id: Option<&str>,
-        trial_ends_at: Option<DateTime<Utc>>,
-        current_period_ends_at: DateTime<Utc>,
+        trial_end: Option<DateTime<Utc>>,
+        current_period_end: DateTime<Utc>,
         executor: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     ) -> Result<Uuid, AppError>
     {
@@ -91,11 +88,10 @@ impl SubscriptionRepository {
             r#"
             INSERT INTO subscriptions 
             (id, user_id, plan_id, status, stripe_customer_id, stripe_subscription_id, 
-             trial_ends_at, current_period_ends_at, cancel_at_period_end, 
-             stripe_plan_id, current_period_start, current_period_end, 
+             cancel_at_period_end, stripe_plan_id, current_period_start, current_period_end, 
              trial_start, trial_end, pending_plan_id, created_at, updated_at)
             VALUES 
-            ($1, $2, $3, $4, $5, $6, $7, $8, false, $9, $10, $11, $12, $13, NULL, now(), now())
+            ($1, $2, $3, $4, $5, $6, false, $7, $8, $9, $10, $11, NULL, now(), now())
             "#,
             id,
             user_id,
@@ -103,13 +99,11 @@ impl SubscriptionRepository {
             status,
             stripe_customer_id,
             stripe_subscription_id,
-            trial_ends_at,
-            current_period_ends_at,
             plan_id, // Default stripe_plan_id to plan_id for backward compatibility
             now, // Default current_period_start to now
-            current_period_ends_at, // current_period_end
-            trial_ends_at, // trial_start (backward compatibility - if trial_ends_at exists, assume trial started now)
-            trial_ends_at, // trial_end
+            current_period_end, // current_period_end
+            trial_end, // trial_start (backward compatibility - if trial_end exists, assume trial started now)
+            trial_end, // trial_end
         )
         .execute(&mut **executor)
         .await
@@ -126,8 +120,6 @@ impl SubscriptionRepository {
             SELECT id, user_id, 
                    stripe_customer_id, stripe_subscription_id,
                    plan_id, status, 
-                   (trial_ends_at IS NOT NULL AND trial_ends_at > now()) as "is_trial!: bool",
-                   trial_ends_at, current_period_ends_at,
                    cancel_at_period_end,
                    stripe_plan_id, current_period_start, current_period_end,
                    trial_start, trial_end, pending_plan_id,
@@ -138,6 +130,30 @@ impl SubscriptionRepository {
             id
         )
         .fetch_optional(&self.db_pool)
+        .await
+        .map_err(|e| AppError::Database(format!("Failed to fetch subscription: {}", e)))?;
+
+        Ok(record)
+    }
+
+    // Get subscription by ID with custom executor
+    pub async fn get_by_id_with_executor(&self, id: &Uuid, executor: &mut sqlx::Transaction<'_, sqlx::Postgres>) -> Result<Option<Subscription>, AppError> {
+        let record = query_as!(
+            Subscription,
+            r#"
+            SELECT id, user_id, 
+                   stripe_customer_id, stripe_subscription_id,
+                   plan_id, status, 
+                   cancel_at_period_end,
+                   stripe_plan_id, current_period_start, current_period_end,
+                   trial_start, trial_end, pending_plan_id,
+                   created_at, updated_at
+            FROM subscriptions
+            WHERE id = $1
+            "#,
+            id
+        )
+        .fetch_optional(&mut **executor)
         .await
         .map_err(|e| AppError::Database(format!("Failed to fetch subscription: {}", e)))?;
 
@@ -157,21 +173,17 @@ impl SubscriptionRepository {
     // Get subscription by user ID with custom executor
     pub async fn get_by_user_id_with_executor(&self, user_id: &Uuid, executor: &mut sqlx::Transaction<'_, sqlx::Postgres>) -> Result<Option<Subscription>, AppError>
     {
-        // Set user context for RLS within this transaction
         sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
             .bind(user_id.to_string())
             .execute(&mut **executor)
-            .await
-            .map_err(|e| AppError::Database(format!("Failed to set user context for RLS: {}", e)))?;
-
+            .await?;
+            
         let record = query_as!(
             Subscription,
             r#"
             SELECT id, user_id, 
                    stripe_customer_id, stripe_subscription_id,
                    plan_id, status, 
-                   (trial_ends_at IS NOT NULL AND trial_ends_at > now()) as "is_trial!: bool",
-                   trial_ends_at, current_period_ends_at,
                    cancel_at_period_end,
                    stripe_plan_id, current_period_start, current_period_end,
                    trial_start, trial_end, pending_plan_id,
@@ -199,12 +211,8 @@ impl SubscriptionRepository {
             SELECT id, user_id, 
                    stripe_customer_id, stripe_subscription_id,
                    plan_id, status, 
-                   (trial_ends_at IS NOT NULL AND trial_ends_at > now()) as "is_trial!: bool",
-                   trial_ends_at, current_period_ends_at,
                    cancel_at_period_end,
-                   COALESCE(stripe_plan_id, plan_id) as "stripe_plan_id!: String",
-                   COALESCE(current_period_start, created_at) as "current_period_start!: DateTime<Utc>",
-                   COALESCE(current_period_end, current_period_ends_at) as "current_period_end!: DateTime<Utc>",
+                   stripe_plan_id, current_period_start, current_period_end,
                    trial_start, trial_end, pending_plan_id,
                    created_at, updated_at
             FROM subscriptions
@@ -241,24 +249,20 @@ impl SubscriptionRepository {
                 stripe_subscription_id = $2,
                 plan_id = $3,
                 status = $4,
-                trial_ends_at = $5,
-                current_period_ends_at = $6,
-                cancel_at_period_end = $7,
-                stripe_plan_id = $8,
-                current_period_start = $9,
-                current_period_end = $10,
-                trial_start = $11,
-                trial_end = $12,
-                pending_plan_id = $13,
+                cancel_at_period_end = $5,
+                stripe_plan_id = $6,
+                current_period_start = $7,
+                current_period_end = $8,
+                trial_start = $9,
+                trial_end = $10,
+                pending_plan_id = $11,
                 updated_at = now()
-            WHERE id = $14
+            WHERE id = $12
             "#,
             subscription.stripe_customer_id,
             subscription.stripe_subscription_id,
             subscription.plan_id,
             subscription.status,
-            subscription.trial_ends_at,
-            subscription.current_period_ends_at,
             subscription.cancel_at_period_end,
             subscription.stripe_plan_id,
             subscription.current_period_start,
@@ -293,6 +297,36 @@ impl SubscriptionRepository {
         .execute(&self.db_pool)
         .await
         .map_err(|e| AppError::Database(format!("Failed to cancel subscription: {}", e)))?;
+
+        Ok(())
+    }
+
+    // Set stripe customer ID with custom executor
+    pub async fn set_stripe_customer_id_with_executor(
+        &self,
+        id: &Uuid,
+        stripe_customer_id: &str,
+        user_id: &Uuid,
+        executor: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    ) -> Result<(), AppError> {
+        let result = query!(
+            r#"
+            UPDATE subscriptions 
+            SET stripe_customer_id = $1,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = $2 AND user_id = $3
+            "#,
+            stripe_customer_id,
+            id,
+            user_id
+        )
+        .execute(&mut **executor)
+        .await
+        .map_err(|e| AppError::Database(format!("Failed to set stripe customer id: {}", e)))?;
+
+        if result.rows_affected() == 0 {
+            return Err(AppError::NotFound("Subscription not found to update stripe customer id".to_string()));
+        }
 
         Ok(())
     }
