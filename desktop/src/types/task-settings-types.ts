@@ -11,8 +11,7 @@ export interface TaskSettings {
   regexPatternGeneration: TaskModelSettings;
   pathCorrection: TaskModelSettings;
   textImprovement: TaskModelSettings;
-  textCorrection: TaskModelSettings;
-  taskEnhancement: TaskModelSettings;
+  taskRefinement: TaskModelSettings;
   guidanceGeneration: TaskModelSettings;
   implementationPlan: TaskModelSettings;
   genericLlmStream: TaskModelSettings;

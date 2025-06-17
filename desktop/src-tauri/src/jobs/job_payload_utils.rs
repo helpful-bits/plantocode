@@ -32,8 +32,8 @@ pub fn deserialize_value_to_job_payload(json_value: &serde_json::Value, task_typ
         JobPayload, RegexPatternGenerationWorkflowPayload, 
         LocalFileFilteringPayload, PathFinderPayload, PathCorrectionPayload, 
         ExtendedPathFinderPayload, ImplementationPlanPayload,
-        GuidanceGenerationPayload, TaskEnhancementPayload,
-        TextCorrectionPayload, GenericLlmStreamPayload, RegexPatternGenerationPayload,
+        GuidanceGenerationPayload, TaskRefinementPayload,
+        TextImprovementPayload, GenericLlmStreamPayload, RegexPatternGenerationPayload,
         OpenRouterLlmPayload, FileRelevanceAssessmentPayload
     };
     use crate::models::TaskType;
@@ -80,15 +80,15 @@ pub fn deserialize_value_to_job_payload(json_value: &serde_json::Value, task_typ
                 .map_err(|e| AppError::JobError(format!("Failed to deserialize GuidanceGenerationPayload: {}", e)))?;
             Ok(JobPayload::GuidanceGeneration(payload))
         }
-        TaskType::TaskEnhancement => {
-            let payload: TaskEnhancementPayload = serde_json::from_value(json_value.clone())
-                .map_err(|e| AppError::JobError(format!("Failed to deserialize TaskEnhancementPayload: {}", e)))?;
-            Ok(JobPayload::TaskEnhancement(payload))
+        TaskType::TaskRefinement => {
+            let payload: TaskRefinementPayload = serde_json::from_value(json_value.clone())
+                .map_err(|e| AppError::JobError(format!("Failed to deserialize TaskRefinementPayload: {}", e)))?;
+            Ok(JobPayload::TaskRefinement(payload))
         }
-        TaskType::TextCorrection => {
-            let payload: TextCorrectionPayload = serde_json::from_value(json_value.clone())
-                .map_err(|e| AppError::JobError(format!("Failed to deserialize TextCorrectionPayload: {}", e)))?;
-            Ok(JobPayload::TextCorrection(payload))
+        TaskType::TextImprovement => {
+            let payload: TextImprovementPayload = serde_json::from_value(json_value.clone())
+                .map_err(|e| AppError::JobError(format!("Failed to deserialize TextImprovementPayload: {}", e)))?;
+            Ok(JobPayload::TextImprovement(payload))
         }
         TaskType::GenericLlmStream => {
             let payload: GenericLlmStreamPayload = serde_json::from_value(json_value.clone())

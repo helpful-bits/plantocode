@@ -163,21 +163,19 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         return {
           label: "Buy Credits",
           onClick: () => {
-            window.location.pathname = '/settings';
+            // Try to open credit manager if on account page
+            if (window.location.pathname === '/account') {
+              const event = new CustomEvent('open-credit-manager');
+              window.dispatchEvent(event);
+            } else {
+              // Navigate to account page with credits parameter
+              window.location.href = '/account?credits=true';
+            }
           },
           variant: "default" as const
         };
       
       case ErrorType.PLAN_UPGRADE_REQUIRED:
-        return {
-          label: "Upgrade Plan",
-          onClick: () => {
-            window.location.pathname = '/settings';
-          },
-          variant: "default" as const
-        };
-      
-      case ErrorType.SPENDING_LIMIT_EXCEEDED:
         return {
           label: "Upgrade Plan",
           onClick: () => {
@@ -188,6 +186,22 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
             } else {
               // Navigate to account page with upgrade parameter
               window.location.href = '/account?upgrade=true';
+            }
+          },
+          variant: "default" as const
+        };
+      
+      case ErrorType.SPENDING_LIMIT_EXCEEDED:
+        return {
+          label: "Manage Limits",
+          onClick: () => {
+            // Try to open subscription modal if on account page for limit management
+            if (window.location.pathname === '/account') {
+              const event = new CustomEvent('open-subscription-modal');
+              window.dispatchEvent(event);
+            } else {
+              // Navigate to account page with limits parameter
+              window.location.href = '/account?limits=true';
             }
           },
           variant: "default" as const

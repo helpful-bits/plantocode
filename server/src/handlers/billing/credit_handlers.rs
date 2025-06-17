@@ -41,48 +41,6 @@ pub struct ExtendedPaginationQuery {
     pub offset: Option<i64>,
 }
 
-/// Get comprehensive credit summary with stats and recent transactions
-pub async fn get_credit_summary(
-    req: HttpRequest,
-    credit_service: web::Data<CreditService>,
-) -> Result<HttpResponse, AppError> {
-    let extensions = req.extensions();
-    let claims = extensions.get::<Claims>().ok_or_else(|| {
-        AppError::Unauthorized("Missing authentication claims".to_string())
-    })?;
-    
-    let user_uuid = Uuid::parse_str(&claims.sub)
-        .map_err(|_| AppError::InvalidArgument("Invalid user ID format".to_string()))?;
-    
-    let stats = credit_service.get_user_credit_stats(&user_uuid).await?;
-    let transactions = credit_service.get_transaction_history(&user_uuid, Some(10), None).await?;
-    
-    Ok(HttpResponse::Ok().json(serde_json::json!({
-        "stats": {
-            "userId": stats.user_id,
-            "currentBalance": stats.current_balance.to_string(),
-            "totalPurchased": stats.total_purchased.to_string(),
-            "totalConsumed": stats.total_consumed.to_string(),
-            "totalRefunded": stats.total_refunded.to_string(),
-            "transactionCount": stats.transaction_count,
-            "currency": stats.currency
-        },
-        "recentTransactions": transactions.iter().map(|t| {
-            serde_json::json!({
-                "id": t.id,
-                "userId": t.user_id,
-                "transactionType": t.transaction_type,
-                "amount": t.amount.to_string(),
-                "currency": t.currency,
-                "description": t.description,
-                "stripeChargeId": t.stripe_charge_id,
-                "relatedApiUsageId": t.related_api_usage_id,
-                "metadata": t.metadata,
-                "createdAt": t.created_at
-            })
-        }).collect::<Vec<_>>()
-    })))
-}
 
 /// Get available credit packs
 #[get("/packs")]
@@ -199,34 +157,6 @@ pub async fn get_credit_transaction_history(
     Ok(HttpResponse::Ok().json(response))
 }
 
-/// Get user's credit transaction history (legacy compatibility)
-pub async fn get_credit_history(
-    user_id: UserId,
-    billing_service: web::Data<BillingService>,
-    pagination: web::Query<PaginationQuery>,
-) -> Result<HttpResponse, AppError> {
-    debug!("Getting credit history for user: {}", user_id.0);
-    
-    let credit_repo = CreditTransactionRepository::new(billing_service.get_db_pool());
-    let transactions = credit_repo.get_history(&user_id.0, pagination.limit as i64, pagination.offset as i64).await?;
-    let total_count = credit_repo.count_transactions(&user_id.0).await?;
-    
-    #[derive(Debug, Serialize)]
-    #[serde(rename_all = "camelCase")]
-    pub struct CreditHistoryResponse {
-        pub transactions: Vec<crate::db::repositories::credit_transaction_repository::CreditTransaction>,
-        pub total_count: i64,
-        pub has_more: bool,
-    }
-    
-    let response = CreditHistoryResponse {
-        transactions,
-        total_count,
-        has_more: total_count > (pagination.limit + pagination.offset) as i64,
-    };
-    
-    Ok(HttpResponse::Ok().json(response))
-}
 
 // ========================================
 // MODERN PAYMENT INTENT HANDLERS FOR CREDITS
@@ -271,14 +201,20 @@ pub struct CreditPacksResponse {
     pub packs: Vec<ClientCreditPack>,
 }
 
-/// Get user's credit statistics
-pub async fn get_credit_stats(
+/// Get comprehensive credit details with stats, balance, and transaction history
+pub async fn get_credit_details(
     user_id: UserId,
+    query: web::Query<ExtendedPaginationQuery>,
     credit_service: web::Data<CreditService>,
 ) -> Result<HttpResponse, AppError> {
-    let stats = credit_service.get_user_credit_stats(&user_id.0).await?;
+    let limit = query.limit.unwrap_or(20);
+    let offset = query.offset.unwrap_or(0);
     
-    Ok(HttpResponse::Ok().json(stats))
+    let credit_details = credit_service
+        .get_credit_details(&user_id.0, Some(limit), Some(offset))
+        .await?;
+    
+    Ok(HttpResponse::Ok().json(credit_details))
 }
 
 /// Get specific credit pack by ID

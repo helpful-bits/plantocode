@@ -11,16 +11,18 @@ import { logError } from "@/utils/error-handling";
 const defaultValue: TaskContextValue = {
   state: {
     taskDescriptionRef: { current: null }, // Provide a stable, null-initialized ref object
-    isGeneratingGuidance: false,
-    isImprovingText: false,
-    textImprovementJobId: undefined,
+    tokenEstimate: null,
+    isRefiningTask: false,
+    canUndo: false,
+    canRedo: false,
   },
   actions: {
     // These default implementations will be replaced by actual implementations
-    handleGenerateGuidance: async () => Promise.resolve(),
-    handleImproveSelection: async () => Promise.resolve(),
+    handleRefineTask: async () => Promise.resolve(),
     flushPendingTaskChanges: () => null,
     reset: () => {},
+    undo: () => {},
+    redo: () => {},
   },
 };
 

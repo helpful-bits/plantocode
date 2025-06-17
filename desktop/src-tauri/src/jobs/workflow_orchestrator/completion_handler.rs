@@ -55,6 +55,26 @@ pub(super) async fn handle_stage_completion_internal(
     };
     // Lock is released here
 
+    // Get the TaskType of the job that just finished
+    let task_type = workflow_state_for_payload_building.stage_jobs.iter()
+        .find(|stage_job| stage_job.job_id == job_id)
+        .map(|stage_job| stage_job.task_type.clone())
+        .ok_or_else(|| AppError::JobError(format!("Stage job not found for job_id: {}", job_id)))?;
+
+    if task_type == TaskType::FileRelevanceAssessment {
+        let token_count = workflow_state_for_payload_building.intermediate_data.ai_filtered_files_token_count;
+        if token_count.unwrap_or(0) >= 120_000 {
+            info!("Extended path finding stages are being skipped due to large file context size ({} tokens)", token_count.unwrap_or(0));
+            let mut workflows_guard = workflows.lock().await;
+            if let Some(workflow_state) = workflows_guard.get_mut(workflow_id) {
+                workflow_state.intermediate_data.extended_verified_paths = workflow_state.intermediate_data.ai_filtered_files.clone();
+            }
+            drop(workflows_guard);
+            orchestrator.mark_workflow_completed(workflow_id).await?;
+            return Ok(());
+        }
+    }
+
     // Find next stages that can be executed based on the workflow definition (use updated state after data extraction)
     let next_stages = super::stage_scheduler::find_next_abstract_stages_to_execute_internal(&workflow_state_for_payload_building, &workflow_definition).await;
 

@@ -266,7 +266,19 @@ async fn process_stripe_webhook_event(
                     }
                 }
                 
-                process_credit_purchase(payment_intent, billing_service, &email_service).await?;
+                match process_credit_purchase(payment_intent, billing_service, &email_service).await {
+                    Ok(_) => {},
+                    Err(e) => {
+                        crate::utils::admin_alerting::send_payment_processing_error_alert(
+                            &payment_intent.id.to_string(),
+                            &payment_intent.customer.as_ref()
+                                .map(|c| c.id().to_string())
+                                .unwrap_or_else(|| "unknown".to_string()),
+                            &format!("{}", e),
+                        ).await;
+                        return Err(e);
+                    }
+                }
             }
         },
         "invoice.payment_succeeded" => {
@@ -324,17 +336,15 @@ async fn process_credit_purchase(
     info!("PaymentIntent {} is a credit purchase, processing", payment_intent.id);
     
     // Extract required metadata with robust validation
-    let (user_id_str, credit_pack_id_str, credit_value_str, currency) = match (
+    let (user_id_str, credit_pack_id_str) = match (
         metadata.get("user_id").map(|v| v.as_str()),
         metadata.get("credit_pack_id").map(|v| v.as_str()),
-        metadata.get("credit_value").map(|v| v.as_str()),
-        metadata.get("currency").map(|v| v.as_str())
     ) {
-        (Some(user_id), Some(credit_pack_id), Some(credit_value), Some(currency)) => {
-            (user_id, credit_pack_id, credit_value, currency)
+        (Some(user_id), Some(credit_pack_id)) => {
+            (user_id, credit_pack_id)
         }
         _ => {
-            error!("Missing required metadata in PaymentIntent {}: user_id, credit_pack_id, credit_value, or currency", payment_intent.id);
+            error!("Missing required metadata in PaymentIntent {}: user_id or credit_pack_id", payment_intent.id);
             return Err(AppError::InvalidArgument("Missing required credit purchase metadata".to_string()));
         }
     };
@@ -348,100 +358,35 @@ async fn process_credit_purchase(
         }
     };
     
-    let credit_pack_id = credit_pack_id_str;
+    info!("Processing credit purchase for user {} with credit_pack_id {}", 
+          user_uuid, credit_pack_id_str);
     
-    // Parse and validate credit value
-    let credit_value = match credit_value_str.parse::<BigDecimal>() {
-        Ok(value) => {
-            if value <= BigDecimal::from(0) {
-                error!("Invalid credit_value (must be positive) in PaymentIntent {}: {}", payment_intent.id, value);
-                return Err(AppError::InvalidArgument("Credit value must be positive".to_string()));
-            }
-            value
-        },
-        Err(e) => {
-            error!("Invalid credit_value format in PaymentIntent {}: {}", payment_intent.id, e);
-            return Err(AppError::InvalidArgument(format!("Invalid credit_value format: {}", e)));
-        }
-    };
+    // Use the new credit service method to process the purchase
+    let db_pools = billing_service.get_db_pools();
+    let credit_service = crate::services::credit_service::CreditService::new(db_pools.clone());
     
-    info!("Processing credit purchase for user {} with credit_pack_id {} and value {}", 
-          user_uuid, credit_pack_id, credit_value);
-    
-    // Security: Fetch the corresponding CreditPack from the database and validate amount
-    let credit_pack_repo = crate::db::repositories::credit_pack_repository::CreditPackRepository::new(billing_service.get_db_pool().clone());
-    let selected_pack = match credit_pack_repo.get_pack_by_id(credit_pack_id).await? {
-        Some(pack) => pack,
-        None => {
-            error!("Credit pack not found for ID {} in PaymentIntent {}", credit_pack_id, payment_intent.id);
-            return Err(AppError::InvalidArgument(format!("Credit pack not found: {}", credit_pack_id)));
-        }
-    };
-    
-    // Validate that the payment intent amount matches our expected price
-    validate_stripe_amount_matches(payment_intent.amount, &selected_pack.price_amount, currency)?;
-    info!("Amount validation successful for PaymentIntent {}: {} matches expected {}", 
-          payment_intent.id, payment_intent.amount, selected_pack.price_amount);
-    
-    // Start a database transaction
-    let mut tx = billing_service.get_system_db_pool().begin().await
-        .map_err(|e| AppError::Database(format!("Failed to begin transaction for PaymentIntent {}: {}", payment_intent.id, e)))?;
-    
-    info!("Started transaction for PaymentIntent {}", payment_intent.id);
-    
-    // Add credits to user balance
-    let credit_repo = UserCreditRepository::new(billing_service.get_system_db_pool());
-    let updated_balance = credit_repo.increment_balance_with_executor(
+    let updated_balance = credit_service.process_credit_purchase(
         &user_uuid,
-        &credit_value,
-        &mut tx
-    ).await.map_err(|e| {
-        error!("Failed to increment user balance for PaymentIntent {}: {}", payment_intent.id, e);
-        e
-    })?;
+        credit_pack_id_str,
+        payment_intent,
+    ).await?;
     
-    info!("Incremented user {} balance by {} for PaymentIntent {}, new balance: {}", 
-          user_uuid, credit_value, payment_intent.id, updated_balance.balance);
-    
-    // Create credit transaction record
-    let transaction_repo = CreditTransactionRepository::new(billing_service.get_system_db_pool());
-    let transaction = CreditTransaction {
-        id: Uuid::new_v4(),
-        user_id: user_uuid,
-        transaction_type: "purchase".to_string(),
-        amount: credit_value.clone(),
-        currency: currency.to_string(),
-        description: Some(format!("Credit purchase via Stripe PaymentIntent")),
-        stripe_charge_id: Some(payment_intent.id.to_string()),
-        related_api_usage_id: None,
-        metadata: Some(serde_json::to_value(&payment_intent.metadata).unwrap_or_default()),
-        created_at: Some(Utc::now()),
-    };
-    
-    transaction_repo.create_transaction_with_executor(&transaction, &mut tx).await.map_err(|e| {
-        error!("Failed to create credit transaction for PaymentIntent {}: {}", payment_intent.id, e);
-        e
-    })?;
-    
-    info!("Created credit transaction record for PaymentIntent {}", payment_intent.id);
-    
-    // Commit transaction
-    tx.commit().await.map_err(|e| {
-        error!("Failed to commit transaction for PaymentIntent {}: {}", payment_intent.id, e);
-        AppError::Database(format!("Failed to commit transaction: {}", e))
-    })?;
-    
-    info!("Successfully processed credit purchase for PaymentIntent {}: user {} received {} credits", 
-          payment_intent.id, user_uuid, credit_value);
+    info!("Successfully processed credit purchase for PaymentIntent {}: user {} new balance: {}", 
+          payment_intent.id, user_uuid, updated_balance.balance);
     
     // Send success email notification
     let user_repo = crate::db::repositories::user_repository::UserRepository::new(billing_service.get_db_pool().clone());
     if let Ok(user) = user_repo.get_by_id(&user_uuid).await {
+        // Get credit value from payment intent metadata for email
+        let credit_value = metadata.get("credit_value")
+            .and_then(|v| v.parse::<BigDecimal>().ok())
+            .unwrap_or_else(|| BigDecimal::from(0));
+        
         email_service.send_credit_purchase_notification(
             &user_uuid,
             &user.email,
             &credit_value,
-            currency,
+            &payment_intent.currency.to_string(),
         ).await.map_err(|e| {
             error!("Failed to send credit purchase notification for PaymentIntent {}: {}", payment_intent.id, e);
             e

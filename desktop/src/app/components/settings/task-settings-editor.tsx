@@ -50,8 +50,7 @@ const taskSettingsKeyToTaskType: Record<keyof TaskSettings, TaskType> = {
   pathFinder: "path_finder",
   voiceTranscription: "voice_transcription",
   pathCorrection: "path_correction",
-  textCorrection: "text_correction",
-  textImprovement: "text_correction",
+  textImprovement: "text_improvement",
   guidanceGeneration: "guidance_generation",
   implementationPlan: "implementation_plan",
   fileFinderWorkflow: "file_finder_workflow",
@@ -59,7 +58,7 @@ const taskSettingsKeyToTaskType: Record<keyof TaskSettings, TaskType> = {
   extendedPathFinder: "extended_path_finder",
   extendedPathCorrection: "path_correction",
   fileRelevanceAssessment: "file_relevance_assessment",
-  taskEnhancement: "task_enhancement",
+  taskRefinement: "task_refinement",
   genericLlmStream: "generic_llm_stream",
   regexPatternGeneration: "regex_pattern_generation",
   streaming: "streaming",
@@ -258,7 +257,7 @@ export function TaskSettingsEditor({
           <p className="text-xs text-muted-foreground text-balance">
             {taskKey === "pathCorrection" || taskKey === "pathFinder"
               ? "Lower values produce more accurate path suggestions"
-              : taskKey === "textCorrection"
+              : taskKey === "textImprovement"
               ? "Lower values for accuracy, higher for more creative corrections"
               : "Lower (0.0-0.3): factual and precise. Higher (0.7-1.0): creative and varied."}
           </p>

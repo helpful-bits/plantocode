@@ -102,6 +102,37 @@ pub fn get_model_context_window(model_name: &str) -> u32 {
     }
 }
 
+/// Estimate tokens for a batch of files
+pub async fn estimate_tokens_for_file_batch(project_dir: &std::path::Path, files: &[String]) -> crate::error::AppResult<u32> {
+    let file_contents = crate::jobs::processors::utils::fs_context_utils::load_file_contents(
+        files,
+        &project_dir.to_string_lossy()
+    ).await;
+    
+    let mut total = 0;
+    
+    for (filepath, content) in &file_contents {
+        let extension = std::path::Path::new(filepath)
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .unwrap_or("");
+            
+        match extension {
+            "json" | "xml" | "yml" | "yaml" | "toml" => {
+                total += estimate_structured_data_tokens(content);
+            }
+            "rs" | "ts" | "js" | "tsx" | "jsx" | "py" | "java" | "cpp" | "c" | "h" | "cs" | "go" | "php" | "rb" | "swift" | "kt" => {
+                total += estimate_code_tokens(content);
+            }
+            _ => {
+                total += estimate_tokens(content);
+            }
+        }
+    }
+    
+    Ok(total)
+}
+
 /// Estimate tokens for a path finder request with file contents
 pub fn estimate_path_finder_tokens(
     task_description: &str,

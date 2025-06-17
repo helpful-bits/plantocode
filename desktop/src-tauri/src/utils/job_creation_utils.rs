@@ -219,10 +219,10 @@ fn inject_job_id_into_payload(payload: &mut JobPayload, job_id: &str) {
         JobPayload::ImplementationPlan(_) => {},
         JobPayload::GuidanceGeneration(_) => {},
         JobPayload::PathCorrection(_) => {},
-        JobPayload::TaskEnhancement(_) => {},
-        JobPayload::TextCorrection(_) => {},
+        JobPayload::TextImprovement(_) => {},
         JobPayload::GenericLlmStream(_) => {},
         JobPayload::RegexPatternGeneration(_) => {},
+        JobPayload::TaskRefinement(_) => {},
         
         // Workflow stage payloads
         JobPayload::LocalFileFiltering(_) => {},

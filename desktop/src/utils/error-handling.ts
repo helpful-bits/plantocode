@@ -486,10 +486,10 @@ function applyContextSpecificTransformations(
         return "Your subscription has been cancelled. You can reactivate it anytime from your account settings.";
       
       case ErrorType.CREDIT_INSUFFICIENT:
-        return "Insufficient credits to complete this operation. Please purchase more credits from your account page.";
+        return "Insufficient credits to complete this operation. Services may be limited until you purchase more credits from your account page.";
       
       case ErrorType.PLAN_UPGRADE_REQUIRED:
-        return "This feature requires a plan upgrade. Please upgrade your subscription to continue.";
+        return "This feature requires a plan upgrade. Please upgrade your subscription to access this functionality.";
       
       case ErrorType.PAYMENT_METHOD_REQUIRED:
         return "A valid payment method is required. Please add a payment method to your account.";
@@ -501,7 +501,7 @@ function applyContextSpecificTransformations(
         return "There's a conflict with your subscription status. Please refresh and try again, or contact support.";
       
       case ErrorType.SPENDING_LIMIT_EXCEEDED:
-        return "Your spending limit has been exceeded. Please upgrade your plan or increase your limit.";
+        return "Your spending limit has been exceeded and services may be blocked. Please upgrade your plan or increase your spending limit to continue using premium features.";
       
       case ErrorType.INVOICE_ERROR:
         return "There was an error processing your invoice. Please contact support for assistance.";
@@ -821,6 +821,21 @@ export function mapRustErrorCodeToErrorType(code: string): ErrorType {
       return ErrorType.SPENDING_LIMIT_EXCEEDED;
     case "INVOICE_ERROR":
       return ErrorType.INVOICE_ERROR;
+    // Additional billing-related error code mappings from server AppError variants
+    case "PAYMENT_REQUIRED":
+      return ErrorType.PAYMENT_FAILED;
+    case "SERIALIZATION_ERROR":
+    case "SERIALIZATION":
+      return ErrorType.INTERNAL_ERROR;
+    case "LOCK_POISONED":
+      return ErrorType.INTERNAL_ERROR;
+    case "NOT_IMPLEMENTED":
+      return ErrorType.CONFIGURATION_ERROR;
+    case "TOO_MANY_REQUESTS":
+      return ErrorType.API_ERROR;
+    // Handle generic billing error
+    case "BILLING":
+      return ErrorType.PAYMENT_FAILED;
     default:
       return ErrorType.UNKNOWN_ERROR;
   }
@@ -856,10 +871,10 @@ export function createUserFriendlyErrorMessage(
       return "Your subscription has been cancelled. You can reactivate it anytime from your account settings.";
     
     case ErrorType.CREDIT_INSUFFICIENT:
-      return "Insufficient credits to complete this operation. Please purchase more credits from your account page.";
+      return "Insufficient credits to complete this operation. Services may be limited until you purchase more credits from your account page.";
     
     case ErrorType.PLAN_UPGRADE_REQUIRED:
-      return "This feature requires a plan upgrade. Please upgrade your subscription to continue.";
+      return "This feature requires a plan upgrade. Please upgrade your subscription to access this functionality.";
     
     case ErrorType.PAYMENT_METHOD_REQUIRED:
       return "A valid payment method is required. Please add a payment method to your account.";
@@ -871,7 +886,7 @@ export function createUserFriendlyErrorMessage(
       return "There's a conflict with your subscription status. Please refresh and try again, or contact support.";
     
     case ErrorType.SPENDING_LIMIT_EXCEEDED:
-      return "Your spending limit has been exceeded. Please upgrade your plan or increase your limit.";
+      return "Your spending limit has been exceeded and services may be blocked. Please upgrade your plan or increase your spending limit to continue using premium features.";
     
     case ErrorType.INVOICE_ERROR:
       return "There was an error processing your invoice. Please contact support for assistance.";

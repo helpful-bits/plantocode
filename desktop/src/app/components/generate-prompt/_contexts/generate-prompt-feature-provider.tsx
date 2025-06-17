@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useRef, useCallback, type ReactNode } from "react";
+import { useMemo, useRef, useCallback, useState, useEffect, type ReactNode } from "react";
 
+import { TooltipProvider } from "@/ui/tooltip";
 import { useNotification } from "@/contexts/notification-context";
 import { useProject } from "@/contexts/project-context";
 import {
@@ -15,6 +16,8 @@ import { useGeneratePromptDisplayState } from "../_hooks/use-generate-prompt-dis
 import { useGeneratePromptTaskState } from "../_hooks/use-generate-prompt-task-state";
 import { useGeneratePromptPlanState } from "../_hooks/use-generate-prompt-plan-state";
 import { generateDirectoryTreeAction } from "@/actions/file-system/directory-tree.actions";
+import { estimatePromptTokensAction } from "@/actions/ai/prompt.actions";
+import { type TokenEstimateResponse as TokenEstimate } from "@/actions/ai/path-finder.actions";
 
 // Import the granular context providers
 import { type CorePromptContextValue } from "./_types/generate-prompt-core-types";
@@ -43,6 +46,9 @@ export function GeneratePromptFeatureProvider({
 
   // Create DOM ref for TaskDescriptionHandle
   const taskDescriptionRef = useRef<TaskDescriptionHandle>(null);
+
+  // Token estimation state
+  const [tokenEstimate, setTokenEstimate] = useState<TokenEstimate | null>(null);
 
   // State management hooks
 
@@ -143,6 +149,46 @@ export function GeneratePromptFeatureProvider({
     [sessionActions.flushSaves]
   );
 
+  // Token estimation effect (debounced)
+  useEffect(() => {
+    const taskDescription = sessionState.currentSession?.taskDescription;
+    const includedFiles = sessionState.currentSession?.includedFiles;
+    const sessionId = sessionState.currentSession?.id;
+
+    if (!taskDescription || !taskDescription.trim() || !sessionId) {
+      setTokenEstimate(null);
+      return;
+    }
+
+    const timeoutId = setTimeout(async () => {
+      try {
+        const result = await estimatePromptTokensAction({
+          sessionId,
+          taskDescription,
+          projectDirectory: projectDirectory || "",
+          relevantFiles: includedFiles && includedFiles.length > 0 ? includedFiles : [],
+          taskType: "task_refinement"
+        });
+
+        if (result.isSuccess && result.data) {
+          setTokenEstimate(result.data);
+        } else {
+          setTokenEstimate(null);
+        }
+      } catch (error) {
+        console.error("Failed to estimate tokens:", error);
+        setTokenEstimate(null);
+      }
+    }, 500); // 500ms debounce
+
+    return () => clearTimeout(timeoutId);
+  }, [
+    sessionState.currentSession?.taskDescription,
+    sessionState.currentSession?.includedFiles,
+    sessionState.currentSession?.id,
+    projectDirectory,
+  ]);
+
   // Create memoized context values
   const coreContextValue = useMemo<CorePromptContextValue>(
     () => ({
@@ -218,21 +264,24 @@ export function GeneratePromptFeatureProvider({
       state: {
         // Task UI state
         taskDescriptionRef: taskState.taskDescriptionRef,
-        isGeneratingGuidance: taskState.isGeneratingGuidance,
-        isImprovingText: taskState.isImprovingText,
-        textImprovementJobId: taskState.textImprovementJobId,
+        isRefiningTask: taskState.isRefiningTask,
+        tokenEstimate: tokenEstimate,
+        canUndo: taskState.canUndo,
+        canRedo: taskState.canRedo,
       },
       actions: {
         // Task description actions
-        handleGenerateGuidance: taskState.handleGenerateGuidance,
-        handleImproveSelection: taskState.handleImproveSelection,
+        handleRefineTask: taskState.handleRefineTask,
         flushPendingTaskChanges,
         reset: taskState.resetTaskState,
+        undo: taskState.undo,
+        redo: taskState.redo,
       },
     }),
     [
       // The taskState object is already memoized from the hook
       taskState,
+      tokenEstimate,
       flushPendingTaskChanges,
     ]
   );
@@ -283,7 +332,9 @@ export function GeneratePromptFeatureProvider({
       <TaskContextProvider value={taskContextValue}>
         <DisplayContextProvider value={displayContextValue}>
           <PlanContextProvider value={planContextValue}>
-            {children}
+            <TooltipProvider>
+              {children}
+            </TooltipProvider>
           </PlanContextProvider>
         </DisplayContextProvider>
       </TaskContextProvider>

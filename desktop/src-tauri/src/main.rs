@@ -198,14 +198,14 @@ fn main() {
             commands::file_finder_workflow_commands::cancel_workflow_stage_command,
             
             // Text commands
-            commands::text_commands::correct_text_command,
+            commands::text_commands::improve_text_command,
             commands::text_commands::generate_simple_text_command,
             
             // Implementation plan commands
             commands::implementation_plan_commands::create_implementation_plan_command,
             commands::implementation_plan_commands::read_implementation_plan_command,
-            commands::implementation_plan_commands::get_implementation_plan_prompt_command,
-            commands::implementation_plan_commands::estimate_implementation_plan_tokens_command,
+            commands::implementation_plan_commands::get_prompt_command,
+            commands::implementation_plan_commands::estimate_prompt_tokens_command,
             
             // Path finding commands
             commands::path_finding_commands::find_relevant_files_command,
@@ -229,7 +229,7 @@ fn main() {
             
             // Generic task commands
             commands::generic_task_commands::generic_llm_stream_command,
-            commands::generic_task_commands::enhance_task_description_command,
+            commands::generic_task_commands::refine_task_description_command,
             
             // Other task-specific commands
             commands::regex_commands::generate_regex_patterns_command,

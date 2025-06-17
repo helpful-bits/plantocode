@@ -34,6 +34,14 @@ export interface SetAppJwtArgs {
 export interface ClearStoredAppJwtArgs {
 }
 
+// Commands from text_commands
+export interface ImproveTextCommandArgs {
+  sessionId: string;
+  textToImprove: string;
+  originalTranscriptionJobId?: string | null;
+  projectDirectory?: string | null;
+}
+
 
 // Commands from session_commands
 export interface CreateSessionCommandArgs {
@@ -150,15 +158,12 @@ export interface GenericLLMStreamCommandArgs {
   projectDirectory?: string | null;
 }
 
-export interface EnhanceTaskDescriptionCommandArgs {
+
+export interface RefineTaskDescriptionCommandArgs {
   sessionId: string;
   taskDescription: string;
-  projectContext?: string | null;
-  projectDirectory?: string | null;
-  targetField?: string | null;
-  modelOverride?: string | null;
-  temperatureOverride?: number | null;
-  maxTokensOverride?: number | null;
+  relevantFiles: string[];
+  projectDirectory: string;
 }
 
 
@@ -192,29 +197,31 @@ export interface ReadImplementationPlanCommandArgs {
   jobId: string;
 }
 
-export interface GetImplementationPlanPromptCommandArgs {
+export interface GetPromptCommandArgs {
   sessionId: string;
   taskDescription: string;
   projectDirectory: string;
   relevantFiles: Array<string>;
   projectStructure?: string | null;
+  taskType: string;
 }
 
-export interface ImplementationPlanPromptResponse {
+export interface PromptResponse {
   systemPrompt: string;
   userPrompt: string;
   combinedPrompt: string;
 }
 
-export interface EstimateImplementationPlanTokensCommandArgs {
+export interface EstimatePromptTokensCommandArgs {
   sessionId: string;
   taskDescription: string;
   projectDirectory: string;
   relevantFiles: Array<string>;
   projectStructure?: string | null;
+  taskType: string;
 }
 
-export interface ImplementationPlanTokenEstimateResponse {
+export interface PromptTokenEstimateResponse {
   estimatedTokens: number;
   systemPromptTokens: number;
   userPromptTokens: number;
@@ -284,6 +291,14 @@ export interface GenerateDirectoryTreeCommandArgs {
   options?: DirectoryTreeOptions | null;
 }
 
+export interface EstimatePathFinderTokensCommandArgs {
+  sessionId: string;
+  taskDescription: string;
+  projectDirectory?: string | null;
+  options?: PathFinderOptions | null;
+  directoryTree?: string | null;
+}
+
 
 // Commands from regex_commands
 export interface GenerateRegexCommandArgs {
@@ -310,9 +325,9 @@ export interface ImproveTextCommandArgs {
   targetField?: string | null;
 }
 
-export interface CorrectTextCommandArgs {
+export interface ImproveTextCommandArgs {
   sessionId: string;
-  textToCorrect: string;
+  textToImprove: string;
   originalTranscriptionJobId?: string | null;
   projectDirectory?: string | null;
 }
@@ -582,7 +597,9 @@ export type TauriInvoke = {
   "get_temp_dir_command": () => Promise<string>;
   "path_is_absolute_command": (args: PathIsAbsoluteCommandArgs) => Promise<boolean>;
   "generic_llm_stream_command": (args: GenericLLMStreamCommandArgs) => Promise<JobResult>;
-  "enhance_task_description_command": (args: EnhanceTaskDescriptionCommandArgs) => Promise<JobResult>;
+  "refine_task_description_command": (args: RefineTaskDescriptionCommandArgs) => Promise<JobResult>;
+  "estimate_prompt_tokens_command": (args: EstimatePromptTokensCommandArgs) => Promise<PromptTokenEstimateResponse>;
+  "get_prompt_command": (args: GetPromptCommandArgs) => Promise<PromptResponse>;
   "generate_guidance_command": (args: GenerateGuidanceCommandArgs) => Promise<JobResult>;
   "create_implementation_plan_command": (args: CreateImplementationPlanCommandArgs) => Promise<JobResult>;
   "read_implementation_plan_command": (args: ReadImplementationPlanCommandArgs) => Promise<{
@@ -601,9 +618,9 @@ export type TauriInvoke = {
   "cancel_session_jobs_command": (args: CancelSessionJobsCommandArgs) => Promise<void>;
   "find_relevant_files_command": (args: FindRelevantFilesCommandArgs) => Promise<JobResult>;
   "generate_directory_tree_command": (args: GenerateDirectoryTreeCommandArgs) => Promise<string>;
+  "estimate_path_finder_tokens_command": (args: EstimatePathFinderTokensCommandArgs) => Promise<import("@/actions/ai/path-finder.actions").TokenEstimateResponse>;
   "generate_regex_command": (args: GenerateRegexCommandArgs) => Promise<JobResult>;
   "improve_text_command": (args: ImproveTextCommandArgs) => Promise<JobResult>;
-  "correct_text_command": (args: CorrectTextCommandArgs) => Promise<JobResult>;
   "generate_simple_text_command": (args: GenerateSimpleTextCommandArgs) => Promise<string>;
   "create_transcription_job_command": (args: CreateTranscriptionJobCommandArgs) => Promise<JobResult>;
   "transcribe_audio_batch_command": (args: TranscribeAudioBatchCommandArgs) => Promise<BatchTranscriptionResponse>;
@@ -648,6 +665,7 @@ export type TauriInvoke = {
   "get_credit_history_command": (args: { limit?: number; offset?: number }) => Promise<CreditHistoryResponse>;
   "get_credit_packs_command": () => Promise<CreditPacksResponse>;
   "get_credit_balance_command": () => Promise<CreditBalanceResponse>;
+  "get_credit_details_command": () => Promise<CreditDetailsResponse>;
   "get_credit_stats_command": () => Promise<CreditStats>;
   
   "create_credit_payment_intent_command": (args: CreatePaymentIntentRequest) => Promise<PaymentIntentResponse>;
@@ -801,6 +819,13 @@ export interface CreditHistoryResponse {
   transactions: CreditTransactionEntry[];
   totalCount: number;
   hasMore: boolean;
+}
+
+export interface CreditDetailsResponse {
+  balance: number;
+  currency: string;
+  lastUpdated?: string;
+  transactions: CreditTransactionEntry[];
 }
 
 export interface CreditPack {

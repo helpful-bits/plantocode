@@ -39,7 +39,7 @@ export function JobDetailsTimingSection() {
             {job.status === "running" && job.startTime && (
               <div className="mt-2">
                 <Progress
-                  value={getStreamingProgressValue(job.metadata, job.startTime) || 5}
+                  value={getStreamingProgressValue(job.metadata, job.startTime) ?? 5}
                   className="h-1 w-full animate-pulse"
                 />
                 <div className="text-xs text-muted-foreground mt-1">Running...</div>

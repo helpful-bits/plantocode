@@ -160,7 +160,7 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
         {/* Progress bar for streaming jobs */}
         {isStreaming && (
           <div className="mb-4">
-            <Progress value={progress} className="h-2" />
+            <Progress value={progress ?? 0} className="h-2" />
             <div className="flex justify-between mt-1 text-xs text-muted-foreground">
               <span>Generating implementation plan...</span>
               <span>{Math.round(progress ?? 0)}%</span>

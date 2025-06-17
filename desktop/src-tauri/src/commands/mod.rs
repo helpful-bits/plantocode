@@ -53,7 +53,7 @@ pub use app_commands::{
 
 // Re-exports from text commands module
 pub use text_commands::{
-    correct_text_command,
+    improve_text_command,
     generate_simple_text_command,
 };
 
@@ -61,8 +61,8 @@ pub use text_commands::{
 pub use implementation_plan_commands::{
     create_implementation_plan_command,
     read_implementation_plan_command,
-    get_implementation_plan_prompt_command,
-    estimate_implementation_plan_tokens_command,
+    get_prompt_command,
+    estimate_prompt_tokens_command,
 };
 
 // Re-exports from path finding commands module
@@ -94,7 +94,6 @@ pub use voice_commands::{
 // Re-exports from generic task commands module
 pub use generic_task_commands::{
     generic_llm_stream_command,
-    enhance_task_description_command,
 };
 
 // Re-exports from auth0 commands module

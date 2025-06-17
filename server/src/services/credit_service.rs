@@ -99,37 +99,45 @@ impl CreditService {
         Ok(updated_balance)
     }
 
-    /// Add credits to user balance (for purchases) - atomic operation with validation
-    pub async fn add_credits(
+    /// Process credit purchase from successful payment intent - atomic operation with validation
+    pub async fn process_credit_purchase(
         &self,
         user_id: &Uuid,
-        amount: &BigDecimal,
-        stripe_charge_id: &str,
-        stripe_price_id: Option<&str>,
-        description: Option<String>,
-        metadata: Option<serde_json::Value>,
+        credit_pack_id: &str,
+        payment_intent: &stripe::PaymentIntent,
     ) -> Result<UserCredit, AppError> {
-        // Validate against credit pack if Stripe price ID is provided
-        if let Some(price_id) = stripe_price_id {
-            if let Some(credit_pack) = self.credit_pack_repository
-                .get_credit_pack_by_stripe_price_id(price_id)
-                .await?
-            {
-                // Validate that the amount matches the credit pack value
-                if credit_pack.value_credits != *amount {
-                    return Err(AppError::Payment(
-                        format!(
-                            "Credit amount mismatch: expected {}, got {}",
-                            credit_pack.value_credits, amount
-                        )
-                    ));
-                }
-            } else {
-                return Err(AppError::Payment(
-                    format!("Invalid Stripe price ID: {}", price_id)
-                ));
-            }
+        // Fetch and validate credit pack
+        let credit_pack = self.credit_pack_repository
+            .get_pack_by_id(credit_pack_id)
+            .await?
+            .ok_or_else(|| AppError::Payment(
+                format!("Credit pack not found: {}", credit_pack_id)
+            ))?;
+
+        // Validate payment intent metadata
+        let metadata = &payment_intent.metadata;
+        let expected_credit_value = metadata.get("credit_value")
+            .and_then(|v| v.parse::<BigDecimal>().ok())
+            .ok_or_else(|| AppError::InvalidArgument(
+                "Invalid or missing credit_value in payment intent metadata".to_string()
+            ))?;
+
+        // Validate that the credit value matches the credit pack
+        if credit_pack.value_credits != expected_credit_value {
+            return Err(AppError::Payment(
+                format!(
+                    "Credit amount mismatch: expected {}, got {}",
+                    credit_pack.value_credits, expected_credit_value
+                )
+            ));
         }
+
+        // Validate payment amount matches credit pack price
+        crate::utils::stripe_currency_utils::validate_stripe_amount_matches(
+            payment_intent.amount,
+            &credit_pack.price_amount,
+            &payment_intent.currency.to_string()
+        )?;
 
         // Start a database transaction to ensure atomicity
         let pool = self.user_credit_repository.get_pool();
@@ -142,7 +150,7 @@ impl CreditService {
 
         // Add the credits to user balance within the transaction
         let updated_balance = self.user_credit_repository
-            .increment_balance_with_executor(user_id, amount, &mut tx)
+            .increment_balance_with_executor(user_id, &credit_pack.value_credits, &mut tx)
             .await?;
 
         // Record the purchase transaction within the same transaction
@@ -150,12 +158,12 @@ impl CreditService {
             id: Uuid::new_v4(),
             user_id: *user_id,
             transaction_type: "purchase".to_string(),
-            amount: amount.clone(),
+            amount: credit_pack.value_credits.clone(),
             currency: "USD".to_string(),
-            description,
-            stripe_charge_id: Some(stripe_charge_id.to_string()),
+            description: Some(format!("Credit purchase via Stripe PaymentIntent")),
+            stripe_charge_id: Some(payment_intent.id.to_string()),
             related_api_usage_id: None,
-            metadata,
+            metadata: Some(serde_json::to_value(&payment_intent.metadata).unwrap_or_default()),
             created_at: Some(Utc::now()),
         };
 
@@ -166,7 +174,8 @@ impl CreditService {
         // Commit the transaction
         tx.commit().await.map_err(AppError::from)?;
 
-        info!("Atomically added {} credits for user {} via Stripe charge {}", amount, user_id, stripe_charge_id);
+        info!("Atomically processed credit purchase for user {} via PaymentIntent {}: {} credits added", 
+              user_id, payment_intent.id, credit_pack.value_credits);
         Ok(updated_balance)
     }
 
@@ -208,6 +217,28 @@ impl CreditService {
             net_balance: transaction_stats.net_balance,
             transaction_count: transaction_stats.transaction_count,
             currency: balance.currency,
+        })
+    }
+
+    /// Get comprehensive credit details for a user (balance, stats, and recent transactions)
+    pub async fn get_credit_details(
+        &self,
+        user_id: &Uuid,
+        limit: Option<i64>,
+        offset: Option<i64>,
+    ) -> Result<CreditDetailsResponse, AppError> {
+        let stats = self.get_user_credit_stats(user_id).await?;
+        let transactions = self.get_transaction_history(user_id, limit, offset).await?;
+        let total_transaction_count = self.get_transaction_count(user_id).await?;
+        
+        let limit = limit.unwrap_or(20);
+        let offset = offset.unwrap_or(0);
+        
+        Ok(CreditDetailsResponse {
+            stats,
+            transactions,
+            total_transaction_count,
+            has_more: total_transaction_count > (limit + offset),
         })
     }
 
@@ -337,4 +368,13 @@ pub struct CreditStats {
     pub net_balance: BigDecimal,
     pub transaction_count: i64,
     pub currency: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreditDetailsResponse {
+    pub stats: CreditStats,
+    pub transactions: Vec<CreditTransaction>,
+    pub total_transaction_count: i64,
+    pub has_more: bool,
 }

@@ -103,10 +103,10 @@ pub(super) async fn extract_and_store_stage_data_internal(
                 serde_json::json!({ "correctedPaths": final_paths })
             }
             TaskType::FileRelevanceAssessment => {
-                let ai_filtered_files = StageDataExtractor::extract_ai_filtered_files(job_id, &repo).await
-                    .map_err(|e| AppError::JobError(format!("Failed to extract AI filtered files from job {}: {}", job_id, e)))?;
-                debug!("Extracted {} AI filtered files from job {}", ai_filtered_files.len(), job_id);
-                serde_json::json!({ "relevantFiles": ai_filtered_files })
+                let (ai_filtered_files, token_count) = StageDataExtractor::extract_ai_filtered_files_with_token_count(job_id, &repo).await
+                    .map_err(|e| AppError::JobError(format!("Failed to extract AI filtered files with token count from job {}: {}", job_id, e)))?;
+                debug!("Extracted {} AI filtered files with {} tokens from job {}", ai_filtered_files.len(), token_count, job_id);
+                serde_json::json!({ "relevantFiles": ai_filtered_files, "tokenCount": token_count })
             }
             _ => {
                 warn!("No stage data extraction implemented for task type {:?} in job {}", stage_job.task_type, job_id);

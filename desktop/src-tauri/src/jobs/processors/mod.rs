@@ -6,8 +6,8 @@ pub mod path_finder_types;
 pub mod implementation_plan_processor;
 pub mod guidance_generation_processor;
 pub mod path_correction_processor;
-pub mod task_enhancement_processor;
-pub mod text_correction_processor;
+pub mod task_refinement_processor;
+pub mod text_improvement_processor;
 pub mod generic_llm_stream_processor;
 pub mod regex_pattern_generation_processor;
 // Individual workflow stage processors
@@ -22,8 +22,8 @@ pub use path_finder_types::{PathFinderResult, PathFinderOptions};
 pub use implementation_plan_processor::ImplementationPlanProcessor;
 pub use guidance_generation_processor::GuidanceGenerationProcessor;
 pub use path_correction_processor::PathCorrectionProcessor;
-pub use task_enhancement_processor::TaskEnhancementProcessor;
-pub use text_correction_processor::TextCorrectionProcessor;
+pub use task_refinement_processor::TaskRefinementProcessor;
+pub use text_improvement_processor::TextImprovementProcessor;
 pub use generic_llm_stream_processor::GenericLlmStreamProcessor;
 pub use regex_pattern_generation_processor::RegexPatternGenerationProcessor;
 // Individual workflow stage processors

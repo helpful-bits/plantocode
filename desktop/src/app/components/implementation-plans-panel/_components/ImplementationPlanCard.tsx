@@ -116,7 +116,7 @@ const ImplementationPlanCard = React.memo<ImplementationPlanCardProps>(({
         {/* Progress indicator for streaming jobs */}
         {isStreaming && (
           <div className="mb-3">
-            <Progress value={progress} className="h-1.5" />
+            <Progress value={progress ?? 0} className="h-1.5" />
             <div className="flex justify-between mt-1 text-xs text-muted-foreground">
               <span>Generating implementation plan...</span>
               <span>{Math.round(progress ?? 0)}%</span>

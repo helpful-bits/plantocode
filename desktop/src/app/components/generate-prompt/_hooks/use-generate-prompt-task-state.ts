@@ -17,7 +17,7 @@ export interface UseGeneratePromptTaskStateProps {
 
 /**
  * Hook that manages task-specific state for the generate prompt feature.
- * This includes guidance generation and text improvement functionality,
+ * This includes guidance generation and task refinement functionality,
  * getting its taskDescription state from SessionContext.
  */
 export function useGeneratePromptTaskState({
@@ -37,9 +37,13 @@ export function useGeneratePromptTaskState({
   
   // Initialize task description state for UI-specific concerns
   const {
-    isImprovingText,
-    textImprovementJobId,
-    handleImproveSelection,
+    isRefiningTask,
+    handleRefineTask,
+    canUndo,
+    canRedo,
+    undo,
+    redo,
+    saveToHistory,
   } = useTaskDescriptionState({
     activeSessionId: sessionState.currentSession?.id || null,
     taskDescriptionRef,
@@ -53,6 +57,8 @@ export function useGeneratePromptTaskState({
   } = useGuidanceGeneration({
     projectDirectory: projectDirectory || "",
     onGuidanceGenerated: (guidance: string) => {
+      // Note: History saving will be handled by the debounced effect in useTaskDescriptionState
+      // since the sessionTaskDescription will change, triggering the history save mechanism
       sessionActions.updateCurrentSessionFields({ taskDescription: guidance });
       sessionActions.setSessionModified(true);
       handleInteraction();
@@ -60,13 +66,19 @@ export function useGeneratePromptTaskState({
     onInteraction: handleInteraction,
   });
 
-  // Wrap the guidance generation handler to call handleInteraction
+  // Wrap the guidance generation handler to save history and call handleInteraction
   const handleGenerateGuidance = useCallback(
     async (selectedPaths?: string[]) => {
+      // Save current description to history before generating guidance
+      // This ensures we can undo guidance generation
+      const currentDescription = sessionState.currentSession?.taskDescription || "";
+      if (currentDescription) {
+        saveToHistory(currentDescription);
+      }
       handleInteraction();
       return baseHandleGenerateGuidance(selectedPaths);
     },
-    [baseHandleGenerateGuidance, handleInteraction]
+    [baseHandleGenerateGuidance, handleInteraction, sessionState.currentSession?.taskDescription, saveToHistory]
   );
 
   // Create a reset function for task state
@@ -81,9 +93,12 @@ export function useGeneratePromptTaskState({
     () => ({
       // Task Description State (session state only)
       taskDescriptionRef,
-      isImprovingText,
-      textImprovementJobId,
-      handleImproveSelection,
+      isRefiningTask,
+      handleRefineTask,
+      canUndo,
+      canRedo,
+      undo,
+      redo,
 
       // Guidance Generation State
       isGeneratingGuidance,
@@ -94,9 +109,12 @@ export function useGeneratePromptTaskState({
     }),
     [
       // taskDescriptionRef is a ref - stable
-      isImprovingText,
-      textImprovementJobId,
-      handleImproveSelection, // memoized with useCallback
+      isRefiningTask,
+      handleRefineTask, // memoized with useCallback
+      canUndo,
+      canRedo,
+      undo, // memoized with useCallback
+      redo, // memoized with useCallback
       isGeneratingGuidance,
       handleGenerateGuidance, // memoized with useCallback
       resetTaskState, // memoized with useCallback above

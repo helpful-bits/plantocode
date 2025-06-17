@@ -573,32 +573,20 @@ DO NOT include ANY text, explanations, or commentary. The response must consist 
 
 All returned file paths must be relative to the project root and must exist in the filesystem.', 'Enhanced system prompt for correcting file paths', '3.0'),
 
-('default_task_enhancement', 'task_enhancement', 'You are a task enhancement assistant that helps improve and clarify user requirements.
+('default_task_refinement', 'task_refinement', 'You are a senior software architect providing high-level technical guidance. Your role is not to create a detailed plan, but to analyze a codebase in relation to a task and offer strategic direction and insights.
 
-## Project Context:
-{{PROJECT_CONTEXT}}
+{{FILE_CONTENTS}}
 
-Your role is to:
-- Analyze provided requirements and requests
-- Identify areas for improvement and clarification
-- Suggest more specific and actionable language
-- Consider project context and constraints
-- Provide enhanced, clear, and implementable requirements
+Based on the provided task description and relevant file context, your analysis should:
 
-Please provide your response in XML format:
-<task_enhancement>
-  <original_task>Original requirement</original_task>
-  <enhanced_task>Enhanced and improved requirement</enhanced_task>
-  <analysis>Brief explanation of improvements made</analysis>
-  <considerations>
-    <consideration>Important consideration 1</consideration>
-    <consideration>Important consideration 2</consideration>
-  </considerations>
-  <acceptance_criteria>
-    <criterion>Acceptance criterion 1</criterion>
-    <criterion>Acceptance criterion 2</criterion>
-  </acceptance_criteria>
-</task_enhancement>', 'Enhanced system prompt for enhancing requirements', '2.0'),
+1.  **Synthesize Findings:** Briefly summarize the most relevant architectural patterns, data flows, and key components from the provided code.
+2.  **Identify High-Impact Areas:** Point to the primary modules, services, or components that are central to the task.
+3.  **Suggest a Strategic Direction:** Propose a general, high-level approach. Focus on the "what" and "where," but avoid overly specific, step-by-step implementation details. The goal is to provide a compass, not a map.
+4.  **Maintain a Guiding Tone:** Frame your insights as observations and suggestions to help the developer think through the problem.
+
+Your output should be a concise technical brief in Markdown. Do not produce a refined, actionable task description. The tone should be advisory and strategic.
+
+Return only the technical brief, without any introductory or concluding remarks.', 'System prompt for generating high-level, strategic guidance for a task', '2.0'),
 
 ('default_regex_pattern_generation', 'regex_pattern_generation', 'You are a dual-layer file filtering assistant that creates precise regular expressions for filtering files by BOTH their paths AND content.
 
@@ -736,12 +724,41 @@ ON CONFLICT (id) DO UPDATE SET
   version = EXCLUDED.version,
   updated_at = NOW();
 
--- Store essential AI configurations (models loaded dynamically from providers/models tables)
+-- Store consolidated AI configurations as single JSONB object
 INSERT INTO application_configurations (config_key, config_value, description)
 VALUES 
-('ai_settings_default_llm_model_id', '"google/gemini-2.5-pro-preview"'::jsonb, 'Default LLM model ID - references models.id in models table'),
-('ai_settings_default_voice_model_id', '"anthropic/claude-sonnet-4"'::jsonb, 'Default voice model ID - references models.id in models table'),
-('ai_settings_default_transcription_model_id', '"openai/gpt-4o-transcribe"'::jsonb, 'Default transcription model ID - references models.id in models table')
+('ai_settings', '{
+  "default_llm_model_id": "google/gemini-2.5-pro-preview",
+  "default_voice_model_id": "anthropic/claude-sonnet-4", 
+  "default_transcription_model_id": "openai/gpt-4o-transcribe",
+  "default_temperature": 0.7,
+  "default_max_tokens": 4096,
+  "task_specific_configs": {
+    "implementation_plan": {"model": "google/gemini-2.5-pro-preview", "max_tokens": 65536, "temperature": 0.7},
+    "path_finder": {"model": "google/gemini-2.5-flash-preview-05-20", "max_tokens": 8192, "temperature": 0.3},
+    "text_improvement": {"model": "anthropic/claude-sonnet-4", "max_tokens": 4096, "temperature": 0.7},
+    "voice_transcription": {"model": "openai/gpt-4o-transcribe", "max_tokens": 4096, "temperature": 0.0},
+    "text_correction": {"model": "anthropic/claude-sonnet-4", "max_tokens": 2048, "temperature": 0.5},
+    "path_correction": {"model": "google/gemini-2.5-flash-preview-05-20", "max_tokens": 4096, "temperature": 0.3},
+    "regex_pattern_generation": {"model": "anthropic/claude-sonnet-4", "max_tokens": 1000, "temperature": 0.2},
+    "guidance_generation": {"model": "google/gemini-2.5-pro-preview", "max_tokens": 8192, "temperature": 0.7},
+    "task_refinement": {"model": "google/gemini-2.5-flash-preview-05-20", "max_tokens": 2048, "temperature": 0.3},
+    "extended_path_finder": {"model": "google/gemini-2.5-flash-preview-05-20", "max_tokens": 8192, "temperature": 0.3},
+    "file_relevance_assessment": {"model": "google/gemini-2.5-flash-preview-05-20", "max_tokens": 24000, "temperature": 0.3},
+    "file_finder_workflow": {"model": "google/gemini-2.5-flash-preview-05-20", "max_tokens": 2048, "temperature": 0.3},
+    "generic_llm_stream": {"model": "google/gemini-2.5-pro-preview", "max_tokens": 16384, "temperature": 0.7},
+    "streaming": {"model": "google/gemini-2.5-pro-preview", "max_tokens": 16384, "temperature": 0.7},
+    "unknown": {"model": "google/gemini-2.5-pro-preview", "max_tokens": 4096, "temperature": 0.7}
+  },
+  "path_finder_settings": {
+    "max_files_with_content": 10,
+    "include_file_contents": true,
+    "max_content_size_per_file": 5000,
+    "max_file_count": 50,
+    "file_content_truncation_chars": 2000,
+    "token_limit_buffer": 1000
+  }
+}'::jsonb, 'Consolidated AI settings including default models, temperature, tokens, task-specific configs, and path finder settings')
 ON CONFLICT (config_key) DO UPDATE SET
   config_value = EXCLUDED.config_value,
   description = EXCLUDED.description,
@@ -933,46 +950,6 @@ CREATE TABLE IF NOT EXISTS transcription_temperature_presets (
 CREATE INDEX IF NOT EXISTS idx_transcription_temperature_presets_recommended ON transcription_temperature_presets(is_recommended);
 CREATE INDEX IF NOT EXISTS idx_transcription_temperature_presets_order ON transcription_temperature_presets(display_order);
 
--- Insert comprehensive task-specific model configurations
-INSERT INTO application_configurations (config_key, config_value, description)
-VALUES 
-('ai_settings_task_specific_configs', '{
-  "implementation_plan": {"model": "google/gemini-2.5-pro-preview", "max_tokens": 65536, "temperature": 0.7},
-  "path_finder": {"model": "google/gemini-2.5-flash-preview-05-20", "max_tokens": 8192, "temperature": 0.3},
-  "text_improvement": {"model": "anthropic/claude-sonnet-4", "max_tokens": 4096, "temperature": 0.7},
-  "voice_transcription": {"model": "openai/gpt-4o-transcribe", "max_tokens": 4096, "temperature": 0.0},
-  "text_correction": {"model": "anthropic/claude-sonnet-4", "max_tokens": 2048, "temperature": 0.5},
-  "path_correction": {"model": "google/gemini-2.5-flash-preview-05-20", "max_tokens": 4096, "temperature": 0.3},
-  "regex_pattern_generation": {"model": "anthropic/claude-sonnet-4", "max_tokens": 1000, "temperature": 0.2},
-  "guidance_generation": {"model": "google/gemini-2.5-pro-preview", "max_tokens": 8192, "temperature": 0.7},
-  "task_enhancement": {"model": "google/gemini-2.5-pro-preview", "max_tokens": 4096, "temperature": 0.7},
-  "extended_path_finder": {"model": "google/gemini-2.5-flash-preview-05-20", "max_tokens": 8192, "temperature": 0.3},
-  "file_relevance_assessment": {"model": "google/gemini-2.5-flash-preview-05-20", "max_tokens": 24000, "temperature": 0.3},
-  "file_finder_workflow": {"model": "google/gemini-2.5-flash-preview-05-20", "max_tokens": 2048, "temperature": 0.3},
-  "generic_llm_stream": {"model": "google/gemini-2.5-pro-preview", "max_tokens": 16384, "temperature": 0.7},
-  "streaming": {"model": "google/gemini-2.5-pro-preview", "max_tokens": 16384, "temperature": 0.7},
-  "unknown": {"model": "google/gemini-2.5-pro-preview", "max_tokens": 4096, "temperature": 0.7}
-}'::jsonb, 'Task-specific model configurations including model, tokens, and temperature for all supported task types'),
-
-('ai_settings_path_finder_settings', '{
-  "max_files_with_content": 10,
-  "include_file_contents": true,
-  "max_content_size_per_file": 5000,
-  "max_file_count": 50,
-  "file_content_truncation_chars": 2000,
-  "token_limit_buffer": 1000
-}'::jsonb, 'Settings for the PathFinder agent functionality'),
-
-('ai_settings_transcription_prompt', '"Please transcribe this audio accurately, preserving the original meaning and context. Focus on clarity and proper punctuation."'::jsonb, 'Default prompt for audio transcription requests to guide the model style and accuracy'),
-('ai_settings_transcription_language_preference', '"auto"'::jsonb, 'Default language preference for transcription (auto-detect or specific language code)'),
-('ai_settings_transcription_temperature', '0.0'::jsonb, 'Default temperature setting for transcription models'),
-('ai_settings_transcription_enable_timestamps', 'false'::jsonb, 'Enable word-level timestamps in transcription output'),
-('ai_settings_transcription_voice_activity_detection', 'true'::jsonb, 'Enable voice activity detection to filter out silence')
-
-ON CONFLICT (config_key) DO UPDATE SET
-  config_value = EXCLUDED.config_value,
-  description = EXCLUDED.description,
-  updated_at = CURRENT_TIMESTAMP;
 
 -- Row Level Security Policies
 -- Enable RLS and define security policies for database tables

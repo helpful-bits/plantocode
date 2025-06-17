@@ -162,9 +162,7 @@ pub fn get_model_for_task(task_type: TaskType) -> AppResult<String> {
 }
 
 
-// Async version: Get model for a specific task type with AppHandle
-pub async fn get_model_for_task_async(task_type: TaskType, _app_handle: &AppHandle) -> AppResult<String> {
-    // Use server configuration only - no local fallbacks
+pub async fn get_model_for_task_async(task_type: TaskType) -> AppResult<String> {
     get_model_for_task(task_type)
 }
 
@@ -221,11 +219,10 @@ pub fn get_default_max_tokens_for_task(task_type: Option<TaskType>) -> AppResult
     Err(AppError::ConfigError(format!("Server configuration not loaded for max_tokens. Please check server connection and configuration.")))
 }
 
-// Async version: Get max tokens for a task with AppHandle
-pub async fn get_max_tokens_for_task_async(task_type: TaskType, _app_handle: &AppHandle) -> AppResult<u32> {
-    // Use server configuration only - no local fallbacks
+pub async fn get_max_tokens_for_task_async(task_type: TaskType) -> AppResult<u32> {
     get_default_max_tokens_for_task(Some(task_type))
 }
+
 
 // Get default temperature for a task (sync version)
 pub fn get_default_temperature_for_task(task_type: Option<TaskType>) -> AppResult<f32> {
@@ -276,9 +273,7 @@ pub fn get_default_temperature_for_task(task_type: Option<TaskType>) -> AppResul
 
 
 
-// Async version: Get temperature for a task with AppHandle
-pub async fn get_temperature_for_task_async(task_type: TaskType, _app_handle: &AppHandle) -> AppResult<f32> {
-    // Use server configuration only - no local fallbacks
+pub async fn get_temperature_for_task_async(task_type: TaskType) -> AppResult<f32> {
     get_default_temperature_for_task(Some(task_type))
 }
 
@@ -322,33 +317,42 @@ pub fn get_model_context_window(model_name: &str) -> AppResult<u32> {
 
 // Project-aware configuration functions that check user settings first, then fall back to server defaults
 
-/// Helper function to parse project settings JSON and extract model for a specific task
-fn extract_model_from_project_settings(settings_json: &str, task_type: TaskType) -> Option<String> {
-    // Local tasks don't have model settings
+/// Utility function to convert snake_case to camelCase for frontend compatibility
+fn snake_case_to_camel_case(snake_str: &str) -> String {
+    let mut result = String::new();
+    let mut capitalize_next = false;
+    
+    for ch in snake_str.chars() {
+        if ch == '_' {
+            capitalize_next = true;
+        } else if capitalize_next {
+            result.push(ch.to_ascii_uppercase());
+            capitalize_next = false;
+        } else {
+            result.push(ch);
+        }
+    }
+    
+    result
+}
+
+/// Helper function to get the frontend property name for a task type
+fn get_frontend_task_key(task_type: TaskType) -> Option<String> {
+    // Local tasks don't have frontend settings
     if !task_type.requires_llm() {
         return None;
     }
     
+    // Use TaskType.to_string() as single source of truth and convert to camelCase
+    Some(snake_case_to_camel_case(&task_type.to_string()))
+}
+
+/// Helper function to parse project settings JSON and extract model for a specific task
+fn extract_model_from_project_settings(settings_json: &str, task_type: TaskType) -> Option<String> {
     let settings: serde_json::Value = serde_json::from_str(settings_json).ok()?;
+    let task_key = get_frontend_task_key(task_type)?;
     
-    // Map TaskType to frontend camelCase key
-    let task_key = match task_type {
-        TaskType::ImplementationPlan => "implementationPlan",
-        TaskType::PathFinder => "pathFinder",
-        TaskType::TextCorrection => "textCorrection",
-        TaskType::PathCorrection => "pathCorrection",
-        TaskType::GuidanceGeneration => "guidanceGeneration",
-        TaskType::TaskEnhancement => "taskEnhancement",
-        TaskType::GenericLlmStream => "genericLlmStream",
-        TaskType::RegexPatternGeneration => "regexPatternGeneration",
-        TaskType::FileFinderWorkflow => "fileFinderWorkflow",
-        TaskType::ExtendedPathFinder => "extendedPathFinder",
-        // Local tasks don't have model settings
-        TaskType::LocalFileFiltering => return None,
-        _ => return None,
-    };
-    
-    settings.get(task_key)?
+    settings.get(&task_key)?
         .get("model")?
         .as_str()
         .map(|s| s.to_string())
@@ -356,30 +360,10 @@ fn extract_model_from_project_settings(settings_json: &str, task_type: TaskType)
 
 /// Helper function to extract temperature from project settings
 fn extract_temperature_from_project_settings(settings_json: &str, task_type: TaskType) -> Option<f32> {
-    // Local tasks don't have temperature settings
-    if !task_type.requires_llm() {
-        return None;
-    }
-    
     let settings: serde_json::Value = serde_json::from_str(settings_json).ok()?;
+    let task_key = get_frontend_task_key(task_type)?;
     
-    let task_key = match task_type {
-        TaskType::ImplementationPlan => "implementationPlan",
-        TaskType::PathFinder => "pathFinder",
-        TaskType::TextCorrection => "textCorrection",
-        TaskType::PathCorrection => "pathCorrection",
-        TaskType::GuidanceGeneration => "guidanceGeneration",
-        TaskType::TaskEnhancement => "taskEnhancement",
-        TaskType::GenericLlmStream => "genericLlmStream",
-        TaskType::RegexPatternGeneration => "regexPatternGeneration",
-        TaskType::FileFinderWorkflow => "fileFinderWorkflow",
-        TaskType::ExtendedPathFinder => "extendedPathFinder",
-        // Local tasks don't have temperature settings
-        TaskType::LocalFileFiltering => return None,
-        _ => return None,
-    };
-    
-    settings.get(task_key)?
+    settings.get(&task_key)?
         .get("temperature")?
         .as_f64()
         .map(|t| t as f32)
@@ -387,30 +371,10 @@ fn extract_temperature_from_project_settings(settings_json: &str, task_type: Tas
 
 /// Helper function to extract maxTokens from project settings
 fn extract_max_tokens_from_project_settings(settings_json: &str, task_type: TaskType) -> Option<u32> {
-    // Local tasks don't have max_tokens settings
-    if !task_type.requires_llm() {
-        return None;
-    }
-    
     let settings: serde_json::Value = serde_json::from_str(settings_json).ok()?;
+    let task_key = get_frontend_task_key(task_type)?;
     
-    let task_key = match task_type {
-        TaskType::ImplementationPlan => "implementationPlan",
-        TaskType::PathFinder => "pathFinder",
-        TaskType::TextCorrection => "textCorrection",
-        TaskType::PathCorrection => "pathCorrection",
-        TaskType::GuidanceGeneration => "guidanceGeneration",
-        TaskType::TaskEnhancement => "taskEnhancement",
-        TaskType::GenericLlmStream => "genericLlmStream",
-        TaskType::RegexPatternGeneration => "regexPatternGeneration",
-        TaskType::FileFinderWorkflow => "fileFinderWorkflow",
-        TaskType::ExtendedPathFinder => "extendedPathFinder",
-        // Local tasks don't have max_tokens settings
-        TaskType::LocalFileFiltering => return None,
-        _ => return None,
-    };
-    
-    settings.get(task_key)?
+    settings.get(&task_key)?
         .get("maxTokens")?
         .as_u64()
         .map(|t| t as u32)
@@ -418,30 +382,10 @@ fn extract_max_tokens_from_project_settings(settings_json: &str, task_type: Task
 
 /// Helper function to extract system_prompt from project settings
 fn extract_system_prompt_from_project_settings(settings_json: &str, task_type: TaskType) -> Option<String> {
-    // Local tasks don't have system_prompt settings
-    if !task_type.requires_llm() {
-        return None;
-    }
-    
     let settings: serde_json::Value = serde_json::from_str(settings_json).ok()?;
+    let task_key = get_frontend_task_key(task_type)?;
     
-    let task_key = match task_type {
-        TaskType::ImplementationPlan => "implementationPlan",
-        TaskType::PathFinder => "pathFinder",
-        TaskType::TextCorrection => "textCorrection",
-        TaskType::PathCorrection => "pathCorrection",
-        TaskType::GuidanceGeneration => "guidanceGeneration",
-        TaskType::TaskEnhancement => "taskEnhancement",
-        TaskType::GenericLlmStream => "genericLlmStream",
-        TaskType::RegexPatternGeneration => "regexPatternGeneration",
-        TaskType::FileFinderWorkflow => "fileFinderWorkflow",
-        TaskType::ExtendedPathFinder => "extendedPathFinder",
-        // Local tasks don't have system_prompt settings
-        TaskType::LocalFileFiltering => return None,
-        _ => return None,
-    };
-    
-    settings.get(task_key)?
+    settings.get(&task_key)?
         .get("systemPrompt")?
         .as_str()
         .map(|s| s.to_string())
@@ -471,7 +415,7 @@ pub async fn get_model_for_task_with_project(task_type: TaskType, project_direct
     
     // Fall back to server config (with async version)
     log::debug!("Using server default model for {:?}", task_type);
-    get_model_for_task_async(task_type, app_handle).await
+    get_model_for_task_async(task_type).await
 }
 
 /// Async version: Get temperature for a task, checking project-specific settings first, then falling back to server config
@@ -496,7 +440,7 @@ pub async fn get_temperature_for_task_with_project(task_type: TaskType, project_
     
     // Fall back to server config (with async version)
     log::debug!("Using server default temperature for {:?}", task_type);
-    get_temperature_for_task_async(task_type, app_handle).await
+    get_temperature_for_task_async(task_type).await
 }
 
 /// Async version: Get max tokens for a task, checking project-specific settings first, then falling back to server config
@@ -521,7 +465,7 @@ pub async fn get_max_tokens_for_task_with_project(task_type: TaskType, project_d
     
     // Fall back to server config (with async version)
     log::debug!("Using server default max_tokens for {:?}", task_type);
-    get_max_tokens_for_task_async(task_type, app_handle).await
+    get_max_tokens_for_task_async(task_type).await
 }
 
 /// Async version: Get system prompt for a task, checking project-specific settings first, then falling back to server config

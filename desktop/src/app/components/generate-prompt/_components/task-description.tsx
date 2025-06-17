@@ -1,6 +1,6 @@
 "use client";
 
-import { Sparkles, Loader2 } from "lucide-react";
+import { Undo2, Redo2 } from "lucide-react";
 import {
   useState,
   useCallback,
@@ -11,7 +11,6 @@ import {
 } from "react";
 import type { ChangeEvent } from "react";
 
-import { useNotification } from "@/contexts/notification-context";
 import { useTextareaResize } from "@/hooks/use-textarea-resize";
 import { Button } from "@/ui/button";
 import { Textarea } from "@/ui/textarea";
@@ -36,13 +35,12 @@ interface TaskDescriptionProps {
   onChange: (value: string) => void;
   onInteraction: () => void; // Callback for interaction
   onBlur: () => void; // New callback for blur events to trigger save
-  isImproving: boolean; // Required prop instead of optional
-  onImproveSelection: (
-    selectedText: string,
-    selectionStart?: number,
-    selectionEnd?: number
-  ) => Promise<void>; // Required prop instead of optional
   disabled?: boolean; // Flag to disable the component
+  // New props for undo/redo and refine task
+  canUndo?: boolean;
+  canRedo?: boolean;
+  onUndo?: () => void;
+  onRedo?: () => void;
 }
 
 const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionProps>(
@@ -52,9 +50,12 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
         onChange,
         onInteraction,
         onBlur,
-        isImproving,
-        onImproveSelection,
         disabled = false,
+        // New props for undo/redo
+        canUndo = false,
+        canRedo = false,
+        onUndo,
+        onRedo,
       }: TaskDescriptionProps,
       ref: React.ForwardedRef<TaskDescriptionHandle>
     ) {
@@ -63,11 +64,8 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
       const [internalValue, setInternalValue] = useState(value);
       const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
       
-      // Minimal state for selection tracking
-      const { showNotification } = useNotification();
       // Create an internal ref for the textarea element
       const internalTextareaRef = useRef<HTMLTextAreaElement>(null);
-      const [hasActiveSelection, setHasActiveSelection] = useState(false);
       
       // Sync internal value with prop value when it changes externally
       useEffect(() => {
@@ -174,37 +172,7 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
         focus: () => internalTextareaRef.current?.focus(),
       }), [insertTextAtCursor, internalValue, debouncedOnChange, onInteraction, onChange]);
 
-      // Simplified selection tracking
-      const handleSelect = () => {
-        const textarea = internalTextareaRef.current;
-        setHasActiveSelection(textarea ? textarea.selectionStart !== textarea.selectionEnd : false);
-      };
 
-      // Simplified improvement handler
-      const handleImproveSelection = async () => {
-        const textarea = internalTextareaRef.current;
-        if (!textarea) return;
-
-        const { selectionStart, selectionEnd } = textarea;
-        if (selectionStart === selectionEnd) {
-          showNotification({ title: "No text selected", message: "Please select some text to improve", type: "warning" });
-          return;
-        }
-
-        const selectedText = internalValue.slice(selectionStart, selectionEnd).trim();
-        if (!selectedText) {
-          showNotification({ title: "No text selected", message: "Please select some non-empty text to improve", type: "warning" });
-          return;
-        }
-
-        try {
-          await onImproveSelection(selectedText, selectionStart, selectionEnd);
-        } catch {
-          showNotification({ title: "Error improving text", message: "An unexpected error occurred while improving text", type: "error" });
-        }
-      };
-
-      // The hasSelection const has been replaced by the hasActiveSelection state
 
       // Simplified change handler
       const handleChange = useCallback((e: ChangeEvent<HTMLTextAreaElement>) => {
@@ -232,7 +200,7 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
                 htmlFor="taskDescArea"
                 className="font-semibold text-lg text-foreground"
               >
-                Task Description:
+                Task Description
               </label>
               <span
                 className={cn(
@@ -242,24 +210,33 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
               >
                 Required
               </span>
+              {/* Undo/Redo buttons next to the label */}
+              <div className="flex items-center gap-1 ml-2">
+                <Button
+                  variant="outline"
+                  size="icon-sm"
+                  onClick={onUndo}
+                  disabled={!canUndo || disabled}
+                  title="Undo last change"
+                  className="h-6 w-6"
+                >
+                  <Undo2 className="h-3 w-3" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="icon-sm"
+                  onClick={onRedo}
+                  disabled={!canRedo || disabled}
+                  title="Redo undone change"
+                  className="h-6 w-6"
+                >
+                  <Redo2 className="h-3 w-3" />
+                </Button>
+              </div>
             </div>
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              onClick={handleImproveSelection}
-              disabled={!hasActiveSelection || disabled}
-              isLoading={isImproving}
-              loadingIcon={<Loader2 className="h-3.5 w-3.5 animate-spin" />}
-              className="h-7 text-xs px-3"
-            >
-              <Sparkles className="h-3.5 w-3.5 mr-2" />
-              Improve Selection
-            </Button>
           </div>
-          <p className="text-xs text-muted-foreground mt-1 text-balance">
-            Uses AI to refine the clarity and grammar of the selected text.
-          </p>
+          
+          
           <div
             className={`relative ${effectiveIsEmpty ? "border-2 border-destructive/20 rounded-xl" : ""}`}
           >
@@ -269,7 +246,6 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
               className={`border border-border/60 rounded-xl bg-background backdrop-blur-sm text-foreground p-4 w-full resize-y font-normal shadow-soft ${effectiveIsEmpty ? "border-destructive/20 bg-destructive/5" : ""}`}
               value={internalValue}
               onChange={handleChange}
-              onSelect={handleSelect}
               onBlur={(_e) => {
                 // Immediately flush any pending changes to prevent data loss
                 if (debounceTimeoutRef.current) {

@@ -124,36 +124,37 @@ pub struct ImplementationPlanDataResponse {
     pub created_at: String,
 }
 
-/// Response for the get implementation plan prompt command
+/// Response for the get prompt command
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ImplementationPlanPromptResponse {
+pub struct PromptResponse {
     pub system_prompt: String,
     pub user_prompt: String,
     pub combined_prompt: String,
 }
 
-/// Response for the estimate implementation plan tokens command
+/// Response for the estimate prompt tokens command
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ImplementationPlanTokenEstimateResponse {
+pub struct PromptTokenEstimateResponse {
     pub estimated_tokens: u32,
     pub system_prompt_tokens: u32,
     pub user_prompt_tokens: u32,
     pub total_tokens: u32,
 }
 
-/// Estimates the number of tokens an implementation plan prompt would use
+/// Estimates the number of tokens a prompt would use
 #[command]
-pub async fn estimate_implementation_plan_tokens_command(
+pub async fn estimate_prompt_tokens_command(
+    task_type: String,
     session_id: String,
     task_description: String,
     project_directory: String,
     relevant_files: Vec<String>,
     project_structure: Option<String>,
     app_handle: AppHandle,
-) -> AppResult<ImplementationPlanTokenEstimateResponse> {
-    info!("Estimating tokens for implementation plan prompt");
+) -> AppResult<PromptTokenEstimateResponse> {
+    info!("Estimating tokens for {} prompt", task_type);
     
     // Validate required fields
     if session_id.is_empty() {
@@ -168,7 +169,11 @@ pub async fn estimate_implementation_plan_tokens_command(
         return Err(AppError::ValidationError("Project directory is required".to_string()));
     }
     
-    // Read file contents for relevant files (SAME LOGIC AS ImplementationPlanProcessor)
+    // Parse task_type string into TaskType enum using the FromStr implementation
+    let parsed_task_type = task_type.parse::<TaskType>()
+        .map_err(|_| AppError::ValidationError(format!("Unsupported task type: {}", task_type)))?;
+    
+    // Read file contents for relevant files
     let mut file_contents_map: std::collections::HashMap<String, String> = std::collections::HashMap::new();
     
     for relative_path_str in &relevant_files {
@@ -194,7 +199,7 @@ pub async fn estimate_implementation_plan_tokens_command(
     // Create unified prompt context
     let context = UnifiedPromptContextBuilder::new(
         project_directory.clone(),
-        TaskType::ImplementationPlan,
+        parsed_task_type,
         task_description.clone(),
     )
     .project_structure(project_structure.clone())
@@ -208,9 +213,9 @@ pub async fn estimate_implementation_plan_tokens_command(
         .await?;
     
     // Estimate the number of tokens in the final prompt
-    let estimated_prompt_tokens = composed_prompt.estimated_tokens.unwrap_or(0) as u32;
+    let estimated_prompt_tokens = composed_prompt.estimated_total_tokens.unwrap_or(0) as u32;
     
-    Ok(ImplementationPlanTokenEstimateResponse {
+    Ok(PromptTokenEstimateResponse {
         estimated_tokens: estimated_prompt_tokens,
         system_prompt_tokens: 0, // The processor sends this as a single user message
         user_prompt_tokens: estimated_prompt_tokens,
@@ -218,17 +223,18 @@ pub async fn estimate_implementation_plan_tokens_command(
     })
 }
 
-/// Gets the prompt that would be used to generate an implementation plan
+/// Gets the prompt that would be used to generate a task
 #[command]
-pub async fn get_implementation_plan_prompt_command(
+pub async fn get_prompt_command(
+    task_type: String,
     session_id: String,
     task_description: String,
     project_directory: String,
     relevant_files: Vec<String>,
     project_structure: Option<String>,
     app_handle: AppHandle,
-) -> AppResult<ImplementationPlanPromptResponse> {
-    info!("Getting implementation plan prompt for task: {}", task_description);
+) -> AppResult<PromptResponse> {
+    info!("Getting {} prompt for task: {}", task_type, task_description);
     
     // Validate required fields
     if session_id.is_empty() {
@@ -243,7 +249,11 @@ pub async fn get_implementation_plan_prompt_command(
         return Err(AppError::ValidationError("Project directory is required".to_string()));
     }
     
-    // Read file contents for relevant files (SAME LOGIC AS ImplementationPlanProcessor)
+    // Parse task_type string into TaskType enum using the FromStr implementation
+    let parsed_task_type = task_type.parse::<TaskType>()
+        .map_err(|_| AppError::ValidationError(format!("Unsupported task type: {}", task_type)))?;
+    
+    // Read file contents for relevant files
     let mut file_contents_map: std::collections::HashMap<String, String> = std::collections::HashMap::new();
     
     for relative_path_str in &relevant_files {
@@ -269,7 +279,7 @@ pub async fn get_implementation_plan_prompt_command(
     // Create unified prompt context
     let context = UnifiedPromptContextBuilder::new(
         project_directory.clone(),
-        TaskType::ImplementationPlan,
+        parsed_task_type,
         task_description.clone(),
     )
     .project_structure(project_structure.clone())
@@ -287,7 +297,7 @@ pub async fn get_implementation_plan_prompt_command(
     let user_prompt = composed_prompt.user_prompt;
     let combined_prompt = format!("{}\n\n{}", system_prompt, user_prompt);
 
-    Ok(ImplementationPlanPromptResponse {
+    Ok(PromptResponse {
         system_prompt,
         user_prompt, 
         combined_prompt,

@@ -13,7 +13,7 @@ import {
 
 import { Button } from '@/ui/button';
 import { Alert, AlertDescription } from '@/ui/alert';
-import { Card, CardContent, CardHeader, CardTitle } from '@/ui/card';
+// Card components removed - parent component provides surrounding UI
 import { useNotification } from '@/contexts/notification-context';
 import { getErrorMessage } from '@/utils/error-handling';
 
@@ -133,111 +133,103 @@ export function PaymentElementForm({
   };
 
   return (
-    <Card className="w-full max-w-lg mx-auto">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <CreditCard className="h-5 w-5" />
-          Complete Your Purchase
-        </CardTitle>
-        <div className="bg-muted/50 rounded-lg p-4 space-y-3">
-          <div className="text-center">
-            <div className="text-2xl font-bold text-blue-600">
-              {formatCurrency(amount, currency)}
-            </div>
-            <div className="text-sm text-muted-foreground mt-1">
-              {description}
-            </div>
+    <div className="w-full space-y-6">
+      <div className="bg-muted/50 rounded-lg p-4 space-y-3">
+        <div className="text-center">
+          <div className="text-2xl font-bold text-blue-600">
+            {formatCurrency(amount, currency)}
           </div>
-          <div className="flex items-center justify-center gap-1 text-xs text-muted-foreground">
-            <Shield className="h-3 w-3" />
-            <span>Secure payment via Stripe</span>
+          <div className="text-sm text-muted-foreground mt-1">
+            {description}
           </div>
         </div>
-      </CardHeader>
+        <div className="flex items-center justify-center gap-1 text-xs text-muted-foreground">
+          <Shield className="h-3 w-3" />
+          <span>Secure payment via Stripe</span>
+        </div>
+      </div>
 
-      <CardContent>
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="space-y-3">
-            <label className="text-sm font-medium text-gray-700">
-              Payment Information
-            </label>
-            <div className="text-xs text-muted-foreground mb-2">
-              Enter your payment details to complete this purchase
-            </div>
-            <div className="border rounded-lg p-4 bg-gray-50">
-              <PaymentElement 
-                onChange={handlePaymentElementChange}
-                options={{
-                  layout: 'tabs',
-                  paymentMethodOrder: ['card', 'apple_pay', 'google_pay'],
-                }}
-              />
+      <form onSubmit={handleSubmit} className="space-y-6">
+        <div className="space-y-3">
+          <label className="text-sm font-medium text-gray-700">
+            Payment Information
+          </label>
+          <div className="text-xs text-muted-foreground mb-2">
+            Enter your payment details to complete this purchase
+          </div>
+          <div className="border rounded-lg p-4 bg-gray-50">
+            <PaymentElement 
+              onChange={handlePaymentElementChange}
+              options={{
+                layout: 'tabs',
+                paymentMethodOrder: ['card', 'apple_pay', 'google_pay'],
+              }}
+            />
+          </div>
+        </div>
+
+        {savePaymentMethod && (
+          <div className="bg-blue-50 p-3 rounded-lg">
+            <div className="flex items-center space-x-2 text-sm text-blue-700">
+              <Shield className="h-4 w-4" />
+              <span>Your payment method will be securely saved for future purchases</span>
             </div>
           </div>
+        )}
 
-          {savePaymentMethod && (
-            <div className="bg-blue-50 p-3 rounded-lg">
-              <div className="flex items-center space-x-2 text-sm text-blue-700">
-                <Shield className="h-4 w-4" />
-                <span>Your payment method will be securely saved for future purchases</span>
-              </div>
-            </div>
-          )}
+        {message && (
+          <Alert variant={messageType === 'error' ? 'destructive' : 'default'}>
+            {messageType === 'success' ? (
+              <CheckCircle className="h-4 w-4" />
+            ) : messageType === 'error' ? (
+              <AlertCircle className="h-4 w-4" />
+            ) : (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            )}
+            <AlertDescription>{message}</AlertDescription>
+          </Alert>
+        )}
 
-          {message && (
-            <Alert variant={messageType === 'error' ? 'destructive' : 'default'}>
-              {messageType === 'success' ? (
-                <CheckCircle className="h-4 w-4" />
-              ) : messageType === 'error' ? (
-                <AlertCircle className="h-4 w-4" />
-              ) : (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              )}
-              <AlertDescription>{message}</AlertDescription>
-            </Alert>
-          )}
+        <div className="flex gap-3">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onCancel}
+            disabled={isLoading}
+            className="flex-1"
+          >
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            disabled={!stripe || !elements || !isComplete || isLoading}
+            className="flex-1"
+          >
+            {isLoading ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Processing...
+              </>
+            ) : (
+              <>
+                <Lock className="h-4 w-4 mr-2" />
+                Pay {formatCurrency(amount, currency)}
+              </>
+            )}
+          </Button>
+        </div>
 
-          <div className="flex gap-3">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={onCancel}
-              disabled={isLoading}
-              className="flex-1"
-            >
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              disabled={!stripe || !elements || !isComplete || isLoading}
-              className="flex-1"
-            >
-              {isLoading ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Processing...
-                </>
-              ) : (
-                <>
-                  <Lock className="h-4 w-4 mr-2" />
-                  Pay {formatCurrency(amount, currency)}
-                </>
-              )}
-            </Button>
+        <div className="text-xs text-center text-muted-foreground">
+          <div className="flex items-center justify-center gap-1">
+            <Shield className="h-3 w-3" />
+            <span>Secure payment powered by Stripe</span>
           </div>
-
-          <div className="text-xs text-center text-muted-foreground">
-            <div className="flex items-center justify-center gap-1">
-              <Shield className="h-3 w-3" />
-              <span>Secure payment powered by Stripe</span>
-            </div>
-            <div className="mt-1">
-              Your payment information is encrypted and secure
-            </div>
+          <div className="mt-1">
+            Your payment information is encrypted and secure
           </div>
-        </form>
-      </CardContent>
-    </Card>
+        </div>
+      </form>
+    </div>
   );
 }
 

@@ -384,6 +384,98 @@ impl StageDataExtractor {
         Ok(cleaned_paths)
     }
 
+    /// Extract AI-filtered files with token count from FileRelevanceAssessment job
+    pub async fn extract_ai_filtered_files_with_token_count(
+        job_id: &str, 
+        repo: &BackgroundJobRepository
+    ) -> AppResult<(Vec<String>, u32)> {
+        DataFlowLogger::log_extraction_start(job_id, "FileRelevanceAssessment", "ai_filtered_files_with_token_count");
+        
+        let job = repo.get_job_by_id(job_id).await?
+            .ok_or_else(|| AppError::JobError(format!("Job {} not found", job_id)))?;
+        
+        // Validate job status - be more lenient for failed/skipped stages
+        let status = job.status.parse::<JobStatus>()
+            .map_err(|e| AppError::JobError(format!("Invalid job status: {}", e)))?;
+        
+        if status != JobStatus::Completed {
+            warn!("Job {} is not completed (status: {}), attempting to extract partial data", 
+                  job_id, job.status);
+        }
+        
+        let response = match job.response {
+            Some(resp) => resp,
+            None => {
+                warn!("Job {} has no response, returning empty data", job_id);
+                return Ok((vec![], 0));
+            }
+        };
+        
+        // Check for empty response
+        if response.trim().is_empty() {
+            warn!("Job {} has empty response, returning empty data", job_id);
+            return Ok((vec![], 0));
+        }
+        
+        debug!("Extracting AI-filtered files with token count from response (length: {} chars)", response.len());
+        
+        // Parse response as JSON and extract relevantFiles array and tokenCount
+        let json_value = serde_json::from_str::<Value>(&response)
+            .map_err(|e| AppError::JobError(format!(
+                "FileRelevanceAssessment job {} response is not valid JSON: {}", 
+                job_id, e
+            )))?;
+        
+        debug!("FileRelevanceAssessment response parsed as JSON");
+        
+        // Extract paths from relevantFiles field
+        let ai_filtered_files = json_value.get("relevantFiles")
+            .ok_or_else(|| AppError::JobError(format!(
+                "FileRelevanceAssessment job {} response missing 'relevantFiles' field", 
+                job_id
+            )))?;
+        
+        let array = ai_filtered_files.as_array()
+            .ok_or_else(|| AppError::JobError(format!(
+                "FileRelevanceAssessment job {} 'relevantFiles' field is not an array: {:?}", 
+                job_id, ai_filtered_files
+            )))?;
+        
+        debug!("Found relevantFiles array with {} elements", array.len());
+        
+        let paths: Vec<String> = array.iter()
+            .enumerate()
+            .filter_map(|(index, item)| {
+                if let Some(path_str) = item.as_str() {
+                    Some(path_str.to_string())
+                } else {
+                    warn!("Non-string item at index {} in relevantFiles array: {:?}", index, item);
+                    None
+                }
+            })
+            .collect();
+        
+        debug!("Extracted {} raw AI-filtered paths before validation", paths.len());
+        
+        // Extract token count (default to 0 if not present)
+        let token_count = json_value.get("tokenCount")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0) as u32;
+        
+        debug!("Extracted token count: {}", token_count);
+        
+        // Validate and clean the extracted paths
+        let cleaned_paths = WorkflowDataValidator::clean_file_paths(paths);
+        WorkflowDataValidator::validate_file_paths(&cleaned_paths)?;
+        
+        if cleaned_paths.is_empty() {
+            warn!("No valid AI-filtered file paths extracted from FileRelevanceAssessment job {}", job_id);
+        }
+        
+        DataFlowLogger::log_extraction_success(job_id, "FileRelevanceAssessment", cleaned_paths.len(), "ai_filtered_files_with_token_count");
+        Ok((cleaned_paths, token_count))
+    }
+
     /// Extract initial paths from PathFinder job
     pub async fn extract_initial_paths(
         job_id: &str, 
@@ -834,4 +926,12 @@ pub async fn extract_regex_patterns(
     repo: &BackgroundJobRepository
 ) -> AppResult<Vec<String>> {
     StageDataExtractor::extract_regex_patterns(job_id, repo).await
+}
+
+/// Public async function for extracting AI-filtered files with token count from FileRelevanceAssessment jobs
+pub async fn extract_ai_filtered_files_with_token_count(
+    job_id: &str, 
+    repo: &BackgroundJobRepository
+) -> AppResult<(Vec<String>, u32)> {
+    StageDataExtractor::extract_ai_filtered_files_with_token_count(job_id, repo).await
 }

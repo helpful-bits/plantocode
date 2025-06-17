@@ -49,7 +49,9 @@ pub struct ComposedPrompt {
     pub user_prompt: String,
     pub system_prompt_id: String,
     pub context_sections: Vec<String>,
-    pub estimated_tokens: Option<usize>,
+    pub estimated_total_tokens: Option<usize>,
+    pub estimated_system_tokens: Option<usize>,
+    pub estimated_user_tokens: Option<usize>,
 }
 
 /// Unified prompt processor that combines all three previous systems
@@ -128,7 +130,9 @@ impl UnifiedPromptProcessor {
         
         
         // Estimate tokens
-        let estimated_tokens = Some(crate::utils::token_estimator::estimate_tokens(&processed_system) as usize);
+        let system_tokens = crate::utils::token_estimator::estimate_tokens(&processed_system) as usize;
+        let user_tokens = crate::utils::token_estimator::estimate_tokens(&user_prompt) as usize;
+        let total_tokens = system_tokens + user_tokens;
         
         // Track context sections used
         let context_sections = self.get_context_sections_used(context);
@@ -138,7 +142,9 @@ impl UnifiedPromptProcessor {
             user_prompt,
             system_prompt_id,
             context_sections,
-            estimated_tokens,
+            estimated_total_tokens: Some(total_tokens),
+            estimated_system_tokens: Some(system_tokens),
+            estimated_user_tokens: Some(user_tokens),
         })
     }
 

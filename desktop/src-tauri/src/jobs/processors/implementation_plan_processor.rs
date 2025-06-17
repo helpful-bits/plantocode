@@ -228,7 +228,7 @@ impl JobProcessor for ImplementationPlanProcessor {
         info!("Enhanced Implementation Plan prompt composition for job {}", job.id);
         info!("System prompt ID: {}", composed_prompt.system_prompt_id);
         info!("Context sections: {:?}", composed_prompt.context_sections);
-        if let Some(tokens) = composed_prompt.estimated_tokens {
+        if let Some(tokens) = composed_prompt.estimated_total_tokens {
             info!("Estimated tokens: {}", tokens);
             
             // Log warning if estimated tokens exceed typical model limits

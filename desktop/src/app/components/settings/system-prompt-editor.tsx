@@ -28,8 +28,8 @@ export function SystemPromptEditor({ projectDirectory, taskType, onSave }: Syste
   const [editedPrompt, setEditedPrompt] = useState('');
   const [validationError, setValidationError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [serverDefault, setServerDefault] = useState<{systemPrompt: string, description?: string} | null>(null);
-  const saveTimeoutRef = useRef<number | null>(null);
 
   const currentPrompt = prompt || '';
   const defaultPrompt = serverDefault;
@@ -46,35 +46,35 @@ export function SystemPromptEditor({ projectDirectory, taskType, onSave }: Syste
   const handlePromptChange = useCallback((value: string) => {
     setEditedPrompt(value);
     setValidationError(null);
-    
-    if (saveTimeoutRef.current) {
-      clearTimeout(saveTimeoutRef.current);
-    }
-    
-    saveTimeoutRef.current = window.setTimeout(async () => {
-      const validation = validate(value);
-      if (!validation.isValid) {
-        setValidationError(validation.errors.join(', '));
-        return;
-      }
+    setHasUnsavedChanges(value !== currentPrompt);
+  }, [currentPrompt]);
 
-      setIsSaving(true);
-      try {
-        await update(value);
-        onSave?.();
-      } catch (err) {
-        setValidationError(err instanceof Error ? err.message : 'Failed to save prompt');
-      } finally {
-        setIsSaving(false);
-      }
-    }, 1000);
-  }, [validate, update, onSave]);
+  const handleSave = useCallback(async () => {
+    const valueToSave = editedPrompt || currentPrompt;
+    const validation = validate(valueToSave);
+    if (!validation.isValid) {
+      setValidationError(validation.errors.join(', '));
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      await update(valueToSave);
+      setHasUnsavedChanges(false);
+      onSave?.();
+    } catch (err) {
+      setValidationError(err instanceof Error ? err.message : 'Failed to save prompt');
+    } finally {
+      setIsSaving(false);
+    }
+  }, [editedPrompt, currentPrompt, validate, update, onSave]);
 
   const handleReset = useCallback(async () => {
     setIsSaving(true);
     try {
       await reset();
       setEditedPrompt('');
+      setHasUnsavedChanges(false);
       onSave?.();
     } catch (err) {
       setValidationError(err instanceof Error ? err.message : 'Failed to reset prompt');
@@ -83,13 +83,6 @@ export function SystemPromptEditor({ projectDirectory, taskType, onSave }: Syste
     }
   }, [reset, onSave]);
 
-  useEffect(() => {
-    return () => {
-      if (saveTimeoutRef.current) {
-        clearTimeout(saveTimeoutRef.current);
-      }
-    };
-  }, []);
 
   const displayedPrompt = editedPrompt || currentPrompt;
   const placeholders: string[] = currentPrompt ? 
@@ -201,6 +194,7 @@ export function SystemPromptEditor({ projectDirectory, taskType, onSave }: Syste
               onChange={isCustom ? (value) => handlePromptChange(value || '') : undefined}
               virtualizationThreshold={10000}
               className={isCustom ? "border-primary/40" : "bg-muted/30 border-muted"}
+              enableTextImprovement={true}
             />
           </div>
 
@@ -221,7 +215,7 @@ export function SystemPromptEditor({ projectDirectory, taskType, onSave }: Syste
           )}
 
           {isCustom && (
-            <div className="flex justify-end">
+            <div className="flex justify-end gap-2">
               <Button 
                 variant="outline" 
                 size="sm"
@@ -230,6 +224,15 @@ export function SystemPromptEditor({ projectDirectory, taskType, onSave }: Syste
                 className="cursor-pointer"
               >
                 Reset to Default
+              </Button>
+              <Button 
+                variant={hasUnsavedChanges ? "default" : "outline"}
+                size="sm"
+                onClick={handleSave}
+                disabled={isSaving || !hasUnsavedChanges}
+                className="cursor-pointer"
+              >
+                {isSaving ? "Saving..." : "Save"}
               </Button>
             </div>
           )}
