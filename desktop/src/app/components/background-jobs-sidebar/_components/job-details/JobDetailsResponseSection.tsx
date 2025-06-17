@@ -96,7 +96,7 @@ export function JobDetailsResponseSection() {
                     getStreamingProgressValue(
                       job.metadata,
                       job.startTime
-                    ) || 10
+                    ) ?? 10
                   }
                   className="h-1 mb-2"
                 />

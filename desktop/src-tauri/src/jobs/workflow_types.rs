@@ -366,6 +366,7 @@ pub struct WorkflowIntermediateData {
     pub raw_regex_patterns: Option<serde_json::Value>,
     pub locally_filtered_files: Vec<String>,
     pub ai_filtered_files: Vec<String>,
+    pub ai_filtered_files_token_count: Option<u32>,
     pub extended_verified_paths: Vec<String>,
     pub extended_unverified_paths: Vec<String>,
     pub extended_corrected_paths: Vec<String>,

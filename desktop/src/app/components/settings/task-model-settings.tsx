@@ -37,8 +37,7 @@ const taskSettingsKeyToTaskType: Record<keyof TaskSettings, TaskType> = {
   pathFinder: "path_finder",
   voiceTranscription: "voice_transcription",
   pathCorrection: "path_correction",
-  textCorrection: "text_correction",
-  textImprovement: "text_correction",
+  textImprovement: "text_improvement",
   guidanceGeneration: "guidance_generation",
   implementationPlan: "implementation_plan",
   fileFinderWorkflow: "file_finder_workflow",
@@ -46,7 +45,7 @@ const taskSettingsKeyToTaskType: Record<keyof TaskSettings, TaskType> = {
   extendedPathFinder: "extended_path_finder",
   extendedPathCorrection: "path_correction",
   fileRelevanceAssessment: "file_relevance_assessment",
-  taskEnhancement: "task_enhancement",
+  taskRefinement: "task_refinement",
   genericLlmStream: "generic_llm_stream",
   regexPatternGeneration: "regex_pattern_generation",
   streaming: "streaming",
@@ -93,7 +92,8 @@ const FILE_FINDING_WORKFLOW_STAGES = [
 
 const STANDALONE_FEATURES = [
   { key: 'voiceTranscription', displayName: 'Voice Transcription', description: 'Convert speech to text' },
-  { key: 'textCorrection', displayName: 'Text Correction', description: 'AI-powered text improvement' },
+  { key: 'textImprovement', displayName: 'Text Improvement', description: 'AI-powered text enhancement' },
+  { key: 'taskRefinement', displayName: 'Task Refinement', description: 'Refine and optimize task descriptions' },
   { key: 'implementationPlan', displayName: 'Implementation Plans', description: 'Generate detailed development plans' },
   { key: 'guidanceGeneration', displayName: 'AI Guidance', description: 'Contextual AI assistance' },
 ] as const;
@@ -252,11 +252,24 @@ export default function TaskModelSettings({
   };
 
   const handleResetToDefault = async (camelCaseKey: keyof TaskSettings, settingName: 'model' | 'maxTokens' | 'temperature' | 'languageCode') => {
-    if (!projectDirectory) return;
+    if (!projectDirectory || !serverDefaults || !serverDefaults[camelCaseKey]) return;
     
     try {
       await resetProjectSettingToDefault(projectDirectory, camelCaseKey, settingName);
       
+      // Immediately update local state with default value
+      const defaultValue = serverDefaults[camelCaseKey]?.[settingName];
+      if (defaultValue !== undefined) {
+        const newSettings = { ...taskSettings };
+        if (!newSettings[camelCaseKey]) {
+          newSettings[camelCaseKey] = {};
+        }
+        newSettings[camelCaseKey] = {
+          ...newSettings[camelCaseKey],
+          [settingName]: defaultValue,
+        };
+        onSettingsChange(newSettings);
+      }
       
       // Clear slider value for this setting so it gets reinitialized
       if (settingName === 'maxTokens' || settingName === 'temperature') {
@@ -366,7 +379,8 @@ export default function TaskModelSettings({
   useEffect(() => {
     // Only set default task if current selection doesn't exist in taskSettings
     const taskExists = taskSettings[selectedTask as keyof TaskSettings] !== undefined;
-    if (!taskExists) {
+    const isBulkOptimization = selectedTask === 'bulk-optimization';
+    if (!taskExists && !isBulkOptimization) {
       const firstWorkflowTask = workflowStages[0]?.key;
       const firstStandaloneTask = standaloneFeatures[0]?.key;
       
@@ -393,7 +407,8 @@ export default function TaskModelSettings({
   
   useEffect(() => {
     const taskExists = taskSettings[selectedTask as keyof TaskSettings] !== undefined;
-    if (!taskExists) {
+    const isBulkOptimization = selectedTask === 'bulk-optimization';
+    if (!taskExists && !isBulkOptimization) {
       const fallbackTask = workflowStages[0]?.key || standaloneFeatures[0]?.key || 'regexPatternGeneration';
       setSelectedTask(fallbackTask);
     }
@@ -502,7 +517,11 @@ export default function TaskModelSettings({
                 </div>
               </div>
               
+{/* 
               <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm font-semibold text-foreground">AI Optimizer</h3>
+                </div>
                 <div className="space-y-1 pl-2">
                   <button
                     onClick={() => {
@@ -516,7 +535,7 @@ export default function TaskModelSettings({
                         setSelectedTask('bulk-optimization');
                       }
                     }}
-                    aria-label="Configure bulk optimization settings"
+                    aria-label="Configure AI optimization settings"
                     aria-pressed={selectedCategory === 'bulk-optimization'}
                     className={`w-full text-left p-2 rounded-md text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-primary/50 cursor-pointer ${
                       selectedCategory === 'bulk-optimization'
@@ -526,12 +545,13 @@ export default function TaskModelSettings({
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <span>AI Optimizer</span>
+                        <span>Optimize Settings</span>
                       </div>
                     </div>
                   </button>
                 </div>
               </div>
+              */}
             </div>
           </div>
           

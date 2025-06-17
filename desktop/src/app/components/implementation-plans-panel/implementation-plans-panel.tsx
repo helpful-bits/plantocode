@@ -25,7 +25,7 @@ import { ScrollArea } from "@/ui/scroll-area";
 import { Alert, AlertDescription } from "@/ui/alert";
 import { AnimatedNumber } from "@/ui";
 
-import { estimateImplementationPlanTokensAction } from "@/actions/ai/implementation-plan.actions";
+import { estimatePromptTokensAction } from "@/actions/ai/prompt.actions";
 import ImplementationPlanCard from "./_components/ImplementationPlanCard";
 import PlanContentModal from "./_components/PlanContentModal";
 import PromptCopyModal from "./_components/PromptCopyModal";
@@ -123,12 +123,13 @@ export function ImplementationPlansPanel({
         const finalTaskDescription = taskDescription || currentSession?.taskDescription || "";
         const finalIncludedPaths = includedPaths || [];
 
-        const result = await estimateImplementationPlanTokensAction({
+        const result = await estimatePromptTokensAction({
           sessionId: sessionId!,
           taskDescription: finalTaskDescription,
           projectDirectory: projectDirectory!,
           relevantFiles: finalIncludedPaths,
           projectStructure: undefined,
+          taskType: "implementation_plan",
         });
 
         if (result.isSuccess && result.data) {

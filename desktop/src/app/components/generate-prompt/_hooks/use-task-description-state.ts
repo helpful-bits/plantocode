@@ -2,7 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 
-import { createTextCorrectionJobAction } from "@/actions/voice-transcription/correct-text";
+import { refineTaskDescriptionAction } from "@/actions/ai/task-refinement.actions";
 import { useBackgroundJob } from "@/contexts/_hooks/use-background-job";
 import { useNotification } from "@/contexts/notification-context";
 import { useProject } from "@/contexts/project-context";
@@ -35,170 +35,81 @@ export function useTaskDescriptionState({
 
   // State for UI feedback and improvement features only
   const [taskCopySuccess, setTaskCopySuccess] = useState(false);
-  const [isImprovingText, setIsImprovingText] = useState(false);
-  const [textImprovementJobId, setTextImprovementJobId] = useState<
+  const [isRefiningTask, setIsRefiningTask] = useState(false);
+  const [taskRefinementJobId, setTaskRefinementJobId] = useState<
     string | undefined
   >(undefined);
+
+  // Undo/redo state
+  const [history, setHistory] = useState<string[]>(() => [
+    sessionTaskDescription || ""
+  ]);
+  const [historyIndex, setHistoryIndex] = useState(0);
 
   // External hooks
   const { showNotification } = useNotification();
   // Fetch the background job using typed hook
-  const textImprovementJob = useBackgroundJob(textImprovementJobId ?? null);
+  const taskRefinementJob = useBackgroundJob(taskRefinementJobId ?? null);
   
 
 
   // Reset function clears UI-related state
   const reset = useCallback(() => {
     setTaskCopySuccess(false);
-    setIsImprovingText(false);
-    setTextImprovementJobId(undefined);
+    setIsRefiningTask(false);
+    setTaskRefinementJobId(undefined);
   }, []);
 
-  // Store selection range for text improvement
-  const selectionRangeRef = useRef<{
-    start: number;
-    end: number;
-    text: string;
-    originalTaskDescription: string;
-  } | null>(null);
 
-  // Simplified job monitoring
+  // Debounce timer for user edits ref
+  const debounceTimerRef = useRef<number | null>(null);
+
+  // Save current description to history
+  const saveToHistory = useCallback((description: string) => {
+    setHistory(prev => {
+      const newHistory = prev.slice(0, historyIndex + 1);
+      if (newHistory[newHistory.length - 1] !== description) {
+        newHistory.push(description);
+        return newHistory;
+      }
+      return prev;
+    });
+    setHistoryIndex(prev => {
+      const newHistory = history.slice(0, prev + 1);
+      if (newHistory[newHistory.length - 1] !== description) {
+        return prev + 1;
+      }
+      return prev;
+    });
+  }, [history, historyIndex]);
+
+
+  // Task refinement job monitoring
   useEffect(() => {
-    if (isSwitchingSession || !textImprovementJobId || !textImprovementJob.job) return;
+    if (isSwitchingSession || !taskRefinementJobId || !taskRefinementJob.job) return;
 
-    const job = textImprovementJob.job;
+    const job = taskRefinementJob.job;
     if (!job?.status) return;
 
-    if (job.status === "completed" && job.response && job.sessionId === activeSessionId && selectionRangeRef.current) {
-      const improvedText = String(job.response).trim();
-      if (improvedText) {
-        const { start, end, originalTaskDescription } = selectionRangeRef.current;
-        const newTaskDescription = originalTaskDescription.substring(0, start) + improvedText + originalTaskDescription.substring(end);
-        sessionActions.updateCurrentSessionFields({ taskDescription: newTaskDescription });
+    if (job.status === "completed" && job.response && job.sessionId === activeSessionId) {
+      const refinedTask = String(job.response).trim();
+      if (refinedTask) {
+        // Save to history first, then replace entire task description
+        saveToHistory(sessionTaskDescription);
+        sessionActions.updateCurrentSessionFields({ taskDescription: refinedTask });
         sessionActions.setSessionModified(true);
         onInteraction?.();
-        showNotification({ title: "Text improved", message: "Selected text improved.", type: "success" });
+        showNotification({ title: "Task refined", message: "Task description has been refined.", type: "success" });
       }
-      setIsImprovingText(false);
-      setTextImprovementJobId(undefined);
-      selectionRangeRef.current = null;
+      setIsRefiningTask(false);
+      setTaskRefinementJobId(undefined);
     } else if ((job.status === "failed" || job.status === "canceled") && job.sessionId === activeSessionId) {
-      setIsImprovingText(false);
-      setTextImprovementJobId(undefined);
-      selectionRangeRef.current = null;
-      showNotification({ title: "Text improvement failed", message: job.errorMessage || "Failed to improve text.", type: "error" });
+      setIsRefiningTask(false);
+      setTaskRefinementJobId(undefined);
+      showNotification({ title: "Task refinement failed", message: job.errorMessage || "Failed to refine task description.", type: "error" });
     }
-  }, [textImprovementJob.job?.status, textImprovementJobId, isSwitchingSession, activeSessionId, onInteraction, showNotification]);
+  }, [taskRefinementJob.job?.status, taskRefinementJobId, isSwitchingSession, activeSessionId, onInteraction, showNotification, saveToHistory, sessionTaskDescription, sessionActions]);
 
-  // Handle text improvement
-  const handleImproveSelection = useCallback(
-    async (
-      selectedText: string,
-      selectionStart?: number,
-      selectionEnd?: number
-    ): Promise<void> => {
-      // Validation checks
-      if (!selectedText.trim()) {
-        showNotification({
-          title: "No text selected",
-          message: "Please select some text to improve.",
-          type: "warning",
-        });
-        return;
-      }
-
-      if (isImprovingText) {
-        showNotification({
-          title: "Already improving text",
-          message: "Please wait for the current improvement to complete.",
-          type: "warning",
-        });
-        return;
-      }
-
-      if (isSwitchingSession || !activeSessionId) {
-        return;
-      }
-
-      // Set loading state
-      setIsImprovingText(true);
-
-      // Store selection range
-      if (
-        typeof selectionStart === "number" &&
-        typeof selectionEnd === "number"
-      ) {
-        selectionRangeRef.current = {
-          start: selectionStart,
-          end: selectionEnd,
-          text: selectedText,
-          originalTaskDescription: sessionTaskDescription,
-        };
-      } else if (taskDescriptionRef.current) {
-        const start = taskDescriptionRef.current.selectionStart;
-        const end = taskDescriptionRef.current.selectionEnd;
-
-        if (typeof start === "number" && typeof end === "number") {
-          selectionRangeRef.current = { start, end, text: selectedText, originalTaskDescription: sessionTaskDescription };
-        } else {
-          // Fallback: find text in description
-          const index = sessionTaskDescription.indexOf(selectedText);
-          if (index >= 0) {
-            selectionRangeRef.current = {
-              start: index,
-              end: index + selectedText.length,
-              text: selectedText,
-              originalTaskDescription: sessionTaskDescription,
-            };
-          } else {
-            selectionRangeRef.current = null;
-          }
-        }
-      }
-
-      try {
-        // Call the unified text correction action
-        const result = await createTextCorrectionJobAction(
-          selectedText,
-          activeSessionId,
-          null, // originalJobId
-          projectDirectory
-        );
-
-        if (result.isSuccess && result.data?.jobId) {
-          // Store job ID to track progress
-          setTextImprovementJobId(result.data.jobId);
-        } else {
-          throw new Error(
-            result.message || "Failed to start text improvement."
-          );
-        }
-      } catch (error) {
-        console.error("Error improving text:", error);
-        setIsImprovingText(false);
-        selectionRangeRef.current = null;
-
-        // Extract error info and create user-friendly message
-        const errorInfo = extractErrorInfo(error);
-        const userFriendlyMessage = createUserFriendlyErrorMessage(errorInfo, 'text improvement');
-        
-        showNotification({
-          title: "Error improving text",
-          message: userFriendlyMessage,
-          type: "error",
-        });
-      }
-    },
-    [
-      isImprovingText,
-      showNotification,
-      isSwitchingSession,
-      activeSessionId,
-      taskDescriptionRef,
-      projectDirectory,
-      sessionTaskDescription,
-    ]
-  );
 
   // Function to copy task description to clipboard
   const copyTaskDescription = useCallback(async () => {
@@ -225,26 +136,163 @@ export function useTaskDescriptionState({
     }
   }, [sessionTaskDescription]);
 
+  // Handle task refinement
+  const handleRefineTask = useCallback(async (): Promise<void> => {
+    if (!sessionTaskDescription.trim()) {
+      showNotification({
+        title: "No task description",
+        message: "Please enter a task description to refine.",
+        type: "warning",
+      });
+      return;
+    }
+
+    if (isRefiningTask) {
+      showNotification({
+        title: "Already refining task",
+        message: "Please wait for the current refinement to complete.",
+        type: "warning",
+      });
+      return;
+    }
+
+    if (isSwitchingSession || !activeSessionId) {
+      return;
+    }
+
+    // Set loading state
+    setIsRefiningTask(true);
+
+    try {
+      // Get included files from session context
+      const includedFiles = sessionState.currentSession?.includedFiles || [];
+
+      // Call the task refinement action
+      const result = await refineTaskDescriptionAction({
+        taskDescription: sessionTaskDescription,
+        projectDirectory,
+        sessionId: activeSessionId,
+        relevantFiles: includedFiles.length > 0 ? includedFiles : [],
+      });
+
+      if (result.isSuccess) {
+        // Store job ID to track progress
+        if (result.data?.jobId) {
+          setTaskRefinementJobId(result.data.jobId);
+        }
+      } else {
+        throw new Error(
+          result.message || "Failed to start task refinement."
+        );
+      }
+    } catch (error) {
+      console.error("Error refining task:", error);
+      setIsRefiningTask(false);
+
+      // Extract error info and create user-friendly message
+      const errorInfo = extractErrorInfo(error);
+      const userFriendlyMessage = createUserFriendlyErrorMessage(errorInfo, 'task refinement');
+      
+      showNotification({
+        title: "Error refining task",
+        message: userFriendlyMessage,
+        type: "error",
+      });
+    }
+  }, [
+    sessionTaskDescription,
+    isRefiningTask,
+    showNotification,
+    isSwitchingSession,
+    activeSessionId,
+    sessionState.currentSession?.includedFiles,
+    projectDirectory,
+  ]);
+
+  // Debounced useEffect to capture user edits
+  useEffect(() => {
+    // Clear existing timer
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+
+    // Set new timer to save to history after user stops typing
+    debounceTimerRef.current = window.setTimeout(() => {
+      if (sessionTaskDescription && sessionTaskDescription !== history[historyIndex]) {
+        saveToHistory(sessionTaskDescription);
+      }
+    }, 1000); // 1 second debounce
+
+    // Cleanup on unmount
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+    };
+  }, [sessionTaskDescription, history, historyIndex, saveToHistory]);
+
+  // Initialize history when session changes
+  useEffect(() => {
+    setHistory([sessionTaskDescription || ""]);
+    setHistoryIndex(0);
+  }, [activeSessionId]);
+
+  // Undo function
+  const undo = useCallback(() => {
+    if (historyIndex > 0) {
+      const newIndex = historyIndex - 1;
+      const previousDescription = history[newIndex];
+      setHistoryIndex(newIndex);
+      sessionActions.updateCurrentSessionFields({ taskDescription: previousDescription });
+      sessionActions.setSessionModified(true);
+      onInteraction?.();
+    }
+  }, [historyIndex, history, sessionActions, onInteraction]);
+
+  // Redo function
+  const redo = useCallback(() => {
+    if (historyIndex < history.length - 1) {
+      const newIndex = historyIndex + 1;
+      const nextDescription = history[newIndex];
+      setHistoryIndex(newIndex);
+      sessionActions.updateCurrentSessionFields({ taskDescription: nextDescription });
+      sessionActions.setSessionModified(true);
+      onInteraction?.();
+    }
+  }, [historyIndex, history, sessionActions, onInteraction]);
+
+  // Can undo/redo checks
+  const canUndo = historyIndex > 0;
+  const canRedo = historyIndex < history.length - 1;
+
   return useMemo(
     () => ({
-      isImprovingText,
-      textImprovementJobId,
+      isRefiningTask,
       taskCopySuccess,
       taskDescriptionRef,
+      canUndo,
+      canRedo,
 
       // Actions
-      handleImproveSelection,
+      handleRefineTask,
       copyTaskDescription,
       reset,
+      undo,
+      redo,
+      saveToHistory,
     }),
     [
-      isImprovingText,
-      textImprovementJobId,
+      isRefiningTask,
       taskCopySuccess,
       taskDescriptionRef,
-      handleImproveSelection,
+      canUndo,
+      canRedo,
+      handleRefineTask,
       copyTaskDescription,
       reset,
+      undo,
+      redo,
+      saveToHistory,
     ]
   );
 }

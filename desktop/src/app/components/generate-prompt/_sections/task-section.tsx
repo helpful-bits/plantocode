@@ -1,9 +1,7 @@
 "use client";
 
-import { Sparkles } from "lucide-react";
 import React, { useCallback } from "react";
-
-import { Button } from "@/ui/button";
+import { Sparkles } from "lucide-react";
 
 import VoiceTranscription from "../_components/voice-transcription";
 import TaskDescriptionArea from "../_components/task-description";
@@ -13,6 +11,8 @@ import {
   useSessionStateContext, 
   useSessionActionsContext 
 } from "@/contexts/session";
+import { Button } from "@/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/ui/tooltip";
 
 interface TaskSectionProps {
   disabled?: boolean;
@@ -32,11 +32,18 @@ const TaskSection = React.memo(function TaskSection({
 
   const {
     taskDescriptionRef,
-    isGeneratingGuidance,
-    isImprovingText,
+    isRefiningTask,
+    canUndo,
+    canRedo,
+    tokenEstimate,
   } = taskState;
 
-  const { handleGenerateGuidance, handleImproveSelection } = taskActions;
+  const { 
+    // New actions for task refinement and undo/redo
+    handleRefineTask,
+    undo,
+    redo,
+  } = taskActions;
   
   // Optimized session update - only update session state, no redundant processing
   const handleTaskChange = useCallback((value: string) => {
@@ -48,13 +55,14 @@ const TaskSection = React.memo(function TaskSection({
     coreActions.handleInteraction();
   }, [sessionActions, coreActions]);
 
-  // Get included files count from session
-  const includedFilesCount = (sessionState.currentSession?.includedFiles || []).length;
 
   // Handler for transcribed text from voice input
   const handleTranscribedText = (text: string) => {
     handleTaskChange(text);
   };
+
+  // Calculate if refine task should be shown based on estimated tokens
+  const shouldShowRefineTask = (tokenEstimate?.totalTokens ?? 0) > 100000;
 
   return (
     <div className="border border-border/60 rounded-lg p-5 bg-card shadow-sm w-full min-h-[300px]">
@@ -64,62 +72,58 @@ const TaskSection = React.memo(function TaskSection({
         onChange={handleTaskChange}
         onInteraction={coreActions.handleInteraction}
         onBlur={sessionActions.flushSaves}
-        isImproving={isImprovingText || false}
-        onImproveSelection={handleImproveSelection}
         disabled={disabled}
+        // New props for undo/redo
+        canUndo={canUndo}
+        canRedo={canRedo}
+        onUndo={undo}
+        onRedo={redo}
       />
 
-      <div className="flex justify-between items-start mt-4">
-        <div className="flex items-start gap-4">
-          <div className="flex flex-col">
-            <Button
-              type="button"
-              variant={!(sessionState.currentSession?.taskDescription || "").trim() ? "destructive" : "secondary"}
-              size="sm"
-              onClick={() => handleGenerateGuidance()}
-              disabled={!(sessionState.currentSession?.taskDescription || "").trim() || disabled}
-              isLoading={isGeneratingGuidance}
-              loadingText="Generating Guidance..."
-              title={
-                !(sessionState.currentSession?.taskDescription || "").trim()
-                  ? "Enter a task description first"
-                  : isGeneratingGuidance
-                    ? "Generating guidance..."
-                    : includedFilesCount === 0
-                      ? "No files selected - guidance may be limited"
-                      : `Analyze ${includedFilesCount} selected files to generate architectural guidance`
-              }
-              className="h-9"
-            >
-              {!(sessionState.currentSession?.taskDescription || "").trim() ? (
-                <>Task Description Required</>
-              ) : (
-                <>
-                  <Sparkles className="h-4 w-4 mr-2" />
-                  Get Architectural Guidance
-                </>
-              )}
-            </Button>
-            <p className="text-xs text-muted-foreground mt-1 text-balance">
-              {!(sessionState.currentSession?.taskDescription || "").trim() ? (
-                <span className="text-destructive">
-                  Please enter a task description above to enable this feature.
-                </span>
-              ) : (
-                "Analyzes task description and selected files (if any) to provide high-level implementation guidance."
-              )}
-            </p>
-          </div>
-        </div>
-
-        <div className="ml-4">
-          <VoiceTranscription
-            onTranscribed={handleTranscribedText}
-            onInteraction={coreActions.handleInteraction}
-            textareaRef={taskDescriptionRef || undefined}
+      {/* Refine Task button - only shown when tokens exceed 30,000 */}
+      {shouldShowRefineTask && (
+        <div className="mt-4">
+          <Button
+            variant="default"
+            size="sm"
+            onClick={handleRefineTask}
             disabled={disabled}
-          />
+            isLoading={isRefiningTask}
+            loadingText="AI is refining..."
+            className="w-full"
+          >
+            <>
+              <Sparkles className="h-4 w-4 mr-2" />
+              Refine Task with AI
+            </>
+          </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <p className="text-xs text-muted-foreground mt-2 text-center">
+                <span className="underline decoration-dashed cursor-help">
+                  The estimated prompt size (task + files) is large ({tokenEstimate?.totalTokens?.toLocaleString()} tokens). AI can help refine it for better results.
+                </span>
+              </p>
+            </TooltipTrigger>
+            {tokenEstimate && (
+              <TooltipContent>
+                <div>
+                  System Prompt (files, etc.): {tokenEstimate.systemPromptTokens.toLocaleString()} tokens<br />
+                  User Prompt (task): {tokenEstimate.userPromptTokens.toLocaleString()} tokens
+                </div>
+              </TooltipContent>
+            )}
+          </Tooltip>
         </div>
+      )}
+
+      <div className="flex justify-end items-start mt-2">
+        <VoiceTranscription
+          onTranscribed={handleTranscribedText}
+          onInteraction={coreActions.handleInteraction}
+          textareaRef={taskDescriptionRef || undefined}
+          disabled={disabled}
+        />
       </div>
     </div>
   );

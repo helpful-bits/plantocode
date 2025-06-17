@@ -378,14 +378,15 @@ pub async fn estimate_path_finder_tokens_command(
         .compose_prompt(&context, &app_handle)
         .await?;
     
-    // Estimate the number of tokens in the final prompt
-    let estimated_prompt_tokens = composed_prompt.estimated_tokens.unwrap_or(0) as u32;
+    let estimated_system_tokens = composed_prompt.estimated_system_tokens.unwrap_or(0) as u32;
+    let estimated_user_tokens = composed_prompt.estimated_user_tokens.unwrap_or(0) as u32;
+    let estimated_total_tokens = composed_prompt.estimated_total_tokens.unwrap_or(0) as u32;
     
     Ok(TokenEstimateResponse {
-        estimated_tokens: estimated_prompt_tokens,
-        system_prompt_tokens: 0, // The processor sends this as a single user message
-        user_prompt_tokens: estimated_prompt_tokens,
-        total_tokens: estimated_prompt_tokens,
+        estimated_tokens: estimated_total_tokens,
+        system_prompt_tokens: estimated_system_tokens,
+        user_prompt_tokens: estimated_user_tokens,
+        total_tokens: estimated_total_tokens,
     })
 }
 

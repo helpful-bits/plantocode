@@ -302,7 +302,7 @@ const VoiceTranscription = function VoiceTranscription({
     <div className="inline-flex flex-col gap-3 border border-border/60 rounded-xl p-6 bg-card/95 backdrop-blur-sm shadow-soft max-w-fit">
       <div className="flex items-center justify-between">
         <div className="font-semibold text-foreground mr-2">
-          Record Description:
+          Record Description
         </div>
         <Button
           type="button"

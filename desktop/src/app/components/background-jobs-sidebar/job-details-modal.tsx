@@ -258,7 +258,7 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
         "guidanceData", // Task-specific data shown in response
         "implementationPlanData", // Task-specific data shown in response
         "textImprovementData", // Task-specific data shown in response
-        "taskEnhancementData", // Task-specific data shown in response
+        "taskRefinementData", // Task-specific data shown in response
         "targetField", // This is shown separately in MetadataSection
         // Streaming fields already displayed in progress section
         "isStreaming",
@@ -372,7 +372,7 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
         "file_finder_workflow",
         // Other structured JSON tasks
         "regex_pattern_generation", "regex_summary_generation", "guidance_generation",
-        "task_enhancement", "text_correction"
+        "text_improvement"
       ];
       return structuredTaskTypes.includes(taskType);
     };

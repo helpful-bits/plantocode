@@ -11,10 +11,10 @@ export type TaskType =
   | "implementation_plan"
   | "path_finder" 
   | "voice_transcription"
-  | "text_correction"
+  | "text_improvement"
   | "path_correction"
   | "guidance_generation"
-  | "task_enhancement"
+  | "task_refinement"
   | "generic_llm_stream"
   | "regex_pattern_generation"
   | "file_finder_workflow"
@@ -30,10 +30,10 @@ export type TaskTypeSupportingSystemPrompts =
   | "path_finder"
   | "voice_transcription"
   | "guidance_generation"
-  | "text_correction"
+  | "text_improvement"
   | "implementation_plan"
   | "path_correction"
-  | "task_enhancement"
+  | "task_refinement"
   | "regex_pattern_generation"
   | "generic_llm_stream"
   | "extended_path_finder"
@@ -44,10 +44,10 @@ export const ALL_TASK_TYPES: readonly TaskType[] = [
   "implementation_plan",
   "path_finder",
   "voice_transcription",
-  "text_correction",
+  "text_improvement",
   "path_correction",
   "guidance_generation",
-  "task_enhancement",
+  "task_refinement",
   "generic_llm_stream",
   "regex_pattern_generation",
   "file_finder_workflow",
@@ -63,10 +63,10 @@ export const SYSTEM_PROMPT_TASK_TYPES: readonly TaskTypeSupportingSystemPrompts[
   "path_finder",
   "voice_transcription",
   "guidance_generation",
-  "text_correction",
+  "text_improvement",
   "implementation_plan",
   "path_correction",
-  "task_enhancement",
+  "task_refinement",
   "regex_pattern_generation",
   "generic_llm_stream",
   "extended_path_finder",
@@ -122,11 +122,11 @@ export const TaskTypeDetails: Record<TaskType, {
     apiType: "llm",
     defaultProvider: "openai"
   },
-  text_correction: { 
+  text_improvement: { 
     requiresLlm: true, 
-    displayName: "Text Correction", 
+    displayName: "Text Improvement", 
     category: "Text Processing",
-    description: "Correct and improve text for accuracy and clarity",
+    description: "Improve and enhance text for accuracy and clarity",
     defaultProvider: "anthropic"
   },
   path_correction: { 
@@ -141,13 +141,14 @@ export const TaskTypeDetails: Record<TaskType, {
     displayName: "AI Guidance", 
     category: "Development",
     description: "Generate contextual guidance for your tasks",
+    hidden: true,
     defaultProvider: "google"
   },
-  task_enhancement: { 
+  task_refinement: { 
     requiresLlm: true, 
-    displayName: "Task Enhancement", 
-    category: "General",
-    hidden: true,
+    displayName: "Task Refinement", 
+    category: "Development",
+    description: "Refine and improve task descriptions with better clarity and specificity",
     defaultProvider: "google"
   },
   generic_llm_stream: { 

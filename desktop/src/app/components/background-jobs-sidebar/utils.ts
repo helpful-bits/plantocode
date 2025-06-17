@@ -4,61 +4,37 @@ import { formatTimeAgo as formatTimeAgoUtil } from "@/utils/date-utils";
 
 /**
  * Helper function to safely parse job metadata
- * Handles the modern JobWorkerMetadata structure (allows additional fields)
- * Ensures all UI components consistently use the standardized JobMetadata interface
+ * Simplified to be more robust - returns any valid object or parsed JSON
+ * Lets consuming components handle property presence/absence
  */
 export const getParsedMetadata = (
   metadataInput: JobMetadata | string | null | undefined
 ): JobMetadata | null => {
   if (!metadataInput) return null;
   
-  // If already an object, check if it's the modern JobWorkerMetadata structure
+  // If already an object, return it directly
   if (typeof metadataInput === 'object' && metadataInput !== null) {
-    const metadata = metadataInput as any;
-    
-    // Accept simplified JobUIMetadata structure
-    if (metadata.jobPayloadForWorker) {
-      return metadata as JobMetadata;
-    }
-    
-    // Invalid or outdated metadata format
-    console.warn("Invalid metadata format - only modern JobWorkerMetadata structure is supported:", metadata);
-    return null;
+    return metadataInput as JobMetadata;
   }
   
-  // If string, attempt to parse as JSON (must be JobWorkerMetadata format)
+  // If string, attempt to parse as JSON
   if (typeof metadataInput === 'string') {
     // Handle empty strings gracefully
     if (metadataInput.trim() === '') {
       return null;
     }
     
-    // Check if string looks like JSON (starts with { or [)
-    const trimmed = metadataInput.trim();
-    if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) {
-      console.warn("Metadata string is not JSON format:", metadataInput.substring(0, 100));
-      return null;
-    }
-    
     try {
       const parsed = JSON.parse(metadataInput);
       
-      // Validate that parsed result is an object and not null
-      if (!parsed || typeof parsed !== 'object') {
-        console.warn("Parsed metadata is not a valid object:", parsed);
-        return null;
-      }
-      
-      // Accept simplified JobUIMetadata structure
-      if (parsed.jobPayloadForWorker) {
+      // Return parsed result if it's a valid object
+      if (parsed && typeof parsed === 'object') {
         return parsed as JobMetadata;
       }
       
-      // Invalid or outdated metadata format
-      console.warn("Invalid metadata format - only modern JobWorkerMetadata structure is supported:", parsed);
       return null;
     } catch (e) {
-      console.warn("Failed to parse job metadata JSON string:", e instanceof Error ? e.message : String(e), "String preview:", metadataInput.substring(0, 100));
+      console.warn("Failed to parse job metadata JSON string:", e instanceof Error ? e.message : String(e));
       return null;
     }
   }

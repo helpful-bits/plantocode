@@ -48,6 +48,8 @@ export interface VirtualizedCodeViewerProps {
   onChange?: (value: string | undefined) => void;
   /** Custom content size warning threshold */
   warningThreshold?: number;
+  /** Whether to enable text improvement integration */
+  enableTextImprovement?: boolean;
 }
 
 // Hook to resolve the current theme, handling "system" preference
@@ -92,6 +94,11 @@ const detectLanguage = (content: string): string => {
   return "plaintext";
 };
 
+// Global registry for Monaco editor instances to support text improvement
+if (typeof window !== 'undefined') {
+  (window as any).monacoEditorRegistry = (window as any).monacoEditorRegistry || new Map();
+}
+
 const VirtualizedCodeViewer = forwardRef<HTMLDivElement, VirtualizedCodeViewerProps>(
   ({
     content,
@@ -113,6 +120,7 @@ const VirtualizedCodeViewer = forwardRef<HTMLDivElement, VirtualizedCodeViewerPr
     editorOptions = {},
     onChange,
     warningThreshold = 100000, // 100KB
+    enableTextImprovement = false,
     ...props
   }, ref) => {
     const [editorContainerRef, setEditorContainerRef] = useState<HTMLDivElement | null>(null);
@@ -211,6 +219,37 @@ const VirtualizedCodeViewer = forwardRef<HTMLDivElement, VirtualizedCodeViewerPr
           links: false,
           folding: false,
         });
+      }
+
+      // Register editor for text improvement if enabled AND editor is editable
+      if (enableTextImprovement && !readOnly && typeof window !== 'undefined') {
+        const registry = (window as any).monacoEditorRegistry;
+        const editorId = `monaco-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        registry.set(editorId, editor);
+
+        // Set up selection change listener for text improvement
+        const selectionListener = editor.onDidChangeCursorSelection(() => {
+          const selection = editor.getSelection();
+          if (selection && !selection.isEmpty()) {
+            // Double-check editor is still editable before showing popover
+            const isReadOnly = editor.getOptions().get('readOnly');
+            if (!isReadOnly) {
+              // Trigger custom event for text improvement detection
+              setTimeout(() => {
+                const event = new CustomEvent('monaco-selection-change', {
+                  detail: { editor, selection, editorId }
+                });
+                document.dispatchEvent(event);
+              }, 50);
+            }
+          }
+        });
+
+        // Cleanup on unmount
+        return () => {
+          registry.delete(editorId);
+          selectionListener.dispose();
+        };
       }
     };
 

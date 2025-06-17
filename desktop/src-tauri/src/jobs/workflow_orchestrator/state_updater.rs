@@ -41,6 +41,11 @@ pub(super) fn update_intermediate_data_internal(
             } else {
                 warn!("FileRelevanceAssessment stage_data missing or invalid 'relevantFiles' field, keeping existing data");
             }
+            
+            workflow_state.intermediate_data.ai_filtered_files_token_count = stage_data
+                .get("tokenCount")
+                .and_then(|v| v.as_u64())
+                .and_then(|v| u32::try_from(v).ok());
         }
         WorkflowStage::ExtendedPathFinder => {
             if let Some(verified) = stage_data.get("verifiedPaths").and_then(|v| v.as_array()) {

@@ -4,9 +4,9 @@ import { type ActionState } from "@/types";
 import { handleActionError } from "@/utils/action-utils";
 
 /**
- * Creates a job to correct and improve text (consolidates voice correction and post-transcription correction)
+ * Creates a job to improve text quality and content
  */
-export async function createTextCorrectionJobAction(
+export async function createImproveTextJobAction(
   text: string,
   sessionId: string,
   originalJobId: string | null,
@@ -17,7 +17,7 @@ export async function createTextCorrectionJobAction(
     if (!text || !text.trim()) {
       return {
         isSuccess: false,
-        message: "No text provided for correction.",
+        message: "No text provided for improvement.",
       };
     }
 
@@ -25,17 +25,17 @@ export async function createTextCorrectionJobAction(
     if (!sessionId) {
       return {
         isSuccess: false,
-        message: "A valid session ID is required for text correction",
+        message: "A valid session ID is required for text improvement",
       };
     }
 
-    // Call the Tauri command to create a text correction job
+    // Call the Tauri command to create a text improvement job
     // Ensure projectDirectory is undefined if not available (matches Rust Option<String>)
     const result = await invoke<{ jobId: string }>(
-      "correct_text_command",
+      "improve_text_command",
       {
         sessionId: sessionId,
-        textToCorrect: text,
+        textToImprove: text,
         originalTranscriptionJobId: originalJobId ?? null,
         projectDirectory: projectDirectory ?? null,
       }
@@ -43,7 +43,7 @@ export async function createTextCorrectionJobAction(
 
     return {
       isSuccess: true,
-      message: "Text correction job started",
+      message: "Text improvement job started",
       data: { jobId: result.jobId },
       metadata: {
         jobId: result.jobId,
@@ -52,7 +52,7 @@ export async function createTextCorrectionJobAction(
       },
     };
   } catch (error) {
-    console.error("[TextCorrection] Error creating correction job:", error);
+    console.error("[TextImprovement] Error creating improvement job:", error);
     return handleActionError(error) as ActionState<{ jobId: string }>;
   }
 }

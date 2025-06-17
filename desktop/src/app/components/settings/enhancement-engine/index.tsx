@@ -6,14 +6,11 @@ import { BulkOperationPreviewModal } from "../bulk-operation-preview-modal";
 import {
   useSmartRecommendations,
   useBulkOperations,
-  useSettingsHistory,
-  useSettingsImportExport,
 } from "./hooks";
 import {
   CriticalIssuesAlert,
   RecommendationsPanel,
   BulkOperationsPanel,
-  ControlBar,
 } from "./components";
 import { type SmartRecommendation, type BulkOperation } from "./types";
 
@@ -45,18 +42,6 @@ export default function SettingsEnhancementEngine({
     applyOperation,
   } = useBulkOperations(taskSettings);
 
-  const {
-    history,
-    addToHistory,
-    undoLastChange,
-  } = useSettingsHistory();
-
-  const {
-    exportSettings,
-    importSettings,
-    fileInputRef,
-  } = useSettingsImportExport();
-
   const handleRecommendationApply = async (recommendation: SmartRecommendation) => {
     const newSettings = { ...taskSettings };
     const currentSettings = newSettings[recommendation.taskKey];
@@ -64,14 +49,6 @@ export default function SettingsEnhancementEngine({
     if (currentSettings && recommendation.fieldToChange) {
       (currentSettings as any)[recommendation.fieldToChange] = recommendation.recommendedValue;
       onSettingsChange(newSettings);
-      
-      addToHistory({
-        id: `rec-${Date.now()}`,
-        timestamp: new Date(),
-        description: `Applied recommendation: ${recommendation.title}`,
-        settings: newSettings,
-      });
-
       generateRecommendations();
     }
 
@@ -89,14 +66,6 @@ export default function SettingsEnhancementEngine({
   const handleOperationApply = async (operation: BulkOperation) => {
     const newSettings = await applyOperation(operation);
     onSettingsChange(newSettings);
-    
-    addToHistory({
-      id: `op-${Date.now()}`,
-      timestamp: new Date(),
-      description: `Applied bulk operation: ${operation.name}`,
-      settings: newSettings,
-    });
-
     generateRecommendations();
     setIsPreviewModalOpen(false);
     setSelectedOperation(null);
@@ -118,14 +87,6 @@ export default function SettingsEnhancementEngine({
         />
       )}
 
-      <ControlBar
-        recommendationsCount={recommendations.length}
-        canUndo={history.length > 0}
-        onToggleRecommendations={() => setShowRecommendations(!showRecommendations)}
-        onUndo={() => undoLastChange(onSettingsChange)}
-        onExport={() => exportSettings(taskSettings)}
-        onImport={() => fileInputRef.current?.click()}
-      />
 
       <RecommendationsPanel
         recommendations={recommendations}
@@ -149,13 +110,6 @@ export default function SettingsEnhancementEngine({
         onApply={handleOperationApply}
       />
 
-      <input
-        type="file"
-        ref={fileInputRef}
-        onChange={(e) => importSettings(e, onSettingsChange, addToHistory)}
-        accept=".json"
-        style={{ display: 'none' }}
-      />
     </div>
   );
 }

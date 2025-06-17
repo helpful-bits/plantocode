@@ -36,3 +36,6 @@ export {
   useSessionStateContext,
   useSessionActionsContext,
 } from "./session";
+
+// Text improvement system
+export * from "./text-improvement";
