@@ -12,19 +12,12 @@ interface TaskSectionProps {
     isGeneratingGuidance: boolean;
     projectDirectory: string;
     taskDescriptionRef: React.RefObject<TaskDescriptionHandle>;
-    isImprovingText?: boolean;
-    textImprovementJobId?: string | null;
   };
   actions: {
     handleTaskChange: (value: string) => void;
     handleTranscribedText: (text: string) => void;
     handleInteraction: () => void;
     triggerSave: () => void;
-    handleImproveSelection: (
-      selectedText: string,
-      selectionStart?: number,
-      selectionEnd?: number
-    ) => Promise<void>;
   };
   disabled?: boolean;
 }
@@ -47,7 +40,6 @@ const DiagnosticTaskSection = React.memo(function DiagnosticTaskSection({
     handleTaskChange,
     handleInteraction,
     triggerSave,
-    handleImproveSelection,
   } = actions;
 
   return (
@@ -59,8 +51,6 @@ const DiagnosticTaskSection = React.memo(function DiagnosticTaskSection({
         onChange={handleTaskChange}
         onInteraction={handleInteraction}
         onBlur={triggerSave}
-        isImproving={false}
-        onImproveSelection={handleImproveSelection}
         disabled={disabled}
       />
 

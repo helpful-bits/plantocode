@@ -9,46 +9,46 @@ use crate::jobs::types::JobPayload;
 
 
 
-// Request arguments for text correction command
+// Request arguments for text improvement command
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct CorrectTextArgs {
+pub struct ImproveTextArgs {
     pub session_id: String,
-    pub text_to_correct: String,
+    pub text_to_improve: String,
     pub original_transcription_job_id: Option<String>,
     pub project_directory: Option<String>,
 }
 
-// Command to correct text (consolidates voice correction and post-transcription correction)
+// Command to improve text (consolidates voice improvement and post-transcription improvement)
 #[command]
-pub async fn correct_text_command(
+pub async fn improve_text_command(
     session_id: String,
-    text_to_correct: String,
+    text_to_improve: String,
     original_transcription_job_id: Option<String>,
     project_directory: Option<String>,
     app_handle: AppHandle,
 ) -> AppResult<JobCommandResponse> {
-    let args = CorrectTextArgs {
+    let args = ImproveTextArgs {
         session_id,
-        text_to_correct,
+        text_to_improve,
         original_transcription_job_id,
         project_directory,
     };
-    info!("Creating text correction job");
+    info!("Creating text improvement job");
     
     // Validate required fields
     if args.session_id.is_empty() {
         return Err(AppError::ValidationError("Session ID is required".to_string()));
     }
     
-    if args.text_to_correct.is_empty() {
-        return Err(AppError::ValidationError("Text to correct is required".to_string()));
+    if args.text_to_improve.is_empty() {
+        return Err(AppError::ValidationError("Text to improve is required".to_string()));
     }
     
     
     // Create the job payload
-    let payload = crate::jobs::types::TextCorrectionPayload {
-        text_to_correct: args.text_to_correct.clone(),
+    let payload = crate::jobs::types::TextImprovementPayload {
+        text_to_improve: args.text_to_improve.clone(),
         original_transcription_job_id: args.original_transcription_job_id.clone(),
     };
     
@@ -56,7 +56,7 @@ pub async fn correct_text_command(
     let project_dir = args.project_directory.clone().unwrap_or_default();
     let model_settings = crate::utils::resolve_model_settings(
         &app_handle,
-        crate::models::TaskType::TextCorrection,
+        crate::models::TaskType::TextImprovement,
         &project_dir,
         None, // no model override for this command
         None, // no temperature override for this command
@@ -68,11 +68,11 @@ pub async fn correct_text_command(
         &args.session_id,
         &args.project_directory.clone().unwrap_or_default(),
         "openrouter",
-        crate::models::TaskType::TextCorrection,
-        "TEXT_CORRECTION",
-        &args.text_to_correct,
+        crate::models::TaskType::TextImprovement,
+        "TEXT_IMPROVEMENT",
+        &args.text_to_improve,
         model_settings,
-        JobPayload::TextCorrection(payload),
+        JobPayload::TextImprovement(payload),
         1, // Priority
         None, // No workflow_id
         None, // No workflow_stage
@@ -80,7 +80,7 @@ pub async fn correct_text_command(
         &app_handle,
     ).await?;
     
-    info!("Created text correction job: {}", job_id);
+    info!("Created text improvement job: {}", job_id);
     
     // Return the job ID
     Ok(JobCommandResponse { job_id })

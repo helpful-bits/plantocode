@@ -30,8 +30,8 @@ use self::processors::{
     ImplementationPlanProcessor,
     GuidanceGenerationProcessor,
     PathCorrectionProcessor,
-    TaskEnhancementProcessor,
-    TextCorrectionProcessor,
+    TaskRefinementProcessor,
+    TextImprovementProcessor,
     GenericLlmStreamProcessor,
     RegexPatternGenerationProcessor,
     // Individual workflow stage processors
@@ -68,8 +68,8 @@ pub async fn register_job_processors(app_handle: &AppHandle) -> AppResult<()> {
     let implementation_plan_processor = Arc::new(ImplementationPlanProcessor::new());
     let guidance_generation_processor = Arc::new(GuidanceGenerationProcessor::new());
     let path_correction_processor = Arc::new(PathCorrectionProcessor::new());
-    let task_enhancement_processor = Arc::new(TaskEnhancementProcessor::new());
-    let text_correction_processor = Arc::new(TextCorrectionProcessor::new());
+    let task_refinement_processor = Arc::new(TaskRefinementProcessor::new());
+    let text_improvement_processor = Arc::new(TextImprovementProcessor::new());
     let generic_llm_stream_processor = Arc::new(GenericLlmStreamProcessor::new());
     let regex_pattern_generation_processor = Arc::new(RegexPatternGenerationProcessor::new());
     // Individual workflow stage processors
@@ -83,8 +83,8 @@ pub async fn register_job_processors(app_handle: &AppHandle) -> AppResult<()> {
     registry.register(implementation_plan_processor).await;
     registry.register(guidance_generation_processor).await;
     registry.register(path_correction_processor).await;
-    registry.register(task_enhancement_processor).await;
-    registry.register(text_correction_processor).await;
+    registry.register(task_refinement_processor).await;
+    registry.register(text_improvement_processor).await;
     registry.register(generic_llm_stream_processor).await;
     registry.register(regex_pattern_generation_processor).await;
     // Individual workflow stage processors

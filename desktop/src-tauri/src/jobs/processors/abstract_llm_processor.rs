@@ -195,7 +195,9 @@ impl LlmTaskRunner {
                 user_prompt: context.task_description.clone(),
                 system_prompt_id: "override".to_string(),
                 context_sections: vec![], // No context sections for override
-                estimated_tokens: Some(crate::utils::token_estimator::estimate_tokens(&combined_content) as usize),
+                estimated_total_tokens: Some(crate::utils::token_estimator::estimate_tokens(&combined_content) as usize),
+                estimated_system_tokens: Some(0),
+                estimated_user_tokens: Some(crate::utils::token_estimator::estimate_tokens(&combined_content) as usize),
             });
         }
 

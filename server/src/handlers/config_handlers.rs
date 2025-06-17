@@ -31,6 +31,10 @@ pub struct DesktopRuntimeAIConfig {
     pub default_voice_model_id: String,
     /// Default transcription model ID
     pub default_transcription_model_id: String,
+    /// Default temperature setting
+    pub default_temperature: f32,
+    /// Default max tokens setting
+    pub default_max_tokens: u32,
     /// Task-specific configurations - LOADED DIRECTLY FROM DATABASE
     pub tasks: std::collections::HashMap<String, TaskSpecificModelConfig>,
     /// List of providers with their models - LOADED DIRECTLY FROM DATABASE
@@ -153,26 +157,22 @@ pub async fn get_desktop_runtime_ai_config(
         providers.push(transcription_provider);
     }
     
-    // Get task-specific configs directly from database (NO JSON!)
+    // Get consolidated AI model settings directly from database
     let task_configs = settings_repo.get_ai_model_settings().await
         .map_err(|e| AppError::Internal(format!("Failed to get AI settings from database: {}", e)))?;
     
-    // Convert task configs to response format
-    let tasks = task_configs.task_specific_configs.iter().map(|(task_key, config)| {
-        let task_config = TaskSpecificModelConfig {
-            model: config.model.clone(),
-            max_tokens: config.max_tokens,
-            temperature: config.temperature,
-        };
-        (task_key.clone(), task_config)
-    }).collect::<HashMap<String, TaskSpecificModelConfig>>();
-    
-    // Get default model IDs from database configurations
-    let default_llm_model_id = task_configs.default_llm_model_id;
-    let default_voice_model_id = task_configs.default_voice_model_id;
-    let default_transcription_model_id = task_configs.default_transcription_model_id;
-    
-    // Path finder settings from database
+    // Convert database types to response types
+    let tasks: std::collections::HashMap<String, TaskSpecificModelConfig> = task_configs.task_specific_configs
+        .into_iter()
+        .map(|(key, db_config)| {
+            (key, TaskSpecificModelConfig {
+                model: db_config.model,
+                max_tokens: db_config.max_tokens,
+                temperature: db_config.temperature,
+            })
+        })
+        .collect();
+
     let path_finder_settings = PathFinderSettings {
         max_files_with_content: task_configs.path_finder_settings.max_files_with_content,
         include_file_contents: task_configs.path_finder_settings.include_file_contents,
@@ -181,12 +181,14 @@ pub async fn get_desktop_runtime_ai_config(
         file_content_truncation_chars: task_configs.path_finder_settings.file_content_truncation_chars,
         token_limit_buffer: task_configs.path_finder_settings.token_limit_buffer,
     };
-    
+
     // Create the response with data DIRECTLY from database
     let response = DesktopRuntimeAIConfig {
-        default_llm_model_id,
-        default_voice_model_id,
-        default_transcription_model_id,
+        default_llm_model_id: task_configs.default_llm_model_id,
+        default_voice_model_id: task_configs.default_voice_model_id,
+        default_transcription_model_id: task_configs.default_transcription_model_id,
+        default_temperature: task_configs.default_temperature,
+        default_max_tokens: task_configs.default_max_tokens,
         tasks,
         providers,
         path_finder_settings,

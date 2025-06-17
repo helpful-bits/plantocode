@@ -170,10 +170,10 @@ pub enum TaskType {
     ImplementationPlan,
     PathFinder,
     VoiceTranscription,
-    TextCorrection,
+    TextImprovement,
     PathCorrection,
     GuidanceGeneration,
-    TaskEnhancement,
+    TaskRefinement,
     GenericLlmStream,
     RegexPatternGeneration,
     FileFinderWorkflow,
@@ -191,10 +191,10 @@ impl ToString for TaskType {
             TaskType::ImplementationPlan => "implementation_plan".to_string(),
             TaskType::PathFinder => "path_finder".to_string(),
             TaskType::VoiceTranscription => "voice_transcription".to_string(),
-            TaskType::TextCorrection => "text_correction".to_string(),
+            TaskType::TextImprovement => "text_improvement".to_string(),
             TaskType::PathCorrection => "path_correction".to_string(),
             TaskType::GuidanceGeneration => "guidance_generation".to_string(),
-            TaskType::TaskEnhancement => "task_enhancement".to_string(),
+            TaskType::TaskRefinement => "task_refinement".to_string(),
             TaskType::GenericLlmStream => "generic_llm_stream".to_string(),
             TaskType::RegexPatternGeneration => "regex_pattern_generation".to_string(),
             TaskType::FileFinderWorkflow => "file_finder_workflow".to_string(),
@@ -215,10 +215,10 @@ impl std::str::FromStr for TaskType {
             "implementation_plan" => Ok(TaskType::ImplementationPlan),
             "path_finder" => Ok(TaskType::PathFinder),
             "voice_transcription" => Ok(TaskType::VoiceTranscription),
-            "text_correction" => Ok(TaskType::TextCorrection),
+            "text_improvement" => Ok(TaskType::TextImprovement),
             "path_correction" => Ok(TaskType::PathCorrection),
             "guidance_generation" => Ok(TaskType::GuidanceGeneration),
-            "task_enhancement" => Ok(TaskType::TaskEnhancement),
+            "task_refinement" => Ok(TaskType::TaskRefinement),
             "generic_llm_stream" => Ok(TaskType::GenericLlmStream),
             "regex_pattern_generation" => Ok(TaskType::RegexPatternGeneration),
             "file_finder_workflow" => Ok(TaskType::FileFinderWorkflow),
@@ -245,10 +245,10 @@ impl TaskType {
             | TaskType::ExtendedPathFinder
             | TaskType::ImplementationPlan
             | TaskType::PathFinder
-            | TaskType::TextCorrection
+            | TaskType::TextImprovement
             | TaskType::PathCorrection
             | TaskType::GuidanceGeneration
-            | TaskType::TaskEnhancement
+            | TaskType::TaskRefinement
             | TaskType::GenericLlmStream
             | TaskType::RegexPatternGeneration => true,
             // Streaming and Unknown default to true for safety

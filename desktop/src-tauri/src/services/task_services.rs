@@ -3,7 +3,7 @@
 use tauri::{AppHandle, Manager};
 use serde::{Serialize, Deserialize};
 use crate::error::AppResult;
-use crate::commands::text_commands::CorrectTextArgs;
+use crate::commands::text_commands::ImproveTextArgs;
 use crate::models::{PathFinderRequestArgs, JobCommandResponse};
 use crate::db_utils::SessionRepository;
 use crate::jobs::types::{JobPayload, PathFinderPayload};

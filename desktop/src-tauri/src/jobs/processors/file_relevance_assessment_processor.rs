@@ -9,6 +9,7 @@ use crate::jobs::types::{Job, JobPayload, JobProcessResult, FileRelevanceAssessm
 use crate::jobs::job_processor_utils;
 use crate::jobs::processors::abstract_llm_processor::{LlmTaskRunner, LlmTaskConfig, LlmTaskConfigBuilder, LlmPromptContext};
 use crate::jobs::processors::utils::{fs_context_utils, response_parser_utils};
+use crate::utils::token_estimator::estimate_tokens_for_file_batch;
 
 pub struct FileRelevanceAssessmentProcessor;
 
@@ -138,6 +139,15 @@ impl JobProcessor for FileRelevanceAssessmentProcessor {
         info!("File relevance assessment validation: {} valid, {} invalid paths", 
             validated_relevant_paths.len(), invalid_relevant_paths.len());
         
+        // Calculate token count for validated relevant paths
+        let token_count = match estimate_tokens_for_file_batch(&std::path::Path::new(project_directory), &validated_relevant_paths).await {
+            Ok(count) => count,
+            Err(e) => {
+                error!("Failed to estimate tokens for file batch: {}", e);
+                0
+            }
+        };
+        
         // Check for cancellation after LLM processing using standardized utility
         if job_processor_utils::check_job_canceled(&repo, &job.id).await? {
             info!("Job {} has been canceled after LLM processing", job.id);
@@ -163,13 +173,14 @@ impl JobProcessor for FileRelevanceAssessmentProcessor {
                 validated_relevant_paths.len())
         });
         
-        // Create a JSON response string like {"relevantFiles": ["path1", "path2"], "count": 2}
+        // Create a JSON response string like {"relevantFiles": ["path1", "path2"], "count": 2, "tokenCount": 1234}
         let response_json_content = serde_json::json!({
             "relevantFiles": validated_relevant_paths,
             "count": validated_relevant_paths.len(),
             "summary": format!("File relevance assessment: {} initial files → {} validated relevant files", 
                 payload.locally_filtered_files.len(), 
-                validated_relevant_paths.len())
+                validated_relevant_paths.len()),
+            "tokenCount": token_count
         }).to_string();
         
         // Call task_runner.finalize_success() with the JSON response, LLM usage, model name, and system prompt ID

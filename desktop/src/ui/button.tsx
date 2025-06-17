@@ -122,11 +122,6 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
     const buttonStyle = {
       transition: "all 200ms ease-in-out",
       position: "relative" as const,
-      // Prevent width changes during loading by maintaining original button width
-      ...(isLoading && { 
-        minWidth: "max-content",
-        width: "auto" 
-      }),
     };
 
     // Compute the loading state class

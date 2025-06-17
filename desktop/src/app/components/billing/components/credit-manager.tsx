@@ -19,7 +19,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/ui/alert";
 import { Badge } from "@/ui/badge";
 import { getErrorMessage } from "@/utils/error-handling";
-import { getCreditBalance, getCreditPacks, createCreditPurchaseIntent, type CreditPack } from "@/actions/billing/credit.actions";
+import { getCreditDetails, getCreditPacks, createCreditPurchaseIntent, type CreditPack } from "@/actions/billing/credit.actions";
 import { 
   isValidCreditPackId, 
   validateRateLimit,
@@ -42,12 +42,347 @@ export interface CreditManagerProps {
   onClose: () => void;
 }
 
+// Internal component for credit pack selection
+const CreditPackSelection = ({
+  balance,
+  currency,
+  creditPacks,
+  isLoading,
+  error,
+  selectedPackId,
+  setSelectedPackId,
+  isPurchasing,
+  savePaymentMethod,
+  setSavePaymentMethod,
+  onRefresh,
+  onClose,
+  onPurchase
+}: {
+  balance: number;
+  currency: string;
+  creditPacks: CreditPack[];
+  isLoading: boolean;
+  error: string | null;
+  selectedPackId: string | null;
+  setSelectedPackId: (id: string | null) => void;
+  isPurchasing: boolean;
+  savePaymentMethod: boolean;
+  setSavePaymentMethod: (save: boolean) => void;
+  onRefresh: () => void;
+  onClose: () => void;
+  onPurchase: () => void;
+}) => {
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: currency,
+    }).format(amount);
+  };
+
+  const selectedPack = creditPacks?.find(pack => pack.id === selectedPackId);
+
+  return (
+    <>
+      <DialogHeader>
+        <DialogTitle className="flex items-center gap-2">
+          <CreditCard className="h-5 w-5" />
+          Credit Manager
+        </DialogTitle>
+        <DialogDescription>
+          View your credit balance and purchase additional credits.
+        </DialogDescription>
+      </DialogHeader>
+
+      {error && (
+        <Alert variant="destructive">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertTitle>Error</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+
+      {isLoading ? (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-6 w-6 animate-spin mr-2" />
+          Loading credit information...
+        </div>
+      ) : (
+        <div className="space-y-6">
+          <Card className="hover-card">
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <CreditCard className="h-5 w-5 text-blue-500" />
+                Current Balance
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-center space-y-3">
+                <div className="text-4xl font-bold text-blue-600 mb-2 transition-all duration-300">
+                  {formatCurrency(balance)}
+                </div>
+                <p className="text-muted-foreground">
+                  Available for AI service overages
+                </p>
+                {balance > 0 && (
+                  <div className="inline-flex items-center gap-1 px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm">
+                    <CheckCircle className="h-4 w-4" />
+                    Credits Available
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="hover-card">
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <ShoppingCart className="h-5 w-5 text-green-500" />
+                Purchase Additional Credits
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {!creditPacks || creditPacks.length === 0 ? (
+                <div className="text-center py-8">
+                  <CreditCard className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                  <h3 className="text-lg font-medium mb-2">No Credit Packs Available</h3>
+                  <p className="text-muted-foreground">
+                    Credit purchasing is currently unavailable. Please try again later.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {creditPacks?.map((pack) => (
+                      <Card 
+                        key={pack.id} 
+                        className={`cursor-pointer transition-all duration-300 border-2 relative hover-card ${
+                          selectedPackId === pack.id 
+                            ? 'border-primary bg-blue-50/50' 
+                            : 'border-border'
+                        } ${pack.recommended ? 'ring-2 ring-yellow-400 ring-offset-2' : ''}`}
+                        onClick={() => setSelectedPackId(pack.id)}
+                      >
+                        {pack.recommended && (
+                          <div className="absolute -top-3 left-1/2 transform -translate-x-1/2">
+                            <Badge className="bg-yellow-500 text-yellow-900">
+                              <Star className="h-3 w-3 mr-1" />
+                              Recommended
+                            </Badge>
+                          </div>
+                        )}
+                        
+                        <CardContent className="p-5">
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-3">
+                                <h3 className="font-semibold text-lg">{sanitizeHtml(pack.name)}</h3>
+                              </div>
+                              <div className="space-y-2">
+                                <div className="text-center mb-3">
+                                  <p className="text-2xl font-bold text-blue-600">
+                                    {formatCurrency(pack.valueCredits)}
+                                  </p>
+                                  <p className="text-xs text-muted-foreground">credits</p>
+                                </div>
+                                <div className="text-center">
+                                  <p className="text-lg font-semibold">
+                                    {formatCurrency(pack.priceAmount)}
+                                  </p>
+                                  {pack.bonusPercentage && pack.bonusPercentage > 0 && (
+                                    <p className="text-xs text-green-600 font-medium mt-1">
+                                      +{pack.bonusPercentage}% bonus included!
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                            {selectedPackId === pack.id && (
+                              <div className="absolute top-3 right-3">
+                                <div className="bg-blue-500 rounded-full p-1">
+                                  <Check className="h-4 w-4 text-white" />
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+
+                  {selectedPack && (
+                    <Card className="bg-muted/50">
+                      <CardContent className="p-4">
+                        <h4 className="font-medium mb-2">Purchase Summary</h4>
+                        <div className="space-y-2 text-sm">
+                          <div className="flex justify-between">
+                            <span>Credit pack:</span>
+                            <span className="font-medium">{selectedPack.name}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Credits:</span>
+                            <span className="font-medium">
+                              {formatCurrency(selectedPack.valueCredits)}
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Price:</span>
+                            <span className="font-medium">
+                              {formatCurrency(selectedPack.priceAmount)}
+                            </span>
+                          </div>
+                          {selectedPack.bonusPercentage && selectedPack.bonusPercentage > 0 && (
+                            <div className="flex justify-between text-green-600">
+                              <span>Bonus:</span>
+                              <span className="font-medium">+{selectedPack.bonusPercentage}%</span>
+                            </div>
+                          )}
+                          <div className="border-t pt-2 flex justify-between font-medium">
+                            <span>New balance after purchase:</span>
+                            <span>
+                              {formatCurrency(balance + selectedPack.valueCredits)}
+                            </span>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      id="savePaymentMethod"
+                      checked={savePaymentMethod}
+                      onChange={(e) => setSavePaymentMethod(e.target.checked)}
+                      className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+                    />
+                    <label htmlFor="savePaymentMethod" className="text-sm text-muted-foreground cursor-pointer">
+                      Save payment method for future purchases
+                    </label>
+                  </div>
+                </div>
+              )}
+              
+              <div className="flex gap-3 pt-4">
+                <Button 
+                  variant="outline" 
+                  onClick={onClose} 
+                  className="flex-1 transition-interactive"
+                  disabled={isPurchasing}
+                >
+                  Cancel
+                </Button>
+                <Button 
+                  onClick={onPurchase}
+                  disabled={!selectedPack || isPurchasing}
+                  className="flex-1 transition-interactive"
+                >
+                  {isPurchasing ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Setting up...
+                    </>
+                  ) : (
+                    <>
+                      <CreditCard className="h-4 w-4 mr-2" />
+                      Continue to Payment
+                    </>
+                  )}
+                </Button>
+              </div>
+
+              <div className="text-xs text-muted-foreground text-center pt-2">
+                <p>
+                  Secure payment processed by Stripe. Credits are added to your account instantly.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      <div className="flex justify-between pt-4 border-t">
+        <Button 
+          variant="outline" 
+          onClick={onRefresh} 
+          disabled={isLoading}
+          className="transition-interactive"
+        >
+          <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+          Refresh
+        </Button>
+        <Button 
+          variant="outline" 
+          onClick={onClose}
+          className="transition-interactive"
+        >
+          Close
+        </Button>
+      </div>
+    </>
+  );
+};
+
+// Internal component for credit payment form
+const CreditPaymentForm = ({
+  paymentIntent,
+  savePaymentMethod,
+  onSuccess,
+  onError,
+  onCancel
+}: {
+  paymentIntent: PaymentIntentResponse;
+  savePaymentMethod: boolean;
+  onSuccess: (paymentIntentId: string) => void;
+  onError: (error: string) => void;
+  onCancel: () => void;
+}) => {
+  return (
+    <StripeProvider>
+      <div className="space-y-4">
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onCancel}
+            className="flex items-center gap-1"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back to selection
+          </Button>
+        </div>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <CreditCard className="h-5 w-5" />
+              Complete Your Purchase
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <PaymentElementForm
+              clientSecret={paymentIntent.clientSecret}
+              amount={paymentIntent.amount}
+              currency={paymentIntent.currency}
+              description={paymentIntent.description}
+              savePaymentMethod={savePaymentMethod}
+              onSuccess={onSuccess}
+              onError={onError}
+              onCancel={onCancel}
+            />
+          </CardContent>
+        </Card>
+      </div>
+    </StripeProvider>
+  );
+};
+
 export const CreditManager = ({ 
   isOpen, 
   onClose
 }: CreditManagerProps) => {
   const [balance, setBalance] = useState<number>(0);
   const [currency, setCurrency] = useState<string>("USD");
+  const [transactions, setTransactions] = useState<Array<any>>([]);
   const [creditPacks, setCreditPacks] = useState<CreditPack[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -66,14 +401,15 @@ export const CreditManager = ({
       setIsLoading(true);
       setError(null);
       
-      const [balanceResult, packsResult] = await Promise.allSettled([
-        getCreditBalance(),
+      const [creditDetailsResult, packsResult] = await Promise.allSettled([
+        getCreditDetails(),
         getCreditPacks()
       ]);
       
-      if (balanceResult.status === 'fulfilled') {
-        setBalance(balanceResult.value.balance);
-        setCurrency(balanceResult.value.currency || 'USD');
+      if (creditDetailsResult.status === 'fulfilled') {
+        setBalance(creditDetailsResult.value.balance);
+        setCurrency(creditDetailsResult.value.currency || 'USD');
+        setTransactions(creditDetailsResult.value.transactions || []);
       }
       
       if (packsResult.status === 'fulfilled' && packsResult.value && Array.isArray(packsResult.value)) {
@@ -208,272 +544,31 @@ export const CreditManager = ({
     <Dialog open={isOpen} onOpenChange={handleClose}>
       <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
         {paymentFlow === 'selection' ? (
-          <>
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <CreditCard className="h-5 w-5" />
-                Credit Manager
-              </DialogTitle>
-              <DialogDescription>
-                View your credit balance and purchase additional credits.
-              </DialogDescription>
-            </DialogHeader>
-
-        {error && (
-          <Alert variant="destructive">
-            <AlertTriangle className="h-4 w-4" />
-            <AlertTitle>Error</AlertTitle>
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
-        )}
-
-        {isLoading ? (
-          <div className="flex items-center justify-center py-12">
-            <Loader2 className="h-6 w-6 animate-spin mr-2" />
-            Loading credit information...
-          </div>
+          <CreditPackSelection
+            balance={balance}
+            currency={currency}
+            creditPacks={creditPacks}
+            isLoading={isLoading}
+            error={error}
+            selectedPackId={selectedPackId}
+            setSelectedPackId={setSelectedPackId}
+            isPurchasing={isPurchasing}
+            savePaymentMethod={savePaymentMethod}
+            setSavePaymentMethod={setSavePaymentMethod}
+            onRefresh={handleRefresh}
+            onClose={handleClose}
+            onPurchase={handlePurchase}
+          />
         ) : (
-          <div className="space-y-6">
-            <Card className="transition-all duration-300 hover:shadow-lg">
-              <CardHeader>
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <CreditCard className="h-5 w-5 text-blue-500" />
-                  Current Balance
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-center space-y-3">
-                  <div className="text-4xl font-bold text-blue-600 mb-2 transition-all duration-300">
-                    {formatCurrency(balance)}
-                  </div>
-                  <p className="text-muted-foreground">
-                    Available for AI service overages
-                  </p>
-                  {balance > 0 && (
-                    <div className="inline-flex items-center gap-1 px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm">
-                      <CheckCircle className="h-4 w-4" />
-                      Credits Available
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="transition-all duration-300 hover:shadow-lg">
-              <CardHeader>
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <ShoppingCart className="h-5 w-5 text-green-500" />
-                  Purchase Additional Credits
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {!creditPacks || creditPacks.length === 0 ? (
-                  <div className="text-center py-8">
-                    <CreditCard className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                    <h3 className="text-lg font-medium mb-2">No Credit Packs Available</h3>
-                    <p className="text-muted-foreground">
-                      Credit purchasing is currently unavailable. Please try again later.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {creditPacks?.map((pack) => (
-                        <Card 
-                          key={pack.id} 
-                          className={`cursor-pointer transition-all duration-300 border-2 relative hover:shadow-lg ${
-                            selectedPackId === pack.id 
-                              ? 'border-blue-500 bg-blue-50/50 shadow-lg scale-105 ring-2 ring-blue-200' 
-                              : 'border-border hover:border-blue-300 hover:scale-102'
-                          } ${pack.recommended ? 'ring-2 ring-yellow-400 ring-offset-2' : ''}`}
-                          onClick={() => setSelectedPackId(pack.id)}
-                        >
-                          {pack.recommended && (
-                            <div className="absolute -top-3 left-1/2 transform -translate-x-1/2">
-                              <Badge className="bg-yellow-500 text-yellow-900">
-                                <Star className="h-3 w-3 mr-1" />
-                                Recommended
-                              </Badge>
-                            </div>
-                          )}
-                          
-                          <CardContent className="p-5">
-                            <div className="flex items-start justify-between">
-                              <div className="flex-1">
-                                <div className="flex items-center gap-2 mb-3">
-                                  <h3 className="font-semibold text-lg">{sanitizeHtml(pack.name)}</h3>
-                                </div>
-                                <div className="space-y-2">
-                                  <div className="text-center mb-3">
-                                    <p className="text-2xl font-bold text-blue-600">
-                                      {formatCurrency(pack.valueCredits)}
-                                    </p>
-                                    <p className="text-xs text-muted-foreground">credits</p>
-                                  </div>
-                                  <div className="text-center">
-                                    <p className="text-lg font-semibold">
-                                      {formatCurrency(pack.priceAmount)}
-                                    </p>
-                                    {pack.bonusPercentage && pack.bonusPercentage > 0 && (
-                                      <p className="text-xs text-green-600 font-medium mt-1">
-                                        +{pack.bonusPercentage}% bonus included!
-                                      </p>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-                              {selectedPackId === pack.id && (
-                                <div className="absolute top-3 right-3">
-                                  <div className="bg-blue-500 rounded-full p-1">
-                                    <Check className="h-4 w-4 text-white" />
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          </CardContent>
-                        </Card>
-                      ))}
-                    </div>
-
-                    {selectedPack && (
-                      <Card className="bg-muted/50">
-                        <CardContent className="p-4">
-                          <h4 className="font-medium mb-2">Purchase Summary</h4>
-                          <div className="space-y-2 text-sm">
-                            <div className="flex justify-between">
-                              <span>Credit pack:</span>
-                              <span className="font-medium">{selectedPack.name}</span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span>Credits:</span>
-                              <span className="font-medium">
-                                {formatCurrency(selectedPack.valueCredits)}
-                              </span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span>Price:</span>
-                              <span className="font-medium">
-                                {formatCurrency(selectedPack.priceAmount)}
-                              </span>
-                            </div>
-                            {selectedPack.bonusPercentage && selectedPack.bonusPercentage > 0 && (
-                              <div className="flex justify-between text-green-600">
-                                <span>Bonus:</span>
-                                <span className="font-medium">+{selectedPack.bonusPercentage}%</span>
-                              </div>
-                            )}
-                            <div className="border-t pt-2 flex justify-between font-medium">
-                              <span>New balance after purchase:</span>
-                              <span>
-                                {formatCurrency(balance + selectedPack.valueCredits)}
-                              </span>
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    )}
-
-                    <div className="flex items-center space-x-2">
-                      <input
-                        type="checkbox"
-                        id="savePaymentMethod"
-                        checked={savePaymentMethod}
-                        onChange={(e) => setSavePaymentMethod(e.target.checked)}
-                        className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
-                      />
-                      <label htmlFor="savePaymentMethod" className="text-sm text-muted-foreground cursor-pointer">
-                        Save payment method for future purchases
-                      </label>
-                    </div>
-                  </div>
-                )}
-                
-                <div className="flex gap-3 pt-4">
-                  <Button 
-                    variant="outline" 
-                    onClick={handleClose} 
-                    className="flex-1 transition-all duration-200 hover:scale-105"
-                    disabled={isPurchasing}
-                  >
-                    Cancel
-                  </Button>
-                  <Button 
-                    onClick={handlePurchase}
-                    disabled={!selectedPack || isPurchasing}
-                    className="flex-1 transition-all duration-200 hover:scale-105 hover:shadow-md"
-                  >
-                    {isPurchasing ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        Setting up...
-                      </>
-                    ) : (
-                      <>
-                        <CreditCard className="h-4 w-4 mr-2" />
-                        Continue to Payment
-                      </>
-                    )}
-                  </Button>
-                </div>
-
-                <div className="text-xs text-muted-foreground text-center pt-2">
-                  <p>
-                    Secure payment processed by Stripe. Credits are added to your account instantly.
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        )}
-
-            <div className="flex justify-between pt-4 border-t">
-              <Button 
-                variant="outline" 
-                onClick={handleRefresh} 
-                disabled={isLoading}
-                className="transition-all duration-200 hover:scale-105"
-              >
-                <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
-                Refresh
-              </Button>
-              <Button 
-                variant="outline" 
-                onClick={handleClose}
-                className="transition-all duration-200 hover:scale-105"
-              >
-                Close
-              </Button>
-            </div>
-          </>
-        ) : (
-          <StripeProvider>
-            <div className="space-y-4">
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleBackToSelection}
-                  className="flex items-center gap-1"
-                >
-                  <ArrowLeft className="h-4 w-4" />
-                  Back to selection
-                </Button>
-              </div>
-
-              {paymentIntent && selectedPack && (
-                <PaymentElementForm
-                  clientSecret={paymentIntent.clientSecret}
-                  amount={paymentIntent.amount}
-                  currency={paymentIntent.currency}
-                  description={paymentIntent.description}
-                  savePaymentMethod={savePaymentMethod}
-                  onSuccess={handlePaymentSuccess}
-                  onError={handlePaymentError}
-                  onCancel={handleBackToSelection}
-                />
-              )}
-            </div>
-          </StripeProvider>
+          paymentIntent && (
+            <CreditPaymentForm
+              paymentIntent={paymentIntent}
+              savePaymentMethod={savePaymentMethod}
+              onSuccess={handlePaymentSuccess}
+              onError={handlePaymentError}
+              onCancel={handleBackToSelection}
+            />
+          )
         )}
       </DialogContent>
     </Dialog>

@@ -300,7 +300,7 @@ pub async fn send_payment_processing_error_alert(
     let alerting_service = AdminAlertingService::new();
     
     let alert = AdminAlert::new(
-        AlertSeverity::High,
+        AlertSeverity::Critical,
         AlertType::PaymentProcessingError,
         "Payment Processing Error".to_string(),
         format!(
@@ -310,7 +310,8 @@ pub async fn send_payment_processing_error_alert(
     )
     .with_metadata("payment_intent_id".to_string(), payment_intent_id.to_string())
     .with_metadata("customer_id".to_string(), customer_id.to_string())
-    .with_metadata("error_message".to_string(), error_message.to_string());
+    .with_metadata("error_message".to_string(), error_message.to_string())
+    .with_immediate_attention(true);
 
     alerting_service.send_alert(alert).await;
 }

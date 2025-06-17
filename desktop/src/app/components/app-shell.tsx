@@ -2,6 +2,7 @@
 
 
 import { DatabaseErrorHandler } from "@/ui";
+import { TextImprovementPopover } from "@/contexts/text-improvement";
 
 import { BackgroundJobsSidebar, Navigation } from "../client-components";
 
@@ -43,6 +44,9 @@ export function AppShell({ children }: { children: ReactNode }) {
 
       {/* Database error handler (displays in modal when there's a db issue) */}
       <DatabaseErrorHandler />
+      
+      {/* Text improvement popover for global text selection improvements */}
+      <TextImprovementPopover />
     </>
   );
 }

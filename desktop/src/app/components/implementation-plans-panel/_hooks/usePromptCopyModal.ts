@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { getImplementationPlanPromptAction } from "@/actions/ai/implementation-plan.actions";
+import { getPromptAction } from "@/actions/ai/prompt.actions";
 
 interface PromptData {
   systemPrompt: string;
@@ -43,7 +43,10 @@ export function usePromptCopyModal(): UsePromptCopyModalReturn {
     setPromptData(null);
 
     try {
-      const result = await getImplementationPlanPromptAction(params);
+      const result = await getPromptAction({
+        ...params,
+        taskType: "implementation_plan"
+      });
       
       if (result.isSuccess && result.data) {
         setPromptData(result.data);

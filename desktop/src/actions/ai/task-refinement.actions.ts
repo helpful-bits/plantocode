@@ -4,26 +4,18 @@ import { type ActionState } from "@/types";
 import { handleActionError } from "@/utils/action-utils";
 
 /**
- * Enhance a task description with more details and clarity
+ * Refine a task description to be more detailed and actionable
  */
-export async function enhanceTaskDescriptionAction({
+export async function refineTaskDescriptionAction({
   taskDescription,
-  projectContext,
   projectDirectory,
   sessionId,
-  targetField,
-  modelOverride,
-  temperatureOverride,
-  maxTokensOverride,
+  relevantFiles,
 }: {
   taskDescription: string;
-  projectContext?: string;
   projectDirectory?: string;
   sessionId: string;
-  targetField?: string;
-  modelOverride?: string;
-  temperatureOverride?: number;
-  maxTokensOverride?: number;
+  relevantFiles?: string[];
 }): Promise<ActionState<{ jobId: string }>> {
   try {
     if (!taskDescription || !taskDescription.trim()) {
@@ -33,10 +25,9 @@ export async function enhanceTaskDescriptionAction({
     if (!sessionId || typeof sessionId !== "string" || !sessionId.trim()) {
       return {
         isSuccess: false,
-        message: "Active session required to enhance task.",
+        message: "Active session required to refine task.",
       };
     }
-
 
     // If no projectDirectory provided, derive it from the session
     let finalProjectDirectory = projectDirectory;
@@ -53,34 +44,28 @@ export async function enhanceTaskDescriptionAction({
       }
     }
 
-    // Call the Tauri command for task enhancement
+    // Call the Tauri command for task refinement
     const result = await invoke<{ jobId: string }>(
-      "enhance_task_description_command",
+      "refine_task_description_command",
       {
         sessionId,
         taskDescription,
-        projectContext: projectContext ?? null,
-        projectDirectory: finalProjectDirectory ?? null,
-        targetField: targetField ?? null,
-        modelOverride: modelOverride ?? null,
-        temperatureOverride: temperatureOverride ?? null,
-        maxTokensOverride: maxTokensOverride ?? null,
+        relevantFiles: relevantFiles ?? [],
+        projectDirectory: finalProjectDirectory ?? "",
       }
     );
 
-
     return {
       isSuccess: true,
-      message: "Task enhancement job started",
+      message: "Task refinement job started",
       data: { jobId: result.jobId },
       metadata: {
         jobId: result.jobId,
-        targetField,
         isBackgroundJob: true,
       },
     };
   } catch (error) {
-    console.error(`[enhanceTaskDescriptionAction] Error:`, error);
+    console.error(`[refineTaskDescriptionAction] Error:`, error);
     return handleActionError(error) as ActionState<{ jobId: string }>;
   }
 }

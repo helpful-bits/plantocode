@@ -87,49 +87,52 @@ impl BackgroundJobRepository {
         let metadata_str = match current_metadata_str {
             Some(metadata_str) => {
                 if let Ok(mut ui_metadata) = serde_json::from_str::<crate::jobs::types::JobUIMetadata>(metadata_str) {
-                    // Update streaming info in task_data
-                    let streaming_info = serde_json::json!({
-                        "is_streaming": true,
-                        "last_stream_update_time": now,
-                        "response_length": current_total_response_length,
-                        "tokens_received": tokens_received
-                    });
-                    
+                    // Update streaming fields directly in task_data (flattened structure)
                     if let serde_json::Value::Object(ref mut task_map) = ui_metadata.task_data {
-                        task_map.insert("streaming_info".to_string(), streaming_info);
-                        
-                        // Note: Streaming progress calculation removed since max_output_tokens is no longer available
+                        task_map.insert("isStreaming".to_string(), serde_json::json!(true));
+                        task_map.insert("lastStreamUpdateTime".to_string(), serde_json::json!(now));
+                        task_map.insert("responseLength".to_string(), serde_json::json!(current_total_response_length));
+                        task_map.insert("tokensReceived".to_string(), serde_json::json!(tokens_received));
                         
                         // Add start time if not present
                         if !task_map.contains_key("stream_start_time") {
                             task_map.insert("stream_start_time".to_string(), serde_json::json!(now));
                         }
                     } else {
-                        ui_metadata.task_data = streaming_info;
+                        // If task_data is not an object, create it with flattened streaming fields
+                        ui_metadata.task_data = serde_json::json!({
+                            "isStreaming": true,
+                            "lastStreamUpdateTime": now,
+                            "responseLength": current_total_response_length,
+                            "tokensReceived": tokens_received,
+                            "stream_start_time": now
+                        });
                     }
                     
                     serde_json::to_string(&ui_metadata)
                         .map_err(|e| AppError::SerializationError(format!("Failed to serialize JobUIMetadata: {}", e)))?
                 } else {
-                    // Cannot parse as JobUIMetadata - create minimal streaming metadata
+                    // Cannot parse as JobUIMetadata - create minimal streaming metadata with flattened structure
                     serde_json::to_string(&serde_json::json!({
-                        "streaming_info": {
-                            "is_streaming": true,
-                            "last_stream_update_time": now,
-                            "response_length": current_total_response_length,
-                            "tokens_received": tokens_received
+                        "task_data": {
+                            "isStreaming": true,
+                            "lastStreamUpdateTime": now,
+                            "responseLength": current_total_response_length,
+                            "tokensReceived": tokens_received,
+                            "stream_start_time": now
                         }
                     })).unwrap()
                 }
             },
             None => {
-                // No metadata - create minimal streaming metadata
+                // No metadata - create minimal streaming metadata with flattened structure
                 serde_json::to_string(&serde_json::json!({
-                    "streaming_info": {
-                        "is_streaming": true,
-                        "last_stream_update_time": now,
-                        "response_length": current_total_response_length,
-                        "tokens_received": tokens_received
+                    "task_data": {
+                        "isStreaming": true,
+                        "lastStreamUpdateTime": now,
+                        "responseLength": current_total_response_length,
+                        "tokensReceived": tokens_received,
+                        "stream_start_time": now
                     }
                 })).unwrap()
             }

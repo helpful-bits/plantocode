@@ -551,8 +551,13 @@ impl ApiClient for ServerProxyClient {
                             } else if line.starts_with("retry: ") {
                                 // Handle SSE retry directives
                                 debug!("SSE retry directive: {}", &line[7..]);
+                            } else if line.starts_with(":") {
+                                // Handle SSE comment lines - ignore them silently
+                                trace!("SSE comment line: {}", line);
+                            } else {
+                                // Log unexpected line formats for debugging
+                                debug!("Unexpected SSE line format: '{}'", line);
                             }
-                            // Ignore other line types like comments (starting with :)
                         }
                     }
                     
@@ -698,8 +703,14 @@ impl ApiClient for ServerProxyClient {
                                 // Handle SSE event types
                                 debug!("SSE event type: {}", &line[7..]);
                             } else if line.starts_with("id: ") {
-                                // Handle SSE message IDs
-                                debug!("SSE message ID: {}", &line[4..]);
+                                // Handle SSE event IDs
+                                trace!("SSE event ID: {}", &line[4..]);
+                            } else if line.starts_with("retry: ") {
+                                // Handle SSE retry directives
+                                debug!("SSE retry directive: {}", &line[7..]);
+                            } else if line.starts_with(":") {
+                                // Handle SSE comment lines - ignore them silently
+                                trace!("SSE comment line: {}", line);
                             } else {
                                 // Log unexpected line formats for debugging
                                 debug!("Unexpected SSE line format: '{}'", line);

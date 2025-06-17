@@ -91,16 +91,18 @@ pub struct PathCorrectionPayload {
 }
 
 
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct TaskEnhancementPayload {
+pub struct TaskRefinementPayload {
     pub task_description: String,
+    pub relevant_files: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct TextCorrectionPayload {
-    pub text_to_correct: String,
+pub struct TextImprovementPayload {
+    pub text_to_improve: String,
     pub original_transcription_job_id: Option<String>,
 }
 
@@ -161,8 +163,8 @@ pub enum JobPayload {
     ImplementationPlan(ImplementationPlanPayload),
     GuidanceGeneration(GuidanceGenerationPayload),
     PathCorrection(PathCorrectionPayload),
-    TaskEnhancement(TaskEnhancementPayload),
-    TextCorrection(TextCorrectionPayload),
+    TaskRefinement(TaskRefinementPayload),
+    TextImprovement(TextImprovementPayload),
     GenericLlmStream(GenericLlmStreamPayload),
     RegexPatternGeneration(RegexPatternGenerationPayload),
     // Individual workflow stage payloads
