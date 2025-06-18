@@ -8,7 +8,7 @@ use crate::jobs::processor_trait::JobProcessor;
 use crate::jobs::types::{Job, JobPayload, JobProcessResult, FileRelevanceAssessmentPayload};
 use crate::jobs::job_processor_utils;
 use crate::jobs::processors::abstract_llm_processor::{LlmTaskRunner, LlmTaskConfig, LlmTaskConfigBuilder, LlmPromptContext};
-use crate::jobs::processors::utils::{fs_context_utils, response_parser_utils};
+use crate::jobs::processors::utils::fs_context_utils;
 use crate::utils::token_estimator::estimate_tokens_for_file_batch;
 
 pub struct FileRelevanceAssessmentProcessor;
@@ -17,7 +17,76 @@ impl FileRelevanceAssessmentProcessor {
     pub fn new() -> Self {
         Self
     }
-    
+
+    /// Parse paths from LLM text response with robust format handling
+    fn parse_paths_from_text_response(response_text: &str, project_directory: &str) -> AppResult<Vec<String>> {
+        let mut paths = Vec::new();
+        
+        // Normalize line endings
+        let normalized_text = response_text.replace("\r\n", "\n").replace("\r", "\n");
+        
+        // Split by newlines and process each line
+        for line in normalized_text.lines() {
+            let line = line.trim();
+            
+            // Filter out empty lines or lines that are clearly not paths
+            if line.is_empty()
+                || line.starts_with("//")
+                || line.starts_with("#")
+                || line.starts_with("Note:")
+                || line.starts_with("Analysis:")
+                || line.starts_with("Here are")
+                || line.starts_with("The following")
+                || line.starts_with("Based on")
+                || line.starts_with("```")
+                || line == "json"
+                || line == "JSON"
+                || line.len() < 2
+            {
+                continue;
+            }
+            
+            // Handle numbered lists (e.g., "1. path/to/file")
+            let line_without_numbers = if line.chars().next().map_or(false, |c| c.is_ascii_digit()) {
+                if let Some(dot_pos) = line.find('.') {
+                    line[dot_pos + 1..].trim()
+                } else {
+                    line
+                }
+            } else {
+                line
+            };
+            
+            // Handle bullet points (e.g., "- path/to/file", "* path/to/file")
+            let line_without_bullets = if line_without_numbers.starts_with("- ") || line_without_numbers.starts_with("* ") {
+                &line_without_numbers[2..]
+            } else {
+                line_without_numbers
+            };
+            
+            // Clean the line of potential prefixes/suffixes
+            let cleaned_path = line_without_bullets
+                .trim_matches(|c| {
+                    c == '\"' || c == '\'' || c == '`' || c == ',' || c == ':' || c == ';'
+                })
+                .trim();
+            
+            if !cleaned_path.is_empty() {
+                paths.push(cleaned_path.to_string());
+            }
+        }
+        
+        // Remove duplicates while preserving order
+        let mut unique_paths = Vec::new();
+        let mut seen = std::collections::HashSet::new();
+        for path in paths {
+            if seen.insert(path.clone()) {
+                unique_paths.push(path);
+            }
+        }
+        
+        Ok(unique_paths)
+    }
 }
 
 #[async_trait::async_trait]
@@ -110,21 +179,21 @@ impl JobProcessor for FileRelevanceAssessmentProcessor {
                 error!("{}", error_msg);
                 
                 // Finalize job failure using standardized utility
-                task_runner.finalize_failure(&repo, &job.id, &error_msg, Some(&e)).await?;
+                task_runner.finalize_failure(&repo, &job.id, &error_msg, Some(&e), None).await?;
                 
                 return Ok(JobProcessResult::failure(job.id.clone(), error_msg));
             }
         };
         
-        // Parse the LLM response (expected to be a list of file paths) using response_parser_utils
-        let relevant_paths = match response_parser_utils::parse_paths_from_text_response(&llm_result.response, project_directory) {
+        // Parse the LLM response (expected to be a list of file paths)
+        let relevant_paths = match Self::parse_paths_from_text_response(&llm_result.response, project_directory) {
             Ok(paths) => paths,
             Err(e) => {
                 let error_msg = format!("Failed to parse relevant file paths from LLM response: {}", e);
                 error!("{}", error_msg);
                 
                 // Finalize job failure using standardized utility
-                task_runner.finalize_failure(&repo, &job.id, &error_msg, Some(&e)).await?;
+                task_runner.finalize_failure(&repo, &job.id, &error_msg, Some(&e), None).await?;
                 
                 return Ok(JobProcessResult::failure(job.id.clone(), error_msg));
             }

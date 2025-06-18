@@ -35,7 +35,6 @@ use crate::models::runtime_config::AppState;
 use crate::services::auth::jwt;
 use crate::services::auth::oauth::Auth0OAuthService;
 use crate::services::billing_service::BillingService;
-use crate::services::proxy_service::ProxyService;
 use crate::services::credit_service::CreditService;
 use crate::routes::{configure_routes, configure_public_api_routes, configure_public_auth_routes, configure_webhook_routes};
 
@@ -275,23 +274,6 @@ async fn main() -> std::io::Result<()> {
         let cost_based_billing_service = billing_service.get_cost_based_billing_service().clone();
         let credit_service = CreditService::new(db_pools.clone());
         let api_usage_repository = std::sync::Arc::new(api_usage_repository);
-        let proxy_service = match ProxyService::new(
-            std::sync::Arc::new(billing_service.clone()),
-            api_usage_repository.clone(),
-            model_repository_for_proxy,
-            settings_repository_for_proxy,
-            &app_settings
-        ) {
-            Ok(service) => {
-                log::info!("Proxy service initialized successfully");
-                web::Data::new(service)
-            },
-            Err(e) => {
-                log::error!("Failed to initialize proxy service: {}", e);
-                log::error!("Cannot start server without working proxy service");
-                std::process::exit(1);
-            }
-        };
         
         // Configure CORS using actix-cors
         let mut cors = Cors::default()
@@ -376,7 +358,6 @@ async fn main() -> std::io::Result<()> {
             .app_data(web::Data::new(billing_service.clone()))
             .app_data(web::Data::new(cost_based_billing_service.as_ref().clone()))
             .app_data(web::Data::new(credit_service))
-            .app_data(proxy_service.clone())
             .app_data(app_state.clone())
             .app_data(tera.clone())
             .app_data(polling_store.clone())

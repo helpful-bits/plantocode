@@ -67,23 +67,38 @@ export function useTaskDescriptionState({
 
   // Save current description to history
   const saveToHistory = useCallback(async (description: string) => {
+    console.log('[TaskDescriptionState] saveToHistory called:', {
+      description: description?.substring(0, 50) + '...',
+      currentHistoryIndex: historyIndex,
+      historyLength: history.length,
+      lastHistoryItem: history[history.length - 1]?.substring(0, 50) + '...'
+    });
+    
     let newHistoryCreated = false;
+    let newIndex = historyIndex;
+    
     setHistory(prev => {
       const newHistory = prev.slice(0, historyIndex + 1);
-      if (newHistory[newHistory.length - 1] !== description) {
+      const lastItem = newHistory[newHistory.length - 1];
+      
+      if (lastItem !== description) {
         newHistory.push(description);
         newHistoryCreated = true;
+        newIndex = newHistory.length - 1;
+        console.log('[TaskDescriptionState] New history entry created:', {
+          newIndex,
+          newHistoryLength: newHistory.length
+        });
         return newHistory;
+      } else {
+        console.log('[TaskDescriptionState] History entry skipped - duplicate');
       }
       return prev;
     });
-    setHistoryIndex(prev => {
-      const newHistory = history.slice(0, prev + 1);
-      if (newHistory[newHistory.length - 1] !== description) {
-        return prev + 1;
-      }
-      return prev;
-    });
+    
+    if (newHistoryCreated) {
+      setHistoryIndex(newIndex);
+    }
     
     if (newHistoryCreated && activeSessionId) {
       try {
@@ -92,7 +107,7 @@ export function useTaskDescriptionState({
         console.error('Failed to persist task description history:', error);
       }
     }
-  }, [history, historyIndex, activeSessionId]);
+  }, [historyIndex, activeSessionId, history]);
 
 
   // Task refinement job monitoring
@@ -102,23 +117,28 @@ export function useTaskDescriptionState({
     const job = taskRefinementJob.job;
     if (!job?.status) return;
 
-    if (job.status === "completed" && job.response && job.sessionId === activeSessionId) {
-      const refinedTask = String(job.response).trim();
-      if (refinedTask) {
-        // Save to history first, then replace entire task description
-        saveToHistory(sessionTaskDescription);
-        sessionActions.updateCurrentSessionFields({ taskDescription: refinedTask });
-        sessionActions.setSessionModified(true);
-        onInteraction?.();
-        showNotification({ title: "Task refined", message: "Task description has been refined.", type: "success" });
+    const handleJobCompletion = async () => {
+      if (job.status === "completed" && job.response && job.sessionId === activeSessionId) {
+        const refinedTask = String(job.response).trim();
+        if (refinedTask) {
+          console.log('[TaskDescriptionState] Task refinement completed, saving to history');
+          // Save to history first, then replace entire task description
+          await saveToHistory(sessionTaskDescription);
+          sessionActions.updateCurrentSessionFields({ taskDescription: refinedTask });
+          sessionActions.setSessionModified(true);
+          onInteraction?.();
+          showNotification({ title: "Task refined", message: "Task description has been refined.", type: "success" });
+        }
+        setIsRefiningTask(false);
+        setTaskRefinementJobId(undefined);
+      } else if ((job.status === "failed" || job.status === "canceled") && job.sessionId === activeSessionId) {
+        setIsRefiningTask(false);
+        setTaskRefinementJobId(undefined);
+        showNotification({ title: "Task refinement failed", message: job.errorMessage || "Failed to refine task description.", type: "error" });
       }
-      setIsRefiningTask(false);
-      setTaskRefinementJobId(undefined);
-    } else if ((job.status === "failed" || job.status === "canceled") && job.sessionId === activeSessionId) {
-      setIsRefiningTask(false);
-      setTaskRefinementJobId(undefined);
-      showNotification({ title: "Task refinement failed", message: job.errorMessage || "Failed to refine task description.", type: "error" });
-    }
+    };
+
+    handleJobCompletion();
   }, [taskRefinementJob.job?.status, taskRefinementJobId, isSwitchingSession, activeSessionId, onInteraction, showNotification, saveToHistory, sessionTaskDescription, sessionActions]);
 
 
@@ -229,7 +249,15 @@ export function useTaskDescriptionState({
 
     // Set new timer to save to history after user stops typing
     debounceTimerRef.current = window.setTimeout(() => {
-      if (sessionTaskDescription && sessionTaskDescription !== history[historyIndex]) {
+      const currentHistoryItem = history[historyIndex];
+      console.log('[TaskDescriptionState] Debounced history save check:', {
+        sessionTaskDescription: sessionTaskDescription?.substring(0, 50) + '...',
+        currentHistoryItem: currentHistoryItem?.substring(0, 50) + '...',
+        shouldSave: sessionTaskDescription && sessionTaskDescription !== currentHistoryItem
+      });
+      
+      if (sessionTaskDescription && sessionTaskDescription !== currentHistoryItem) {
+        console.log('[TaskDescriptionState] Saving to history via debounce');
         saveToHistory(sessionTaskDescription);
       }
     }, 1000); // 1 second debounce
@@ -281,31 +309,75 @@ export function useTaskDescriptionState({
 
   // Undo function
   const undo = useCallback(() => {
+    console.log('[TaskDescriptionState] Undo called:', { 
+      historyIndex, 
+      historyLength: history.length, 
+      canUndo: historyIndex > 0,
+      history: history.slice(-3) // Show last 3 items
+    });
+    
     if (historyIndex > 0) {
       const newIndex = historyIndex - 1;
       const previousDescription = history[newIndex];
+      console.log('[TaskDescriptionState] Undo executing:', { 
+        newIndex, 
+        previousDescription: previousDescription?.substring(0, 50) + '...' 
+      });
+      
       setHistoryIndex(newIndex);
       sessionActions.updateCurrentSessionFields({ taskDescription: previousDescription });
       sessionActions.setSessionModified(true);
       onInteraction?.();
+    } else {
+      console.log('[TaskDescriptionState] Undo blocked - no previous history available');
     }
   }, [historyIndex, history, sessionActions, onInteraction]);
 
   // Redo function
   const redo = useCallback(() => {
+    console.log('[TaskDescriptionState] Redo called:', { 
+      historyIndex, 
+      historyLength: history.length, 
+      canRedo: historyIndex < history.length - 1,
+      history: history.slice(-3) // Show last 3 items
+    });
+    
     if (historyIndex < history.length - 1) {
       const newIndex = historyIndex + 1;
       const nextDescription = history[newIndex];
+      console.log('[TaskDescriptionState] Redo executing:', { 
+        newIndex, 
+        nextDescription: nextDescription?.substring(0, 50) + '...' 
+      });
+      
       setHistoryIndex(newIndex);
       sessionActions.updateCurrentSessionFields({ taskDescription: nextDescription });
       sessionActions.setSessionModified(true);
       onInteraction?.();
+    } else {
+      console.log('[TaskDescriptionState] Redo blocked - no forward history available');
     }
   }, [historyIndex, history, sessionActions, onInteraction]);
 
   // Can undo/redo checks
   const canUndo = historyIndex > 0;
   const canRedo = historyIndex < history.length - 1;
+  
+  // Debug logging for undo/redo state
+  useEffect(() => {
+    console.log('[TaskDescriptionState] History state update:', {
+      historyIndex,
+      historyLength: history.length,
+      canUndo,
+      canRedo,
+      currentDescription: sessionTaskDescription?.substring(0, 50) + '...',
+      history: history.map((item, index) => ({
+        index,
+        content: item?.substring(0, 30) + '...',
+        isCurrent: index === historyIndex
+      }))
+    });
+  }, [historyIndex, history.length, canUndo, canRedo, sessionTaskDescription, history]);
 
   return useMemo(
     () => ({

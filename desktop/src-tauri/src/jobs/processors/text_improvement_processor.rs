@@ -117,7 +117,7 @@ impl JobProcessor for TextImprovementProcessor {
                 error!("{}", error_message);
                 
                 // Finalize job failure using task runner
-                task_runner.finalize_failure(&repo, &job.id, &error_message, Some(&e)).await?;
+                task_runner.finalize_failure(&repo, &job.id, &error_message, Some(&e), None).await?;
                 
                 // Return failure result
                 JobProcessResult::failure(job.id.to_string(), error_message)

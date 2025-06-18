@@ -164,26 +164,18 @@ CREATE INDEX IF NOT EXISTS idx_subscriptions_stripe_plan_id ON subscriptions(str
 CREATE INDEX IF NOT EXISTS idx_subscriptions_current_period_end ON subscriptions(current_period_end);
 CREATE INDEX IF NOT EXISTS idx_subscriptions_trial_end ON subscriptions(trial_end);
 CREATE INDEX IF NOT EXISTS idx_projects_owner_id ON projects(owner_id);
--- Spending alerts and notifications
-
 -- User preferences for currency and notifications
 CREATE TABLE IF NOT EXISTS user_preferences (
     user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
     preferred_currency VARCHAR(3) NOT NULL DEFAULT 'USD',
     timezone VARCHAR(50) DEFAULT 'UTC',
     locale VARCHAR(10) DEFAULT 'en-US',
-    cost_alerts_enabled BOOLEAN DEFAULT TRUE,
-    spending_alert_75_percent BOOLEAN DEFAULT TRUE,
-    spending_alert_90_percent BOOLEAN DEFAULT TRUE,
-    spending_alert_limit_reached BOOLEAN DEFAULT TRUE,
-    spending_alert_services_blocked BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW(),
     CONSTRAINT fk_user_preferences_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 CREATE INDEX IF NOT EXISTS idx_user_preferences_currency ON user_preferences(preferred_currency);
-CREATE INDEX IF NOT EXISTS idx_user_preferences_alerts ON user_preferences(cost_alerts_enabled);
 
 -- Create providers table for AI providers
 CREATE TABLE IF NOT EXISTS providers (
@@ -735,20 +727,20 @@ VALUES
   "default_max_tokens": 4096,
   "task_specific_configs": {
     "implementation_plan": {"model": "google/gemini-2.5-pro", "max_tokens": 65536, "temperature": 0.7, "copyButtons": [{"label": "Copy Full Plan", "content": "{{FULL_PLAN}}"}, {"label": "Copy for AI Agent", "content": "I need you to implement the following plan. Read it carefully and execute each step completely.\n\n{{FULL_PLAN}}\n\nPlease implement this plan step by step, ensuring you:\n1. Follow the exact file operations specified\n2. Maintain existing code patterns and conventions\n3. Test your changes thoroughly\n4. Ask for clarification if any step is unclear"}, {"label": "Copy Implementation Brief", "content": "Implementation Plan Summary:\n\n{{FULL_PLAN}}\n\nKey Points:\n- Follow the step-by-step approach outlined above\n- Maintain consistency with existing codebase patterns\n- Focus on the specific file operations mentioned\n- Ensure all changes integrate properly with the current architecture"}]},
-    "path_finder": {"model": "google/gemini-2.5-flash", "max_tokens": 8192, "temperature": 0.3},
-    "text_improvement": {"model": "anthropic/claude-sonnet-4", "max_tokens": 4096, "temperature": 0.7},
-    "voice_transcription": {"model": "openai/gpt-4o-transcribe", "max_tokens": 4096, "temperature": 0.0},
-    "text_correction": {"model": "anthropic/claude-sonnet-4", "max_tokens": 2048, "temperature": 0.5},
-    "path_correction": {"model": "google/gemini-2.5-flash", "max_tokens": 4096, "temperature": 0.3},
-    "regex_pattern_generation": {"model": "anthropic/claude-sonnet-4", "max_tokens": 1000, "temperature": 0.2},
-    "guidance_generation": {"model": "google/gemini-2.5-pro", "max_tokens": 8192, "temperature": 0.7},
-    "task_refinement": {"model": "google/gemini-2.5-flash", "max_tokens": 2048, "temperature": 0.3},
-    "extended_path_finder": {"model": "google/gemini-2.5-flash", "max_tokens": 8192, "temperature": 0.3},
-    "file_relevance_assessment": {"model": "google/gemini-2.5-flash", "max_tokens": 24000, "temperature": 0.3},
-    "file_finder_workflow": {"model": "google/gemini-2.5-flash", "max_tokens": 2048, "temperature": 0.3},
-    "generic_llm_stream": {"model": "google/gemini-2.5-pro", "max_tokens": 16384, "temperature": 0.7},
-    "streaming": {"model": "google/gemini-2.5-pro", "max_tokens": 16384, "temperature": 0.7},
-    "unknown": {"model": "google/gemini-2.5-pro", "max_tokens": 4096, "temperature": 0.7}
+    "path_finder": {"model": "google/gemini-2.5-flash", "max_tokens": 8192, "temperature": 0.3, "copyButtons": [{"label": "Copy Results", "content": "{{FULL_RESPONSE}}"}, {"label": "Copy File Paths", "content": "{{FILE_PATHS}}"}]},
+    "text_improvement": {"model": "anthropic/claude-sonnet-4", "max_tokens": 4096, "temperature": 0.7, "copyButtons": [{"label": "Copy Improved Text", "content": "{{FULL_RESPONSE}}"}, {"label": "Copy Changes Only", "content": "{{CHANGES_SUMMARY}}"}]},
+    "voice_transcription": {"model": "openai/gpt-4o-transcribe", "max_tokens": 4096, "temperature": 0.0, "copyButtons": [{"label": "Copy Transcription", "content": "{{FULL_RESPONSE}}"}, {"label": "Copy Plain Text", "content": "{{TEXT_ONLY}}"}]},
+    "text_correction": {"model": "anthropic/claude-sonnet-4", "max_tokens": 2048, "temperature": 0.5, "copyButtons": [{"label": "Copy Corrected Text", "content": "{{FULL_RESPONSE}}"}, {"label": "Copy Original", "content": "{{ORIGINAL_TEXT}}"}]},
+    "path_correction": {"model": "google/gemini-2.5-flash", "max_tokens": 4096, "temperature": 0.3, "copyButtons": [{"label": "Copy Corrected Paths", "content": "{{FULL_RESPONSE}}"}, {"label": "Copy Path List", "content": "{{PATH_LIST}}"}]},
+    "regex_pattern_generation": {"model": "anthropic/claude-sonnet-4", "max_tokens": 1000, "temperature": 0.2, "copyButtons": [{"label": "Copy Regex Pattern", "content": "{{REGEX_PATTERN}}"}, {"label": "Copy Full Response", "content": "{{FULL_RESPONSE}}"}]},
+    "guidance_generation": {"model": "google/gemini-2.5-pro", "max_tokens": 8192, "temperature": 0.7, "copyButtons": [{"label": "Copy Guidance", "content": "{{FULL_RESPONSE}}"}, {"label": "Copy Summary", "content": "{{GUIDANCE_SUMMARY}}"}]},
+    "task_refinement": {"model": "google/gemini-2.5-flash", "max_tokens": 2048, "temperature": 0.3, "copyButtons": [{"label": "Copy Refined Task", "content": "{{FULL_RESPONSE}}"}, {"label": "Copy Task Description", "content": "{{TASK_DESCRIPTION}}"}]},
+    "extended_path_finder": {"model": "google/gemini-2.5-flash", "max_tokens": 8192, "temperature": 0.3, "copyButtons": [{"label": "Copy Results", "content": "{{FULL_RESPONSE}}"}, {"label": "Copy Paths", "content": "{{PATH_RESULTS}}"}]},
+    "file_relevance_assessment": {"model": "google/gemini-2.5-flash", "max_tokens": 24000, "temperature": 0.3, "copyButtons": [{"label": "Copy Assessment", "content": "{{FULL_RESPONSE}}"}, {"label": "Copy Relevant Files", "content": "{{RELEVANT_FILES}}"}]},
+    "file_finder_workflow": {"model": "google/gemini-2.5-flash", "max_tokens": 2048, "temperature": 0.3, "copyButtons": [{"label": "Copy Results", "content": "{{FULL_RESPONSE}}"}, {"label": "Copy File List", "content": "{{FILE_LIST}}"}]},
+    "generic_llm_stream": {"model": "google/gemini-2.5-pro", "max_tokens": 16384, "temperature": 0.7, "copyButtons": [{"label": "Copy Response", "content": "{{FULL_RESPONSE}}"}, {"label": "Copy Summary", "content": "{{RESPONSE_SUMMARY}}"}]},
+    "streaming": {"model": "google/gemini-2.5-pro", "max_tokens": 16384, "temperature": 0.7, "copyButtons": [{"label": "Copy Stream Output", "content": "{{FULL_RESPONSE}}"}, {"label": "Copy Final Result", "content": "{{FINAL_RESULT}}"}]},
+    "unknown": {"model": "google/gemini-2.5-pro", "max_tokens": 4096, "temperature": 0.7, "copyButtons": [{"label": "Copy Response", "content": "{{FULL_RESPONSE}}"}, {"label": "Copy Text Only", "content": "{{TEXT_CONTENT}}"}]}
   },
   "path_finder_settings": {
     "max_files_with_content": 10,

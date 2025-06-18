@@ -129,10 +129,10 @@ impl UserCreditRepository {
     }
 
     /// Ensure a balance record exists for a user, creating one if it doesn't exist
-    pub async fn ensure_balance_record_exists(&self, user_id: &Uuid, currency: &str) -> Result<UserCredit, AppError> {
+    pub async fn ensure_balance_record_exists(&self, user_id: &Uuid) -> Result<UserCredit, AppError> {
         let mut tx = self.pool.begin().await
             .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
-        let result = self.ensure_balance_record_exists_with_executor(user_id, currency, &mut tx).await?;
+        let result = self.ensure_balance_record_exists_with_executor(user_id, &mut tx).await?;
         tx.commit().await
             .map_err(|e| AppError::Database(format!("Failed to commit transaction: {}", e)))?;
         Ok(result)
@@ -141,20 +141,18 @@ impl UserCreditRepository {
     pub async fn ensure_balance_record_exists_with_executor(
         &self,
         user_id: &Uuid,
-        currency: &str,
         executor: &mut sqlx::Transaction<'_, sqlx::Postgres>
     ) -> Result<UserCredit, AppError> {
         let result = sqlx::query_as!(
             UserCredit,
             r#"
             INSERT INTO user_credits (user_id, balance, currency, created_at, updated_at)
-            VALUES ($1, 0.0000, $2, NOW(), NOW())
+            VALUES ($1, 0.0000, 'USD', NOW(), NOW())
             ON CONFLICT (user_id, currency) 
             DO UPDATE SET updated_at = NOW()
             RETURNING user_id, balance, currency, created_at, updated_at
             "#,
-            user_id,
-            currency
+            user_id
         )
         .fetch_one(&mut **executor)
         .await

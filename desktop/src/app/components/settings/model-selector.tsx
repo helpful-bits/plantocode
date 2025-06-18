@@ -37,12 +37,12 @@ export function ModelSelector({ providers, selectedModelId, onSelect, disableToo
     }
   };
 
-  const formatPrice = (price: number) => {
-    const pricePerMillion = price * 1_000_000;
-    if (pricePerMillion === 0) return "Free";
-    if (pricePerMillion >= 1) return `$${pricePerMillion.toFixed(2)}`;
-    if (pricePerMillion >= 0.01) return `$${pricePerMillion.toFixed(3)}`;
-    return `$${pricePerMillion.toFixed(6)}`;
+  const formatPrice = (priceStr: string) => {
+    const price = parseFloat(priceStr);
+    if (isNaN(price) || price === 0) return "Free";
+    if (price >= 1) return `$${price.toFixed(2)}`;
+    if (price >= 0.01) return `$${price.toFixed(3)}`;
+    return `$${price.toFixed(6)}`;
   };
 
   const formatContextWindow = (contextWindow?: number) => {
@@ -135,8 +135,8 @@ export function ModelSelector({ providers, selectedModelId, onSelect, disableToo
                             <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
                               <span>{formatContextWindow(model.contextWindow)} tokens</span>
                               <span>
-                                {formatPrice(model.pricePerInputToken)}/
-                                {formatPrice(model.pricePerOutputToken)}
+                                {formatPrice(model.priceInputPerKiloTokens)}/
+                                {formatPrice(model.priceOutputPerKiloTokens)}
                               </span>
                             </div>
                           </div>
@@ -176,11 +176,11 @@ export function ModelSelector({ providers, selectedModelId, onSelect, disableToo
                                 </div>
                                 <div className="flex justify-between">
                                   <span>Input Price (per 1M):</span>
-                                  <span>{formatPrice(model.pricePerInputToken)}</span>
+                                  <span>{formatPrice(model.priceInputPerKiloTokens)}</span>
                                 </div>
                                 <div className="flex justify-between">
                                   <span>Output Price (per 1M):</span>
-                                  <span>{formatPrice(model.pricePerOutputToken)}</span>
+                                  <span>{formatPrice(model.priceOutputPerKiloTokens)}</span>
                                 </div>
                               </div>
                             </div>

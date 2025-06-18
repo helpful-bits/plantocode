@@ -8,7 +8,7 @@ import { Badge } from "@/ui/badge";
 import { LoadingSkeleton, ErrorState } from "./loading-and-error-states";
 import { getCreditHistory, type CreditHistoryResponse } from "@/actions/billing/credit.actions";
 import { getErrorMessage } from "@/utils/error-handling";
-import { formatCurrency } from "@/utils/currency-utils";
+import { formatUsdCurrency } from "@/utils/currency-utils";
 
 export interface CreditTransactionHistoryProps {
   className?: string;
@@ -152,7 +152,7 @@ export function CreditTransactionHistory({ className }: CreditTransactionHistory
               <div className="flex-1 space-y-1">
                 <div className="flex items-center gap-3">
                   <span className="font-medium">
-                    {transaction.amount >= 0 ? '+' : ''}{formatCurrency(transaction.amount, transaction.currency)}
+                    {transaction.amount >= 0 ? '+' : ''}{formatUsdCurrency(transaction.amount)}
                   </span>
                   <Badge variant={getTransactionTypeVariant(transaction.transactionType)}>
                     <span className={getTransactionTypeColor(transaction.transactionType)}>
@@ -170,7 +170,7 @@ export function CreditTransactionHistory({ className }: CreditTransactionHistory
                     </span>
                   )}
                   <span className="text-xs">
-                    Balance: {formatCurrency(transaction.balanceAfter, transaction.currency)}
+                    Balance: {formatUsdCurrency(transaction.balanceAfter)}
                   </span>
                 </div>
               </div>

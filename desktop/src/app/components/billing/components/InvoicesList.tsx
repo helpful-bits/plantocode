@@ -8,7 +8,7 @@ import { Badge } from "@/ui/badge";
 import { LoadingSkeleton, ErrorState } from "./loading-and-error-states";
 import { listInvoices, type Invoice, type ListInvoicesResponse } from "@/actions/billing";
 import { getErrorMessage } from "@/utils/error-handling";
-import { formatCurrency } from "@/utils/currency-utils";
+import { formatUsdCurrency } from "@/utils/currency-utils";
 
 export interface InvoicesListProps {
   className?: string;
@@ -162,7 +162,7 @@ export function InvoicesList({ className }: InvoicesListProps) {
               <div className="flex-1 space-y-1">
                 <div className="flex items-center gap-3">
                   <span className="font-medium">
-                    {formatCurrency(invoice.amount / 100, invoice.currency)}
+                    {formatUsdCurrency(invoice.amount / 100)}
                   </span>
                   <Badge variant={getStatusVariant(invoice.status)}>
                     <span className={getStatusColor(invoice.status)}>

@@ -185,6 +185,10 @@ async fn recover_queued_jobs(app_handle: AppHandle) -> AppResult<()> {
                         if let Err(update_error) = background_job_repo.mark_job_failed(
                             &job_id, 
                             &format!("Failed to re-queue on startup: {}", e),
+                            None,
+                            None,
+                            None,
+                            None,
                             None
                         ).await {
                             error!("Failed to mark job {} as failed: {}", job_id, update_error);
@@ -198,6 +202,10 @@ async fn recover_queued_jobs(app_handle: AppHandle) -> AppResult<()> {
                 if let Err(update_error) = background_job_repo.mark_job_failed(
                     &db_job.id, 
                     &format!("Failed to convert job data on startup: {}", e),
+                    None,
+                    None,
+                    None,
+                    None,
                     None
                 ).await {
                     error!("Failed to mark job {} as failed: {}", db_job.id, update_error);
