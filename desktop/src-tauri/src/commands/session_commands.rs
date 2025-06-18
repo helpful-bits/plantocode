@@ -288,3 +288,23 @@ pub async fn update_session_fields_command(app_handle: AppHandle, session_id: St
     // Save the updated session
     repo.update_session(&updated_session).await
 }
+
+#[tauri::command]
+pub async fn get_task_description_history_command(app_handle: AppHandle, session_id: String) -> AppResult<Vec<String>> {
+    let repo = app_handle.state::<Arc<crate::db_utils::session_repository::SessionRepository>>()
+        .inner()
+        .clone();
+
+    let history_with_timestamps = repo.get_task_description_history(&session_id).await?;
+    let descriptions: Vec<String> = history_with_timestamps.into_iter().map(|(desc, _)| desc).collect();
+    Ok(descriptions)
+}
+
+#[tauri::command]
+pub async fn add_task_description_history_entry_command(app_handle: AppHandle, session_id: String, description: String) -> AppResult<()> {
+    let repo = app_handle.state::<Arc<crate::db_utils::session_repository::SessionRepository>>()
+        .inner()
+        .clone();
+
+    repo.add_task_description_history_entry(&session_id, &description).await
+}

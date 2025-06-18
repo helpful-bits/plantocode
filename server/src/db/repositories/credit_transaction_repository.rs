@@ -41,21 +41,10 @@ impl CreditTransactionRepository {
         Self { pool }
     }
 
-    /// Create a new credit transaction
-    pub async fn create_transaction(&self, transaction: &CreditTransaction) -> Result<CreditTransaction, AppError> {
-        let mut tx = self.pool.begin().await
-            .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
-        
-        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
-            .bind(transaction.user_id.to_string())
-            .execute(&mut *tx)
-            .await
-            .map_err(|e| AppError::Database(format!("Failed to set user context in transaction: {}", e)))?;
-        let result = self.create_transaction_with_executor(transaction, &mut tx).await?;
-        tx.commit().await
-            .map_err(|e| AppError::Database(format!("Failed to commit transaction: {}", e)))?;
-        Ok(result)
+    pub fn get_pool(&self) -> &PgPool {
+        &self.pool
     }
+
 
     pub async fn create_transaction_with_executor(
         &self,
@@ -90,21 +79,6 @@ impl CreditTransactionRepository {
         Ok(result)
     }
 
-    /// Get transaction history for a user
-    pub async fn get_history(&self, user_id: &Uuid, limit: i64, offset: i64) -> Result<Vec<CreditTransaction>, AppError> {
-        let mut tx = self.pool.begin().await
-            .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
-        
-        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
-            .bind(user_id.to_string())
-            .execute(&mut *tx)
-            .await
-            .map_err(|e| AppError::Database(format!("Failed to set user context in transaction: {}", e)))?;
-        let result = self.get_history_with_executor(user_id, limit, offset, &mut tx).await?;
-        tx.commit().await
-            .map_err(|e| AppError::Database(format!("Failed to commit transaction: {}", e)))?;
-        Ok(result)
-    }
 
     pub async fn get_history_with_executor(
         &self,
@@ -135,21 +109,6 @@ impl CreditTransactionRepository {
         Ok(results)
     }
 
-    /// Get transactions filtered by type
-    pub async fn get_transactions_by_type(&self, user_id: &Uuid, transaction_type: &str, limit: i64) -> Result<Vec<CreditTransaction>, AppError> {
-        let mut tx = self.pool.begin().await
-            .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
-        
-        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
-            .bind(user_id.to_string())
-            .execute(&mut *tx)
-            .await
-            .map_err(|e| AppError::Database(format!("Failed to set user context in transaction: {}", e)))?;
-        let result = self.get_transactions_by_type_with_executor(user_id, transaction_type, limit, &mut tx).await?;
-        tx.commit().await
-            .map_err(|e| AppError::Database(format!("Failed to commit transaction: {}", e)))?;
-        Ok(result)
-    }
 
     pub async fn get_transactions_by_type_with_executor(
         &self,
@@ -180,21 +139,6 @@ impl CreditTransactionRepository {
         Ok(results)
     }
 
-    /// Get transaction summary for a user
-    pub async fn get_transaction_stats(&self, user_id: &Uuid) -> Result<CreditTransactionStats, AppError> {
-        let mut tx = self.pool.begin().await
-            .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
-        
-        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
-            .bind(user_id.to_string())
-            .execute(&mut *tx)
-            .await
-            .map_err(|e| AppError::Database(format!("Failed to set user context in transaction: {}", e)))?;
-        let result = self.get_transaction_stats_with_executor(user_id, &mut tx).await?;
-        tx.commit().await
-            .map_err(|e| AppError::Database(format!("Failed to commit transaction: {}", e)))?;
-        Ok(result)
-    }
 
     pub async fn get_transaction_stats_with_executor(
         &self,
@@ -227,21 +171,6 @@ impl CreditTransactionRepository {
         })
     }
 
-    /// Get a transaction by its ID
-    pub async fn get_transaction_by_id(&self, transaction_id: &Uuid, user_id: &Uuid) -> Result<Option<CreditTransaction>, AppError> {
-        let mut tx = self.pool.begin().await
-            .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
-        
-        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
-            .bind(user_id.to_string())
-            .execute(&mut *tx)
-            .await
-            .map_err(|e| AppError::Database(format!("Failed to set user context in transaction: {}", e)))?;
-        let result = self.get_transaction_by_id_with_executor(transaction_id, user_id, &mut tx).await?;
-        tx.commit().await
-            .map_err(|e| AppError::Database(format!("Failed to commit transaction: {}", e)))?;
-        Ok(result)
-    }
 
     pub async fn get_transaction_by_id_with_executor(
         &self,
@@ -289,21 +218,6 @@ impl CreditTransactionRepository {
         Ok(results)
     }
 
-    /// Get transactions linked to specific API usage
-    pub async fn get_transactions_by_api_usage(&self, api_usage_id: &Uuid, user_id: &Uuid) -> Result<Vec<CreditTransaction>, AppError> {
-        let mut tx = self.pool.begin().await
-            .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
-        
-        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
-            .bind(user_id.to_string())
-            .execute(&mut *tx)
-            .await
-            .map_err(|e| AppError::Database(format!("Failed to set user context in transaction: {}", e)))?;
-        let result = self.get_transactions_by_api_usage_with_executor(api_usage_id, user_id, &mut tx).await?;
-        tx.commit().await
-            .map_err(|e| AppError::Database(format!("Failed to commit transaction: {}", e)))?;
-        Ok(result)
-    }
 
     pub async fn get_transactions_by_api_usage_with_executor(
         &self,
@@ -331,34 +245,6 @@ impl CreditTransactionRepository {
         Ok(results)
     }
 
-    /// Count total transactions for a user
-    pub async fn count_transactions(&self, user_id: &Uuid) -> Result<i64, AppError> {
-        let mut tx = self.pool.begin().await
-            .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
-        
-        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
-            .bind(user_id.to_string())
-            .execute(&mut *tx)
-            .await
-            .map_err(|e| AppError::Database(format!("Failed to set user context in transaction: {}", e)))?;
-
-        let result = sqlx::query!(
-            r#"
-            SELECT COUNT(*) as count
-            FROM credit_transactions 
-            WHERE user_id = $1
-            "#,
-            user_id
-        )
-        .fetch_one(&mut *tx)
-        .await
-        .map_err(|e| AppError::Database(format!("Failed to count credit transactions: {}", e)))?;
-
-        tx.commit().await
-            .map_err(|e| AppError::Database(format!("Failed to commit transaction: {}", e)))?;
-
-        Ok(result.count.unwrap_or(0))
-    }
 
     /// Create a consumption transaction (helper method for API usage)
     pub async fn create_consumption_transaction_with_executor(

@@ -7,6 +7,7 @@ use std::str::FromStr;
 use log::debug;
 use serde_json::json;
 
+
 #[derive(Debug)]
 pub struct ApiUsageReport {
     pub tokens_input: i64,
@@ -175,6 +176,62 @@ impl ApiUsageRepository {
             tokens_output: result.get("tokens_output"),
             total_cost: result.get("total_cost"),
         })
+    }
+
+    /// Gets detailed usage data with model and provider information
+    pub async fn get_detailed_usage(
+        &self,
+        user_id: &Uuid,
+        start_date: DateTime<Utc>,
+        end_date: DateTime<Utc>,
+        executor: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    ) -> Result<Vec<serde_json::Value>, AppError> {
+        let results = sqlx::query(
+            r#"
+            SELECT 
+                au.service_name,
+                COALESCE(m.name, 'Unknown Model') as model_display_name,
+                COALESCE(p.code, 'Unknown Provider') as provider_code,
+                COALESCE(m.model_type, 'Unknown Type') as model_type,
+                COALESCE(SUM(au.cost::numeric), 0.0)::float8 as total_cost,
+                COUNT(*) as total_requests,
+                COALESCE(SUM(au.tokens_input), 0) as total_input_tokens,
+                COALESCE(SUM(au.tokens_output), 0) as total_output_tokens,
+                COALESCE(SUM(au.processing_ms::bigint), 0)::bigint as total_duration_ms
+            FROM api_usage au
+            LEFT JOIN models m ON au.service_name = m.id
+            LEFT JOIN providers p ON m.provider_id = p.id
+            WHERE au.user_id = $1 
+              AND au.timestamp BETWEEN $2 AND $3
+            GROUP BY au.service_name, m.name, p.code, m.model_type
+            ORDER BY total_cost DESC
+            "#
+        )
+        .bind(user_id)
+        .bind(start_date)
+        .bind(end_date)
+        .fetch_all(&mut **executor)
+        .await
+        .map_err(|e| AppError::Database(format!("Failed to get detailed usage: {}", e)))?;
+
+        let detailed_usage = results
+            .into_iter()
+            .map(|row| {
+                serde_json::json!({
+                    "serviceName": row.get::<&str, _>("service_name"),
+                    "modelDisplayName": row.get::<&str, _>("model_display_name"),
+                    "providerCode": row.get::<&str, _>("provider_code"),
+                    "modelType": row.get::<&str, _>("model_type"),
+                    "totalCost": row.get::<f64, _>("total_cost"),
+                    "totalRequests": row.get::<i64, _>("total_requests"),
+                    "totalInputTokens": row.get::<i64, _>("total_input_tokens"),
+                    "totalOutputTokens": row.get::<i64, _>("total_output_tokens"),
+                    "totalDurationMs": row.get::<i64, _>("total_duration_ms")
+                })
+            })
+            .collect();
+
+        Ok(detailed_usage)
     }
 
 }

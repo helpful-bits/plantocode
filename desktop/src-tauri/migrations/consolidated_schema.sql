@@ -73,6 +73,18 @@ CREATE TABLE IF NOT EXISTS excluded_files (
 -- Create index for excluded_files table
 CREATE INDEX IF NOT EXISTS idx_excluded_files_session ON excluded_files(session_id);
 
+-- Create task_description_history table
+CREATE TABLE IF NOT EXISTS task_description_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT NOT NULL,
+    description TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+);
+
+-- Create index for task_description_history table
+CREATE INDEX IF NOT EXISTS idx_task_description_history_session_id_created_at ON task_description_history(session_id, created_at DESC);
+
 -- Create cached_state table
 CREATE TABLE IF NOT EXISTS cached_state (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -121,6 +133,7 @@ CREATE TABLE IF NOT EXISTS background_jobs (
   updated_at INTEGER DEFAULT (strftime('%s', 'now')),
   start_time INTEGER,
   end_time INTEGER,
+  cost DECIMAL(10,6) DEFAULT 0.0,
   FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
 );
 

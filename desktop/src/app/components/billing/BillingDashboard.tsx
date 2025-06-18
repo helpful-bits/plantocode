@@ -1,34 +1,171 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { 
   CreditCard, 
   Zap,
   AlertTriangle,
-  RefreshCw
+  RefreshCw,
+  Settings,
+  DollarSign,
+  Plus
 } from "lucide-react";
 
 import { Button } from "@/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/ui/alert";
+import { Card, CardContent, CardHeader, CardTitle } from "@/ui/card";
+import { Badge } from "@/ui/badge";
+import { AnimatedNumber } from "@/ui/animated-number";
 import { useBillingData } from "@/hooks/use-billing-data";
-import { CreditManager } from "./billing-components";
+import { CreditManager, PaymentMethodsList, InvoicesList, CreditTransactionHistory } from "./billing-components";
 import { SubscriptionModal } from "./components/subscription-modal";
-import { BillingActions } from "./components/billing-actions";
-import { PlanCard } from "./components/PlanCard";
-import { CreditBalanceCard } from "./components/CreditBalanceCard";
-import { UsageCard } from "./components/UsageCard";
-import { openBillingPortal } from "@/actions/billing/portal.actions";
-import { useNotification } from "@/contexts/notification-context";
-import { getErrorMessage } from "@/utils/error-handling";
-import { open } from "@/utils/shell-utils";
+import { formatCurrency } from "@/utils/currency-utils";
 
-interface BillingDashboardProps {
-  onBuyCredits?: () => void;
+interface BillingDashboardProps {}
+
+// Integrated Plan & Usage Card Component
+interface BillingOverviewCardProps {
+  planDetails?: {
+    name: string;
+    price: number;
+    currency: string;
+    billingInterval: string;
+  };
+  subscriptionStatus?: string;
+  trialEndsAt?: string;
+  spendingDetails?: {
+    currentSpendingUsd: number;
+    spendingLimitUsd: number;
+    periodEnd: string;
+  };
+  creditBalanceUsd?: number;
+  previousCreditBalance?: number | null;
+  onManageSubscription: () => void;
+  onBuyCredits: () => void;
 }
 
-export function BillingDashboard({ 
+function BillingOverviewCard({
+  planDetails,
+  subscriptionStatus,
+  trialEndsAt,
+  spendingDetails,
+  creditBalanceUsd,
+  previousCreditBalance,
+  onManageSubscription,
   onBuyCredits
-}: BillingDashboardProps = {}) {
+}: BillingOverviewCardProps) {
+  return (
+    <Card className="hover:shadow-md transition-all duration-200 col-span-full">
+      <CardHeader>
+        <CardTitle className="text-lg font-semibold flex items-center gap-2">
+          <Zap className="h-5 w-5 text-primary" />
+          Plan & Credits
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Plan Information */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-2xl font-bold">
+                  {planDetails ? planDetails.name : "Free"}
+                </h3>
+                {planDetails && planDetails.price > 0 && (
+                  <div className="text-lg font-semibold text-muted-foreground">
+                    {formatCurrency(planDetails.price, planDetails.currency || "USD")}/{planDetails.billingInterval}
+                  </div>
+                )}
+              </div>
+              {planDetails && (
+                subscriptionStatus === 'trialing' ? (
+                  <Badge variant="secondary" className="bg-blue-50 text-blue-700 border-blue-200">
+                    Trial
+                  </Badge>
+                ) : (
+                  <Badge variant="success" className="bg-green-50 text-green-700 border-green-200">
+                    Active
+                  </Badge>
+                )
+              )}
+            </div>
+            
+            {planDetails && subscriptionStatus === 'trialing' && trialEndsAt && (
+              <div>
+                {(() => {
+                  const trialEndDate = new Date(trialEndsAt);
+                  const today = new Date();
+                  const timeDiff = trialEndDate.getTime() - today.getTime();
+                  const daysLeft = Math.max(0, Math.ceil(timeDiff / (1000 * 3600 * 24)));
+                  
+                  return (
+                    <Badge 
+                      variant={daysLeft === 0 ? "destructive" : daysLeft < 3 ? "destructive" : daysLeft < 7 ? "warning" : "secondary"}
+                      className="w-full justify-center text-xs font-medium"
+                    >
+                      {daysLeft === 0 ? 'Trial expired' : `${daysLeft} day${daysLeft !== 1 ? 's' : ''} left in trial`}
+                    </Badge>
+                  );
+                })()}
+              </div>
+            )}
+            
+            {planDetails && spendingDetails && (
+              <div className="text-sm text-muted-foreground">
+                {subscriptionStatus === 'trialing' && trialEndsAt ? (
+                  `Trial ends ${new Date(trialEndsAt).toLocaleDateString()}`
+                ) : (
+                  `Period ends: ${new Date(spendingDetails.periodEnd).toLocaleDateString()}`
+                )}
+              </div>
+            )}
+            
+            <Button 
+              size="sm" 
+              onClick={onManageSubscription}
+              className="w-full"
+            >
+              <Settings className="h-4 w-4 mr-2" />
+              Manage Subscription
+            </Button>
+          </div>
+
+          {/* Credit Balance */}
+          <div className="space-y-4">
+            <div>
+              <h4 className="text-sm font-medium text-muted-foreground flex items-center gap-2 mb-3">
+                <DollarSign className="h-4 w-4" />
+                Credit Balance
+              </h4>
+              <div className="text-2xl font-bold mb-4">
+                {creditBalanceUsd !== undefined ? (
+                  <AnimatedNumber
+                    value={creditBalanceUsd}
+                    previousValue={previousCreditBalance}
+                    formatValue={(value) => formatCurrency(value, "USD")}
+                    className="text-2xl font-bold"
+                  />
+                ) : (
+                  <span className="text-muted-foreground">Loading...</span>
+                )}
+              </div>
+              <Button 
+                size="sm" 
+                onClick={onBuyCredits}
+                className="w-full"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Buy Credits
+              </Button>
+            </div>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+export function BillingDashboard({}: BillingDashboardProps = {}) {
   const [isCreditManagerOpen, setIsCreditManagerOpen] = useState(false);
   const [isSubscriptionModalOpen, setIsSubscriptionModalOpen] = useState(false);
   const [previousCreditBalance, setPreviousCreditBalance] = useState<number | null>(null);
@@ -41,7 +178,6 @@ export function BillingDashboard({
     refreshBillingData
   } = useBillingData();
 
-  const { showNotification } = useNotification();
 
   const hasAnyData = dashboardData !== null;
 
@@ -75,44 +211,21 @@ export function BillingDashboard({
     }
   }, []);
 
-
-
-  const handleBuyCredits = useCallback(() => {
-    if (onBuyCredits) {
-      onBuyCredits();
-    } else {
+  useEffect(() => {
+    const handleOpenCreditManager = () => {
       setIsCreditManagerOpen(true);
-    }
-  }, [onBuyCredits]);
+    };
 
-  const handleUpgradePlan = useCallback(async () => {
-    // Check if user has a paid plan
-    const hasPaidPlan = dashboardData && dashboardData.planDetails.priceUsd > 0;
+    window.addEventListener('open-credit-manager', handleOpenCreditManager);
     
-    if (hasPaidPlan) {
-      // For paid plan users: open billing portal
-      try {
-        const portalUrl = await openBillingPortal();
-        await open(portalUrl);
-        
-        showNotification({
-          title: "Billing Portal Opened",
-          message: "Plan management is handled through Stripe's secure billing portal.",
-          type: "success",
-        });
-      } catch (err) {
-        const errorMessage = getErrorMessage(err);
-        showNotification({
-          title: "Portal Access Failed",
-          message: errorMessage,
-          type: "error",
-        });
-      }
-    } else {
-      // For free/trial users: open in-app subscription modal
-      setIsSubscriptionModalOpen(true);
-    }
-  }, [dashboardData, showNotification]);
+    return () => {
+      window.removeEventListener('open-credit-manager', handleOpenCreditManager);
+    };
+  }, []);
+
+
+
+
 
 
   if (error && !hasAnyData) {
@@ -171,7 +284,7 @@ export function BillingDashboard({
             <div className="flex gap-3">
               <Button 
                 size="sm" 
-                onClick={handleBuyCredits}
+                onClick={() => setIsCreditManagerOpen(true)}
               >
                 <CreditCard className="h-4 w-4 mr-2" />
                 Buy Credits
@@ -179,7 +292,7 @@ export function BillingDashboard({
               <Button 
                 size="sm" 
                 variant="outline" 
-                onClick={handleUpgradePlan}
+                onClick={() => setIsSubscriptionModalOpen(true)}
               >
                 <Zap className="h-4 w-4 mr-2" />
                 Upgrade Plan
@@ -189,28 +302,29 @@ export function BillingDashboard({
         </Alert>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        <PlanCard
+      {/* New three-section layout */}
+      <div className="space-y-6">
+        {/* Section 1: Current Plan & Usage */}
+        <BillingOverviewCard
           planDetails={dashboardData?.planDetails}
           subscriptionStatus={dashboardData?.subscriptionStatus}
           trialEndsAt={dashboardData?.trialEndsAt}
           spendingDetails={dashboardData?.spendingDetails}
-          onUpgradePlan={handleUpgradePlan}
-        />
-
-        <CreditBalanceCard
           creditBalanceUsd={dashboardData?.creditBalanceUsd}
           previousCreditBalance={previousCreditBalance}
-          onBuyCredits={handleBuyCredits}
+          onManageSubscription={() => setIsSubscriptionModalOpen(true)}
+          onBuyCredits={() => setIsCreditManagerOpen(true)}
         />
 
-        <UsageCard
-          spendingDetails={dashboardData?.spendingDetails}
-          isLoading={isLoading}
-        />
+        {/* Section 2: Payment Methods */}
+        <PaymentMethodsList className="hover:shadow-md transition-all duration-200" />
+
+        {/* Section 3: Credit Transaction History */}
+        <CreditTransactionHistory className="hover:shadow-md transition-all duration-200" />
+
+        {/* Section 4: Billing History */}
+        <InvoicesList className="hover:shadow-md transition-all duration-200" />
       </div>
-
-      <BillingActions />
 
       <CreditManager
         isOpen={isCreditManagerOpen}
@@ -224,6 +338,7 @@ export function BillingDashboard({
           setIsSubscriptionModalOpen(false);
           refreshBillingData();
         }}
+        dashboardData={dashboardData}
       />
     </div>
   );

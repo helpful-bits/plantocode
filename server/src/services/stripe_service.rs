@@ -8,6 +8,7 @@ use stripe::{
     ListPaymentMethods, CreatePrice, Product, CreateProduct, CreatePriceRecurringInterval, CreatePriceRecurring,
     ApiVersion,
     CreateInvoice, InvoiceStatus, ListInvoices,
+    CheckoutSession, CreateCheckoutSession, CheckoutSessionMode,
 };
 use chrono::{DateTime, Utc};
 use hmac::{Hmac, Mac};
@@ -178,7 +179,7 @@ impl StripeService {
         create_intent.customer = Some(parsed_customer_id);
         create_intent.description = Some(description);
         create_intent.metadata = Some(metadata);
-        create_intent.confirmation_method = Some(PaymentIntentConfirmationMethod::Manual);
+        create_intent.confirmation_method = Some(PaymentIntentConfirmationMethod::Automatic);
         
         if save_payment_method {
             create_intent.setup_future_usage = Some(stripe::PaymentIntentSetupFutureUsage::OffSession);
@@ -412,7 +413,41 @@ impl StripeService {
         Ok(setup_intent)
     }
 
+    /// Create a Stripe Checkout Session (generic for payment and subscription modes)
+    pub async fn create_checkout_session(
+        &self,
+        customer_id: &str,
+        mode: CheckoutSessionMode,
+        line_items: Option<Vec<stripe::CreateCheckoutSessionLineItems>>,
+        success_url: &str,
+        cancel_url: &str,
+        metadata: HashMap<String, String>,
+    ) -> Result<CheckoutSession, StripeServiceError> {
+        let parsed_customer_id = customer_id.parse()
+            .map_err(|_| StripeServiceError::Configuration("Invalid Stripe customer ID format".to_string()))?;
+        
+        let mut create_session = CreateCheckoutSession::new();
+        create_session.customer = Some(parsed_customer_id);
+        create_session.mode = Some(mode);
+        create_session.line_items = line_items;
+        create_session.success_url = Some(success_url);
+        create_session.cancel_url = Some(cancel_url);
+        create_session.metadata = Some(metadata);
+        
+        let session = CheckoutSession::create(&self.client, create_session).await
+            .map_err(|e| StripeServiceError::StripeApi(e))?;
+        
+        info!("Created Checkout Session: {} for customer: {}", session.id, customer_id);
+        Ok(session)
+    }
 
+    /// Get a checkout session by ID
+    pub async fn get_checkout_session(&self, session_id: &str) -> Result<CheckoutSession, StripeServiceError> {
+        let parsed_session_id = session_id.parse()
+            .map_err(|_| StripeServiceError::Configuration("Invalid Stripe session ID format".to_string()))?;
+        let session = CheckoutSession::retrieve(&self.client, &parsed_session_id, &[]).await?;
+        Ok(session)
+    }
 
 }
 

@@ -20,7 +20,7 @@ pub struct StreamConfig {
 #[derive(Debug)]
 pub struct StreamResult {
     pub accumulated_response: String,
-    pub final_usage: OpenRouterUsage,
+    pub final_usage: Option<OpenRouterUsage>,
 }
 
 /// Handler for processing streamed LLM responses
@@ -63,6 +63,7 @@ impl StreamedResponseHandler {
         
         let mut accumulated_response = String::new();
         let mut tokens_received: u32 = 0;
+        let mut final_usage: Option<OpenRouterUsage> = None;
         
         // Process stream chunks
         while let Some(chunk_result) = stream.next().await {
@@ -102,6 +103,11 @@ impl StreamedResponseHandler {
                         ).await?;
                     }
                     
+                    // Check for final usage information
+                    if chunk.usage.is_some() {
+                        final_usage = chunk.usage;
+                    }
+                    
                     // Check for completion
                     let is_finished = chunk.choices.iter()
                         .any(|choice| choice.finish_reason.is_some());
@@ -119,35 +125,24 @@ impl StreamedResponseHandler {
             }
         }
         
-        // Create final usage information
-        let final_usage = OpenRouterUsage {
-            prompt_tokens: self.config.prompt_tokens as u32,
-            completion_tokens: tokens_received,
-            total_tokens: self.config.prompt_tokens as u32 + tokens_received,
+        // Use final usage from stream or create estimated usage
+        let usage_result = if let Some(usage) = final_usage {
+            Some(usage)
+        } else {
+            Some(OpenRouterUsage {
+                prompt_tokens: self.config.prompt_tokens as u32,
+                completion_tokens: tokens_received,
+                total_tokens: self.config.prompt_tokens as u32 + tokens_received,
+                cost: None,
+            })
         };
         
         Ok(StreamResult {
             accumulated_response,
-            final_usage,
+            final_usage: usage_result,
         })
     }
 
-    /// Convenience method to process a stream from an API client
-    /// This handles the common pattern of calling stream_complete and processing the result
-    pub async fn process_stream_from_client(
-        &self,
-        llm_client: &Arc<dyn ApiClient>,
-        combined_prompt: &str,
-        api_options: crate::api_clients::client_trait::ApiClientOptions,
-    ) -> AppResult<StreamResult> {
-        debug!("Starting streaming call with API client for job {}", self.job_id);
-        
-        // Execute streaming call
-        let stream = llm_client.stream_complete(combined_prompt, api_options).await?;
-        
-        // Process the stream
-        self.process_stream(stream).await
-    }
     
     /// Enhanced method to process a stream from an API client using structured messages
     /// This provides better context preservation and LLM provider compliance

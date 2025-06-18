@@ -2,9 +2,9 @@
 
 import { Loader2, RefreshCw, Copy } from "lucide-react";
 import React from "react";
-import { useNotification } from "@/contexts/notification-context";
 
 import { type BackgroundJob, JOB_STATUSES } from "@/types/session-types";
+import { type CopyButtonConfig } from "@/types/config-types";
 import { Button } from "@/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/ui/dialog";
 import { Progress } from "@/ui/progress";
@@ -12,13 +12,17 @@ import { VirtualizedCodeViewer } from "@/ui/virtualized-code-viewer";
 
 import { getStreamingProgressValue } from "../../background-jobs-sidebar/utils";
 import { getJobDisplaySessionName } from "../../background-jobs-sidebar/_utils/job-display-utils";
-import { parsePlanResponseContent, extractStepsFromPlan, createPlanWithOnlyStep } from "../_utils/plan-content-parser";
+import { parsePlanResponseContent, extractStepsFromPlan } from "../_utils/plan-content-parser";
 
 interface PlanContentModalProps {
   plan?: BackgroundJob;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onRefreshContent: () => Promise<void>;
+  selectedStepNumber?: string | null;
+  onStepSelect?: (stepNumber: string | null) => void;
+  copyButtons?: CopyButtonConfig[];
+  onCopyButtonClick?: (buttonConfig: CopyButtonConfig) => void;
 }
 
 const PlanContentModal: React.FC<PlanContentModalProps> = ({
@@ -26,9 +30,12 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
   open,
   onOpenChange,
   onRefreshContent,
+  selectedStepNumber,
+  onStepSelect,
+  copyButtons = [],
+  onCopyButtonClick,
 }) => {
   const [isRefreshing, setIsRefreshing] = React.useState(false);
-  const { showNotification } = useNotification();
 
   if (!plan) return null;
 
@@ -77,26 +84,6 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
     return extractStepsFromPlan(plan.response);
   }, [plan.response]);
 
-  const handleCopyPlanWithOnlyStep = async (stepNumber: string, stepTitle: string) => {
-    try {
-      const planWithOnlyStep = createPlanWithOnlyStep(displayContent, stepNumber);
-      await navigator.clipboard.writeText(planWithOnlyStep);
-      showNotification({
-        title: "Copied to clipboard",
-        message: `Plan copied with only "${stepTitle}" + context`,
-        type: "success",
-        duration: 2000,
-      });
-    } catch (err) {
-      console.error("Failed to copy plan:", err);
-      showNotification({
-        title: "Copy failed",
-        message: "Failed to copy plan to clipboard",
-        type: "error",
-        duration: 3000,
-      });
-    }
-  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -135,22 +122,51 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
           </div>
         </div>
 
-        {/* Step Copy Buttons */}
+        {/* Step Selection */}
         {steps.length > 0 && !isStreaming && (
           <div className="mb-3">
-            <div className="text-xs text-muted-foreground mb-2">Copy plan with only specific step:</div>
+            <div className="text-xs text-muted-foreground mb-2">Select step for copy buttons:</div>
             <div className="flex flex-wrap gap-2">
+              <Button
+                variant={selectedStepNumber === null ? "default" : "outline"}
+                size="sm"
+                onClick={() => onStepSelect?.(null)}
+                className="text-xs h-7"
+              >
+                Full Plan
+              </Button>
               {steps.map((step) => (
                 <Button
                   key={step.number}
+                  variant={selectedStepNumber === step.number ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => onStepSelect?.(step.number)}
+                  className="text-xs h-7"
+                  title={step.title}
+                >
+                  Step {step.number}
+                </Button>
+              ))}
+            </div>
+          </div>
+        )}
+        
+        {/* Configurable Copy Buttons */}
+        {copyButtons.length > 0 && !isStreaming && (
+          <div className="mb-3">
+            <div className="text-xs text-muted-foreground mb-2">Copy with template:</div>
+            <div className="flex flex-wrap gap-2">
+              {copyButtons.map((button) => (
+                <Button
+                  key={button.id}
                   variant="outline"
                   size="sm"
-                  onClick={() => handleCopyPlanWithOnlyStep(step.number, step.title)}
+                  onClick={() => onCopyButtonClick?.(button)}
                   className="text-xs h-7"
-                  title={`Copy plan with only: ${step.title}`}
+                  title={`Copy: ${button.label}`}
                 >
                   <Copy className="h-3 w-3 mr-1" />
-                  Step {step.number}
+                  {button.label}
                 </Button>
               ))}
             </div>

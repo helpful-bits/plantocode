@@ -34,6 +34,16 @@ export interface SetAppJwtArgs {
 export interface ClearStoredAppJwtArgs {
 }
 
+export interface CreateCreditCheckoutSessionCommandArgs {
+  creditPackId: string;
+}
+
+export interface CheckoutSessionStatusResponse {
+  status: string;
+  paymentStatus: string;
+  customerEmail?: string;
+}
+
 // Commands from text_commands
 export interface ImproveTextCommandArgs {
   sessionId: string;
@@ -62,6 +72,15 @@ export interface GetSessionsForProjectCommandArgs {
 
 export interface DeleteSessionCommandArgs {
   sessionId: string;
+}
+
+export interface GetTaskDescriptionHistoryCommandArgs {
+  sessionId: string;
+}
+
+export interface AddTaskDescriptionHistoryEntryCommandArgs {
+  sessionId: string;
+  description: string;
 }
 
 
@@ -582,6 +601,8 @@ export type TauriInvoke = {
   "get_session_command": (args: GetSessionCommandArgs) => Promise<import("@/types").Session | null>;
   "get_sessions_for_project_command": (args: GetSessionsForProjectCommandArgs) => Promise<import("@/types").Session[]>;
   "delete_session_command": (args: DeleteSessionCommandArgs) => Promise<void>;
+  "get_task_description_history_command": (args: GetTaskDescriptionHistoryCommandArgs) => Promise<string[]>;
+  "add_task_description_history_entry_command": (args: AddTaskDescriptionHistoryEntryCommandArgs) => Promise<void>;
   "db_execute_query": (args: DbExecuteQueryArgs) => Promise<number>;
   "db_select_query": (args: DbSelectQueryArgs) => Promise<Record<string, unknown>[]>;
   "db_execute_transaction": (args: DbExecuteTransactionArgs) => Promise<void>;
@@ -663,26 +684,28 @@ export type TauriInvoke = {
   
   // Credit system commands
   "get_credit_history_command": (args: { limit?: number; offset?: number }) => Promise<CreditHistoryResponse>;
-  "get_credit_packs_command": () => Promise<CreditPacksResponse>;
+  "get_credit_packs_command": () => Promise<CreditPack[]>;
   "get_credit_balance_command": () => Promise<CreditBalanceResponse>;
   "get_credit_details_command": () => Promise<CreditDetailsResponse>;
   "get_credit_stats_command": () => Promise<CreditStats>;
   
-  "create_credit_payment_intent_command": (args: CreatePaymentIntentRequest) => Promise<PaymentIntentResponse>;
-  "create_subscription_intent_command": (args: CreateSubscriptionIntentRequest) => Promise<SubscriptionIntentResponse>;
-  "create_setup_intent_command": () => Promise<SetupIntentResponse>;
   "confirm_payment_status_command": (args: { paymentIntentId: string }) => Promise<any>;
   "get_stripe_publishable_key_command": () => Promise<string>;
   
-  // Billing health monitoring
-  "check_billing_health_command": (args: CheckBillingHealthCommandArgs) => Promise<BillingHealthStatus>;
-  "ping_billing_service_command": (args: PingBillingServiceCommandArgs) => Promise<boolean>;
+  // Checkout commands
+  "create_credit_checkout_session_command": (args: CreateCreditCheckoutSessionCommandArgs) => Promise<string>;
+  "get_checkout_session_status_command": (args: { sessionId: string }) => Promise<CheckoutSessionStatusResponse>;
   
   // Subscription lifecycle management
   "get_usage_summary_command": () => Promise<any>;
   "create_billing_portal_session_command": () => Promise<BillingPortalResponse>;
   
+  // Invoice management commands
+  "list_invoices_command": (args: { limit?: number; offset?: number }) => Promise<import("@/actions/billing/invoice.actions").ListInvoicesResponse>;
+  
   // Payment method management commands
+  "set_default_payment_method_command": (args: { paymentMethodId: string }) => Promise<any>;
+  "detach_payment_method_command": (args: { paymentMethodId: string }) => Promise<any>;
   
   // File Finder Workflow commands
   "start_file_finder_workflow": (args: StartFileFinderWorkflowCommandArgs) => Promise<import("@/types/workflow-types").WorkflowCommandResponse>;
@@ -720,12 +743,14 @@ export interface SubscriptionPlan {
   id: string;
   name: string;
   description: string;
+  weeklyPrice: number;
   monthlyPrice: number;
   yearlyPrice: number;
   currency: string;
   features: string[];
   recommended: boolean;
   trialDays: number;
+  stripeWeeklyPriceId?: string;
   stripeMonthlyPriceId?: string;
   stripeYearlyPriceId?: string;
   active: boolean;
@@ -831,18 +856,16 @@ export interface CreditDetailsResponse {
 export interface CreditPack {
   id: string;
   name: string;
-  valueCredits: number; // Amount of credits user gets
-  priceAmount: number;  // Actual price to pay
+  valueCredits: number;
+  priceAmount: number;
   currency: string;
-  stripePriceId: string;
   description?: string;
   recommended: boolean;
   bonusPercentage?: number;
   isPopular?: boolean;
-}
-
-export interface CreditPacksResponse {
-  packs: CreditPack[];
+  isActive: boolean;
+  displayOrder: number;
+  stripePriceId: string;
 }
 
 export interface CreditStats {
@@ -855,36 +878,11 @@ export interface CreditStats {
   currency: string;
 }
 
-export interface PaymentIntentResponse {
-  clientSecret: string;
-  publishableKey: string;
-  amount: number;
-  currency: string;
-  description: string;
-}
 
-export interface SetupIntentResponse {
-  clientSecret: string;
-  publishableKey: string;
-}
 
-export interface CreatePaymentIntentRequest {
-  creditPackId: string;
-  savePaymentMethod?: boolean;
-}
 
-export interface CreateSubscriptionIntentRequest {
-  planId: string;
-  trialDays?: number;
-}
 
-export interface SubscriptionIntentResponse {
-  subscriptionId: string;
-  clientSecret?: string; // For SetupIntent or PaymentIntent
-  publishableKey: string;
-  status: string;
-  trialEnd?: string;
-}
+
 
 // Subscription lifecycle management types
 
@@ -1025,31 +1023,13 @@ export interface UpdateInvoiceSettingsRequest {
   dueDays: number;
 }
 
-// Commands from billing_health_commands
-export interface CheckBillingHealthCommandArgs {
-}
-
-export interface PingBillingServiceCommandArgs {
-}
-
-export interface BillingHealthStatus {
-  overallStatus: 'healthy' | 'degraded' | 'unhealthy';
-  serverConnectivity: boolean;
-  authenticationStatus: boolean;
-  subscriptionAccessible: boolean;
-  paymentMethodsAccessible: boolean;
-  creditSystemAccessible: boolean;
-  lastChecked: string;
-  errorDetails: string[];
-  warnings: string[];
-  recommendations: string[];
-}
 
 // Consolidated billing dashboard types
 export interface BillingDashboardPlanDetails {
   planId: string;
   name: string;
-  priceUsd: number;
+  price: number;
+  currency: string;
   billingInterval: string;
 }
 

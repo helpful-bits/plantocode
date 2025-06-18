@@ -194,6 +194,7 @@ async fn handle_job_success(
                     None,
                     result.tokens_sent,
                     result.tokens_received,
+                    None,
                     None
                 ).await?;
             } else {
@@ -203,6 +204,7 @@ async fn handle_job_success(
                     None,
                     result.tokens_sent,
                     result.tokens_received,
+                    None,
                     None
                 ).await?;
             }

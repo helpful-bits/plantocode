@@ -13,6 +13,7 @@ pub struct TaskSpecificModelConfig {
     pub model: String,
     pub max_tokens: u32,
     pub temperature: f32,
+    pub copy_buttons: Option<Vec<serde_json::Value>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

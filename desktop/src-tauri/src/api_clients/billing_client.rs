@@ -3,12 +3,38 @@ use crate::auth::token_manager::TokenManager;
 use crate::models::SubscriptionPlan;
 use crate::commands::billing_commands::{
     SubscriptionDetails, BillingPortalResponse,
-    CreditBalanceResponse, CreditHistoryResponse, CreditPacksResponse,
-    CreditStats, PaymentIntentResponse, SetupIntentResponse, SubscriptionIntentResponse,
+    CreditBalanceResponse, CreditHistoryResponse,
+    CreditStats,
     PaymentMethodsResponse, PaymentMethod, PaymentMethodCard,
-    BillingDashboardData, ListInvoicesResponse
+    BillingDashboardData, CreditPack
 };
+use crate::models::ListInvoicesResponse;
 use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CheckoutSessionResponse {
+    pub url: String,
+    pub session_id: String,
+}
+
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServerCreditPack {
+    pub id: String,
+    pub name: String,
+    pub value_credits: f64,
+    pub price_amount: f64,
+    pub currency: String,
+    pub description: Option<String>,
+    pub recommended: bool,
+    pub bonus_percentage: Option<f64>,
+    pub is_popular: Option<bool>,
+    pub is_active: bool,
+    pub display_order: i32,
+    pub stripe_price_id: String,
+}
 use reqwest::Client;
 
 // Server-side payment method structures for robust deserialization
@@ -123,7 +149,7 @@ impl BillingClient {
     pub async fn get_subscription_plans(&self) -> Result<Vec<SubscriptionPlan>, AppError> {
         debug!("Getting subscription plans via BillingClient");
         
-        let subscription_plans = self.make_authenticated_request(
+        let subscription_plans: Vec<SubscriptionPlan> = self.make_authenticated_request(
             "GET",
             "/api/billing/subscription-plans",
             None,
@@ -246,6 +272,38 @@ impl BillingClient {
     }
 
 
+    /// Get available credit packs
+    pub async fn get_available_credit_packs(&self) -> Result<Vec<CreditPack>, AppError> {
+        debug!("Getting available credit packs via BillingClient");
+        
+        let server_packs: Vec<ServerCreditPack> = self.make_authenticated_request(
+            "GET",
+            "/api/billing/credits/packs",
+            None,
+        ).await?;
+        
+        let credit_packs: Vec<CreditPack> = server_packs
+            .into_iter()
+            .map(|server_pack| CreditPack {
+                id: server_pack.id,
+                name: server_pack.name,
+                value_credits: server_pack.value_credits,
+                price_amount: server_pack.price_amount,
+                currency: server_pack.currency,
+                description: server_pack.description,
+                recommended: server_pack.recommended,
+                bonus_percentage: server_pack.bonus_percentage,
+                is_popular: server_pack.is_popular,
+                is_active: server_pack.is_active,
+                display_order: server_pack.display_order,
+                stripe_price_id: server_pack.stripe_price_id,
+            })
+            .collect();
+        
+        info!("Successfully retrieved available credit packs");
+        Ok(credit_packs)
+    }
+
     /// Get current credit balance
     pub async fn get_credit_balance(&self) -> Result<CreditBalanceResponse, AppError> {
         debug!("Getting credit balance via BillingClient");
@@ -282,7 +340,7 @@ impl BillingClient {
             format!("?{}", query_params.join("&"))
         };
         
-        let endpoint = format!("/api/billing/credits/transactions{}", query_string);
+        let endpoint = format!("/api/billing/credits/transaction-history{}", query_string);
         
         let credit_history = self.make_authenticated_request(
             "GET",
@@ -294,73 +352,6 @@ impl BillingClient {
         Ok(credit_history)
     }
 
-    /// Get available credit packs for purchase
-    pub async fn get_credit_packs(&self) -> Result<CreditPacksResponse, AppError> {
-        debug!("Getting credit packs via BillingClient");
-        
-        #[derive(Deserialize)]
-        #[serde(rename_all = "camelCase")]
-        struct ServerCreditPack {
-            pub id: String,
-            pub name: String,
-            pub value_credits: String,
-            pub price_amount: String,
-            pub currency: String,
-            pub stripe_price_id: String,
-            pub description: Option<String>,
-            pub recommended: bool,
-            pub bonus_percentage: Option<String>,
-            pub is_popular: Option<bool>,
-        }
-        
-        #[derive(Deserialize)]
-        #[serde(rename_all = "camelCase")]
-        struct ServerCreditPacksResponse {
-            pub packs: Vec<ServerCreditPack>,
-        }
-        
-        let server_response: ServerCreditPacksResponse = self.make_authenticated_request(
-            "GET",
-            "/api/billing/credits/packs",
-            None,
-        ).await?;
-        
-        let packs = server_response.packs
-            .into_iter()
-            .map(|server_pack| {
-                let value_credits = server_pack.value_credits.parse::<f64>()
-                    .map_err(|_| AppError::InvalidResponse("Invalid value_credits format".to_string()))?;
-                
-                let price_amount = server_pack.price_amount.parse::<f64>()
-                    .map_err(|_| AppError::InvalidResponse("Invalid price_amount format".to_string()))?;
-                
-                let bonus_percentage = if let Some(bonus_str) = server_pack.bonus_percentage {
-                    Some(bonus_str.parse::<f64>()
-                        .map_err(|_| AppError::InvalidResponse("Invalid bonus_percentage format".to_string()))?)
-                } else {
-                    None
-                };
-                
-                Ok(crate::commands::billing_commands::CreditPack {
-                    id: server_pack.id,
-                    name: server_pack.name,
-                    value_credits,
-                    price_amount,
-                    currency: server_pack.currency,
-                    stripe_price_id: server_pack.stripe_price_id,
-                    description: server_pack.description,
-                    recommended: server_pack.recommended,
-                    bonus_percentage,
-                    is_popular: server_pack.is_popular,
-                })
-            })
-            .collect::<Result<Vec<_>, AppError>>()?;
-        
-        let credit_packs = CreditPacksResponse { packs };
-        
-        info!("Successfully retrieved credit packs");
-        Ok(credit_packs)
-    }
 
     /// Get user's credit statistics
     pub async fn get_credit_stats(&self) -> Result<CreditStats, AppError> {
@@ -377,101 +368,81 @@ impl BillingClient {
     }
 
     // ========================================
-    // MODERN PAYMENT INTENT METHODS (2024)
+    // STRIPE CHECKOUT SESSION METHODS
     // ========================================
 
-    /// Create a PaymentIntent for credit purchase (modern embedded payment flow)
-    pub async fn create_credit_payment_intent(
+    /// Create a checkout session for credit purchase
+    pub async fn create_credit_checkout_session(
         &self,
         credit_pack_id: &str,
-        save_payment_method: bool,
-    ) -> Result<PaymentIntentResponse, AppError> {
-        debug!("Creating PaymentIntent for credit pack: {}", credit_pack_id);
+    ) -> Result<CheckoutSessionResponse, AppError> {
+        debug!("Creating checkout session for credit pack: {}", credit_pack_id);
         
         let request_body = serde_json::json!({
-            "creditPackId": credit_pack_id,
-            "savePaymentMethod": save_payment_method
+            "creditPackId": credit_pack_id
         });
         
-        let payment_intent = self.make_authenticated_request(
+        let response: CheckoutSessionResponse = self.make_authenticated_request(
             "POST",
-            "/api/billing/payment-intents/credits",
+            "/api/billing/checkout/credit-session",
             Some(request_body),
         ).await?;
         
-        info!("Successfully created PaymentIntent for credit purchase");
-        Ok(payment_intent)
+        info!("Successfully created checkout session for credit purchase");
+        Ok(response)
     }
 
-    /// Create a subscription with SetupIntent for trial (modern embedded payment flow)
-    pub async fn create_subscription_with_intent(
+    /// Create a checkout session for subscription
+    pub async fn create_subscription_checkout_session(
         &self,
         plan_id: &str,
         trial_days: Option<u32>,
-    ) -> Result<SubscriptionIntentResponse, AppError> {
-        debug!("Creating subscription with intent for plan: {}", plan_id);
+    ) -> Result<CheckoutSessionResponse, AppError> {
+        debug!("Creating subscription checkout session for plan: {}", plan_id);
         
         let request_body = serde_json::json!({
             "planId": plan_id,
             "trialDays": trial_days
         });
         
-        let subscription_intent = self.make_authenticated_request(
+        let response: CheckoutSessionResponse = self.make_authenticated_request(
             "POST",
-            "/api/billing/subscriptions/create-with-intent",
+            "/api/billing/checkout/subscription-session",
             Some(request_body),
         ).await?;
         
-        info!("Successfully created subscription with intent");
-        Ok(subscription_intent)
+        info!("Successfully created subscription checkout session");
+        Ok(response)
     }
 
-    /// Create a SetupIntent for saving payment method without charging
-    pub async fn create_setup_intent(&self) -> Result<SetupIntentResponse, AppError> {
-        debug!("Creating SetupIntent for payment method setup");
+    /// Create a checkout session for payment method setup
+    pub async fn create_setup_checkout_session(&self) -> Result<CheckoutSessionResponse, AppError> {
+        debug!("Creating setup checkout session for payment method setup");
         
-        let setup_intent = self.make_authenticated_request(
+        let response: CheckoutSessionResponse = self.make_authenticated_request(
             "POST",
-            "/api/billing/setup-intents",
+            "/api/billing/checkout/setup-session",
             None,
         ).await?;
         
-        info!("Successfully created SetupIntent");
-        Ok(setup_intent)
+        info!("Successfully created setup checkout session");
+        Ok(response)
     }
 
-    /// Get payment intent status after client-side confirmation
-    pub async fn get_payment_intent_status(&self, payment_intent_id: &str) -> Result<serde_json::Value, AppError> {
-        debug!("Getting payment intent status for: {}", payment_intent_id);
+    /// Confirm checkout session status
+    pub async fn confirm_checkout_session(&self, session_id: &str) -> Result<serde_json::Value, AppError> {
+        debug!("Confirming checkout session status for: {}", session_id);
         
-        let endpoint = format!("/api/billing/payment-intents/{}/status", payment_intent_id);
+        let endpoint = format!("/api/billing/checkout/session-status/{}", session_id);
         
         let status = self.make_authenticated_request(
-            "GET",
+            "POST",
             &endpoint,
             None,
         ).await?;
         
-        info!("Successfully retrieved payment intent status");
+        info!("Successfully confirmed checkout session status");
         Ok(status)
-    }
-
-    /// Get Stripe publishable key for frontend
-    pub async fn get_stripe_publishable_key(&self) -> Result<String, AppError> {
-        debug!("Getting Stripe publishable key");
-        
-        let response: serde_json::Value = self.make_authenticated_request(
-            "GET",
-            "/api/billing/stripe/publishable-key",
-            None,
-        ).await?;
-        
-        let publishable_key = response["publishableKey"]
-            .as_str()
-            .ok_or_else(|| AppError::InvalidResponse("Missing publishable key in response".to_string()))?
-            .to_string();
-        
-        Ok(publishable_key)
     }
 
     // ========================================
@@ -492,10 +463,59 @@ impl BillingClient {
         Ok(usage_summary)
     }
 
+    /// Get detailed usage for a specific date range
+    pub async fn get_detailed_usage(&self, start_date: &str, end_date: &str) -> Result<serde_json::Value, AppError> {
+        debug!("Getting detailed usage from {} to {} via BillingClient", start_date, end_date);
+        
+        let query_params = format!("start_date={}&end_date={}", start_date, end_date);
+        let endpoint = format!("/api/billing/usage/details?{}", query_params);
+        
+        let detailed_usage = self.make_authenticated_request(
+            "GET",
+            &endpoint,
+            None,
+        ).await?;
+        
+        info!("Successfully retrieved detailed usage");
+        Ok(detailed_usage)
+    }
+
 
     // ========================================
     // PAYMENT METHOD MANAGEMENT
     // ========================================
+
+    /// Set default payment method for the user
+    pub async fn set_default_payment_method(&self, payment_method_id: &str) -> Result<serde_json::Value, AppError> {
+        debug!("Setting default payment method: {}", payment_method_id);
+        
+        let endpoint = format!("/api/billing/payment-methods/{}/set-default", payment_method_id);
+        
+        let result = self.make_authenticated_request(
+            "POST",
+            &endpoint,
+            None,
+        ).await?;
+        
+        info!("Successfully set default payment method");
+        Ok(result)
+    }
+
+    /// Detach payment method from the user
+    pub async fn detach_payment_method(&self, payment_method_id: &str) -> Result<serde_json::Value, AppError> {
+        debug!("Detaching payment method: {}", payment_method_id);
+        
+        let endpoint = format!("/api/billing/payment-methods/{}", payment_method_id);
+        
+        let result = self.make_authenticated_request(
+            "DELETE",
+            &endpoint,
+            None,
+        ).await?;
+        
+        info!("Successfully detached payment method");
+        Ok(result)
+    }
 
     /// List invoices with optional pagination
     pub async fn list_invoices(

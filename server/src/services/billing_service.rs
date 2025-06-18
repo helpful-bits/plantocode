@@ -557,90 +557,7 @@ impl BillingService {
         &self.audit_service
     }
 
-    /// Create a PaymentIntent for purchasing credits (modern approach)
-    pub async fn create_credit_payment_intent(
-        &self,
-        user_id: &Uuid,
-        credit_pack_id: &str,
-        save_payment_method: bool,
-    ) -> Result<stripe::PaymentIntent, AppError> {
-        // Ensure Stripe is configured
-        let stripe_service = match &self.stripe_service {
-            Some(service) => service,
-            None => return Err(AppError::Configuration("Stripe not configured".to_string())),
-        };
 
-        // Start transaction for atomic operations
-        let mut transaction = self.db_pools.user_pool.begin().await
-            .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
-
-        // Set user context for RLS within the transaction
-        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
-            .bind(user_id.to_string())
-            .execute(&mut *transaction)
-            .await
-            .map_err(|e| AppError::Database(format!("Failed to set user context in transaction: {}", e)))?;
-
-        // Get credit pack details
-        let credit_pack_repo = crate::db::repositories::credit_pack_repository::CreditPackRepository::new(
-            self.db_pools.system_pool.clone()
-        );
-        let selected_pack = credit_pack_repo.get_pack_by_id(credit_pack_id).await?
-            .ok_or_else(|| AppError::InvalidArgument(format!("Invalid credit pack ID: {}", credit_pack_id)))?;
-
-        // Ensure user has subscription
-        let mut subscription = match self.subscription_repository.get_by_user_id_with_executor(user_id, &mut transaction).await? {
-            Some(subscription) => subscription,
-            None => self.create_trial_subscription_and_limit_in_tx(user_id, &mut transaction).await?,
-        };
-
-        // Get or create Stripe customer within transaction
-        let customer_id = self._get_or_create_stripe_customer_with_executor(user_id, &mut transaction).await?;
-        
-        // Refresh subscription to get any updates from customer creation
-        if let Some(updated_subscription) = self.subscription_repository.get_by_user_id_with_executor(user_id, &mut transaction).await? {
-            subscription = updated_subscription;
-        }
-
-        // Convert BigDecimal to cents for Stripe
-        let amount_cents = (selected_pack.price_amount * BigDecimal::from(100)).to_i64()
-            .ok_or_else(|| AppError::InvalidArgument("Invalid price amount".to_string()))?;
-
-        // Add comprehensive metadata for transaction tracking
-        let mut metadata = std::collections::HashMap::new();
-        metadata.insert("type".to_string(), "credit_purchase".to_string());
-        metadata.insert("user_id".to_string(), user_id.to_string());
-        metadata.insert("credit_pack_id".to_string(), credit_pack_id.to_string());
-        metadata.insert("credit_value".to_string(), selected_pack.value_credits.to_string());
-        metadata.insert("currency".to_string(), selected_pack.currency.clone());
-        metadata.insert("pack_name".to_string(), selected_pack.name.clone());
-        metadata.insert("transaction_id".to_string(), Uuid::new_v4().to_string());
-        metadata.insert("created_at".to_string(), Utc::now().to_rfc3339());
-
-        let description = format!("Purchase {} credits", selected_pack.value_credits);
-
-        // Create PaymentIntent
-        let payment_intent = match stripe_service.create_payment_intent(
-            &customer_id,
-            amount_cents,
-            &selected_pack.currency,
-            &description,
-            metadata,
-            save_payment_method,
-        ).await {
-            Ok(intent) => intent,
-            Err(e) => {
-                let _ = transaction.rollback().await;
-                return Err(AppError::External(format!("Failed to create credit payment intent: {}", e)));
-            }
-        };
-
-        // Commit transaction after successful Stripe operations
-        transaction.commit().await
-            .map_err(|e| AppError::Database(format!("Failed to commit transaction: {}", e)))?;
-
-        Ok(payment_intent)
-    }
 
     /// Create a subscription with 1-day trial using the new Stripe service
     pub async fn create_subscription_with_trial(
@@ -944,12 +861,8 @@ impl BillingService {
     ) -> Result<crate::models::ListInvoicesResponse, AppError> {
         debug!("Listing invoices for user: {}", user_id);
 
-        // Get user's subscription to find Stripe customer ID
-        let subscription = self.subscription_repository.get_by_user_id(&user_id).await?
-            .ok_or_else(|| AppError::NotFound("User has no subscription".to_string()))?;
-        
-        let customer_id = subscription.stripe_customer_id
-            .ok_or_else(|| AppError::NotFound("User has no Stripe customer ID".to_string()))?;
+        // Ensure user has subscription and Stripe customer
+        let customer_id = self.get_or_create_stripe_customer(&user_id).await?;
 
         // Get the Stripe service
         let stripe_service = self.stripe_service.as_ref()
@@ -1005,6 +918,205 @@ impl BillingService {
             total_invoices,
             has_more,
         })
+    }
+
+    /// Set the default payment method for a user
+    pub async fn set_default_payment_method(
+        &self,
+        user_id: &Uuid,
+        payment_method_id: &str,
+    ) -> Result<stripe::Customer, AppError> {
+        // Ensure Stripe is configured
+        let stripe_service = match &self.stripe_service {
+            Some(service) => service,
+            None => return Err(AppError::Configuration("Stripe not configured".to_string())),
+        };
+
+        // Get customer ID
+        let customer_id = self.get_or_create_stripe_customer(user_id).await?;
+
+        // Set default payment method via Stripe service
+        stripe_service.set_default_payment_method(&customer_id, payment_method_id).await
+            .map_err(|e| AppError::External(format!("Failed to set default payment method: {}", e)))
+    }
+
+    /// Detach a payment method from a user
+    pub async fn detach_payment_method(
+        &self,
+        user_id: &Uuid,
+        payment_method_id: &str,
+    ) -> Result<stripe::PaymentMethod, AppError> {
+        // Ensure Stripe is configured
+        let stripe_service = match &self.stripe_service {
+            Some(service) => service,
+            None => return Err(AppError::Configuration("Stripe not configured".to_string())),
+        };
+
+        // Verify the user owns this payment method by checking their customer ID
+        let customer_id = self.get_or_create_stripe_customer(user_id).await?;
+        let payment_methods = stripe_service.list_payment_methods(&customer_id).await
+            .map_err(|e| AppError::External(format!("Failed to list payment methods: {}", e)))?;
+        
+        // Check if the payment method belongs to this customer
+        let payment_method_exists = payment_methods.iter()
+            .any(|pm| pm.id.to_string() == payment_method_id);
+        
+        if !payment_method_exists {
+            return Err(AppError::Forbidden("Payment method does not belong to this user".to_string()));
+        }
+
+        // Detach payment method via Stripe service
+        stripe_service.detach_payment_method(payment_method_id).await
+            .map_err(|e| AppError::External(format!("Failed to detach payment method: {}", e)))
+    }
+
+    /// Create a credit purchase checkout session
+    pub async fn create_credit_checkout_session(
+        &self,
+        user_id: &Uuid,
+        credit_pack_id: &str,
+        success_url: &str,
+        cancel_url: &str,
+    ) -> Result<stripe::CheckoutSession, AppError> {
+        let stripe_service = self.get_stripe_service()?;
+        let customer_id = self.get_or_create_stripe_customer(user_id).await?;
+        
+        // Get credit pack details
+        let credit_service = crate::services::credit_service::CreditService::new(self.db_pools.clone());
+        let credit_pack = credit_service.get_credit_pack_by_id(credit_pack_id).await?
+            .ok_or_else(|| AppError::NotFound("Credit pack not found".to_string()))?;
+
+        // Create line items
+        let line_items = vec![stripe::CreateCheckoutSessionLineItems {
+            price: Some(credit_pack.stripe_price_id.parse()
+                .map_err(|_| AppError::Configuration("Invalid Stripe price ID".to_string()))?),
+            quantity: Some(1),
+            ..Default::default()
+        }];
+
+        // Add metadata
+        let mut metadata = std::collections::HashMap::new();
+        metadata.insert("type".to_string(), "credit_purchase".to_string());
+        metadata.insert("user_id".to_string(), user_id.to_string());
+        metadata.insert("credit_pack_id".to_string(), credit_pack_id.to_string());
+        metadata.insert("credit_amount".to_string(), credit_pack.value_credits.to_string());
+
+        let session = stripe_service.create_checkout_session(
+            &customer_id,
+            stripe::CheckoutSessionMode::Payment,
+            Some(line_items),
+            success_url,
+            cancel_url,
+            metadata,
+        ).await.map_err(|e| AppError::External(format!("Failed to create checkout session: {}", e)))?;
+
+        Ok(session)
+    }
+
+
+    /// Create a subscription checkout session
+    pub async fn create_subscription_checkout_session(
+        &self,
+        user_id: &Uuid,
+        plan_id: &str,
+        success_url: &str,
+        cancel_url: &str,
+    ) -> Result<stripe::CheckoutSession, AppError> {
+        let stripe_service = self.get_stripe_service()?;
+        let customer_id = self.get_or_create_stripe_customer(user_id).await?;
+        
+        // Get plan details
+        let plan = self.get_plan_by_id(plan_id).await?;
+        let price_id = plan.stripe_price_id_monthly
+            .ok_or_else(|| AppError::Configuration(format!("No Stripe price ID for plan: {}", plan_id)))?;
+
+        // Create line items
+        let line_items = vec![stripe::CreateCheckoutSessionLineItems {
+            price: Some(price_id.parse()
+                .map_err(|_| AppError::Configuration("Invalid Stripe price ID".to_string()))?),
+            quantity: Some(1),
+            ..Default::default()
+        }];
+
+        // Add metadata
+        let mut metadata = std::collections::HashMap::new();
+        metadata.insert("type".to_string(), "subscription".to_string());
+        metadata.insert("user_id".to_string(), user_id.to_string());
+        metadata.insert("plan_id".to_string(), plan_id.to_string());
+
+        let session = stripe_service.create_checkout_session(
+            &customer_id,
+            stripe::CheckoutSessionMode::Subscription,
+            Some(line_items),
+            success_url,
+            cancel_url,
+            metadata,
+        ).await.map_err(|e| AppError::External(format!("Failed to create checkout session: {}", e)))?;
+
+        Ok(session)
+    }
+
+    /// Get checkout session status
+    pub async fn get_checkout_session_status(
+        &self,
+        session_id: &str,
+    ) -> Result<stripe::CheckoutSession, AppError> {
+        let stripe_service = self.get_stripe_service()?;
+        
+        let session = stripe_service.get_checkout_session(session_id).await
+            .map_err(|e| AppError::External(format!("Failed to retrieve checkout session: {}", e)))?;
+
+        Ok(session)
+    }
+
+    pub async fn get_detailed_usage(
+        &self,
+        user_id: &Uuid,
+        start_date: DateTime<Utc>,
+        end_date: DateTime<Utc>,
+    ) -> Result<Vec<serde_json::Value>, AppError> {
+        let mut tx = self.db_pools.user_pool.begin().await
+            .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
+
+        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
+            .bind(user_id.to_string())
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| AppError::Database(format!("Failed to set user context in transaction: {}", e)))?;
+
+        let usage_records = self.api_usage_repository.get_detailed_usage(user_id, start_date, end_date, &mut tx).await?;
+
+        tx.commit().await
+            .map_err(|e| AppError::Database(format!("Failed to commit transaction: {}", e)))?;
+
+        Ok(usage_records)
+    }
+
+    /// Create a setup checkout session for payment method addition
+    pub async fn create_setup_checkout_session(
+        &self,
+        user_id: &Uuid,
+        success_url: &str,
+        cancel_url: &str,
+    ) -> Result<stripe::CheckoutSession, AppError> {
+        let stripe_service = self.get_stripe_service()?;
+        let customer_id = self.get_or_create_stripe_customer(user_id).await?;
+        
+        // Add metadata for setup payment method
+        let mut metadata = std::collections::HashMap::new();
+        metadata.insert("type".to_string(), "setup_payment_method".to_string());
+        metadata.insert("user_id".to_string(), user_id.to_string());
+
+        let session = stripe_service.create_checkout_session(
+            &customer_id,
+            stripe::CheckoutSessionMode::Setup,
+            None, // No line items for setup mode
+            success_url,
+            cancel_url,
+            metadata,
+        ).await.map_err(|e| AppError::External(format!("Failed to create setup checkout session: {}", e)))?;
+
+        Ok(session)
     }
 
 }

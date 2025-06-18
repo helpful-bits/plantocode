@@ -1,3 +1,4 @@
+import React from "react";
 import { RefreshCw } from "lucide-react";
 
 import { useBillingData } from "@/hooks/use-billing-data";
@@ -20,11 +21,8 @@ interface CostUsageIndicatorProps {
   compact?: boolean;
   showRefreshButton?: boolean;
   className?: string;
+  onClick?: () => void;
 
-  // Fetch options
-  serverUrl?: string;
-  getAuthToken?: () => Promise<string | null>;
-  autoRefreshInterval?: number | null;
 }
 
 /**
@@ -45,13 +43,23 @@ export function CostUsageIndicator({
   compact = false,
   showRefreshButton = true,
   className = "",
+  onClick,
 
-  // Fetch options
-  autoRefreshInterval: _,
 }: CostUsageIndicatorProps) {
   // Fetch usage data if no override props provided
   const shouldFetch = currentSpending === undefined || monthlyAllowance === undefined;
   const { spendingStatus, trialDaysLeft: fetchedTrialDaysLeft, isLoading, error, refreshBillingData } = useBillingData();
+
+  // Auto-refresh every 10 seconds when shouldFetch is true
+  React.useEffect(() => {
+    if (!shouldFetch) return;
+
+    const interval = setInterval(() => {
+      refreshBillingData();
+    }, 10000); // Update every 10 seconds
+
+    return () => clearInterval(interval);
+  }, [shouldFetch, refreshBillingData]);
 
   // Use provided values or fetched values with safe fallbacks
   const actualCurrentSpending = (currentSpending ?? spendingStatus?.currentSpending) ?? 0;
@@ -71,7 +79,10 @@ export function CostUsageIndicator({
   // Show compact view with just the essentials
   if (compact) {
     return (
-      <div className={`flex items-center gap-2 ${className}`}>
+      <div 
+        className={`flex items-center gap-2 ${onClick ? 'cursor-pointer' : ''} ${className}`}
+        onClick={onClick}
+      >
         {actualTrialDaysLeft !== undefined && actualTrialDaysLeft !== null && (
           <Badge 
             variant={actualTrialDaysLeft === 0 ? "destructive" : actualTrialDaysLeft < 3 ? "warning" : "outline"} 

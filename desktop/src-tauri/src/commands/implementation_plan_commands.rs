@@ -212,14 +212,11 @@ pub async fn estimate_prompt_tokens_command(
         .compose_prompt(&context, &app_handle)
         .await?;
     
-    // Estimate the number of tokens in the final prompt
-    let estimated_prompt_tokens = composed_prompt.estimated_total_tokens.unwrap_or(0) as u32;
-    
     Ok(PromptTokenEstimateResponse {
-        estimated_tokens: estimated_prompt_tokens,
-        system_prompt_tokens: 0, // The processor sends this as a single user message
-        user_prompt_tokens: estimated_prompt_tokens,
-        total_tokens: estimated_prompt_tokens,
+        estimated_tokens: composed_prompt.estimated_total_tokens.unwrap_or(0) as u32,
+        system_prompt_tokens: composed_prompt.estimated_system_tokens.unwrap_or(0) as u32,
+        user_prompt_tokens: composed_prompt.estimated_user_tokens.unwrap_or(0) as u32,
+        total_tokens: composed_prompt.estimated_total_tokens.unwrap_or(0) as u32,
     })
 }
 

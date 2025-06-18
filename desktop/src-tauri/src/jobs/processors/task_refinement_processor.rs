@@ -104,7 +104,7 @@ impl JobProcessor for TaskRefinementProcessor {
         info!("Task Refinement LLM task completed successfully for job {}", job_id);
         info!("System prompt ID: {}", llm_result.system_prompt_id);
         
-        let refined_description = llm_result.response.trim().to_string();
+        let refined_description = llm_result.response;
         
         // Extract usage before moving it
         let usage_for_result = llm_result.usage.clone();

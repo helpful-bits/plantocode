@@ -10,16 +10,16 @@ const badgeVariants = cva(
     variants: {
       variant: {
         default:
-          "border-primary/20 bg-primary/90 text-primary-foreground hover:bg-primary/75 shadow-soft",
+          "border-primary/20 bg-primary/90 text-primary-foreground",
         secondary:
-          "border-border/50 bg-secondary/80 text-secondary-foreground hover:bg-secondary/60 shadow-soft",
+          "border-border/50 bg-secondary/80 text-secondary-foreground",
         destructive:
-          "border-destructive/20 bg-destructive/90 text-destructive-foreground hover:bg-destructive/75 shadow-soft",
-        outline: "text-soft border-border/50 hover:bg-accent/30",
+          "border-destructive/20 bg-destructive/90 text-destructive-foreground",
+        outline: "text-soft border-border/50",
         warning:
-          "border-warning/20 bg-warning/90 text-warning-foreground hover:bg-warning/75 shadow-soft",
+          "border-warning/20 bg-warning/90 text-warning-foreground",
         success:
-          "border-success/20 bg-success/90 text-success-foreground hover:bg-success/75 shadow-soft",
+          "border-success/20 bg-success/90 text-success-foreground",
       },
     },
     defaultVariants: {
@@ -51,7 +51,7 @@ function ButtonBadge({ className, variant, ...props }: ButtonBadgeProps) {
     <button 
       className={cn(
         badgeVariants({ variant }), 
-        "focus-ring cursor-pointer hover:opacity-80",
+        "focus-ring cursor-pointer",
         className
       )} 
       {...props} 

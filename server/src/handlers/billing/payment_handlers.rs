@@ -78,12 +78,6 @@ pub async fn get_payment_methods(
 // ========================================
 
 
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SetupIntentResponse {
-    pub client_secret: String,
-    pub publishable_key: String,
-}
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -92,62 +86,7 @@ pub struct PublishableKeyResponse {
 }
 
 
-/// Create a SetupIntent for saving payment method without charging
-#[post("/setup-intents")]
-pub async fn create_setup_intent(
-    billing_service: web::Data<BillingService>,
-    user_id: UserId,
-) -> Result<HttpResponse, AppError> {
-    info!("Creating SetupIntent for user: {}", user_id.0);
-    
-    // Get or create Stripe customer
-    let customer_id = billing_service.get_or_create_stripe_customer(&user_id.0).await?;
-    
-    // Create SetupIntent via the Stripe service
-    let stripe_service = billing_service.get_stripe_service()?;
-    let mut metadata = std::collections::HashMap::new();
-    metadata.insert("user_id".to_string(), user_id.0.to_string());
-    
-    let setup_intent = stripe_service.create_setup_intent(&customer_id, metadata).await
-        .map_err(|e| AppError::External(format!("Failed to create SetupIntent: {}", e)))?;
-    
-    let publishable_key = billing_service.get_stripe_publishable_key()?;
-    
-    let response = SetupIntentResponse {
-        client_secret: setup_intent.client_secret.unwrap_or_default(),
-        publishable_key,
-    };
-    
-    info!("Successfully created SetupIntent for user: {}", user_id.0);
-    Ok(HttpResponse::Ok().json(response))
-}
 
-/// Get payment intent status after client-side confirmation
-#[get("/payment-intents/{payment_intent_id}/status")]
-pub async fn get_payment_intent_status(
-    billing_service: web::Data<BillingService>,
-    user_id: UserId,
-    path: web::Path<String>,
-) -> Result<HttpResponse, AppError> {
-    let payment_intent_id = path.into_inner();
-    info!("Getting payment intent status for: {} for user: {}", payment_intent_id, user_id.0);
-    
-    let stripe_service = billing_service.get_stripe_service()?;
-    let payment_intent = stripe_service.get_payment_intent(&payment_intent_id).await
-        .map_err(|e| AppError::External(format!("Failed to get PaymentIntent: {}", e)))?;
-    
-    let status = serde_json::json!({
-        "id": payment_intent.id,
-        "status": format!("{:?}", payment_intent.status),
-        "amount": payment_intent.amount,
-        "currency": payment_intent.currency.to_string(),
-        "description": payment_intent.description,
-        "metadata": payment_intent.metadata
-    });
-    
-    info!("Successfully retrieved payment intent status for user: {}", user_id.0);
-    Ok(HttpResponse::Ok().json(status))
-}
 
 /// Get Stripe publishable key for frontend
 #[get("/stripe/publishable-key")]
@@ -170,4 +109,49 @@ pub async fn get_stripe_publishable_key(
 // ========================================
 // PAYMENT METHOD MANAGEMENT HANDLERS
 // ========================================
+
+/// Set default payment method for a user
+#[post("/payment-methods/{payment_method_id}/set-default")]
+pub async fn set_default_payment_method(
+    billing_service: web::Data<BillingService>,
+    user_id: UserId,
+    path: web::Path<String>,
+) -> Result<HttpResponse, AppError> {
+    let payment_method_id = path.into_inner();
+    info!("Setting default payment method {} for user: {}", payment_method_id, user_id.0);
+
+    let customer = billing_service.set_default_payment_method(&user_id.0, &payment_method_id).await?;
+
+    let response = serde_json::json!({
+        "success": true,
+        "customerId": customer.id,
+        "defaultPaymentMethod": payment_method_id,
+        "message": "Default payment method updated successfully"
+    });
+
+    info!("Successfully set default payment method for user: {}", user_id.0);
+    Ok(HttpResponse::Ok().json(response))
+}
+
+/// Detach/remove a payment method from a user
+#[actix_web::delete("/payment-methods/{payment_method_id}")]
+pub async fn detach_payment_method(
+    billing_service: web::Data<BillingService>,
+    user_id: UserId,
+    path: web::Path<String>,
+) -> Result<HttpResponse, AppError> {
+    let payment_method_id = path.into_inner();
+    info!("Detaching payment method {} for user: {}", payment_method_id, user_id.0);
+
+    let payment_method = billing_service.detach_payment_method(&user_id.0, &payment_method_id).await?;
+
+    let response = serde_json::json!({
+        "success": true,
+        "paymentMethodId": payment_method.id,
+        "message": "Payment method removed successfully"
+    });
+
+    info!("Successfully detached payment method for user: {}", user_id.0);
+    Ok(HttpResponse::Ok().json(response))
+}
 

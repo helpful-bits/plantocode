@@ -53,6 +53,15 @@ export interface ModelInfo {
 }
 
 /**
+ * Copy button configuration interface
+ */
+export interface CopyButtonConfig {
+  id: string;
+  label: string;
+  content: string;
+}
+
+/**
  * Task-specific model configuration interface
  * Must match the Rust backend TaskSpecificModelConfig struct
  */
@@ -60,6 +69,7 @@ export interface TaskModelSettings {
   model?: string;
   maxTokens?: number;
   temperature?: number;
+  copyButtons?: CopyButtonConfig[];
 }
 
 /**

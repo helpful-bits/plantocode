@@ -140,6 +140,8 @@ fn main() {
             commands::billing_commands::get_spending_analytics_command,
             commands::billing_commands::get_spending_forecast_command,
             commands::billing_commands::get_payment_methods_command,
+            commands::billing_commands::set_default_payment_method_command,
+            commands::billing_commands::detach_payment_method_command,
             
             // Credit system commands
             commands::billing_commands::get_credit_history_command,
@@ -147,20 +149,18 @@ fn main() {
             commands::billing_commands::get_credit_balance_command,
             commands::billing_commands::get_credit_stats_command,
             
-            // Modern PaymentIntent-based commands (2024)
-            commands::billing_commands::create_credit_payment_intent_command,
-            commands::billing_commands::create_subscription_intent_command,
-            commands::billing_commands::create_setup_intent_command,
-            commands::billing_commands::confirm_payment_status_command,
-            commands::billing_commands::get_stripe_publishable_key_command,
+            // Stripe Checkout commands
+            commands::billing_commands::create_credit_checkout_session_command,
+            commands::billing_commands::create_subscription_checkout_session_command,
+            commands::billing_commands::create_setup_checkout_session_command,
+            commands::billing_commands::get_checkout_session_status_command,
             
-            // Billing health monitoring
-            commands::billing_commands::check_billing_health_command,
-            commands::billing_commands::ping_billing_service_command,
             
             // Subscription lifecycle management
             commands::billing_commands::get_usage_summary_command,
+            commands::billing_commands::get_detailed_usage_command,
             commands::billing_commands::create_billing_portal_session_command,
+            commands::billing_commands::list_invoices_command,
             
             // Config commands
             commands::config_commands::get_providers_with_models,
@@ -276,6 +276,8 @@ fn main() {
             commands::session_commands::update_session_project_directory_command,
             commands::session_commands::clear_all_project_sessions_command,
             commands::session_commands::update_session_fields_command,
+            commands::session_commands::get_task_description_history_command,
+            commands::session_commands::add_task_description_history_entry_command,
             
             // Setup commands
             commands::setup_commands::trigger_initial_keychain_access,

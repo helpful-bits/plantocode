@@ -3,6 +3,7 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 
 import { refineTaskDescriptionAction } from "@/actions/ai/task-refinement.actions";
+import { getTaskDescriptionHistoryAction, addTaskDescriptionHistoryEntryAction } from "@/actions/session";
 import { useBackgroundJob } from "@/contexts/_hooks/use-background-job";
 import { useNotification } from "@/contexts/notification-context";
 import { useProject } from "@/contexts/project-context";
@@ -65,11 +66,13 @@ export function useTaskDescriptionState({
   const debounceTimerRef = useRef<number | null>(null);
 
   // Save current description to history
-  const saveToHistory = useCallback((description: string) => {
+  const saveToHistory = useCallback(async (description: string) => {
+    let newHistoryCreated = false;
     setHistory(prev => {
       const newHistory = prev.slice(0, historyIndex + 1);
       if (newHistory[newHistory.length - 1] !== description) {
         newHistory.push(description);
+        newHistoryCreated = true;
         return newHistory;
       }
       return prev;
@@ -81,7 +84,15 @@ export function useTaskDescriptionState({
       }
       return prev;
     });
-  }, [history, historyIndex]);
+    
+    if (newHistoryCreated && activeSessionId) {
+      try {
+        await addTaskDescriptionHistoryEntryAction(activeSessionId, description);
+      } catch (error) {
+        console.error('Failed to persist task description history:', error);
+      }
+    }
+  }, [history, historyIndex, activeSessionId]);
 
 
   // Task refinement job monitoring
@@ -233,9 +244,40 @@ export function useTaskDescriptionState({
 
   // Initialize history when session changes
   useEffect(() => {
-    setHistory([sessionTaskDescription || ""]);
-    setHistoryIndex(0);
-  }, [activeSessionId]);
+    if (!activeSessionId) {
+      setHistory([""]);
+      setHistoryIndex(0);
+      return;
+    }
+
+    const initializeHistory = async () => {
+      try {
+        const result = await getTaskDescriptionHistoryAction(activeSessionId);
+        if (result.isSuccess && result.data && result.data.length > 0) {
+          setHistory(result.data);
+          setHistoryIndex(result.data.length - 1);
+        } else if (sessionTaskDescription) {
+          setHistory([sessionTaskDescription]);
+          setHistoryIndex(0);
+          await addTaskDescriptionHistoryEntryAction(activeSessionId, sessionTaskDescription);
+        } else {
+          setHistory([""]);
+          setHistoryIndex(0);
+        }
+      } catch (error) {
+        console.error('Failed to load task description history:', error);
+        if (sessionTaskDescription) {
+          setHistory([sessionTaskDescription]);
+          setHistoryIndex(0);
+        } else {
+          setHistory([""]);
+          setHistoryIndex(0);
+        }
+      }
+    };
+
+    initializeHistory();
+  }, [activeSessionId, sessionTaskDescription]);
 
   // Undo function
   const undo = useCallback(() => {

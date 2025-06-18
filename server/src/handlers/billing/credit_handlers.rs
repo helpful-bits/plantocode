@@ -1,7 +1,7 @@
 use actix_web::{web, HttpResponse, get, post, HttpRequest, HttpMessage};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use bigdecimal::{BigDecimal, ToPrimitive};
+use bigdecimal::{BigDecimal, ToPrimitive, FromPrimitive};
 use crate::error::AppError;
 use crate::services::billing_service::BillingService;
 use crate::services::credit_service::CreditService;
@@ -42,38 +42,6 @@ pub struct ExtendedPaginationQuery {
 }
 
 
-/// Get available credit packs
-#[get("/packs")]
-pub async fn get_credit_packs(
-    credit_service: web::Data<CreditService>,
-) -> Result<HttpResponse, AppError> {
-    debug!("Getting available credit packs");
-    
-    let credit_packs = credit_service.get_available_credit_packs().await?;
-    
-    let client_packs: Vec<ClientCreditPack> = credit_packs.into_iter().map(|pack| {
-        ClientCreditPack {
-            id: pack.id,
-            name: pack.name,
-            value_credits: pack.value_credits.to_string(),
-            price_amount: pack.price_amount.to_string(),
-            currency: pack.currency,
-            description: pack.description,
-            recommended: pack.recommended,
-            bonus_percentage: pack.bonus_percentage.map(|bp| bp.to_string()),
-            is_popular: pack.is_popular,
-            is_active: pack.is_active,
-            display_order: pack.display_order,
-            stripe_price_id: pack.stripe_price_id,
-        }
-    }).collect();
-    
-    let response = CreditPacksResponse {
-        packs: client_packs,
-    };
-    
-    Ok(HttpResponse::Ok().json(response))
-}
 
 /// Get user's current credit balance
 #[get("/balance")]
@@ -164,7 +132,8 @@ pub async fn get_credit_transaction_history(
 
 #[derive(Debug, Deserialize)]
 pub struct CreatePaymentIntentRequest {
-    pub credit_pack_id: String,
+    pub amount: f64,
+    pub currency: String,
     pub save_payment_method: Option<bool>,
 }
 
@@ -178,28 +147,7 @@ pub struct PaymentIntentResponse {
     pub description: String,
 }
 
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ClientCreditPack {
-    pub id: String,
-    pub name: String,
-    pub value_credits: String,
-    pub price_amount: String,
-    pub currency: String,
-    pub description: Option<String>,
-    pub recommended: bool,
-    pub bonus_percentage: Option<String>,
-    pub is_popular: Option<bool>,
-    pub is_active: bool,
-    pub display_order: i32,
-    pub stripe_price_id: String,
-}
 
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CreditPacksResponse {
-    pub packs: Vec<ClientCreditPack>,
-}
 
 /// Get comprehensive credit details with stats, balance, and transaction history
 pub async fn get_credit_details(
@@ -217,17 +165,6 @@ pub async fn get_credit_details(
     Ok(HttpResponse::Ok().json(credit_details))
 }
 
-/// Get specific credit pack by ID
-pub async fn get_credit_pack_by_id(
-    path: web::Path<String>,
-    credit_service: web::Data<CreditService>,
-) -> Result<HttpResponse, AppError> {
-    let pack_id = path.into_inner();
-    let pack = credit_service.get_credit_pack_by_id(&pack_id).await?
-        .ok_or_else(|| AppError::NotFound(format!("Credit pack not found: {}", pack_id)))?;
-    
-    Ok(HttpResponse::Ok().json(pack))
-}
 
 // Admin-only authorization middleware required
 /// Admin endpoint to adjust credits
@@ -270,31 +207,50 @@ pub async fn admin_adjust_credits(
     })))
 }
 
-/// Create a PaymentIntent for credit purchase (modern embedded payment flow)
-#[post("/payment-intent")]
-pub async fn create_credit_payment_intent(
-    billing_service: web::Data<BillingService>,
-    user_id: UserId,
-    req: web::Json<CreatePaymentIntentRequest>,
+/// Get available credit packs
+#[get("/packs")]
+pub async fn get_available_credit_packs(
+    credit_service: web::Data<CreditService>,
 ) -> Result<HttpResponse, AppError> {
-    info!("Creating PaymentIntent for credit pack: {} for user: {}", req.credit_pack_id, user_id.0);
+    debug!("Getting available credit packs");
     
-    let payment_intent = billing_service.create_credit_payment_intent(
-        &user_id.0,
-        &req.credit_pack_id,
-        req.save_payment_method.unwrap_or(false)
-    ).await?;
+    let credit_packs = credit_service.get_available_credit_packs().await?;
     
-    let publishable_key = billing_service.get_stripe_publishable_key()?;
+    #[derive(Debug, Serialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct ClientCreditPack {
+        pub id: String,
+        pub name: String,
+        pub value_credits: f64,
+        pub price_amount: f64,
+        pub currency: String,
+        pub description: Option<String>,
+        pub recommended: bool,
+        pub bonus_percentage: Option<f64>,
+        pub is_popular: Option<bool>,
+        pub is_active: bool,
+        pub display_order: i32,
+        pub stripe_price_id: String,
+    }
+
+    let client_credit_packs: Vec<ClientCreditPack> = credit_packs.into_iter().map(|pack| {
+        ClientCreditPack {
+            id: pack.id,
+            name: pack.name,
+            value_credits: pack.value_credits.to_f64().unwrap_or(0.0),
+            price_amount: pack.price_amount.to_f64().unwrap_or(0.0),
+            currency: pack.currency,
+            description: pack.description,
+            recommended: pack.recommended,
+            bonus_percentage: pack.bonus_percentage.and_then(|bp| bp.to_f64()),
+            is_popular: pack.is_popular,
+            is_active: pack.is_active,
+            display_order: pack.display_order,
+            stripe_price_id: pack.stripe_price_id,
+        }
+    }).collect();
     
-    let response = PaymentIntentResponse {
-        client_secret: payment_intent.client_secret.unwrap_or_default(),
-        publishable_key,
-        amount: payment_intent.amount,
-        currency: payment_intent.currency.to_string(),
-        description: payment_intent.description.unwrap_or_else(|| "Credit purchase".to_string()),
-    };
-    
-    info!("Successfully created PaymentIntent for user: {}", user_id.0);
-    Ok(HttpResponse::Ok().json(response))
+    info!("Successfully retrieved {} credit packs", client_credit_packs.len());
+    Ok(HttpResponse::Ok().json(client_credit_packs))
 }
+

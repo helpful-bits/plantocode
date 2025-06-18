@@ -67,13 +67,42 @@ impl JobProcessor for GenericLlmStreamProcessor {
         // Get the API client for streaming
         let llm_client = llm_api_utils::get_api_client(&app_handle)?;
         
-        // Combine system and user prompts for stream_complete
-        let system_prompt = payload.system_prompt.as_deref().unwrap_or("");
-        let user_prompt = &payload.prompt_text;
-        let combined_prompt = format!("{}{}", system_prompt, user_prompt);
+        // Construct messages vector for chat completion
+        let mut messages: Vec<crate::models::OpenRouterRequestMessage> = Vec::new();
         
-        // Create streaming handler configuration
-        let stream_config = crate::jobs::streaming_handler::create_stream_config(system_prompt, user_prompt);
+        // Add system message if system prompt exists
+        if let Some(system_prompt) = &payload.system_prompt {
+            if !system_prompt.trim().is_empty() {
+                messages.push(crate::models::OpenRouterRequestMessage {
+                    role: "system".to_string(),
+                    content: vec![crate::models::OpenRouterContent::Text {
+                        content_type: "text".to_string(),
+                        text: system_prompt.clone(),
+                    }],
+                });
+            }
+        }
+        
+        // Add user message for main prompt
+        messages.push(crate::models::OpenRouterRequestMessage {
+            role: "user".to_string(),
+            content: vec![crate::models::OpenRouterContent::Text {
+                content_type: "text".to_string(),
+                text: payload.prompt_text.clone(),
+            }],
+        });
+        
+        // Create StreamConfig manually with estimated tokens
+        let system_prompt_text = payload.system_prompt.as_deref().unwrap_or("");
+        let estimated_system_tokens = system_prompt_text.len() / 4;
+        let estimated_user_tokens = payload.prompt_text.len() / 4;
+        let estimated_total_tokens = estimated_system_tokens + estimated_user_tokens;
+        
+        let stream_config = crate::jobs::streaming_handler::StreamConfig {
+            prompt_tokens: estimated_total_tokens,
+            system_prompt: system_prompt_text.to_string(),
+            user_prompt: payload.prompt_text.clone(),
+        };
         
         // Create streaming handler
         let streaming_handler = crate::jobs::streaming_handler::StreamedResponseHandler::new(
@@ -84,12 +113,23 @@ impl JobProcessor for GenericLlmStreamProcessor {
             Some(app_handle.clone()),
         );
         
-        // Process the stream using the handler
-        let stream_result = match streaming_handler
-            .process_stream_from_client(&llm_client, &combined_prompt, api_options)
-            .await 
-        {
-            Ok(result) => result,
+        // Call chat completion stream and process with handler
+        let stream_result = match llm_client.chat_completion_stream(messages, api_options).await {
+            Ok(stream) => {
+                match streaming_handler.process_stream(stream).await {
+                    Ok(result) => result,
+                    Err(e) => {
+                        let error_message = e.to_string();
+                        error!("{}", error_message);
+                        
+                        // Finalize job failure
+                        job_processor_utils::finalize_job_failure(&job.id, &repo, &error_message, None).await?;
+                        
+                        // Return failure result
+                        return Ok(JobProcessResult::failure(job.id.to_string(), error_message));
+                    }
+                }
+            }
             Err(e) => {
                 let error_message = e.to_string();
                 error!("{}", error_message);
@@ -103,7 +143,7 @@ impl JobProcessor for GenericLlmStreamProcessor {
         };
         
         let collected_response = stream_result.accumulated_response;
-        let usage = stream_result.final_usage;
+        let usage_opt = stream_result.final_usage;
         let response_len = collected_response.len() as i32;
         
         // Update job status to completed
@@ -115,19 +155,25 @@ impl JobProcessor for GenericLlmStreamProcessor {
                 &job.id,
                 &repo,
                 &collected_response,
-                Some(usage.clone()),
+                usage_opt.clone(),
                 &model_name,
                 "generic_stream", // No specific system prompt ID for generic streams
                 None,
             ).await?;
             
-            JobProcessResult::success(job.id.to_string(), collected_response)
-                .with_tokens(
+            let mut result = JobProcessResult::success(job.id.to_string(), collected_response);
+            
+            // Add token information if usage is available
+            if let Some(usage) = &usage_opt {
+                result = result.with_tokens(
                     Some(usage.prompt_tokens as i32),
                     Some(usage.completion_tokens as i32),
                     Some(usage.total_tokens as i32),
                     Some(response_len)  // Use response length as char count
-                )
+                );
+            }
+            
+            result
         } else {
             let error_message = "Stream completed but no content was received".to_string();
             error!("{}", error_message);

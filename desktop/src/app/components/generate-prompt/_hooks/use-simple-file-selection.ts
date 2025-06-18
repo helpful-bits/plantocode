@@ -66,8 +66,11 @@ export function useSimpleFileSelection(projectDirectory?: string) {
       let fileList: SimpleFileInfo[];
       
       if (preserveSelections) {
-        const includedSet = new Set(sessionIncluded);
-        const excludedSet = new Set(sessionExcluded);
+        // Get current session data at call time to avoid dependency issues
+        const currentIncluded = currentSession?.includedFiles || [];
+        const currentExcluded = currentSession?.forceExcludedFiles || [];
+        const includedSet = new Set(currentIncluded);
+        const excludedSet = new Set(currentExcluded);
 
         fileList = result.data.map(file => ({
           path: file.path,
@@ -94,7 +97,7 @@ export function useSimpleFileSelection(projectDirectory?: string) {
     } finally {
       setLoading(false);
     }
-  }, [projectDirectory, sessionIncluded, sessionExcluded]);
+  }, [projectDirectory]); // Only depend on projectDirectory to avoid recreating on session changes
 
   // Separate refresh function that preserves selections
   const refreshFiles = useCallback(() => {
@@ -110,16 +113,19 @@ export function useSimpleFileSelection(projectDirectory?: string) {
   useEffect(() => {
     if (files.length === 0) return; // Don't sync if no files loaded yet
     
-    const includedSet = new Set(sessionIncluded);
-    const excludedSet = new Set(sessionExcluded);
-    
-    setFiles(prevFiles => 
-      prevFiles.map(file => ({
-        ...file,
-        included: includedSet.has(file.path),
-        excluded: excludedSet.has(file.path),
-      }))
-    );
+    // Defer the update to avoid setState during render
+    setTimeout(() => {
+      const includedSet = new Set(sessionIncluded);
+      const excludedSet = new Set(sessionExcluded);
+      
+      setFiles(prevFiles => 
+        prevFiles.map(file => ({
+          ...file,
+          included: includedSet.has(file.path),
+          excluded: excludedSet.has(file.path),
+        }))
+      );
+    }, 0);
   }, [sessionIncluded, sessionExcluded, files.length]);
 
   // Save to history before making changes
@@ -141,50 +147,62 @@ export function useSimpleFileSelection(projectDirectory?: string) {
   const toggleFileSelection = useCallback((path: string) => {
     saveToHistory();
     
-    setFiles(prevFiles => {
-      const updatedFiles = prevFiles.map(file => 
-        file.path === path 
-          ? { ...file, included: !file.included, excluded: file.excluded && !file.included }
-          : file
-      );
-      
-      const newIncluded = updatedFiles
-        .filter(file => file.included && !file.excluded)
-        .map(file => file.path);
-
-      updateCurrentSessionFields({ includedFiles: newIncluded });
-      
-      return updatedFiles;
+    // Calculate new file state
+    const updatedFiles = files.map(file => {
+      if (file.path === path) {
+        const newIncluded = !file.included;
+        return {
+          ...file,
+          included: newIncluded,
+          excluded: newIncluded ? false : file.excluded // Clear exclusion when including
+        };
+      }
+      return file;
     });
-  }, [updateCurrentSessionFields, saveToHistory]);
+    
+    // Calculate new included files list
+    const newIncluded = updatedFiles
+      .filter(file => file.included && !file.excluded)
+      .map(file => file.path);
+    
+    // Update states sequentially
+    setFiles(updatedFiles);
+    updateCurrentSessionFields({ includedFiles: newIncluded });
+  }, [files, updateCurrentSessionFields, saveToHistory]);
 
   // Toggle file exclusion
   const toggleFileExclusion = useCallback((path: string) => {
     saveToHistory();
     
-    setFiles(prevFiles => {
-      const updatedFiles = prevFiles.map(file => 
-        file.path === path 
-          ? { ...file, excluded: !file.excluded, included: file.included && file.excluded }
-          : file
-      );
-
-      const newExcluded = updatedFiles
-        .filter(file => file.excluded)
-        .map(file => file.path);
-
-      const newIncluded = updatedFiles
-        .filter(file => file.included && !file.excluded)
-        .map(file => file.path);
-
-      updateCurrentSessionFields({ 
-        forceExcludedFiles: newExcluded,
-        includedFiles: newIncluded
-      });
-      
-      return updatedFiles;
+    // Calculate new file state
+    const updatedFiles = files.map(file => {
+      if (file.path === path) {
+        const newExcluded = !file.excluded;
+        return {
+          ...file,
+          excluded: newExcluded,
+          included: newExcluded ? false : file.included // Clear inclusion when excluding
+        };
+      }
+      return file;
     });
-  }, [updateCurrentSessionFields, saveToHistory]);
+    
+    // Calculate new excluded and included files lists
+    const newExcluded = updatedFiles
+      .filter(file => file.excluded)
+      .map(file => file.path);
+
+    const newIncluded = updatedFiles
+      .filter(file => file.included && !file.excluded)
+      .map(file => file.path);
+
+    // Update states sequentially
+    setFiles(updatedFiles);
+    updateCurrentSessionFields({ 
+      forceExcludedFiles: newExcluded,
+      includedFiles: newIncluded
+    });
+  }, [files, updateCurrentSessionFields, saveToHistory]);
 
   // Undo functionality
   const undo = useCallback(() => {
@@ -277,16 +295,30 @@ export function useSimpleFileSelection(projectDirectory?: string) {
   // Apply workflow results to file selection
   const applyWorkflowResultsToSession = useCallback((paths: string[], source: string) => {
     if (paths && paths.length > 0) {
-      // Save current state to history before applying results
-      saveToHistory();
-      
-      // Update session with found files
-      const newIncludedFiles = [...new Set([...sessionIncluded, ...paths])];
-      updateCurrentSessionFields({ includedFiles: newIncludedFiles });
-      
-      console.log(`Applied ${paths.length} files from ${source}`);
+      // Schedule the updates to avoid setState during render
+      setTimeout(() => {
+        // Save current state to history before applying results
+        const currentState = {
+          includedFiles: currentSession?.includedFiles || [],
+          forceExcludedFiles: currentSession?.forceExcludedFiles || []
+        };
+        
+        setHistory(prev => {
+          const newHistory = prev.slice(0, historyIndex + 1);
+          newHistory.push(currentState);
+          return newHistory.slice(-50);
+        });
+        setHistoryIndex(prev => Math.min(prev + 1, 49));
+        
+        // Update session with found files
+        const currentIncluded = currentSession?.includedFiles || [];
+        const newIncludedFiles = [...new Set([...currentIncluded, ...paths])];
+        updateCurrentSessionFields({ includedFiles: newIncludedFiles });
+        
+        console.log(`Applied ${paths.length} files from ${source}`);
+      }, 0);
     }
-  }, [sessionIncluded, updateCurrentSessionFields, saveToHistory]);
+  }, [currentSession, historyIndex, updateCurrentSessionFields]);
 
   // Find function - triggers file finder workflow with completion handling
   const triggerFind = useCallback(async () => {
@@ -343,55 +375,55 @@ export function useSimpleFileSelection(projectDirectory?: string) {
       setError(error instanceof Error ? error.message : "Failed to start workflow");
       setFindingFiles(false);
     }
-  }, [activeSessionId, projectDirectory, currentSession?.taskDescription, currentSession?.forceExcludedFiles, sessionIncluded, updateCurrentSessionFields, saveToHistory]);
+  }, [activeSessionId, projectDirectory, currentSession?.taskDescription, currentSession?.forceExcludedFiles, applyWorkflowResultsToSession]);
 
   // Select filtered files only
   const selectFiltered = useCallback(() => {
     saveToHistory();
     
-    setFiles(prevFiles => {
-      const filteredPaths = new Set(filteredAndSortedFiles.map(f => f.path));
-      
-      const updatedFiles = prevFiles.map(file => {
-        if (filteredPaths.has(file.path)) {
-          return { ...file, included: true, excluded: false };
-        }
-        return file;
-      });
-      
-      const newIncluded = updatedFiles
-        .filter(file => file.included && !file.excluded)
-        .map(file => file.path);
-      
-      updateCurrentSessionFields({ includedFiles: newIncluded });
-      
-      return updatedFiles;
+    // Calculate new file state
+    const filteredPaths = new Set(filteredAndSortedFiles.map(f => f.path));
+    
+    const updatedFiles = files.map(file => {
+      if (filteredPaths.has(file.path)) {
+        return { ...file, included: true, excluded: false };
+      }
+      return file;
     });
-  }, [saveToHistory, updateCurrentSessionFields, filteredAndSortedFiles]);
+    
+    // Calculate new included files list
+    const newIncluded = updatedFiles
+      .filter(file => file.included && !file.excluded)
+      .map(file => file.path);
+    
+    // Update states sequentially
+    setFiles(updatedFiles);
+    updateCurrentSessionFields({ includedFiles: newIncluded });
+  }, [saveToHistory, updateCurrentSessionFields, filteredAndSortedFiles, files]);
 
   // Deselect filtered files only
   const deselectFiltered = useCallback(() => {
     saveToHistory();
     
-    setFiles(prevFiles => {
-      const filteredPaths = new Set(filteredAndSortedFiles.map(f => f.path));
-      
-      const updatedFiles = prevFiles.map(file => {
-        if (filteredPaths.has(file.path)) {
-          return { ...file, included: false, excluded: false };
-        }
-        return file;
-      });
-      
-      const newIncluded = updatedFiles
-        .filter(file => file.included && !file.excluded)
-        .map(file => file.path);
-      
-      updateCurrentSessionFields({ includedFiles: newIncluded });
-      
-      return updatedFiles;
+    // Calculate new file state
+    const filteredPaths = new Set(filteredAndSortedFiles.map(f => f.path));
+    
+    const updatedFiles = files.map(file => {
+      if (filteredPaths.has(file.path)) {
+        return { ...file, included: false, excluded: false };
+      }
+      return file;
     });
-  }, [saveToHistory, updateCurrentSessionFields, filteredAndSortedFiles]);
+    
+    // Calculate new included files list
+    const newIncluded = updatedFiles
+      .filter(file => file.included && !file.excluded)
+      .map(file => file.path);
+    
+    // Update states sequentially
+    setFiles(updatedFiles);
+    updateCurrentSessionFields({ includedFiles: newIncluded });
+  }, [saveToHistory, updateCurrentSessionFields, filteredAndSortedFiles, files]);
 
   return {
     files: filteredAndSortedFiles,

@@ -485,6 +485,7 @@ impl BackgroundJobRepository {
         tokens_sent: Option<i32>,
         tokens_received: Option<i32>,
         model_used: Option<&str>,
+        cost: Option<f64>,
     ) -> AppResult<()> {
         let now = get_timestamp();
         
@@ -509,6 +510,11 @@ impl BackgroundJobRepository {
         
         if model_used.is_some() {
             final_query.push_str(&format!(", model_used = ${}", param_index));
+            param_index += 1;
+        }
+        
+        if cost.is_some() {
+            final_query.push_str(&format!(", cost = ${}", param_index));
             param_index += 1;
         }
         
@@ -539,6 +545,10 @@ impl BackgroundJobRepository {
         
         if let Some(model) = model_used {
             query_obj = query_obj.bind(model);
+        }
+        
+        if let Some(c) = cost {
+            query_obj = query_obj.bind(c);
         }
         
         // Bind job_id last
@@ -781,6 +791,7 @@ impl BackgroundJobRepository {
         let updated_at: Option<i64> = row.try_get::<'_, Option<i64>, _>("updated_at").unwrap_or(None);
         let start_time: Option<i64> = row.try_get::<'_, Option<i64>, _>("start_time").unwrap_or(None);
         let end_time: Option<i64> = row.try_get::<'_, Option<i64>, _>("end_time").unwrap_or(None);
+        let cost: Option<f64> = row.try_get::<'_, Option<f64>, _>("cost").unwrap_or(None);
         
         Ok(BackgroundJob {
             id,
@@ -798,6 +809,7 @@ impl BackgroundJobRepository {
             updated_at,
             start_time,
             end_time,
+            cost,
         })
     }
     

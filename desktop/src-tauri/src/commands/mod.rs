@@ -193,22 +193,21 @@ pub use billing_commands::{
     check_service_access_command,
     get_credit_history_command,
     get_credit_packs_command,
+    get_credit_balance_command,
     get_credit_stats_command,
     get_spending_analytics_command,
     get_spending_forecast_command,
     get_payment_methods_command,
-    // Modern PaymentIntent-based commands (2024)
-    create_credit_payment_intent_command,
-    create_subscription_intent_command,
-    create_setup_intent_command,
-    confirm_payment_status_command,
-    get_stripe_publishable_key_command,
+    set_default_payment_method_command,
+    detach_payment_method_command,
+    // Stripe Checkout commands
+    create_credit_checkout_session_command,
+    create_subscription_checkout_session_command,
+    create_setup_checkout_session_command,
+    get_checkout_session_status_command,
     // Subscription lifecycle management now handled via Stripe Portal
     get_usage_summary_command,
     create_billing_portal_session_command,
-    // Billing health monitoring
-    check_billing_health_command,
-    ping_billing_service_command,
     list_invoices_command,
 };
 

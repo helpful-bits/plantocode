@@ -190,7 +190,7 @@ export function useSessionActions({
   const updateCurrentSessionFields = useCallback(
     (fields: Partial<Session>) => {
       // Using Session type for the function parameter ensures proper typing
-      if (!currentSession) {
+      if (!currentSessionRef.current) {
         return;
       }
 
@@ -200,20 +200,20 @@ export function useSessionActions({
       for (const key in fields) {
         const typedKey = key as keyof Session;
         const fieldValue = fields[typedKey];
-        if (fieldValue !== undefined && fieldValue !== currentSession[typedKey]) {
+        if (fieldValue !== undefined && fieldValue !== currentSessionRef.current[typedKey]) {
           // For arrays, do a shallow content comparison
-          if (Array.isArray(fieldValue) && Array.isArray(currentSession[typedKey])) {
+          if (Array.isArray(fieldValue) && Array.isArray(currentSessionRef.current[typedKey])) {
             // For file selection arrays, sort before comparison to ensure consistent representation
             const isFileSelectionArray = typedKey === 'includedFiles' || typedKey === 'forceExcludedFiles';
             if (isFileSelectionArray) {
               const sortedNewValue = [...(fieldValue as string[])].sort();
-              const sortedCurrentValue = [...(currentSession[typedKey] as string[])].sort();
+              const sortedCurrentValue = [...(currentSessionRef.current[typedKey] as string[])].sort();
               if (!areArraysEqual(sortedNewValue, sortedCurrentValue)) {
                 changed = true;
                 (updatedFields as any)[typedKey] = sortedNewValue;
               }
             } else {
-              if (!areArraysEqual(fieldValue as unknown[], currentSession[typedKey] as unknown[])) {
+              if (!areArraysEqual(fieldValue as unknown[], currentSessionRef.current[typedKey] as unknown[])) {
                 changed = true;
                 (updatedFields as any)[typedKey] = fieldValue;
               }
@@ -226,7 +226,7 @@ export function useSessionActions({
       }
 
       if (changed) {
-        const updatedSession = { ...currentSession, ...updatedFields };
+        const updatedSession = { ...currentSessionRef.current, ...updatedFields };
         setSessionModified(true);
         setCurrentSession(updatedSession);
         
@@ -235,7 +235,6 @@ export function useSessionActions({
       }
     },
     [
-      currentSession, // Use currentSession directly instead of ref
       setCurrentSession, // Stable setter from SessionStateContext
       setSessionModified, // Stable setter from SessionStateContext
       smartSave, // Memoized function dependency

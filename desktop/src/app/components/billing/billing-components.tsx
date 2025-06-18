@@ -4,7 +4,7 @@ import { Loader2 } from 'lucide-react';
 
 
 export const CreditManagerAsync = lazy(() => 
-  import('./components/credit-manager').then(module => ({ 
+  import('./components/CreditManager').then(module => ({ 
     default: module.CreditManager 
   }))
 );
@@ -12,6 +12,36 @@ export const CreditManagerAsync = lazy(() =>
 export const SubscriptionModalAsync = lazy(() => 
   import('./components/subscription-modal').then(module => ({ 
     default: module.SubscriptionModal 
+  }))
+);
+
+export const InvoicesListAsync = lazy(() => 
+  import('./components/InvoicesList').then(module => ({ 
+    default: module.InvoicesList 
+  }))
+);
+
+export const PaymentMethodsListAsync = lazy(() => 
+  import('./components/PaymentMethodsList').then(module => ({ 
+    default: module.PaymentMethodsList 
+  }))
+);
+
+export const CreditTransactionHistoryAsync = lazy(() => 
+  import('./components/CreditTransactionHistory').then(module => ({ 
+    default: module.CreditTransactionHistory 
+  }))
+);
+
+export const UsageDetailsModalAsync = lazy(() => 
+  import('./components/UsageDetailsModal').then(module => ({ 
+    default: module.UsageDetailsModal 
+  }))
+);
+
+export const AddPaymentMethodModalAsync = lazy(() => 
+  import('./components/AddPaymentMethodModal').then(module => ({ 
+    default: module.AddPaymentMethodModal 
   }))
 );
 
@@ -40,10 +70,19 @@ export function withBillingSuspense<T extends object>(
 
 export const CreditManager = withBillingSuspense(CreditManagerAsync);
 export const SubscriptionModal = withBillingSuspense(SubscriptionModalAsync);
+export const InvoicesList = withBillingSuspense(InvoicesListAsync);
+export const PaymentMethodsList = withBillingSuspense(PaymentMethodsListAsync);
+export const CreditTransactionHistory = withBillingSuspense(CreditTransactionHistoryAsync);
+export const UsageDetailsModal = withBillingSuspense(UsageDetailsModalAsync);
+export const AddPaymentMethodModal = withBillingSuspense(AddPaymentMethodModalAsync);
 
 export function preloadBillingComponents(): void {
   setTimeout(() => {
-    import('./components/credit-manager');
+    import('./components/CreditManager');
+    import('./components/InvoicesList');
+    import('./components/PaymentMethodsList');
+    import('./components/CreditTransactionHistory');
+    import('./components/AddPaymentMethodModal');
   }, 500);
 }
 export { LoadingSkeleton, ErrorState, NoSubscriptionState, ProcessingState } from './components/loading-and-error-states';

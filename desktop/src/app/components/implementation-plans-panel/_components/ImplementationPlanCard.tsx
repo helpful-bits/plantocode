@@ -72,6 +72,8 @@ const ImplementationPlanCard = React.memo<ImplementationPlanCardProps>(({
   
   if (totalTokens > 0) {
     tokenCountDisplay = totalTokens.toLocaleString();
+  } else if (isStreaming) {
+    tokenCountDisplay = "Thinking...";
   }
 
   // Format timestamps

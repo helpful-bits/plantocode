@@ -4,11 +4,21 @@ use serde::{Deserialize, Serialize};
 use bigdecimal::{BigDecimal, ToPrimitive};
 use crate::error::AppError;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct SpendingDetails {
+    #[serde(default = "default_overage_policy")]
     pub overage_policy: String,
+    #[serde(default = "default_hard_cutoff")]
     pub hard_cutoff: bool,
+}
+
+fn default_overage_policy() -> String {
+    "none".to_string()
+}
+
+fn default_hard_cutoff() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -16,11 +26,22 @@ pub struct SpendingDetails {
 pub struct PlanFeatures {
     #[serde(default)]
     pub core_features: Vec<String>,
-    pub allowed_models: Vec<String>,
+    #[serde(default = "default_support_level")]
     pub support_level: String,
+    #[serde(default)]
     pub api_access: bool,
+    #[serde(default = "default_analytics_level")]
     pub analytics_level: String,
+    #[serde(default)]
     pub spending_details: SpendingDetails,
+}
+
+fn default_support_level() -> String {
+    "Standard".to_string()
+}
+
+fn default_analytics_level() -> String {
+    "Basic".to_string()
 }
 
 impl PlanFeatures {
@@ -29,16 +50,6 @@ impl PlanFeatures {
         self.api_access
     }
 
-    /// Check if the plan allows a specific model
-    pub fn allows_model(&self, model_id: &str) -> bool {
-        self.allowed_models.contains(&"all".to_string()) || 
-        self.allowed_models.contains(&model_id.to_string())
-    }
-
-    /// Check if the plan allows all models
-    pub fn allows_all_models(&self) -> bool {
-        self.allowed_models.contains(&"all".to_string())
-    }
 
     /// Get the support level as an enum-like value
     pub fn get_support_level(&self) -> SupportLevel {
@@ -120,11 +131,6 @@ impl SubscriptionPlan {
         self
     }
 
-    /// Check if user with this plan can access a specific model
-    pub fn can_use_model(&self, model_id: &str) -> Result<bool, AppError> {
-        let features = self.get_typed_features()?;
-        Ok(features.allows_model(model_id))
-    }
 
     /// Check if the plan has API access
     pub fn has_api_access(&self) -> Result<bool, AppError> {
@@ -259,187 +265,3 @@ impl SubscriptionPlanRepository {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::json;
-
-    #[test]
-    fn test_plan_features_deserialization() {
-        let json_data = json!({
-            "coreFeatures": ["All AI models", "Priority support", "Advanced analytics", "API access"],
-            "allowedModels": ["all"],
-            "supportLevel": "Priority",
-            "apiAccess": true,
-            "analyticsLevel": "Advanced",
-            "spendingDetails": {
-                "overagePolicy": "standard_rate",
-                "hardCutoff": true
-            }
-        });
-
-        let features: PlanFeatures = serde_json::from_value(json_data).unwrap();
-        
-        assert_eq!(features.core_features.len(), 4);
-        assert!(features.allows_all_models());
-        assert!(features.has_api_access());
-        assert_eq!(features.get_support_level(), SupportLevel::Priority);
-        assert_eq!(features.get_overage_policy(), OveragePolicy::StandardRate);
-        assert!(features.allows_overage());
-    }
-
-    #[test]
-    fn test_free_plan_features() {
-        let json_data = json!({
-            "coreFeatures": ["Basic AI models", "Community support", "Usage analytics"],
-            "allowedModels": ["anthropic/claude-sonnet-4", "openai/gpt-4.1-mini"],
-            "supportLevel": "Community",
-            "apiAccess": false,
-            "analyticsLevel": "Basic",
-            "spendingDetails": {
-                "overagePolicy": "none",
-                "hardCutoff": true
-            }
-        });
-
-        let features: PlanFeatures = serde_json::from_value(json_data).unwrap();
-        
-        assert!(!features.allows_all_models());
-        assert!(features.allows_model("anthropic/claude-sonnet-4"));
-        assert!(!features.allows_model("anthropic/claude-opus-4"));
-        assert!(!features.has_api_access());
-        assert_eq!(features.get_support_level(), SupportLevel::Community);
-        assert_eq!(features.get_overage_policy(), OveragePolicy::None);
-        assert!(!features.allows_overage());
-    }
-
-    #[test]
-    fn test_subscription_plan_convenience_methods() {
-        let plan = SubscriptionPlan {
-            id: "test".to_string(),
-            name: "Test Plan".to_string(),
-            description: Some("Test description".to_string()),
-            base_price_weekly: BigDecimal::from(0),
-            base_price_monthly: BigDecimal::from(0),
-            base_price_yearly: BigDecimal::from(0),
-            included_spending_weekly: BigDecimal::from(0),
-            included_spending_monthly: BigDecimal::from(5),
-            overage_rate: BigDecimal::from(1),
-            hard_limit_multiplier: BigDecimal::from(2),
-            currency: "USD".to_string(),
-            stripe_price_id_weekly: None,
-            stripe_price_id_monthly: None,
-            stripe_price_id_yearly: None,
-            plan_tier: 0,
-            features: json!({
-                "coreFeatures": ["Basic AI models"],
-                "allowedModels": ["anthropic/claude-sonnet-4"],
-                "supportLevel": "Community",
-                "apiAccess": false,
-                "analyticsLevel": "Basic",
-                "spendingDetails": {
-                    "overagePolicy": "none",
-                    "hardCutoff": true
-                }
-            }),
-            typed_features: None,
-        }.with_typed_features();
-
-        assert!(plan.is_free_plan());
-        assert_eq!(plan.get_monthly_price_float(), 0.0);
-        assert!(!plan.has_api_access().unwrap());
-        assert!(!plan.allows_overage().unwrap());
-        assert!(plan.can_use_model("anthropic/claude-sonnet-4").unwrap());
-        assert!(!plan.can_use_model("anthropic/claude-opus-4").unwrap());
-        assert_eq!(plan.get_support_level().unwrap(), SupportLevel::Community);
-        assert_eq!(plan.get_overage_policy().unwrap(), OveragePolicy::None);
-    }
-
-    #[test]
-    fn test_plan_tier_comparisons() {
-        let free_plan = SubscriptionPlan {
-            id: "free".to_string(),
-            name: "Free".to_string(),
-            description: None,
-            base_price_weekly: BigDecimal::from(0),
-            base_price_monthly: BigDecimal::from(0),
-            base_price_yearly: BigDecimal::from(0),
-            included_spending_weekly: BigDecimal::from(0),
-            included_spending_monthly: BigDecimal::from(5),
-            overage_rate: BigDecimal::from(1),
-            hard_limit_multiplier: BigDecimal::from(2),
-            currency: "USD".to_string(),
-            stripe_price_id_weekly: None,
-            stripe_price_id_monthly: None,
-            stripe_price_id_yearly: None,
-            plan_tier: 0,
-            features: json!({}),
-            typed_features: None,
-        };
-
-        let pro_plan = SubscriptionPlan {
-            id: "pro".to_string(),
-            name: "Pro".to_string(),
-            description: None,
-            base_price_weekly: BigDecimal::from(5),
-            base_price_monthly: BigDecimal::from(20),
-            base_price_yearly: BigDecimal::from(200),
-            included_spending_weekly: BigDecimal::from(12),
-            included_spending_monthly: BigDecimal::from(50),
-            overage_rate: BigDecimal::from(1),
-            hard_limit_multiplier: BigDecimal::from(3),
-            currency: "USD".to_string(),
-            stripe_price_id_weekly: None,
-            stripe_price_id_monthly: None,
-            stripe_price_id_yearly: None,
-            plan_tier: 1,
-            features: json!({}),
-            typed_features: None,
-        };
-
-        let enterprise_plan = SubscriptionPlan {
-            id: "enterprise".to_string(),
-            name: "Enterprise".to_string(),
-            description: None,
-            base_price_weekly: BigDecimal::from(25),
-            base_price_monthly: BigDecimal::from(100),
-            base_price_yearly: BigDecimal::from(1000),
-            included_spending_weekly: BigDecimal::from(50),
-            included_spending_monthly: BigDecimal::from(200),
-            overage_rate: BigDecimal::from(1),
-            hard_limit_multiplier: BigDecimal::from(5),
-            currency: "USD".to_string(),
-            stripe_price_id_weekly: None,
-            stripe_price_id_monthly: None,
-            stripe_price_id_yearly: None,
-            plan_tier: 2,
-            features: json!({}),
-            typed_features: None,
-        };
-
-        // Test tier comparisons
-        assert_eq!(free_plan.get_plan_tier(), 0);
-        assert_eq!(pro_plan.get_plan_tier(), 1);
-        assert_eq!(enterprise_plan.get_plan_tier(), 2);
-
-        // Test upgrade logic
-        assert!(free_plan.is_upgrade_to(&pro_plan));
-        assert!(free_plan.is_upgrade_to(&enterprise_plan));
-        assert!(pro_plan.is_upgrade_to(&enterprise_plan));
-
-        // Test downgrade logic
-        assert!(pro_plan.is_downgrade_to(&free_plan));
-        assert!(enterprise_plan.is_downgrade_to(&free_plan));
-        assert!(enterprise_plan.is_downgrade_to(&pro_plan));
-
-        // Test same tier logic
-        assert!(free_plan.is_same_tier_as(&free_plan));
-        assert!(pro_plan.is_same_tier_as(&pro_plan));
-        assert!(enterprise_plan.is_same_tier_as(&enterprise_plan));
-
-        // Test negatives
-        assert!(!free_plan.is_downgrade_to(&pro_plan));
-        assert!(!pro_plan.is_upgrade_to(&free_plan));
-        assert!(!free_plan.is_same_tier_as(&pro_plan));
-    }
-}

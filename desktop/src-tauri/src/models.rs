@@ -293,6 +293,7 @@ pub struct BackgroundJob {
     pub updated_at: Option<i64>,
     pub start_time: Option<i64>,
     pub end_time: Option<i64>,
+    pub cost: Option<f64>,
 }
 
 // Task settings model (DB struct - no camelCase conversion)
@@ -433,6 +434,7 @@ pub struct OpenRouterUsage {
     pub prompt_tokens: u32,
     pub completion_tokens: u32,
     pub total_tokens: u32,
+    pub cost: Option<f64>,
 }
 
 // OpenRouter streaming response chunks
@@ -441,6 +443,7 @@ pub struct OpenRouterStreamChunk {
     pub id: String,
     pub choices: Vec<OpenRouterStreamChoice>,
     pub model: String,
+    pub usage: Option<OpenRouterUsage>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -547,6 +550,7 @@ pub struct TaskSpecificModelConfig {
     pub max_tokens: Option<u32>,
     pub temperature: Option<f32>,
     pub system_prompt: Option<String>,
+    pub copy_buttons: Option<Vec<serde_json::Value>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -728,15 +732,38 @@ pub struct SubscriptionPlan {
     pub id: String,
     pub name: String,
     pub description: String,
+    pub weekly_price: f64,
     pub monthly_price: f64,
     pub yearly_price: f64,
     pub currency: String,
+    pub trial_days: i32,
     pub features: Vec<String>,
     pub recommended: bool,
-    pub trial_days: i32,
+    pub active: bool,
+    pub stripe_weekly_price_id: Option<String>,
     pub stripe_monthly_price_id: Option<String>,
     pub stripe_yearly_price_id: Option<String>,
-    pub active: bool,
     pub created_at: Option<String>,
     pub updated_at: Option<String>,
+}
+
+/// Invoice model for billing operations
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Invoice {
+    pub id: String,
+    pub created: i64,
+    pub due_date: Option<i64>,
+    pub amount_due: i64,
+    pub amount_paid: i64,
+    pub currency: String,
+    pub status: String,
+    pub invoice_pdf_url: Option<String>,
+}
+
+/// Response structure for listing invoices
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ListInvoicesResponse {
+    pub invoices: Vec<Invoice>,
+    pub total_invoices: i32,
+    pub has_more: bool,
 }
