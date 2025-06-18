@@ -248,8 +248,16 @@ impl LlmTaskRunner {
         job_id: &str,
         error_message: &str,
         app_error_opt: Option<&AppError>,
+        llm_usage: Option<OpenRouterUsage>,
     ) -> AppResult<()> {
-        job_processor_utils::finalize_job_failure(job_id, repo, error_message, app_error_opt).await
+        job_processor_utils::finalize_job_failure(
+            job_id, 
+            repo, 
+            error_message, 
+            app_error_opt,
+            llm_usage,
+            Some(self.config.model.clone())
+        ).await
     }
 }
 

@@ -1,6 +1,6 @@
 use crate::error::AppError;
 use crate::handlers::billing::dashboard_handler::{BillingDashboardData, BillingDashboardPlanDetails, BillingDashboardSpendingDetails};
-use crate::db::repositories::api_usage_repository::ApiUsageRepository;
+use crate::db::repositories::api_usage_repository::{ApiUsageRepository, DetailedUsageRecord};
 use crate::db::repositories::subscription_repository::{SubscriptionRepository, Subscription};
 use crate::db::repositories::subscription_plan_repository::{SubscriptionPlanRepository, SubscriptionPlan};
 use crate::db::repositories::spending_repository::SpendingRepository;
@@ -10,7 +10,6 @@ use crate::services::cost_based_billing_service::CostBasedBillingService;
 use crate::services::email_notification_service::EmailNotificationService;
 use crate::services::audit_service::{AuditService, AuditContext};
 use crate::utils::error_handling::{retry_with_backoff, RetryConfig, validate_amount, validate_currency};
-use crate::utils::stripe_currency_utils::{generate_idempotency_key, validate_stripe_amount_matches};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use log::{debug, error, info, warn};
@@ -521,9 +520,9 @@ impl BillingService {
         // Calculate base subscription amount (monthly price)
         let base_amount = &plan.base_price_monthly;
 
-        // Calculate overage charges
+        // Calculate overage charges using cost markup percentage
         let overage_amount = if spending_status.overage_amount > BigDecimal::from(0) {
-            &spending_status.overage_amount * &plan.overage_rate
+            &spending_status.overage_amount * &plan.cost_markup_percentage
         } else {
             BigDecimal::from(0)
         };
@@ -1074,7 +1073,7 @@ impl BillingService {
         user_id: &Uuid,
         start_date: DateTime<Utc>,
         end_date: DateTime<Utc>,
-    ) -> Result<Vec<serde_json::Value>, AppError> {
+    ) -> Result<Vec<DetailedUsageRecord>, AppError> {
         let mut tx = self.db_pools.user_pool.begin().await
             .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
 

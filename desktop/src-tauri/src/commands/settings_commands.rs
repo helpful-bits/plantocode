@@ -464,6 +464,23 @@ pub async fn initialize_system_prompts_from_server(app_handle: AppHandle) -> App
     server_client.populate_default_system_prompts_cache(&*settings_repo).await
 }
 
+#[tauri::command]
+pub async fn is_setting_customized_command(app_handle: AppHandle, setting_key: String) -> AppResult<bool> {
+    let settings_repo = app_handle.state::<Arc<SettingsRepository>>().inner().clone();
+    
+    // Check if the setting exists in the database
+    let value = settings_repo.get_value(&setting_key).await?;
+    Ok(value.is_some())
+}
+
+#[tauri::command]
+pub async fn reset_setting_to_default_command(app_handle: AppHandle, setting_key: String) -> AppResult<()> {
+    let settings_repo = app_handle.state::<Arc<SettingsRepository>>().inner().clone();
+    
+    // Reset by removing the project-specific entry
+    settings_repo.delete_value(&setting_key).await
+}
+
 
 #[cfg(test)]
 mod tests {

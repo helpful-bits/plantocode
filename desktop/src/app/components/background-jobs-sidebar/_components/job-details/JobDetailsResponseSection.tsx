@@ -7,14 +7,17 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/ui/collap
 import { Progress } from "@/ui/progress";
 import { VirtualizedCodeViewer } from "@/ui/virtualized-code-viewer";
 import { useJobDetailsContext } from "../../_contexts/job-details-context";
-import { parsePlanResponseContent, extractStepsFromPlan, createPlanWithOnlyStep } from "../../../implementation-plans-panel/_utils/plan-content-parser";
+import { parsePlanResponseContent, extractStepsFromPlan, getContentForStep } from "../../../implementation-plans-panel/_utils/plan-content-parser";
 import { Button } from "@/ui/button";
+import { replacePlaceholders } from "@/utils/placeholder-utils";
+import { type CopyButtonConfig } from "@/types/config-types";
 
 import { getStreamingProgressValue } from "../../utils";
 
 export function JobDetailsResponseSection() {
-  const { job, responseContent, parsedMetadata } = useJobDetailsContext();
+  const { job, responseContent, parsedMetadata, copyButtons = [] } = useJobDetailsContext();
   const [isResponseOpen, setIsResponseOpen] = useState(false);
+  const [selectedStepNumber, setSelectedStepNumber] = useState<string | null>(null);
   const { showNotification } = useNotification();
 
   let displayContentForViewer = responseContent || "";
@@ -33,21 +36,27 @@ export function JobDetailsResponseSection() {
   // Extract steps for implementation plans
   const steps = job.taskType === "implementation_plan" ? extractStepsFromPlan(responseContent) : [];
 
-  const handleCopyPlanWithOnlyStep = async (stepNumber: string, stepTitle: string) => {
+
+  // Generic copy handler using replacePlaceholders utility
+  const handleCopy = async (button: CopyButtonConfig) => {
     try {
-      const planWithOnlyStep = createPlanWithOnlyStep(displayContentForViewer, stepNumber);
-      await navigator.clipboard.writeText(planWithOnlyStep);
+      const stepContent = job.taskType === 'implementation_plan' && selectedStepNumber ? getContentForStep(displayContentForViewer, selectedStepNumber) : '';
+      const data = { RESPONSE: displayContentForViewer, STEP_CONTENT: stepContent };
+      
+      const processedContent = replacePlaceholders(button.content, data);
+      await navigator.clipboard.writeText(processedContent);
+      
       showNotification({
         title: "Copied to clipboard",
-        message: `Plan copied with only "${stepTitle}" + context`,
+        message: `${button.label} copied successfully`,
         type: "success",
         duration: 2000,
       });
     } catch (err) {
-      console.error("Failed to copy plan:", err);
+      console.error("Failed to copy to clipboard:", err);
       showNotification({
         title: "Copy failed",
-        message: "Failed to copy plan to clipboard",
+        message: "Failed to copy to clipboard",
         type: "error",
         duration: 3000,
       });
@@ -121,21 +130,52 @@ export function JobDetailsResponseSection() {
               </div>
             ) : null}
 
+
+            {/* Step Selection for Implementation Plans */}
             {job.taskType === "implementation_plan" && steps.length > 0 && !isJobStreaming && (
               <div className="mb-3">
-                <div className="text-xs text-muted-foreground mb-2">Copy plan with only specific step:</div>
+                <div className="text-xs text-muted-foreground mb-2">Select content to copy:</div>
                 <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant={selectedStepNumber === null ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setSelectedStepNumber(null)}
+                    className="text-xs h-7"
+                  >
+                    Full Plan
+                  </Button>
                   {steps.map((step) => (
                     <Button
                       key={step.number}
+                      variant={selectedStepNumber === step.number ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setSelectedStepNumber(step.number)}
+                      className="text-xs h-7"
+                      title={step.title}
+                    >
+                      Step {step.number}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Generic Copy Buttons */}
+            {copyButtons.length > 0 && !isJobStreaming && (
+              <div className="mb-3">
+                <div className="text-xs text-muted-foreground mb-2">Copy with template:</div>
+                <div className="flex flex-wrap gap-2">
+                  {copyButtons.map((button) => (
+                    <Button
+                      key={button.id}
                       variant="outline"
                       size="sm"
-                      onClick={() => handleCopyPlanWithOnlyStep(step.number, step.title)}
+                      onClick={() => handleCopy(button)}
                       className="text-xs h-7"
-                      title={`Copy plan with only: ${step.title}`}
+                      title={`Copy: ${button.label}`}
                     >
                       <Copy className="h-3 w-3 mr-1" />
-                      Step {step.number}
+                      {button.label}
                     </Button>
                   ))}
                 </div>
@@ -146,7 +186,7 @@ export function JobDetailsResponseSection() {
                 content={displayContentForViewer}
                 language={viewerLanguage}
                 height="70vh"
-                showCopy={true}
+                showCopy={job.taskType !== "implementation_plan"}
                 copyText={job.taskType === "implementation_plan" ? "Copy content" : "Copy response"}
                 showContentSize={true}
                 isLoading={isJobStreaming}

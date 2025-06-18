@@ -2,6 +2,7 @@ use std::sync::Arc;
 use std::str::FromStr;
 use sqlx::{sqlite::SqliteRow, Row, SqlitePool, Sqlite};
 use tauri::Emitter;
+use bigdecimal::BigDecimal;
 use crate::error::{AppError, AppResult};
 use crate::models::{BackgroundJob, JobStatus, TaskType};
 use crate::utils::get_timestamp;
@@ -485,7 +486,7 @@ impl BackgroundJobRepository {
         tokens_sent: Option<i32>,
         tokens_received: Option<i32>,
         model_used: Option<&str>,
-        cost: Option<f64>,
+        cost: Option<BigDecimal>,
     ) -> AppResult<()> {
         let now = get_timestamp();
         
@@ -548,7 +549,7 @@ impl BackgroundJobRepository {
         }
         
         if let Some(c) = cost {
-            query_obj = query_obj.bind(c);
+            query_obj = query_obj.bind(c.to_string());
         }
         
         // Bind job_id last
@@ -564,48 +565,79 @@ impl BackgroundJobRepository {
     }
     
     /// Mark a job as failed with error message and optional metadata
-    pub async fn mark_job_failed(&self, job_id: &str, error_message: &str, metadata: Option<&str>) -> AppResult<()> {
+    pub async fn mark_job_failed(&self, job_id: &str, error_message: &str, metadata: Option<&str>, tokens_sent: Option<i32>, tokens_received: Option<i32>, model_used: Option<&str>, cost: Option<BigDecimal>) -> AppResult<()> {
         let now = get_timestamp();
         
-        if let Some(m) = metadata {
-            sqlx::query(
-                r#"
-                UPDATE background_jobs 
-                SET status = $1, 
-                    error_message = $2, 
-                    updated_at = $3, 
-                    end_time = $4,
-                    metadata = $5
-                WHERE id = $6
-                "#)
-                .bind(JobStatus::Failed.to_string())
-                .bind(error_message)
-                .bind(now)
-                .bind(now)
-                .bind(m)
-                .bind(job_id)
-                .execute(&*self.pool)
-                .await
-                .map_err(|e| AppError::DatabaseError(format!("Failed to mark job as failed: {}", e)))?;
-        } else {
-            sqlx::query(
-                r#"
-                UPDATE background_jobs 
-                SET status = $1, 
-                    error_message = $2, 
-                    updated_at = $3, 
-                    end_time = $4
-                WHERE id = $5
-                "#)
-                .bind(JobStatus::Failed.to_string())
-                .bind(error_message)
-                .bind(now)
-                .bind(now)
-                .bind(job_id)
-                .execute(&*self.pool)
-                .await
-                .map_err(|e| AppError::DatabaseError(format!("Failed to mark job as failed: {}", e)))?;
+        // Build the SQL dynamically based on which parameters are provided
+        let mut final_query = String::from("UPDATE background_jobs SET status = $1, error_message = $2, updated_at = $3, end_time = $4");
+        let mut param_index = 5;
+        
+        if metadata.is_some() {
+            final_query.push_str(&format!(", metadata = ${}", param_index));
+            param_index += 1;
         }
+        
+        if tokens_sent.is_some() {
+            final_query.push_str(&format!(", tokens_sent = ${}", param_index));
+            param_index += 1;
+        }
+        
+        if tokens_received.is_some() {
+            final_query.push_str(&format!(", tokens_received = ${}", param_index));
+            param_index += 1;
+        }
+        
+        if model_used.is_some() {
+            final_query.push_str(&format!(", model_used = ${}", param_index));
+            param_index += 1;
+        }
+        
+        if cost.is_some() {
+            final_query.push_str(&format!(", cost = ${}", param_index));
+            param_index += 1;
+        }
+        
+        // Add the WHERE clause
+        final_query.push_str(&format!(" WHERE id = ${}", param_index));
+        
+        // Create and execute the query
+        let mut query_obj = sqlx::query::<Sqlite>(&final_query);
+        
+        // Add the required bindings
+        query_obj = query_obj.bind(JobStatus::Failed.to_string())
+                            .bind(error_message)
+                            .bind(now)
+                            .bind(now);
+        
+        // Add conditional bindings
+        if let Some(m) = metadata {
+            query_obj = query_obj.bind(m);
+        }
+        
+        if let Some(ts) = tokens_sent {
+            query_obj = query_obj.bind(ts as i64);
+        }
+        
+        if let Some(tr) = tokens_received {
+            query_obj = query_obj.bind(tr as i64);
+        }
+        
+        if let Some(model) = model_used {
+            query_obj = query_obj.bind(model);
+        }
+        
+        if let Some(c) = cost {
+            query_obj = query_obj.bind(c.to_string());
+        }
+        
+        // Bind job_id last
+        query_obj = query_obj.bind(job_id);
+        
+        // Execute the query
+        query_obj
+            .execute(&*self.pool)
+            .await
+            .map_err(|e| AppError::DatabaseError(format!("Failed to mark job as failed: {}", e)))?;
             
         Ok(())
     }
@@ -791,7 +823,8 @@ impl BackgroundJobRepository {
         let updated_at: Option<i64> = row.try_get::<'_, Option<i64>, _>("updated_at").unwrap_or(None);
         let start_time: Option<i64> = row.try_get::<'_, Option<i64>, _>("start_time").unwrap_or(None);
         let end_time: Option<i64> = row.try_get::<'_, Option<i64>, _>("end_time").unwrap_or(None);
-        let cost: Option<f64> = row.try_get::<'_, Option<f64>, _>("cost").unwrap_or(None);
+        let cost: Option<String> = row.try_get::<'_, Option<String>, _>("cost")
+            .unwrap_or(None);
         
         Ok(BackgroundJob {
             id,

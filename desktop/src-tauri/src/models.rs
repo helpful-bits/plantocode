@@ -293,7 +293,7 @@ pub struct BackgroundJob {
     pub updated_at: Option<i64>,
     pub start_time: Option<i64>,
     pub end_time: Option<i64>,
-    pub cost: Option<f64>,
+    pub cost: Option<String>,
 }
 
 // Task settings model (DB struct - no camelCase conversion)
@@ -412,14 +412,16 @@ pub struct OpenRouterRequest {
 pub struct OpenRouterResponse {
     pub id: String,
     pub choices: Vec<OpenRouterChoice>,
+    pub created: Option<i64>,
     pub model: String,
+    pub object: Option<String>,
     pub usage: Option<OpenRouterUsage>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpenRouterChoice {
     pub message: OpenRouterResponseMessage,
-    pub index: u32,
+    pub index: i32,
     pub finish_reason: Option<String>,
 }
 
@@ -431,9 +433,9 @@ pub struct OpenRouterResponseMessage {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpenRouterUsage {
-    pub prompt_tokens: u32,
-    pub completion_tokens: u32,
-    pub total_tokens: u32,
+    pub prompt_tokens: i32,
+    pub completion_tokens: i32,
+    pub total_tokens: i32,
     pub cost: Option<f64>,
 }
 
@@ -442,14 +444,16 @@ pub struct OpenRouterUsage {
 pub struct OpenRouterStreamChunk {
     pub id: String,
     pub choices: Vec<OpenRouterStreamChoice>,
+    pub created: Option<i64>,
     pub model: String,
+    pub object: Option<String>,
     pub usage: Option<OpenRouterUsage>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpenRouterStreamChoice {
     pub delta: OpenRouterDelta,
-    pub index: u32,
+    pub index: i32,
     pub finish_reason: Option<String>,
 }
 
@@ -563,8 +567,8 @@ pub struct ModelInfo {
     pub description: Option<String>,
     #[serde(default)]
     pub context_window: Option<u32>,
-    pub price_per_input_token: f64,
-    pub price_per_output_token: f64,
+    pub price_input_per_kilo_tokens: String,
+    pub price_output_per_kilo_tokens: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

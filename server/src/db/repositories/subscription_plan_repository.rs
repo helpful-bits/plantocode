@@ -102,8 +102,7 @@ pub struct SubscriptionPlan {
     pub base_price_yearly: BigDecimal,
     pub included_spending_weekly: BigDecimal,
     pub included_spending_monthly: BigDecimal,
-    pub overage_rate: BigDecimal,
-    pub hard_limit_multiplier: BigDecimal,
+    pub cost_markup_percentage: BigDecimal,
     pub currency: String,
     pub stripe_price_id_weekly: Option<String>,
     pub stripe_price_id_monthly: Option<String>,
@@ -198,7 +197,7 @@ impl SubscriptionPlanRepository {
     }
 
     pub async fn get_plan_by_id(&self, plan_id: &str) -> Result<SubscriptionPlan, AppError> {
-        let query_str = "SELECT id, name, description, base_price_weekly, base_price_monthly, base_price_yearly, included_spending_weekly, included_spending_monthly, overage_rate, hard_limit_multiplier, currency, stripe_price_id_weekly, stripe_price_id_monthly, stripe_price_id_yearly, plan_tier, features, active FROM subscription_plans WHERE id = $1";
+        let query_str = "SELECT id, name, description, base_price_weekly, base_price_monthly, base_price_yearly, included_spending_weekly, included_spending_monthly, cost_markup_percentage, currency, stripe_price_id_weekly, stripe_price_id_monthly, stripe_price_id_yearly, plan_tier, features, active FROM subscription_plans WHERE id = $1";
         
         let record = sqlx::query(query_str)
             .bind(plan_id)
@@ -212,8 +211,7 @@ impl SubscriptionPlanRepository {
                     base_price_yearly: row.get("base_price_yearly"),
                     included_spending_weekly: row.get("included_spending_weekly"),
                     included_spending_monthly: row.get("included_spending_monthly"),
-                    overage_rate: row.get("overage_rate"),
-                    hard_limit_multiplier: row.get("hard_limit_multiplier"),
+                    cost_markup_percentage: row.get("cost_markup_percentage"),
                     currency: row.get("currency"),
                     stripe_price_id_weekly: row.get("stripe_price_id_weekly"),
                     stripe_price_id_monthly: row.get("stripe_price_id_monthly"),
@@ -232,7 +230,7 @@ impl SubscriptionPlanRepository {
     }
 
     pub async fn get_all_plans(&self) -> Result<Vec<SubscriptionPlan>, AppError> {
-        let query_str = "SELECT id, name, description, base_price_weekly, base_price_monthly, base_price_yearly, included_spending_weekly, included_spending_monthly, overage_rate, hard_limit_multiplier, currency, stripe_price_id_weekly, stripe_price_id_monthly, stripe_price_id_yearly, plan_tier, features, active FROM subscription_plans ORDER BY plan_tier, id";
+        let query_str = "SELECT id, name, description, base_price_weekly, base_price_monthly, base_price_yearly, included_spending_weekly, included_spending_monthly, cost_markup_percentage, currency, stripe_price_id_weekly, stripe_price_id_monthly, stripe_price_id_yearly, plan_tier, features, active FROM subscription_plans ORDER BY plan_tier, id";
         
         let records = sqlx::query(query_str)
             .map(|row: PgRow| {
@@ -245,8 +243,7 @@ impl SubscriptionPlanRepository {
                     base_price_yearly: row.get("base_price_yearly"),
                     included_spending_weekly: row.get("included_spending_weekly"),
                     included_spending_monthly: row.get("included_spending_monthly"),
-                    overage_rate: row.get("overage_rate"),
-                    hard_limit_multiplier: row.get("hard_limit_multiplier"),
+                    cost_markup_percentage: row.get("cost_markup_percentage"),
                     currency: row.get("currency"),
                     stripe_price_id_weekly: row.get("stripe_price_id_weekly"),
                     stripe_price_id_monthly: row.get("stripe_price_id_monthly"),

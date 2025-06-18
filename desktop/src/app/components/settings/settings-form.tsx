@@ -6,6 +6,7 @@ import { invoke } from "@tauri-apps/api/core";
 import {
   getModelSettingsForProject,
   saveProjectTaskModelSettingsAction,
+  getServerDefaultTaskModelSettings,
 } from "@/actions/project-settings.actions";
 import { getProvidersWithModels } from "@/actions/config.actions";
 import { type ProviderWithModels } from "@/types/config-types";
@@ -27,6 +28,7 @@ export default function SettingsForm({ sessionId }: SettingsFormProps) {
   const { projectDirectory } = useProject();
   const { showNotification } = useNotification();
   const [taskSettings, setTaskSettings] = useState<TaskSettings | null>(null);
+  const [serverDefaults, setServerDefaults] = useState<TaskSettings | null>(null);
   const [providersWithModels, setProvidersWithModels] = useState<ProviderWithModels[] | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -42,8 +44,9 @@ export default function SettingsForm({ sessionId }: SettingsFormProps) {
       // First refresh runtime config to ensure we have latest task configurations
       await invoke("fetch_runtime_ai_config");
       
-      const [settingsResult, modelsResult] = await Promise.all([
+      const [settingsResult, serverDefaultsResult, modelsResult] = await Promise.all([
         getModelSettingsForProject(projectDirectory),
+        getServerDefaultTaskModelSettings(),
         getProvidersWithModels(),
       ]);
       
@@ -52,6 +55,12 @@ export default function SettingsForm({ sessionId }: SettingsFormProps) {
       } else {
         setError(settingsResult.message || "Failed to load project settings");
         setTaskSettings(null);
+      }
+
+      if (serverDefaultsResult.isSuccess && serverDefaultsResult.data) {
+        setServerDefaults(serverDefaultsResult.data);
+      } else {
+        setServerDefaults(null);
       }
       
       setProvidersWithModels(modelsResult || []);
@@ -150,6 +159,7 @@ export default function SettingsForm({ sessionId }: SettingsFormProps) {
       {taskSettings && (
         <TaskModelSettings
           taskSettings={taskSettings}
+          serverDefaults={serverDefaults}
           providersWithModels={providersWithModels}
           onSettingsChange={handleSettingsChange}
           sessionId={sessionId}

@@ -1,5 +1,6 @@
 import React, { createContext, useContext } from "react";
 import { type BackgroundJob, type JobMetadata } from "@/types/session-types";
+import { type CopyButtonConfig } from "@/types/config-types";
 
 interface JobDetailsContextValue {
   job: BackgroundJob;
@@ -11,6 +12,7 @@ interface JobDetailsContextValue {
   promptContent: string;
   formatMetadata: (metadata: any) => string;
   formatRegexPatterns: (parsedJsonData: any) => string | null;
+  copyButtons?: CopyButtonConfig[];
 }
 
 const JobDetailsContext = createContext<JobDetailsContextValue | null>(null);

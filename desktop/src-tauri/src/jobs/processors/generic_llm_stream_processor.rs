@@ -122,8 +122,8 @@ impl JobProcessor for GenericLlmStreamProcessor {
                         let error_message = e.to_string();
                         error!("{}", error_message);
                         
-                        // Finalize job failure
-                        job_processor_utils::finalize_job_failure(&job.id, &repo, &error_message, None).await?;
+                        // Finalize job failure - streaming failed, no usage available
+                        job_processor_utils::finalize_job_failure(&job.id, &repo, &error_message, None, None, Some(model_name.clone())).await?;
                         
                         // Return failure result
                         return Ok(JobProcessResult::failure(job.id.to_string(), error_message));
@@ -134,8 +134,8 @@ impl JobProcessor for GenericLlmStreamProcessor {
                 let error_message = e.to_string();
                 error!("{}", error_message);
                 
-                // Finalize job failure
-                job_processor_utils::finalize_job_failure(&job.id, &repo, &error_message, None).await?;
+                // Finalize job failure - no LLM call made yet, so no usage
+                job_processor_utils::finalize_job_failure(&job.id, &repo, &error_message, None, None, Some(model_name.clone())).await?;
                 
                 // Return failure result
                 return Ok(JobProcessResult::failure(job.id.to_string(), error_message));
@@ -178,8 +178,8 @@ impl JobProcessor for GenericLlmStreamProcessor {
             let error_message = "Stream completed but no content was received".to_string();
             error!("{}", error_message);
             
-            // Finalize job failure
-            job_processor_utils::finalize_job_failure(&job.id, &repo, &error_message, None).await?;
+            // Finalize job failure - streaming completed but no content
+            job_processor_utils::finalize_job_failure(&job.id, &repo, &error_message, None, usage_opt, Some(model_name.clone())).await?;
             
             // Return failure result
             JobProcessResult::failure(job.id.to_string(), error_message)

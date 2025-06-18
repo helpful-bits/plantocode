@@ -328,10 +328,20 @@ pub struct CreditTransactionEntry {
 #[serde(rename_all = "camelCase")]
 pub struct CreditHistoryResponse {
     pub transactions: Vec<CreditTransactionEntry>,
-    pub total_count: usize,
+    pub total_count: i64,
     pub has_more: bool,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreditDetailsResponse {
+    pub balance: f64,
+    pub currency: String,
+    pub last_updated: Option<String>,
+    pub transactions: Vec<CreditTransactionEntry>,
+    pub total_transaction_count: i64,
+    pub has_more: bool,
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -491,6 +501,29 @@ pub async fn get_credit_stats_command(
     Ok(credit_stats)
 }
 
+/// Get comprehensive credit details (balance, stats, and recent transactions)
+#[tauri::command]
+pub async fn get_credit_details_command(
+    billing_client: State<'_, Arc<BillingClient>>,
+) -> Result<CreditDetailsResponse, AppError> {
+    debug!("Getting credit details via Tauri command");
+    
+    // Get balance and history separately and combine them
+    let balance_response = billing_client.get_credit_balance().await?;
+    let history_response = billing_client.get_credit_history(Some(20), Some(0)).await?;
+    
+    let credit_details = CreditDetailsResponse {
+        balance: balance_response.balance,
+        currency: balance_response.currency,
+        last_updated: balance_response.last_updated,
+        transactions: history_response.transactions,
+        total_transaction_count: history_response.total_count,
+        has_more: history_response.has_more,
+    };
+    
+    info!("Successfully retrieved credit details");
+    Ok(credit_details)
+}
 
 /// Get available credit packs for purchase
 #[tauri::command]
@@ -751,4 +784,27 @@ pub async fn get_detailed_usage_command(
     info!("Successfully retrieved detailed usage");
     Ok(detailed_usage)
 }
+
+/// Get current subscription plan with cost markup information
+#[tauri::command]
+pub async fn get_current_plan_command(
+    billing_client: State<'_, Arc<BillingClient>>,
+) -> Result<CurrentPlanResponse, AppError> {
+    debug!("Getting current plan with cost markup information");
+    
+    let current_plan = billing_client.get_current_plan().await?;
+    
+    info!("Successfully retrieved current plan information");
+    Ok(current_plan)
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CurrentPlanResponse {
+    pub plan_id: String,
+    pub plan_name: String,
+    pub cost_markup_percentage: f64,
+    pub status: String,
+}
+
 

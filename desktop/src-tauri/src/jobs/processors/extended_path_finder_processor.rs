@@ -7,7 +7,7 @@ use crate::error::{AppError, AppResult};
 use crate::jobs::processor_trait::JobProcessor;
 use crate::jobs::types::{Job, JobPayload, JobProcessResult, ExtendedPathFinderPayload};
 use crate::jobs::job_processor_utils;
-use crate::jobs::processors::utils::{llm_api_utils, prompt_utils, response_parser_utils, fs_context_utils};
+use crate::jobs::processors::utils::{llm_api_utils, prompt_utils, fs_context_utils};
 use crate::models::TaskType;
 use crate::utils::directory_tree::get_directory_tree_with_defaults;
 
@@ -17,7 +17,76 @@ impl ExtendedPathFinderProcessor {
     pub fn new() -> Self {
         Self
     }
-    
+
+    /// Parse paths from LLM text response with robust format handling
+    fn parse_paths_from_text_response(response_text: &str, project_directory: &str) -> AppResult<Vec<String>> {
+        let mut paths = Vec::new();
+        
+        // Normalize line endings
+        let normalized_text = response_text.replace("\r\n", "\n").replace("\r", "\n");
+        
+        // Split by newlines and process each line
+        for line in normalized_text.lines() {
+            let line = line.trim();
+            
+            // Filter out empty lines or lines that are clearly not paths
+            if line.is_empty()
+                || line.starts_with("//")
+                || line.starts_with("#")
+                || line.starts_with("Note:")
+                || line.starts_with("Analysis:")
+                || line.starts_with("Here are")
+                || line.starts_with("The following")
+                || line.starts_with("Based on")
+                || line.starts_with("```")
+                || line == "json"
+                || line == "JSON"
+                || line.len() < 2
+            {
+                continue;
+            }
+            
+            // Handle numbered lists (e.g., "1. path/to/file")
+            let line_without_numbers = if line.chars().next().map_or(false, |c| c.is_ascii_digit()) {
+                if let Some(dot_pos) = line.find('.') {
+                    line[dot_pos + 1..].trim()
+                } else {
+                    line
+                }
+            } else {
+                line
+            };
+            
+            // Handle bullet points (e.g., "- path/to/file", "* path/to/file")
+            let line_without_bullets = if line_without_numbers.starts_with("- ") || line_without_numbers.starts_with("* ") {
+                &line_without_numbers[2..]
+            } else {
+                line_without_numbers
+            };
+            
+            // Clean the line of potential prefixes/suffixes
+            let cleaned_path = line_without_bullets
+                .trim_matches(|c| {
+                    c == '\"' || c == '\'' || c == '`' || c == ',' || c == ':' || c == ';'
+                })
+                .trim();
+            
+            if !cleaned_path.is_empty() {
+                paths.push(cleaned_path.to_string());
+            }
+        }
+        
+        // Remove duplicates while preserving order
+        let mut unique_paths = Vec::new();
+        let mut seen = std::collections::HashSet::new();
+        for path in paths {
+            if seen.insert(path.clone()) {
+                unique_paths.push(path);
+            }
+        }
+        
+        Ok(unique_paths)
+    }
 }
 
 #[async_trait::async_trait]
@@ -151,14 +220,14 @@ impl JobProcessor for ExtendedPathFinderProcessor {
         let response_content = llm_response.choices[0].message.content.clone();
         
         // Parse paths from the LLM response using standardized utility
-        let extended_paths = match response_parser_utils::parse_paths_from_text_response(&response_content, &project_directory) {
+        let extended_paths = match Self::parse_paths_from_text_response(&response_content, &project_directory) {
             Ok(paths) => paths,
             Err(e) => {
                 let error_msg = format!("Failed to parse paths from LLM response: {}", e);
                 error!("{}", error_msg);
                 
-                // Finalize job failure using standardized utility
-                job_processor_utils::finalize_job_failure(&job.id, &repo, &error_msg, None).await?;
+                // Finalize job failure using standardized utility - LLM succeeded but parsing failed
+                job_processor_utils::finalize_job_failure(&job.id, &repo, &error_msg, None, llm_response.usage, Some(api_options_clone.model)).await?;
                 
                 return Ok(JobProcessResult::failure(job.id.clone(), error_msg));
             }

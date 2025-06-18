@@ -1,7 +1,9 @@
 "use client";
 
-import { Loader2, RefreshCw, Copy } from "lucide-react";
+import { Loader2, Copy, Save } from "lucide-react";
 import React from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { useNotification } from "@/contexts/notification-context";
 
 import { type BackgroundJob, JOB_STATUSES } from "@/types/session-types";
 import { type CopyButtonConfig } from "@/types/config-types";
@@ -12,7 +14,8 @@ import { VirtualizedCodeViewer } from "@/ui/virtualized-code-viewer";
 
 import { getStreamingProgressValue } from "../../background-jobs-sidebar/utils";
 import { getJobDisplaySessionName } from "../../background-jobs-sidebar/_utils/job-display-utils";
-import { parsePlanResponseContent, extractStepsFromPlan } from "../_utils/plan-content-parser";
+import { parsePlanResponseContent, getContentForStep } from "../_utils/plan-content-parser";
+import { replacePlaceholders } from "@/utils/placeholder-utils";
 
 interface PlanContentModalProps {
   plan?: BackgroundJob;
@@ -31,11 +34,13 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
   onOpenChange,
   onRefreshContent,
   selectedStepNumber,
-  onStepSelect,
   copyButtons = [],
   onCopyButtonClick,
 }) => {
-  const [isRefreshing, setIsRefreshing] = React.useState(false);
+  const [isSaving, setIsSaving] = React.useState(false);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = React.useState(false);
+  const [editedContent, setEditedContent] = React.useState<string>("");
+  const { showNotification } = useNotification();
 
   if (!plan) return null;
 
@@ -54,10 +59,11 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
       displayContent = plan.response || "Streaming content...";
       // viewerLanguage remains "xml" as LLM is instructed to output XML
     } else if (plan.status === "completed") {
-      displayContent = parsePlanResponseContent(plan.response);
+      // Use edited content if available and has changes, otherwise use original
+      displayContent = hasUnsavedChanges ? editedContent : parsePlanResponseContent(plan.response);
       // viewerLanguage remains "xml" for the parsed original content
     } else if (plan.response) { // For other non-streaming, non-completed states with a response
-      displayContent = plan.response;
+      displayContent = hasUnsavedChanges ? editedContent : plan.response;
       // Potentially could be error messages, but stick to "xml" or "markdown"
       // if error, it might not be XML. For now, assume "xml" is fine.
     }
@@ -70,112 +76,150 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
   // Use centralized utility function for consistent sessionName logic
   const sessionName = getJobDisplaySessionName(plan);
 
-  const handleRefresh = async () => {
-    setIsRefreshing(true);
-    try {
-      await onRefreshContent();
-    } finally {
-      setIsRefreshing(false);
+  // Default copy button handler using replacePlaceholders
+  const handleCopyButtonClick = React.useCallback(async (button: CopyButtonConfig) => {
+    if (onCopyButtonClick) {
+      onCopyButtonClick(button);
+      return;
     }
-  };
+    
+    // Default implementation using replacePlaceholders
+    try {
+      const data = {
+        RESPONSE: displayContent,
+        STEP_CONTENT: selectedStepNumber ? getContentForStep(displayContent, selectedStepNumber) : ''
+      };
+      
+      const processedContent = replacePlaceholders(button.content, data);
+      await navigator.clipboard.writeText(processedContent);
+    } catch (error) {
+      console.error('Failed to copy to clipboard:', error);
+    }
+  }, [onCopyButtonClick, displayContent, selectedStepNumber]);
 
-  // Extract steps from the plan for step-specific copy buttons
-  const steps = React.useMemo(() => {
-    return extractStepsFromPlan(plan.response);
-  }, [plan.response]);
+  // Initialize edited content when plan changes
+  React.useEffect(() => {
+    if (plan && !isStreaming) {
+      const currentContent = plan.status === "completed" 
+        ? parsePlanResponseContent(plan.response)
+        : plan.response || "";
+      setEditedContent(currentContent);
+      setHasUnsavedChanges(false);
+    }
+  }, [plan?.id, plan?.response, plan?.status, isStreaming]);
+
+  // Handle content changes in the editor
+  const handleContentChange = React.useCallback((newContent: string | undefined) => {
+    if (newContent !== undefined && plan) {
+      setEditedContent(newContent);
+      const originalContent = plan.status === "completed" 
+        ? parsePlanResponseContent(plan.response)
+        : plan.response || "";
+      setHasUnsavedChanges(newContent !== originalContent);
+    }
+  }, [plan?.response, plan?.status]);
+
+  // Save changes to the database
+  const handleSave = React.useCallback(async () => {
+    if (!plan || !hasUnsavedChanges) return;
+    
+    setIsSaving(true);
+    try {
+      await invoke("update_implementation_plan_content_command", {
+        jobId: plan.id,
+        newContent: editedContent
+      });
+      
+      setHasUnsavedChanges(false);
+      showNotification({
+        title: "Changes saved",
+        message: "Implementation plan content has been updated successfully",
+        type: "success",
+        duration: 3000,
+      });
+      
+      // Refresh the plan content to reflect changes
+      await onRefreshContent();
+    } catch (error) {
+      console.error("Failed to save implementation plan:", error);
+      showNotification({
+        title: "Save failed",
+        message: "Failed to save changes to implementation plan",
+        type: "error",
+        duration: 5000,
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  }, [plan?.id, editedContent, hasUnsavedChanges, onRefreshContent, showNotification]);
 
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-6xl h-[95vh] !flex !flex-col !gap-0 text-foreground !bg-card rounded-xl shadow-lg !backdrop-blur-none">
-        <DialogHeader>
+        <DialogHeader className="flex flex-row items-center justify-between space-y-0 pb-2 flex-shrink-0">
           <DialogTitle className="text-lg">
             Implementation Plan: {sessionName}
           </DialogTitle>
-        </DialogHeader>
+          
+          <div className="flex items-center gap-3">
+            {/* Status */}
+            <div className="text-sm text-muted-foreground flex items-center">
+              {isStreaming ? (
+                <span className="flex items-center">
+                  <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                  Generating plan...
+                </span>
+              ) : (
+                <span>
+                  {plan.status === "completed" ? "Completed" : plan.status}
+                </span>
+              )}
+            </div>
 
-        {/* Controls */}
-        <div className="flex justify-between items-center mb-2">
-          <div className="text-sm text-muted-foreground flex items-center">
-            {isStreaming ? (
-              <span className="flex items-center">
-                <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
-                Generating plan...
-              </span>
-            ) : (
-              <span>
-                {plan.status === "completed" ? "Completed" : plan.status}
-              </span>
+            {/* Save Button */}
+            {!isStreaming && hasUnsavedChanges && (
+              <Button
+                variant="default"
+                size="sm"
+                onClick={handleSave}
+                disabled={isSaving}
+                className="text-xs h-7"
+                title="Save changes to implementation plan"
+              >
+                {isSaving ? (
+                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                ) : (
+                  <Save className="h-3 w-3 mr-1" />
+                )}
+                {isSaving ? "Saving..." : "Save"}
+              </Button>
+            )}
+
+            {/* Copy Buttons */}
+            {copyButtons.length > 0 && !isStreaming && (
+              <div className="flex flex-wrap gap-2">
+                {copyButtons.map((button) => (
+                  <Button
+                    key={button.id}
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleCopyButtonClick(button)}
+                    className="text-xs h-7"
+                    title={`Copy: ${button.label}`}
+                  >
+                    <Copy className="h-3 w-3 mr-1" />
+                    {button.label}
+                  </Button>
+                ))}
+              </div>
             )}
           </div>
-
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleRefresh}
-              disabled={isRefreshing}
-            >
-              <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
-              Refresh
-            </Button>
-          </div>
-        </div>
-
-        {/* Step Selection */}
-        {steps.length > 0 && !isStreaming && (
-          <div className="mb-3">
-            <div className="text-xs text-muted-foreground mb-2">Select step for copy buttons:</div>
-            <div className="flex flex-wrap gap-2">
-              <Button
-                variant={selectedStepNumber === null ? "default" : "outline"}
-                size="sm"
-                onClick={() => onStepSelect?.(null)}
-                className="text-xs h-7"
-              >
-                Full Plan
-              </Button>
-              {steps.map((step) => (
-                <Button
-                  key={step.number}
-                  variant={selectedStepNumber === step.number ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => onStepSelect?.(step.number)}
-                  className="text-xs h-7"
-                  title={step.title}
-                >
-                  Step {step.number}
-                </Button>
-              ))}
-            </div>
-          </div>
-        )}
-        
-        {/* Configurable Copy Buttons */}
-        {copyButtons.length > 0 && !isStreaming && (
-          <div className="mb-3">
-            <div className="text-xs text-muted-foreground mb-2">Copy with template:</div>
-            <div className="flex flex-wrap gap-2">
-              {copyButtons.map((button) => (
-                <Button
-                  key={button.id}
-                  variant="outline"
-                  size="sm"
-                  onClick={() => onCopyButtonClick?.(button)}
-                  className="text-xs h-7"
-                  title={`Copy: ${button.label}`}
-                >
-                  <Copy className="h-3 w-3 mr-1" />
-                  {button.label}
-                </Button>
-              ))}
-            </div>
-          </div>
-        )}
+        </DialogHeader>
 
         {/* Progress bar for streaming jobs */}
         {isStreaming && (
-          <div className="mb-4">
+          <div className="mb-2 flex-shrink-0">
             <Progress value={progress ?? 0} className="h-2" />
             <div className="flex justify-between mt-1 text-xs text-muted-foreground">
               <span>Generating implementation plan...</span>
@@ -184,27 +228,29 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
           </div>
         )}
 
-
         {/* Content */}
-        <VirtualizedCodeViewer
-          content={displayContent}
-          height="calc(100% - 8rem)"
-          showCopy={true}
-          copyText="Copy Plan"
-          showContentSize={true}
-          isLoading={showLoadingIndicator}
-          placeholder="No implementation plan content available yet"
-          language={viewerLanguage}
-          className="mt-2"
-          loadingIndicator={
-            <div className="flex items-center justify-center h-full">
-              <div className="flex items-center gap-2">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                <span className="text-sm text-muted-foreground">Generating implementation plan...</span>
+        <div className="flex-1 min-h-0">
+          <VirtualizedCodeViewer
+            content={displayContent}
+            height="100%"
+            showCopy={false}
+            showContentSize={true}
+            isLoading={showLoadingIndicator}
+            placeholder="No implementation plan content available yet"
+            language={viewerLanguage}
+            className=""
+            readOnly={isStreaming} 
+            onChange={isStreaming ? undefined : handleContentChange}
+            loadingIndicator={
+              <div className="flex items-center justify-center h-full">
+                <div className="flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span className="text-sm text-muted-foreground">Generating implementation plan...</span>
+                </div>
               </div>
-            </div>
-          }
-        />
+            }
+          />
+        </div>
       </DialogContent>
     </Dialog>
   );

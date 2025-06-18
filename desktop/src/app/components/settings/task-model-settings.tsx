@@ -2,24 +2,23 @@
 
 import { type TaskSettings } from "@/types";
 import { type TaskType, TaskTypeDetails } from "@/types/task-type-defs";
-import { type ProviderWithModels } from "@/types/config-types";
+import { type ProviderWithModels, type CopyButtonConfig } from "@/types/config-types";
 import {
   Card,
   CardContent,
   Button,
 } from "@/ui";
 import {
-  getServerDefaultTaskModelSettings,
   resetProjectSettingToDefault,
 } from "@/actions/project-settings.actions";
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import SettingsEnhancementEngine from "./enhancement-engine";
 import { TaskSettingsEditor } from "./task-settings-editor";
-import { ImplementationPlanSettingsEditor } from "./implementation-plan-settings-editor";
 
 
 interface TaskModelSettingsProps {
   taskSettings: TaskSettings;
+  serverDefaults: TaskSettings | null;
   providersWithModels: ProviderWithModels[] | null;
   onSettingsChange: (settings: TaskSettings) => void;
   sessionId?: string;
@@ -103,13 +102,13 @@ const STANDALONE_FEATURES = [
 
 export default function TaskModelSettings({
   taskSettings,
+  serverDefaults,
   providersWithModels,
   onSettingsChange,
   projectDirectory,
   onRefresh,
 }: TaskModelSettingsProps) {
   const saveTimeoutRef = useRef<number | null>(null);
-  const [serverDefaults, setServerDefaults] = useState<TaskSettings | null>(null);
   const [sliderValues, setSliderValues] = useState<Record<string, number>>({});
   
   const validateTaskSettings = useCallback((settings: TaskSettings, taskKey: keyof TaskSettings): ValidationResult => {
@@ -169,21 +168,6 @@ export default function TaskModelSettings({
     };
   }, []);
 
-  // Load server defaults
-  useEffect(() => {
-    async function loadServerDefaults() {
-      try {
-        const result = await getServerDefaultTaskModelSettings();
-        if (result.isSuccess && result.data) {
-          setServerDefaults(result.data);
-        }
-      } catch (error) {
-        console.error('Failed to load server defaults:', error);
-      }
-    }
-    
-    loadServerDefaults();
-  }, []);
 
   // Initialize slider values from taskSettings
   useEffect(() => {
@@ -222,11 +206,17 @@ export default function TaskModelSettings({
   };
 
 
-  const isDifferentFromDefault = (camelCaseKey: keyof TaskSettings, settingName: 'model' | 'maxTokens' | 'temperature' | 'languageCode' | 'copyButtons') => {
-    if (!serverDefaults || !serverDefaults[camelCaseKey]) return false;
+  // Generic function to check if a setting is different from default
+  const isDifferentFromDefault = useCallback((taskKey: keyof TaskSettings, settingName: 'model' | 'maxTokens' | 'temperature' | 'languageCode' | 'copyButtons') => {
+    if (!serverDefaults || !serverDefaults[taskKey]) return false;
     
-    const currentSettings = getTaskSettings(camelCaseKey);
-    const defaultSettings = serverDefaults[camelCaseKey];
+    // Only check copyButtons for implementation plans
+    if (settingName === 'copyButtons' && taskKey !== 'implementationPlan') {
+      return false;
+    }
+    
+    const currentSettings = getTaskSettings(taskKey);
+    const defaultSettings = serverDefaults[taskKey];
     
     const currentValue = currentSettings[settingName];
     const defaultValue = defaultSettings?.[settingName];
@@ -240,7 +230,7 @@ export default function TaskModelSettings({
     }
     
     return currentValue !== defaultValue;
-  };
+  }, [serverDefaults, taskSettings]);
 
   const getSliderValue = (camelCaseKey: keyof TaskSettings, settingName: 'maxTokens' | 'temperature') => {
     const key = `${camelCaseKey}.${settingName}`;
@@ -260,27 +250,33 @@ export default function TaskModelSettings({
     }));
   };
 
-  const handleResetToDefault = async (camelCaseKey: keyof TaskSettings, settingName: 'model' | 'maxTokens' | 'temperature' | 'languageCode' | 'copyButtons') => {
-    if (!projectDirectory || !serverDefaults || !serverDefaults[camelCaseKey]) return;
+  // Generic function to reset a setting to default
+  const handleResetToDefault = useCallback(async (taskKey: keyof TaskSettings, settingName: 'model' | 'maxTokens' | 'temperature' | 'languageCode' | 'copyButtons') => {
+    if (!projectDirectory || !serverDefaults || !serverDefaults[taskKey]) return;
+    
+    // Only allow resetting copyButtons for implementation plans
+    if (settingName === 'copyButtons' && taskKey !== 'implementationPlan') {
+      return;
+    }
     
     try {
-      await resetProjectSettingToDefault(projectDirectory, camelCaseKey, settingName);
+      await resetProjectSettingToDefault(projectDirectory, taskKey, settingName);
       
       // Immediately update local state with default value
       let defaultValue;
       if (settingName === 'copyButtons') {
-        defaultValue = serverDefaults[camelCaseKey]?.copyButtons;
+        defaultValue = serverDefaults[taskKey]?.copyButtons;
       } else {
-        defaultValue = serverDefaults[camelCaseKey]?.[settingName];
+        defaultValue = serverDefaults[taskKey]?.[settingName];
       }
       
       if (defaultValue !== undefined) {
         const newSettings = { ...taskSettings };
-        if (!newSettings[camelCaseKey]) {
-          newSettings[camelCaseKey] = {};
+        if (!newSettings[taskKey]) {
+          newSettings[taskKey] = {};
         }
-        newSettings[camelCaseKey] = {
-          ...newSettings[camelCaseKey],
+        newSettings[taskKey] = {
+          ...newSettings[taskKey],
           [settingName]: defaultValue,
         };
         onSettingsChange(newSettings);
@@ -290,7 +286,7 @@ export default function TaskModelSettings({
       if (settingName === 'maxTokens' || settingName === 'temperature') {
         setSliderValues(prev => {
           const updated = { ...prev };
-          delete updated[`${camelCaseKey}.${settingName}`];
+          delete updated[`${taskKey}.${settingName}`];
           return updated;
         });
       }
@@ -301,9 +297,9 @@ export default function TaskModelSettings({
       }
       
     } catch (error) {
-      console.error(`Failed to reset ${camelCaseKey}.${settingName} to default:`, error);
+      console.error(`Failed to reset ${taskKey}.${settingName} to default:`, error);
     }
-  };
+  }, [projectDirectory, serverDefaults, taskSettings, onSettingsChange, onRefresh]);
 
 
   const handleMaxTokensChange = (camelCaseKey: keyof TaskSettings, value: number[]) => {
@@ -357,6 +353,24 @@ export default function TaskModelSettings({
     newSettings[camelCaseKey] = {
       ...settings,
       languageCode,
+    };
+
+    debouncedSave(newSettings);
+  };
+
+  // Copy buttons handler - only for implementation plans
+  const handleCopyButtonsChange = (camelCaseKey: keyof TaskSettings, copyButtons: CopyButtonConfig[]) => {
+    // Only allow copy button changes for implementation plans
+    if (camelCaseKey !== 'implementationPlan') {
+      return;
+    }
+    
+    const settings = getTaskSettings(camelCaseKey);
+    const newSettings = { ...taskSettings };
+
+    newSettings[camelCaseKey] = {
+      ...settings,
+      copyButtons,
     };
 
     debouncedSave(newSettings);
@@ -640,42 +654,6 @@ export default function TaskModelSettings({
               const settings = getTaskSettings(taskSettingsKey);
               const validation = validateTaskSettings(taskSettings, taskSettingsKey);
               
-              if (selectedTask === 'implementationPlan') {
-                return (
-                  <ImplementationPlanSettingsEditor
-                    settings={settings}
-                    serverDefaults={serverDefaults?.[taskSettingsKey] || null}
-                    projectDirectory={projectDirectory}
-                    providersWithModels={filteredProvidersWithModels}
-                    onSettingsChange={(updatedSettings) => {
-                      const newSettings = { ...taskSettings };
-                      newSettings[taskSettingsKey] = {
-                        ...settings,
-                        ...updatedSettings,
-                      };
-                      debouncedSave(newSettings);
-                    }}
-                    isDifferentFromDefault={(settingName) => isDifferentFromDefault(taskSettingsKey, settingName)}
-                    onResetToDefault={(settingName) => handleResetToDefault(taskSettingsKey, settingName)}
-                    getSliderValue={(settingName) => getSliderValue(taskSettingsKey, settingName)}
-                    onSliderChange={(settingName, value) => {
-                      if (settingName === 'temperature') {
-                        handleTemperatureChange(taskSettingsKey, value);
-                      } else if (settingName === 'maxTokens') {
-                        handleMaxTokensChange(taskSettingsKey, value);
-                      }
-                    }}
-                    onSliderCommit={(settingName, value) => {
-                      if (settingName === 'temperature') {
-                        handleTemperatureCommit(taskSettingsKey, value);
-                      } else if (settingName === 'maxTokens') {
-                        handleMaxTokensCommit(taskSettingsKey, value);
-                      }
-                    }}
-                  />
-                );
-              }
-              
               return (
                 <TaskSettingsEditor
                   taskKey={taskSettingsKey}
@@ -689,6 +667,7 @@ export default function TaskModelSettings({
                   onMaxTokensChange={(value: number[]) => handleMaxTokensChange(taskSettingsKey, value)}
                   onMaxTokensCommit={(value: number[]) => handleMaxTokensCommit(taskSettingsKey, value)}
                   onTranscriptionLanguageChange={(languageCode: string) => handleTranscriptionLanguageChange(taskSettingsKey, languageCode)}
+                  onCopyButtonsChange={(copyButtons: CopyButtonConfig[]) => handleCopyButtonsChange(taskSettingsKey, copyButtons)}
                   onResetToDefault={(settingName) => handleResetToDefault(taskSettingsKey, settingName)}
                   isDifferentFromDefault={(settingName) => isDifferentFromDefault(taskSettingsKey, settingName)}
                   getSliderValue={(settingName) => getSliderValue(taskSettingsKey, settingName)}

@@ -24,6 +24,6 @@ pub use user_repository::UserRepository;
 pub use settings_repository::{SettingsRepository, DatabaseAIModelSettings, DatabaseTaskConfig, DatabasePathFinderSettings};
 pub use model_repository::{ModelRepository, ModelWithProvider, Model};
 pub use provider_repository::{ProviderRepository, Provider, ProviderWithModelCount};
-pub use spending_repository::{SpendingRepository, UserPreference, UserSpendingLimit};
+pub use spending_repository::{SpendingRepository, UserSpendingLimit};
 pub use system_prompts_repository::{SystemPromptsRepository, DefaultSystemPrompt};
 pub use webhook_idempotency_repository::{WebhookIdempotencyRepository, WebhookIdempotencyRecord, WebhookProcessingStats};

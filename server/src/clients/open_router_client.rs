@@ -77,9 +77,11 @@ pub struct OpenRouterImageUrl {
 #[derive(Debug, Deserialize, Serialize)]
 pub struct OpenRouterChatResponse {
     pub id: String,
-    pub model: String,
     pub choices: Vec<OpenRouterChoice>,
-    pub usage: OpenRouterUsage,
+    pub created: Option<i64>,
+    pub model: String,
+    pub object: Option<String>,
+    pub usage: Option<OpenRouterUsage>,
 }
 
 #[skip_serializing_none]
@@ -94,7 +96,7 @@ pub struct OpenRouterChoice {
 #[derive(Debug, Deserialize, Serialize)]
 pub struct OpenRouterResponseMessage {
     pub role: String,
-    pub content: Option<String>,
+    pub content: String,
 }
 
 #[skip_serializing_none]
@@ -111,8 +113,10 @@ pub struct OpenRouterUsage {
 #[derive(Debug, Deserialize, Serialize)]
 pub struct OpenRouterStreamChunk {
     pub id: String,
-    pub model: String,
     pub choices: Vec<OpenRouterStreamChoice>,
+    pub created: Option<i64>,
+    pub model: String,
+    pub object: Option<String>,
     pub usage: Option<OpenRouterUsage>,
 }
 
@@ -307,11 +311,15 @@ impl OpenRouterClient {
     
     // Helper functions for token and usage tracking
     pub fn extract_tokens_from_response(&self, response: &OpenRouterChatResponse) -> (i32, i32) {
-        (response.usage.prompt_tokens, response.usage.completion_tokens)
+        if let Some(usage) = &response.usage {
+            (usage.prompt_tokens, usage.completion_tokens)
+        } else {
+            (0, 0)
+        }
     }
     
     pub fn extract_cost_from_response(&self, response: &OpenRouterChatResponse) -> Option<f64> {
-        response.usage.cost
+        response.usage.as_ref().and_then(|usage| usage.cost)
     }
 }
 

@@ -38,8 +38,7 @@ pub async fn get_usage_summary(
 #[serde(rename_all = "camelCase")]
 pub struct PlanLimits {
     pub monthly_allowance: f64,
-    pub overage_rate: f64,
-    pub hard_limit_multiplier: f64,
+    pub cost_markup_percentage: f64,
     pub models: Vec<String>,
     pub support: String,
 }
@@ -140,5 +139,43 @@ pub async fn get_detailed_usage(
     let usage_records = billing_service.get_detailed_usage(&user_id.0, query.start_date, query.end_date).await?;
     
     Ok(HttpResponse::Ok().json(usage_records))
+}
+
+/// Get current user's subscription plan with cost markup information
+#[get("/current-plan")]
+pub async fn get_current_plan(
+    user_id: UserId,
+    app_state: web::Data<AppState>,
+) -> Result<HttpResponse, AppError> {
+    debug!("Getting current plan for user: {}", user_id.0);
+    
+    // Get user's current subscription
+    let subscription = app_state.subscription_repository
+        .get_by_user_id(&user_id.0)
+        .await?
+        .ok_or_else(|| AppError::NotFound("No active subscription found".to_string()))?;
+    
+    // Get the plan details
+    let plan = app_state.subscription_plan_repository
+        .get_plan_by_id(&subscription.plan_id)
+        .await?;
+    
+    #[derive(Debug, Serialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct CurrentPlanResponse {
+        pub plan_id: String,
+        pub plan_name: String,
+        pub overage_rate: f64,
+        pub status: String,
+    }
+    
+    let response = CurrentPlanResponse {
+        plan_id: plan.id.clone(),
+        plan_name: plan.name.clone(),
+        overage_rate: plan.cost_markup_percentage.to_f64().unwrap_or(0.0),
+        status: subscription.status.clone(),
+    };
+    
+    Ok(HttpResponse::Ok().json(response))
 }
 

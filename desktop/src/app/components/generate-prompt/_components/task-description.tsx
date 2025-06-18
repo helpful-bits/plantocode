@@ -247,15 +247,20 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
               value={internalValue}
               onChange={handleChange}
               onBlur={(_e) => {
-                // Immediately flush any pending changes to prevent data loss
+                // Clear any pending debounce timeout
                 if (debounceTimeoutRef.current) {
                   clearTimeout(debounceTimeoutRef.current);
-                  onChange(internalValue);
+                  debounceTimeoutRef.current = null;
                 }
                 
-                // Call the original onBlur handler if provided
+                // Always propagate current internal value to parent to ensure sync
+                onChange(internalValue);
+                
+                // Defer onBlur call to next event loop tick to prevent race conditions
                 if (onBlur) {
-                  onBlur();
+                  setTimeout(() => {
+                    onBlur();
+                  }, 0);
                 }
               }}
               placeholder="Clearly describe the changes or features you want the AI to implement. You can use the voice recorder below or type directly."

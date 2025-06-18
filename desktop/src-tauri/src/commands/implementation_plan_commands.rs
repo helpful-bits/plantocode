@@ -364,3 +364,49 @@ pub async fn read_implementation_plan_command(
         created_at: created_at.to_string(),
     })
 }
+
+/// Arguments for updating implementation plan content
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateImplementationPlanContentArgs {
+    pub job_id: String,
+    pub new_content: String,
+}
+
+/// Updates the content of an implementation plan
+#[command]
+pub async fn update_implementation_plan_content_command(
+    job_id: String,
+    new_content: String,
+    app_handle: AppHandle,
+) -> AppResult<()> {
+    info!("Updating implementation plan content for job: {}", job_id);
+    
+    // Validate required fields
+    if job_id.is_empty() {
+        return Err(AppError::ValidationError("Job ID is required".to_string()));
+    }
+    
+    // Get the background job repository
+    let repo = app_handle.state::<Arc<BackgroundJobRepository>>()
+        .inner()
+        .clone();
+    
+    // Get the job from the database
+    let job = repo.get_job_by_id(&job_id).await
+        .map_err(|e| AppError::DatabaseError(format!("Failed to get job: {}", e)))?
+        .ok_or_else(|| AppError::NotFoundError(format!("Job not found: {}", job_id)))?;
+    
+    // Verify job type
+    if job.task_type != "implementation_plan" {
+        return Err(AppError::ValidationError(format!("Job is not an implementation plan: {}", job_id)));
+    }
+    
+    // Update the job response with the new content
+    // Keep the status, metadata, and token counts unchanged, only update the response content
+    repo.update_job_response(&job_id, &new_content, None, None, None, None, None).await
+        .map_err(|e| AppError::DatabaseError(format!("Failed to update job response: {}", e)))?;
+    
+    info!("Successfully updated implementation plan content for job: {}", job_id);
+    Ok(())
+}

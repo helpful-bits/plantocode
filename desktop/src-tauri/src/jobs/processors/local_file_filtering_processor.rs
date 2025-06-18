@@ -274,8 +274,8 @@ impl JobProcessor for LocalFileFilteringProcessor {
                 let error_msg = format!("Failed to filter paths: {}", e);
                 error!("{}", error_msg);
                 
-                // Update job to failed using standardized utility
-                job_processor_utils::finalize_job_failure(&job.id, &repo, &error_msg, Some(&e)).await?;
+                // Update job to failed using standardized utility - non-LLM processor
+                job_processor_utils::finalize_job_failure(&job.id, &repo, &error_msg, Some(&e), None, None).await?;
                 
                 return Ok(JobProcessResult::failure(job.id.clone(), error_msg));
             }

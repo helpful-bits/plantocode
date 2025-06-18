@@ -14,7 +14,6 @@ interface CostUsageIndicatorProps {
   monthlyAllowance?: number;
   usagePercentage?: number;
   servicesBlocked?: boolean;
-  currency?: string;
   trialDaysLeft?: number;
 
   // Component display options
@@ -36,7 +35,6 @@ export function CostUsageIndicator({
   monthlyAllowance,
   usagePercentage,
   servicesBlocked,
-  currency = "USD",
   trialDaysLeft,
 
   // Display options
@@ -66,7 +64,6 @@ export function CostUsageIndicator({
   const actualMonthlyAllowance = (monthlyAllowance ?? spendingStatus?.includedAllowance) ?? 0;
   const actualUsagePercentage = (usagePercentage ?? spendingStatus?.usagePercentage) ?? 0;
   const actualServicesBlocked = (servicesBlocked ?? spendingStatus?.servicesBlocked) ?? false;
-  const actualCurrency = currency ?? spendingStatus?.currency ?? "USD";
   const actualTrialDaysLeft = trialDaysLeft ?? fetchedTrialDaysLeft;
 
   // Format currency with 2 decimal places
@@ -74,7 +71,7 @@ export function CostUsageIndicator({
   const formattedAllowance = actualMonthlyAllowance.toFixed(2);
 
   // Format currency symbol
-  const currencySymbol = actualCurrency === "USD" ? "$" : actualCurrency;
+  const currencySymbol = '$';
 
   // Show compact view with just the essentials
   if (compact) {
@@ -94,7 +91,7 @@ export function CostUsageIndicator({
 
         <Badge 
           variant="outline" 
-          className={`bg-background/80 border-border/60 backdrop-blur-sm ${
+          className={`bg-background/80 border-border/60 backdrop-blur-sm text-foreground ${
             actualServicesBlocked ? "border-destructive/50 text-destructive" : ""
           }`}
         >
@@ -134,7 +131,7 @@ export function CostUsageIndicator({
           <div className="flex items-center gap-2">
             <Badge 
               variant="outline" 
-              className={`bg-background/80 border-border/60 backdrop-blur-sm text-xs ${
+              className={`bg-background/80 border-border/60 backdrop-blur-sm text-xs text-foreground ${
                 actualServicesBlocked ? "border-destructive/50 text-destructive" : ""
               }`}
             >
@@ -159,7 +156,10 @@ export function CostUsageIndicator({
         <div className="space-y-1">
           <Progress 
             value={actualUsagePercentage} 
-            className={`h-2 ${actualUsagePercentage > 90 ? "bg-destructive/20" : ""}`}
+            className={`h-2 ${
+              actualUsagePercentage > 90 ? "bg-destructive/20" : 
+              actualUsagePercentage >= 75 ? "bg-warning/20" : ""
+            }`}
           />
           <div className="flex justify-between text-xs text-muted-foreground">
             <span>{currencySymbol}{formattedSpending} used</span>

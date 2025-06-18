@@ -228,7 +228,7 @@ async fn handle_job_success(
             error!("Job {} failed: {}", job_id, error_message);
             
             // Update job status to failed with detailed error information
-            background_job_repo.mark_job_failed(job_id, &error_message, None).await?;
+            background_job_repo.mark_job_failed(job_id, &error_message, None, None, None, None, None).await?;
             
             // Emit job status change event
             emit_job_status_change(

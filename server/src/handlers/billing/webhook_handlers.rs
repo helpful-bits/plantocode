@@ -6,7 +6,6 @@ use crate::db::repositories::webhook_idempotency_repository::WebhookIdempotencyR
 use crate::db::repositories::user_credit_repository::UserCreditRepository;
 use crate::db::repositories::credit_transaction_repository::{CreditTransactionRepository, CreditTransaction};
 use crate::db::repositories::credit_pack_repository::CreditPackRepository;
-use crate::utils::stripe_currency_utils::validate_stripe_amount_matches;
 use uuid::Uuid;
 use log::{error, info, warn};
 use chrono::Utc;
@@ -366,6 +365,14 @@ async fn process_credit_purchase(
             return Err(AppError::InvalidArgument("Missing required currency in credit purchase metadata".to_string()));
         }
     };
+    
+    // Validate that the currency is USD
+    if currency.to_uppercase() != "USD" {
+        error!("PaymentIntent {} uses unsupported currency: {}. Only USD is supported.", payment_intent.id, currency);
+        return Err(AppError::InvalidArgument(
+            format!("Only USD currency is supported for credit purchases, got: {}", currency)
+        ));
+    }
     
     // Parse and validate user_id UUID
     let user_uuid = match Uuid::parse_str(user_id_str) {

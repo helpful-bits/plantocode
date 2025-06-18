@@ -135,6 +135,7 @@ fn main() {
             // Billing commands
             commands::billing_commands::get_billing_dashboard_data_command,
             commands::billing_commands::get_subscription_plans_command,
+            commands::billing_commands::get_current_plan_command,
             commands::billing_commands::get_spending_history_command,
             commands::billing_commands::check_service_access_command,
             commands::billing_commands::get_spending_analytics_command,
@@ -147,6 +148,7 @@ fn main() {
             commands::billing_commands::get_credit_history_command,
             commands::billing_commands::get_credit_packs_command,
             commands::billing_commands::get_credit_balance_command,
+            commands::billing_commands::get_credit_details_command,
             commands::billing_commands::get_credit_stats_command,
             
             // Stripe Checkout commands
@@ -204,6 +206,7 @@ fn main() {
             // Implementation plan commands
             commands::implementation_plan_commands::create_implementation_plan_command,
             commands::implementation_plan_commands::read_implementation_plan_command,
+            commands::implementation_plan_commands::update_implementation_plan_content_command,
             commands::implementation_plan_commands::get_prompt_command,
             commands::implementation_plan_commands::estimate_prompt_tokens_command,
             
@@ -264,6 +267,8 @@ fn main() {
             commands::settings_commands::fetch_default_system_prompts_from_server,
             commands::settings_commands::fetch_default_system_prompt_from_server,
             commands::settings_commands::initialize_system_prompts_from_server,
+            commands::settings_commands::is_setting_customized_command,
+            commands::settings_commands::reset_setting_to_default_command,
             
             
             // Session commands

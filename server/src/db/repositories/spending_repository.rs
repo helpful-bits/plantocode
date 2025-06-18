@@ -5,21 +5,6 @@ use serde::{Deserialize, Serialize};
 use crate::error::AppError;
 use sqlx::types::BigDecimal;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct UserPreference {
-    pub user_id: Uuid,
-    pub preferred_currency: String,
-    pub timezone: Option<String>,
-    pub locale: Option<String>,
-    pub cost_alerts_enabled: Option<bool>,
-    pub spending_alert_75_percent: Option<bool>,
-    pub spending_alert_90_percent: Option<bool>,
-    pub spending_alert_limit_reached: Option<bool>,
-    pub spending_alert_services_blocked: Option<bool>,
-    pub created_at: Option<DateTime<chrono::Utc>>,
-    pub updated_at: Option<DateTime<chrono::Utc>>,
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserSpendingLimit {
@@ -30,7 +15,7 @@ pub struct UserSpendingLimit {
     pub billing_period_end: DateTime<Utc>,
     pub included_allowance: BigDecimal,
     pub current_spending: BigDecimal,
-    pub hard_limit: Option<BigDecimal>,
+    pub hard_limit: BigDecimal,
     pub services_blocked: bool,
     pub currency: String,
     pub created_at: Option<DateTime<Utc>>,
@@ -48,44 +33,6 @@ impl SpendingRepository {
         Self { pool }
     }
 
-    // User Preferences
-    pub async fn get_user_preference(&self, user_id: &Uuid) -> Result<Option<UserPreference>, AppError> {
-        let result = sqlx::query_as!(
-            UserPreference,
-            r#"
-            SELECT user_id, preferred_currency, timezone, locale, cost_alerts_enabled,
-                   spending_alert_75_percent, spending_alert_90_percent, 
-                   spending_alert_limit_reached, spending_alert_services_blocked,
-                   created_at, updated_at
-            FROM user_preferences 
-            WHERE user_id = $1
-            "#,
-            user_id
-        )
-        .fetch_optional(&self.pool)
-        .await
-        .map_err(|e| AppError::Database(format!("Failed to get user preference: {}", e)))?;
-
-        Ok(result)
-    }
-
-    pub async fn create_user_preference(&self, user_id: &Uuid, currency: &str) -> Result<(), AppError> {
-        sqlx::query!(
-            r#"
-            INSERT INTO user_preferences (user_id, preferred_currency)
-            VALUES ($1, $2)
-            ON CONFLICT (user_id) 
-            DO UPDATE SET preferred_currency = $2, updated_at = NOW()
-            "#,
-            user_id,
-            currency
-        )
-        .execute(&self.pool)
-        .await
-        .map_err(|e| AppError::Database(format!("Failed to set user preference: {}", e)))?;
-
-        Ok(())
-    }
 
     // UserSpendingLimit methods
     pub async fn get_user_spending_limit_for_period(&self, user_id: &Uuid, period_start: &DateTime<Utc>, _period_end: &DateTime<Utc>) -> Result<Option<UserSpendingLimit>, AppError> {
@@ -95,7 +42,7 @@ impl SpendingRepository {
             SELECT id, user_id, plan_id, billing_period_start, billing_period_end,
                    included_allowance as "included_allowance: BigDecimal", 
                    current_spending as "current_spending: BigDecimal", 
-                   hard_limit, 
+                   hard_limit as "hard_limit: BigDecimal", 
                    services_blocked,
                    currency, created_at, updated_at
             FROM user_spending_limits
@@ -118,7 +65,7 @@ impl SpendingRepository {
             SELECT id, user_id, plan_id, billing_period_start, billing_period_end,
                    included_allowance as "included_allowance: BigDecimal", 
                    current_spending as "current_spending: BigDecimal", 
-                   hard_limit, 
+                   hard_limit as "hard_limit: BigDecimal", 
                    services_blocked,
                    currency, created_at, updated_at
             FROM user_spending_limits
@@ -219,7 +166,7 @@ impl SpendingRepository {
             RETURNING id, user_id, plan_id, billing_period_start, billing_period_end,
                       included_allowance as "included_allowance: BigDecimal", 
                       current_spending as "current_spending: BigDecimal", 
-                      hard_limit, 
+                      hard_limit as "hard_limit: BigDecimal", 
                       services_blocked,
                       currency, created_at, updated_at
             "#,

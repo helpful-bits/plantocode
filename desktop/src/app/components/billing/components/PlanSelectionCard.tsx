@@ -1,7 +1,7 @@
 import { Check } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/ui/card';
 import { Badge } from '@/ui/badge';
-import { formatCurrency } from '@/utils/currency-utils';
+import { formatUsdCurrency } from '@/utils/currency-utils';
 import type { SubscriptionPlan } from '@/types/tauri-commands';
 
 interface PlanSelectionCardProps {
@@ -42,7 +42,7 @@ export function PlanSelectionCard({
         <CardTitle className="text-lg">{plan.name}</CardTitle>
         <div className="space-y-1">
           <div className="text-3xl font-bold">
-            {formatCurrency(plan.monthlyPrice, plan.currency)}
+            {formatUsdCurrency(plan.monthlyPrice)}
           </div>
           <div className="text-sm text-muted-foreground">
             per month

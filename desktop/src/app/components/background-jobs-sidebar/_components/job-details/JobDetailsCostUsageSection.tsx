@@ -24,7 +24,7 @@ export function JobDetailsCostUsageSection() {
     );
   }
 
-  const totalCost = job.cost ?? 0;
+  const totalCost = job.cost || 0;
   
   const inputTokens = job.tokensSent || 0;
   const outputTokens = job.tokensReceived || 0;
@@ -49,7 +49,7 @@ export function JobDetailsCostUsageSection() {
                 <div className="text-xs text-muted-foreground">Total Cost</div>
               </div>
               <div className="text-sm font-mono font-medium text-foreground">
-                ${totalCost.toFixed(4)}
+                ${totalCost.toFixed(6)}
               </div>
             </div>
           )}

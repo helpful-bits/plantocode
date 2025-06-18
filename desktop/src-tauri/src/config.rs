@@ -557,3 +557,22 @@ pub fn get_max_concurrent_jobs() -> usize {
     // Default to 4 concurrent jobs if not configured
     4
 }
+
+/// Get model info by model ID
+pub fn get_model_info(model_id: &str) -> AppResult<crate::models::ModelInfo> {
+    let config_guard = CONFIG.read().map_err(|e| AppError::InternalError(format!("Failed to acquire read lock: {}", e)))?;
+    
+    if let Some(runtime_config) = &*config_guard {
+        for provider in &runtime_config.providers {
+            for model_info in &provider.models {
+                if model_info.id == model_id {
+                    return Ok(model_info.clone());
+                }
+            }
+        }
+        
+        return Err(AppError::ConfigError(format!("Model '{}' not found in server configuration", model_id)));
+    }
+    
+    Err(AppError::ConfigError("Runtime AI configuration not yet loaded from server".to_string()))
+}

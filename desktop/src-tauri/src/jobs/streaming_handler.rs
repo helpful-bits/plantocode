@@ -130,9 +130,9 @@ impl StreamedResponseHandler {
             Some(usage)
         } else {
             Some(OpenRouterUsage {
-                prompt_tokens: self.config.prompt_tokens as u32,
-                completion_tokens: tokens_received,
-                total_tokens: self.config.prompt_tokens as u32 + tokens_received,
+                prompt_tokens: self.config.prompt_tokens as i32,
+                completion_tokens: tokens_received as i32,
+                total_tokens: (self.config.prompt_tokens + tokens_received as usize) as i32,
                 cost: None,
             })
         };

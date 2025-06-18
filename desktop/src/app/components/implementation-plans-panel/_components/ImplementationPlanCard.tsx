@@ -1,10 +1,11 @@
 "use client";
 
 import { formatDistanceToNow } from "date-fns";
-import { ClipboardCopy, Info, Eye, Trash2, Loader2 } from "lucide-react";
+import { Info, Eye, Trash2, Loader2, Copy } from "lucide-react";
 
 
 import { type BackgroundJob, JOB_STATUSES } from "@/types/session-types";
+import { type CopyButtonConfig } from "@/types/config-types";
 import { Button } from "@/ui/button";
 import {
   Card,
@@ -22,22 +23,22 @@ import React from "react";
 
 interface ImplementationPlanCardProps {
   plan: BackgroundJob;
-  onCopyContent: (text: string, jobId: string) => void;
   onViewContent: (plan: BackgroundJob) => void;
   onViewDetails: (plan: BackgroundJob) => void;
   onDelete: (jobId: string) => void;
   isDeleting: boolean;
-  copiedPlanId?: string;
+  copyButtons?: CopyButtonConfig[];
+  onCopyButtonClick?: (buttonConfig: CopyButtonConfig, plan: BackgroundJob) => void;
 }
 
 const ImplementationPlanCard = React.memo<ImplementationPlanCardProps>(({
   plan,
-  onCopyContent,
   onViewContent,
   onViewDetails,
   onDelete,
   isDeleting,
-  copiedPlanId,
+  copyButtons = [],
+  onCopyButtonClick,
 }) => {
   const parsedMeta = getParsedMetadata(plan.metadata);
   const isStreaming = JOB_STATUSES.ACTIVE.includes(plan.status) &&
@@ -128,7 +129,7 @@ const ImplementationPlanCard = React.memo<ImplementationPlanCardProps>(({
 
         {/* Actions bar */}
         <div className="flex justify-between mt-2">
-          <div className="space-x-1">
+          <div className="space-x-1 flex flex-wrap">
             <Button
               variant="outline"
               size="sm"
@@ -140,18 +141,22 @@ const ImplementationPlanCard = React.memo<ImplementationPlanCardProps>(({
               {isStreaming ? "View Stream" : "View Content"}
             </Button>
 
-            <Button
-              variant="outline"
-              size="sm"
-              className="text-xs h-7 px-2 py-1"
-              disabled={!plan.response}
-              onClick={() =>
-                plan.response && onCopyContent(plan.response, plan.id)
-              }
-            >
-              <ClipboardCopy className="mr-1 h-3.5 w-3.5" />
-              {copiedPlanId === plan.id ? "Copied!" : "Copy"}
-            </Button>
+            {/* Copy buttons */}
+            {copyButtons.length > 0 && !isStreaming && hasContent && (
+              copyButtons.map((button) => (
+                <Button
+                  key={button.id}
+                  variant="outline"
+                  size="sm"
+                  className="text-xs h-7 px-2 py-1"
+                  onClick={() => onCopyButtonClick?.(button, plan)}
+                  title={`Copy: ${button.label}`}
+                >
+                  <Copy className="mr-1 h-3 w-3" />
+                  {button.label}
+                </Button>
+              ))
+            )}
           </div>
 
           <div className="space-x-1">

@@ -317,7 +317,7 @@ impl JobProcessor for ImplementationPlanProcessor {
             Err(e) => {
                 error!("Streaming LLM task execution failed: {}", e);
                 let error_msg = format!("Streaming LLM task execution failed: {}", e);
-                task_runner.finalize_failure(&repo, &job.id, &error_msg, Some(&e)).await?;
+                task_runner.finalize_failure(&repo, &job.id, &error_msg, Some(&e), None).await?;
                 return Ok(JobProcessResult::failure(job.id.clone(), error_msg));
             }
         };
@@ -332,7 +332,7 @@ impl JobProcessor for ImplementationPlanProcessor {
         if response_content.is_empty() {
             let error_msg = "No content received from LLM stream";
             error!("Implementation plan job {} failed: {}", job.id, error_msg);
-            task_runner.finalize_failure(&repo, &job.id, &error_msg, None).await?;
+            task_runner.finalize_failure(&repo, &job.id, &error_msg, None, llm_result.usage).await?;
             return Ok(JobProcessResult::failure(job.id.clone(), error_msg.to_string()));
         }
         
@@ -352,8 +352,8 @@ impl JobProcessor for ImplementationPlanProcessor {
                 error!("Failed to parse implementation plan for job {}: {}", job.id, e);
                 let error_msg = format!("Failed to parse implementation plan: {}", e);
                 
-                // Update job to failed using helper
-                job_processor_utils::finalize_job_failure(&job.id, &repo, &error_msg, None).await?;
+                // Update job to failed using helper - LLM succeeded but parsing failed
+                job_processor_utils::finalize_job_failure(&job.id, &repo, &error_msg, None, llm_result.usage, Some(model_used)).await?;
                 
                 return Ok(JobProcessResult::failure(job.id.clone(), error_msg));
             }

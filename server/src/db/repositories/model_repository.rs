@@ -60,7 +60,7 @@ impl Model {
     }
 
     /// Calculate cost for duration-based models (e.g., voice transcription)
-    pub fn calculate_duration_cost(&self, duration_ms: i64) -> AppResult<BigDecimal> {
+    pub fn calculate_duration_cost(&self, duration_ms: i64, markup_percentage: &BigDecimal) -> AppResult<BigDecimal> {
         if !self.is_duration_based() {
             return Err(AppError::Internal(
                 format!("Model {} is not duration-based", self.id)
@@ -81,9 +81,10 @@ impl Model {
         
         // Convert to hours and calculate cost
         let hours = BigDecimal::from(billable_duration_ms) / BigDecimal::from(3600000); // 1 hour = 3,600,000 ms
-        let cost = price_per_hour * hours;
+        let base_cost = price_per_hour * hours;
+        let final_cost = base_cost * (BigDecimal::from(1) + markup_percentage);
         
-        Ok(cost)
+        Ok(final_cost)
     }
 
     /// Get the minimum billable duration in milliseconds
@@ -94,7 +95,7 @@ impl Model {
     }
 
     /// Calculate cost for token-based models (e.g., chat completions)
-    pub fn calculate_token_cost(&self, tokens_input: i32, tokens_output: i32) -> AppResult<BigDecimal> {
+    pub fn calculate_token_cost(&self, tokens_input: i32, tokens_output: i32, markup_percentage: &BigDecimal) -> AppResult<BigDecimal> {
         if self.is_duration_based() {
             return Err(AppError::Internal(
                 format!("Model {} is duration-based, token pricing is not applicable", self.id)
@@ -108,8 +109,10 @@ impl Model {
         
         let input_cost = (&tokens_input_bd / &thousand) * &self.price_input;
         let output_cost = (&tokens_output_bd / &thousand) * &self.price_output;
+        let base_cost = input_cost + output_cost;
+        let final_cost = base_cost * (BigDecimal::from(1) + markup_percentage);
         
-        Ok(input_cost + output_cost)
+        Ok(final_cost)
     }
 }
 

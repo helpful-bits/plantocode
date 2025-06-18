@@ -7,6 +7,7 @@ use crate::services::billing_service::BillingService;
 use crate::services::credit_service::CreditService;
 use crate::db::repositories::user_credit_repository::UserCreditRepository;
 use crate::db::repositories::credit_transaction_repository::CreditTransactionRepository;
+use crate::db::repositories::UserCredit;
 use crate::middleware::secure_auth::UserId;
 use crate::models::auth_jwt_claims::Claims;
 use log::{debug, info};
@@ -55,18 +56,17 @@ pub async fn get_credit_balance(
     let balance = credit_repo.get_balance(&user_id.0).await?;
     
     let response = match balance {
-        Some(credit) => serde_json::json!({
-            "userId": user_id.0,
-            "balance": credit.balance.to_f64().unwrap_or(0.0),
-            "currency": credit.currency,
-            "lastUpdated": credit.updated_at.map(|dt| dt.to_rfc3339())
-        }),
-        None => serde_json::json!({
-            "userId": user_id.0,
-            "balance": 0.0,
-            "currency": "USD",
-            "lastUpdated": Option::<String>::None
-        })
+        Some(credit) => credit,
+        None => {
+            let default_credit = UserCredit {
+                user_id: user_id.0,
+                balance: BigDecimal::from(0),
+                currency: "USD".to_string(),
+                created_at: Some(chrono::Utc::now()),
+                updated_at: None,
+            };
+            default_credit
+        }
     };
     
     Ok(HttpResponse::Ok().json(response))

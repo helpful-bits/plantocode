@@ -38,17 +38,6 @@ pub struct UserSpendingSummary {
     pub lowest_monthly_spending: BigDecimal,
 }
 
-// Spending alert structure for API responses
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SpendingAlert {
-    pub id: String,
-    pub alert_type: String,
-    pub threshold_percentage: i32,
-    pub current_amount: BigDecimal,
-    pub limit_amount: BigDecimal,
-    pub created_at: DateTime<Utc>,
-    pub acknowledged: bool,
-}
 
 
 // Helper functions for safe operations
@@ -81,7 +70,6 @@ pub struct SpendingStatus {
     pub billing_period_start: DateTime<Utc>,
     pub next_billing_date: DateTime<Utc>,
     pub currency: String,
-    pub alerts: Vec<SpendingAlert>,
 }
 
 #[derive(Debug, Clone)]
@@ -190,8 +178,6 @@ impl CostBasedBillingService {
             Ok(_) => {
                 tx.commit().await.map_err(AppError::from)?;
                 
-                // Check spending thresholds and send alerts after transaction is committed
-                self.check_spending_thresholds(user_id).await?;
                 
                 Ok(())
             }
@@ -280,13 +266,7 @@ impl CostBasedBillingService {
         let result = self.get_current_spending_status_in_tx(user_id, &mut tx).await?;
         tx.commit().await.map_err(AppError::from)?;
         
-        // Add alerts for non-transaction version
-        let alerts = self.get_recent_alerts(user_id, &result.billing_period_start).await?;
-        
-        Ok(SpendingStatus {
-            alerts,
-            ..result
-        })
+        Ok(result)
     }
 
     /// Get current spending status for user (transaction-aware)
@@ -332,13 +312,10 @@ impl CostBasedBillingService {
             0.0
         };
 
-        // Get recent alerts (simplified version for transaction context)
-        let alerts = vec![]; // Skip alerts in transaction context for simplicity
-
         Ok(SpendingStatus {
             current_spending: spending_limit.current_spending,
             included_allowance: spending_limit.included_allowance,
-            hard_limit: spending_limit.hard_limit.clone().unwrap_or_else(|| safe_bigdecimal_from_str("0").unwrap_or_else(|_| BigDecimal::from(0))),
+            hard_limit: spending_limit.hard_limit.clone(),
             remaining_allowance,
             overage_amount,
             credit_balance,
@@ -347,7 +324,6 @@ impl CostBasedBillingService {
             billing_period_start: spending_limit.billing_period_start,
             next_billing_date: spending_limit.billing_period_end,
             currency: spending_limit.currency,
-            alerts,
         })
     }
 
@@ -453,8 +429,8 @@ impl CostBasedBillingService {
         // Get plan using direct SQL since subscription_plan_repository doesn't have _with_executor variant
         let plan = sqlx::query!(
             r#"
-            SELECT id, name, base_price_monthly, included_spending_monthly, overage_rate,
-                   hard_limit_multiplier, currency, features, created_at, updated_at
+            SELECT id, name, base_price_monthly, included_spending_monthly, cost_markup_percentage,
+                   currency, features, created_at, updated_at
             FROM subscription_plans 
             WHERE id = $1
             "#,
@@ -470,14 +446,8 @@ impl CostBasedBillingService {
             plan.included_spending_monthly
                 .unwrap_or_else(|| safe_bigdecimal_from_str("0").unwrap_or_else(|_| BigDecimal::from(0)))
         };
-        let hard_limit_multiplier: BigDecimal = plan.hard_limit_multiplier
-            .unwrap_or_else(|| safe_bigdecimal_from_str("2.0").unwrap_or_else(|_| BigDecimal::from(2)));
 
-        let hard_limit: BigDecimal = if subscription.plan_id == "free" {
-            safe_bigdecimal_from_str("2")?  // Set hard limit to exactly $2 for free plan
-        } else {
-            &included_allowance * &hard_limit_multiplier
-        };
+        let hard_limit: BigDecimal = included_allowance.clone();
 
         // Create new spending limit struct and save using create_or_update_user_spending_limit_with_executor
         let new_spending_limit = UserSpendingLimit {
@@ -488,7 +458,7 @@ impl CostBasedBillingService {
             billing_period_end,
             included_allowance: included_allowance.clone(),
             current_spending: safe_bigdecimal_from_str("0")?,
-            hard_limit: Some(hard_limit.clone()),
+            hard_limit: hard_limit.clone(),
             services_blocked: false,
             currency: plan.currency.clone().unwrap_or_else(|| "USD".to_string()),
             created_at: Some(Utc::now()),
@@ -503,42 +473,6 @@ impl CostBasedBillingService {
         Ok(new_spending_limit)
     }
 
-    /// Check spending thresholds and send alerts
-    async fn check_spending_thresholds(&self, user_id: &Uuid) -> Result<(), AppError> {
-        let spending_status = self.get_current_spending_status(user_id).await?;
-        // Get the spending limit once to avoid redundant fetches in send_spending_alert
-        let spending_limit = self.get_or_create_current_spending_limit(user_id).await?;
-        
-        let usage_percentage = spending_status.usage_percentage;
-        let current_spending = spending_status.current_spending;
-        let billing_period_start = spending_status.billing_period_start;
-
-        // Check thresholds: 75%, 90%, 100% (limit reached), hard limit
-        let thresholds = vec![
-            (75.0, "75_percent"),
-            (90.0, "90_percent"),
-            (100.0, "limit_reached"),
-        ];
-
-        for (threshold_percent, alert_type) in thresholds {
-            if usage_percentage >= threshold_percent {
-                // Dynamic alert checking - log alert events instead of storing in database
-                let has_existing_alert = self.has_recent_alert_logged(user_id, alert_type, &billing_period_start);
-
-                if !has_existing_alert {
-                    self.log_spending_alert_event(user_id, alert_type, &current_spending, &billing_period_start, &spending_limit).await?;
-                }
-            }
-        }
-
-        // Check hard limit
-        if current_spending >= spending_status.hard_limit && !spending_status.services_blocked {
-            self.block_services(user_id).await?;
-            self.log_spending_alert_event(user_id, "services_blocked", &current_spending, &billing_period_start, &spending_limit).await?;
-        }
-
-        Ok(())
-    }
 
 
     /// Block AI services for user
@@ -583,102 +517,9 @@ impl CostBasedBillingService {
     }
 
 
-    /// Log spending alert event (replaces database storage with logging)
-    async fn log_spending_alert_event(
-        &self,
-        user_id: &Uuid,
-        alert_type: &str,
-        current_spending: &BigDecimal,
-        billing_period_start: &DateTime<Utc>,
-        user_spending_limit: &UserSpendingLimit,
-    ) -> Result<(), AppError> {
-        let threshold_amount = match alert_type {
-            "75_percent" | "90_percent" => {
-                let percent = if alert_type == "75_percent" { 0.75 } else { 0.90 };
-                let percent_decimal: BigDecimal = FromPrimitive::from_f64(percent)
-                    .ok_or_else(|| AppError::Internal("Invalid percent value".to_string()))?;
-                Ok::<BigDecimal, AppError>(&user_spending_limit.included_allowance * &percent_decimal)
-            },
-            "limit_reached" => {
-                Ok::<BigDecimal, AppError>(user_spending_limit.included_allowance.clone())
-            },
-            "services_blocked" => {
-                Ok::<BigDecimal, AppError>(user_spending_limit.hard_limit.clone().unwrap_or_else(|| safe_bigdecimal_from_str("0").unwrap_or_else(|_| BigDecimal::from(0))))
-            },
-            _ => Ok::<BigDecimal, AppError>(safe_bigdecimal_from_str("0")?),
-        }?;
 
-        // Log alert event instead of storing in database
-        warn!("SPENDING ALERT [{}]: User {} - {} at ${} (threshold: ${}, period: {})", 
-              alert_type.to_uppercase(), user_id, alert_type, current_spending, threshold_amount, billing_period_start);
 
-        // Send notification directly
-        self.send_alert_notification(user_id, alert_type, current_spending, &threshold_amount).await?;
 
-        Ok(())
-    }
-
-    /// Check if alert has been recently logged (in-memory tracking for this session)
-    fn has_recent_alert_logged(
-        &self,
-        _user_id: &Uuid,
-        _alert_type: &str,
-        _billing_period_start: &DateTime<Utc>,
-    ) -> bool {
-        // For now, return false to allow alerts to be sent
-        // In production, this could use a simple in-memory cache or Redis
-        // to track recent alerts and prevent spam
-        false
-    }
-
-    /// Get recent alerts for user (now returns empty as alerts are logged, not stored)
-    async fn get_recent_alerts(&self, _user_id: &Uuid, _billing_period_start: &DateTime<Utc>) -> Result<Vec<SpendingAlert>, AppError> {
-        // Return empty vector since alerts are now logged, not stored in database
-        Ok(vec![])
-    }
-
-    /// Send notification to user about spending alert
-    async fn send_alert_notification(
-        &self,
-        user_id: &Uuid,
-        alert_type: &str,
-        current_spending: &BigDecimal,
-        threshold_amount: &BigDecimal,
-    ) -> Result<(), AppError> {
-        // Get user email for notification
-        let user_repo = crate::db::repositories::user_repository::UserRepository::new(self.db_pools.system_pool.clone());
-        let user = user_repo.get_by_id(user_id).await?;
-
-        // Get spending status for usage percentage and currency
-        let spending_status = self.get_current_spending_status(user_id).await?;
-
-        // Use email notification service to send the notification directly
-        let email_service = crate::services::email_notification_service::EmailNotificationService::new(self.db_pools.clone())?;
-        
-        email_service.send_spending_alert(
-            user_id,
-            &user.email,
-            alert_type,
-            current_spending,
-            threshold_amount,
-            spending_status.usage_percentage,
-            &spending_status.currency,
-        ).await?;
-
-        // Also log for immediate visibility
-        let spending_amount = current_spending.to_f64().unwrap_or(0.0);
-        let message = match alert_type {
-            "75_percent" => format!("You've used 75% of your monthly AI allowance (${:.2})", spending_amount),
-            "90_percent" => format!("Warning: 90% of your monthly AI allowance used (${:.2})", spending_amount),
-            "limit_reached" => format!("Monthly allowance exceeded (${:.2}). Overage charges apply.", spending_amount),
-            "services_blocked" => format!("AI services blocked. Spending limit reached (${:.2}). Please upgrade or wait for next billing cycle.", spending_amount),
-            _ => "Spending notification".to_string(),
-        };
-
-        info!("[NOTIFICATION] User {}: {}", user_id, message);
-
-        Ok(())
-    }
 
     /// Reset spending for new billing period (called by billing cycle job)
     pub async fn reset_billing_period(&self, user_id: &Uuid) -> Result<(), AppError> {
@@ -934,8 +775,8 @@ impl CostBasedBillingService {
         
         let free_plan = sqlx::query!(
             r#"
-            SELECT id, name, base_price_monthly, included_spending_monthly, overage_rate,
-                   hard_limit_multiplier, currency, features, created_at, updated_at
+            SELECT id, name, base_price_monthly, included_spending_monthly, cost_markup_percentage,
+                   currency, features, created_at, updated_at
             FROM subscription_plans 
             WHERE id = 'free'
             "#
@@ -1062,7 +903,7 @@ impl CostBasedBillingService {
         let new_spending_limit = self.get_or_create_current_spending_limit_in_tx(user_id, &mut tx).await?;
         
         info!("Created fresh spending limit for user {} with plan {} (allowance: {}, hard limit: {})", 
-              user_id, new_plan_id, new_spending_limit.included_allowance, new_spending_limit.hard_limit.as_ref().unwrap_or(&safe_bigdecimal_from_str("0").unwrap_or_else(|_| BigDecimal::from(0))));
+              user_id, new_plan_id, new_spending_limit.included_allowance, new_spending_limit.hard_limit);
         
         // Commit transaction
         tx.commit().await.map_err(AppError::from)?;

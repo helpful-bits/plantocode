@@ -9,7 +9,7 @@ export async function createCreditCheckoutSession(
   packId: string
 ): Promise<CheckoutSessionResponse> {
   return await invoke<CheckoutSessionResponse>('create_credit_checkout_session_command', {
-    packId,
+    creditPackId: packId,
   });
 }
 

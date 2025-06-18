@@ -159,6 +159,20 @@ impl BillingClient {
         Ok(subscription_plans)
     }
 
+    /// Get current subscription plan with cost markup information
+    pub async fn get_current_plan(&self) -> Result<crate::commands::billing_commands::CurrentPlanResponse, AppError> {
+        debug!("Getting current plan with cost markup information");
+        
+        let current_plan = self.make_authenticated_request(
+            "GET",
+            "/api/billing/current-plan",
+            None,
+        ).await?;
+        
+        info!("Successfully retrieved current plan information");
+        Ok(current_plan)
+    }
+
 
     /// Create a billing portal session
     pub async fn create_billing_portal(&self) -> Result<BillingPortalResponse, AppError> {

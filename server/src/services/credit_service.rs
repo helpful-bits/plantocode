@@ -32,7 +32,7 @@ impl CreditService {
     pub async fn get_user_balance(&self, user_id: &Uuid) -> Result<UserCredit, AppError> {
         // Ensure a credit record exists for the user
         let balance = self.user_credit_repository
-            .ensure_balance_record_exists(user_id, "USD")
+            .ensure_balance_record_exists(user_id)
             .await?;
         
         Ok(balance)
@@ -207,7 +207,7 @@ impl CreditService {
 
         // Ensure user has a credit record within the transaction
         let _ = self.user_credit_repository
-            .ensure_balance_record_exists_with_executor(user_id, "USD", &mut tx)
+            .ensure_balance_record_exists_with_executor(user_id, &mut tx)
             .await?;
 
         // Add the refunded credits to user balance within the transaction
@@ -254,7 +254,7 @@ impl CreditService {
 
         // Ensure user has a credit record within the transaction
         let _ = self.user_credit_repository
-            .ensure_balance_record_exists_with_executor(user_id, "USD", &mut tx)
+            .ensure_balance_record_exists_with_executor(user_id, &mut tx)
             .await?;
 
         // Adjust the credits (can be positive or negative) within the transaction
@@ -295,13 +295,20 @@ impl CreditService {
         currency: &str,
         payment_intent: &stripe::PaymentIntent,
     ) -> Result<UserCredit, AppError> {
+        // Validate that the currency is USD
+        if currency.to_uppercase() != "USD" {
+            return Err(AppError::InvalidArgument(
+                format!("Only USD currency is supported, got: {}", currency)
+            ));
+        }
+        
         // Start a database transaction to ensure atomicity
         let pool = self.user_credit_repository.get_pool();
         let mut tx = pool.begin().await.map_err(AppError::from)?;
 
         // Ensure user has a credit record within the transaction
         let _ = self.user_credit_repository
-            .ensure_balance_record_exists_with_executor(user_id, currency, &mut tx)
+            .ensure_balance_record_exists_with_executor(user_id, &mut tx)
             .await?;
 
         // Add the credits to user balance within the transaction
