@@ -169,6 +169,7 @@ pub async fn get_desktop_runtime_ai_config(
                 model: db_config.model,
                 max_tokens: db_config.max_tokens,
                 temperature: db_config.temperature,
+                copy_buttons: db_config.copy_buttons,
             })
         })
         .collect();

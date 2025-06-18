@@ -20,6 +20,7 @@ export function TextImprovementPopover() {
         top: `${position.top}px`,
         left: `${position.left}px`,
       }}
+      onMouseDown={(e) => e.preventDefault()}
     >
       <Button
         size="sm"

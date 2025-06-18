@@ -31,24 +31,31 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig, strict_rate_limiter: RateL
             // Subscription management routes
             .service(handlers::billing::subscription_handlers::get_available_plans)
             .service(handlers::billing::subscription_handlers::get_usage_summary)
-            .service(handlers::billing::subscription_handlers::create_subscription_with_intent)
+            .service(handlers::billing::subscription_handlers::get_detailed_usage)
             // Payment and billing portal routes
             .service(handlers::billing::payment_handlers::create_billing_portal_session)
             .service(handlers::billing::payment_handlers::get_payment_methods)
-            .service(handlers::billing::payment_handlers::create_setup_intent)
-            .service(handlers::billing::payment_handlers::get_payment_intent_status)
             .service(handlers::billing::payment_handlers::get_stripe_publishable_key)
+            // Payment method management routes
+            .service(handlers::billing::payment_handlers::set_default_payment_method)
+            .service(handlers::billing::payment_handlers::detach_payment_method)
             // Invoice management routes
             .service(handlers::billing::invoice_handlers::list_invoices)
+            // Stripe Checkout routes (/api/billing/checkout/*)
+            .service(
+                web::scope("/checkout")
+                    .service(handlers::billing::checkout_handlers::create_credit_checkout_session_handler)
+                    .service(handlers::billing::checkout_handlers::create_subscription_checkout_session_handler)
+                    .service(handlers::billing::checkout_handlers::create_setup_checkout_session_handler)
+                    .service(handlers::billing::checkout_handlers::get_checkout_session_status_handler)
+            )
             // Credit system routes (/api/billing/credits/*)
             .service(
                 web::scope("/credits")
                     .service(handlers::billing::credit_handlers::get_credit_balance)
-                    .service(handlers::billing::credit_handlers::get_credit_packs)
-                    .service(handlers::billing::credit_handlers::create_credit_payment_intent)
+                    .service(handlers::billing::credit_handlers::get_available_credit_packs)
                     .route("/details", web::get().to(handlers::billing::credit_handlers::get_credit_details))
                     .route("/transaction-history", web::get().to(handlers::billing::credit_handlers::get_credit_transaction_history))
-                    .route("/packs/{pack_id}", web::get().to(handlers::billing::credit_handlers::get_credit_pack_by_id))
                     .route("/admin/adjust", web::post().to(handlers::billing::credit_handlers::admin_adjust_credits))
             )
             // Subscription lifecycle actions (cancel, resume, update) are handled by the billing portal

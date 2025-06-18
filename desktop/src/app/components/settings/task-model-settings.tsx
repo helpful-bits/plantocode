@@ -15,6 +15,7 @@ import {
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import SettingsEnhancementEngine from "./enhancement-engine";
 import { TaskSettingsEditor } from "./task-settings-editor";
+import { ImplementationPlanSettingsEditor } from "./implementation-plan-settings-editor";
 
 
 interface TaskModelSettingsProps {
@@ -221,7 +222,7 @@ export default function TaskModelSettings({
   };
 
 
-  const isDifferentFromDefault = (camelCaseKey: keyof TaskSettings, settingName: 'model' | 'maxTokens' | 'temperature' | 'languageCode') => {
+  const isDifferentFromDefault = (camelCaseKey: keyof TaskSettings, settingName: 'model' | 'maxTokens' | 'temperature' | 'languageCode' | 'copyButtons') => {
     if (!serverDefaults || !serverDefaults[camelCaseKey]) return false;
     
     const currentSettings = getTaskSettings(camelCaseKey);
@@ -229,6 +230,14 @@ export default function TaskModelSettings({
     
     const currentValue = currentSettings[settingName];
     const defaultValue = defaultSettings?.[settingName];
+    
+    // For copyButtons, perform deep comparison
+    if (settingName === 'copyButtons') {
+      // Handle cases where one or both values are undefined or null
+      if (!currentValue && !defaultValue) return false;
+      if (!currentValue || !defaultValue) return true;
+      return JSON.stringify(currentValue) !== JSON.stringify(defaultValue);
+    }
     
     return currentValue !== defaultValue;
   };
@@ -251,14 +260,20 @@ export default function TaskModelSettings({
     }));
   };
 
-  const handleResetToDefault = async (camelCaseKey: keyof TaskSettings, settingName: 'model' | 'maxTokens' | 'temperature' | 'languageCode') => {
+  const handleResetToDefault = async (camelCaseKey: keyof TaskSettings, settingName: 'model' | 'maxTokens' | 'temperature' | 'languageCode' | 'copyButtons') => {
     if (!projectDirectory || !serverDefaults || !serverDefaults[camelCaseKey]) return;
     
     try {
       await resetProjectSettingToDefault(projectDirectory, camelCaseKey, settingName);
       
       // Immediately update local state with default value
-      const defaultValue = serverDefaults[camelCaseKey]?.[settingName];
+      let defaultValue;
+      if (settingName === 'copyButtons') {
+        defaultValue = serverDefaults[camelCaseKey]?.copyButtons;
+      } else {
+        defaultValue = serverDefaults[camelCaseKey]?.[settingName];
+      }
+      
       if (defaultValue !== undefined) {
         const newSettings = { ...taskSettings };
         if (!newSettings[camelCaseKey]) {
@@ -624,6 +639,42 @@ export default function TaskModelSettings({
               
               const settings = getTaskSettings(taskSettingsKey);
               const validation = validateTaskSettings(taskSettings, taskSettingsKey);
+              
+              if (selectedTask === 'implementationPlan') {
+                return (
+                  <ImplementationPlanSettingsEditor
+                    settings={settings}
+                    serverDefaults={serverDefaults?.[taskSettingsKey] || null}
+                    projectDirectory={projectDirectory}
+                    providersWithModels={filteredProvidersWithModels}
+                    onSettingsChange={(updatedSettings) => {
+                      const newSettings = { ...taskSettings };
+                      newSettings[taskSettingsKey] = {
+                        ...settings,
+                        ...updatedSettings,
+                      };
+                      debouncedSave(newSettings);
+                    }}
+                    isDifferentFromDefault={(settingName) => isDifferentFromDefault(taskSettingsKey, settingName)}
+                    onResetToDefault={(settingName) => handleResetToDefault(taskSettingsKey, settingName)}
+                    getSliderValue={(settingName) => getSliderValue(taskSettingsKey, settingName)}
+                    onSliderChange={(settingName, value) => {
+                      if (settingName === 'temperature') {
+                        handleTemperatureChange(taskSettingsKey, value);
+                      } else if (settingName === 'maxTokens') {
+                        handleMaxTokensChange(taskSettingsKey, value);
+                      }
+                    }}
+                    onSliderCommit={(settingName, value) => {
+                      if (settingName === 'temperature') {
+                        handleTemperatureCommit(taskSettingsKey, value);
+                      } else if (settingName === 'maxTokens') {
+                        handleMaxTokensCommit(taskSettingsKey, value);
+                      }
+                    }}
+                  />
+                );
+              }
               
               return (
                 <TaskSettingsEditor

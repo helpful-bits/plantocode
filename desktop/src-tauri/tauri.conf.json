@@ -46,6 +46,6 @@
   "plugins": {
     "http": null,
     "dialog": null,
-    "shell": null
+    "shell": {}
   }
 }

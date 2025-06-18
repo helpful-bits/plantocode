@@ -9,20 +9,7 @@ use log::{debug, info, error};
 use uuid::Uuid;
 use bigdecimal::{BigDecimal, ToPrimitive};
 use std::collections::HashMap;
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ClientSubscriptionPlan {
-    pub id: String,
-    pub name: String,
-    pub monthly_price: f64,
-    pub yearly_price: f64,
-    pub currency: String,
-    pub trial_days: i32,
-    pub features: Vec<String>,
-    pub recommended: bool,
-    pub active: bool,
-}
+use chrono::{DateTime, Utc};
 
 // ========================================
 // SUBSCRIPTION MANAGEMENT HANDLERS
@@ -76,13 +63,33 @@ pub async fn get_available_plans(
     
     let plans = app_state.subscription_plan_repository.get_all_plans().await?;
     
+    #[derive(Debug, Serialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct ClientSubscriptionPlan {
+        pub id: String,
+        pub name: String,
+        pub description: String,
+        pub weekly_price: f64,
+        pub monthly_price: f64,
+        pub yearly_price: f64,
+        pub currency: String,
+        pub trial_days: i32,
+        pub features: Vec<String>,
+        pub active: bool,
+        pub recommended: bool,
+        pub stripe_weekly_price_id: Option<String>,
+        pub stripe_monthly_price_id: Option<String>,
+        pub stripe_yearly_price_id: Option<String>,
+        pub created_at: Option<chrono::DateTime<chrono::Utc>>,
+        pub updated_at: Option<chrono::DateTime<chrono::Utc>>,
+    }
+
     let client_plans: Result<Vec<ClientSubscriptionPlan>, AppError> = plans.into_iter().map(|plan| {
         // Get typed features (fallback to defaults if parsing fails)
         let typed_features = plan.get_typed_features().unwrap_or_else(|e| {
             error!("Failed to parse features for plan '{}': {}", plan.id, e);
             PlanFeatures {
                 core_features: vec!["Basic features".to_string()],
-                allowed_models: vec!["basic".to_string()],
                 support_level: "Standard".to_string(),
                 api_access: false,
                 analytics_level: "Basic".to_string(),
@@ -96,84 +103,42 @@ pub async fn get_available_plans(
         Ok(ClientSubscriptionPlan {
             id: plan.id.clone(),
             name: plan.name.clone(),
+            description: plan.description.unwrap_or_else(|| format!("{} subscription plan", plan.name)),
+            weekly_price: plan.base_price_weekly.to_f64().unwrap_or(0.0),
             monthly_price: plan.base_price_monthly.to_f64().unwrap_or(0.0),
             yearly_price: plan.base_price_yearly.to_f64().unwrap_or(0.0),
             currency: plan.currency.clone(),
             trial_days: app_state.settings.subscription.default_trial_days as i32,
             features: typed_features.core_features,
-            recommended: plan.plan_tier == 1, // Pro plan is recommended
-            active: true, // All plans in database are considered active
+            active: plan.active,
+            recommended: plan.id == "pro",
+            stripe_weekly_price_id: plan.stripe_price_id_weekly,
+            stripe_monthly_price_id: plan.stripe_price_id_monthly,
+            stripe_yearly_price_id: plan.stripe_price_id_yearly,
+            created_at: None,
+            updated_at: None,
         })
     }).collect();
     
     Ok(HttpResponse::Ok().json(client_plans?))
 }
 
-// ========================================
-// SUBSCRIPTION CREATION HANDLERS
-// ========================================
-
 #[derive(Debug, Deserialize)]
-pub struct CreateSubscriptionIntentRequest {
-    pub plan_id: String,
-    pub trial_days: Option<u32>,
+pub struct DetailedUsageQuery {
+    pub start_date: DateTime<Utc>,
+    pub end_date: DateTime<Utc>,
 }
 
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SubscriptionIntentResponse {
-    pub subscription_id: String,
-    pub client_secret: Option<String>, // For SetupIntent or PaymentIntent
-    pub publishable_key: String,
-    pub status: String,
-    pub trial_end: Option<String>,
-}
-
-/// Create a subscription with SetupIntent for trial (modern embedded payment flow)
-/// Fixed client secret retrieval to prioritize subscription.pending_setup_intent.client_secret
-#[post("/subscriptions/create-with-intent")]
-pub async fn create_subscription_with_intent(
-    billing_service: web::Data<BillingService>,
+#[get("/usage/details")]
+pub async fn get_detailed_usage(
     user_id: UserId,
-    req: web::Json<CreateSubscriptionIntentRequest>,
+    query: web::Query<DetailedUsageQuery>,
+    billing_service: web::Data<BillingService>,
 ) -> Result<HttpResponse, AppError> {
-    info!("Creating subscription with intent for plan: {} for user: {}", req.plan_id, user_id.0);
+    debug!("Getting detailed usage for user: {} from {} to {}", user_id.0, query.start_date, query.end_date);
     
-    let subscription = billing_service.create_subscription_with_trial(
-        &user_id.0,
-        &req.plan_id,
-    ).await?;
+    let usage_records = billing_service.get_detailed_usage(&user_id.0, query.start_date, query.end_date).await?;
     
-    let publishable_key = billing_service.get_stripe_publishable_key()?;
-    
-    // Fixed client secret retrieval logic - prioritize pending_setup_intent first
-    let client_secret = match subscription.pending_setup_intent {
-        Some(stripe::Expandable::Object(setup_intent_obj)) => setup_intent_obj.client_secret,
-        _ => {
-            // Fallback to payment_intent.client_secret from latest_invoice
-            match subscription.latest_invoice {
-                Some(stripe::Expandable::Object(invoice_obj)) => {
-                    match invoice_obj.payment_intent {
-                        Some(stripe::Expandable::Object(pi_obj)) => pi_obj.client_secret,
-                        _ => None,
-                    }
-                },
-                _ => None,
-            }
-        }
-    };
-    
-    let response = SubscriptionIntentResponse {
-        subscription_id: subscription.id.to_string(),
-        client_secret,
-        publishable_key,
-        status: format!("{:?}", subscription.status),
-        trial_end: subscription.trial_end.and_then(|t| {
-            chrono::DateTime::from_timestamp(t, 0)
-                .map(|dt| dt.to_rfc3339())
-        }),
-    };
-    
-    info!("Successfully created subscription with intent for user: {}", user_id.0);
-    Ok(HttpResponse::Ok().json(response))
+    Ok(HttpResponse::Ok().json(usage_records))
 }
+

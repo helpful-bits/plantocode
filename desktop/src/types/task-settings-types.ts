@@ -1,8 +1,11 @@
+import { CopyButtonConfig } from './config-types';
+
 export interface TaskModelSettings {
   model?: string;
   maxTokens?: number;
   temperature?: number;
   languageCode?: string;
+  copyButtons?: CopyButtonConfig[];
 }
 
 export interface TaskSettings {

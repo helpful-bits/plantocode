@@ -74,18 +74,29 @@ export function TextImprovementProvider({ children }: TextImprovementProviderPro
         } else if (targetElement) {
           // Handle regular input/textarea elements
           const currentValue = targetElement.value;
-          const newValue = 
-            currentValue.slice(0, selectionRange.start) + 
-            improvedText + 
-            currentValue.slice(selectionRange.end);
           
-          targetElement.value = newValue;
-          
-          // Dispatch events to notify React of the change
-          const inputEvent = new Event('input', { bubbles: true });
-          const changeEvent = new Event('change', { bubbles: true });
-          targetElement.dispatchEvent(inputEvent);
-          targetElement.dispatchEvent(changeEvent);
+          // Check if the text in the selection range has changed while the job was running
+          const currentSelectionText = currentValue.slice(selectionRange.start, selectionRange.end);
+          if (currentSelectionText !== selectedText) {
+            // Text has been modified by user while job was running, skip applying improvement
+            console.warn("Text was modified while improvement job was running, skipping application");
+          } else {
+            const newValue = 
+              currentValue.slice(0, selectionRange.start) + 
+              improvedText + 
+              currentValue.slice(selectionRange.end);
+            
+            // Use native value setter to properly update React controlled components
+            const valueSetter = Object.getOwnPropertyDescriptor(targetElement, 'value') || 
+                              Object.getOwnPropertyDescriptor(Object.getPrototypeOf(targetElement), 'value');
+            if (valueSetter && valueSetter.set) {
+              valueSetter.set.call(targetElement, newValue);
+            }
+            
+            // Dispatch single input event to notify React of the change
+            const inputEvent = new Event('input', { bubbles: true });
+            targetElement.dispatchEvent(inputEvent);
+          }
         }
         
         // Reset state
@@ -102,7 +113,7 @@ export function TextImprovementProvider({ children }: TextImprovementProviderPro
         setJobId(null);
       }
     }
-  }, [job, status, targetElement, targetMonacoEditor, selectionRange]);
+  }, [job, status, targetElement, targetMonacoEditor, selectionRange, selectedText]);
 
   // Handle Monaco Editor selection events
   const handleMonacoSelection = useCallback((event: CustomEvent) => {
@@ -246,7 +257,15 @@ export function TextImprovementProvider({ children }: TextImprovementProviderPro
 
   // Trigger text improvement
   const triggerImprovement = useCallback(async () => {
-    if (!selectedText || !sessionBasicFields.id) {
+    if (!selectedText) {
+      console.error("No text selected for improvement");
+      setIsVisible(false);
+      return;
+    }
+
+    if (!sessionBasicFields.id) {
+      console.error("No active session for text improvement");
+      setIsVisible(false);
       return;
     }
 

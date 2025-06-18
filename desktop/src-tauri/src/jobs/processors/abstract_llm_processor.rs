@@ -169,7 +169,7 @@ impl LlmTaskRunner {
         
         Ok(LlmTaskResult {
             response: stream_result.accumulated_response,
-            usage: Some(stream_result.final_usage),
+            usage: stream_result.final_usage,
             system_prompt_id,
         })
     }

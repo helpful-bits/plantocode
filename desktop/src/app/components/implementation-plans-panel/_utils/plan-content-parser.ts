@@ -39,6 +39,21 @@ export const extractStepsFromPlan = (response: string | undefined | null): Parse
   return steps;
 };
 
+export const getContentForStep = (fullPlan: string, stepNumber: string): string => {
+  if (!fullPlan || !stepNumber) return '';
+  
+  // Extract the specific step content
+  const stepRegex = new RegExp(`<step\\s+number="${stepNumber}">([\\s\\S]*?)<\\/step>`, 'g');
+  const stepMatch = stepRegex.exec(fullPlan);
+  
+  if (!stepMatch) {
+    return ''; // Step not found
+  }
+  
+  // Return the inner content of the step (without the step tags)
+  return stepMatch[1].trim();
+};
+
 export const createPlanWithOnlyStep = (fullPlan: string, stepToKeep: string): string => {
   if (!fullPlan || !stepToKeep) return fullPlan;
   
@@ -74,4 +89,32 @@ export const createPlanWithOnlyStep = (fullPlan: string, stepToKeep: string): st
   // Fallback: just append the step at the end
   const result = planWithoutAnySteps.trim() + '\n\n' + stepToKeepContent;
   return result.replace(/\n\s*\n\s*\n/g, '\n\n').trim();
+};
+
+export const replacePlaceholders = (
+  buttonContent: string,
+  fullPlan: string,
+  selectedStep?: string
+): string => {
+  let result = buttonContent;
+  
+  // Replace {{FULL_PLAN}} with the complete plan
+  result = result.replace(/\{\{FULL_PLAN\}\}/g, fullPlan || '');
+  
+  // Replace {{CURRENT_STEP_CONTENT}} with the selected step content
+  if (selectedStep) {
+    const stepContent = getContentForStep(fullPlan, selectedStep);
+    result = result.replace(/\{\{CURRENT_STEP_CONTENT\}\}/g, stepContent);
+  } else {
+    result = result.replace(/\{\{CURRENT_STEP_CONTENT\}\}/g, '');
+  }
+  
+  // Replace {{SELECTED_STEP_NUMBER}} with the selected step number
+  if (selectedStep) {
+    result = result.replace(/\{\{SELECTED_STEP_NUMBER\}\}/g, selectedStep);
+  } else {
+    result = result.replace(/\{\{SELECTED_STEP_NUMBER\}\}/g, '');
+  }
+  
+  return result;
 };

@@ -35,6 +35,7 @@ export enum ErrorType {
   SUBSCRIPTION_CONFLICT = "SUBSCRIPTION_CONFLICT",
   SPENDING_LIMIT_EXCEEDED = "SPENDING_LIMIT_EXCEEDED",
   INVOICE_ERROR = "INVOICE_ERROR",
+  CHECKOUT_ERROR = "CHECKOUT_ERROR",
 }
 
 
@@ -505,6 +506,9 @@ function applyContextSpecificTransformations(
       
       case ErrorType.INVOICE_ERROR:
         return "There was an error processing your invoice. Please contact support for assistance.";
+      
+      case ErrorType.CHECKOUT_ERROR:
+        return "There was an error with the checkout process. Please try again or contact support if the issue persists.";
     }
   }
 
@@ -576,6 +580,31 @@ function applyContextSpecificTransformations(
     lowerMessage.includes("input too long")
   ) {
     return "The prompt is too long for the selected model. Please reduce the number of selected files, shorten the task description, or choose a model with a larger context window.";
+  }
+
+  // Check for checkout-specific error patterns
+  if (
+    lowerMessage.includes("checkout session expired") ||
+    lowerMessage.includes("session expired") ||
+    lowerMessage.includes("checkout expired")
+  ) {
+    return "Checkout session expired. Please start the checkout process again.";
+  }
+
+  if (
+    lowerMessage.includes("payment cancelled") ||
+    lowerMessage.includes("checkout cancelled") ||
+    lowerMessage.includes("payment canceled") ||
+    lowerMessage.includes("checkout canceled")
+  ) {
+    return "Payment was cancelled. You can retry the payment anytime from your account.";
+  }
+
+  if (
+    lowerMessage.includes("checkout session") ||
+    lowerMessage.includes("stripe checkout")
+  ) {
+    return "There was an error with the checkout process. Please try again or contact support if the issue persists.";
   }
 
   // Apply transcription-specific error message transformations
@@ -821,6 +850,10 @@ export function mapRustErrorCodeToErrorType(code: string): ErrorType {
       return ErrorType.SPENDING_LIMIT_EXCEEDED;
     case "INVOICE_ERROR":
       return ErrorType.INVOICE_ERROR;
+    case "CHECKOUT_ERROR":
+    case "CHECKOUT_SESSION_EXPIRED":
+    case "CHECKOUT_CANCELLED":
+      return ErrorType.CHECKOUT_ERROR;
     // Additional billing-related error code mappings from server AppError variants
     case "PAYMENT_REQUIRED":
       return ErrorType.PAYMENT_FAILED;
@@ -890,6 +923,9 @@ export function createUserFriendlyErrorMessage(
     
     case ErrorType.INVOICE_ERROR:
       return "There was an error processing your invoice. Please contact support for assistance.";
+    
+    case ErrorType.CHECKOUT_ERROR:
+      return "There was an error with the checkout process. Please try again or contact support if the issue persists.";
     
     case ErrorType.TOKEN_LIMIT_ERROR:
       return "The prompt is too long for the selected model. Please reduce the number of selected files, shorten the task description, or choose a model with a larger context window.";

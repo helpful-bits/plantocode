@@ -1,31 +1,34 @@
 use crate::error::AppError;
 use crate::api_clients::billing_client::BillingClient;
-use crate::models::SubscriptionPlan;
+use crate::models::{SubscriptionPlan, ListInvoicesResponse};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 use std::sync::Arc;
 use log::{debug, info, warn, error};
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DetailedUsage {
+    pub service_name: String,
+    pub model_display_name: String,
+    pub provider_code: String,
+    pub model_type: String,
+    pub total_cost: f64,
+    pub total_requests: i64,
+    pub total_input_tokens: i64,
+    pub total_output_tokens: i64,
+    pub total_duration_ms: i64,
+}
 use regex::Regex;
 use once_cell::sync::Lazy;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Invoice {
-    pub id: String,
-    pub created: i64,
-    pub due_date: Option<i64>,
-    pub amount_due: i64,
-    pub amount_paid: i64,
-    pub currency: String,
-    pub status: String,
-    pub invoice_pdf_url: Option<String>,
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CheckoutSessionResponse {
+    pub url: String,
+    pub session_id: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ListInvoicesResponse {
-    pub invoices: Vec<Invoice>,
-    pub total_invoices: i32,
-    pub has_more: bool,
-}
 
 // ========================================
 // VALIDATION UTILITIES FOR BILLING SECURITY
@@ -98,23 +101,6 @@ fn validate_plan_id(plan_id: &str) -> Result<(), AppError> {
     Ok(())
 }
 
-/// Validates a credit pack ID
-fn validate_credit_pack_id(credit_pack_id: &str) -> Result<(), AppError> {
-    if credit_pack_id.is_empty() {
-        return Err(AppError::ValidationError("Credit pack ID cannot be empty".to_string()));
-    }
-
-    if credit_pack_id.len() < 3 || credit_pack_id.len() > 50 {
-        return Err(AppError::ValidationError("Credit pack ID must be between 3 and 50 characters".to_string()));
-    }
-
-    if !ALPHANUMERIC_ID_PATTERN.is_match(credit_pack_id) {
-        warn!("Invalid credit pack ID format: {}", credit_pack_id);
-        return Err(AppError::ValidationError("Credit pack ID contains invalid characters".to_string()));
-    }
-
-    Ok(())
-}
 
 /// Validates address field length
 fn validate_address_field(field: &str, field_name: &str, max_length: usize) -> Result<(), AppError> {
@@ -346,26 +332,6 @@ pub struct CreditHistoryResponse {
     pub has_more: bool,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CreditPack {
-    pub id: String,
-    pub name: String,
-    pub value_credits: f64, // Amount of credits user gets
-    pub price_amount: f64,  // Actual price to pay
-    pub currency: String,
-    pub stripe_price_id: String,
-    pub description: Option<String>,
-    pub recommended: bool,
-    pub bonus_percentage: Option<f64>,
-    pub is_popular: Option<bool>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CreditPacksResponse {
-    pub packs: Vec<CreditPack>,
-}
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -377,6 +343,23 @@ pub struct CreditStats {
     pub total_refunded: f64,
     pub transaction_count: i64,
     pub currency: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreditPack {
+    pub id: String,
+    pub name: String,
+    pub value_credits: f64,
+    pub price_amount: f64,
+    pub currency: String,
+    pub description: Option<String>,
+    pub recommended: bool,
+    pub bonus_percentage: Option<f64>,
+    pub is_popular: Option<bool>,
+    pub is_active: bool,
+    pub display_order: i32,
+    pub stripe_price_id: String,
 }
 
 
@@ -481,18 +464,6 @@ pub async fn get_credit_history_command(
     Ok(credit_history)
 }
 
-/// Get available credit packs for purchase
-#[tauri::command]
-pub async fn get_credit_packs_command(
-    billing_client: State<'_, Arc<BillingClient>>,
-) -> Result<Vec<CreditPack>, AppError> {
-    debug!("Getting credit packs via Tauri command");
-    
-    let response = billing_client.get_credit_packs().await?;
-    
-    info!("Successfully retrieved credit packs");
-    Ok(response.packs)
-}
 
 /// Get current credit balance for the user
 #[tauri::command]
@@ -520,121 +491,93 @@ pub async fn get_credit_stats_command(
     Ok(credit_stats)
 }
 
-// ========================================
-// MODERN PAYMENT INTENT COMMANDS (2024)
-// ========================================
 
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PaymentIntentResponse {
-    pub client_secret: String,
-    pub publishable_key: String,
-    pub amount: i64,
-    pub currency: String,
-    pub description: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SetupIntentResponse {
-    pub client_secret: String,
-    pub publishable_key: String,
-}
-
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CreateSubscriptionIntentRequest {
-    pub plan_id: String,
-    pub trial_days: Option<u32>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SubscriptionIntentResponse {
-    pub subscription_id: String,
-    pub client_secret: Option<String>, // For SetupIntent or PaymentIntent
-    pub publishable_key: String,
-    pub status: String,
-    pub trial_end: Option<String>,
-}
-
-/// Create a PaymentIntent for credit purchase (modern embedded payment flow)
+/// Get available credit packs for purchase
 #[tauri::command]
-pub async fn create_credit_payment_intent_command(
+pub async fn get_credit_packs_command(
+    billing_client: State<'_, Arc<BillingClient>>,
+) -> Result<Vec<CreditPack>, AppError> {
+    debug!("Getting credit packs via Tauri command");
+    
+    let credit_packs = billing_client.get_available_credit_packs().await?;
+    
+    info!("Successfully retrieved credit packs");
+    Ok(credit_packs)
+}
+
+// ========================================
+// STRIPE CHECKOUT SESSION COMMANDS
+// ========================================
+
+
+/// Create a checkout session for credit purchase
+#[tauri::command]
+pub async fn create_credit_checkout_session_command(
     billing_client: State<'_, Arc<BillingClient>>,
     credit_pack_id: String,
-    save_payment_method: Option<bool>,
-) -> Result<PaymentIntentResponse, AppError> {
-    debug!("Creating PaymentIntent for credit pack: {}", credit_pack_id);
+) -> Result<CheckoutSessionResponse, AppError> {
+    debug!("Creating checkout session for credit pack: {}", credit_pack_id);
     
     // Security validation
-    check_rate_limit("create_credit_payment_intent")?;
-    validate_credit_pack_id(&credit_pack_id)?;
+    check_rate_limit("create_credit_checkout_session")?;
     
-    let payment_intent = billing_client.create_credit_payment_intent(
-        &credit_pack_id,
-        save_payment_method.unwrap_or(false)
+    let checkout_response = billing_client.create_credit_checkout_session(&credit_pack_id).await?;
+    
+    info!("Successfully created checkout session for credit purchase");
+    Ok(CheckoutSessionResponse {
+        url: checkout_response.url,
+        session_id: checkout_response.session_id,
+    })
+}
+
+/// Create a checkout session for subscription
+#[tauri::command]
+pub async fn create_subscription_checkout_session_command(
+    billing_client: State<'_, Arc<BillingClient>>,
+    plan_id: String,
+) -> Result<CheckoutSessionResponse, AppError> {
+    debug!("Creating subscription checkout session for plan: {}", plan_id);
+    
+    let checkout_response = billing_client.create_subscription_checkout_session(
+        &plan_id,
+        None
     ).await?;
     
-    info!("Successfully created PaymentIntent for credit purchase");
-    Ok(payment_intent)
+    info!("Successfully created subscription checkout session");
+    Ok(CheckoutSessionResponse {
+        url: checkout_response.url,
+        session_id: checkout_response.session_id,
+    })
 }
 
-/// Create a subscription with SetupIntent for trial (modern embedded payment flow)
+/// Create a checkout session for payment method setup
 #[tauri::command]
-pub async fn create_subscription_intent_command(
+pub async fn create_setup_checkout_session_command(
     billing_client: State<'_, Arc<BillingClient>>,
-    request: CreateSubscriptionIntentRequest,
-) -> Result<SubscriptionIntentResponse, AppError> {
-    debug!("Creating subscription with intent for plan: {}", request.plan_id);
+) -> Result<CheckoutSessionResponse, AppError> {
+    debug!("Creating setup checkout session for payment method setup");
     
-    let subscription_intent = billing_client.create_subscription_with_intent(
-        &request.plan_id,
-        request.trial_days
-    ).await?;
+    let checkout_response = billing_client.create_setup_checkout_session().await?;
     
-    info!("Successfully created subscription with intent");
-    Ok(subscription_intent)
+    info!("Successfully created setup checkout session");
+    Ok(CheckoutSessionResponse {
+        url: checkout_response.url,
+        session_id: checkout_response.session_id,
+    })
 }
 
-/// Create a SetupIntent for saving payment method without charging
+/// Get checkout session status
 #[tauri::command]
-pub async fn create_setup_intent_command(
+pub async fn get_checkout_session_status_command(
+    session_id: String,
     billing_client: State<'_, Arc<BillingClient>>,
-) -> Result<SetupIntentResponse, AppError> {
-    debug!("Creating SetupIntent for payment method setup");
-    
-    let setup_intent = billing_client.create_setup_intent().await?;
-    
-    info!("Successfully created SetupIntent");
-    Ok(setup_intent)
-}
-
-/// Confirm payment status after client-side confirmation
-#[tauri::command]
-pub async fn confirm_payment_status_command(
-    billing_client: State<'_, Arc<BillingClient>>,
-    payment_intent_id: String,
 ) -> Result<serde_json::Value, AppError> {
-    debug!("Confirming payment status for PaymentIntent: {}", payment_intent_id);
+    debug!("Getting checkout session status for session: {}", session_id);
     
-    let status = billing_client.get_payment_intent_status(&payment_intent_id).await?;
+    let status = billing_client.confirm_checkout_session(&session_id).await?;
     
-    info!("Successfully retrieved payment status");
+    info!("Successfully retrieved checkout session status");
     Ok(status)
-}
-
-/// Get Stripe publishable key for frontend
-#[tauri::command]
-pub async fn get_stripe_publishable_key_command(
-    billing_client: State<'_, Arc<BillingClient>>,
-) -> Result<String, AppError> {
-    debug!("Getting Stripe publishable key");
-    
-    let publishable_key = billing_client.get_stripe_publishable_key().await?;
-    
-    Ok(publishable_key)
 }
 
 // ========================================
@@ -735,160 +678,43 @@ pub async fn get_payment_methods_command(
 }
 
 
-// ========================================
-// BILLING HEALTH MONITORING
-// ========================================
 
-/// Billing system health status
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct BillingHealthStatus {
-    pub overall_status: HealthStatus,
-    pub server_connectivity: bool,
-    pub authentication_status: bool,
-    pub subscription_accessible: bool,
-    pub payment_methods_accessible: bool,
-    pub credit_system_accessible: bool,
-    pub last_checked: String,
-    pub error_details: Vec<String>,
-    pub warnings: Vec<String>,
-    pub recommendations: Vec<String>,
-}
 
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum HealthStatus {
-    Healthy,
-    Degraded,
-    Unhealthy,
-}
 
-/// Comprehensive billing health check
+/// Set default payment method for the user
 #[tauri::command]
-pub async fn check_billing_health_command(
+pub async fn set_default_payment_method_command(
+    payment_method_id: String,
     billing_client: State<'_, Arc<BillingClient>>,
-) -> Result<BillingHealthStatus, AppError> {
-    debug!("Running comprehensive billing health check");
+) -> Result<serde_json::Value, AppError> {
+    debug!("Setting default payment method: {}", payment_method_id);
     
-    let mut status = BillingHealthStatus {
-        overall_status: HealthStatus::Healthy,
-        server_connectivity: false,
-        authentication_status: false,
-        subscription_accessible: false,
-        payment_methods_accessible: false,
-        credit_system_accessible: false,
-        last_checked: std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs()
-            .to_string(),
-        error_details: Vec::new(),
-        warnings: Vec::new(),
-        recommendations: Vec::new(),
-    };
+    // Security validation
+    check_rate_limit("set_default_payment_method")?;
+    validate_payment_method_id(&payment_method_id)?;
     
-    let mut errors = 0;
-    let mut warnings = 0;
+    let result = billing_client.set_default_payment_method(&payment_method_id).await?;
     
-    // Test server connectivity and authentication by trying to get billing dashboard data
-    match billing_client.get_billing_dashboard_data().await {
-        Ok(_) => {
-            status.server_connectivity = true;
-            status.authentication_status = true;
-            status.subscription_accessible = true;
-            info!("Billing health check: Billing dashboard data accessible");
-        }
-        Err(e) => {
-            errors += 1;
-            let error_msg = format!("Failed to access billing dashboard data: {}", e);
-            status.error_details.push(error_msg.clone());
-            error!("Billing health check error: {}", error_msg);
-            
-            if format!("{}", e).contains("network") || format!("{}", e).contains("connection") {
-                status.recommendations.push("Check internet connection and server availability".to_string());
-            } else if format!("{}", e).contains("auth") || format!("{}", e).contains("token") {
-                status.authentication_status = false;
-                status.recommendations.push("Re-authenticate through the login flow".to_string());
-            } else {
-                status.recommendations.push("Check billing service configuration".to_string());
-            }
-        }
-    }
-    
-    // Test payment methods accessibility  
-    match billing_client.get_payment_methods().await {
-        Ok(_) => {
-            status.payment_methods_accessible = true;
-            info!("Billing health check: Payment methods accessible");
-        }
-        Err(e) => {
-            warnings += 1;
-            let warning_msg = format!("Payment methods not accessible: {}", e);
-            status.warnings.push(warning_msg.clone());
-            warn!("Billing health check warning: {}", warning_msg);
-        }
-    }
-    
-    // Test credit system accessibility
-    match billing_client.get_credit_balance().await {
-        Ok(_) => {
-            status.credit_system_accessible = true;
-            info!("Billing health check: Credit system accessible");
-        }
-        Err(e) => {
-            warnings += 1;
-            let warning_msg = format!("Credit system not accessible: {}", e);
-            status.warnings.push(warning_msg.clone());
-            warn!("Billing health check warning: {}", warning_msg);
-        }
-    }
-    
-    
-    // Determine overall health status
-    status.overall_status = if errors > 0 {
-        HealthStatus::Unhealthy
-    } else if warnings > 0 {
-        HealthStatus::Degraded
-    } else {
-        HealthStatus::Healthy
-    };
-    
-    // Add general recommendations based on status
-    match status.overall_status {
-        HealthStatus::Healthy => {
-            status.recommendations.push("Billing system is operating normally".to_string());
-        }
-        HealthStatus::Degraded => {
-            status.recommendations.push("Some billing features may not be available".to_string());
-            status.recommendations.push("Consider refreshing authentication or checking network connection".to_string());
-        }
-        HealthStatus::Unhealthy => {
-            status.recommendations.push("Billing system requires immediate attention".to_string());
-            status.recommendations.push("Check authentication status and server connectivity".to_string());
-        }
-    }
-    
-    info!("Billing health check completed with status: {:?}", status.overall_status);
-    Ok(status)
+    info!("Successfully set default payment method");
+    Ok(result)
 }
 
-/// Quick billing connectivity test
+/// Detach payment method from the user
 #[tauri::command]
-pub async fn ping_billing_service_command(
+pub async fn detach_payment_method_command(
+    payment_method_id: String,
     billing_client: State<'_, Arc<BillingClient>>,
-) -> Result<bool, AppError> {
-    debug!("Running quick billing service connectivity test");
+) -> Result<serde_json::Value, AppError> {
+    debug!("Detaching payment method: {}", payment_method_id);
     
-    match billing_client.get_stripe_publishable_key().await {
-        Ok(_) => {
-            info!("Billing service ping successful");
-            Ok(true)
-        }
-        Err(e) => {
-            warn!("Billing service ping failed: {}", e);
-            Ok(false)
-        }
-    }
+    // Security validation
+    check_rate_limit("detach_payment_method")?;
+    validate_payment_method_id(&payment_method_id)?;
+    
+    let result = billing_client.detach_payment_method(&payment_method_id).await?;
+    
+    info!("Successfully detached payment method");
+    Ok(result)
 }
 
 /// List invoices with optional pagination
@@ -901,5 +727,28 @@ pub async fn list_invoices_command(
     billing_client
         .list_invoices(limit, offset)
         .await
+}
+
+/// Get detailed usage for a specific date range
+#[tauri::command]
+pub async fn get_detailed_usage_command(
+    start_date: String,
+    end_date: String,
+    billing_client: State<'_, Arc<BillingClient>>,
+) -> Result<Vec<DetailedUsage>, AppError> {
+    debug!("Getting detailed usage from {} to {}", start_date, end_date);
+    
+    let detailed_usage_json = billing_client.get_detailed_usage(&start_date, &end_date).await?;
+    
+    let detailed_usage: Vec<DetailedUsage> = if let serde_json::Value::Array(arr) = detailed_usage_json {
+        arr.into_iter().map(|v| {
+            serde_json::from_value(v).map_err(|e| AppError::SerializationError(format!("Failed to deserialize detailed usage: {}", e)))
+        }).collect::<Result<Vec<DetailedUsage>, AppError>>()?
+    } else {
+        return Err(AppError::SerializationError("Expected array for detailed usage".to_string()));
+    };
+    
+    info!("Successfully retrieved detailed usage");
+    Ok(detailed_usage)
 }
 

@@ -99,85 +99,6 @@ impl CreditService {
         Ok(updated_balance)
     }
 
-    /// Process credit purchase from successful payment intent - atomic operation with validation
-    pub async fn process_credit_purchase(
-        &self,
-        user_id: &Uuid,
-        credit_pack_id: &str,
-        payment_intent: &stripe::PaymentIntent,
-    ) -> Result<UserCredit, AppError> {
-        // Fetch and validate credit pack
-        let credit_pack = self.credit_pack_repository
-            .get_pack_by_id(credit_pack_id)
-            .await?
-            .ok_or_else(|| AppError::Payment(
-                format!("Credit pack not found: {}", credit_pack_id)
-            ))?;
-
-        // Validate payment intent metadata
-        let metadata = &payment_intent.metadata;
-        let expected_credit_value = metadata.get("credit_value")
-            .and_then(|v| v.parse::<BigDecimal>().ok())
-            .ok_or_else(|| AppError::InvalidArgument(
-                "Invalid or missing credit_value in payment intent metadata".to_string()
-            ))?;
-
-        // Validate that the credit value matches the credit pack
-        if credit_pack.value_credits != expected_credit_value {
-            return Err(AppError::Payment(
-                format!(
-                    "Credit amount mismatch: expected {}, got {}",
-                    credit_pack.value_credits, expected_credit_value
-                )
-            ));
-        }
-
-        // Validate payment amount matches credit pack price
-        crate::utils::stripe_currency_utils::validate_stripe_amount_matches(
-            payment_intent.amount,
-            &credit_pack.price_amount,
-            &payment_intent.currency.to_string()
-        )?;
-
-        // Start a database transaction to ensure atomicity
-        let pool = self.user_credit_repository.get_pool();
-        let mut tx = pool.begin().await.map_err(AppError::from)?;
-
-        // Ensure user has a credit record within the transaction
-        let _ = self.user_credit_repository
-            .ensure_balance_record_exists_with_executor(user_id, "USD", &mut tx)
-            .await?;
-
-        // Add the credits to user balance within the transaction
-        let updated_balance = self.user_credit_repository
-            .increment_balance_with_executor(user_id, &credit_pack.value_credits, &mut tx)
-            .await?;
-
-        // Record the purchase transaction within the same transaction
-        let transaction = CreditTransaction {
-            id: Uuid::new_v4(),
-            user_id: *user_id,
-            transaction_type: "purchase".to_string(),
-            amount: credit_pack.value_credits.clone(),
-            currency: "USD".to_string(),
-            description: Some(format!("Credit purchase via Stripe PaymentIntent")),
-            stripe_charge_id: Some(payment_intent.id.to_string()),
-            related_api_usage_id: None,
-            metadata: Some(serde_json::to_value(&payment_intent.metadata).unwrap_or_default()),
-            created_at: Some(Utc::now()),
-        };
-
-        let _created_transaction = self.credit_transaction_repository
-            .create_transaction_with_executor(&transaction, &mut tx)
-            .await?;
-
-        // Commit the transaction
-        tx.commit().await.map_err(AppError::from)?;
-
-        info!("Atomically processed credit purchase for user {} via PaymentIntent {}: {} credits added", 
-              user_id, payment_intent.id, credit_pack.value_credits);
-        Ok(updated_balance)
-    }
 
     /// Get available credit packs
     pub async fn get_available_credit_packs(&self) -> Result<Vec<CreditPack>, AppError> {
@@ -196,17 +117,46 @@ impl CreditService {
         let limit = limit.unwrap_or(50);
         let offset = offset.unwrap_or(0);
         
-        self.credit_transaction_repository
-            .get_history(user_id, limit, offset)
+        let pool = self.credit_transaction_repository.get_pool().clone();
+        let mut tx = pool.begin().await
+            .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
+        
+        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
+            .bind(user_id.to_string())
+            .execute(&mut *tx)
             .await
+            .map_err(|e| AppError::Database(format!("Failed to set user context in transaction: {}", e)))?;
+        
+        let result = self.credit_transaction_repository
+            .get_history_with_executor(user_id, limit, offset, &mut tx)
+            .await?;
+        
+        tx.commit().await
+            .map_err(|e| AppError::Database(format!("Failed to commit transaction: {}", e)))?;
+        
+        Ok(result)
     }
 
     /// Get credit transaction statistics for a user
     pub async fn get_user_credit_stats(&self, user_id: &Uuid) -> Result<CreditStats, AppError> {
         let balance = self.get_user_balance(user_id).await?;
+        
+        let pool = self.credit_transaction_repository.get_pool().clone();
+        let mut tx = pool.begin().await
+            .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
+        
+        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
+            .bind(user_id.to_string())
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| AppError::Database(format!("Failed to set user context in transaction: {}", e)))?;
+        
         let transaction_stats = self.credit_transaction_repository
-            .get_transaction_stats(user_id)
+            .get_transaction_stats_with_executor(user_id, &mut tx)
             .await?;
+        
+        tx.commit().await
+            .map_err(|e| AppError::Database(format!("Failed to commit transaction: {}", e)))?;
 
         Ok(CreditStats {
             user_id: *user_id,
@@ -337,6 +287,54 @@ impl CreditService {
         Ok(updated_balance)
     }
 
+    /// Process credit purchase from payment intent without credit pack validation
+    pub async fn process_credit_purchase_from_payment_intent(
+        &self,
+        user_id: &Uuid,
+        amount: &BigDecimal,
+        currency: &str,
+        payment_intent: &stripe::PaymentIntent,
+    ) -> Result<UserCredit, AppError> {
+        // Start a database transaction to ensure atomicity
+        let pool = self.user_credit_repository.get_pool();
+        let mut tx = pool.begin().await.map_err(AppError::from)?;
+
+        // Ensure user has a credit record within the transaction
+        let _ = self.user_credit_repository
+            .ensure_balance_record_exists_with_executor(user_id, currency, &mut tx)
+            .await?;
+
+        // Add the credits to user balance within the transaction
+        let updated_balance = self.user_credit_repository
+            .increment_balance_with_executor(user_id, amount, &mut tx)
+            .await?;
+
+        // Record the purchase transaction within the same transaction
+        let transaction = CreditTransaction {
+            id: Uuid::new_v4(),
+            user_id: *user_id,
+            transaction_type: "purchase".to_string(),
+            amount: amount.clone(),
+            currency: currency.to_string(),
+            description: Some(format!("Credit purchase via Stripe PaymentIntent {}", payment_intent.id)),
+            stripe_charge_id: Some(payment_intent.id.to_string()),
+            related_api_usage_id: None,
+            metadata: Some(serde_json::to_value(&payment_intent.metadata).unwrap_or_default()),
+            created_at: Some(Utc::now()),
+        };
+
+        let _created_transaction = self.credit_transaction_repository
+            .create_transaction_with_executor(&transaction, &mut tx)
+            .await?;
+
+        // Commit the transaction
+        tx.commit().await.map_err(AppError::from)?;
+
+        info!("Atomically processed credit purchase for user {} via PaymentIntent {}: {} {} added", 
+              user_id, payment_intent.id, amount, currency);
+        Ok(updated_balance)
+    }
+
     /// Check if a credit pack is valid and get its details
     pub async fn get_credit_pack_by_id(&self, pack_id: &str) -> Result<Option<CreditPack>, AppError> {
         self.credit_pack_repository
@@ -353,7 +351,32 @@ impl CreditService {
 
     /// Get transaction count for pagination
     pub async fn get_transaction_count(&self, user_id: &Uuid) -> Result<i64, AppError> {
-        self.credit_transaction_repository.count_transactions(user_id).await
+        let pool = self.credit_transaction_repository.get_pool().clone();
+        let mut tx = pool.begin().await
+            .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
+        
+        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
+            .bind(user_id.to_string())
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| AppError::Database(format!("Failed to set user context in transaction: {}", e)))?;
+
+        let result = sqlx::query!(
+            r#"
+            SELECT COUNT(*) as count
+            FROM credit_transactions 
+            WHERE user_id = $1
+            "#,
+            user_id
+        )
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(|e| AppError::Database(format!("Failed to count credit transactions: {}", e)))?;
+
+        tx.commit().await
+            .map_err(|e| AppError::Database(format!("Failed to commit transaction: {}", e)))?;
+
+        Ok(result.count.unwrap_or(0))
     }
 }
 

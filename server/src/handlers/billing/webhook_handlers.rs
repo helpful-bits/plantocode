@@ -10,7 +10,7 @@ use crate::utils::stripe_currency_utils::validate_stripe_amount_matches;
 use uuid::Uuid;
 use log::{error, info, warn};
 use chrono::Utc;
-use bigdecimal::BigDecimal;
+use bigdecimal::{BigDecimal, ToPrimitive};
 use stripe::{Event, EventObject, Webhook, PaymentIntent};
 
 // ========================================
@@ -305,6 +305,12 @@ async fn process_stripe_webhook_event(
                 handle_customer_default_source_updated(customer, billing_service).await?;
             }
         },
+        "checkout.session.completed" => {
+            info!("Processing checkout session completed: {}", event.id);
+            if let stripe::EventObject::CheckoutSession(session) = &event.data.object {
+                handle_checkout_session_completed(session, billing_service, &email_service).await?;
+            }
+        },
         _ => {
             info!("Ignoring Stripe event type: {} - handled by Customer Portal", event.type_);
         }
@@ -336,16 +342,28 @@ async fn process_credit_purchase(
     info!("PaymentIntent {} is a credit purchase, processing", payment_intent.id);
     
     // Extract required metadata with robust validation
-    let (user_id_str, credit_pack_id_str) = match (
-        metadata.get("user_id").map(|v| v.as_str()),
-        metadata.get("credit_pack_id").map(|v| v.as_str()),
-    ) {
-        (Some(user_id), Some(credit_pack_id)) => {
-            (user_id, credit_pack_id)
+    let user_id_str = match metadata.get("user_id").map(|v| v.as_str()) {
+        Some(user_id) => user_id,
+        None => {
+            error!("Missing required metadata in PaymentIntent {}: user_id", payment_intent.id);
+            return Err(AppError::InvalidArgument("Missing required user_id in credit purchase metadata".to_string()));
         }
-        _ => {
-            error!("Missing required metadata in PaymentIntent {}: user_id or credit_pack_id", payment_intent.id);
-            return Err(AppError::InvalidArgument("Missing required credit purchase metadata".to_string()));
+    };
+    
+    // Extract amount and currency from metadata
+    let amount_str = match metadata.get("amount").map(|v| v.as_str()) {
+        Some(amount) => amount,
+        None => {
+            error!("Missing required metadata in PaymentIntent {}: amount", payment_intent.id);
+            return Err(AppError::InvalidArgument("Missing required amount in credit purchase metadata".to_string()));
+        }
+    };
+    
+    let currency = match metadata.get("currency").map(|v| v.as_str()) {
+        Some(currency) => currency,
+        None => {
+            error!("Missing required metadata in PaymentIntent {}: currency", payment_intent.id);
+            return Err(AppError::InvalidArgument("Missing required currency in credit purchase metadata".to_string()));
         }
     };
     
@@ -358,16 +376,43 @@ async fn process_credit_purchase(
         }
     };
     
-    info!("Processing credit purchase for user {} with credit_pack_id {}", 
-          user_uuid, credit_pack_id_str);
+    // Parse the amount from metadata
+    let amount = match amount_str.parse::<BigDecimal>() {
+        Ok(amount) => amount,
+        Err(e) => {
+            error!("Invalid amount in PaymentIntent {}: {}", payment_intent.id, e);
+            return Err(AppError::InvalidArgument(format!("Invalid amount: {}", e)));
+        }
+    };
     
-    // Use the new credit service method to process the purchase
+    info!("Processing credit purchase for user {} with amount {} {}", 
+          user_uuid, amount, currency);
+    
+    // Process credit purchase directly from amount
     let db_pools = billing_service.get_db_pools();
     let credit_service = crate::services::credit_service::CreditService::new(db_pools.clone());
     
-    let updated_balance = credit_service.process_credit_purchase(
+    // Validate payment amount matches metadata amount (convert to cents for comparison)
+    let expected_amount_cents = (&amount * BigDecimal::from(100)).to_i64()
+        .ok_or_else(|| AppError::InvalidArgument("Invalid amount for cents conversion".to_string()))?;
+    
+    if payment_intent.amount != expected_amount_cents {
+        error!("Payment amount mismatch in PaymentIntent {}: expected {} cents, got {} cents", 
+               payment_intent.id, expected_amount_cents, payment_intent.amount);
+        return Err(AppError::Payment("Payment amount mismatch".to_string()));
+    }
+    
+    if payment_intent.currency.to_string().to_uppercase() != currency.to_uppercase() {
+        error!("Currency mismatch in PaymentIntent {}: expected {}, got {}", 
+               payment_intent.id, currency, payment_intent.currency);
+        return Err(AppError::Payment("Currency mismatch".to_string()));
+    }
+    
+    // Process the credit purchase using the new method
+    let updated_balance = credit_service.process_credit_purchase_from_payment_intent(
         &user_uuid,
-        credit_pack_id_str,
+        &amount,
+        currency,
         payment_intent,
     ).await?;
     
@@ -378,9 +423,7 @@ async fn process_credit_purchase(
     let user_repo = crate::db::repositories::user_repository::UserRepository::new(billing_service.get_db_pool().clone());
     if let Ok(user) = user_repo.get_by_id(&user_uuid).await {
         // Get credit value from payment intent metadata for email
-        let credit_value = metadata.get("credit_value")
-            .and_then(|v| v.parse::<BigDecimal>().ok())
-            .unwrap_or_else(|| BigDecimal::from(0));
+        let credit_value = amount.clone();
         
         email_service.send_credit_purchase_notification(
             &user_uuid,
@@ -622,6 +665,48 @@ async fn handle_customer_default_source_updated(
             
             info!("Audit: Customer {} (user {}) default payment method removed via Stripe Customer Portal", 
                   customer.id, user.id);
+        }
+    }
+    
+    Ok(())
+}
+
+/// Handle checkout session completed event
+async fn handle_checkout_session_completed(
+    session: &stripe::CheckoutSession,
+    billing_service: &BillingService,
+    email_service: &crate::services::email_notification_service::EmailNotificationService,
+) -> Result<(), AppError> {
+    info!("Handling checkout session completed: {}", session.id);
+    
+    match session.mode {
+        stripe::CheckoutSessionMode::Payment => {
+            info!("Processing payment mode checkout session: {}", session.id);
+            
+            if let Some(payment_intent_id) = session.payment_intent.as_ref() {
+                let stripe_service = billing_service.get_stripe_service()?;
+                let payment_intent = stripe_service.get_payment_intent(&payment_intent_id.id().to_string()).await
+                    .map_err(|e| AppError::External(format!("Failed to retrieve payment intent: {}", e)))?;
+                
+                process_credit_purchase(&payment_intent, billing_service, email_service).await?;
+            }
+        },
+        stripe::CheckoutSessionMode::Subscription => {
+            info!("Processing subscription mode checkout session: {}", session.id);
+            
+            if let Some(subscription_id) = session.subscription.as_ref() {
+                let stripe_service = billing_service.get_stripe_service()?;
+                let subscription = stripe_service.get_subscription(&subscription_id.id().to_string()).await
+                    .map_err(|e| AppError::External(format!("Failed to retrieve subscription: {}", e)))?;
+                
+                billing_service.sync_subscription_from_webhook(&subscription).await?;
+            }
+        },
+        stripe::CheckoutSessionMode::Setup => {
+            info!("Setup mode checkout session completed successfully: {}", session.id);
+        },
+        _ => {
+            info!("Ignoring checkout session mode: {:?}", session.mode);
         }
     }
     
