@@ -33,7 +33,8 @@ import PlanContentModal from "./_components/PlanContentModal";
 import PromptCopyModal from "./_components/PromptCopyModal";
 import { useImplementationPlansLogic } from "./_hooks/useImplementationPlansLogic";
 import { usePromptCopyModal } from "./_hooks/usePromptCopyModal";
-import { replacePlaceholders } from "./_utils/plan-content-parser";
+import { replacePlaceholders } from "@/utils/placeholder-utils";
+import { getContentForStep } from "./_utils/plan-content-parser";
 
 interface ImplementationPlansPanelProps {
   sessionId: string | null;
@@ -58,12 +59,10 @@ export function ImplementationPlansPanel({
   const {
     implementationPlans,
     isLoading,
-    copiedPlanId,
     jobForModal,
     jobToDelete,
     isDeleting,
 
-    handleCopyToClipboard,
     handleDeletePlan,
     handleViewPlanDetails,
     handleClosePlanDetails,
@@ -139,7 +138,11 @@ export function ImplementationPlansPanel({
   const handleCopyButtonClick = useCallback(async (buttonConfig: CopyButtonConfig, plan: BackgroundJob) => {
     try {
       const fullPlan = plan.response || '';
-      const processedContent = replacePlaceholders(buttonConfig.content, fullPlan, selectedStepNumber || undefined);
+      const data = {
+        RESPONSE: fullPlan,
+        STEP_CONTENT: selectedStepNumber ? getContentForStep(fullPlan, selectedStepNumber) : ''
+      };
+      const processedContent = replacePlaceholders(buttonConfig.content, data);
       
       await navigator.clipboard.writeText(processedContent);
       
@@ -384,12 +387,12 @@ export function ImplementationPlansPanel({
               <ImplementationPlanCard
                 key={plan.id}
                 plan={plan}
-                onCopyContent={handleCopyToClipboard}
                 onViewContent={handleViewPlanContent}
                 onViewDetails={handleViewPlanDetails}
                 onDelete={(jobId) => setJobToDelete(jobId)}
                 isDeleting={isDeleting[plan.id] || false}
-                copiedPlanId={copiedPlanId}
+                copyButtons={implementationPlanSettings || []}
+                onCopyButtonClick={(buttonConfig) => handleCopyButtonClick(buttonConfig, plan)}
               />
             ))}
           </div>

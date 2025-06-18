@@ -1,11 +1,12 @@
 use uuid::Uuid;
-use sqlx::{PgPool, query, query_as, Row};
+use sqlx::{PgPool, query, query_as, Row, FromRow};
 use bigdecimal::BigDecimal;
 use chrono::{DateTime, Utc};
 use crate::error::AppError;
 use std::str::FromStr;
 use log::debug;
 use serde_json::json;
+use serde::Serialize;
 
 
 #[derive(Debug)]
@@ -28,6 +29,20 @@ pub struct ApiUsageRecord {
     pub processing_ms: Option<i32>,
     pub input_duration_ms: Option<i64>,
     pub timestamp: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize, FromRow)]
+#[serde(rename_all = "camelCase")]
+pub struct DetailedUsageRecord {
+    pub service_name: String,
+    pub model_display_name: String,
+    pub provider_code: String,
+    pub model_type: String,
+    pub total_cost: f64,
+    pub total_requests: i64,
+    pub total_input_tokens: i64,
+    pub total_output_tokens: i64,
+    pub total_duration_ms: i64,
 }
 
 #[derive(Debug)]
@@ -185,8 +200,8 @@ impl ApiUsageRepository {
         start_date: DateTime<Utc>,
         end_date: DateTime<Utc>,
         executor: &mut sqlx::Transaction<'_, sqlx::Postgres>,
-    ) -> Result<Vec<serde_json::Value>, AppError> {
-        let results = sqlx::query(
+    ) -> Result<Vec<DetailedUsageRecord>, AppError> {
+        let rows = sqlx::query!(
             r#"
             SELECT 
                 au.service_name,
@@ -194,10 +209,10 @@ impl ApiUsageRepository {
                 COALESCE(p.code, 'Unknown Provider') as provider_code,
                 COALESCE(m.model_type, 'Unknown Type') as model_type,
                 COALESCE(SUM(au.cost::numeric), 0.0)::float8 as total_cost,
-                COUNT(*) as total_requests,
-                COALESCE(SUM(au.tokens_input), 0) as total_input_tokens,
-                COALESCE(SUM(au.tokens_output), 0) as total_output_tokens,
-                COALESCE(SUM(au.processing_ms::bigint), 0)::bigint as total_duration_ms
+                COUNT(*)::bigint as total_requests,
+                COALESCE(SUM(au.tokens_input), 0)::bigint as total_input_tokens,
+                COALESCE(SUM(au.tokens_output), 0)::bigint as total_output_tokens,
+                COALESCE(SUM(au.processing_ms), 0)::bigint as total_duration_ms
             FROM api_usage au
             LEFT JOIN models m ON au.service_name = m.id
             LEFT JOIN providers p ON m.provider_id = p.id
@@ -205,33 +220,28 @@ impl ApiUsageRepository {
               AND au.timestamp BETWEEN $2 AND $3
             GROUP BY au.service_name, m.name, p.code, m.model_type
             ORDER BY total_cost DESC
-            "#
+            "#,
+            user_id,
+            start_date,
+            end_date
         )
-        .bind(user_id)
-        .bind(start_date)
-        .bind(end_date)
         .fetch_all(&mut **executor)
         .await
         .map_err(|e| AppError::Database(format!("Failed to get detailed usage: {}", e)))?;
 
-        let detailed_usage = results
-            .into_iter()
-            .map(|row| {
-                serde_json::json!({
-                    "serviceName": row.get::<&str, _>("service_name"),
-                    "modelDisplayName": row.get::<&str, _>("model_display_name"),
-                    "providerCode": row.get::<&str, _>("provider_code"),
-                    "modelType": row.get::<&str, _>("model_type"),
-                    "totalCost": row.get::<f64, _>("total_cost"),
-                    "totalRequests": row.get::<i64, _>("total_requests"),
-                    "totalInputTokens": row.get::<i64, _>("total_input_tokens"),
-                    "totalOutputTokens": row.get::<i64, _>("total_output_tokens"),
-                    "totalDurationMs": row.get::<i64, _>("total_duration_ms")
-                })
-            })
-            .collect();
+        let results = rows.into_iter().map(|row| DetailedUsageRecord {
+            service_name: row.service_name,
+            model_display_name: row.model_display_name.unwrap_or_else(|| "Unknown Model".to_string()),
+            provider_code: row.provider_code.unwrap_or_else(|| "Unknown Provider".to_string()),
+            model_type: row.model_type.unwrap_or_else(|| "Unknown Type".to_string()),
+            total_cost: row.total_cost.unwrap_or(0.0),
+            total_requests: row.total_requests.unwrap_or(0),
+            total_input_tokens: row.total_input_tokens.unwrap_or(0),
+            total_output_tokens: row.total_output_tokens.unwrap_or(0),
+            total_duration_ms: row.total_duration_ms.unwrap_or(0),
+        }).collect();
 
-        Ok(detailed_usage)
+        Ok(results)
     }
 
 }

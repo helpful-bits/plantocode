@@ -7,7 +7,7 @@ use std::sync::Arc;
 use tauri::AppHandle;
 
 use crate::error::AppResult;
-use crate::models::{OpenRouterRequestMessage, OpenRouterContent, OpenRouterResponse};
+use crate::models::{OpenRouterRequestMessage, OpenRouterContent, OpenRouterResponse, OpenRouterUsage};
 use crate::api_clients::{client_factory, client_trait::{ApiClient, ApiClientOptions}};
 
 /// Create OpenRouter messages for LLM API calls
@@ -66,4 +66,16 @@ pub fn get_api_client(
     app_handle: &AppHandle,
 ) -> AppResult<Arc<dyn ApiClient>> {
     client_factory::get_api_client(app_handle)
+}
+
+/// Execute LLM task and get usage with server-side cost calculation
+pub async fn run_llm_task_and_get_usage(
+    app_handle: &AppHandle,
+    messages: Vec<OpenRouterRequestMessage>,
+    api_options: ApiClientOptions,
+) -> AppResult<(OpenRouterResponse, Option<OpenRouterUsage>)> {
+    let response = execute_llm_chat_completion(app_handle, messages, api_options).await?;
+    
+    // Server now returns final cost - no client-side calculation needed
+    Ok((response.clone(), response.usage.clone()))
 }

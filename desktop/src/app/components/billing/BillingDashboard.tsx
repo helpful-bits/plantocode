@@ -19,7 +19,7 @@ import { AnimatedNumber } from "@/ui/animated-number";
 import { useBillingData } from "@/hooks/use-billing-data";
 import { CreditManager, PaymentMethodsList, InvoicesList, CreditTransactionHistory } from "./billing-components";
 import { SubscriptionModal } from "./components/subscription-modal";
-import { formatCurrency } from "@/utils/currency-utils";
+import { formatUsdCurrency } from "@/utils/currency-utils";
 
 interface BillingDashboardProps {}
 
@@ -73,7 +73,7 @@ function BillingOverviewCard({
                 </h3>
                 {planDetails && planDetails.price > 0 && (
                   <div className="text-lg font-semibold text-muted-foreground">
-                    {formatCurrency(planDetails.price, planDetails.currency || "USD")}/{planDetails.billingInterval}
+                    {formatUsdCurrency(planDetails.price)}/{planDetails.billingInterval}
                   </div>
                 )}
               </div>
@@ -142,7 +142,7 @@ function BillingOverviewCard({
                   <AnimatedNumber
                     value={creditBalanceUsd}
                     previousValue={previousCreditBalance}
-                    formatValue={(value) => formatCurrency(value, "USD")}
+                    formatValue={(value) => formatUsdCurrency(value)}
                     className="text-2xl font-bold"
                   />
                 ) : (

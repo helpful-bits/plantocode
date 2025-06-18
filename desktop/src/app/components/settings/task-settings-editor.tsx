@@ -2,7 +2,7 @@
 
 import { type TaskSettings } from "@/types";
 import { type TaskType, TaskTypeDetails } from "@/types/task-type-defs";
-import { type ProviderWithModels } from "@/types/config-types";
+import { type ProviderWithModels, type CopyButtonConfig } from "@/types/config-types";
 import {
   Label,
   Slider,
@@ -20,6 +20,8 @@ import {
 } from "@/ui";
 import { SystemPromptEditor } from "./system-prompt-editor";
 import { ModelSelector } from "./model-selector";
+import TaskSettingsCard from "./task-settings-card";
+import { CopyButtonListEditor } from "./copy-button-list-editor";
 import type React from "react";
 
 interface ValidationResult {
@@ -40,8 +42,9 @@ interface TaskSettingsEditorProps {
   onMaxTokensChange: (value: number[]) => void;
   onMaxTokensCommit: (value: number[]) => void;
   onTranscriptionLanguageChange: (languageCode: string) => void;
-  onResetToDefault: (settingName: 'model' | 'maxTokens' | 'temperature' | 'languageCode') => void;
-  isDifferentFromDefault: (settingName: 'model' | 'maxTokens' | 'temperature' | 'languageCode') => boolean;
+  onCopyButtonsChange: (copyButtons: CopyButtonConfig[]) => void;
+  onResetToDefault: (settingName: 'model' | 'maxTokens' | 'temperature' | 'languageCode' | 'copyButtons') => void;
+  isDifferentFromDefault: (settingName: 'model' | 'maxTokens' | 'temperature' | 'languageCode' | 'copyButtons') => boolean;
   getSliderValue: (settingName: 'maxTokens' | 'temperature') => number;
   providersWithModels: ProviderWithModels[] | null;
 }
@@ -92,6 +95,7 @@ export function TaskSettingsEditor({
   onMaxTokensChange,
   onMaxTokensCommit,
   onTranscriptionLanguageChange,
+  onCopyButtonsChange,
   onResetToDefault,
   isDifferentFromDefault,
   getSliderValue,
@@ -111,11 +115,13 @@ export function TaskSettingsEditor({
 
   return (
     <div className="w-full space-y-6">
-      <SystemPromptEditor
-        key={taskType}
-        projectDirectory={projectDirectory}
-        taskType={taskType}
-      />
+      <TaskSettingsCard title="System Prompt">
+        <SystemPromptEditor
+          key={taskType}
+          projectDirectory={projectDirectory}
+          taskType={taskType}
+        />
+      </TaskSettingsCard>
       
       <div className="space-y-3">
         {(validation.errors.length > 0 || validation.warnings.length > 0) && (
@@ -149,7 +155,8 @@ export function TaskSettingsEditor({
       </div>
       
       {taskDetails?.requiresLlm !== false ? (
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+      <TaskSettingsCard title="Model Parameters">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
         {/* First Column - Model */}
         <div className="space-y-2">
           <div className="flex items-center justify-between">
@@ -377,7 +384,8 @@ export function TaskSettingsEditor({
             </p>
           </div>
         )}
-      </div>
+        </div>
+      </TaskSettingsCard>
       ) : (
         <div className="p-6 bg-muted/30 rounded-lg text-center border border-dashed">
           <div className="flex flex-col items-center gap-2">
@@ -392,6 +400,39 @@ export function TaskSettingsEditor({
             </p>
           </div>
         </div>
+      )}
+
+      {/* Copy Buttons Section - Only for Implementation Plans */}
+      {taskKey === 'implementationPlan' && (
+        <TaskSettingsCard title="Copy Buttons">
+        <div className="space-y-3">
+          <div className="flex items-start justify-between">
+            <p className="text-xs text-muted-foreground">
+              Configure buttons that appear when viewing implementation plans for quick copying.
+            </p>
+            {isDifferentFromDefault('copyButtons') && (
+              <Button
+                variant="ghost"
+                size="xs"
+                className="px-2 h-6 text-xs text-muted-foreground hover:text-foreground"
+                onClick={() => onResetToDefault('copyButtons')}
+              >
+                Reset to Default
+              </Button>
+            )}
+          </div>
+          <CopyButtonListEditor
+            copyButtons={settings.copyButtons || serverDefaults?.[taskKey]?.copyButtons || []}
+            onChange={onCopyButtonsChange}
+            showCustomizeButton={!settings.copyButtons && !!serverDefaults?.[taskKey]?.copyButtons}
+            onCustomize={() => {
+              // Copy server defaults to user settings to enable editing
+              const defaultButtons = serverDefaults?.[taskKey]?.copyButtons || [];
+              onCopyButtonsChange([...defaultButtons]);
+            }}
+          />
+        </div>
+      </TaskSettingsCard>
       )}
     </div>
   );

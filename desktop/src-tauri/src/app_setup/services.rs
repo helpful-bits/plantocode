@@ -95,9 +95,6 @@ pub async fn initialize_api_clients(app_handle: &AppHandle) -> AppResult<()> {
     app_handle.manage(server_proxy_client_arc);
     app_handle.manage(billing_client_arc);
     
-    // Initialize payment event emitter for real-time updates
-    crate::utils::payment_events::init_payment_event_emitter(app_handle.clone());
-    info!("Payment event emitter initialized for real-time billing updates");
     
     info!("API clients initialized and registered in app state.");
     

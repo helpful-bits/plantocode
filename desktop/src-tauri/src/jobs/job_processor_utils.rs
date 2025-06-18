@@ -5,7 +5,6 @@
 //! - `llm_api_utils`: LLM API interactions and message formatting
 //! - `prompt_utils`: Prompt building and composition
 //! - `fs_context_utils`: File system operations and directory trees
-//! - `response_parser_utils`: Parsing LLM responses
 //! 
 //! ## Standard Processor Pattern:
 //! 1. Use `setup_job_processing()` to initialize repos and mark job as running
@@ -17,6 +16,7 @@ use tauri::{AppHandle, Manager};
 use log::{info, warn, error};
 use serde_json::Value;
 use std::str::FromStr;
+use bigdecimal::BigDecimal;
 
 use crate::error::{AppError, AppResult};
 use crate::models::{TaskType, JobStatus, OpenRouterUsage};
@@ -88,6 +88,24 @@ pub async fn check_job_canceled(
     Ok(job_status == JobStatus::Canceled)
 }
 
+async fn calculate_precise_cost(model_id: &str, prompt_tokens: i32, completion_tokens: i32) -> AppResult<BigDecimal> {
+    let model_info = crate::config::get_model_info(model_id)?;
+    
+    let input_price = BigDecimal::from_str(&model_info.price_input_per_kilo_tokens)
+        .map_err(|e| AppError::InternalError(format!("Invalid input price format for model {}: {}", model_id, e)))?;
+    let output_price = BigDecimal::from_str(&model_info.price_output_per_kilo_tokens)
+        .map_err(|e| AppError::InternalError(format!("Invalid output price format for model {}: {}", model_id, e)))?;
+    
+    let thousand = BigDecimal::from(1000);
+    let prompt_tokens_bd = BigDecimal::from(prompt_tokens);
+    let completion_tokens_bd = BigDecimal::from(completion_tokens);
+    
+    let input_cost = (&prompt_tokens_bd / &thousand) * &input_price;
+    let output_cost = (&completion_tokens_bd / &thousand) * &output_price;
+    
+    Ok(input_cost + output_cost)
+}
+
 /// Finalizes job success with response and usage information
 /// Ensures all token counts (tokens_sent, tokens_received, total_tokens) are correctly updated from OpenRouterUsage
 /// The metadata parameter accepts Option<serde_json::Value> for type safety and flexibility
@@ -102,9 +120,13 @@ pub async fn finalize_job_success(
     system_prompt_id: &str,
     metadata: Option<Value>,
 ) -> AppResult<()> {
-    let cost = llm_usage.as_ref().and_then(|u| u.cost);
+    let cost = if let Some(usage) = &llm_usage {
+        Some(calculate_precise_cost(model_used, usage.prompt_tokens, usage.completion_tokens).await?)
+    } else {
+        None
+    };
     let (tokens_sent, tokens_received) = if let Some(usage) = &llm_usage {
-        (Some(usage.prompt_tokens as i32), Some(usage.completion_tokens as i32))
+        (Some(usage.prompt_tokens), Some(usage.completion_tokens))
     } else {
         (None, None)
     };
@@ -179,19 +201,22 @@ pub async fn finalize_job_success(
     Ok(())
 }
 
-/// Finalizes job failure with error message and optional structured error information
+/// Finalizes job failure with error message, optional structured error information, and cost tracking
 pub async fn finalize_job_failure(
     job_id: &str,
     repo: &BackgroundJobRepository,
     error_message: &str,
     app_error_opt: Option<&AppError>,
+    llm_usage: Option<OpenRouterUsage>,
+    model_used: Option<String>,
 ) -> AppResult<()> {
     // Fetch the current job to get its metadata
     let current_job = match repo.get_job_by_id(job_id).await? {
         Some(job) => job,
         None => {
             error!("Job {} not found during failure finalization", job_id);
-            repo.mark_job_failed(job_id, error_message, None).await?;
+            // No usage info available when job not found
+            repo.mark_job_failed(job_id, error_message, None, None, None, None, None).await?;
             return Ok(());
         }
     };
@@ -225,8 +250,39 @@ pub async fn finalize_job_failure(
         None
     };
 
-    // Mark the job as failed
-    repo.mark_job_failed(job_id, error_message, updated_metadata_str.as_deref()).await?;
-    error!("Job {} failed: {}", job_id, error_message);
+    // Calculate cost and token information from usage
+    let cost = if let (Some(usage), Some(model)) = (&llm_usage, &model_used) {
+        match calculate_precise_cost(model, usage.prompt_tokens, usage.completion_tokens).await {
+            Ok(c) => Some(c),
+            Err(e) => {
+                warn!("Failed to calculate cost for failed job {}: {}", job_id, e);
+                None
+            }
+        }
+    } else {
+        None
+    };
+    let (tokens_sent, tokens_received) = if let Some(usage) = &llm_usage {
+        (Some(usage.prompt_tokens), Some(usage.completion_tokens))
+    } else {
+        (None, None)
+    };
+
+    // Mark the job as failed with cost tracking
+    repo.mark_job_failed(
+        job_id, 
+        error_message, 
+        updated_metadata_str.as_deref(),
+        tokens_sent,
+        tokens_received,
+        model_used.as_deref(),
+        cost.clone()
+    ).await?;
+    
+    if let Some(c) = cost {
+        error!("Job {} failed: {} (cost: {})", job_id, error_message, c);
+    } else {
+        error!("Job {} failed: {}", job_id, error_message);
+    }
     Ok(())
 }

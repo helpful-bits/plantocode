@@ -96,7 +96,7 @@ impl JobProcessor for TaskRefinementProcessor {
             Err(e) => {
                 error!("Task Refinement LLM task execution failed: {}", e);
                 let error_msg = format!("LLM task execution failed: {}", e);
-                task_runner.finalize_failure(&repo, &job_id, &error_msg, Some(&e)).await?;
+                task_runner.finalize_failure(&repo, &job_id, &error_msg, Some(&e), None).await?;
                 return Ok(JobProcessResult::failure(job_id, error_msg));
             }
         };

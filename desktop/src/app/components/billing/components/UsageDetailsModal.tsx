@@ -1,9 +1,10 @@
 import { useState, useCallback, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/ui/dialog';
 import { Button } from '@/ui/button';
+import { Input } from '@/ui/input';
 import { Loader2 } from 'lucide-react';
 import { getDetailedUsage, type DetailedUsage } from '@/actions/billing/plan.actions';
-import { formatCurrency } from '@/utils/currency-utils';
+import { formatUsdCurrency } from '@/utils/currency-utils';
 
 export interface UsageDetailsModalProps {
   open: boolean;
@@ -70,7 +71,7 @@ export function UsageDetailsModal({ open, onOpenChange }: UsageDetailsModalProps
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+      <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto !bg-card text-foreground">
         <DialogHeader>
           <DialogTitle>Detailed Usage Report</DialogTitle>
         </DialogHeader>
@@ -105,24 +106,22 @@ export function UsageDetailsModal({ open, onOpenChange }: UsageDetailsModalProps
               <label htmlFor="start-date" className="text-sm font-medium">
                 Start Date
               </label>
-              <input
+              <Input
                 id="start-date"
                 type="date"
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
-                className="px-3 py-2 border border-input rounded-md text-sm"
               />
             </div>
             <div className="space-y-2">
               <label htmlFor="end-date" className="text-sm font-medium">
                 End Date
               </label>
-              <input
+              <Input
                 id="end-date"
                 type="date"
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
-                className="px-3 py-2 border border-input rounded-md text-sm"
               />
             </div>
             <Button onClick={fetchData} disabled={loading}>
@@ -176,19 +175,19 @@ export function UsageDetailsModal({ open, onOpenChange }: UsageDetailsModalProps
                   {data.map((usage, index) => (
                     <tr key={index} className="hover:bg-muted/30">
                       <td className="border border-border px-4 py-2 text-sm">
-                        {usage.model_display_name}
+                        {usage.modelDisplayName}
                       </td>
                       <td className="border border-border px-4 py-2 text-sm">
-                        {usage.provider_code}
+                        {usage.providerCode}
                       </td>
                       <td className="border border-border px-4 py-2 text-sm">
-                        {usage.model_type}
+                        {usage.modelType}
                       </td>
                       <td className="border border-border px-4 py-2 text-sm text-right">
-                        {formatCurrency(usage.total_cost)}
+                        {formatUsdCurrency(usage.totalCost)}
                       </td>
                       <td className="border border-border px-4 py-2 text-sm text-right">
-                        {usage.total_requests.toLocaleString()}
+                        {usage.totalRequests?.toLocaleString() ?? 'N/A'}
                       </td>
                     </tr>
                   ))}

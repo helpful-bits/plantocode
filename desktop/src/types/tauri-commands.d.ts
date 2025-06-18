@@ -38,6 +38,18 @@ export interface CreateCreditCheckoutSessionCommandArgs {
   creditPackId: string;
 }
 
+export interface CreateSubscriptionCheckoutSessionCommandArgs {
+  planId: string;
+}
+
+export interface CreateSetupCheckoutSessionCommandArgs {
+}
+
+export interface CheckoutSessionResponse {
+  url: string;
+  sessionId: string;
+}
+
 export interface CheckoutSessionStatusResponse {
   status: string;
   paymentStatus: string;
@@ -214,6 +226,11 @@ export interface CreateImplementationPlanCommandArgs {
 
 export interface ReadImplementationPlanCommandArgs {
   jobId: string;
+}
+
+export interface UpdateImplementationPlanContentCommandArgs {
+  jobId: string;
+  newContent: string;
 }
 
 export interface GetPromptCommandArgs {
@@ -631,6 +648,7 @@ export type TauriInvoke = {
     contentFormat?: string | null;
     createdAt: string;
   }>;
+  "update_implementation_plan_content_command": (args: UpdateImplementationPlanContentCommandArgs) => Promise<void>;
   "get_background_job_by_id_command": (args: GetBackgroundJobByIdCommandArgs) => Promise<import("@/types").BackgroundJob | null>;
   "clear_job_history_command": (args: ClearJobHistoryCommandArgs) => Promise<void>;
   "get_active_jobs_command": () => Promise<import("@/types").BackgroundJob[]>;
@@ -676,6 +694,7 @@ export type TauriInvoke = {
   // Billing commands
   "get_billing_dashboard_data_command": () => Promise<BillingDashboardData>;
   "get_subscription_plans_command": () => Promise<SubscriptionPlan[]>;
+  "get_current_plan_command": () => Promise<CurrentPlanResponse>;
   "get_spending_history_command": () => Promise<SpendingHistoryResponse>;
   "check_service_access_command": () => Promise<ServiceAccessResponse>;
   "get_spending_analytics_command": (args?: { periodMonths?: number }) => Promise<SpendingAnalyticsResponse>;
@@ -693,7 +712,9 @@ export type TauriInvoke = {
   "get_stripe_publishable_key_command": () => Promise<string>;
   
   // Checkout commands
-  "create_credit_checkout_session_command": (args: CreateCreditCheckoutSessionCommandArgs) => Promise<string>;
+  "create_credit_checkout_session_command": (args: CreateCreditCheckoutSessionCommandArgs) => Promise<CheckoutSessionResponse>;
+  "create_subscription_checkout_session_command": (args: CreateSubscriptionCheckoutSessionCommandArgs) => Promise<CheckoutSessionResponse>;
+  "create_setup_checkout_session_command": (args: CreateSetupCheckoutSessionCommandArgs) => Promise<CheckoutSessionResponse>;
   "get_checkout_session_status_command": (args: { sessionId: string }) => Promise<CheckoutSessionStatusResponse>;
   
   // Subscription lifecycle management
@@ -756,6 +777,13 @@ export interface SubscriptionPlan {
   active: boolean;
   createdAt?: string;
   updatedAt?: string;
+}
+
+export interface CurrentPlanResponse {
+  planId: string;
+  planName: string;
+  costMarkupPercentage: number;
+  status: string;
 }
 
 export interface UsageInfo {
@@ -851,6 +879,8 @@ export interface CreditDetailsResponse {
   currency: string;
   lastUpdated?: string;
   transactions: CreditTransactionEntry[];
+  totalTransactionCount: number;
+  hasMore: boolean;
 }
 
 export interface CreditPack {

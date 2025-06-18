@@ -109,7 +109,7 @@ impl JobProcessor for RegexPatternGenerationProcessor {
             Err(e) => {
                 error!("Regex Pattern Generation LLM task execution failed: {}", e);
                 let error_msg = format!("LLM task execution failed: {}", e);
-                task_runner.finalize_failure(&repo, &job.id, &error_msg, Some(&e)).await?;
+                task_runner.finalize_failure(&repo, &job.id, &error_msg, Some(&e), None).await?;
                 return Ok(JobProcessResult::failure(job.id.clone(), error_msg));
             }
         };

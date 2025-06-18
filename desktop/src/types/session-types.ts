@@ -37,7 +37,7 @@ export interface BackgroundJob {
   updatedAt?: number;
   startTime?: number;
   endTime?: number;
-  cost?: number;
+  cost?: number | null | undefined;
 }
 
 // Session structure - stores user context and preferences, NOT workflow artifacts

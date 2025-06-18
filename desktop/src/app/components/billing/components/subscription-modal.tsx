@@ -57,8 +57,6 @@ export function SubscriptionModal({
       const fetchedPlans = await getAvailablePlans();
       const activePlans = fetchedPlans.filter(plan => plan.active);
       
-      const userCurrency = dashboardData?.planDetails.currency || 'USD';
-      
       const planGroups = activePlans.reduce((groups, plan) => {
         if (!groups[plan.name]) {
           groups[plan.name] = [];
@@ -68,10 +66,7 @@ export function SubscriptionModal({
       }, {} as Record<string, SubscriptionPlan[]>);
       
       const deduplicatedPlans = Object.values(planGroups).map(group => {
-        const preferredPlan = group.find(plan => plan.currency === userCurrency) ||
-                              group.find(plan => plan.currency === 'USD') ||
-                              group[0];
-        return preferredPlan;
+        return group[0];
       });
       
       setPlans(deduplicatedPlans);

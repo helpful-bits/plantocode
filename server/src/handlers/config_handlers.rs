@@ -58,10 +58,10 @@ pub struct DesktopModelInfo {
     pub description: Option<String>,
     /// Context window size in tokens
     pub context_window: Option<u32>,
-    /// Price per input token in USD
-    pub price_per_input_token: f64,
-    /// Price per output token in USD
-    pub price_per_output_token: f64,
+    /// Price input per kilo tokens in USD
+    pub price_input_per_kilo_tokens: String,
+    /// Price output per kilo tokens in USD
+    pub price_output_per_kilo_tokens: String,
 }
 
 /// Handler for GET /api/config/desktop-runtime-config endpoint for desktop app
@@ -89,13 +89,6 @@ pub async fn get_desktop_runtime_ai_config(
     let mut provider_models: HashMap<String, ProviderWithModels> = HashMap::new();
     
     for model in regular_models.iter() {
-        let input_price = model.price_input
-            .to_f64()
-            .ok_or_else(|| AppError::Internal(format!("Invalid input price for model {}", model.id)))?;
-        let output_price = model.price_output
-            .to_f64()
-            .ok_or_else(|| AppError::Internal(format!("Invalid output price for model {}", model.id)))?;
-        
         let desktop_model = DesktopModelInfo {
             id: model.id.clone(),
             name: model.name.clone(),
@@ -103,8 +96,8 @@ pub async fn get_desktop_runtime_ai_config(
             provider_name: model.provider_name.clone(),
             description: model.description.clone(),
             context_window: Some(model.context_window as u32),
-            price_per_input_token: input_price / 1000.0,
-            price_per_output_token: output_price / 1000.0,
+            price_input_per_kilo_tokens: model.price_input.to_string(),
+            price_output_per_kilo_tokens: model.price_output.to_string(),
         };
         
         provider_models.entry(model.provider_name.clone())
@@ -125,13 +118,6 @@ pub async fn get_desktop_runtime_ai_config(
         let mut transcription_provider_models = Vec::new();
         
         for model in transcription_models.iter() {
-            let input_price = model.price_input
-                .to_f64()
-                .ok_or_else(|| AppError::Internal(format!("Invalid input price for model {}", model.id)))?;
-            let output_price = model.price_output
-                .to_f64()
-                .ok_or_else(|| AppError::Internal(format!("Invalid output price for model {}", model.id)))?;
-            
             let desktop_model = DesktopModelInfo {
                 id: model.id.clone(),
                 name: model.name.clone(),
@@ -139,8 +125,8 @@ pub async fn get_desktop_runtime_ai_config(
                 provider_name: model.provider_name.clone(),
                 description: model.description.clone(),
                 context_window: Some(model.context_window as u32),
-                price_per_input_token: input_price / 1000.0,
-                price_per_output_token: output_price / 1000.0,
+                price_input_per_kilo_tokens: model.price_input.to_string(),
+                price_output_per_kilo_tokens: model.price_output.to_string(),
             };
             
             transcription_provider_models.push(desktop_model);

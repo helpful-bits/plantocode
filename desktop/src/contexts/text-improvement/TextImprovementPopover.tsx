@@ -28,10 +28,10 @@ export function TextImprovementPopover() {
         onClick={triggerImprovement}
         isLoading={isImproving}
         disabled={isImproving}
-        className="h-7 w-7 p-0 bg-background/30 hover:bg-background/50 border border-border/30"
+        className="h-7 w-7 p-0 bg-card/90 hover:bg-card border border-border/50 backdrop-blur-sm"
         title="Improve text"
       >
-        <Sparkles className="h-3 w-3" />
+        <Sparkles className="h-3 w-3 text-foreground" />
       </Button>
     </div>
   );

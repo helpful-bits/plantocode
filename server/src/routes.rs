@@ -14,14 +14,6 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig, strict_rate_limiter: RateL
             .route("/refresh-app-token", web::post().to(handlers::auth0_handlers::refresh_app_token_auth0))
     );
     
-    // Proxy routes (/api/proxy/*)
-    cfg.service(
-        web::scope("/proxy")
-            .route("/openrouter/chat/completions", web::post().to(handlers::proxy_handlers::openrouter_chat_completions_proxy))
-            .route("/audio/transcriptions", web::post().to(handlers::proxy_handlers::audio_transcriptions_proxy))
-            .route("/audio/transcriptions/stream", web::post().to(handlers::proxy_handlers::audio_transcriptions_stream_proxy))
-            .route("/audio/transcriptions/batch", web::post().to(handlers::proxy_handlers::audio_transcriptions_batch_proxy))
-    );
     
     // Billing routes (/api/billing/*)
     cfg.service(
@@ -30,6 +22,7 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig, strict_rate_limiter: RateL
             .route("/dashboard", web::get().to(handlers::billing::dashboard_handler::get_billing_dashboard_data_handler))
             // Subscription management routes
             .service(handlers::billing::subscription_handlers::get_available_plans)
+            .service(handlers::billing::subscription_handlers::get_current_plan)
             .service(handlers::billing::subscription_handlers::get_usage_summary)
             .service(handlers::billing::subscription_handlers::get_detailed_usage)
             // Payment and billing portal routes
@@ -63,11 +56,6 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig, strict_rate_limiter: RateL
     );
     
     
-    // AI proxy endpoint for direct model access (/api/ai-proxy/*)
-    cfg.service(
-        web::scope("/ai-proxy")
-            .route("/{endpoint:.*}", web::post().to(handlers::proxy_handlers::ai_proxy_endpoint))
-    );
     
     // Configuration routes (/api/config/*)
     cfg.service(

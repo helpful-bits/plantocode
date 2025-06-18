@@ -14,9 +14,12 @@ import { useExistingWorkflowTracker } from "@/hooks/use-workflow-tracker";
 import { getParsedMetadata } from "./utils";
 import { WorkflowVisualizer } from "@/components/workflow-visualizer";
 import { retryWorkflowStageAction } from "@/actions/file-system/workflow-stage.actions";
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { useNotification } from "@/contexts/notification-context";
 import { WorkflowUtils } from "@/utils/workflow-utils";
+import { type TaskModelSettings } from "@/types/task-settings-types";
+import { getModelSettingsForProject } from "@/actions/project-settings.actions";
+import { useSessionStateContext } from "@/contexts/session";
 
 
 // Import component sections
@@ -226,6 +229,40 @@ function WorkflowStages({ job }: WorkflowStagesProps) {
 export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
   // File-based content loading has been removed
   // All job output content is now stored directly in the job.response field
+
+  // State for job task settings
+  const [jobTaskSettings, setJobTaskSettings] = useState<TaskModelSettings | null>(null);
+  
+  // Get current session context for project directory
+  const { currentSession } = useSessionStateContext();
+
+  // Load task settings when job changes
+  useEffect(() => {
+    const loadTaskSettings = async () => {
+      if (!job || !currentSession?.projectDirectory) {
+        setJobTaskSettings(null);
+        return;
+      }
+
+      try {
+        const settingsResult = await getModelSettingsForProject(currentSession.projectDirectory);
+        
+        if (settingsResult.isSuccess && settingsResult.data) {
+          // Extract settings for specific job taskType
+          const taskKey = job.taskType as keyof typeof settingsResult.data;
+          const taskSettings = settingsResult.data[taskKey];
+          setJobTaskSettings(taskSettings || null);
+        } else {
+          setJobTaskSettings(null);
+        }
+      } catch (error) {
+        console.error('Failed to load task settings:', error);
+        setJobTaskSettings(null);
+      }
+    };
+
+    loadTaskSettings();
+  }, [job, currentSession?.projectDirectory]);
 
   // Format JSON data for display
   const formatMetadata = useCallback((metadata: string | Record<string, unknown> | null | undefined) => {
@@ -481,8 +518,9 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
       promptContent,
       formatMetadata,
       formatRegexPatterns,
+      copyButtons: jobTaskSettings?.copyButtons || [],
     };
-  }, [job, formatMetadata, formatRegexPatterns]);
+  }, [job, formatMetadata, formatRegexPatterns, jobTaskSettings]);
 
   if (!job || !contextValue) return null;
 
