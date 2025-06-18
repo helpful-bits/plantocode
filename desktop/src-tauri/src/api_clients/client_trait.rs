@@ -20,22 +20,12 @@ pub struct ApiClientOptions {
 /// Common trait for all API clients
 #[async_trait]
 pub trait ApiClient: Send + Sync {
-    /// Send a completion request and get a response
-    async fn complete(&self, prompt: &str, options: ApiClientOptions) -> AppResult<OpenRouterResponse>;
-    
     /// Send a completion request with messages and get a response
     async fn chat_completion(
         &self, 
         messages: Vec<crate::models::OpenRouterRequestMessage>, 
         options: ApiClientOptions
     ) -> AppResult<OpenRouterResponse>;
-    
-    /// Send a streaming completion request and get a stream of chunks
-    async fn stream_complete(
-        &self,
-        prompt: &str,
-        options: ApiClientOptions,
-    ) -> AppResult<Pin<Box<dyn Stream<Item = AppResult<OpenRouterStreamChunk>> + Send>>>;
     
     /// Send a streaming completion request with messages and get a stream of chunks
     async fn chat_completion_stream(

@@ -170,6 +170,7 @@ struct FrontendReadyTaskModelConfig {
     max_tokens: u32,
     temperature: f32,
     system_prompt: Option<String>,
+    copy_buttons: Option<Vec<serde_json::Value>>,
 }
 
 
@@ -196,17 +197,39 @@ fn merge_project_with_server_defaults(
         .ok_or_else(|| AppError::ConfigError("Project settings must be a JSON object".to_string()))?;
     
     let mut added_keys = Vec::new();
+    let mut merged_fields = Vec::new();
     
-    // Add any server task that's not in project settings
-    for (server_key, server_value) in server_frontend_map {
-        if !project_obj.contains_key(server_key) {
-            project_obj.insert(server_key.clone(), server_value.clone());
-            added_keys.push(server_key.as_str());
+    // Deep merge: for each task in server defaults
+    for (server_task_key, server_task_value) in server_frontend_map {
+        if let Some(server_task_obj) = server_task_value.as_object() {
+            if project_obj.contains_key(server_task_key) {
+                // Task exists in project - deep merge individual fields
+                if let Some(project_task_value) = project_obj.get_mut(server_task_key) {
+                    if let Some(project_task_obj) = project_task_value.as_object_mut() {
+                        // Iterate through all server default fields
+                        for (field_key, field_value) in server_task_obj {
+                            if !project_task_obj.contains_key(field_key) {
+                                // Field missing from project, add from server default
+                                project_task_obj.insert(field_key.clone(), field_value.clone());
+                                merged_fields.push(format!("{}.{}", server_task_key, field_key));
+                            }
+                        }
+                    }
+                }
+            } else {
+                // Task doesn't exist in project - add entire task from server
+                project_obj.insert(server_task_key.clone(), server_task_value.clone());
+                added_keys.push(server_task_key.as_str());
+            }
         }
     }
     
     if !added_keys.is_empty() {
         log::info!("Added missing task configurations from server defaults: {:?}", added_keys);
+    }
+    
+    if !merged_fields.is_empty() {
+        log::info!("Deep merged missing fields from server defaults: {:?}", merged_fields);
     }
     
     Ok(project_settings.to_string())
@@ -226,6 +249,7 @@ pub async fn get_server_default_task_model_settings_command(_app_handle: AppHand
             max_tokens: task_config.max_tokens.unwrap_or(0),
             temperature: task_config.temperature.unwrap_or(0.0),
             system_prompt: task_config.system_prompt.clone(),
+            copy_buttons: task_config.copy_buttons.clone(),
         };
         server_frontend_map.insert(
             camel_case_key, 
@@ -313,6 +337,7 @@ pub async fn get_all_task_model_settings_for_project_command(app_handle: AppHand
             max_tokens: task_config.max_tokens.unwrap_or(0),
             temperature: task_config.temperature.unwrap_or(0.0),
             system_prompt: task_config.system_prompt.clone(),
+            copy_buttons: task_config.copy_buttons.clone(),
         };
         server_frontend_map.insert(
             camel_case_key, 

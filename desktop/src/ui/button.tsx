@@ -11,22 +11,22 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default:
-          "bg-primary text-primary-foreground hover:bg-primary/85 shadow-soft hover:shadow-soft-md backdrop-blur-sm",
+          "bg-primary text-primary-foreground hover:bg-primary/85 backdrop-blur-sm",
         destructive:
-          "bg-destructive text-destructive-foreground hover:bg-destructive/85 shadow-soft hover:shadow-soft-md",
+          "bg-destructive text-destructive-foreground hover:bg-destructive/85",
         warning:
-          "bg-warning text-warning-foreground hover:bg-warning/85 shadow-soft hover:shadow-soft-md",
+          "bg-warning text-warning-foreground hover:bg-warning/85",
         outline:
-          "border border-border bg-background/80 text-foreground backdrop-blur-sm hover:bg-accent/60 hover:text-accent-foreground shadow-soft hover:shadow-soft-md",
+          "border border-border bg-background/80 text-foreground backdrop-blur-sm hover:bg-accent/60 hover:text-accent-foreground",
         secondary:
-          "bg-secondary/80 text-secondary-foreground hover:bg-secondary/60 border border-border/50 shadow-soft hover:shadow-soft-md backdrop-blur-sm",
+          "bg-secondary/80 text-secondary-foreground hover:bg-secondary/60 border border-border/50 backdrop-blur-sm",
         ghost:
           "hover:bg-accent/40 hover:text-accent-foreground transition-all duration-200 backdrop-blur-sm",
         link: "text-primary underline-offset-4 hover:underline hover:text-primary/80",
         navigation:
           "h-10 px-5 font-medium rounded-lg transition-all duration-200 ease-out hover:bg-accent/40 focus:bg-accent/50 focus-ring border border-transparent hover:border-border/30 backdrop-blur-sm",
         "navigation-active":
-          "h-10 px-5 font-medium rounded-lg transition-all duration-200 ease-out bg-primary/90 text-primary-foreground shadow-soft border border-primary/15 backdrop-blur-sm",
+          "h-10 px-5 font-medium rounded-lg transition-all duration-200 ease-out bg-primary/90 text-primary-foreground border border-primary/15 backdrop-blur-sm",
         filter:
           "border-0 rounded-none text-muted-foreground hover:bg-accent/30 hover:text-accent-foreground data-[active=true]:bg-primary/10 data-[active=true]:text-primary data-[active=true]:font-medium transition-all duration-200 backdrop-blur-sm",
         "filter-active":

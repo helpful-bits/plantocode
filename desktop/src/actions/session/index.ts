@@ -13,3 +13,4 @@ export * from "./crud.actions";
 export * from "./active.actions";
 export * from "./project.actions";
 export * from "./utility.actions";
+export * from "./history.actions";

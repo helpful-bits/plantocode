@@ -2,7 +2,7 @@ use std::sync::Arc;
 use sqlx::{sqlite::SqliteRow, Row, SqlitePool};
 use crate::error::{AppError, AppResult};
 use crate::models::Session;
-use crate::utils::get_timestamp;
+use crate::utils::date_utils;
 
 #[derive(Debug)]
 pub struct SessionRepository {
@@ -199,6 +199,10 @@ impl SessionRepository {
         // Commit transaction
         tx.commit().await
             .map_err(|e| AppError::DatabaseError(format!("Failed to commit transaction: {}", e)))?;
+
+        if let Some(ref task_description) = session.task_description {
+            self.add_task_description_history_entry(&session.id, task_description).await?;
+        }
         
         Ok(())
     }
@@ -370,6 +374,62 @@ impl SessionRepository {
             .await
             .map_err(|e| AppError::DatabaseError(format!("Failed to delete sessions for project: {}", e)))?;
             
+        Ok(())
+    }
+
+    pub async fn add_task_description_history_entry(&self, session_id: &str, description: &str) -> AppResult<()> {
+        let now = date_utils::get_timestamp();
+        
+        sqlx::query("INSERT INTO task_description_history (session_id, description, created_at) VALUES ($1, $2, $3)")
+            .bind(session_id)
+            .bind(description)
+            .bind(now)
+            .execute(&*self.pool)
+            .await
+            .map_err(|e| AppError::DatabaseError(format!("Failed to insert task description history: {}", e)))?;
+        
+        sqlx::query(
+            "DELETE FROM task_description_history 
+             WHERE session_id = $1 
+             AND id NOT IN (
+                 SELECT id FROM task_description_history 
+                 WHERE session_id = $1 
+                 ORDER BY created_at DESC 
+                 LIMIT 5
+             )"
+        )
+        .bind(session_id)
+        .execute(&*self.pool)
+        .await
+        .map_err(|e| AppError::DatabaseError(format!("Failed to prune task description history: {}", e)))?;
+        
+        Ok(())
+    }
+
+    pub async fn get_task_description_history(&self, session_id: &str) -> AppResult<Vec<(String, i64)>> {
+        let rows = sqlx::query("SELECT description, created_at FROM task_description_history WHERE session_id = $1 ORDER BY created_at DESC")
+            .bind(session_id)
+            .fetch_all(&*self.pool)
+            .await
+            .map_err(|e| AppError::DatabaseError(format!("Failed to fetch task description history: {}", e)))?;
+        
+        let mut history = Vec::new();
+        for row in rows {
+            let description: String = row.try_get("description")?;
+            let created_at: i64 = row.try_get("created_at")?;
+            history.push((description, created_at));
+        }
+        
+        Ok(history)
+    }
+
+    pub async fn clear_task_description_history(&self, session_id: &str) -> AppResult<()> {
+        sqlx::query("DELETE FROM task_description_history WHERE session_id = $1")
+            .bind(session_id)
+            .execute(&*self.pool)
+            .await
+            .map_err(|e| AppError::DatabaseError(format!("Failed to clear task description history: {}", e)))?;
+        
         Ok(())
     }
 }

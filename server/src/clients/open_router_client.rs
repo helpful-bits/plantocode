@@ -16,6 +16,11 @@ use crate::config::settings::AppSettings;
 use tracing::{debug, info, warn, error, instrument};
 use chrono::Utc;
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct UsageInclude {
+    pub include: bool,
+}
+
 // Base URL for OpenRouter API
 const OPENROUTER_BASE_URL: &str = "https://openrouter.ai/api/v1";
 
@@ -37,6 +42,8 @@ pub struct OpenRouterChatRequest {
     pub frequency_penalty: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub presence_penalty: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub usage: Option<UsageInclude>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -166,6 +173,9 @@ impl OpenRouterClient {
         let request_id = self.get_next_request_id().await;
         let url = format!("{}/chat/completions", self.base_url);
         
+        let mut request_with_usage = request;
+        request_with_usage.usage = Some(UsageInclude { include: true });
+        
         let response = self.client
             .post(&url)
             .header("Authorization", format!("Bearer {}", self.api_key))
@@ -173,7 +183,7 @@ impl OpenRouterClient {
             .header("X-Title", "Vibe Manager")
             .header("Content-Type", "application/json")
             .header("X-Request-ID", request_id.to_string())
-            .json(&request)
+            .json(&request_with_usage)
             .send()
             .await
             .map_err(|e| AppError::External(format!("OpenRouter request failed: {}", e.to_string())))?;
@@ -219,9 +229,10 @@ impl OpenRouterClient {
             };
             let url = format!("{}/chat/completions", base_url);
             
-            // Ensure stream is set to true
+            // Ensure stream is set to true and usage is included
             let mut streaming_request = request.clone();
             streaming_request.stream = Some(true);
+            streaming_request.usage = Some(UsageInclude { include: true });
             
             let response = client
                 .post(&url)

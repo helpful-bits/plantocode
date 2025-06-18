@@ -133,6 +133,7 @@ pub async fn create_and_queue_background_job(
         updated_at: Some(timestamp),
         start_time: None,
         end_time: None,
+        cost: None,
     };
     
     // Get the background job repository from app state

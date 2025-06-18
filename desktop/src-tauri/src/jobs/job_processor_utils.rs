@@ -102,10 +102,11 @@ pub async fn finalize_job_success(
     system_prompt_id: &str,
     metadata: Option<Value>,
 ) -> AppResult<()> {
-    let (tokens_sent, tokens_received, total_tokens) = if let Some(usage) = llm_usage {
-        (Some(usage.prompt_tokens as i32), Some(usage.completion_tokens as i32), Some(usage.total_tokens as i32))
+    let cost = llm_usage.as_ref().and_then(|u| u.cost);
+    let (tokens_sent, tokens_received) = if let Some(usage) = &llm_usage {
+        (Some(usage.prompt_tokens as i32), Some(usage.completion_tokens as i32))
     } else {
-        (None, None, None)
+        (None, None)
     };
     
     let db_job = repo.get_job_by_id(job_id).await?.ok_or_else(|| AppError::NotFoundError(format!("Job {} not found for finalization", job_id)))?;
@@ -170,7 +171,8 @@ pub async fn finalize_job_success(
         final_metadata_str_for_repo.as_deref(),
         tokens_sent,
         tokens_received,
-        Some(model_used)
+        Some(model_used),
+        cost
     ).await?;
     
     info!("Job {} completed successfully", job_id);

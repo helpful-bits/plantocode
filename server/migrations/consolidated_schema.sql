@@ -263,9 +263,9 @@ VALUES
 ('openai/gpt-4.1-mini',            'GPT-4.1 Mini',       1000000, 0.000400, 0.001600, 'token_based', 0.000000, 0, 'tokens', (SELECT id FROM providers WHERE code = 'openai'), 'text', '{"text": true, "chat": true, "code": true}', 'active', 'Efficient GPT model for cost-sensitive applications'),
 
 -- Google models
-('google/gemini-2.5-pro-preview',  'Gemini 2.5 Pro',     1000000, 0.001250, 0.010000, 'token_based', 0.000000, 0, 'tokens', (SELECT id FROM providers WHERE code = 'google'), 'text', '{"text": true, "chat": true, "multimodal": true, "code": true}', 'active', 'Multimodal AI model with advanced reasoning'),
-('google/gemini-2.5-flash-preview-05-20', 'Gemini 2.5 Flash', 1000000, 0.000075, 0.000300, 'token_based', 0.000000, 0, 'tokens', (SELECT id FROM providers WHERE code = 'google'), 'text_generation', '{"text_generation": true, "code_generation": true, "reasoning": true}', 'active', 'Google Gemini 2.5 Flash - Fast and efficient text generation model'),
-('google/gemini-2.5-flash-preview-05-20:thinking', 'Gemini 2.5 Flash Thinking', 1000000, 0.000075, 0.000300, 'token_based', 0.000000, 0, 'tokens', (SELECT id FROM providers WHERE code = 'google'), 'text_generation', '{"text_generation": true, "code_generation": true, "reasoning": true, "thinking": true}', 'active', 'Google Gemini 2.5 Flash with thinking capabilities'),
+('google/gemini-2.5-pro',  'Gemini 2.5 Pro',     1000000, 0.001250, 0.010000, 'token_based', 0.000000, 0, 'tokens', (SELECT id FROM providers WHERE code = 'google'), 'text', '{"text": true, "chat": true, "multimodal": true, "code": true}', 'active', 'Multimodal AI model with advanced reasoning'),
+('google/gemini-2.5-flash', 'Gemini 2.5 Flash', 1000000, 0.000075, 0.000300, 'token_based', 0.000000, 0, 'tokens', (SELECT id FROM providers WHERE code = 'google'), 'text_generation', '{"text_generation": true, "code_generation": true, "reasoning": true}', 'active', 'Google Gemini 2.5 Flash - Fast and efficient text generation model'),
+('google/gemini-2.5-flash:thinking', 'Gemini 2.5 Flash Thinking', 1000000, 0.000075, 0.000300, 'token_based', 0.000000, 0, 'tokens', (SELECT id FROM providers WHERE code = 'google'), 'text_generation', '{"text_generation": true, "code_generation": true, "reasoning": true, "thinking": true}', 'active', 'Google Gemini 2.5 Flash with thinking capabilities'),
 
 -- DeepSeek models
 ('deepseek/deepseek-r1',           'DeepSeek R1',         65536, 0.000550, 0.002190, 'token_based', 0.000000, 0, 'tokens', (SELECT id FROM providers WHERE code = 'deepseek'), 'reasoning', '{"text_generation": true, "code_generation": true, "reasoning": true, "thinking": true}', 'active', 'DeepSeek R1 - Advanced reasoning model'),
@@ -728,27 +728,27 @@ ON CONFLICT (id) DO UPDATE SET
 INSERT INTO application_configurations (config_key, config_value, description)
 VALUES 
 ('ai_settings', '{
-  "default_llm_model_id": "google/gemini-2.5-pro-preview",
+  "default_llm_model_id": "google/gemini-2.5-pro",
   "default_voice_model_id": "anthropic/claude-sonnet-4", 
   "default_transcription_model_id": "openai/gpt-4o-transcribe",
   "default_temperature": 0.7,
   "default_max_tokens": 4096,
   "task_specific_configs": {
-    "implementation_plan": {"model": "google/gemini-2.5-pro-preview", "max_tokens": 65536, "temperature": 0.7},
-    "path_finder": {"model": "google/gemini-2.5-flash-preview-05-20", "max_tokens": 8192, "temperature": 0.3},
+    "implementation_plan": {"model": "google/gemini-2.5-pro", "max_tokens": 65536, "temperature": 0.7, "copyButtons": [{"label": "Copy Full Plan", "content": "{{FULL_PLAN}}"}, {"label": "Copy for AI Agent", "content": "I need you to implement the following plan. Read it carefully and execute each step completely.\n\n{{FULL_PLAN}}\n\nPlease implement this plan step by step, ensuring you:\n1. Follow the exact file operations specified\n2. Maintain existing code patterns and conventions\n3. Test your changes thoroughly\n4. Ask for clarification if any step is unclear"}, {"label": "Copy Implementation Brief", "content": "Implementation Plan Summary:\n\n{{FULL_PLAN}}\n\nKey Points:\n- Follow the step-by-step approach outlined above\n- Maintain consistency with existing codebase patterns\n- Focus on the specific file operations mentioned\n- Ensure all changes integrate properly with the current architecture"}]},
+    "path_finder": {"model": "google/gemini-2.5-flash", "max_tokens": 8192, "temperature": 0.3},
     "text_improvement": {"model": "anthropic/claude-sonnet-4", "max_tokens": 4096, "temperature": 0.7},
     "voice_transcription": {"model": "openai/gpt-4o-transcribe", "max_tokens": 4096, "temperature": 0.0},
     "text_correction": {"model": "anthropic/claude-sonnet-4", "max_tokens": 2048, "temperature": 0.5},
-    "path_correction": {"model": "google/gemini-2.5-flash-preview-05-20", "max_tokens": 4096, "temperature": 0.3},
+    "path_correction": {"model": "google/gemini-2.5-flash", "max_tokens": 4096, "temperature": 0.3},
     "regex_pattern_generation": {"model": "anthropic/claude-sonnet-4", "max_tokens": 1000, "temperature": 0.2},
-    "guidance_generation": {"model": "google/gemini-2.5-pro-preview", "max_tokens": 8192, "temperature": 0.7},
-    "task_refinement": {"model": "google/gemini-2.5-flash-preview-05-20", "max_tokens": 2048, "temperature": 0.3},
-    "extended_path_finder": {"model": "google/gemini-2.5-flash-preview-05-20", "max_tokens": 8192, "temperature": 0.3},
-    "file_relevance_assessment": {"model": "google/gemini-2.5-flash-preview-05-20", "max_tokens": 24000, "temperature": 0.3},
-    "file_finder_workflow": {"model": "google/gemini-2.5-flash-preview-05-20", "max_tokens": 2048, "temperature": 0.3},
-    "generic_llm_stream": {"model": "google/gemini-2.5-pro-preview", "max_tokens": 16384, "temperature": 0.7},
-    "streaming": {"model": "google/gemini-2.5-pro-preview", "max_tokens": 16384, "temperature": 0.7},
-    "unknown": {"model": "google/gemini-2.5-pro-preview", "max_tokens": 4096, "temperature": 0.7}
+    "guidance_generation": {"model": "google/gemini-2.5-pro", "max_tokens": 8192, "temperature": 0.7},
+    "task_refinement": {"model": "google/gemini-2.5-flash", "max_tokens": 2048, "temperature": 0.3},
+    "extended_path_finder": {"model": "google/gemini-2.5-flash", "max_tokens": 8192, "temperature": 0.3},
+    "file_relevance_assessment": {"model": "google/gemini-2.5-flash", "max_tokens": 24000, "temperature": 0.3},
+    "file_finder_workflow": {"model": "google/gemini-2.5-flash", "max_tokens": 2048, "temperature": 0.3},
+    "generic_llm_stream": {"model": "google/gemini-2.5-pro", "max_tokens": 16384, "temperature": 0.7},
+    "streaming": {"model": "google/gemini-2.5-pro", "max_tokens": 16384, "temperature": 0.7},
+    "unknown": {"model": "google/gemini-2.5-pro", "max_tokens": 4096, "temperature": 0.7}
   },
   "path_finder_settings": {
     "max_files_with_content": 10,

@@ -217,6 +217,15 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
           variant: "outline" as const
         };
       
+      case ErrorType.CHECKOUT_ERROR:
+        return {
+          label: "Retry",
+          onClick: () => {
+            window.location.reload();
+          },
+          variant: "default" as const
+        };
+      
       case ErrorType.ACTION_REQUIRED:
         return {
           label: "Take Action",
@@ -340,6 +349,8 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         return "Subscription Conflict";
       case ErrorType.INVOICE_ERROR:
         return "Invoice Error";
+      case ErrorType.CHECKOUT_ERROR:
+        return "Checkout Error";
       case ErrorType.PERMISSION_ERROR:
         return "Access Denied";
       case ErrorType.CONFIGURATION_ERROR:

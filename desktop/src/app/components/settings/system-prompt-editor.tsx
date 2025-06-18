@@ -8,7 +8,7 @@ import {
   VirtualizedCodeViewer,
 } from "@/ui";
 import { useProjectSystemPrompt } from "@/hooks/use-project-system-prompts";
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect } from "react";
 
 interface SystemPromptEditorProps {
   projectDirectory?: string;

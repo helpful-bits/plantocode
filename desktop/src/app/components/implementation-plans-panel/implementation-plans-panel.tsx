@@ -8,6 +8,7 @@ import { useNotification } from "@/contexts/notification-context";
 import { useSessionStateContext } from "@/contexts/session";
 import { useRuntimeConfig } from "@/contexts/runtime-config-context";
 import { type BackgroundJob } from "@/types/session-types";
+import { type CopyButtonConfig } from "@/types/config-types";
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -18,6 +19,7 @@ import {
   AlertDialogTitle,
 } from "@/ui/alert-dialog";
 import { Button } from "@/ui/button";
+import { getModelSettingsForProject } from "@/actions/project-settings.actions";
 import {
   Card,
 } from "@/ui/card";
@@ -31,6 +33,7 @@ import PlanContentModal from "./_components/PlanContentModal";
 import PromptCopyModal from "./_components/PromptCopyModal";
 import { useImplementationPlansLogic } from "./_hooks/useImplementationPlansLogic";
 import { usePromptCopyModal } from "./_hooks/usePromptCopyModal";
+import { replacePlaceholders } from "./_utils/plan-content-parser";
 
 interface ImplementationPlansPanelProps {
   sessionId: string | null;
@@ -100,6 +103,10 @@ export function ImplementationPlansPanel({
   
   // Runtime config for model context windows
   const { config: runtimeConfig } = useRuntimeConfig();
+  
+  // Implementation plan settings state
+  const [implementationPlanSettings, setImplementationPlanSettings] = useState<CopyButtonConfig[] | null>(null);
+  const [selectedStepNumber, setSelectedStepNumber] = useState<string | null>(null);
 
   // Validation for create functionality
   const canCreatePlan = Boolean(
@@ -109,6 +116,49 @@ export function ImplementationPlansPanel({
     sessionId &&
     !isCreatingPlan
   );
+  
+  // Load implementation plan settings
+  useEffect(() => {
+    if (!projectDirectory) return;
+    
+    const loadSettings = async () => {
+      try {
+        const result = await getModelSettingsForProject(projectDirectory);
+        if (result.isSuccess && result.data?.implementationPlan?.copyButtons) {
+          setImplementationPlanSettings(result.data.implementationPlan.copyButtons);
+        }
+      } catch (error) {
+        console.error('Failed to load implementation plan settings:', error);
+      }
+    };
+    
+    loadSettings();
+  }, [projectDirectory]);
+  
+  // Handle copy button click
+  const handleCopyButtonClick = useCallback(async (buttonConfig: CopyButtonConfig, plan: BackgroundJob) => {
+    try {
+      const fullPlan = plan.response || '';
+      const processedContent = replacePlaceholders(buttonConfig.content, fullPlan, selectedStepNumber || undefined);
+      
+      await navigator.clipboard.writeText(processedContent);
+      
+      showNotification({
+        title: "Copied to clipboard",
+        message: `${buttonConfig.label} copied successfully`,
+        type: "success",
+        duration: 2000,
+      });
+    } catch (error) {
+      console.error('Failed to copy button content:', error);
+      showNotification({
+        title: "Copy failed",
+        message: "Failed to copy content to clipboard",
+        type: "error",
+        duration: 3000,
+      });
+    }
+  }, [selectedStepNumber, showNotification]);
 
   // Token estimation effect
   useEffect(() => {
@@ -360,9 +410,16 @@ export function ImplementationPlansPanel({
           plan={livePlanForModal}
           open={openedPlanJobId !== null}
           onOpenChange={(open: boolean) => {
-            if (!open) handleClosePlanContentModal();
+            if (!open) {
+              handleClosePlanContentModal();
+              setSelectedStepNumber(null);
+            }
           }}
           onRefreshContent={refreshJobs}
+          selectedStepNumber={selectedStepNumber}
+          onStepSelect={setSelectedStepNumber}
+          copyButtons={implementationPlanSettings || []}
+          onCopyButtonClick={(buttonConfig) => handleCopyButtonClick(buttonConfig, livePlanForModal)}
         />
       )}
 

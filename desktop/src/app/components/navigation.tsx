@@ -8,7 +8,7 @@ import { useUILayout } from "@/contexts/ui-layout-context";
 import { ThemeToggle } from "@/ui";
 import { Button } from "@/ui/button";
 import { CostUsageIndicator } from "@/ui/cost-usage-indicator";
-import { isTauriEnvironment } from "@/utils/platform";
+import { UsageDetailsModal } from "@/app/components/billing/billing-components";
 
 export function Navigation() {
   // Track current pathname and update on route changes
@@ -19,6 +19,8 @@ export function Navigation() {
     }
     return '/';
   });
+
+  const [isUsageModalOpen, setIsUsageModalOpen] = useState(false);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -99,6 +101,12 @@ export function Navigation() {
               </div>
             )}
 
+            {/* Cost usage indicator to the left of theme toggle */}
+            <CostUsageIndicator 
+              compact={true} 
+              showRefreshButton={false} 
+              onClick={() => setIsUsageModalOpen(true)}
+            />
             <ThemeToggle />
             <Button 
               variant="ghost" 
@@ -109,14 +117,13 @@ export function Navigation() {
               <RotateCcw className="h-[1.2rem] w-[1.2rem] text-foreground" />
               <span className="sr-only">Reload application</span>
             </Button>
-            {/* Cost usage indicator in the top right */}
-            {isTauriEnvironment() && (
-              <div className="hidden md:block">
-                <CostUsageIndicator compact={true} showRefreshButton={true} />
-              </div>
-            )}
           </div>
         </div>
+        
+        <UsageDetailsModal
+          open={isUsageModalOpen}
+          onOpenChange={(open) => setIsUsageModalOpen(open)}
+        />
       </nav>
   );
 }

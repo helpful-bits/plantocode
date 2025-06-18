@@ -251,6 +251,9 @@ const VirtualizedCodeViewer = forwardRef<HTMLDivElement, VirtualizedCodeViewerPr
           selectionListener.dispose();
         };
       }
+      
+      // Return undefined for non-text-improvement cases
+      return undefined;
     };
 
     // Handle wheel events to prevent scroll propagation conflicts
