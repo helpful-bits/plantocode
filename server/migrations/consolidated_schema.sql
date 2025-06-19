@@ -100,7 +100,7 @@ CREATE TABLE IF NOT EXISTS service_pricing (
     input_token_price DECIMAL(10,8) NOT NULL,
     output_token_price DECIMAL(10,8) NOT NULL,
     currency VARCHAR(3) NOT NULL DEFAULT 'USD',
-    unit VARCHAR(50) NOT NULL DEFAULT 'per_1000_tokens',
+    unit VARCHAR(50) NOT NULL DEFAULT 'per_1000000_tokens',
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
 );
@@ -205,12 +205,13 @@ INSERT INTO providers (code, name, description, website_url, api_base_url, capab
 ON CONFLICT (code) DO NOTHING;
 
 -- Create models table with proper provider relationships
+-- Note: price_input and price_output are per 1,000,000 tokens for token-based models
 CREATE TABLE IF NOT EXISTS models (
     id VARCHAR(255) PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     context_window INTEGER NOT NULL DEFAULT 4096,
-    price_input DECIMAL(10,6) NOT NULL DEFAULT 0,
-    price_output DECIMAL(10,6) NOT NULL DEFAULT 0,
+    price_input DECIMAL(10,6) NOT NULL DEFAULT 0, -- Price per 1,000,000 input tokens
+    price_output DECIMAL(10,6) NOT NULL DEFAULT 0, -- Price per 1,000,000 output tokens
     pricing_type VARCHAR(20) DEFAULT 'token_based',
     price_per_hour DECIMAL(12,6) DEFAULT 0.000000,
     minimum_billable_seconds INTEGER DEFAULT 0,
@@ -220,7 +221,11 @@ CREATE TABLE IF NOT EXISTS models (
     capabilities JSONB DEFAULT '{}',
     status VARCHAR(20) DEFAULT 'active',
     description TEXT,
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    -- Tiered pricing support for models like Gemini 2.5 Pro
+    price_input_long_context DECIMAL(10,6) DEFAULT NULL, -- Long context price per 1,000,000 input tokens
+    price_output_long_context DECIMAL(10,6) DEFAULT NULL, -- Long context price per 1,000,000 output tokens
+    long_context_threshold INTEGER DEFAULT NULL -- Token threshold for long context pricing
 );
 
 -- Add indexes for models
@@ -241,32 +246,32 @@ BEGIN
 END $$;
 
 
--- AI model pricing data - Updated with provider relationships
-INSERT INTO models (id, name, context_window, price_input, price_output, pricing_type, price_per_hour, minimum_billable_seconds, billing_unit, provider_id, model_type, capabilities, status, description)
+-- AI model pricing data - Updated with provider relationships and per-million pricing
+INSERT INTO models (id, name, context_window, price_input, price_output, pricing_type, price_per_hour, minimum_billable_seconds, billing_unit, provider_id, model_type, capabilities, status, description, price_input_long_context, price_output_long_context, long_context_threshold)
 VALUES
--- Anthropic models
-('anthropic/claude-opus-4',        'Claude 4 Opus',       200000, 0.015000, 0.075000, 'token_based', 0.000000, 0, 'tokens', (SELECT id FROM providers WHERE code = 'anthropic'), 'text', '{"text": true, "chat": true, "reasoning": true}', 'active', 'Advanced language model with strong reasoning capabilities'),
-('anthropic/claude-sonnet-4',      'Claude 4 Sonnet',     200000, 0.003000, 0.015000, 'token_based', 0.000000, 0, 'tokens', (SELECT id FROM providers WHERE code = 'anthropic'), 'text', '{"text": true, "chat": true, "reasoning": true}', 'active', 'Balanced language model with strong reasoning capabilities'),
-('claude-opus-4-20250522',         'Claude Opus 4 (2025-05-22)', 200000, 0.015000, 0.075000, 'token_based', 0.000000, 0, 'tokens', (SELECT id FROM providers WHERE code = 'anthropic'), 'text', '{"text": true, "chat": true, "reasoning": true, "vision": true}', 'active', 'Claude Opus 4 with 2025-05-22 training cutoff'),
-('claude-3-7-sonnet-20250219',     'Claude 3.7 Sonnet (2025-02-19)', 200000, 0.003000, 0.015000, 'token_based', 0.000000, 0, 'tokens', (SELECT id FROM providers WHERE code = 'anthropic'), 'text', '{"text": true, "chat": true, "reasoning": true, "vision": true}', 'active', 'Claude 3.7 Sonnet with 2025-02-19 training cutoff'),
+-- Anthropic models (prices per 1M tokens) - Updated with correct API model names
+('anthropic/claude-opus-4-20250514',   'Claude 4 Opus',       200000, 15.000000, 75.000000, 'token_based', 0.000000, 0, 'tokens', (SELECT id FROM providers WHERE code = 'anthropic'), 'text', '{"text": true, "chat": true, "reasoning": true}', 'active', 'Advanced language model with strong reasoning capabilities', NULL, NULL, NULL),
+('anthropic/claude-sonnet-4-20250514', 'Claude 4 Sonnet',     200000, 3.000000, 15.000000, 'token_based', 0.000000, 0, 'tokens', (SELECT id FROM providers WHERE code = 'anthropic'), 'text', '{"text": true, "chat": true, "reasoning": true}', 'active', 'Balanced language model with strong reasoning capabilities', NULL, NULL, NULL),
+('anthropic/claude-4-opus-20250522', 'Claude Opus 4 (2025-05-22)', 200000, 15.000000, 75.000000, 'token_based', 0.000000, 0, 'tokens', (SELECT id FROM providers WHERE code = 'anthropic'), 'text', '{"text": true, "chat": true, "reasoning": true, "vision": true}', 'active', 'Claude Opus 4 with 2025-05-22 training cutoff', NULL, NULL, NULL),
+('anthropic/claude-3-7-sonnet-20250219', 'Claude 3.7 Sonnet (2025-02-19)', 200000, 3.000000, 15.000000, 'token_based', 0.000000, 0, 'tokens', (SELECT id FROM providers WHERE code = 'anthropic'), 'text', '{"text": true, "chat": true, "reasoning": true, "vision": true}', 'active', 'Claude 3.7 Sonnet with 2025-02-19 training cutoff', NULL, NULL, NULL),
 
--- OpenAI models  
-('openai/gpt-4.1',                 'GPT-4.1',            1000000, 0.002000, 0.008000, 'token_based', 0.000000, 0, 'tokens', (SELECT id FROM providers WHERE code = 'openai'), 'text', '{"text": true, "chat": true, "code": true}', 'active', 'Advanced GPT model with broad capabilities'),
-('openai/gpt-4.1-mini',            'GPT-4.1 Mini',       1000000, 0.000400, 0.001600, 'token_based', 0.000000, 0, 'tokens', (SELECT id FROM providers WHERE code = 'openai'), 'text', '{"text": true, "chat": true, "code": true}', 'active', 'Efficient GPT model for cost-sensitive applications'),
+-- OpenAI models (prices per 1M tokens)
+('openai/gpt-4.1',                 'GPT-4.1',            1000000, 2.000000, 8.000000, 'token_based', 0.000000, 0, 'tokens', (SELECT id FROM providers WHERE code = 'openai'), 'text', '{"text": true, "chat": true, "code": true}', 'active', 'Advanced GPT model with broad capabilities', NULL, NULL, NULL),
+('openai/gpt-4.1-mini',            'GPT-4.1 Mini',       1000000, 0.400000, 1.600000, 'token_based', 0.000000, 0, 'tokens', (SELECT id FROM providers WHERE code = 'openai'), 'text', '{"text": true, "chat": true, "code": true}', 'active', 'Efficient GPT model for cost-sensitive applications', NULL, NULL, NULL),
 
--- Google models
-('google/gemini-2.5-pro',  'Gemini 2.5 Pro',     1000000, 0.001250, 0.010000, 'token_based', 0.000000, 0, 'tokens', (SELECT id FROM providers WHERE code = 'google'), 'text', '{"text": true, "chat": true, "multimodal": true, "code": true}', 'active', 'Multimodal AI model with advanced reasoning'),
-('google/gemini-2.5-flash', 'Gemini 2.5 Flash', 1000000, 0.000075, 0.000300, 'token_based', 0.000000, 0, 'tokens', (SELECT id FROM providers WHERE code = 'google'), 'text_generation', '{"text_generation": true, "code_generation": true, "reasoning": true}', 'active', 'Google Gemini 2.5 Flash - Fast and efficient text generation model'),
-('google/gemini-2.5-flash:thinking', 'Gemini 2.5 Flash Thinking', 1000000, 0.000075, 0.000300, 'token_based', 0.000000, 0, 'tokens', (SELECT id FROM providers WHERE code = 'google'), 'text_generation', '{"text_generation": true, "code_generation": true, "reasoning": true, "thinking": true}', 'active', 'Google Gemini 2.5 Flash with thinking capabilities'),
+-- Google models (prices per 1M tokens)
+('google/gemini-2.5-pro',          'Gemini 2.5 Pro',     1000000, 1.250000, 10.000000, 'token_based', 0.000000, 0, 'tokens', (SELECT id FROM providers WHERE code = 'google'), 'text', '{"text": true, "chat": true, "multimodal": true, "code": true}', 'active', 'Multimodal AI model with advanced reasoning', 2.500000, 15.000000, 200000),
+('google/gemini-2.5-flash',        'Gemini 2.5 Flash',   1000000, 0.075000, 0.300000, 'token_based', 0.000000, 0, 'tokens', (SELECT id FROM providers WHERE code = 'google'), 'text', '{"text": true, "chat": true, "code": true, "reasoning": true}', 'active', 'Google Gemini 2.5 Flash - Fast and efficient text generation model', NULL, NULL, NULL),
+('google/gemini-2.5-flash:thinking', 'Gemini 2.5 Flash Thinking', 1000000, 0.075000, 0.300000, 'token_based', 0.000000, 0, 'tokens', (SELECT id FROM providers WHERE code = 'google'), 'text', '{"text": true, "chat": true, "code": true, "reasoning": true, "thinking": true}', 'active', 'Google Gemini 2.5 Flash with thinking capabilities', NULL, NULL, NULL),
 
--- DeepSeek models
-('deepseek/deepseek-r1',           'DeepSeek R1',         65536, 0.000550, 0.002190, 'token_based', 0.000000, 0, 'tokens', (SELECT id FROM providers WHERE code = 'deepseek'), 'reasoning', '{"text_generation": true, "code_generation": true, "reasoning": true, "thinking": true}', 'active', 'DeepSeek R1 - Advanced reasoning model'),
-('deepseek/deepseek-r1-distill-qwen-32b', 'DeepSeek R1 Distill Qwen 32B', 32768, 0.000140, 0.000280, 'token_based', 0.000000, 0, 'tokens', (SELECT id FROM providers WHERE code = 'deepseek'), 'reasoning', '{"text_generation": true, "code_generation": true, "reasoning": true}', 'active', 'DeepSeek R1 Distilled Qwen 32B - Efficient reasoning model'),
-('deepseek/deepseek-r1-distill-qwen-14b', 'DeepSeek R1 Distill Qwen 14B', 32768, 0.000070, 0.000140, 'token_based', 0.000000, 0, 'tokens', (SELECT id FROM providers WHERE code = 'deepseek'), 'reasoning', '{"text_generation": true, "code_generation": true, "reasoning": true}', 'active', 'DeepSeek R1 Distilled Qwen 14B - Compact reasoning model'),
+-- DeepSeek models (prices per 1M tokens) 
+('deepseek/deepseek-r1',           'DeepSeek R1',         65536, 0.550000, 2.190000, 'token_based', 0.000000, 0, 'tokens', (SELECT id FROM providers WHERE code = 'deepseek'), 'text', '{"text": true, "chat": true, "code": true, "reasoning": true, "thinking": true}', 'active', 'DeepSeek R1 - Advanced reasoning model', NULL, NULL, NULL),
+('deepseek/deepseek-r1-distill-qwen-32b', 'DeepSeek R1 Distill Qwen 32B', 32768, 0.140000, 0.280000, 'token_based', 0.000000, 0, 'tokens', (SELECT id FROM providers WHERE code = 'deepseek'), 'text', '{"text": true, "chat": true, "code": true, "reasoning": true}', 'active', 'DeepSeek R1 Distilled Qwen 32B - Efficient reasoning model', NULL, NULL, NULL),
+('deepseek/deepseek-r1-distill-qwen-14b', 'DeepSeek R1 Distill Qwen 14B', 32768, 0.070000, 0.140000, 'token_based', 0.000000, 0, 'tokens', (SELECT id FROM providers WHERE code = 'deepseek'), 'text', '{"text": true, "chat": true, "code": true, "reasoning": true}', 'active', 'DeepSeek R1 Distilled Qwen 14B - Compact reasoning model', NULL, NULL, NULL),
 
--- Transcription models
-('openai/gpt-4o-transcribe',       'GPT-4o Transcribe', 0, 0.000000, 0.000000, 'duration_based', 0.050000, 10, 'seconds', (SELECT id FROM providers WHERE code = 'openai_transcription'), 'transcription', '{"transcription": true, "audio_processing": true, "multi_language": true}', 'active', 'OpenAI GPT-4o based transcription model'),
-('openai/gpt-4o-mini-transcribe',  'GPT-4o Mini Transcribe', 0, 0.000000, 0.000000, 'duration_based', 0.025000, 10, 'seconds', (SELECT id FROM providers WHERE code = 'openai_transcription'), 'transcription', '{"transcription": true, "audio_processing": true, "multi_language": true}', 'active', 'OpenAI GPT-4o Mini based transcription model for cost-effective transcription')
+-- Transcription models (duration-based pricing)
+('openai/gpt-4o-transcribe',       'GPT-4o Transcribe', 0, 0.000000, 0.000000, 'duration_based', 0.050000, 10, 'seconds', (SELECT id FROM providers WHERE code = 'openai'), 'transcription', '{"transcription": true, "audio_processing": true, "multi_language": true}', 'active', 'OpenAI GPT-4o based transcription model', NULL, NULL, NULL),
+('openai/gpt-4o-mini-transcribe',  'GPT-4o Mini Transcribe', 0, 0.000000, 0.000000, 'duration_based', 0.025000, 10, 'seconds', (SELECT id FROM providers WHERE code = 'openai'), 'transcription', '{"transcription": true, "audio_processing": true, "multi_language": true}', 'active', 'OpenAI GPT-4o Mini based transcription model for cost-effective transcription', NULL, NULL, NULL)
 
 ON CONFLICT (id) DO UPDATE SET
 name                       = EXCLUDED.name,
@@ -281,7 +286,10 @@ provider_id               = EXCLUDED.provider_id,
 model_type                = EXCLUDED.model_type,
 capabilities              = EXCLUDED.capabilities,
 status                    = EXCLUDED.status,
-description               = EXCLUDED.description;
+description               = EXCLUDED.description,
+price_input_long_context  = EXCLUDED.price_input_long_context,
+price_output_long_context = EXCLUDED.price_output_long_context,
+long_context_threshold    = EXCLUDED.long_context_threshold;
 
 
 
@@ -307,7 +315,7 @@ INSERT INTO subscription_plans (
  NULL, NULL, NULL, 0,
  '{
    "coreFeatures": ["Basic AI models", "Community support", "Usage analytics"],
-   "allowedModels": ["anthropic/claude-sonnet-4", "openai/gpt-4.1-mini"],
+   "allowedModels": ["anthropic/claude-4-sonnet", "openai/gpt-4.1-mini"],
    "supportLevel": "Community",
    "apiAccess": false,
    "analyticsLevel": "Basic",
@@ -721,18 +729,18 @@ INSERT INTO application_configurations (config_key, config_value, description)
 VALUES 
 ('ai_settings', '{
   "default_llm_model_id": "google/gemini-2.5-pro",
-  "default_voice_model_id": "anthropic/claude-sonnet-4", 
+  "default_voice_model_id": "anthropic/claude-4-sonnet", 
   "default_transcription_model_id": "openai/gpt-4o-transcribe",
   "default_temperature": 0.7,
   "default_max_tokens": 4096,
   "task_specific_configs": {
     "implementation_plan": {"model": "google/gemini-2.5-pro", "max_tokens": 65536, "temperature": 0.7, "copyButtons": [{"label": "Copy Full Plan", "content": "{{FULL_PLAN}}"}, {"label": "Copy for AI Agent", "content": "I need you to implement the following plan. Read it carefully and execute each step completely.\n\n{{FULL_PLAN}}\n\nPlease implement this plan step by step, ensuring you:\n1. Follow the exact file operations specified\n2. Maintain existing code patterns and conventions\n3. Test your changes thoroughly\n4. Ask for clarification if any step is unclear"}, {"label": "Copy Implementation Brief", "content": "Implementation Plan Summary:\n\n{{FULL_PLAN}}\n\nKey Points:\n- Follow the step-by-step approach outlined above\n- Maintain consistency with existing codebase patterns\n- Focus on the specific file operations mentioned\n- Ensure all changes integrate properly with the current architecture"}]},
     "path_finder": {"model": "google/gemini-2.5-flash", "max_tokens": 8192, "temperature": 0.3, "copyButtons": [{"label": "Copy Results", "content": "{{FULL_RESPONSE}}"}, {"label": "Copy File Paths", "content": "{{FILE_PATHS}}"}]},
-    "text_improvement": {"model": "anthropic/claude-sonnet-4", "max_tokens": 4096, "temperature": 0.7, "copyButtons": [{"label": "Copy Improved Text", "content": "{{FULL_RESPONSE}}"}, {"label": "Copy Changes Only", "content": "{{CHANGES_SUMMARY}}"}]},
+    "text_improvement": {"model": "anthropic/claude-4-sonnet", "max_tokens": 4096, "temperature": 0.7, "copyButtons": [{"label": "Copy Improved Text", "content": "{{FULL_RESPONSE}}"}, {"label": "Copy Changes Only", "content": "{{CHANGES_SUMMARY}}"}]},
     "voice_transcription": {"model": "openai/gpt-4o-transcribe", "max_tokens": 4096, "temperature": 0.0, "copyButtons": [{"label": "Copy Transcription", "content": "{{FULL_RESPONSE}}"}, {"label": "Copy Plain Text", "content": "{{TEXT_ONLY}}"}]},
-    "text_correction": {"model": "anthropic/claude-sonnet-4", "max_tokens": 2048, "temperature": 0.5, "copyButtons": [{"label": "Copy Corrected Text", "content": "{{FULL_RESPONSE}}"}, {"label": "Copy Original", "content": "{{ORIGINAL_TEXT}}"}]},
+    "text_correction": {"model": "anthropic/claude-4-sonnet", "max_tokens": 2048, "temperature": 0.5, "copyButtons": [{"label": "Copy Corrected Text", "content": "{{FULL_RESPONSE}}"}, {"label": "Copy Original", "content": "{{ORIGINAL_TEXT}}"}]},
     "path_correction": {"model": "google/gemini-2.5-flash", "max_tokens": 4096, "temperature": 0.3, "copyButtons": [{"label": "Copy Corrected Paths", "content": "{{FULL_RESPONSE}}"}, {"label": "Copy Path List", "content": "{{PATH_LIST}}"}]},
-    "regex_pattern_generation": {"model": "anthropic/claude-sonnet-4", "max_tokens": 1000, "temperature": 0.2, "copyButtons": [{"label": "Copy Regex Pattern", "content": "{{REGEX_PATTERN}}"}, {"label": "Copy Full Response", "content": "{{FULL_RESPONSE}}"}]},
+    "regex_pattern_generation": {"model": "anthropic/claude-4-sonnet", "max_tokens": 1000, "temperature": 0.2, "copyButtons": [{"label": "Copy Regex Pattern", "content": "{{REGEX_PATTERN}}"}, {"label": "Copy Full Response", "content": "{{FULL_RESPONSE}}"}]},
     "guidance_generation": {"model": "google/gemini-2.5-pro", "max_tokens": 8192, "temperature": 0.7, "copyButtons": [{"label": "Copy Guidance", "content": "{{FULL_RESPONSE}}"}, {"label": "Copy Summary", "content": "{{GUIDANCE_SUMMARY}}"}]},
     "task_refinement": {"model": "google/gemini-2.5-flash", "max_tokens": 2048, "temperature": 0.3, "copyButtons": [{"label": "Copy Refined Task", "content": "{{FULL_RESPONSE}}"}, {"label": "Copy Task Description", "content": "{{TASK_DESCRIPTION}}"}]},
     "extended_path_finder": {"model": "google/gemini-2.5-flash", "max_tokens": 8192, "temperature": 0.3, "copyButtons": [{"label": "Copy Results", "content": "{{FULL_RESPONSE}}"}, {"label": "Copy Paths", "content": "{{PATH_RESULTS}}"}]},

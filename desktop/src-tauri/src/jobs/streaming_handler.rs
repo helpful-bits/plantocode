@@ -103,9 +103,10 @@ impl StreamedResponseHandler {
                         ).await?;
                     }
                     
-                    // Check for final usage information
+                    // Check for final usage information including server-calculated cost
                     if chunk.usage.is_some() {
                         final_usage = chunk.usage;
+                        debug!("Received usage information from server: {:?}", final_usage);
                     }
                     
                     // Check for completion
@@ -125,15 +126,17 @@ impl StreamedResponseHandler {
             }
         }
         
-        // Use final usage from stream or create estimated usage
+        // Use final usage from stream (with server-calculated cost) or create estimated usage
         let usage_result = if let Some(usage) = final_usage {
+            debug!("Using server-provided usage information with cost: {:?}", usage.cost);
             Some(usage)
         } else {
+            debug!("No server usage received, creating estimated usage without cost");
             Some(OpenRouterUsage {
                 prompt_tokens: self.config.prompt_tokens as i32,
                 completion_tokens: tokens_received as i32,
                 total_tokens: (self.config.prompt_tokens + tokens_received as usize) as i32,
-                cost: None,
+                cost: None, // No cost available for estimated usage
             })
         };
         

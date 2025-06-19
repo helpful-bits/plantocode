@@ -55,7 +55,7 @@ The server exposes the following proxy endpoints:
 Each API request is tracked in the `api_usage` table with:
 
 - `user_id`: The ID of the user making the request
-- `service_name`: The API service being used (e.g., "openai/gpt-4o-transcribe", "anthropic/claude-sonnet-4")
+- `service_name`: The API service being used (e.g., "openai/gpt-4o-transcribe", "anthropic/claude-4-sonnet")
 - `tokens_input`: Number of input tokens used
 - `tokens_output`: Number of output tokens generated
 - `cost`: Calculated cost of the request

@@ -22,6 +22,7 @@ pub struct UsageInclude {
 }
 
 // Base URL for OpenRouter API
+// This client is specifically used for DeepSeek models routed through OpenRouter
 const OPENROUTER_BASE_URL: &str = "https://openrouter.ai/api/v1";
 
 // OpenRouter Chat Completion Request Structs

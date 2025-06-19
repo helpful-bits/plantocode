@@ -135,8 +135,8 @@ export function ModelSelector({ providers, selectedModelId, onSelect, disableToo
                             <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
                               <span>{formatContextWindow(model.contextWindow)} tokens</span>
                               <span>
-                                {formatPrice(model.priceInputPerKiloTokens)}/
-                                {formatPrice(model.priceOutputPerKiloTokens)}
+                                {formatPrice(model.priceInputPerMillion)}/
+                                {formatPrice(model.priceOutputPerMillion)}
                               </span>
                             </div>
                           </div>
@@ -176,11 +176,11 @@ export function ModelSelector({ providers, selectedModelId, onSelect, disableToo
                                 </div>
                                 <div className="flex justify-between">
                                   <span>Input Price (per 1M):</span>
-                                  <span>{formatPrice(model.priceInputPerKiloTokens)}</span>
+                                  <span>{formatPrice(model.priceInputPerMillion)}</span>
                                 </div>
                                 <div className="flex justify-between">
                                   <span>Output Price (per 1M):</span>
-                                  <span>{formatPrice(model.priceOutputPerKiloTokens)}</span>
+                                  <span>{formatPrice(model.priceOutputPerMillion)}</span>
                                 </div>
                               </div>
                             </div>

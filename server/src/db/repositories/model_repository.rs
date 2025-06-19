@@ -24,6 +24,10 @@ pub struct Model {
     pub status: String,
     pub description: Option<String>,
     pub created_at: DateTime<Utc>,
+    // Tiered pricing support for models like Gemini 2.5 Pro
+    pub price_input_long_context: Option<BigDecimal>,
+    pub price_output_long_context: Option<BigDecimal>,
+    pub long_context_threshold: Option<i32>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -42,6 +46,10 @@ pub struct ModelWithProvider {
     pub status: String,
     pub description: Option<String>,
     pub created_at: DateTime<Utc>,
+    // Tiered pricing support for models like Gemini 2.5 Pro
+    pub price_input_long_context: Option<BigDecimal>,
+    pub price_output_long_context: Option<BigDecimal>,
+    pub long_context_threshold: Option<i32>,
     // Provider information
     pub provider_id: i32,
     pub provider_code: String,
@@ -51,6 +59,85 @@ pub struct ModelWithProvider {
     pub provider_api_base: Option<String>,
     pub provider_capabilities: serde_json::Value,
     pub provider_status: String,
+}
+
+impl ModelWithProvider {
+    /// Check if this model uses duration-based pricing
+    pub fn is_duration_based(&self) -> bool {
+        self.pricing_type == "duration_based"
+    }
+
+    /// Calculate cost for duration-based models (e.g., voice transcription)
+    pub fn calculate_duration_cost(&self, duration_ms: i64, markup_percentage: &BigDecimal) -> AppResult<BigDecimal> {
+        if !self.is_duration_based() {
+            return Err(AppError::Internal(
+                format!("Model {} is not duration-based", self.id)
+            ));
+        }
+
+        let price_per_hour = self.price_per_hour.as_ref()
+            .ok_or_else(|| AppError::Internal(
+                format!("Model {} missing price_per_hour", self.id)
+            ))?;
+
+        // Apply minimum billing if specified
+        let minimum_duration_ms = self.minimum_billable_seconds
+            .map(|secs| secs as i64 * 1000)
+            .unwrap_or(0);
+        
+        let billable_duration_ms = std::cmp::max(duration_ms, minimum_duration_ms);
+        
+        // Convert to hours and calculate cost
+        let hours = BigDecimal::from(billable_duration_ms) / BigDecimal::from(3600000); // 1 hour = 3,600,000 ms
+        let base_cost = price_per_hour * hours;
+        let final_cost = base_cost * (BigDecimal::from(1) + markup_percentage);
+        
+        Ok(final_cost)
+    }
+
+    /// Get the minimum billable duration in milliseconds
+    pub fn get_minimum_billable_duration_ms(&self) -> i64 {
+        self.minimum_billable_seconds
+            .map(|secs| secs as i64 * 1000)
+            .unwrap_or(0)
+    }
+
+    /// Calculate cost for token-based models (e.g., chat completions)
+    /// Supports tiered pricing for models like Gemini 2.5 Pro
+    pub fn calculate_token_cost(&self, tokens_input: i32, tokens_output: i32, markup_percentage: &BigDecimal) -> AppResult<BigDecimal> {
+        if self.is_duration_based() {
+            return Err(AppError::Internal(
+                format!("Model {} is duration-based, token pricing is not applicable", self.id)
+            ));
+        }
+
+        // Calculate cost using BigDecimal arithmetic: (tokens / 1000000) * price_per_million
+        let million = BigDecimal::from(1000000);
+        let tokens_input_bd = BigDecimal::from(tokens_input);
+        let tokens_output_bd = BigDecimal::from(tokens_output);
+        
+        // Check if this model has tiered pricing (e.g., Gemini 2.5 Pro)
+        let (input_price, output_price) = if let (Some(threshold), Some(long_input_price), Some(long_output_price)) = 
+            (&self.long_context_threshold, &self.price_input_long_context, &self.price_output_long_context) {
+            
+            // Apply Google's tiered pricing rule: if input > threshold, ALL tokens use long-context rates
+            if tokens_input > *threshold {
+                (long_input_price, long_output_price)
+            } else {
+                (&self.price_input, &self.price_output)
+            }
+        } else {
+            // Regular pricing for models without tiered pricing
+            (&self.price_input, &self.price_output)
+        };
+        
+        let input_cost = (&tokens_input_bd / &million) * input_price;
+        let output_cost = (&tokens_output_bd / &million) * output_price;
+        let base_cost = input_cost + output_cost;
+        let final_cost = base_cost * (BigDecimal::from(1) + markup_percentage);
+        
+        Ok(final_cost)
+    }
 }
 
 impl Model {
@@ -95,6 +182,7 @@ impl Model {
     }
 
     /// Calculate cost for token-based models (e.g., chat completions)
+    /// Supports tiered pricing for models like Gemini 2.5 Pro
     pub fn calculate_token_cost(&self, tokens_input: i32, tokens_output: i32, markup_percentage: &BigDecimal) -> AppResult<BigDecimal> {
         if self.is_duration_based() {
             return Err(AppError::Internal(
@@ -102,13 +190,28 @@ impl Model {
             ));
         }
 
-        // Calculate cost using BigDecimal arithmetic: (tokens / 1000) * price_per_1k
-        let thousand = BigDecimal::from(1000);
+        // Calculate cost using BigDecimal arithmetic: (tokens / 1000000) * price_per_million
+        let million = BigDecimal::from(1000000);
         let tokens_input_bd = BigDecimal::from(tokens_input);
         let tokens_output_bd = BigDecimal::from(tokens_output);
         
-        let input_cost = (&tokens_input_bd / &thousand) * &self.price_input;
-        let output_cost = (&tokens_output_bd / &thousand) * &self.price_output;
+        // Check if this model has tiered pricing (e.g., Gemini 2.5 Pro)
+        let (input_price, output_price) = if let (Some(threshold), Some(long_input_price), Some(long_output_price)) = 
+            (&self.long_context_threshold, &self.price_input_long_context, &self.price_output_long_context) {
+            
+            // Apply Google's tiered pricing rule: if input > threshold, ALL tokens use long-context rates
+            if tokens_input > *threshold {
+                (long_input_price, long_output_price)
+            } else {
+                (&self.price_input, &self.price_output)
+            }
+        } else {
+            // Regular pricing for models without tiered pricing
+            (&self.price_input, &self.price_output)
+        };
+        
+        let input_cost = (&tokens_input_bd / &million) * input_price;
+        let output_cost = (&tokens_output_bd / &million) * output_price;
         let base_cost = input_cost + output_cost;
         let final_cost = base_cost * (BigDecimal::from(1) + markup_percentage);
         
@@ -144,6 +247,7 @@ impl ModelRepository {
                    m.pricing_type, m.price_per_hour, m.minimum_billable_seconds,
                    m.billing_unit, m.model_type, m.capabilities, m.status,
                    m.description, m.created_at,
+                   m.price_input_long_context, m.price_output_long_context, m.long_context_threshold,
                    p.id as provider_id, p.code as provider_code, p.name as provider_name,
                    p.description as provider_description, p.website_url as provider_website,
                    p.api_base_url as provider_api_base, p.capabilities as provider_capabilities,
@@ -173,6 +277,9 @@ impl ModelRepository {
             status: row.status,
             description: row.description,
             created_at: row.created_at,
+            price_input_long_context: row.price_input_long_context,
+            price_output_long_context: row.price_output_long_context,
+            long_context_threshold: row.long_context_threshold,
             provider_id: row.provider_id,
             provider_code: row.provider_code,
             provider_name: row.provider_name,
@@ -203,6 +310,7 @@ impl ModelRepository {
                    m.capabilities,
                    m.status,
                    m.description, m.created_at,
+                   m.price_input_long_context, m.price_output_long_context, m.long_context_threshold,
                    p.id as provider_id, p.code as provider_code, p.name as provider_name,
                    p.description as provider_description, p.website_url as provider_website,
                    p.api_base_url as provider_api_base, p.capabilities as provider_capabilities,
@@ -234,6 +342,9 @@ impl ModelRepository {
             status: row.status,
             description: row.description,
             created_at: row.created_at,
+            price_input_long_context: row.price_input_long_context,
+            price_output_long_context: row.price_output_long_context,
+            long_context_threshold: row.long_context_threshold,
             provider_id: row.provider_id,
             provider_code: row.provider_code,
             provider_name: row.provider_name,
@@ -256,7 +367,7 @@ impl ModelRepository {
     #[instrument(skip(self))]
     pub async fn find_by_id(&self, id: &str) -> AppResult<Option<Model>> {
         let model = query_as::<_, Model>(
-            "SELECT id, name, context_window, price_input, price_output, pricing_type, price_per_hour, minimum_billable_seconds, billing_unit, provider_id, model_type, capabilities, status, description, created_at FROM models WHERE id = $1 AND status = 'active'"
+            "SELECT id, name, context_window, price_input, price_output, pricing_type, price_per_hour, minimum_billable_seconds, billing_unit, provider_id, model_type, capabilities, status, description, created_at, price_input_long_context, price_output_long_context, long_context_threshold FROM models WHERE id = $1 AND status = 'active'"
         )
             .bind(id)
             .fetch_optional(&*self.pool)
@@ -280,6 +391,7 @@ impl ModelRepository {
                    m.capabilities,
                    m.status,
                    m.description, m.created_at,
+                   m.price_input_long_context, m.price_output_long_context, m.long_context_threshold,
                    p.id as provider_id, p.code as provider_code, p.name as provider_name,
                    p.description as provider_description, p.website_url as provider_website,
                    p.api_base_url as provider_api_base, p.capabilities as provider_capabilities,
@@ -312,6 +424,9 @@ impl ModelRepository {
             status: row.status,
             description: row.description,
             created_at: row.created_at,
+            price_input_long_context: row.price_input_long_context,
+            price_output_long_context: row.price_output_long_context,
+            long_context_threshold: row.long_context_threshold,
             provider_id: row.provider_id,
             provider_code: row.provider_code,
             provider_name: row.provider_name,
@@ -341,6 +456,7 @@ impl ModelRepository {
                    m.capabilities,
                    m.status,
                    m.description, m.created_at,
+                   m.price_input_long_context, m.price_output_long_context, m.long_context_threshold,
                    p.id as provider_id, p.code as provider_code, p.name as provider_name,
                    p.description as provider_description, p.website_url as provider_website,
                    p.api_base_url as provider_api_base, p.capabilities as provider_capabilities,
@@ -373,6 +489,9 @@ impl ModelRepository {
             status: row.status,
             description: row.description,
             created_at: row.created_at,
+            price_input_long_context: row.price_input_long_context,
+            price_output_long_context: row.price_output_long_context,
+            long_context_threshold: row.long_context_threshold,
             provider_id: row.provider_id,
             provider_code: row.provider_code,
             provider_name: row.provider_name,

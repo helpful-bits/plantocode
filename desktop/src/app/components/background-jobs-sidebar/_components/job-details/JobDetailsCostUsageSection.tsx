@@ -24,13 +24,26 @@ export function JobDetailsCostUsageSection() {
     );
   }
 
-  const totalCost = job.cost || 0;
+  // Handle server-calculated cost number for display
+  // Handle null/undefined/invalid cost values gracefully
+  const totalCost = (() => {
+    if (job.cost == null || job.cost === 0) {
+      return 0;
+    }
+    // Ensure it's a valid number
+    if (typeof job.cost === 'number' && !isNaN(job.cost) && isFinite(job.cost)) {
+      return job.cost;
+    }
+    // Fallback for any unexpected values
+    console.warn('Invalid cost value:', job.cost);
+    return 0;
+  })();
   
   const inputTokens = job.tokensSent || 0;
   const outputTokens = job.tokensReceived || 0;
   const totalTokens = (inputTokens + outputTokens);
   
-  const hasCostData = job.cost != null && job.cost > 0;
+  const hasCostData = totalCost > 0;
 
   return (
     <Card>

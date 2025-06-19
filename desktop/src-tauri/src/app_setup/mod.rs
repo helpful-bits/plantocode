@@ -57,6 +57,12 @@ pub async fn run_async_initialization(app_handle: &AppHandle) -> Result<(), AppE
         return Err(e);
     }
 
+    // Initialize configuration sync manager
+    if let Err(e) = config::initialize_config_sync(app_handle).await {
+        warn!("Configuration sync initialization failed (non-critical): {}", e);
+        // Don't fail startup for config sync issues
+    }
+
     info!("Asynchronous application initialization completed successfully.");
     Ok(())
 }

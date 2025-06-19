@@ -105,9 +105,12 @@ impl LlmTaskRunner {
             .map(|choice| choice.message.content.clone())
             .unwrap_or_default();
         
+        // Ensure we capture server-calculated cost from the non-streaming response
+        debug!("Non-streaming LLM response usage: {:?}", response.usage);
+        
         Ok(LlmTaskResult {
             response: response_text,
-            usage: response.usage,
+            usage: response.usage, // Contains server-calculated cost
             system_prompt_id,
         })
     }
@@ -167,9 +170,12 @@ impl LlmTaskRunner {
             .process_stream_from_client_with_messages(&llm_client, messages, api_options)
             .await?;
         
+        // Ensure we capture server-calculated cost from the streaming response
+        debug!("Streaming LLM response usage: {:?}", stream_result.final_usage);
+        
         Ok(LlmTaskResult {
             response: stream_result.accumulated_response,
-            usage: stream_result.final_usage,
+            usage: stream_result.final_usage, // Contains server-calculated cost from final stream chunk
             system_prompt_id,
         })
     }

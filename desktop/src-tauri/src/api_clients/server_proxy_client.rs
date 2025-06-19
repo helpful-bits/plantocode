@@ -356,8 +356,8 @@ impl ApiClient for ServerProxyClient {
             temperature: Some(options.temperature),
         };
         
-        // Create the server proxy endpoint URL for OpenRouter
-        let proxy_url = format!("{}/api/proxy/openrouter/chat/completions", self.server_url);
+        // Create the server proxy endpoint URL for LLM chat completions
+        let proxy_url = format!("{}/api/llm/chat/completions", self.server_url);
         
         let response = self.http_client
             .post(&proxy_url)
@@ -411,8 +411,8 @@ impl ApiClient for ServerProxyClient {
             temperature: Some(options.temperature),
         };
         
-        // Create the server proxy endpoint URL for streaming OpenRouter chat
-        let proxy_url = format!("{}/api/proxy/openrouter/chat/completions", self.server_url);
+        // Create the server proxy endpoint URL for streaming LLM chat completions
+        let proxy_url = format!("{}/api/llm/chat/completions", self.server_url);
         
         let response = self.http_client
             .post(&proxy_url)

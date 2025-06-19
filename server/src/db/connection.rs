@@ -126,18 +126,6 @@ async fn create_pool_with_role(
     Err(AppError::Database(error.to_string()))
 }
 
-/// Creates a PostgreSQL connection pool from the DATABASE_URL environment variable.
-///
-/// This function is the central point for database connection management.
-/// It configures the connection pool with appropriate timeout and connection limits.
-/// If the database is not available, it will retry a few times before failing.
-/// 
-/// NOTE: This is kept for backward compatibility. Consider using create_dual_pools() for new code.
-pub async fn create_pool() -> Result<PgPool, AppError> {
-    // For backward compatibility, create a system pool
-    log::warn!("Using deprecated create_pool(). Consider upgrading to create_dual_pools() for better security.");
-    create_system_pool().await
-}
 
 /// Verifies the database connection by executing a simple query.
 /// This is useful for health checks and ensuring the database is accessible.
@@ -164,20 +152,11 @@ mod tests {
     use super::*;
     
     #[tokio::test]
-    async fn test_create_pool() {
-        // This test will only run if DATABASE_URL is set in the environment
-        if let Ok(_) = env::var("DATABASE_URL") {
-            let pool = create_pool().await;
-            // We don't assert pool.is_ok() because it depends on the database being available
-        }
-    }
-    
-    #[tokio::test]
     async fn test_verify_connection() {
         // This test will only run if DATABASE_URL is set in the environment
         if let Ok(_) = env::var("DATABASE_URL") {
-            if let Ok(pool) = create_pool().await {
-                let result = verify_connection(&pool).await;
+            if let Ok(pools) = create_dual_pools().await {
+                let result = verify_connection(&pools.system_pool).await;
                 // We don't assert result.is_ok() because it depends on the database being available
             }
         }
