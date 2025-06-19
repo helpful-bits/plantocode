@@ -40,8 +40,9 @@ pub struct ServerConfig {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ApiKeysConfig {
     pub openrouter_api_key: Option<String>,
-    pub replicate_api_token: Option<String>,
     pub openai_api_key: Option<String>,
+    pub anthropic_api_key: Option<String>,
+    pub google_api_key: Option<String>,
     pub auth0_domain: String,
     pub auth0_api_audience: String,
     pub auth0_server_client_id: Option<String>,
@@ -123,8 +124,9 @@ impl AppSettings {
         
         // API keys
         let openrouter_api_key = env::var("OPENROUTER_API_KEY").ok();
-        let replicate_api_token = env::var("REPLICATE_API_TOKEN").ok();
         let openai_api_key = env::var("OPENAI_API_KEY").ok();
+        let anthropic_api_key = env::var("ANTHROPIC_API_KEY").ok();
+        let google_api_key = env::var("GOOGLE_API_KEY").ok();
         
         let auth0_domain = env::var("AUTH0_DOMAIN")
             .map_err(|_| AppError::Configuration("AUTH0_DOMAIN must be set".to_string()))?;
@@ -228,8 +230,9 @@ impl AppSettings {
             },
             api_keys: ApiKeysConfig {
                 openrouter_api_key,
-                replicate_api_token,
                 openai_api_key,
+                anthropic_api_key,
+                google_api_key,
                 auth0_domain,
                 auth0_api_audience,
                 auth0_server_client_id,

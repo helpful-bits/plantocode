@@ -162,7 +162,6 @@ impl std::fmt::Display for ServiceProvider {
 pub enum ApiProvider {
     Gemini,
     Claude,
-    Whisper,
     Replicate,
     OpenAI,
     Anthropic,
@@ -174,7 +173,6 @@ impl ApiProvider {
         match self {
             ApiProvider::Gemini => "gemini",
             ApiProvider::Claude => "claude",
-            ApiProvider::Whisper => "whisper",
             ApiProvider::Replicate => "replicate",
             ApiProvider::OpenAI => "openai",
             ApiProvider::Anthropic => "anthropic",
@@ -186,7 +184,6 @@ impl ApiProvider {
         vec![
             Self::Gemini.as_str(),
             Self::Claude.as_str(), 
-            Self::Whisper.as_str(),
             Self::Replicate.as_str(),
             Self::OpenAI.as_str(),
             Self::Anthropic.as_str(),

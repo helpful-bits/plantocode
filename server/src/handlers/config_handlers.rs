@@ -58,10 +58,10 @@ pub struct DesktopModelInfo {
     pub description: Option<String>,
     /// Context window size in tokens
     pub context_window: Option<u32>,
-    /// Price input per kilo tokens in USD
-    pub price_input_per_kilo_tokens: String,
-    /// Price output per kilo tokens in USD
-    pub price_output_per_kilo_tokens: String,
+    /// Price input per million tokens in USD
+    pub price_input_per_million: String,
+    /// Price output per million tokens in USD
+    pub price_output_per_million: String,
 }
 
 /// Handler for GET /api/config/desktop-runtime-config endpoint for desktop app
@@ -96,8 +96,8 @@ pub async fn get_desktop_runtime_ai_config(
             provider_name: model.provider_name.clone(),
             description: model.description.clone(),
             context_window: Some(model.context_window as u32),
-            price_input_per_kilo_tokens: model.price_input.to_string(),
-            price_output_per_kilo_tokens: model.price_output.to_string(),
+            price_input_per_million: model.price_input.to_string(),
+            price_output_per_million: model.price_output.to_string(),
         };
         
         provider_models.entry(model.provider_name.clone())
@@ -125,8 +125,8 @@ pub async fn get_desktop_runtime_ai_config(
                 provider_name: model.provider_name.clone(),
                 description: model.description.clone(),
                 context_window: Some(model.context_window as u32),
-                price_input_per_kilo_tokens: model.price_input.to_string(),
-                price_output_per_kilo_tokens: model.price_output.to_string(),
+                price_input_per_million: model.price_input.to_string(),
+                price_output_per_million: model.price_output.to_string(),
             };
             
             transcription_provider_models.push(desktop_model);

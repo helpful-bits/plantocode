@@ -449,7 +449,6 @@ pub fn validate_rate_limit(
 pub fn validate_server_config(config: &serde_json::Value) -> ValidationResult<()> {
     // Required configuration fields
     let required_fields = [
-        "replicate_api_token",
         "max_file_size_mb",
         "default_language",
         "default_temperature",

@@ -356,7 +356,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(web::Data::new(db_pools.clone())) // Provide both pools
             .app_data(auth0_oauth_service)
             .app_data(web::Data::new(billing_service.clone()))
-            .app_data(web::Data::new(cost_based_billing_service.as_ref().clone()))
+            .app_data(web::Data::new((*cost_based_billing_service).clone()))
             .app_data(web::Data::new(credit_service))
             .app_data(app_state.clone())
             .app_data(tera.clone())
@@ -364,9 +364,10 @@ async fn main() -> std::io::Result<()> {
             .app_data(auth0_state_store.clone())
             .app_data(http_client.clone())
             .app_data(web::Data::new(user_repository.clone()))
-            .app_data(web::Data::new(app_state.model_repository.clone()))
+            .app_data(web::Data::new((*app_state.model_repository).clone()))
             .app_data(web::Data::new(system_prompts_repository.clone()))
             .app_data(web::Data::new(credit_pack_repository.clone()))
+            .app_data(web::Data::new(app_settings.clone()))
             
             // Register health check endpoint with IP-based rate limiting
             .service(

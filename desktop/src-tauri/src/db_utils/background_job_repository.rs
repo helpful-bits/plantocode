@@ -642,7 +642,7 @@ impl BackgroundJobRepository {
         Ok(())
     }
     
-    /// Mark a job as canceled with optional reason
+    /// Mark a job as canceled with optional reason and cost tracking
     pub async fn mark_job_canceled(&self, job_id: &str, reason: &str) -> AppResult<()> {
         let now = get_timestamp();
         
@@ -663,6 +663,83 @@ impl BackgroundJobRepository {
             .execute(&*self.pool)
             .await
             .map_err(|e| AppError::DatabaseError(format!("Failed to mark job as canceled: {}", e)))?;
+            
+        Ok(())
+    }
+
+    /// Mark a job as canceled with optional reason, cost, and usage tracking
+    pub async fn mark_job_canceled_with_cost(
+        &self, 
+        job_id: &str, 
+        reason: &str,
+        tokens_sent: Option<i32>,
+        tokens_received: Option<i32>,
+        model_used: Option<&str>,
+        cost: Option<BigDecimal>
+    ) -> AppResult<()> {
+        let now = get_timestamp();
+        
+        // Build the SQL dynamically based on which parameters are provided
+        let mut final_query = String::from("UPDATE background_jobs SET status = $1, error_message = $2, updated_at = $3, end_time = $4");
+        let mut param_index = 5;
+        
+        if tokens_sent.is_some() {
+            final_query.push_str(&format!(", tokens_sent = ${}", param_index));
+            param_index += 1;
+        }
+        
+        if tokens_received.is_some() {
+            final_query.push_str(&format!(", tokens_received = ${}", param_index));
+            param_index += 1;
+        }
+        
+        if model_used.is_some() {
+            final_query.push_str(&format!(", model_used = ${}", param_index));
+            param_index += 1;
+        }
+        
+        if cost.is_some() {
+            final_query.push_str(&format!(", cost = ${}", param_index));
+            param_index += 1;
+        }
+        
+        // Add the WHERE clause
+        final_query.push_str(&format!(" WHERE id = ${}", param_index));
+        
+        // Create and execute the query
+        let mut query_obj = sqlx::query::<Sqlite>(&final_query);
+        
+        // Add the required bindings
+        query_obj = query_obj.bind(JobStatus::Canceled.to_string())
+                            .bind(reason)
+                            .bind(now)
+                            .bind(now);
+        
+        // Add conditional bindings
+        if let Some(ts) = tokens_sent {
+            query_obj = query_obj.bind(ts as i64);
+        }
+        
+        if let Some(tr) = tokens_received {
+            query_obj = query_obj.bind(tr as i64);
+        }
+        
+        if let Some(model) = model_used {
+            query_obj = query_obj.bind(model);
+        }
+        
+        if let Some(c) = cost {
+            query_obj = query_obj.bind(c.to_string());
+        }
+        
+        // Bind job_id last
+        query_obj = query_obj.bind(job_id);
+        
+        // Execute the query
+        query_obj
+            .execute(&*self.pool)
+            .await
+            .map_err(|e| AppError::DatabaseError(format!("Failed to mark job as canceled with cost: {}", e)))?;
             
         Ok(())
     }

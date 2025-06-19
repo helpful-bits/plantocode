@@ -48,8 +48,8 @@ export interface ModelInfo {
   providerName: string;
   description?: string;
   contextWindow?: number;
-  priceInputPerKiloTokens: string;
-  priceOutputPerKiloTokens: string;
+  priceInputPerMillion: string;
+  priceOutputPerMillion: string;
 }
 
 /**

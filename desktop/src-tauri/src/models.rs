@@ -491,16 +491,6 @@ pub struct NativeFileInfoRs {
     pub is_writable: Option<bool>, // Whether the file is writable
 }
 
-// Legacy FileStatInfo for backward compatibility (can be removed later)
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct FileStatInfo {
-    pub path: String,  // Relative path to the queried directory
-    pub size: u64,
-    pub modified_ms: i64,
-    pub created_ms: Option<i64>,
-    pub accessed_ms: Option<i64>,
-}
 
 // Response for list_files_command
 // Note: All file paths in this struct are expected to be relative to the queried directory
@@ -567,8 +557,8 @@ pub struct ModelInfo {
     pub description: Option<String>,
     #[serde(default)]
     pub context_window: Option<u32>,
-    pub price_input_per_kilo_tokens: String,
-    pub price_output_per_kilo_tokens: String,
+    pub price_input_per_million: String,
+    pub price_output_per_million: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

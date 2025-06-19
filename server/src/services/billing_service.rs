@@ -6,6 +6,7 @@ use crate::db::repositories::subscription_plan_repository::{SubscriptionPlanRepo
 use crate::db::repositories::spending_repository::SpendingRepository;
 use crate::db::repositories::user_credit_repository::UserCreditRepository;
 use crate::db::repositories::credit_transaction_repository::CreditTransactionRepository;
+use crate::db::repositories::model_repository::ModelRepository;
 use crate::services::cost_based_billing_service::CostBasedBillingService;
 use crate::services::email_notification_service::EmailNotificationService;
 use crate::services::audit_service::{AuditService, AuditContext};
@@ -57,6 +58,7 @@ impl BillingService {
         // System operations use system pool (including credit balance checks for billing)
         let subscription_plan_repository = Arc::new(SubscriptionPlanRepository::new(db_pools.system_pool.clone()));
         let user_credit_repository = Arc::new(UserCreditRepository::new(db_pools.system_pool.clone()));
+        let model_repository = Arc::new(ModelRepository::new(Arc::new(db_pools.system_pool.clone())));
         
         
         // Get default trial days from app settings
@@ -71,6 +73,7 @@ impl BillingService {
             spending_repository,
             user_credit_repository,
             credit_transaction_repository,
+            model_repository.clone(),
             default_trial_days,
         ));
         
