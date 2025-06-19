@@ -169,13 +169,12 @@ pub async fn get_credit_details(
 // Admin-only authorization middleware required
 /// Admin endpoint to adjust credits
 pub async fn admin_adjust_credits(
-    req: HttpRequest,
+    user_id: UserId,
     payload: web::Json<AdminAdjustCreditsRequest>,
     credit_service: web::Data<CreditService>,
 ) -> Result<HttpResponse, AppError> {
-    let _claims = req.extensions().get::<Claims>().ok_or_else(|| {
-        AppError::Unauthorized("Missing authentication claims".to_string())
-    })?.clone();
+    // User ID is already extracted by authentication middleware
+    let _admin_user_id = user_id.0;
     
     let request = payload.into_inner();
     

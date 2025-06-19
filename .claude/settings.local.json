@@ -140,7 +140,8 @@
       "Bash(PGPASSWORD='' psql -h localhost -p 5432 -U kirylkazlovich -d vibe_manager -c \"SELECT task_type, substr(system_prompt, 1, 300) || '...' as prompt_preview FROM default_system_prompts WHERE task_type = 'regex_pattern_generation';\")",
       "Bash(PGPASSWORD='' psql -h localhost -p 5432 -U kirylkazlovich -d vibe_manager -c \"SELECT system_prompt FROM default_system_prompts WHERE task_type = 'regex_pattern_generation';\" -t)",
       "Bash(SQLX_OFFLINE=true cargo check --quiet 2 >& 1)",
-      "WebFetch(domain:stripe.com)"
+      "WebFetch(domain:stripe.com)",
+      "WebFetch(domain:docs.anthropic.com)"
     ],
     "deny": []
   },

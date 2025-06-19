@@ -1,9 +1,16 @@
-use reqwest::{Client, multipart::{Form, Part}};
+use reqwest::{Client, multipart::{Form, Part}, header::HeaderMap};
 use serde::{Deserialize, Serialize};
+use serde_with::skip_serializing_none;
 use crate::config::settings::AppSettings;
 use crate::error::AppError;
 use base64::Engine;
 use tracing::{debug, info, instrument};
+use actix_web::web;
+use futures_util::{Stream, StreamExt};
+use serde_json::Value;
+use std::pin::Pin;
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
 // OpenAI API base URL
 const OPENAI_BASE_URL: &str = "https://api.openai.com/v1";
@@ -13,11 +20,121 @@ pub struct OpenAITranscriptionResponse {
     pub text: String,
 }
 
-#[derive(Debug, Clone)]
+// OpenAI Chat Completion Request Structs
+#[skip_serializing_none]
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct OpenAIChatRequest {
+    pub model: String,
+    pub messages: Vec<OpenAIMessage>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stream: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub temperature: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_tokens: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub top_p: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub frequency_penalty: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub presence_penalty: Option<f32>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct OpenAIMessage {
+    pub role: String,
+    pub content: OpenAIContent,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(untagged)]
+pub enum OpenAIContent {
+    Text(String),
+    Parts(Vec<OpenAIContentPart>),
+}
+
+#[skip_serializing_none]
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct OpenAIContentPart {
+    #[serde(rename = "type")]
+    pub part_type: String,
+    pub text: Option<String>,
+    pub image_url: Option<OpenAIImageUrl>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct OpenAIImageUrl {
+    pub url: String,
+    pub detail: Option<String>,
+}
+
+// OpenAI Chat Completion Response Structs
+#[derive(Debug, Deserialize, Serialize)]
+pub struct OpenAIChatResponse {
+    pub id: String,
+    pub choices: Vec<OpenAIChoice>,
+    pub created: Option<i64>,
+    pub model: String,
+    pub object: Option<String>,
+    pub usage: Option<OpenAIUsage>,
+}
+
+#[skip_serializing_none]
+#[derive(Debug, Deserialize, Serialize)]
+pub struct OpenAIChoice {
+    pub message: OpenAIResponseMessage,
+    pub index: i32,
+    pub finish_reason: Option<String>,
+}
+
+#[skip_serializing_none]
+#[derive(Debug, Deserialize, Serialize)]
+pub struct OpenAIResponseMessage {
+    pub role: String,
+    pub content: Option<String>,
+}
+
+#[skip_serializing_none]
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct OpenAIUsage {
+    pub prompt_tokens: i32,
+    pub completion_tokens: i32,
+    pub total_tokens: i32,
+}
+
+// OpenAI Streaming Structs
+#[skip_serializing_none]
+#[derive(Debug, Deserialize, Serialize)]
+pub struct OpenAIStreamChunk {
+    pub id: String,
+    pub choices: Vec<OpenAIStreamChoice>,
+    pub created: Option<i64>,
+    pub model: String,
+    pub object: Option<String>,
+    pub usage: Option<OpenAIUsage>,
+}
+
+#[skip_serializing_none]
+#[derive(Debug, Deserialize, Serialize)]
+pub struct OpenAIStreamChoice {
+    pub delta: OpenAIStreamDelta,
+    pub index: i32,
+    pub finish_reason: Option<String>,
+}
+
+#[skip_serializing_none]
+#[derive(Debug, Deserialize, Serialize)]
+pub struct OpenAIStreamDelta {
+    pub role: Option<String>,
+    pub content: Option<String>,
+}
+
+#[derive(Debug)]
 pub struct OpenAIClient {
     client: Client,
     api_key: String,
     base_url: String,
+    request_id_counter: Arc<Mutex<u64>>,
 }
 
 impl OpenAIClient {
@@ -36,7 +153,134 @@ impl OpenAIClient {
             client,
             api_key,
             base_url,
+            request_id_counter: Arc::new(Mutex::new(0)),
         })
+    }
+
+    async fn get_next_request_id(&self) -> u64 {
+        let mut counter = self.request_id_counter.lock().await;
+        *counter += 1;
+        *counter
+    }
+
+    // Chat Completions
+    #[instrument(skip(self, request), fields(model = %request.model))]
+    pub async fn chat_completion(
+        &self, 
+        request: OpenAIChatRequest
+    ) -> Result<(OpenAIChatResponse, HeaderMap, i32, i32), AppError> {
+        let request_id = self.get_next_request_id().await;
+        let url = format!("{}/chat/completions", self.base_url);
+        
+        let response = self.client
+            .post(&url)
+            .bearer_auth(&self.api_key)
+            .header("Content-Type", "application/json")
+            .header("X-Request-ID", request_id.to_string())
+            .json(&request)
+            .send()
+            .await
+            .map_err(|e| AppError::External(format!("OpenAI request failed: {}", e)))?;
+        
+        let status = response.status();
+        let headers = response.headers().clone();
+        
+        if !status.is_success() {
+            let error_text = response.text().await
+                .unwrap_or_else(|_| "Failed to get error response".to_string());
+            return Err(AppError::External(format!(
+                "OpenAI request failed with status {}: {}",
+                status, error_text
+            )));
+        }
+        
+        let result = response.json::<OpenAIChatResponse>().await
+            .map_err(|e| AppError::Internal(format!("OpenAI deserialization failed: {}", e)))?;
+            
+        let (prompt_tokens, completion_tokens) = if let Some(usage) = &result.usage {
+            (usage.prompt_tokens, usage.completion_tokens)
+        } else {
+            (0, 0)
+        };
+        
+        Ok((result, headers, prompt_tokens, completion_tokens))
+    }
+
+    // Streaming Chat Completions for actix-web compatibility
+    #[instrument(skip(self, request), fields(model = %request.model))]
+    pub async fn stream_chat_completion(
+        &self, 
+        request: OpenAIChatRequest
+    ) -> Result<(HeaderMap, Pin<Box<dyn Stream<Item = Result<web::Bytes, AppError>> + Send + 'static>>, Arc<Mutex<Option<(i32, i32)>>>), AppError> {
+        // Clone necessary parts for 'static lifetime
+        let client = self.client.clone();
+        let api_key = self.api_key.clone();
+        let base_url = self.base_url.clone();
+        let request_id_counter = self.request_id_counter.clone();
+        
+        // Shared token counter for streaming
+        let token_counter = Arc::new(Mutex::new(None::<(i32, i32)>));
+        let token_counter_clone = token_counter.clone();
+        
+        // Create the stream in an async move block to ensure 'static lifetime
+        let result = async move {
+            let request_id = {
+                let mut counter = request_id_counter.lock().await;
+                *counter += 1;
+                *counter
+            };
+            let url = format!("{}/chat/completions", base_url);
+            
+            // Ensure stream is set to true
+            let mut streaming_request = request.clone();
+            streaming_request.stream = Some(true);
+            
+            let response = client
+                .post(&url)
+                .bearer_auth(&api_key)
+                .header("Content-Type", "application/json")
+                .header("X-Request-ID", request_id.to_string())
+                .json(&streaming_request)
+                .send()
+                .await
+                .map_err(|e| AppError::External(format!("OpenAI request failed: {}", e)))?;
+            
+            let status = response.status();
+            let headers = response.headers().clone();
+            
+            if !status.is_success() {
+                let error_text = response.text().await
+                    .unwrap_or_else(|_| "Failed to get error response".to_string());
+                return Err(AppError::External(format!(
+                    "OpenAI streaming request failed with status {}: {}",
+                    status, error_text
+                )));
+            }
+            
+            // Return a stream that can be consumed by actix-web
+            let stream = response.bytes_stream()
+                .map(move |result| {
+                    match result {
+                        Ok(bytes) => {
+                            // Try to extract token information from chunk
+                            if let Ok(chunk_str) = std::str::from_utf8(&bytes) {
+                                if let Some((prompt_tokens, completion_tokens)) = Self::extract_tokens_from_chat_stream_chunk(chunk_str) {
+                                    if let Ok(mut counter) = token_counter_clone.try_lock() {
+                                        *counter = Some((prompt_tokens, completion_tokens));
+                                    }
+                                }
+                            }
+                            Ok(web::Bytes::from(bytes))
+                        },
+                        Err(e) => Err(AppError::External(format!("OpenAI network error: {}", e))),
+                    }
+                });
+                
+            let boxed_stream: Pin<Box<dyn Stream<Item = Result<web::Bytes, AppError>> + Send + 'static>> = Box::pin(stream);
+            Ok((headers, boxed_stream))
+        }.await?;
+        
+        Ok((result.0, result.1, token_counter))
     }
 
     /// Transcribe audio using OpenAI's direct API with GPT-4o-transcribe
@@ -201,5 +445,61 @@ impl OpenAIClient {
         }
 
         Ok(())
+    }
+
+    // Helper method to parse usage from a chat completion stream chunk
+    pub fn extract_usage_from_chat_stream_chunk(chunk_str: &str) -> Option<OpenAIUsage> {
+        // OpenAI streams are Server-Sent Events format
+        for line in chunk_str.lines() {
+            if line.starts_with("data: ") {
+                let json_str = &line[6..]; // Remove "data: " prefix
+                if json_str.trim() == "[DONE]" {
+                    continue;
+                }
+                
+                match serde_json::from_str::<OpenAIStreamChunk>(json_str.trim()) {
+                    Ok(parsed) => {
+                        if let Some(usage) = parsed.usage {
+                            return Some(usage);
+                        }
+                    },
+                    Err(_) => continue,
+                }
+            }
+        }
+        None
+    }
+    
+    // Helper method to extract tokens from a chat completion stream chunk
+    pub fn extract_tokens_from_chat_stream_chunk(chunk_str: &str) -> Option<(i32, i32)> {
+        Self::extract_usage_from_chat_stream_chunk(chunk_str).map(|usage| 
+            (usage.prompt_tokens, usage.completion_tokens)
+        )
+    }
+
+    // Convert a generic JSON Value into an OpenAIChatRequest
+    pub fn convert_to_chat_request(&self, payload: Value) -> Result<OpenAIChatRequest, AppError> {
+        serde_json::from_value(payload)
+            .map_err(|e| AppError::BadRequest(format!("Failed to convert payload to OpenAI chat request: {}", e)))
+    }
+    
+    // Helper functions for token and usage tracking
+    pub fn extract_tokens_from_chat_response(&self, response: &OpenAIChatResponse) -> (i32, i32) {
+        if let Some(usage) = &response.usage {
+            (usage.prompt_tokens, usage.completion_tokens)
+        } else {
+            (0, 0)
+        }
+    }
+}
+
+impl Clone for OpenAIClient {
+    fn clone(&self) -> Self {
+        Self {
+            client: Client::new(),
+            api_key: self.api_key.clone(),
+            base_url: self.base_url.clone(),
+            request_id_counter: self.request_id_counter.clone(),
+        }
     }
 }

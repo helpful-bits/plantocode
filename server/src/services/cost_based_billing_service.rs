@@ -5,6 +5,7 @@ use crate::db::repositories::subscription_plan_repository::SubscriptionPlanRepos
 use crate::db::repositories::spending_repository::{SpendingRepository, UserSpendingLimit};
 use crate::db::repositories::user_credit_repository::UserCreditRepository;
 use crate::db::repositories::credit_transaction_repository::{CreditTransactionRepository, CreditTransaction};
+use crate::db::repositories::model_repository::ModelRepository;
 use uuid::Uuid;
 use log::{debug, error, info, warn};
 use chrono::{DateTime, Utc, Datelike, NaiveDate, Duration};
@@ -81,6 +82,7 @@ pub struct CostBasedBillingService {
     spending_repository: Arc<SpendingRepository>,
     user_credit_repository: Arc<UserCreditRepository>,
     credit_transaction_repository: Arc<CreditTransactionRepository>,
+    model_repository: Arc<ModelRepository>,
     default_trial_days: i64,
 }
 
@@ -93,6 +95,7 @@ impl CostBasedBillingService {
         spending_repository: Arc<SpendingRepository>,
         user_credit_repository: Arc<UserCreditRepository>,
         credit_transaction_repository: Arc<CreditTransactionRepository>,
+        model_repository: Arc<ModelRepository>,
         default_trial_days: i64,
     ) -> Self {
         Self {
@@ -103,8 +106,80 @@ impl CostBasedBillingService {
             spending_repository,
             user_credit_repository,
             credit_transaction_repository,
+            model_repository,
             default_trial_days,
         }
+    }
+
+    /// Calculate cost and record usage for a given model and token usage
+    /// Returns (calculated_cost, prompt_tokens, completion_tokens)
+    pub async fn calculate_and_record_usage(
+        &self,
+        user_id: &Uuid,
+        model_id: &str,
+        tokens_input: i32,
+        tokens_output: i32,
+        metadata: Option<serde_json::Value>,
+    ) -> Result<(BigDecimal, i32, i32), AppError> {
+        // Start a transaction for atomic operations
+        let mut tx = self.db_pools.user_pool.begin().await.map_err(AppError::from)?;
+        
+        // Set user context for RLS within the transaction
+        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
+            .bind(user_id.to_string())
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| AppError::Database(format!("Failed to set user context in transaction: {}", e)))?;
+
+        // Fetch the model using ModelRepository
+        let model = self.model_repository.find_by_id(model_id).await?
+            .ok_or_else(|| AppError::NotFound(format!("Model not found: {}", model_id)))?;
+
+        // Fetch user's subscription to get plan markup percentage
+        let subscription = self.subscription_repository.get_by_user_id_with_executor(user_id, &mut tx).await?
+            .ok_or_else(|| AppError::NotFound("User subscription not found".to_string()))?;
+
+        // Get plan markup percentage
+        let plan = sqlx::query!(
+            r#"
+            SELECT cost_markup_percentage
+            FROM subscription_plans 
+            WHERE id = $1
+            "#,
+            subscription.plan_id
+        )
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(AppError::from)?;
+
+        let markup_percentage = plan.cost_markup_percentage;
+
+        // Calculate cost using model pricing with plan markup
+        let calculated_cost = if model.is_duration_based() {
+            // For duration-based models, we would need duration_ms instead of tokens
+            return Err(AppError::Internal("Duration-based models require duration_ms parameter".to_string()));
+        } else {
+            model.calculate_token_cost(tokens_input, tokens_output, &markup_percentage)?
+        };
+
+        // Record usage via existing method
+        self._record_usage_and_update_spending_in_tx(
+            user_id,
+            model_id,
+            tokens_input,
+            tokens_output,
+            &calculated_cost,
+            None, // request_id
+            metadata,
+            None, // processing_ms
+            None, // input_duration_ms
+            &mut tx,
+        ).await?;
+
+        // Commit transaction
+        tx.commit().await.map_err(AppError::from)?;
+
+        Ok((calculated_cost, tokens_input, tokens_output))
     }
 
     /// Check if user can access AI services based on spending limits
@@ -225,7 +300,7 @@ impl CostBasedBillingService {
         let credit_balance_option = self.user_credit_repository.get_balance_with_executor(user_id, executor).await?;
         let credit_balance = credit_balance_option
             .map(|uc| uc.balance)
-            .unwrap_or_else(|| safe_bigdecimal_from_str("0").unwrap_or_else(|_| BigDecimal::from(0)));
+            .unwrap_or_else(|| BigDecimal::from(0));
         
         if credit_balance > safe_bigdecimal_from_str("0")? {
             let cost_covered_by_credits = cost.clone().min(credit_balance);
@@ -282,7 +357,7 @@ impl CostBasedBillingService {
         let credit_balance_option = self.user_credit_repository.get_balance_with_executor(user_id, executor).await?;
         let credit_balance = credit_balance_option
             .map(|uc| uc.balance)
-            .unwrap_or_else(|| safe_bigdecimal_from_str("0").unwrap_or_else(|_| BigDecimal::from(0)));
+            .unwrap_or_else(|| BigDecimal::from(0));
         
         // Calculate effective allowance (included allowance + credits)
         let effective_allowance = &spending_limit.included_allowance + &credit_balance;
@@ -444,7 +519,7 @@ impl CostBasedBillingService {
             safe_bigdecimal_from_str("2")?  // Set to exactly $2 for free plan
         } else {
             plan.included_spending_monthly
-                .unwrap_or_else(|| safe_bigdecimal_from_str("0").unwrap_or_else(|_| BigDecimal::from(0)))
+                .unwrap_or_else(|| BigDecimal::from(0))
         };
 
         let hard_limit: BigDecimal = included_allowance.clone();
@@ -664,7 +739,7 @@ impl CostBasedBillingService {
             monthly_forecasts.push(MonthlyForecast {
                 month_offset: month,
                 projected_spending: FromPrimitive::from_f64(forecast_amount)
-                    .unwrap_or_else(|| BigDecimal::from(0))
+                    .unwrap_or(BigDecimal::from(0))
                     .to_string(),
                 confidence_level: self.calculate_forecast_confidence(&analytics.trends),
             });
@@ -673,7 +748,7 @@ impl CostBasedBillingService {
         let total_forecast = monthly_forecasts.iter()
             .fold(BigDecimal::from(0), |acc, f| {
                 let forecast_amount = safe_bigdecimal_from_str(&f.projected_spending)
-                    .unwrap_or_else(|_| BigDecimal::from(0));
+                    .unwrap_or(BigDecimal::from(0));
                 acc + forecast_amount
             });
 

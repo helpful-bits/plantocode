@@ -80,6 +80,12 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig, strict_rate_limiter: RateL
             .route("/by-provider/{provider_code}", web::get().to(handlers::model_handlers::get_models_by_provider))
             .route("/by-type/{model_type}", web::get().to(handlers::model_handlers::get_models_by_type))
     );
+
+    // LLM proxy routes (/api/llm/*)
+    cfg.service(
+        web::scope("/llm")
+            .route("/chat/completions", web::post().to(handlers::proxy_handlers::llm_chat_completion_handler))
+    );
 }
 
 /// Configures public authentication routes (not part of /api).
