@@ -1,4 +1,3 @@
-import React from "react";
 import { RefreshCw } from "lucide-react";
 
 import { useBillingData } from "@/hooks/use-billing-data";
@@ -48,16 +47,6 @@ export function CostUsageIndicator({
   const shouldFetch = currentSpending === undefined || monthlyAllowance === undefined;
   const { spendingStatus, trialDaysLeft: fetchedTrialDaysLeft, isLoading, error, refreshBillingData } = useBillingData();
 
-  // Auto-refresh every 10 seconds when shouldFetch is true
-  React.useEffect(() => {
-    if (!shouldFetch) return;
-
-    const interval = setInterval(() => {
-      refreshBillingData();
-    }, 10000); // Update every 10 seconds
-
-    return () => clearInterval(interval);
-  }, [shouldFetch, refreshBillingData]);
 
   // Use provided values or fetched values with safe fallbacks
   const actualCurrentSpending = (currentSpending ?? spendingStatus?.currentSpending) ?? 0;

@@ -3,6 +3,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use futures::{Stream, StreamExt};
 use reqwest::{Client, header, multipart};
+use reqwest_eventsource::{EventSource, Event};
 use serde_json::{json, Value};
 use log::{debug, error, info, trace, warn};
 use tauri::{AppHandle, Manager};
@@ -288,7 +289,7 @@ impl TranscriptionClient for ServerProxyClient {
         let auth_token = self.get_auth_token().await?;
         
         // Use the audio transcriptions endpoint
-        let transcription_url = format!("{}/api/proxy/audio/transcriptions", self.server_url);
+        let transcription_url = format!("{}/api/audio/transcriptions", self.server_url);
 
         let mime_type_str = Self::get_mime_type_from_filename(filename)?;
 
@@ -414,136 +415,52 @@ impl ApiClient for ServerProxyClient {
         // Create the server proxy endpoint URL for streaming LLM chat completions
         let proxy_url = format!("{}/api/llm/chat/completions", self.server_url);
         
-        let response = self.http_client
+        let request_builder = self.http_client
             .post(&proxy_url)
             .header(header::CONTENT_TYPE, "application/json")
             .header("Authorization", format!("Bearer {}", auth_token))
             .header("HTTP-Referer", APP_HTTP_REFERER)
             .header("X-Title", APP_X_TITLE)
-            .json(&request)
-            .send()
-            .await
-            .map_err(|e| AppError::HttpError(e.to_string()))?;
-            
-        if !response.status().is_success() {
-            let status = response.status();
-            let error_text = response.text().await.unwrap_or_else(|_| "Failed to get error text".to_string());
-            
-            // Use enhanced auth error handling
-            return Err(self.handle_auth_error(status.as_u16(), &error_text).await);
-        }
+            .json(&request);
         
-        // Get the stream and process it with enhanced SSE parsing
-        let mut buffer = String::new();
-        let stream = response.bytes_stream().map(move |result| {
-            match result {
-                Ok(bytes) => {
-                    // Convert bytes to string with enhanced UTF-8 handling
-                    match String::from_utf8(bytes.to_vec()) {
-                        Ok(new_text) => {
-                            buffer.push_str(&new_text);
-                        },
-                        Err(_) => {
-                            // Handle potential UTF-8 issues in streamed data
-                            let new_text = String::from_utf8_lossy(&bytes);
-                            buffer.push_str(&new_text);
-                            debug!("UTF-8 conversion issue in stream, using lossy conversion");
-                        }
-                    }
-                    
-                    let mut chunks = Vec::new();
-                    let mut lines_to_keep = String::new();
-                    
-                    // Split by double newlines to handle complete SSE events
-                    // Handle both \n\n and \r\n\r\n patterns
-                    let events: Vec<&str> = if buffer.contains("\r\n\r\n") {
-                        buffer.split("\r\n\r\n").collect()
-                    } else {
-                        buffer.split("\n\n").collect()
-                    };
-                    
-                    // Process all complete events (all but the last)
-                    for (i, event) in events.iter().enumerate() {
-                        if i == events.len() - 1 {
-                            // Keep the last (potentially incomplete) event in buffer
-                            lines_to_keep = event.to_string();
-                            continue;
+        let event_source = EventSource::new(request_builder)
+            .map_err(|e| AppError::HttpError(format!("Failed to create EventSource: {}", e)))?;
+        
+        let stream = futures::stream::unfold(event_source, |mut event_source| async move {
+            loop {
+                match event_source.next().await {
+                    Some(Ok(Event::Message(message))) => {
+                        if message.data == "[DONE]" {
+                            debug!("Received [DONE] signal, ending stream");
+                            return None;
                         }
                         
-                        // Process each line in the event
-                        for line in event.lines() {
-                            let line = line.trim();
-                            
-                            // Skip empty lines
-                            if line.is_empty() {
-                                continue;
-                            }
-                            
-                            // Handle different SSE line types
-                            if line.starts_with("data: ") {
-                                let data = &line[6..]; // Remove "data: " prefix
-                                
-                                // Check for [DONE] message
-                                if data.trim() == "[DONE]" {
-                                    debug!("Received [DONE] signal, ending stream");
-                                    continue;
-                                }
-                                
-                                // Skip empty data lines
-                                if data.trim().is_empty() {
-                                    continue;
-                                }
-                                
-                                // Parse as JSON with enhanced error handling
-                                match serde_json::from_str::<OpenRouterStreamChunk>(data) {
-                                    Ok(chunk) => {
-                                        trace!("Successfully parsed stream chunk");
-                                        chunks.push(Ok(chunk));
-                                    },
-                                    Err(e) => {
-                                        // Log the parsing error but continue processing other chunks
-                                        debug!("Failed to parse streaming chunk: {} - Data: '{}'", e, data);
-                                        // Only push error for non-trivial parsing failures
-                                        if !data.trim().is_empty() && data.len() > 2 {
-                                            chunks.push(Err(AppError::InvalidResponse(format!("Invalid streaming JSON: {}", e))));
-                                        }
-                                    }
-                                }
-                            } else if line.starts_with("event: ") {
-                                // Handle SSE event types
-                                debug!("SSE event type: {}", &line[7..]);
-                            } else if line.starts_with("id: ") {
-                                // Handle SSE event IDs
-                                trace!("SSE event ID: {}", &line[4..]);
-                            } else if line.starts_with("retry: ") {
-                                // Handle SSE retry directives
-                                debug!("SSE retry directive: {}", &line[7..]);
-                            } else if line.starts_with(":") {
-                                // Handle SSE comment lines - ignore them silently
-                                trace!("SSE comment line: {}", line);
-                            } else {
-                                // Log unexpected line formats for debugging
-                                debug!("Unexpected SSE line format: '{}'", line);
+                        match serde_json::from_str::<OpenRouterStreamChunk>(&message.data) {
+                            Ok(chunk) => {
+                                trace!("Successfully parsed stream chunk");
+                                return Some((Ok(chunk), event_source));
+                            },
+                            Err(e) => {
+                                debug!("Failed to parse streaming chunk: {} - Data: '{}'", e, message.data);
+                                return Some((Err(AppError::InvalidResponse(format!("Invalid streaming JSON: {}", e))), event_source));
                             }
                         }
+                    },
+                    Some(Ok(Event::Open)) => {
+                        debug!("EventSource stream opened");
+                        continue;
+                    },
+                    Some(Err(e)) => {
+                        error!("EventSource error: {}", e);
+                        return Some((Err(AppError::NetworkError(format!("EventSource error: {}", e))), event_source));
+                    },
+                    None => {
+                        debug!("EventSource stream ended");
+                        return None;
                     }
-                    
-                    // Update buffer with remaining incomplete event
-                    buffer = lines_to_keep;
-                    
-                    // Return the processed chunks
-                    if chunks.is_empty() {
-                        futures::stream::iter(vec![]).left_stream()
-                    } else {
-                        futures::stream::iter(chunks).right_stream()
-                    }
-                },
-                Err(e) => {
-                    error!("HTTP error in streaming response: {}", e);
-                    futures::stream::iter(vec![Err(AppError::NetworkError(format!("Stream network error: {}", e)))]).left_stream()
                 }
             }
-        }).flatten();
+        });
         
         Ok(Box::pin(stream))
     }

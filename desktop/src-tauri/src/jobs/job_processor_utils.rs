@@ -16,7 +16,6 @@ use tauri::{AppHandle, Manager};
 use log::{info, warn, error};
 use serde_json::Value;
 use std::str::FromStr;
-use bigdecimal::BigDecimal;
 
 use crate::error::{AppError, AppResult};
 use crate::models::{TaskType, JobStatus, OpenRouterUsage};
@@ -68,7 +67,7 @@ pub async fn get_model_name_for_context(
     if let Some(model) = model_override {
         Ok(model)
     } else {
-        crate::config::get_model_for_task_with_project(task_type, project_directory, app_handle).await
+        crate::utils::config_helpers::get_model_for_task(task_type, app_handle).await
     }
 }
 
@@ -88,31 +87,6 @@ pub async fn check_job_canceled(
     Ok(job_status == JobStatus::Canceled)
 }
 
-/// Convert server-calculated cost from f64 to BigDecimal for database storage
-/// Server provides precise cost calculations, so we just need to convert the format
-fn convert_server_cost_to_bigdecimal(server_cost: f64) -> AppResult<BigDecimal> {
-    BigDecimal::from_str(&server_cost.to_string())
-        .map_err(|e| AppError::InternalError(format!("Failed to convert server cost {} to BigDecimal: {}", server_cost, e)))
-}
-
-/// Legacy cost calculation function - now only used as fallback when server doesn't provide cost
-async fn calculate_precise_cost_fallback(model_id: &str, prompt_tokens: i32, completion_tokens: i32) -> AppResult<BigDecimal> {
-    let model_info = crate::config::get_model_info(model_id)?;
-    
-    let input_price = BigDecimal::from_str(&model_info.price_input_per_million)
-        .map_err(|e| AppError::InternalError(format!("Invalid input price format for model {}: {}", model_id, e)))?;
-    let output_price = BigDecimal::from_str(&model_info.price_output_per_million)
-        .map_err(|e| AppError::InternalError(format!("Invalid output price format for model {}: {}", model_id, e)))?;
-    
-    let million = BigDecimal::from(1_000_000);
-    let prompt_tokens_bd = BigDecimal::from(prompt_tokens);
-    let completion_tokens_bd = BigDecimal::from(completion_tokens);
-    
-    let input_cost = (&prompt_tokens_bd / &million) * &input_price;
-    let output_cost = (&completion_tokens_bd / &million) * &output_price;
-    
-    Ok(input_cost + output_cost)
-}
 
 /// Finalizes job success with response and usage information
 /// Ensures all token counts (tokens_sent, tokens_received, total_tokens) are correctly updated from OpenRouterUsage
@@ -126,21 +100,11 @@ pub async fn finalize_job_success(
     llm_usage: Option<OpenRouterUsage>,
     model_used: &str,
     system_prompt_id: &str,
+    system_prompt_template: &str,
     metadata: Option<Value>,
+    app_handle: &AppHandle,
 ) -> AppResult<()> {
-    // Prefer server-calculated cost from usage, fallback to local calculation if needed
-    let cost = if let Some(usage) = &llm_usage {
-        if let Some(server_cost) = usage.cost {
-            // Use server-calculated cost (preferred)
-            Some(convert_server_cost_to_bigdecimal(server_cost)?)
-        } else {
-            // Fallback to local calculation if server doesn't provide cost
-            warn!("No server-calculated cost provided, falling back to local calculation for model: {}", model_used);
-            Some(calculate_precise_cost_fallback(model_used, usage.prompt_tokens, usage.completion_tokens).await?)
-        }
-    } else {
-        None
-    };
+    // Cost tracking is handled by server billing service, not stored in local BackgroundJob
     let (tokens_sent, tokens_received) = if let Some(usage) = &llm_usage {
         (Some(usage.prompt_tokens), Some(usage.completion_tokens))
     } else {
@@ -210,7 +174,7 @@ pub async fn finalize_job_success(
         tokens_sent,
         tokens_received,
         Some(model_used),
-        cost
+        Some(system_prompt_template),
     ).await?;
     
     info!("Job {} completed successfully", job_id);
@@ -225,6 +189,7 @@ pub async fn finalize_job_failure(
     app_error_opt: Option<&AppError>,
     llm_usage: Option<OpenRouterUsage>,
     model_used: Option<String>,
+    app_handle: &AppHandle,
 ) -> AppResult<()> {
     // Fetch the current job to get its metadata
     let current_job = match repo.get_job_by_id(job_id).await? {
@@ -232,7 +197,7 @@ pub async fn finalize_job_failure(
         None => {
             error!("Job {} not found during failure finalization", job_id);
             // No usage info available when job not found
-            repo.mark_job_failed(job_id, error_message, None, None, None, None, None).await?;
+            repo.mark_job_failed(job_id, error_message, None, None, None, None).await?;
             return Ok(());
         }
     };
@@ -266,39 +231,14 @@ pub async fn finalize_job_failure(
         None
     };
 
-    // Extract cost from server-calculated usage or fallback to local calculation
-    let cost = if let Some(usage) = &llm_usage {
-        if let Some(server_cost) = usage.cost {
-            // Use server-calculated cost (preferred)
-            match convert_server_cost_to_bigdecimal(server_cost) {
-                Ok(c) => Some(c),
-                Err(e) => {
-                    warn!("Failed to convert server cost for failed job {}: {}", job_id, e);
-                    None
-                }
-            }
-        } else if let Some(model) = &model_used {
-            // Fallback to local calculation if server doesn't provide cost
-            match calculate_precise_cost_fallback(model, usage.prompt_tokens, usage.completion_tokens).await {
-                Ok(c) => Some(c),
-                Err(e) => {
-                    warn!("Failed to calculate fallback cost for failed job {}: {}", job_id, e);
-                    None
-                }
-            }
-        } else {
-            None
-        }
-    } else {
-        None
-    };
+    // Cost tracking is handled by server billing service, not stored in local BackgroundJob
     let (tokens_sent, tokens_received) = if let Some(usage) = &llm_usage {
         (Some(usage.prompt_tokens), Some(usage.completion_tokens))
     } else {
         (None, None)
     };
 
-    // Mark the job as failed with cost tracking
+    // Mark the job as failed with usage tracking
     repo.mark_job_failed(
         job_id, 
         error_message, 
@@ -306,13 +246,8 @@ pub async fn finalize_job_failure(
         tokens_sent,
         tokens_received,
         model_used.as_deref(),
-        cost.clone()
     ).await?;
     
-    if let Some(c) = cost {
-        error!("Job {} failed: {} (cost: {})", job_id, error_message, c);
-    } else {
-        error!("Job {} failed: {}", job_id, error_message);
-    }
+    error!("Job {} failed: {}", job_id, error_message);
     Ok(())
 }

@@ -84,7 +84,7 @@ export function useWorkflowManager(): UseWorkflowManagerReturn {
         
         // Ensure overall workflow fields are properly set
         workflow.progressPercentage = workflow.progressPercentage || 0;
-        workflow.sessionId = workflow.sessionId || undefined;
+        workflow.sessionId = workflow.sessionId || '';
         workflow.taskDescription = workflow.taskDescription || undefined;
         workflow.projectDirectory = workflow.projectDirectory || undefined;
         workflow.createdAt = workflow.createdAt || undefined;
@@ -168,7 +168,7 @@ export function useWorkflowManager(): UseWorkflowManagerReturn {
       
       // Ensure overall workflow fields are properly set with comprehensive mapping
       workflow.progressPercentage = workflow.progressPercentage || 0;
-      workflow.sessionId = workflow.sessionId || undefined;
+      workflow.sessionId = workflow.sessionId || '';
       workflow.taskDescription = workflow.taskDescription || undefined;
       workflow.projectDirectory = workflow.projectDirectory || undefined;
       workflow.createdAt = workflow.createdAt || undefined;
@@ -316,7 +316,7 @@ export function useWorkflowDetails(workflowId: string | null) {
       
       // Ensure overall workflow fields are properly set with comprehensive mapping
       workflowData.progressPercentage = workflowData.progressPercentage || 0;
-      workflowData.sessionId = workflowData.sessionId || undefined;
+      workflowData.sessionId = workflowData.sessionId || '';
       workflowData.taskDescription = workflowData.taskDescription || undefined;
       workflowData.projectDirectory = workflowData.projectDirectory || undefined;
       workflowData.createdAt = workflowData.createdAt || undefined;

@@ -31,7 +31,6 @@ pub async fn create_abstract_stage_job_with_lock_internal(
     // Convert to WorkflowStage for model configuration
     let stage = match task_type {
         TaskType::RegexPatternGeneration => WorkflowStage::RegexPatternGeneration,
-        TaskType::LocalFileFiltering => WorkflowStage::LocalFileFiltering,
         TaskType::FileRelevanceAssessment => WorkflowStage::FileRelevanceAssessment,
         TaskType::ExtendedPathFinder => WorkflowStage::ExtendedPathFinder,
         TaskType::PathCorrection => WorkflowStage::PathCorrection,

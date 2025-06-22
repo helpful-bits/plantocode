@@ -228,7 +228,7 @@ async fn handle_job_success(
             error!("Job {} failed: {}", job_id, error_message);
             
             // Update job status to failed with detailed error information
-            background_job_repo.mark_job_failed(job_id, &error_message, None, None, None, None, None).await?;
+            background_job_repo.mark_job_failed(job_id, &error_message, None, None, None, None).await?;
             
             // Emit job status change event
             emit_job_status_change(
@@ -795,7 +795,7 @@ async fn add_orphaned_job_to_workflow(
     // Determine stage name from task type
     let stage_name = match task_type {
         TaskType::RegexPatternGeneration => "RegexPatternGeneration",
-        TaskType::LocalFileFiltering => "LocalFileFiltering", 
+ 
         TaskType::FileRelevanceAssessment => "FileRelevanceAssessment",
         TaskType::ExtendedPathFinder => "ExtendedPathFinder",
         TaskType::PathCorrection => "PathCorrection",

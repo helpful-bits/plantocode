@@ -4,8 +4,6 @@ import { useEffect, useState, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 
 import {
-  getModelSettingsForProject,
-  saveProjectTaskModelSettingsAction,
   getServerDefaultTaskModelSettings,
 } from "@/actions/project-settings.actions";
 import { getProvidersWithModels } from "@/actions/config.actions";
@@ -24,7 +22,7 @@ interface SettingsFormProps {
   sessionId?: string;
 }
 
-export default function SettingsForm({ sessionId }: SettingsFormProps) {
+export default function SettingsForm({}: SettingsFormProps) {
   const { projectDirectory } = useProject();
   const { showNotification } = useNotification();
   const [taskSettings, setTaskSettings] = useState<TaskSettings | null>(null);
@@ -44,22 +42,17 @@ export default function SettingsForm({ sessionId }: SettingsFormProps) {
       // First refresh runtime config to ensure we have latest task configurations
       await invoke("fetch_runtime_ai_config");
       
-      const [settingsResult, serverDefaultsResult, modelsResult] = await Promise.all([
-        getModelSettingsForProject(projectDirectory),
+      const [serverDefaultsResult, modelsResult] = await Promise.all([
         getServerDefaultTaskModelSettings(),
         getProvidersWithModels(),
       ]);
       
-      if (settingsResult.isSuccess && settingsResult.data) {
-        setTaskSettings(settingsResult.data);
-      } else {
-        setError(settingsResult.message || "Failed to load project settings");
-        setTaskSettings(null);
-      }
-
       if (serverDefaultsResult.isSuccess && serverDefaultsResult.data) {
+        setTaskSettings(serverDefaultsResult.data);
         setServerDefaults(serverDefaultsResult.data);
       } else {
+        setError(serverDefaultsResult.message || "Failed to load server default settings");
+        setTaskSettings(null);
         setServerDefaults(null);
       }
       
@@ -106,52 +99,6 @@ export default function SettingsForm({ sessionId }: SettingsFormProps) {
     };
   }, [projectDirectory, refreshProjectSettings]);
 
-  // Handle settings changes
-  const handleSettingsChange = async (newSettings: TaskSettings) => {
-    setTaskSettings(newSettings);
-
-    if (!projectDirectory) {
-      setError("No active project");
-      return;
-    }
-
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      const result = await saveProjectTaskModelSettingsAction(
-        projectDirectory,
-        newSettings
-      );
-
-      if (!result.isSuccess) {
-        setError(result.message || "Failed to save settings");
-      }
-    } catch (err) {
-      const errorInfo = extractErrorInfo(err);
-      const userMessage = createUserFriendlyErrorMessage(errorInfo, "settings");
-      
-      await logError(err, "SettingsForm.handleSettingsChange", { 
-        projectDirectory, 
-        settingsKeys: Object.keys(newSettings)
-      });
-      
-      setError(userMessage);
-      
-      showNotification({
-        title: "Settings Save Error",
-        message: userMessage,
-        type: "error",
-        actionButton: {
-          label: "Try Again",
-          onClick: () => handleSettingsChange(newSettings),
-          variant: "outline"
-        }
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
 
   return (
@@ -161,8 +108,6 @@ export default function SettingsForm({ sessionId }: SettingsFormProps) {
           taskSettings={taskSettings}
           serverDefaults={serverDefaults}
           providersWithModels={providersWithModels}
-          onSettingsChange={handleSettingsChange}
-          sessionId={sessionId}
           projectDirectory={projectDirectory}
           onRefresh={refreshProjectSettings}
         />

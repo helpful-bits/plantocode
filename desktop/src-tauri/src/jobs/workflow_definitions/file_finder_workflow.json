@@ -10,17 +10,10 @@
       "allow_parallel_execution": false
     },
     {
-      "stage_name": "LocalFileFiltering",
-      "task_type": "local_file_filtering",
-      "processor_name": null,
-      "dependencies": ["RegexPatternGeneration"],
-      "allow_parallel_execution": false
-    },
-    {
       "stage_name": "FileRelevanceAssessment",
       "task_type": "file_relevance_assessment",
       "processor_name": null,
-      "dependencies": ["LocalFileFiltering"],
+      "dependencies": ["RegexPatternGeneration"],
       "allow_parallel_execution": false
     },
     {

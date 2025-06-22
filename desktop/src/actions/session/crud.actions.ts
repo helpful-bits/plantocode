@@ -1,7 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 
 import { type ActionState, type Session } from "@/types";
-import { hashString } from "@/utils/hash";
 import { normalizePath } from "@/utils/path-utils";
 import { createLogger } from "@/utils/logger";
 import { handleActionError } from "@/utils/action-utils";
@@ -226,14 +225,12 @@ export async function saveSessionAction(
       };
     }
 
-    // Ensure projectHash is set
-    if (!sessionData.projectHash) {
-      sessionData.projectHash = hashString(sessionData.projectDirectory);
-    }
+    // Remove projectHash - backend will generate it
+    const { projectHash, ...sessionDataWithoutHash } = sessionData;
 
     // Save the session using the Tauri command
     const session = await invoke<Session>("update_session_command", {
-      sessionData,
+      sessionData: sessionDataWithoutHash,
     });
 
     return {

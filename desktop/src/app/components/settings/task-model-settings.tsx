@@ -8,11 +8,7 @@ import {
   CardContent,
   Button,
 } from "@/ui";
-import {
-  resetProjectSettingToDefault,
-} from "@/actions/project-settings.actions";
-import { useState, useCallback, useEffect, useMemo, useRef } from "react";
-import SettingsEnhancementEngine from "./enhancement-engine";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import { TaskSettingsEditor } from "./task-settings-editor";
 
 
@@ -20,8 +16,6 @@ interface TaskModelSettingsProps {
   taskSettings: TaskSettings;
   serverDefaults: TaskSettings | null;
   providersWithModels: ProviderWithModels[] | null;
-  onSettingsChange: (settings: TaskSettings) => void;
-  sessionId?: string;
   projectDirectory?: string;
   onRefresh?: () => void;
 }
@@ -104,11 +98,9 @@ export default function TaskModelSettings({
   taskSettings,
   serverDefaults,
   providersWithModels,
-  onSettingsChange,
   projectDirectory,
-  onRefresh,
 }: TaskModelSettingsProps) {
-  const saveTimeoutRef = useRef<number | null>(null);
+  // Read-only mode - no saving functionality
   const [sliderValues, setSliderValues] = useState<Record<string, number>>({});
   
   const validateTaskSettings = useCallback((settings: TaskSettings, taskKey: keyof TaskSettings): ValidationResult => {
@@ -150,23 +142,7 @@ export default function TaskModelSettings({
     };
   }, []);
   
-  const debouncedSave = useCallback((newSettings: TaskSettings) => {
-    if (saveTimeoutRef.current) {
-      clearTimeout(saveTimeoutRef.current);
-    }
-    
-    saveTimeoutRef.current = window.setTimeout(() => {
-      onSettingsChange(newSettings);
-    }, 1000);
-  }, [onSettingsChange]);
-  
-  useEffect(() => {
-    return () => {
-      if (saveTimeoutRef.current) {
-        clearTimeout(saveTimeoutRef.current);
-      }
-    };
-  }, []);
+  // Read-only mode - no save functionality needed
 
 
   // Initialize slider values from taskSettings
@@ -189,20 +165,10 @@ export default function TaskModelSettings({
     return taskSettings[camelCaseKey];
   };
 
-  const handleModelChange = (camelCaseKey: keyof TaskSettings, model: string) => {
-    const taskType = taskSettingsKeyToTaskType[camelCaseKey];
-    const requiresLlm = TaskTypeDetails[taskType]?.requiresLlm ?? true;
-    if (!requiresLlm) return;
-    
-    const settings = getTaskSettings(camelCaseKey);
-    const newSettings = { ...taskSettings };
-
-    newSettings[camelCaseKey] = {
-      ...settings,
-      model,
-    };
-
-    debouncedSave(newSettings);
+  // Read-only mode - no model changes allowed
+  const handleModelChange = (_camelCaseKey: keyof TaskSettings, _model: string) => {
+    // Settings are read-only from server defaults
+    console.log('Model changes not allowed in read-only mode');
   };
 
 
@@ -250,56 +216,10 @@ export default function TaskModelSettings({
     }));
   };
 
-  // Generic function to reset a setting to default
-  const handleResetToDefault = useCallback(async (taskKey: keyof TaskSettings, settingName: 'model' | 'maxTokens' | 'temperature' | 'languageCode' | 'copyButtons') => {
-    if (!projectDirectory || !serverDefaults || !serverDefaults[taskKey]) return;
-    
-    // Only allow resetting copyButtons for implementation plans
-    if (settingName === 'copyButtons' && taskKey !== 'implementationPlan') {
-      return;
-    }
-    
-    try {
-      await resetProjectSettingToDefault(projectDirectory, taskKey, settingName);
-      
-      // Immediately update local state with default value
-      let defaultValue;
-      if (settingName === 'copyButtons') {
-        defaultValue = serverDefaults[taskKey]?.copyButtons;
-      } else {
-        defaultValue = serverDefaults[taskKey]?.[settingName];
-      }
-      
-      if (defaultValue !== undefined) {
-        const newSettings = { ...taskSettings };
-        if (!newSettings[taskKey]) {
-          newSettings[taskKey] = {};
-        }
-        newSettings[taskKey] = {
-          ...newSettings[taskKey],
-          [settingName]: defaultValue,
-        };
-        onSettingsChange(newSettings);
-      }
-      
-      // Clear slider value for this setting so it gets reinitialized
-      if (settingName === 'maxTokens' || settingName === 'temperature') {
-        setSliderValues(prev => {
-          const updated = { ...prev };
-          delete updated[`${taskKey}.${settingName}`];
-          return updated;
-        });
-      }
-      
-      // Refresh settings through parent component
-      if (onRefresh) {
-        onRefresh();
-      }
-      
-    } catch (error) {
-      console.error(`Failed to reset ${taskKey}.${settingName} to default:`, error);
-    }
-  }, [projectDirectory, serverDefaults, taskSettings, onSettingsChange, onRefresh]);
+  // Read-only mode - no reset functionality
+  const handleResetToDefault = useCallback(async (_taskKey: keyof TaskSettings, _settingName: 'model' | 'maxTokens' | 'temperature' | 'languageCode' | 'copyButtons') => {
+    console.log('Reset functionality not available in read-only mode');
+  }, []);
 
 
   const handleMaxTokensChange = (camelCaseKey: keyof TaskSettings, value: number[]) => {
@@ -307,20 +227,9 @@ export default function TaskModelSettings({
     setSliderValue(camelCaseKey, 'maxTokens', value[0]);
   };
 
-  const handleMaxTokensCommit = (camelCaseKey: keyof TaskSettings, value: number[]) => {
-    const taskType = taskSettingsKeyToTaskType[camelCaseKey];
-    const requiresLlm = TaskTypeDetails[taskType]?.requiresLlm ?? true;
-    if (!requiresLlm) return;
-    
-    const settings = getTaskSettings(camelCaseKey);
-    const newSettings = { ...taskSettings };
-
-    newSettings[camelCaseKey] = {
-      ...settings,
-      maxTokens: value[0],
-    };
-
-    debouncedSave(newSettings);
+  const handleMaxTokensCommit = (_camelCaseKey: keyof TaskSettings, _value: number[]) => {
+    // Read-only mode - no changes allowed
+    console.log('Max tokens changes not allowed in read-only mode');
   };
 
   const handleTemperatureChange = (camelCaseKey: keyof TaskSettings, value: number[]) => {
@@ -328,52 +237,20 @@ export default function TaskModelSettings({
     setSliderValue(camelCaseKey, 'temperature', value[0]);
   };
 
-  const handleTemperatureCommit = (camelCaseKey: keyof TaskSettings, value: number[]) => {
-    const taskType = taskSettingsKeyToTaskType[camelCaseKey];
-    const requiresLlm = TaskTypeDetails[taskType]?.requiresLlm ?? true;
-    if (!requiresLlm) return;
-    
-    const settings = getTaskSettings(camelCaseKey);
-    const newSettings = { ...taskSettings };
-
-    newSettings[camelCaseKey] = {
-      ...settings,
-      temperature: value[0],
-    };
-
-    debouncedSave(newSettings);
+  const handleTemperatureCommit = (_camelCaseKey: keyof TaskSettings, _value: number[]) => {
+    // Read-only mode - no changes allowed
+    console.log('Temperature changes not allowed in read-only mode');
   };
 
 
-  // Transcription-specific handlers
-  const handleTranscriptionLanguageChange = (camelCaseKey: keyof TaskSettings, languageCode: string) => {
-    const settings = getTaskSettings(camelCaseKey);
-    const newSettings = { ...taskSettings };
-
-    newSettings[camelCaseKey] = {
-      ...settings,
-      languageCode,
-    };
-
-    debouncedSave(newSettings);
+  // Read-only mode - no transcription language changes
+  const handleTranscriptionLanguageChange = (_camelCaseKey: keyof TaskSettings, _languageCode: string) => {
+    console.log('Language changes not allowed in read-only mode');
   };
 
-  // Copy buttons handler - only for implementation plans
-  const handleCopyButtonsChange = (camelCaseKey: keyof TaskSettings, copyButtons: CopyButtonConfig[]) => {
-    // Only allow copy button changes for implementation plans
-    if (camelCaseKey !== 'implementationPlan') {
-      return;
-    }
-    
-    const settings = getTaskSettings(camelCaseKey);
-    const newSettings = { ...taskSettings };
-
-    newSettings[camelCaseKey] = {
-      ...settings,
-      copyButtons,
-    };
-
-    debouncedSave(newSettings);
+  // Read-only mode - no copy button changes
+  const handleCopyButtonsChange = (_camelCaseKey: keyof TaskSettings, _copyButtons: CopyButtonConfig[]) => {
+    console.log('Copy button changes not allowed in read-only mode');
   };
 
 
@@ -605,19 +482,12 @@ export default function TaskModelSettings({
                   </div>
                 </div>
                 
-                <SettingsEnhancementEngine
-                  taskSettings={taskSettings}
-                  onSettingsChange={onSettingsChange}
-                  onRecommendationApply={(recommendation) => {
-                    const newSettings = { ...taskSettings };
-                    const currentSettings = newSettings[recommendation.taskKey];
-                    
-                    if (currentSettings && recommendation.fieldToChange) {
-                      (currentSettings as any)[recommendation.fieldToChange] = recommendation.recommendedValue;
-                      onSettingsChange(newSettings);
-                    }
-                  }}
-                />
+                <div className="p-4 bg-muted/30 rounded-lg border border-dashed border-muted">
+                  <p className="text-sm text-muted-foreground text-center">
+                    Settings Enhancement Engine is disabled in read-only mode.<br/>
+                    All settings are now managed by the server.
+                  </p>
+                </div>
               </div>
             ) : (() => {
               const taskSettingsKey = selectedTask as keyof TaskSettings;

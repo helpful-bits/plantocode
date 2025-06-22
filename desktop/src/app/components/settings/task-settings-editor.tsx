@@ -47,6 +47,7 @@ interface TaskSettingsEditorProps {
   isDifferentFromDefault: (settingName: 'model' | 'maxTokens' | 'temperature' | 'languageCode' | 'copyButtons') => boolean;
   getSliderValue: (settingName: 'maxTokens' | 'temperature') => number;
   providersWithModels: ProviderWithModels[] | null;
+  readOnly?: boolean; // New flag for read-only mode
 }
 
 const taskSettingsKeyToTaskType: Record<keyof TaskSettings, TaskType> = {
@@ -100,6 +101,7 @@ export function TaskSettingsEditor({
   isDifferentFromDefault,
   getSliderValue,
   providersWithModels,
+  readOnly = true, // AI model parameters are server-managed, only system prompts are customizable
 }: TaskSettingsEditorProps) {
   const taskType = taskSettingsKeyToTaskType[taskKey];
   const taskDetails = TaskTypeDetails[taskType];
@@ -138,18 +140,6 @@ export function TaskSettingsEditor({
                 </div>
               </Alert>
             )}
-            {validation.warnings.length > 0 && (
-              <Alert>
-                <div className="space-y-1">
-                  <p className="text-sm font-medium text-amber-700">Configuration Warnings:</p>
-                  <ul className="text-xs space-y-0.5 list-disc list-inside text-amber-600">
-                    {validation.warnings.map((warning, idx) => (
-                      <li key={idx}>{warning}</li>
-                    ))}
-                  </ul>
-                </div>
-              </Alert>
-            )}
           </div>
         )}
       </div>
@@ -166,7 +156,7 @@ export function TaskSettingsEditor({
             >
               Model
             </Label>
-            {isDifferentFromDefault('model') && (
+            {!readOnly && isDifferentFromDefault('model') && (
               <Button
                 variant="ghost"
                 size="xs"
@@ -205,7 +195,7 @@ export function TaskSettingsEditor({
                   Warning
                 </Badge>
               )}
-              {isDifferentFromDefault('temperature') && (
+              {!readOnly && isDifferentFromDefault('temperature') && (
                 <Button
                   variant="ghost"
                   size="xs"
@@ -280,7 +270,7 @@ export function TaskSettingsEditor({
               >
                 Language
               </Label>
-              {isDifferentFromDefault('languageCode') && (
+              {!readOnly && isDifferentFromDefault('languageCode') && (
                 <Button
                   variant="ghost"
                   size="xs"
@@ -325,7 +315,7 @@ export function TaskSettingsEditor({
               >
                 Max Tokens
               </Label>
-              {isDifferentFromDefault('maxTokens') && (
+              {!readOnly && isDifferentFromDefault('maxTokens') && (
                 <Button
                   variant="ghost"
                   size="xs"
@@ -410,7 +400,7 @@ export function TaskSettingsEditor({
             <p className="text-xs text-muted-foreground">
               Configure buttons that appear when viewing implementation plans for quick copying.
             </p>
-            {isDifferentFromDefault('copyButtons') && (
+            {!readOnly && isDifferentFromDefault('copyButtons') && (
               <Button
                 variant="ghost"
                 size="xs"

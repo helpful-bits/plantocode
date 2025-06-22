@@ -9,7 +9,8 @@ use crate::jobs::types::{Job, JobPayload, JobProcessResult};
 use crate::models::TaskType;
 use crate::error::{AppError, AppResult};
 use crate::jobs::job_processor_utils;
-use crate::jobs::processors::utils::{llm_api_utils, prompt_utils};
+use crate::jobs::processors::utils::prompt_utils;
+use crate::jobs::processors::{LlmTaskRunner, LlmTaskConfigBuilder, LlmPromptContext};
 
 /// Processor for path correction jobs
 pub struct PathCorrectionProcessor;
@@ -169,9 +170,17 @@ impl JobProcessor for PathCorrectionProcessor {
         // Setup job processing
         let (repo, settings_repo, db_job) = job_processor_utils::setup_job_processing(&job.id, &app_handle).await?;
         
+        // Get project directory from session
+        let session = {
+            use crate::db_utils::SessionRepository;
+            let session_repo = SessionRepository::new(repo.get_pool());
+            session_repo.get_session_by_id(&job.session_id).await?
+                .ok_or_else(|| AppError::JobError(format!("Session {} not found", job.session_id)))?
+        };
+        
         // Get task settings from database
-        let task_settings = settings_repo.get_task_settings(&job.session_id, &job.job_type.to_string()).await?
-            .ok_or_else(|| AppError::JobError(format!("No task settings found for session {} and task type {}", job.session_id, job.job_type.to_string())))?;
+        let task_settings = settings_repo.get_task_settings(&session.project_hash, &job.job_type.to_string()).await?
+            .ok_or_else(|| AppError::JobError(format!("No task settings found for project {} and task type {}", session.project_hash, job.job_type.to_string())))?;
         let model_used = task_settings.model;
         let temperature = task_settings.temperature
             .ok_or_else(|| AppError::JobError("Temperature not set in task settings".to_string()))?;
@@ -186,142 +195,111 @@ impl JobProcessor for PathCorrectionProcessor {
             .map(|line| line.trim())
             .filter(|line| !line.is_empty() && !line.starts_with('#'))
             .collect();
-            
-        // Get project directory from session
-        let session = {
-            use crate::db_utils::SessionRepository;
-            let session_repo = SessionRepository::new(repo.get_pool());
-            session_repo.get_session_by_id(&job.session_id).await?
-                .ok_or_else(|| AppError::JobError(format!("Session {} not found", job.session_id)))?
-        };
         let project_directory = &session.project_directory;
         
-        // Use unified prompt system exclusively
+        // Setup LLM task configuration
+        let llm_config = LlmTaskConfigBuilder::new()
+            .model(model_used.clone())
+            .temperature(temperature)
+            .max_tokens(max_output_tokens)
+            .stream(false)
+            .build();
+        
+        // Create LLM task runner
+        let task_runner = LlmTaskRunner::new(app_handle.clone(), job.clone(), llm_config);
+        
+        // Create prompt context
         let task_description = paths.join("\n");
-        let composed_prompt = prompt_utils::build_unified_prompt(
-            &job,
-            &app_handle,
+        let prompt_context = LlmPromptContext {
             task_description,
-            None,
-            None,
-            &settings_repo,
-            &model_used,
-        ).await?;
-
-        // Extract system and user prompts using direct field access
-        let system_prompt = composed_prompt.system_prompt.clone();
-        let user_prompt = composed_prompt.user_prompt.clone();
-        let system_prompt_id = composed_prompt.system_prompt_id.clone();
+            file_contents: None,
+            directory_tree: None,
+            system_prompt_override: None,
+        };
         
-        // Build messages array
-        let messages = llm_api_utils::create_openrouter_messages(&system_prompt, &user_prompt);
+        debug!("Sending path correction request with model: {}", model_used);
         
-        // Create API options
-        let api_options = llm_api_utils::create_api_client_options(
-            model_used.clone(),
-            temperature,
-            max_output_tokens,
-            false,
-        )?;
-        
-        debug!("Sending path correction request with options: {:?}", api_options);
-        
-        // Call the LLM API
-        let api_options_clone = api_options.clone();
-        match llm_api_utils::execute_llm_chat_completion(&app_handle, messages, api_options).await {
-            Ok(llm_response) => {
+        // Execute LLM task using the task runner
+        match task_runner.execute_llm_task(prompt_context, &settings_repo).await {
+            Ok(llm_result) => {
                 debug!("Received path correction response");
                 
-                // Extract text content from response
-                if let Some(choice) = llm_response.choices.first() {
-                    let content = &choice.message.content;
-                    
-                    // Primary parsing: XML output (as expected by system prompt)
-                    let corrected_paths = match Self::parse_corrected_paths(content) {
-                        Ok((paths, _)) => {
-                            info!("Successfully parsed {} paths using XML parsing", paths.len());
-                            paths
-                        },
-                        Err(e) => {
-                            warn!("XML parsing failed: {}, trying fallback plain text parsing", e);
-                            // Fallback to plain text parsing for robustness
-                            match Self::parse_paths_from_text_response(content, project_directory) {
-                                Ok(paths) => {
-                                    info!("Successfully parsed {} paths using plain text fallback", paths.len());
-                                    paths
-                                },
-                                Err(_) => {
-                                    warn!("Both XML and plain text parsing failed, using raw content");
-                                    vec![content.clone()]
-                                }
+                let content = &llm_result.response;
+                
+                // Primary parsing: XML output (as expected by system prompt)
+                let corrected_paths = match Self::parse_corrected_paths(content) {
+                    Ok((paths, _)) => {
+                        info!("Successfully parsed {} paths using XML parsing", paths.len());
+                        paths
+                    },
+                    Err(e) => {
+                        warn!("XML parsing failed: {}, trying fallback plain text parsing", e);
+                        // Fallback to plain text parsing for robustness
+                        match Self::parse_paths_from_text_response(content, project_directory) {
+                            Ok(paths) => {
+                                info!("Successfully parsed {} paths using plain text fallback", paths.len());
+                                paths
+                            },
+                            Err(_) => {
+                                warn!("Both XML and plain text parsing failed, using raw content");
+                                vec![content.clone()]
                             }
                         }
-                    };
-                    
-                    // Create JSON response object
-                    let json_response_obj = serde_json::json!({ 
-                        "correctedPaths": corrected_paths, 
-                        "count": corrected_paths.len() 
-                    });
-                    let json_response_str = json_response_obj.to_string();
-                    
-                    // Create metadata with LLM raw response and detailed corrections for additionalParams
-                    let (_, detailed_metadata) = match Self::parse_corrected_paths(content) {
-                        Ok((_, meta)) => (corrected_paths.clone(), meta),
-                        Err(_) => (corrected_paths.clone(), serde_json::json!({"correctedPathDetails": []}))
-                    };
-                    
-                    let metadata = serde_json::json!({
-                        "llmRawResponse": content,
-                        "parsedCorrections": detailed_metadata
-                    });
-                    
-                    // Get model used
-                    let model_used = &api_options_clone.model;
-                    
-                    // Clone usage before moving it
-                    let usage_clone = llm_response.usage.clone();
-                    
-                    // Finalize job success
-                    job_processor_utils::finalize_job_success(
-                        &job.id,
-                        &repo,
-                        &json_response_str,
-                        llm_response.usage,
-                        model_used,
-                        &system_prompt_id,
-                        Some(metadata),
-                    ).await?;
-                    
-                    info!("Path correction completed: {} paths corrected", corrected_paths.len());
-                    debug!("Corrected paths: {:?}", corrected_paths);
-                    
-                    // Return success result
-                    Ok(JobProcessResult::success(job.id.clone(), json_response_str.clone())
-                        .with_tokens(
-                            usage_clone.as_ref().map(|u| u.prompt_tokens as i32),
-                            usage_clone.as_ref().map(|u| u.completion_tokens as i32),
-                            usage_clone.as_ref().map(|u| u.total_tokens as i32),
-                            Some(json_response_str.len() as i32)
-                        ))
-                } else {
-                    // No choices in response
-                    let error_msg = "No content in LLM response".to_string();
-                    error!("{}", error_msg);
-                    
-                    // Finalize job failure - LLM succeeded but no content
-                    job_processor_utils::finalize_job_failure(&job.id, &repo, &error_msg, None, llm_response.usage, Some(model_used.clone())).await?;
-                    
-                    Ok(JobProcessResult::failure(job.id.clone(), error_msg))
-                }
+                    }
+                };
+                
+                // Create JSON response object
+                let json_response_obj = serde_json::json!({ 
+                    "correctedPaths": corrected_paths, 
+                    "count": corrected_paths.len() 
+                });
+                let json_response_str = json_response_obj.to_string();
+                
+                // Create metadata with LLM raw response and detailed corrections for additionalParams
+                let (_, detailed_metadata) = match Self::parse_corrected_paths(content) {
+                    Ok((_, meta)) => (corrected_paths.clone(), meta),
+                    Err(_) => (corrected_paths.clone(), serde_json::json!({"correctedPathDetails": []}))
+                };
+                
+                let metadata = serde_json::json!({
+                    "llmRawResponse": content,
+                    "parsedCorrections": detailed_metadata
+                });
+                
+                // Clone usage before moving it
+                let usage_clone = llm_result.usage.clone();
+                
+                // Create a modified LLM result with our JSON response
+                let mut modified_llm_result = llm_result.clone();
+                modified_llm_result.response = json_response_str.clone();
+                
+                // Finalize job success using task runner
+                task_runner.finalize_success(
+                    &repo,
+                    &job.id,
+                    &modified_llm_result,
+                    Some(metadata),
+                ).await?;
+                
+                info!("Path correction completed: {} paths corrected", corrected_paths.len());
+                debug!("Corrected paths: {:?}", corrected_paths);
+                
+                // Return success result
+                Ok(JobProcessResult::success(job.id.clone(), json_response_str.clone())
+                    .with_tokens(
+                        usage_clone.as_ref().map(|u| u.prompt_tokens as i32),
+                        usage_clone.as_ref().map(|u| u.completion_tokens as i32),
+                        usage_clone.as_ref().map(|u| u.total_tokens as i32),
+                        Some(json_response_str.len() as i32)
+                    ))
             },
             Err(e) => {
                 // API error
-                let error_msg = format!("LLM API error: {}", e);
+                let error_msg = format!("Path correction LLM task execution failed: {}", e);
                 error!("{}", error_msg);
                 
-                // Finalize job failure - LLM API call failed
-                job_processor_utils::finalize_job_failure(&job.id, &repo, &error_msg, Some(&e), None, Some(api_options_clone.model)).await?;
+                // Finalize job failure using task runner
+                task_runner.finalize_failure(&repo, &job.id, &error_msg, Some(&e), None).await?;
                 
                 Ok(JobProcessResult::failure(job.id.clone(), error_msg))
             }

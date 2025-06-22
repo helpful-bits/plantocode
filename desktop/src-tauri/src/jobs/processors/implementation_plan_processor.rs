@@ -13,7 +13,7 @@ use crate::utils::xml_utils::extract_xml_from_markdown;
 use crate::utils::job_metadata_builder::JobMetadataBuilder;
 use crate::jobs::job_processor_utils;
 use crate::jobs::processors::utils::{fs_context_utils, prompt_utils};
-use crate::jobs::processors::{LlmTaskRunner, LlmTaskConfigBuilder, LlmPromptContext};
+use crate::jobs::processors::{LlmTaskRunner, LlmTaskConfigBuilder, LlmPromptContext, LlmTaskResult};
 
 pub struct ImplementationPlanProcessor;
 
@@ -189,9 +189,17 @@ impl JobProcessor for ImplementationPlanProcessor {
         // Setup job processing
         let (repo, settings_repo, mut db_job) = job_processor_utils::setup_job_processing(&job.id, &app_handle).await?;
         
+        // Get project directory from session
+        let session = {
+            use crate::db_utils::SessionRepository;
+            let session_repo = SessionRepository::new(repo.get_pool());
+            session_repo.get_session_by_id(&job.session_id).await?
+                .ok_or_else(|| AppError::JobError(format!("Session {} not found", job.session_id)))?
+        };
+        
         // Get task settings from database
-        let task_settings = settings_repo.get_task_settings(&job.session_id, &job.job_type.to_string()).await?
-            .ok_or_else(|| AppError::JobError(format!("No task settings found for session {} and task type {}", job.session_id, job.job_type.to_string())))?;
+        let task_settings = settings_repo.get_task_settings(&session.project_hash, &job.job_type.to_string()).await?
+            .ok_or_else(|| AppError::JobError(format!("No task settings found for project {} and task type {}", session.project_hash, job.job_type.to_string())))?;
         let model_used = task_settings.model;
         let temperature = task_settings.temperature
             .ok_or_else(|| AppError::JobError("Temperature not set in task settings".to_string()))?;
@@ -200,14 +208,6 @@ impl JobProcessor for ImplementationPlanProcessor {
         let job_id = job.id.clone();
         
         job_processor_utils::log_job_start(&job_id, "implementation plan");
-        
-        // Get project directory from session
-        let session = {
-            use crate::db_utils::SessionRepository;
-            let session_repo = SessionRepository::new(repo.get_pool());
-            session_repo.get_session_by_id(&job.session_id).await?
-                .ok_or_else(|| AppError::JobError(format!("Session {} not found", job.session_id)))?
-        };
         let project_directory = &session.project_directory;
             
         // Load file contents and generate directory tree - FULL CONTENT WITHOUT TRUNCATION
@@ -326,7 +326,7 @@ impl JobProcessor for ImplementationPlanProcessor {
         info!("System prompt ID: {}", llm_result.system_prompt_id);
         
         // Use the response from the task runner
-        let response_content = llm_result.response;
+        let response_content = llm_result.response.clone();
         
         // Continue with regular processing using the collected response
         if response_content.is_empty() {
@@ -353,7 +353,7 @@ impl JobProcessor for ImplementationPlanProcessor {
                 let error_msg = format!("Failed to parse implementation plan: {}", e);
                 
                 // Update job to failed using helper - LLM succeeded but parsing failed
-                job_processor_utils::finalize_job_failure(&job.id, &repo, &error_msg, None, llm_result.usage, Some(model_used)).await?;
+                job_processor_utils::finalize_job_failure(&job.id, &repo, &error_msg, None, llm_result.usage, Some(model_used), &app_handle).await?;
                 
                 return Ok(JobProcessResult::failure(job.id.clone(), error_msg));
             }
@@ -413,15 +413,23 @@ impl JobProcessor for ImplementationPlanProcessor {
             obj.remove("streamStartTime");
         }
         
-        // Finalize job success with clean XML content stored in database response field
-        job_processor_utils::finalize_job_success(
-            &job.id,
+        // Create updated job with clean XML content for finalization
+        let mut finalized_job = job.clone();
+        finalized_job.response = Some(clean_xml_content.clone());
+        
+        // Use task runner's finalize_success method to ensure consistent template handling
+        let updated_llm_result = LlmTaskResult {
+            response: clean_xml_content.clone(),
+            usage: llm_result.usage,
+            system_prompt_id: llm_result.system_prompt_id,
+            system_prompt_template: llm_result.system_prompt_template,
+        };
+        
+        task_runner.finalize_success(
             &repo,
-            &clean_xml_content, // Store only clean XML content in job.response
-            llm_result.usage,
-            &model_used,
-            &llm_result.system_prompt_id,
-            Some(impl_plan_additional_params), // Pass the correctly structured additional_params
+            &job.id,
+            &updated_llm_result,
+            Some(impl_plan_additional_params),
         ).await?;
         
         // Return success result with the actual clean XML content

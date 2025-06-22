@@ -5,16 +5,16 @@ use tauri::{AppHandle, Manager};
 use tracing::{info, error, warn, instrument};
 use crate::error::AppError;
 
-/// Cache structure to hold server configurations
-pub type ServerConfigCache = Arc<Mutex<HashMap<String, JsonValue>>>;
+/// Cache structure to hold configurations
+pub type ConfigCache = Arc<Mutex<HashMap<String, JsonValue>>>;
 
 /// Fetches all server configurations and caches them in Tauri managed state
 #[instrument(skip(app_handle))]
 pub async fn fetch_and_cache_server_configurations(app_handle: &AppHandle) -> Result<(), AppError> {
     info!("Fetching server configurations from API");
     
-    // Get the server config cache from managed state
-    let cache = app_handle.state::<ServerConfigCache>();
+    // Get the config cache from managed state
+    let cache = app_handle.state::<ConfigCache>();
     
     // Make authenticated request to server for all configurations
     match fetch_server_configurations(app_handle).await {
@@ -43,7 +43,7 @@ pub async fn fetch_and_cache_server_configurations(app_handle: &AppHandle) -> Re
 /// Retrieves a cached configuration value by key
 #[instrument(skip(app_handle))]
 pub fn get_cached_config_value(key: &str, app_handle: &AppHandle) -> Option<JsonValue> {
-    let cache = app_handle.state::<ServerConfigCache>();
+    let cache = app_handle.state::<ConfigCache>();
     
     match cache.lock() {
         Ok(cache_guard) => {
@@ -65,7 +65,7 @@ pub fn get_cached_config_value(key: &str, app_handle: &AppHandle) -> Option<Json
 /// Retrieves all cached configuration values
 #[instrument(skip(app_handle))]
 pub fn get_all_cached_config_values(app_handle: &AppHandle) -> Result<HashMap<String, JsonValue>, AppError> {
-    let cache = app_handle.state::<ServerConfigCache>();
+    let cache = app_handle.state::<ConfigCache>();
     
     match cache.lock() {
         Ok(cache_guard) => {
@@ -84,13 +84,8 @@ pub fn get_all_cached_config_values(app_handle: &AppHandle) -> Result<HashMap<St
 #[instrument(skip(app_handle))]
 async fn fetch_server_configurations(app_handle: &AppHandle) -> Result<HashMap<String, JsonValue>, AppError> {
     // Get the runtime config to determine server URL
-    let runtime_config = match app_handle.try_state::<crate::config::RuntimeConfig>() {
-        Some(config) => config,
-        None => {
-            error!("Runtime configuration not available");
-            return Err(AppError::ConfigError("Runtime configuration not available".to_string()));
-        }
-    };
+    let app_state = app_handle.state::<crate::AppState>();
+    let runtime_config = &app_state.settings;
     
     let server_url = &runtime_config.server_url;
     let config_url = format!("{}/api/config/all-configurations", server_url);
@@ -138,9 +133,9 @@ async fn fetch_server_configurations(app_handle: &AppHandle) -> Result<HashMap<S
     Ok(configurations)
 }
 
-/// Refreshes the server configuration cache on demand
+/// Refreshes the configuration cache on demand
 #[instrument(skip(app_handle))]
-pub async fn refresh_server_config_cache(app_handle: &AppHandle) -> Result<(), AppError> {
-    info!("Refreshing server configuration cache");
+pub async fn refresh_config_cache(app_handle: &AppHandle) -> Result<(), AppError> {
+    info!("Refreshing configuration cache");
     fetch_and_cache_server_configurations(app_handle).await
 }

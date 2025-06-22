@@ -4,6 +4,7 @@ use chrono::{DateTime, Utc};
 use std::sync::Arc;
 use tracing::{info, instrument};
 use bigdecimal::BigDecimal;
+use crate::models::model_pricing::ModelPricing;
 
 use crate::error::{AppResult, AppError};
 
@@ -33,6 +34,7 @@ pub struct Model {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ModelWithProvider {
     pub id: String,
+    pub api_model_id: String, // Model ID for API calls (without provider prefix)
     pub name: String,
     pub context_window: i32,
     pub price_input: BigDecimal,
@@ -61,161 +63,39 @@ pub struct ModelWithProvider {
     pub provider_status: String,
 }
 
-impl ModelWithProvider {
-    /// Check if this model uses duration-based pricing
-    pub fn is_duration_based(&self) -> bool {
-        self.pricing_type == "duration_based"
+impl ModelPricing for ModelWithProvider {
+    fn get_input_cost_per_million_tokens(&self) -> Option<BigDecimal> {
+        Some(self.price_input.clone())
     }
-
-    /// Calculate cost for duration-based models (e.g., voice transcription)
-    pub fn calculate_duration_cost(&self, duration_ms: i64, markup_percentage: &BigDecimal) -> AppResult<BigDecimal> {
-        if !self.is_duration_based() {
-            return Err(AppError::Internal(
-                format!("Model {} is not duration-based", self.id)
-            ));
-        }
-
-        let price_per_hour = self.price_per_hour.as_ref()
-            .ok_or_else(|| AppError::Internal(
-                format!("Model {} missing price_per_hour", self.id)
-            ))?;
-
-        // Apply minimum billing if specified
-        let minimum_duration_ms = self.minimum_billable_seconds
-            .map(|secs| secs as i64 * 1000)
-            .unwrap_or(0);
-        
-        let billable_duration_ms = std::cmp::max(duration_ms, minimum_duration_ms);
-        
-        // Convert to hours and calculate cost
-        let hours = BigDecimal::from(billable_duration_ms) / BigDecimal::from(3600000); // 1 hour = 3,600,000 ms
-        let base_cost = price_per_hour * hours;
-        let final_cost = base_cost * (BigDecimal::from(1) + markup_percentage);
-        
-        Ok(final_cost)
+    
+    fn get_output_cost_per_million_tokens(&self) -> Option<BigDecimal> {
+        Some(self.price_output.clone())
     }
-
-    /// Get the minimum billable duration in milliseconds
-    pub fn get_minimum_billable_duration_ms(&self) -> i64 {
-        self.minimum_billable_seconds
-            .map(|secs| secs as i64 * 1000)
-            .unwrap_or(0)
+    
+    fn get_duration_cost_per_minute(&self) -> Option<BigDecimal> {
+        self.price_per_hour.as_ref().map(|price| price / BigDecimal::from(60))
     }
-
-    /// Calculate cost for token-based models (e.g., chat completions)
-    /// Supports tiered pricing for models like Gemini 2.5 Pro
-    pub fn calculate_token_cost(&self, tokens_input: i32, tokens_output: i32, markup_percentage: &BigDecimal) -> AppResult<BigDecimal> {
-        if self.is_duration_based() {
-            return Err(AppError::Internal(
-                format!("Model {} is duration-based, token pricing is not applicable", self.id)
-            ));
-        }
-
-        // Calculate cost using BigDecimal arithmetic: (tokens / 1000000) * price_per_million
-        let million = BigDecimal::from(1000000);
-        let tokens_input_bd = BigDecimal::from(tokens_input);
-        let tokens_output_bd = BigDecimal::from(tokens_output);
-        
-        // Check if this model has tiered pricing (e.g., Gemini 2.5 Pro)
-        let (input_price, output_price) = if let (Some(threshold), Some(long_input_price), Some(long_output_price)) = 
-            (&self.long_context_threshold, &self.price_input_long_context, &self.price_output_long_context) {
-            
-            // Apply Google's tiered pricing rule: if input > threshold, ALL tokens use long-context rates
-            if tokens_input > *threshold {
-                (long_input_price, long_output_price)
-            } else {
-                (&self.price_input, &self.price_output)
-            }
-        } else {
-            // Regular pricing for models without tiered pricing
-            (&self.price_input, &self.price_output)
-        };
-        
-        let input_cost = (&tokens_input_bd / &million) * input_price;
-        let output_cost = (&tokens_output_bd / &million) * output_price;
-        let base_cost = input_cost + output_cost;
-        let final_cost = base_cost * (BigDecimal::from(1) + markup_percentage);
-        
-        Ok(final_cost)
+    
+    fn get_minimum_billable_duration_ms(&self) -> Option<i32> {
+        self.minimum_billable_seconds.map(|secs| secs * 1000)
     }
 }
 
-impl Model {
-    /// Check if this model uses duration-based pricing
-    pub fn is_duration_based(&self) -> bool {
-        self.pricing_type == "duration_based"
+impl ModelPricing for Model {
+    fn get_input_cost_per_million_tokens(&self) -> Option<BigDecimal> {
+        Some(self.price_input.clone())
     }
-
-    /// Calculate cost for duration-based models (e.g., voice transcription)
-    pub fn calculate_duration_cost(&self, duration_ms: i64, markup_percentage: &BigDecimal) -> AppResult<BigDecimal> {
-        if !self.is_duration_based() {
-            return Err(AppError::Internal(
-                format!("Model {} is not duration-based", self.id)
-            ));
-        }
-
-        let price_per_hour = self.price_per_hour.as_ref()
-            .ok_or_else(|| AppError::Internal(
-                format!("Model {} missing price_per_hour", self.id)
-            ))?;
-
-        // Apply minimum billing if specified
-        let minimum_duration_ms = self.minimum_billable_seconds
-            .map(|secs| secs as i64 * 1000)
-            .unwrap_or(0);
-        
-        let billable_duration_ms = std::cmp::max(duration_ms, minimum_duration_ms);
-        
-        // Convert to hours and calculate cost
-        let hours = BigDecimal::from(billable_duration_ms) / BigDecimal::from(3600000); // 1 hour = 3,600,000 ms
-        let base_cost = price_per_hour * hours;
-        let final_cost = base_cost * (BigDecimal::from(1) + markup_percentage);
-        
-        Ok(final_cost)
+    
+    fn get_output_cost_per_million_tokens(&self) -> Option<BigDecimal> {
+        Some(self.price_output.clone())
     }
-
-    /// Get the minimum billable duration in milliseconds
-    pub fn get_minimum_billable_duration_ms(&self) -> i64 {
-        self.minimum_billable_seconds
-            .map(|secs| secs as i64 * 1000)
-            .unwrap_or(0)
+    
+    fn get_duration_cost_per_minute(&self) -> Option<BigDecimal> {
+        self.price_per_hour.as_ref().map(|price| price / BigDecimal::from(60))
     }
-
-    /// Calculate cost for token-based models (e.g., chat completions)
-    /// Supports tiered pricing for models like Gemini 2.5 Pro
-    pub fn calculate_token_cost(&self, tokens_input: i32, tokens_output: i32, markup_percentage: &BigDecimal) -> AppResult<BigDecimal> {
-        if self.is_duration_based() {
-            return Err(AppError::Internal(
-                format!("Model {} is duration-based, token pricing is not applicable", self.id)
-            ));
-        }
-
-        // Calculate cost using BigDecimal arithmetic: (tokens / 1000000) * price_per_million
-        let million = BigDecimal::from(1000000);
-        let tokens_input_bd = BigDecimal::from(tokens_input);
-        let tokens_output_bd = BigDecimal::from(tokens_output);
-        
-        // Check if this model has tiered pricing (e.g., Gemini 2.5 Pro)
-        let (input_price, output_price) = if let (Some(threshold), Some(long_input_price), Some(long_output_price)) = 
-            (&self.long_context_threshold, &self.price_input_long_context, &self.price_output_long_context) {
-            
-            // Apply Google's tiered pricing rule: if input > threshold, ALL tokens use long-context rates
-            if tokens_input > *threshold {
-                (long_input_price, long_output_price)
-            } else {
-                (&self.price_input, &self.price_output)
-            }
-        } else {
-            // Regular pricing for models without tiered pricing
-            (&self.price_input, &self.price_output)
-        };
-        
-        let input_cost = (&tokens_input_bd / &million) * input_price;
-        let output_cost = (&tokens_output_bd / &million) * output_price;
-        let base_cost = input_cost + output_cost;
-        let final_cost = base_cost * (BigDecimal::from(1) + markup_percentage);
-        
-        Ok(final_cost)
+    
+    fn get_minimum_billable_duration_ms(&self) -> Option<i32> {
+        self.minimum_billable_seconds.map(|secs| secs * 1000)
     }
 }
 
@@ -263,6 +143,7 @@ impl ModelRepository {
         .map_err(|e| AppError::Database(format!("Failed to fetch models with providers: {}", e)))?;
 
         let result: Vec<ModelWithProvider> = models.into_iter().map(|row| ModelWithProvider {
+            api_model_id: row.id.split('/').last().unwrap_or(&row.id).to_string(),
             id: row.id,
             name: row.name,
             context_window: row.context_window,
@@ -328,6 +209,7 @@ impl ModelRepository {
         .map_err(|e| AppError::Database(format!("Failed to fetch model by ID {}: {}", id, e)))?;
 
         let result = model.map(|row| ModelWithProvider {
+            api_model_id: row.id.split('/').last().unwrap_or(&row.id).to_string(),
             id: row.id,
             name: row.name,
             context_window: row.context_window,
@@ -410,6 +292,7 @@ impl ModelRepository {
         .map_err(|e| AppError::Database(format!("Failed to fetch models for provider {}: {}", provider_code, e)))?;
 
         let result: Vec<ModelWithProvider> = models.into_iter().map(|row| ModelWithProvider {
+            api_model_id: row.id.split('/').last().unwrap_or(&row.id).to_string(),
             id: row.id,
             name: row.name,
             context_window: row.context_window,
@@ -475,6 +358,7 @@ impl ModelRepository {
         .map_err(|e| AppError::Database(format!("Failed to fetch models of type {}: {}", model_type, e)))?;
 
         let result: Vec<ModelWithProvider> = models.into_iter().map(|row| ModelWithProvider {
+            api_model_id: row.id.split('/').last().unwrap_or(&row.id).to_string(),
             id: row.id,
             name: row.name,
             context_window: row.context_window,

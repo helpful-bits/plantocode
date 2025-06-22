@@ -95,7 +95,7 @@ pub async fn save_token(token: Option<String>) -> AppResult<()> {
             None => {
                 debug!("Clearing token from keyring");
                 // Try to delete the password
-                match entry.delete_password() {
+                match entry.delete_credential() {
                     Ok(_) => {
                         debug!("Token cleared from keyring");
                     },
