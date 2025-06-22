@@ -5,17 +5,14 @@ use crate::error::{AppError, AppResult};
 use crate::models::TaskType;
 use crate::db_utils::SettingsRepository;
 use crate::api_clients::ServerProxyClient;
+use crate::utils::hash_utils::generate_project_hash;
 use tauri::{AppHandle, Manager};
 use std::sync::Arc;
 
 /// **UNIFIED PROMPT SYSTEM**
-/// This consolidates the functionality from three overlapping systems:
-/// 1. enhanced_prompt_template.rs
-/// 2. prompt_template_utils.rs  
-/// 3. prompt_composition.rs
-/// 
-/// All three systems were doing similar placeholder substitution with different APIs
-/// This provides a single, comprehensive prompt processing system
+/// This provides a single, comprehensive prompt processing system that handles
+/// placeholder substitution, template processing, and prompt composition with
+/// proper capture of original templates before placeholder replacement.
 
 /// Standard placeholders that can be used in system prompt templates
 #[derive(Debug, Clone)]
@@ -114,13 +111,14 @@ pub struct ComposedPrompt {
     pub system_prompt: String,
     pub user_prompt: String,
     pub system_prompt_id: String,
+    pub system_prompt_template: String,
     pub context_sections: Vec<String>,
     pub estimated_total_tokens: Option<usize>,
     pub estimated_system_tokens: Option<usize>,
     pub estimated_user_tokens: Option<usize>,
 }
 
-/// Unified prompt processor that combines all three previous systems
+/// Unified prompt processor that handles template processing and composition
 pub struct UnifiedPromptProcessor;
 
 impl UnifiedPromptProcessor {
@@ -128,37 +126,27 @@ impl UnifiedPromptProcessor {
         Self
     }
 
-    /// Get effective system prompt from project settings or server defaults
+    /// Get effective system prompt - first check project database, then server defaults
+    /// Returns (resolved_prompt, original_template, prompt_id)
     async fn get_effective_system_prompt(
         &self,
         app_handle: &AppHandle,
         project_directory: &str,
         task_type: &str,
-    ) -> AppResult<(String, String)> {
-        // First try to get project-specific system prompt
-        let project_settings = crate::commands::settings_commands::get_project_task_model_settings_command(
-            app_handle.clone(),
-            project_directory.to_string(),
-        ).await?;
-
-        if let Some(settings_json) = project_settings {
-            let settings: serde_json::Value = serde_json::from_str(&settings_json)
-                .map_err(|e| AppError::ConfigError(format!("Invalid project settings JSON: {}", e)))?;
-            
-            if let Some(task_settings) = settings.get(task_type) {
-                if let Some(task_object) = task_settings.as_object() {
-                    if let Some(system_prompt) = task_object.get("systemPrompt") {
-                        if let Some(prompt_str) = system_prompt.as_str() {
-                            if !prompt_str.is_empty() {
-                                return Ok((prompt_str.to_string(), "project".to_string()));
-                            }
-                        }
-                    }
-                }
-            }
+    ) -> AppResult<(String, String, String)> {
+        // First: Check for custom project system prompt in database
+        let repo = app_handle.state::<Arc<crate::db_utils::BackgroundJobRepository>>().inner().clone();
+        let settings_repo = crate::db_utils::SettingsRepository::new(repo.get_pool());
+        
+        // Get project hash from directory
+        let project_hash = generate_project_hash(project_directory);
+        
+        // Check for custom project system prompt
+        if let Ok(Some(custom_prompt)) = settings_repo.get_project_system_prompt(&project_hash, task_type).await {
+            return Ok((custom_prompt.system_prompt.clone(), custom_prompt.system_prompt, "custom".to_string()));
         }
-
-        // Fall back to server default system prompt
+        
+        // Second: Fall back to server default system prompt
         let server_client = app_handle.state::<Arc<ServerProxyClient>>().inner().clone();
         if let Some(default_prompt) = server_client.get_default_system_prompt(task_type).await? {
             // Try both field name formats (server might use either)
@@ -167,12 +155,16 @@ impl UnifiedPromptProcessor {
                 .and_then(|p| p.as_str());
             
             if let Some(prompt_str) = prompt_str {
-                return Ok((prompt_str.to_string(), "default".to_string()));
+                // Store original template BEFORE any placeholder replacement
+                let original_template = prompt_str.to_string();
+                // At this stage, resolved_prompt is same as original - placeholder replacement happens in process_template
+                let resolved_prompt = prompt_str.to_string();
+                return Ok((resolved_prompt, original_template, "default".to_string()));
             }
         }
 
         // Ultimate fallback: empty system prompt
-        Ok(("".to_string(), "fallback".to_string()))
+        Ok(("".to_string(), "".to_string(), "fallback".to_string()))
     }
 
     /// Main composition method that combines database templates with context
@@ -182,16 +174,16 @@ impl UnifiedPromptProcessor {
         app_handle: &AppHandle,
     ) -> AppResult<ComposedPrompt> {
         // Get the system prompt template from project settings or server defaults
-        let (system_template, system_prompt_id) = self.get_effective_system_prompt(
+        let (system_template, original_template, system_prompt_id) = self.get_effective_system_prompt(
             app_handle,
             &context.project_directory,
             &context.task_type.to_string(),
         ).await?;
 
-        // Process the template with enhanced features (from enhanced_prompt_template.rs)
+        // Process the template with placeholder substitution
         let processed_system = self.process_template(&system_template, context)?;
         
-        // Create user prompt with context (from prompt_composition.rs)
+        // Create user prompt with context
         let user_prompt = self.generate_user_prompt(context)?;
         
         
@@ -207,6 +199,7 @@ impl UnifiedPromptProcessor {
             system_prompt: processed_system,
             user_prompt,
             system_prompt_id,
+            system_prompt_template: original_template,
             context_sections,
             estimated_total_tokens: Some(total_tokens),
             estimated_system_tokens: Some(system_tokens),
@@ -214,7 +207,7 @@ impl UnifiedPromptProcessor {
         })
     }
 
-    /// Process template with placeholder substitution (consolidated from all three systems)
+    /// Process template with placeholder substitution
     pub fn process_template(
         &self,
         template: &str,
@@ -223,16 +216,16 @@ impl UnifiedPromptProcessor {
         let mut result = template.to_string();
 
         
-        // Substitute basic placeholders (from prompt_template_utils.rs)
+        // Substitute basic placeholders
         result = self.substitute_basic_placeholders(&result, context)?;
         
-        // Process rich content sections (from enhanced_prompt_template.rs)
+        // Process rich content sections
         result = self.process_rich_content(&result, context)?;
 
         Ok(result)
     }
 
-    /// Create placeholder mapping (from prompt_composition.rs)
+    /// Create placeholder mapping
     /// Handles None and empty values gracefully by only adding non-empty content
     fn create_placeholders(&self, context: &UnifiedPromptContext) -> AppResult<PromptPlaceholders> {
         let mut placeholders = PromptPlaceholders::new();
@@ -270,7 +263,7 @@ impl UnifiedPromptProcessor {
     }
 
 
-    /// Substitute basic placeholders (from prompt_template_utils.rs)
+    /// Substitute basic placeholders
     fn substitute_basic_placeholders(&self, template: &str, context: &UnifiedPromptContext) -> AppResult<String> {
         let mut result = template.to_string();
         
@@ -319,7 +312,7 @@ impl UnifiedPromptProcessor {
             substitutions.insert("{{LANGUAGE}}", language.as_str());
         }
         
-        // Handle XML content placeholders - this was the missing piece!
+        // Handle XML content placeholders
         if !file_contents_xml.is_empty() {
             substitutions.insert("{{FILE_CONTENTS}}", file_contents_xml.as_str());
         }
@@ -393,7 +386,7 @@ impl UnifiedPromptProcessor {
     }
 
 
-    /// Generate file contents XML (from enhanced_prompt_template.rs)
+    /// Generate file contents XML
     fn generate_file_contents_xml(&self, file_contents: &HashMap<String, String>) -> String {
         if file_contents.is_empty() {
             return String::new();
@@ -406,7 +399,7 @@ impl UnifiedPromptProcessor {
         xml
     }
 
-    /// Generate project structure XML (from enhanced_prompt_template.rs)
+    /// Generate project structure XML
     fn generate_project_structure_xml(&self, directory_tree: &str) -> String {
         if directory_tree.trim().is_empty() {
             return String::new();
@@ -434,7 +427,6 @@ impl UnifiedPromptProcessor {
 }
 
 /// Substitute placeholders in a system prompt template with actual values
-/// This provides the same functionality as the original prompt_template_utils::substitute_placeholders
 pub fn substitute_placeholders(template: &str, placeholders: &PromptPlaceholders) -> AppResult<String> {
     let mut result = template.to_string();
     
@@ -596,7 +588,7 @@ pub fn get_template_for_display(template: &str) -> String {
     template.to_string()
 }
 
-/// Builder for UnifiedPromptContext (replaces CompositionContextBuilder)
+/// Builder for UnifiedPromptContext
 pub struct UnifiedPromptContextBuilder {
     context: UnifiedPromptContext,
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
+import { type FormLifecycleStatus } from "../_contexts/_types/generate-prompt-core-types";
 
 export interface UseGenerateFormStateProps {
   activeSessionId: string | null;
@@ -12,8 +13,7 @@ export interface GenerateFormState {
   // Form lifecycle states
   error: string;
   hasUnsavedChanges: boolean;
-  sessionInitialized: boolean;
-  isRestoringSession: boolean;
+  lifecycleStatus: FormLifecycleStatus;
   isFormSaving: boolean;
   projectDataLoading: boolean;
   isStateLoaded: boolean;
@@ -21,8 +21,7 @@ export interface GenerateFormState {
   // Form lifecycle methods
   setError: (error: string) => void;
   setHasUnsavedChanges: (hasChanges: boolean) => void;
-  setSessionInitialized: (initialized: boolean) => void;
-  setIsRestoringSession: (isRestoring: boolean) => void;
+  setLifecycleStatus: (status: FormLifecycleStatus) => void;
   setIsFormSaving: (isSaving: boolean) => void;
   setProjectDataLoading: (isLoading: boolean) => void;
   setIsStateLoaded: (isLoaded: boolean) => void;
@@ -45,8 +44,7 @@ export function useGenerateFormState({
   // Form state
   const [error, setError] = useState<string>("");
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState<boolean>(false);
-  const [sessionInitialized, setSessionInitialized] = useState<boolean>(false);
-  const [isRestoringSession, setIsRestoringSession] = useState<boolean>(false);
+  const [lifecycleStatus, setLifecycleStatus] = useState<FormLifecycleStatus>('IDLE');
   const [isFormSaving, setIsFormSaving] = useState<boolean>(false);
   const [projectDataLoading, setProjectDataLoading] = useState<boolean>(false);
   const [isStateLoaded, setIsStateLoaded] = useState<boolean>(false);
@@ -55,8 +53,7 @@ export function useGenerateFormState({
   const resetFormState = useCallback(() => {
     setError("");
     setHasUnsavedChanges(false);
-    setSessionInitialized(false);
-    setIsRestoringSession(false);
+    setLifecycleStatus('IDLE');
     setIsFormSaving(false);
     setIsStateLoaded(false);
   }, []);
@@ -66,11 +63,10 @@ export function useGenerateFormState({
     if (!activeSessionId || isTransitioningSession) {
       // Reset relevant states when no active session or during transition
       setIsStateLoaded(false);
-      setIsRestoringSession(false);
-      setSessionInitialized(false); // Explicitly set to false
+      setLifecycleStatus('IDLE');
     } else if (activeSessionId && !isTransitioningSession) {
       // Session is active and not transitioning
-      setSessionInitialized(true);
+      setLifecycleStatus('READY');
       // setIsStateLoaded might be set after session data is fully loaded
     }
   }, [activeSessionId, isTransitioningSession, projectDirectory]);
@@ -79,8 +75,7 @@ export function useGenerateFormState({
     // States
     error,
     hasUnsavedChanges,
-    sessionInitialized,
-    isRestoringSession,
+    lifecycleStatus,
     isFormSaving,
     projectDataLoading,
     isStateLoaded,
@@ -88,8 +83,7 @@ export function useGenerateFormState({
     // Setters
     setError,
     setHasUnsavedChanges,
-    setSessionInitialized,
-    setIsRestoringSession,
+    setLifecycleStatus,
     setIsFormSaving,
     setProjectDataLoading,
     setIsStateLoaded,

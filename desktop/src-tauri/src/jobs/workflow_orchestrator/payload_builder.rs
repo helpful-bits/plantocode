@@ -27,44 +27,6 @@ pub(super) async fn create_abstract_stage_payload(
             );
             Ok(JobPayload::RegexPatternGenerationWorkflow(payload))
         }
-        TaskType::LocalFileFiltering => {
-            // Retrieve raw_regex_patterns from workflow_state.intermediate_data with robust fallback
-            let raw_regex_patterns_value = workflow_state.intermediate_data.raw_regex_patterns
-                .as_ref()
-                .cloned()
-                .unwrap_or_else(|| {
-                    warn!("Raw regex patterns missing from intermediate_data for LocalFileFiltering, using empty object");
-                    serde_json::Value::Object(serde_json::Map::new())
-                });
-
-            // Extract single patterns using new extractor functions
-            let path_pattern = crate::jobs::stage_data_extractors::StageDataExtractor::extract_path_pattern_from_json(&raw_regex_patterns_value)?;
-            let content_pattern = crate::jobs::stage_data_extractors::StageDataExtractor::extract_content_pattern_from_json(&raw_regex_patterns_value)?;
-            let negative_path_pattern = crate::jobs::stage_data_extractors::StageDataExtractor::extract_negative_path_pattern_from_json(&raw_regex_patterns_value)?;
-            let negative_content_pattern = crate::jobs::stage_data_extractors::StageDataExtractor::extract_negative_content_pattern_from_json(&raw_regex_patterns_value)?;
-            
-            debug!("Extracted patterns for LocalFileFiltering - path: {:?}, content: {:?}, negative_path: {:?}, negative_content: {:?}", 
-                path_pattern, content_pattern, negative_path_pattern, negative_content_pattern);
-
-            let payload = StageDataInjector::create_local_filtering_payload(
-                &settings_repo,
-                workflow_state.workflow_id.clone(),
-                workflow_state.session_id.clone(),
-                workflow_state.task_description.clone(),
-                workflow_state.project_directory.clone(),
-                path_pattern,
-                content_pattern,
-                negative_path_pattern,
-                negative_content_pattern,
-                workflow_state.excluded_paths.clone()
-            ).await;
-
-            // Validate payload before returning
-            StageDataInjector::validate_filtering_payload(&payload)
-                .map_err(|e| AppError::JobError(format!("LocalFiltering payload validation failed: {}", e)))?;
-
-            Ok(JobPayload::LocalFileFiltering(payload))
-        }
         TaskType::PathFinder => {
             // NOTE: This task type is superseded by ExtendedPathFinder for the main FileFinderWorkflow
             // Keeping for backward compatibility with older workflows

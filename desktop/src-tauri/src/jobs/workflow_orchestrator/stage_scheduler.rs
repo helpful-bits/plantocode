@@ -138,7 +138,6 @@ pub(super) async fn count_running_jobs_in_workflow_internal(
 pub(super) fn stage_to_task_type_internal(stage: &WorkflowStage) -> TaskType {
     match stage {
         WorkflowStage::RegexPatternGeneration => TaskType::RegexPatternGeneration,
-        WorkflowStage::LocalFileFiltering => TaskType::LocalFileFiltering,
         WorkflowStage::FileRelevanceAssessment => TaskType::FileRelevanceAssessment,
         WorkflowStage::ExtendedPathFinder => TaskType::ExtendedPathFinder,
         WorkflowStage::PathCorrection => TaskType::PathCorrection,

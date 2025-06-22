@@ -178,7 +178,6 @@ pub enum TaskType {
     RegexPatternGeneration,
     FileFinderWorkflow,
     // New individual workflow stage types
-    LocalFileFiltering,
     FileRelevanceAssessment,
     ExtendedPathFinder,
     Streaming,
@@ -198,7 +197,6 @@ impl ToString for TaskType {
             TaskType::GenericLlmStream => "generic_llm_stream".to_string(),
             TaskType::RegexPatternGeneration => "regex_pattern_generation".to_string(),
             TaskType::FileFinderWorkflow => "file_finder_workflow".to_string(),
-            TaskType::LocalFileFiltering => "local_file_filtering".to_string(),
             TaskType::FileRelevanceAssessment => "file_relevance_assessment".to_string(),
             TaskType::ExtendedPathFinder => "extended_path_finder".to_string(),
             TaskType::Streaming => "streaming".to_string(),
@@ -222,7 +220,6 @@ impl std::str::FromStr for TaskType {
             "generic_llm_stream" => Ok(TaskType::GenericLlmStream),
             "regex_pattern_generation" => Ok(TaskType::RegexPatternGeneration),
             "file_finder_workflow" => Ok(TaskType::FileFinderWorkflow),
-            "local_file_filtering" => Ok(TaskType::LocalFileFiltering),
             "file_relevance_assessment" => Ok(TaskType::FileRelevanceAssessment),
             "extended_path_finder" => Ok(TaskType::ExtendedPathFinder),
             "streaming" => Ok(TaskType::Streaming),
@@ -236,10 +233,8 @@ impl TaskType {
     pub fn requires_llm(&self) -> bool {
         match self {
             // Local/filesystem tasks that don't use LLMs
-            TaskType::LocalFileFiltering 
-            | TaskType::FileFinderWorkflow
-            | TaskType::VoiceTranscription
- => false,
+            TaskType::FileFinderWorkflow
+            | TaskType::VoiceTranscription => false,
             // LLM tasks that require configuration
             TaskType::FileRelevanceAssessment
             | TaskType::ExtendedPathFinder
@@ -261,10 +256,8 @@ impl TaskType {
     pub fn api_type(&self) -> ApiType {
         match self {
             // Local/filesystem tasks use filesystem API
-            TaskType::LocalFileFiltering 
-            | TaskType::FileFinderWorkflow
-            | TaskType::VoiceTranscription
- => ApiType::FileSystem,
+            TaskType::FileFinderWorkflow
+            | TaskType::VoiceTranscription => ApiType::FileSystem,
             // Extended workflow stages use OpenRouter API
             TaskType::FileRelevanceAssessment
             | TaskType::ExtendedPathFinder
@@ -288,23 +281,35 @@ pub struct BackgroundJob {
     pub tokens_sent: Option<i32>,
     pub tokens_received: Option<i32>,
     pub model_used: Option<String>,
+    pub cost: Option<String>,
     pub metadata: Option<String>,
+    pub system_prompt_template: Option<String>,
     pub created_at: i64,
     pub updated_at: Option<i64>,
     pub start_time: Option<i64>,
     pub end_time: Option<i64>,
-    pub cost: Option<String>,
 }
 
 // Task settings model (DB struct - no camelCase conversion)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TaskSettings {
-    pub session_id: String,
+    pub project_hash: String,
     pub task_type: String,
     pub model: String, // OpenRouter model string
     pub max_tokens: i32,
     pub temperature: Option<f32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectSystemPrompt {
+    pub project_hash: String,
+    pub task_type: String,
+    pub system_prompt: String,
+    pub is_custom: bool,
+    pub created_at: i64,
+    pub updated_at: i64,
 }
 
 // System prompt for a specific task type and session

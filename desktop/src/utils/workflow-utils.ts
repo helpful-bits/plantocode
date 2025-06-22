@@ -75,9 +75,19 @@ export class WorkflowTracker {
       const tracker = new WorkflowTracker(response.workflowId, sessionId);
       return tracker;
     } catch (error) {
-      console.error("Error", error);
+      console.error("Error starting workflow:", error);
+      
+      // Extract meaningful error message from Tauri command error
+      let errorMessage = 'Unknown error';
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (typeof error === 'string') {
+        errorMessage = error;
+      }
+      
+      // Pass through the original error message without wrapping
       throw new WorkflowError(
-        `Failed to start workflow: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        errorMessage,
         '', // workflowId not available yet
         undefined,
         undefined,
@@ -319,6 +329,7 @@ export class WorkflowTracker {
     return {
       workflowId: response.workflowId,
       sessionId: response.sessionId || this.sessionId,
+      projectHash: response.sessionId || this.sessionId,
       status: this.mapWorkflowStatusString(response.status),
       stageJobs,
       progressPercentage: response.progressPercentage,
@@ -381,6 +392,7 @@ export class WorkflowTracker {
     return {
       workflowId: event.workflowId,
       sessionId: this.sessionId,
+      projectHash: this.sessionId,
       status: event.status,
       stageJobs: [],
       progressPercentage: event.progress,
@@ -470,6 +482,7 @@ export class WorkflowTracker {
     const eventBasedState: WorkflowState = {
       workflowId: event.workflowId,
       sessionId: this.sessionId,
+      projectHash: this.lastKnownState?.projectHash || this.sessionId,
       status: this.mapWorkflowStatusString(event.status),
       stageJobs: preservedStageJobs, // Preserve stage details from last known state
       progressPercentage: event.progress,

@@ -25,7 +25,7 @@ export default function GeneratePromptForm() {
 function GeneratePromptFormContent() {
   // Get data from contexts
   const {
-    state: { activeSessionId },
+    state: { lifecycleStatus },
   } = useCorePromptContext();
 
   // Initialize task context
@@ -46,11 +46,22 @@ function GeneratePromptFormContent() {
         >
           {/* ProjectSection */}
           <div className="relative">
-            <ProjectSection disabled={false} />
+            <ProjectSection disabled={lifecycleStatus !== 'READY'} />
           </div>
         </ErrorBoundary>
 
-        {activeSessionId ? (
+        {lifecycleStatus === 'IDLE' ? (
+          <NoActiveSessionState />
+        ) : lifecycleStatus === 'INITIALIZING' || lifecycleStatus === 'RESTORING' ? (
+          <div className="p-6 border border-border bg-background/95 backdrop-blur-sm shadow-soft rounded-xl">
+            <div className="flex items-center justify-center space-x-3">
+              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary"></div>
+              <span className="text-sm text-muted-foreground">
+                {lifecycleStatus === 'INITIALIZING' ? 'Initializing session...' : 'Restoring session...'}
+              </span>
+            </div>
+          </div>
+        ) : lifecycleStatus === 'READY' ? (
           <>
             <ErrorBoundary
               fallback={

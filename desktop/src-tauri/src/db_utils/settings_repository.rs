@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use sqlx::{sqlite::SqliteRow, Row, SqlitePool};
 use crate::error::{AppError, AppResult};
-use crate::models::{TaskSettings, Settings};
+use crate::models::{TaskSettings, Settings, ProjectSystemPrompt};
 use crate::utils::get_timestamp;
 use crate::services::BackupConfig;
 use tauri::{AppHandle, Manager};
@@ -71,10 +71,10 @@ impl SettingsRepository {
         Ok(())
     }
     
-    /// Get task settings for a specific session and task type
-    pub async fn get_task_settings(&self, session_id: &str, task_type: &str) -> AppResult<Option<TaskSettings>> {
-        let row = sqlx::query("SELECT * FROM task_settings WHERE session_id = $1 AND task_type = $2")
-            .bind(session_id)
+    /// Get task settings for a specific project and task type
+    pub async fn get_task_settings(&self, project_hash: &str, task_type: &str) -> AppResult<Option<TaskSettings>> {
+        let row = sqlx::query("SELECT * FROM task_settings WHERE project_hash = $1 AND task_type = $2")
+            .bind(project_hash)
             .bind(task_type)
             .fetch_optional(&*self.pool)
             .await
@@ -82,14 +82,14 @@ impl SettingsRepository {
             
         match row {
             Some(row) => {
-                let session_id: String = row.try_get::<'_, String, _>("session_id")?;
+                let project_hash: String = row.try_get::<'_, String, _>("project_hash")?;
                 let task_type: String = row.try_get::<'_, String, _>("task_type")?;
                 let model: String = row.try_get::<'_, String, _>("model")?;
                 let max_tokens: i64 = row.try_get::<'_, i64, _>("max_tokens")?;
                 let temperature: Option<f64> = row.try_get::<'_, Option<f64>, _>("temperature").unwrap_or(None);
                 
                 let settings = TaskSettings {
-                    session_id,
+                    project_hash,
                     task_type,
                     model,
                     max_tokens: max_tokens as i32,
@@ -102,18 +102,18 @@ impl SettingsRepository {
         }
     }
     
-    /// Set task settings for a specific session and task type
+    /// Set task settings for a specific project and task type
     pub async fn set_task_settings(&self, settings: &TaskSettings) -> AppResult<()> {
         sqlx::query(
             r#"
-            INSERT INTO task_settings (session_id, task_type, model, max_tokens, temperature)
+            INSERT INTO task_settings (project_hash, task_type, model, max_tokens, temperature)
             VALUES ($1, $2, $3, $4, $5)
-            ON CONFLICT (session_id, task_type) DO UPDATE SET
+            ON CONFLICT (project_hash, task_type) DO UPDATE SET
                 model = excluded.model,
                 max_tokens = excluded.max_tokens,
                 temperature = excluded.temperature
             "#)
-            .bind(&settings.session_id)
+            .bind(&settings.project_hash)
             .bind(&settings.task_type)
             .bind(&settings.model)
             .bind(settings.max_tokens as i64)
@@ -125,10 +125,10 @@ impl SettingsRepository {
         Ok(())
     }
     
-    /// Delete task settings for a specific session and task type
-    pub async fn delete_task_settings(&self, session_id: &str, task_type: &str) -> AppResult<()> {
-        sqlx::query("DELETE FROM task_settings WHERE session_id = $1 AND task_type = $2")
-            .bind(session_id)
+    /// Delete task settings for a specific project and task type
+    pub async fn delete_task_settings(&self, project_hash: &str, task_type: &str) -> AppResult<()> {
+        sqlx::query("DELETE FROM task_settings WHERE project_hash = $1 AND task_type = $2")
+            .bind(project_hash)
             .bind(task_type)
             .execute(&*self.pool)
             .await
@@ -289,6 +289,81 @@ impl SettingsRepository {
         }
 
         Ok(settings)
+    }
+
+    /// Get system prompt for a specific project and task type
+    pub async fn get_project_system_prompt(&self, project_hash: &str, task_type: &str) -> AppResult<Option<ProjectSystemPrompt>> {
+        let row = sqlx::query("SELECT * FROM project_system_prompts WHERE project_hash = $1 AND task_type = $2")
+            .bind(project_hash)
+            .bind(task_type)
+            .fetch_optional(&*self.pool)
+            .await
+            .map_err(|e| AppError::DatabaseError(format!("Failed to fetch project system prompt: {}", e)))?;
+
+        match row {
+            Some(row) => {
+                let project_hash: String = row.try_get("project_hash")?;
+                let task_type: String = row.try_get("task_type")?;
+                let system_prompt: String = row.try_get("system_prompt")?;
+                let is_custom: i64 = row.try_get("is_custom")?;
+                let created_at: i64 = row.try_get("created_at")?;
+                let updated_at: i64 = row.try_get("updated_at")?;
+                
+                Ok(Some(ProjectSystemPrompt {
+                    project_hash,
+                    task_type,
+                    system_prompt,
+                    is_custom: is_custom == 1,
+                    created_at,
+                    updated_at,
+                }))
+            },
+            None => Ok(None)
+        }
+    }
+
+    /// Set system prompt for a specific project and task type
+    pub async fn set_project_system_prompt(&self, project_hash: &str, task_type: &str, system_prompt: &str) -> AppResult<()> {
+        sqlx::query(
+            r#"
+            INSERT INTO project_system_prompts (project_hash, task_type, system_prompt, is_custom, created_at, updated_at)
+            VALUES ($1, $2, $3, 1, strftime('%s', 'now'), strftime('%s', 'now'))
+            ON CONFLICT (project_hash, task_type) DO UPDATE SET
+                system_prompt = excluded.system_prompt,
+                updated_at = strftime('%s', 'now')
+            "#)
+            .bind(project_hash)
+            .bind(task_type)
+            .bind(system_prompt)
+            .execute(&*self.pool)
+            .await
+            .map_err(|e| AppError::DatabaseError(format!("Failed to set project system prompt: {}", e)))?;
+        
+        Ok(())
+    }
+
+    /// Delete system prompt for a specific project and task type (reset to default)
+    pub async fn delete_project_system_prompt(&self, project_hash: &str, task_type: &str) -> AppResult<()> {
+        sqlx::query("DELETE FROM project_system_prompts WHERE project_hash = $1 AND task_type = $2")
+            .bind(project_hash)
+            .bind(task_type)
+            .execute(&*self.pool)
+            .await
+            .map_err(|e| AppError::DatabaseError(format!("Failed to delete project system prompt: {}", e)))?;
+        
+        Ok(())
+    }
+
+    /// Check if project has custom system prompt for task type
+    pub async fn has_custom_system_prompt(&self, project_hash: &str, task_type: &str) -> AppResult<bool> {
+        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM project_system_prompts WHERE project_hash = $1 AND task_type = $2")
+            .bind(project_hash)
+            .bind(task_type)
+            .fetch_one(&*self.pool)
+            .await
+            .map_err(|e| AppError::DatabaseError(format!("Failed to check custom system prompt: {}", e)))?;
+        
+        Ok(count > 0)
     }
     
 }

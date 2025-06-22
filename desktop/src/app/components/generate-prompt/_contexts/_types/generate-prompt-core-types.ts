@@ -1,10 +1,11 @@
+export type FormLifecycleStatus = 'IDLE' | 'INITIALIZING' | 'RESTORING' | 'READY';
+
 export interface CorePromptContextState {
   // Session state
   activeSessionId: string | null;
   isStateLoaded: boolean;
   isSwitchingSession: boolean;
-  isRestoringSession: boolean;
-  sessionInitialized: boolean;
+  lifecycleStatus: FormLifecycleStatus;
   sessionName: string;
   hasUnsavedChanges: boolean;
   isFormSaving: boolean;
@@ -22,7 +23,6 @@ export interface CorePromptContextActions {
   setSessionName: (name: string) => void;
   saveSessionState: () => Promise<void>;
   flushPendingSaves: () => Promise<boolean>;
-  setSessionInitialized: (value: boolean) => void;
   setHasUnsavedChanges: (value: boolean) => void;
   handleInteraction: () => void;
   handleGenerateCodebase: () => Promise<void>;

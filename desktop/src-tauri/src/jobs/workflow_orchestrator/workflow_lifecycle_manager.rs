@@ -230,7 +230,6 @@ async fn create_abstract_stage_job_with_lock(
     // Convert to WorkflowStage for model configuration
     let stage = match task_type {
         TaskType::RegexPatternGeneration => WorkflowStage::RegexPatternGeneration,
-        TaskType::LocalFileFiltering => WorkflowStage::LocalFileFiltering,
         TaskType::FileRelevanceAssessment => WorkflowStage::FileRelevanceAssessment,
         TaskType::ExtendedPathFinder => WorkflowStage::ExtendedPathFinder,
         TaskType::PathCorrection => WorkflowStage::PathCorrection,
@@ -450,7 +449,7 @@ async fn initialize_workflow_task_settings(
         }
         
         // Get model configuration from project/global settings
-        let model = match crate::config::get_model_for_task_with_project(task_type, project_directory, app_handle).await {
+        let model = match crate::utils::config_helpers::get_model_for_task(task_type, app_handle).await {
             Ok(model) => model,
             Err(e) => {
                 error!("Failed to get model for task type {} in project {}: {}", task_type_str, project_directory, e);
@@ -458,7 +457,7 @@ async fn initialize_workflow_task_settings(
             }
         };
         
-        let temperature = match crate::config::get_temperature_for_task_with_project(task_type, project_directory, app_handle).await {
+        let temperature = match crate::utils::config_helpers::get_default_temperature_for_task(Some(task_type), app_handle).await {
             Ok(temp) => Some(temp),
             Err(e) => {
                 warn!("Failed to get temperature for task type {} in project {}: {}", task_type_str, project_directory, e);
@@ -466,7 +465,7 @@ async fn initialize_workflow_task_settings(
             }
         };
         
-        let max_tokens = match crate::config::get_max_tokens_for_task_with_project(task_type, project_directory, app_handle).await {
+        let max_tokens = match crate::utils::config_helpers::get_default_max_tokens_for_task(Some(task_type), app_handle).await {
             Ok(tokens) => tokens as i32,
             Err(e) => {
                 warn!("Failed to get max_tokens for task type {} in project {}: {}", task_type_str, project_directory, e);
@@ -476,7 +475,7 @@ async fn initialize_workflow_task_settings(
         
         // Create the task settings
         let task_settings = crate::models::TaskSettings {
-            session_id: session_id.to_string(),
+            project_hash: crate::utils::hash_utils::hash_string(project_directory),
             task_type: task_type_str.clone(),
             model,
             max_tokens,

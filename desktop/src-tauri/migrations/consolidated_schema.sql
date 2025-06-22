@@ -85,20 +85,6 @@ CREATE TABLE IF NOT EXISTS task_description_history (
 -- Create index for task_description_history table
 CREATE INDEX IF NOT EXISTS idx_task_description_history_session_id_created_at ON task_description_history(session_id, created_at DESC);
 
--- Create cached_state table
-CREATE TABLE IF NOT EXISTS cached_state (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  project_directory TEXT NOT NULL,
-  project_hash TEXT NOT NULL,
-  key TEXT NOT NULL,
-  value TEXT, -- Store serialized values as text
-  updated_at INTEGER,
-  UNIQUE(project_hash, key)
-);
-
--- Create indexes for cached_state table
-CREATE INDEX IF NOT EXISTS idx_cached_state_lookup ON cached_state(project_hash, key);
-CREATE INDEX IF NOT EXISTS idx_cached_state_project_dir ON cached_state(project_directory);
 
 -- Create key_value_store table
 CREATE TABLE IF NOT EXISTS key_value_store (
@@ -129,11 +115,11 @@ CREATE TABLE IF NOT EXISTS background_jobs (
   tokens_received INTEGER DEFAULT 0,
   model_used TEXT,
   metadata TEXT,
+  system_prompt_template TEXT,
   created_at INTEGER DEFAULT (strftime('%s', 'now')) NOT NULL,
   updated_at INTEGER DEFAULT (strftime('%s', 'now')),
   start_time INTEGER,
   end_time INTEGER,
-  cost DECIMAL(10,6) DEFAULT 0.0,
   FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
 );
 
@@ -144,55 +130,36 @@ CREATE INDEX IF NOT EXISTS idx_background_jobs_task_type ON background_jobs(task
 
 -- Create task_settings table
 CREATE TABLE IF NOT EXISTS task_settings (
-  session_id TEXT NOT NULL,
+  project_hash TEXT NOT NULL,
   task_type TEXT NOT NULL,
   model TEXT NOT NULL,
   max_tokens INTEGER NOT NULL,
   temperature REAL,
-  PRIMARY KEY (session_id, task_type),
-  FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+  PRIMARY KEY (project_hash, task_type)
 );
 
+-- Create project_system_prompts table for project-specific system prompt overrides
+CREATE TABLE IF NOT EXISTS project_system_prompts (
+  project_hash TEXT NOT NULL,
+  task_type TEXT NOT NULL,
+  system_prompt TEXT NOT NULL,
+  is_custom INTEGER DEFAULT 1,
+  created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+  updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+  PRIMARY KEY (project_hash, task_type)
+);
 
+-- Create indexes for project_system_prompts table
+CREATE INDEX IF NOT EXISTS idx_project_system_prompts_project_hash ON project_system_prompts(project_hash);
+CREATE INDEX IF NOT EXISTS idx_project_system_prompts_task_type ON project_system_prompts(task_type);
+CREATE INDEX IF NOT EXISTS idx_project_system_prompts_is_custom ON project_system_prompts(is_custom);
 
 -- Model configurations are fetched from server - no local storage needed
-
 
 -- AI configurations come from server only
 -- Model configurations are fetched from server - no local storage needed
 -- Desktop only stores user-specific local preferences in key_value_store if needed
 
--- User credits balance tracking (local cache from server)
-CREATE TABLE IF NOT EXISTS user_credits (
-    user_id TEXT PRIMARY KEY,
-    balance TEXT NOT NULL DEFAULT '0.0000', -- Store as TEXT for precise decimal handling
-    currency TEXT NOT NULL DEFAULT 'USD',
-    services_blocked INTEGER DEFAULT 0 CHECK(services_blocked IN (0, 1)),
-    created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
-    updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
-);
-
--- Credit transaction history (local cache from server)
-CREATE TABLE IF NOT EXISTS credit_transactions (
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL,
-    transaction_type TEXT NOT NULL, -- 'purchase', 'consumption', 'refund', 'adjustment', 'expiry'
-    amount TEXT NOT NULL, -- Store as TEXT for precise decimal handling
-    currency TEXT NOT NULL DEFAULT 'USD',
-    description TEXT,
-    stripe_charge_id TEXT, -- For purchases
-    related_api_usage_id TEXT, -- For consumptions
-    metadata TEXT, -- JSON string
-    balance_after TEXT, -- Balance after this transaction for audit trail
-    created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
-);
-
--- Create indexes for performance
-CREATE INDEX IF NOT EXISTS idx_user_credits_user_id ON user_credits(user_id);
-CREATE INDEX IF NOT EXISTS idx_credit_transactions_user_id ON credit_transactions(user_id);
-CREATE INDEX IF NOT EXISTS idx_credit_transactions_type ON credit_transactions(transaction_type);
-CREATE INDEX IF NOT EXISTS idx_credit_transactions_stripe_charge ON credit_transactions(stripe_charge_id);
-CREATE INDEX IF NOT EXISTS idx_credit_transactions_created ON credit_transactions(created_at DESC);
 
 -- Record this consolidated schema in the key_value_store table
 -- =========================================================================

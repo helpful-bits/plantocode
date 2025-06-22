@@ -250,7 +250,6 @@ fn find_subsequent_stages_in_definition(
 fn stage_to_task_type_for_retry(stage: &WorkflowStage) -> TaskType {
     match stage {
         WorkflowStage::RegexPatternGeneration => TaskType::RegexPatternGeneration,
-        WorkflowStage::LocalFileFiltering => TaskType::LocalFileFiltering,
         WorkflowStage::FileRelevanceAssessment => TaskType::FileRelevanceAssessment,
         WorkflowStage::ExtendedPathFinder => TaskType::ExtendedPathFinder,
         WorkflowStage::PathCorrection => TaskType::PathCorrection,
@@ -261,7 +260,6 @@ fn stage_to_task_type_for_retry(stage: &WorkflowStage) -> TaskType {
 fn task_type_to_workflow_stage(task_type: TaskType) -> Option<WorkflowStage> {
     match task_type {
         TaskType::RegexPatternGeneration => Some(WorkflowStage::RegexPatternGeneration),
-        TaskType::LocalFileFiltering => Some(WorkflowStage::LocalFileFiltering),
         TaskType::FileRelevanceAssessment => Some(WorkflowStage::FileRelevanceAssessment),
         TaskType::ExtendedPathFinder => Some(WorkflowStage::ExtendedPathFinder),
         TaskType::PathCorrection => Some(WorkflowStage::PathCorrection),

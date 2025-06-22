@@ -6,7 +6,7 @@ use crate::error::{AppError, AppResult};
 use crate::jobs::types::{Job, JobPayload, JobProcessResult};
 use crate::jobs::processor_trait::JobProcessor;
 use crate::jobs::job_processor_utils;
-use crate::jobs::processors::utils::{llm_api_utils};
+use crate::jobs::processors::{LlmTaskRunner, LlmTaskConfigBuilder, LlmPromptContext};
 
 /// Processor for generic LLM streaming tasks
 pub struct GenericLlmStreamProcessor;
@@ -39,9 +39,17 @@ impl JobProcessor for GenericLlmStreamProcessor {
         // Setup job processing
         let (repo, settings_repo, db_job) = job_processor_utils::setup_job_processing(&job.id, &app_handle).await?;
         
+        // Get session to access project_hash
+        let session = {
+            use crate::db_utils::SessionRepository;
+            let session_repo = SessionRepository::new(repo.get_pool());
+            session_repo.get_session_by_id(&job.session_id).await?
+                .ok_or_else(|| AppError::JobError(format!("Session {} not found", job.session_id)))?
+        };
+        
         // Get task settings from database
-        let task_settings = settings_repo.get_task_settings(&job.session_id, &job.job_type.to_string()).await?
-            .ok_or_else(|| AppError::JobError(format!("No task settings found for session {} and task type {}", job.session_id, job.job_type.to_string())))?;
+        let task_settings = settings_repo.get_task_settings(&session.project_hash, &job.job_type.to_string()).await?
+            .ok_or_else(|| AppError::JobError(format!("No task settings found for project {} and task type {}", session.project_hash, job.job_type.to_string())))?;
         let model_used = task_settings.model;
         let temperature = task_settings.temperature
             .ok_or_else(|| AppError::JobError("Temperature not set in task settings".to_string()))?;
@@ -49,141 +57,80 @@ impl JobProcessor for GenericLlmStreamProcessor {
         
         job_processor_utils::log_job_start(&job.id, "generic LLM stream");
         
-        // Create API options with streaming enabled
-        let api_options = llm_api_utils::create_api_client_options(
-            model_used.clone(),
-            temperature,
-            max_output_tokens,
-            true, // Enable streaming for this processor
-        )?;
+        // Setup LLM task configuration for streaming
+        let llm_config = LlmTaskConfigBuilder::new()
+            .model(model_used.clone())
+            .temperature(temperature)
+            .max_tokens(max_output_tokens)
+            .stream(true) // Enable streaming for this processor
+            .build();
         
+        // Create LLM task runner
+        let task_runner = LlmTaskRunner::new(app_handle.clone(), job.clone(), llm_config);
         
-        // Stream the response from the LLM
-        debug!("Starting LLM stream with model: {}", api_options.model);
+        // Create prompt context with system prompt override for generic streams
+        let prompt_context = LlmPromptContext {
+            task_description: payload.prompt_text.clone(),
+            file_contents: None,
+            directory_tree: None,
+            system_prompt_override: payload.system_prompt.clone(),
+        };
         
-        // Clone model name before moving api_options
-        let model_name = api_options.model.clone();
-        
-        // Get the API client for streaming
-        let llm_client = llm_api_utils::get_api_client(&app_handle)?;
-        
-        // Construct messages vector for chat completion
-        let mut messages: Vec<crate::models::OpenRouterRequestMessage> = Vec::new();
-        
-        // Add system message if system prompt exists
-        if let Some(system_prompt) = &payload.system_prompt {
-            if !system_prompt.trim().is_empty() {
-                messages.push(crate::models::OpenRouterRequestMessage {
-                    role: "system".to_string(),
-                    content: vec![crate::models::OpenRouterContent::Text {
-                        content_type: "text".to_string(),
-                        text: system_prompt.clone(),
-                    }],
-                });
+        // Execute streaming LLM task using the task runner
+        info!("Calling LLM for generic stream with model {} (streaming enabled)", model_used);
+        let llm_result = match task_runner.execute_streaming_llm_task(
+            prompt_context,
+            &settings_repo,
+            &repo,
+            &job.id,
+        ).await {
+            Ok(result) => result,
+            Err(e) => {
+                error!("Generic LLM Stream task execution failed: {}", e);
+                let error_msg = format!("Streaming LLM task execution failed: {}", e);
+                task_runner.finalize_failure(&repo, &job.id, &error_msg, Some(&e), None).await?;
+                return Ok(JobProcessResult::failure(job.id.clone(), error_msg));
             }
+        };
+        
+        info!("Generic LLM Stream task completed successfully for job {}", job.id);
+        info!("System prompt ID: {}", llm_result.system_prompt_id);
+        
+        // Use the response from the task runner
+        let response_content = llm_result.response.clone();
+        let response_len = response_content.len() as i32;
+        
+        // Check if we got content
+        if response_content.is_empty() {
+            let error_msg = "No content received from LLM stream";
+            error!("Generic stream job {} failed: {}", job.id, error_msg);
+            task_runner.finalize_failure(&repo, &job.id, &error_msg, None, llm_result.usage).await?;
+            return Ok(JobProcessResult::failure(job.id.clone(), error_msg.to_string()));
         }
         
-        // Add user message for main prompt
-        messages.push(crate::models::OpenRouterRequestMessage {
-            role: "user".to_string(),
-            content: vec![crate::models::OpenRouterContent::Text {
-                content_type: "text".to_string(),
-                text: payload.prompt_text.clone(),
-            }],
-        });
+        // Extract usage before moving it
+        let usage_for_result = llm_result.usage.clone();
         
-        // Create StreamConfig manually with estimated tokens
-        let system_prompt_text = payload.system_prompt.as_deref().unwrap_or("");
-        let estimated_system_tokens = system_prompt_text.len() / 4;
-        let estimated_user_tokens = payload.prompt_text.len() / 4;
-        let estimated_total_tokens = estimated_system_tokens + estimated_user_tokens;
+        // Use task runner's finalize_success method to ensure consistent template handling
+        task_runner.finalize_success(
+            &repo,
+            &job.id,
+            &llm_result,
+            None,
+        ).await?;
         
-        let stream_config = crate::jobs::streaming_handler::StreamConfig {
-            prompt_tokens: estimated_total_tokens,
-            system_prompt: system_prompt_text.to_string(),
-            user_prompt: payload.prompt_text.clone(),
-        };
+        // Create and return the result
+        let mut result = JobProcessResult::success(job.id.to_string(), response_content);
         
-        // Create streaming handler
-        let streaming_handler = crate::jobs::streaming_handler::StreamedResponseHandler::new(
-            repo.clone(),
-            job.id.clone(),
-            db_job.metadata.clone(),
-            stream_config,
-            Some(app_handle.clone()),
-        );
-        
-        // Call chat completion stream and process with handler
-        let stream_result = match llm_client.chat_completion_stream(messages, api_options).await {
-            Ok(stream) => {
-                match streaming_handler.process_stream(stream).await {
-                    Ok(result) => result,
-                    Err(e) => {
-                        let error_message = e.to_string();
-                        error!("{}", error_message);
-                        
-                        // Finalize job failure - streaming failed, no usage available
-                        job_processor_utils::finalize_job_failure(&job.id, &repo, &error_message, None, None, Some(model_name.clone())).await?;
-                        
-                        // Return failure result
-                        return Ok(JobProcessResult::failure(job.id.to_string(), error_message));
-                    }
-                }
-            }
-            Err(e) => {
-                let error_message = e.to_string();
-                error!("{}", error_message);
-                
-                // Finalize job failure - no LLM call made yet, so no usage
-                job_processor_utils::finalize_job_failure(&job.id, &repo, &error_message, None, None, Some(model_name.clone())).await?;
-                
-                // Return failure result
-                return Ok(JobProcessResult::failure(job.id.to_string(), error_message));
-            }
-        };
-        
-        let collected_response = stream_result.accumulated_response;
-        let usage_opt = stream_result.final_usage;
-        let response_len = collected_response.len() as i32;
-        
-        // Update job status to completed
-        let result = if !collected_response.is_empty() {
-            debug!("Stream completed successfully, updating job status");
-            
-            // Finalize job success
-            job_processor_utils::finalize_job_success(
-                &job.id,
-                &repo,
-                &collected_response,
-                usage_opt.clone(),
-                &model_name,
-                "generic_stream", // No specific system prompt ID for generic streams
-                None,
-            ).await?;
-            
-            let mut result = JobProcessResult::success(job.id.to_string(), collected_response);
-            
-            // Add token information if usage is available
-            if let Some(usage) = &usage_opt {
-                result = result.with_tokens(
-                    Some(usage.prompt_tokens as i32),
-                    Some(usage.completion_tokens as i32),
-                    Some(usage.total_tokens as i32),
-                    Some(response_len)  // Use response length as char count
-                );
-            }
-            
-            result
-        } else {
-            let error_message = "Stream completed but no content was received".to_string();
-            error!("{}", error_message);
-            
-            // Finalize job failure - streaming completed but no content
-            job_processor_utils::finalize_job_failure(&job.id, &repo, &error_message, None, usage_opt, Some(model_name.clone())).await?;
-            
-            // Return failure result
-            JobProcessResult::failure(job.id.to_string(), error_message)
-        };
+        // Add token information if usage is available
+        if let Some(usage) = &usage_for_result {
+            result = result.with_tokens(
+                Some(usage.prompt_tokens as i32),
+                Some(usage.completion_tokens as i32),
+                Some(usage.total_tokens as i32),
+                Some(response_len)
+            );
+        }
         
         info!("Completed generic LLM stream job {}", job.id);
         Ok(result)

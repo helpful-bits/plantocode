@@ -30,7 +30,7 @@ pub fn convert_db_job_to_job(db_job: &BackgroundJob) -> AppResult<Job> {
 pub fn deserialize_value_to_job_payload(json_value: &serde_json::Value, task_type: &crate::models::TaskType) -> AppResult<JobPayload> {
     use crate::jobs::types::{
         JobPayload, RegexPatternGenerationWorkflowPayload, 
-        LocalFileFilteringPayload, PathFinderPayload, PathCorrectionPayload, 
+        PathFinderPayload, PathCorrectionPayload, 
         ExtendedPathFinderPayload, ImplementationPlanPayload,
         GuidanceGenerationPayload, TaskRefinementPayload,
         TextImprovementPayload, GenericLlmStreamPayload, RegexPatternGenerationPayload,
@@ -49,11 +49,6 @@ pub fn deserialize_value_to_job_payload(json_value: &serde_json::Value, task_typ
                     .map_err(|e| AppError::JobError(format!("Failed to deserialize RegexPatternGenerationPayload: {}", e)))?;
                 Ok(JobPayload::RegexPatternGeneration(standalone_payload))
             }
-        }
-        TaskType::LocalFileFiltering => {
-            let payload: LocalFileFilteringPayload = serde_json::from_value(json_value.clone())
-                .map_err(|e| AppError::JobError(format!("Failed to deserialize LocalFileFilteringPayload: {}", e)))?;
-            Ok(JobPayload::LocalFileFiltering(payload))
         }
         TaskType::PathFinder => {
             let payload: PathFinderPayload = serde_json::from_value(json_value.clone())

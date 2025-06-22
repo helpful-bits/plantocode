@@ -2,21 +2,46 @@ import { invoke } from '@tauri-apps/api/core';
 import { TaskType } from '../types/task-type-defs';
 import type { DefaultSystemPrompt } from '../types/system-prompts';
 
+interface ProjectSystemPrompt {
+  projectHash: string;
+  taskType: string;
+  systemPrompt: string;
+  isCustom: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
 /**
  * Get system prompt for a task type at project level
  */
 export async function getProjectSystemPrompt(
   projectDirectory: string,
   taskType: TaskType
-): Promise<string | null> {
+): Promise<ProjectSystemPrompt | null> {
   try {
-    const response = await invoke<string | null>('get_project_system_prompt_command', {
+    const response = await invoke<ProjectSystemPrompt | null>('get_project_system_prompt_command', {
       projectDirectory,
       taskType
     });
     return response;
   } catch (error) {
     console.error('Failed to get project system prompt:', error);
+    throw error;
+  }
+}
+
+/**
+ * Get system prompt text only for a task type at project level
+ */
+export async function getProjectSystemPromptText(
+  projectDirectory: string,
+  taskType: TaskType
+): Promise<string | null> {
+  try {
+    const promptObj = await getProjectSystemPrompt(projectDirectory, taskType);
+    return promptObj?.systemPrompt || null;
+  } catch (error) {
+    console.error('Failed to get project system prompt text:', error);
     throw error;
   }
 }

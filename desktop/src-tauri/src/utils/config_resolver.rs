@@ -6,14 +6,13 @@ use crate::models::TaskType;
 /// 
 /// This function centralizes the logic for resolving model configuration by:
 /// 1. Using override values if provided
-/// 2. Otherwise falling back to project-specific settings
-/// 3. Finally falling back to server defaults
+/// 2. Otherwise falling back to server defaults from cache
 /// 
 /// For non-LLM tasks, returns None.
 pub async fn resolve_model_settings(
     app_handle: &AppHandle,
     task_type: TaskType,
-    project_directory: &str,
+    _project_directory: &str, // No longer used, keeping for API compatibility
     model_override: Option<String>,
     temperature_override: Option<f32>,
     max_tokens_override: Option<u32>,
@@ -32,29 +31,29 @@ pub async fn resolve_model_settings(
         return Ok(None);
     }
 
-    // Resolve model
+    // Resolve model - use override or server default
     let model = if let Some(model) = model_override {
         model
     } else {
-        crate::config::get_model_for_task_with_project(task_type, project_directory, app_handle)
+        crate::utils::config_helpers::get_model_for_task(task_type, app_handle)
             .await
             .map_err(|e| AppError::ConfigError(format!("Failed to get model for task {:?}: {}", task_type, e)))?
     };
 
-    // Resolve temperature
+    // Resolve temperature - use override or server default
     let temperature = if let Some(temp) = temperature_override {
         temp
     } else {
-        crate::config::get_temperature_for_task_with_project(task_type, project_directory, app_handle)
+        crate::utils::config_helpers::get_default_temperature_for_task(Some(task_type), app_handle)
             .await
             .map_err(|e| AppError::ConfigError(format!("Failed to get temperature for task {:?}: {}", task_type, e)))?
     };
 
-    // Resolve max_tokens
+    // Resolve max_tokens - use override or server default
     let max_tokens = if let Some(tokens) = max_tokens_override {
         tokens
     } else {
-        crate::config::get_max_tokens_for_task_with_project(task_type, project_directory, app_handle)
+        crate::utils::config_helpers::get_default_max_tokens_for_task(Some(task_type), app_handle)
             .await
             .map_err(|e| AppError::ConfigError(format!("Failed to get max_tokens for task {:?}: {}", task_type, e)))?
     };

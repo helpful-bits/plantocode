@@ -87,7 +87,7 @@ pub async fn transcribe_audio_batch_command(
     });
     
     let response = client
-        .post(&format!("{}/api/proxy/audio/transcriptions/batch", server_url))
+        .post(&format!("{}/api/audio/transcriptions/batch", server_url))
         .header("Authorization", format!("Bearer {}", jwt))
         .header("Content-Type", "application/json")
         .json(&request_payload)

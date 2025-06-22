@@ -37,6 +37,7 @@ pub struct LlmTaskResult {
     pub response: String,
     pub usage: Option<OpenRouterUsage>,
     pub system_prompt_id: String,
+    pub system_prompt_template: String,
 }
 
 /// Context for building unified prompts
@@ -49,6 +50,7 @@ pub struct LlmPromptContext {
 }
 
 /// Abstract LLM task runner that provides common functionality for all LLM-based processors
+#[derive(Clone)]
 pub struct LlmTaskRunner {
     app_handle: AppHandle,
     job: Job,
@@ -79,6 +81,10 @@ impl LlmTaskRunner {
         let system_prompt = composed_prompt.system_prompt.clone();
         let user_prompt = composed_prompt.user_prompt.clone();
         let system_prompt_id = composed_prompt.system_prompt_id.clone();
+        let system_prompt_template = composed_prompt.system_prompt_template.clone();
+        
+        // Log the actual system prompt being sent to the LLM
+        info!("System prompt (ID: {}) being sent to LLM: {}", system_prompt_id, system_prompt);
         
         // Create messages
         let messages = llm_api_utils::create_openrouter_messages(&system_prompt, &user_prompt);
@@ -112,6 +118,7 @@ impl LlmTaskRunner {
             response: response_text,
             usage: response.usage, // Contains server-calculated cost
             system_prompt_id,
+            system_prompt_template,
         })
     }
 
@@ -136,6 +143,7 @@ impl LlmTaskRunner {
         let system_prompt = composed_prompt.system_prompt.clone();
         let user_prompt = composed_prompt.user_prompt.clone();
         let system_prompt_id = composed_prompt.system_prompt_id.clone();
+        let system_prompt_template = composed_prompt.system_prompt_template.clone();
         
         // Create API options with streaming enabled
         let api_options = llm_api_utils::create_api_client_options(
@@ -177,6 +185,7 @@ impl LlmTaskRunner {
             response: stream_result.accumulated_response,
             usage: stream_result.final_usage, // Contains server-calculated cost from final stream chunk
             system_prompt_id,
+            system_prompt_template,
         })
     }
 
@@ -200,6 +209,7 @@ impl LlmTaskRunner {
                 system_prompt: override_prompt.clone(),
                 user_prompt: context.task_description.clone(),
                 system_prompt_id: "override".to_string(),
+                system_prompt_template: override_prompt.clone(), // For override, template and resolved are the same
                 context_sections: vec![], // No context sections for override
                 estimated_total_tokens: Some(crate::utils::token_estimator::estimate_tokens(&combined_content) as usize),
                 estimated_system_tokens: Some(0),
@@ -242,7 +252,9 @@ impl LlmTaskRunner {
             result.usage.clone(),
             &self.config.model,
             &result.system_prompt_id,
+            &result.system_prompt_template,
             metadata,
+            &self.app_handle,
         ).await
     }
 
@@ -262,7 +274,8 @@ impl LlmTaskRunner {
             error_message, 
             app_error_opt,
             llm_usage,
-            Some(self.config.model.clone())
+            Some(self.config.model.clone()),
+            &self.app_handle,
         ).await
     }
 }

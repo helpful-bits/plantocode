@@ -2,7 +2,6 @@ use std::sync::Arc;
 use std::str::FromStr;
 use sqlx::{sqlite::SqliteRow, Row, SqlitePool, Sqlite};
 use tauri::Emitter;
-use bigdecimal::BigDecimal;
 use crate::error::{AppError, AppResult};
 use crate::models::{BackgroundJob, JobStatus, TaskType};
 use crate::utils::get_timestamp;
@@ -352,9 +351,9 @@ impl BackgroundJobRepository {
             r#"
             INSERT INTO background_jobs (
                 id, session_id, task_type, status, prompt, response, error_message,
-                tokens_sent, tokens_received, model_used, metadata, 
+                tokens_sent, tokens_received, model_used, metadata, system_prompt_template,
                 created_at, updated_at, start_time, end_time
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
             "#)
             .bind(&job.id)
             .bind(&job.session_id)
@@ -366,7 +365,9 @@ impl BackgroundJobRepository {
             .bind(job.tokens_sent.map(|v| v as i64))
             .bind(job.tokens_received.map(|v| v as i64))
             .bind(&job.model_used)
+            // Note: cost field is not stored in database, only kept in memory
             .bind(&job.metadata)
+            .bind(&job.system_prompt_template)
             .bind(job.created_at)
             .bind(job.updated_at)
             .bind(job.start_time)
@@ -395,8 +396,9 @@ impl BackgroundJobRepository {
                 tokens_sent = $10,
                 tokens_received = $11,
                 model_used = $12,
-                metadata = $13
-            WHERE id = $14
+                metadata = $13,
+                system_prompt_template = $14
+            WHERE id = $15
             "#)
             .bind(&job.session_id)
             .bind(&job.task_type)
@@ -410,7 +412,9 @@ impl BackgroundJobRepository {
             .bind(job.tokens_sent.map(|v| v as i64))
             .bind(job.tokens_received.map(|v| v as i64))
             .bind(&job.model_used)
+            // Note: cost field is not stored in database, only kept in memory
             .bind(&job.metadata)
+            .bind(&job.system_prompt_template)
             .bind(&job.id)
             .execute(&*self.pool)
             .await
@@ -486,7 +490,7 @@ impl BackgroundJobRepository {
         tokens_sent: Option<i32>,
         tokens_received: Option<i32>,
         model_used: Option<&str>,
-        cost: Option<BigDecimal>,
+        system_prompt_template: Option<&str>,
     ) -> AppResult<()> {
         let now = get_timestamp();
         
@@ -514,8 +518,8 @@ impl BackgroundJobRepository {
             param_index += 1;
         }
         
-        if cost.is_some() {
-            final_query.push_str(&format!(", cost = ${}", param_index));
+        if system_prompt_template.is_some() {
+            final_query.push_str(&format!(", system_prompt_template = ${}", param_index));
             param_index += 1;
         }
         
@@ -548,8 +552,8 @@ impl BackgroundJobRepository {
             query_obj = query_obj.bind(model);
         }
         
-        if let Some(c) = cost {
-            query_obj = query_obj.bind(c.to_string());
+        if let Some(template) = system_prompt_template {
+            query_obj = query_obj.bind(template);
         }
         
         // Bind job_id last
@@ -565,7 +569,7 @@ impl BackgroundJobRepository {
     }
     
     /// Mark a job as failed with error message and optional metadata
-    pub async fn mark_job_failed(&self, job_id: &str, error_message: &str, metadata: Option<&str>, tokens_sent: Option<i32>, tokens_received: Option<i32>, model_used: Option<&str>, cost: Option<BigDecimal>) -> AppResult<()> {
+    pub async fn mark_job_failed(&self, job_id: &str, error_message: &str, metadata: Option<&str>, tokens_sent: Option<i32>, tokens_received: Option<i32>, model_used: Option<&str>) -> AppResult<()> {
         let now = get_timestamp();
         
         // Build the SQL dynamically based on which parameters are provided
@@ -589,11 +593,6 @@ impl BackgroundJobRepository {
         
         if model_used.is_some() {
             final_query.push_str(&format!(", model_used = ${}", param_index));
-            param_index += 1;
-        }
-        
-        if cost.is_some() {
-            final_query.push_str(&format!(", cost = ${}", param_index));
             param_index += 1;
         }
         
@@ -624,10 +623,6 @@ impl BackgroundJobRepository {
         
         if let Some(model) = model_used {
             query_obj = query_obj.bind(model);
-        }
-        
-        if let Some(c) = cost {
-            query_obj = query_obj.bind(c.to_string());
         }
         
         // Bind job_id last
@@ -667,15 +662,14 @@ impl BackgroundJobRepository {
         Ok(())
     }
 
-    /// Mark a job as canceled with optional reason, cost, and usage tracking
-    pub async fn mark_job_canceled_with_cost(
+    /// Mark a job as canceled with optional reason and usage tracking
+    pub async fn mark_job_canceled_with_usage(
         &self, 
         job_id: &str, 
         reason: &str,
         tokens_sent: Option<i32>,
         tokens_received: Option<i32>,
         model_used: Option<&str>,
-        cost: Option<BigDecimal>
     ) -> AppResult<()> {
         let now = get_timestamp();
         
@@ -695,11 +689,6 @@ impl BackgroundJobRepository {
         
         if model_used.is_some() {
             final_query.push_str(&format!(", model_used = ${}", param_index));
-            param_index += 1;
-        }
-        
-        if cost.is_some() {
-            final_query.push_str(&format!(", cost = ${}", param_index));
             param_index += 1;
         }
         
@@ -728,10 +717,6 @@ impl BackgroundJobRepository {
             query_obj = query_obj.bind(model);
         }
         
-        if let Some(c) = cost {
-            query_obj = query_obj.bind(c.to_string());
-        }
-        
         // Bind job_id last
         query_obj = query_obj.bind(job_id);
         
@@ -739,7 +724,7 @@ impl BackgroundJobRepository {
         query_obj
             .execute(&*self.pool)
             .await
-            .map_err(|e| AppError::DatabaseError(format!("Failed to mark job as canceled with cost: {}", e)))?;
+            .map_err(|e| AppError::DatabaseError(format!("Failed to mark job as canceled with usage: {}", e)))?;
             
         Ok(())
     }
@@ -897,12 +882,10 @@ impl BackgroundJobRepository {
         let tokens_received: Option<i32> = row.try_get::<'_, Option<i64>, _>("tokens_received").map(|v| v.map(|val| val as i32)).unwrap_or(None);
         let model_used: Option<String> = row.try_get::<'_, Option<String>, _>("model_used").unwrap_or(None);
         let metadata: Option<String> = row.try_get::<'_, Option<String>, _>("metadata").unwrap_or(None);
+        let system_prompt_template: Option<String> = row.try_get::<'_, Option<String>, _>("system_prompt_template").unwrap_or(None);
         let updated_at: Option<i64> = row.try_get::<'_, Option<i64>, _>("updated_at").unwrap_or(None);
         let start_time: Option<i64> = row.try_get::<'_, Option<i64>, _>("start_time").unwrap_or(None);
         let end_time: Option<i64> = row.try_get::<'_, Option<i64>, _>("end_time").unwrap_or(None);
-        let cost: Option<String> = row.try_get::<'_, Option<String>, _>("cost")
-            .unwrap_or(None);
-        
         Ok(BackgroundJob {
             id,
             session_id,
@@ -914,12 +897,13 @@ impl BackgroundJobRepository {
             tokens_sent,
             tokens_received,
             model_used,
+            cost: None, // Cost field is not stored in database, set to None
             metadata,
+            system_prompt_template,
             created_at,
             updated_at,
             start_time,
             end_time,
-            cost,
         })
     }
     

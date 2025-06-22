@@ -146,6 +146,7 @@ export function WorkflowVisualizer({
     const convertedState: WorkflowState = {
       workflowId: workflowStatus.workflowId,
       sessionId: workflowStatus.sessionId || '',
+      projectHash: workflowStatus.sessionId || '',
       status: mapWorkflowStatus(workflowStatus.status),
       stageJobs: workflowStatus.stageStatuses.map(stage => {
         const mappedStage = mapWorkflowStage(stage.stageName);

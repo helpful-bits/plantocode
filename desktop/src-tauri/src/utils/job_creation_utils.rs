@@ -5,6 +5,7 @@ use log::{info, warn};
 use crate::models::{BackgroundJob, TaskType, JobStatus};
 use crate::error::{AppError, AppResult};
 use crate::utils::get_timestamp;
+use crate::utils::hash_utils::hash_string;
 use crate::jobs::types::{JobPayload, JobUIMetadata};
 use crate::utils::job_ui_metadata_builder::{JobUIMetadataBuilder, create_simple_job_ui_metadata, create_workflow_job_ui_metadata};
 use std::sync::Arc;
@@ -128,12 +129,13 @@ pub async fn create_and_queue_background_job(
         tokens_sent: None,
         tokens_received: None,
         model_used,
+        cost: None,
         metadata: Some(metadata_str),
+        system_prompt_template: None,
         created_at: timestamp,
         updated_at: Some(timestamp),
         start_time: None,
         end_time: None,
-        cost: None,
     };
     
     // Get the background job repository from app state
@@ -226,7 +228,6 @@ fn inject_job_id_into_payload(payload: &mut JobPayload, job_id: &str) {
         JobPayload::TaskRefinement(_) => {},
         
         // Workflow stage payloads
-        JobPayload::LocalFileFiltering(_) => {},
         JobPayload::ExtendedPathFinder(_) => {},
         JobPayload::RegexPatternGenerationWorkflow(_) => {},
         JobPayload::FileRelevanceAssessment(_) => {},
@@ -273,22 +274,22 @@ async fn ensure_task_settings_exist(
     
     info!("Creating task settings for session {} and task type {}", session_id, task_type_str);
     
-    // Get model configuration from project/global settings
-    let model = crate::config::get_model_for_task_with_project(task_type, project_dir, app_handle)
+    // Get model configuration from server cache
+    let model = crate::utils::config_helpers::get_model_for_task(task_type, app_handle)
         .await
         .map_err(|e| AppError::ConfigError(format!("Failed to get model for task type {}: {}", task_type_str, e)))?;
     
-    let temperature = crate::config::get_temperature_for_task_with_project(task_type, project_dir, app_handle)
+    let temperature = crate::utils::config_helpers::get_default_temperature_for_task(Some(task_type), app_handle)
         .await
         .ok(); // Temperature is optional
     
-    let max_tokens = crate::config::get_max_tokens_for_task_with_project(task_type, project_dir, app_handle)
+    let max_tokens = crate::utils::config_helpers::get_default_max_tokens_for_task(Some(task_type), app_handle)
         .await
         .unwrap_or(4000) as i32; // Use safe default if config fails
     
     // Create the task settings
     let task_settings = crate::models::TaskSettings {
-        session_id: session_id.to_string(),
+        project_hash: hash_string(project_dir),
         task_type: task_type_str.clone(),
         model,
         max_tokens,

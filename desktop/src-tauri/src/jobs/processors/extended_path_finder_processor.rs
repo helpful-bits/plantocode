@@ -7,7 +7,8 @@ use crate::error::{AppError, AppResult};
 use crate::jobs::processor_trait::JobProcessor;
 use crate::jobs::types::{Job, JobPayload, JobProcessResult, ExtendedPathFinderPayload};
 use crate::jobs::job_processor_utils;
-use crate::jobs::processors::utils::{llm_api_utils, prompt_utils, fs_context_utils};
+use crate::jobs::processors::utils::{prompt_utils, fs_context_utils};
+use crate::jobs::processors::{LlmTaskRunner, LlmTaskConfigBuilder, LlmPromptContext};
 use crate::models::TaskType;
 use crate::utils::directory_tree::get_directory_tree_with_defaults;
 
@@ -112,9 +113,17 @@ impl JobProcessor for ExtendedPathFinderProcessor {
             &app_handle,
         ).await?;
         
+        // Get session to access project_hash
+        let session = {
+            use crate::db_utils::SessionRepository;
+            let session_repo = SessionRepository::new(repo.get_pool());
+            session_repo.get_session_by_id(&job.session_id).await?
+                .ok_or_else(|| AppError::JobError(format!("Session {} not found", job.session_id)))?
+        };
+        
         // Get task settings from database
-        let task_settings = settings_repo.get_task_settings(&job.session_id, &job.job_type.to_string()).await?
-            .ok_or_else(|| AppError::JobError(format!("No task settings found for session {} and task type {}", job.session_id, job.job_type.to_string())))?;
+        let task_settings = settings_repo.get_task_settings(&session.project_hash, &job.job_type.to_string()).await?
+            .ok_or_else(|| AppError::JobError(format!("No task settings found for project {} and task type {}", session.project_hash, job.job_type.to_string())))?;
         let model_used = task_settings.model;
         let temperature = task_settings.temperature
             .ok_or_else(|| AppError::JobError("Temperature not set in task settings".to_string()))?;
@@ -161,26 +170,18 @@ impl JobProcessor for ExtendedPathFinderProcessor {
         
         info!("Sending {} file contents to AI for better path finding", file_contents.len());
         
-        // Build unified prompt using standardized utility
-        let composed_prompt = prompt_utils::build_unified_prompt(
-            &job,
-            &app_handle,
-            payload.task_description.clone(),
-            Some(file_contents),
-            Some(directory_tree.clone()),
-            &settings_repo,
-            &model_used,
-        ).await?;
-
-        info!("Enhanced Extended Path Finder prompt composition for job {}", job.id);
-        info!("System prompt ID: {}", composed_prompt.system_prompt_id);
+        // Setup LLM task configuration
+        let llm_config = LlmTaskConfigBuilder::new()
+            .model(model_used.clone())
+            .temperature(temperature)
+            .max_tokens(max_output_tokens)
+            .stream(false)
+            .build();
         
-        // Extract prompts using direct field access
-        let system_prompt = composed_prompt.system_prompt.clone();
-        let user_prompt = composed_prompt.user_prompt.clone();
-        let system_prompt_id = composed_prompt.system_prompt_id.clone();
+        // Create LLM task runner
+        let task_runner = LlmTaskRunner::new(app_handle.clone(), job.clone(), llm_config);
         
-        // Add initial paths context to the user prompt
+        // Add initial paths context to the task description
         let initial_paths_text = if payload.initial_paths.is_empty() {
             "No initial paths were found through AI relevance assessment.".to_string()
         } else {
@@ -188,22 +189,19 @@ impl JobProcessor for ExtendedPathFinderProcessor {
                 payload.initial_paths.iter().map(|p| format!("- {}", p)).collect::<Vec<_>>().join("\n"))
         };
         
-        let enhanced_user_prompt = format!(
+        let enhanced_task_description = format!(
             "The primary task is: '{}'.\nBased on prior analysis, the following files are considered highly relevant: \n{}.\n\nYour specific goal is to identify any OTHER CRITICALLY IMPORTANT files that were missed AND are directly related to or utilized by the files listed above, or are essential auxiliary files (e.g. test files, configuration for these specific files). Do NOT re-list files from the list above. Be conservative; only add files if they are truly necessary additions. Provide the additions as a JSON list like [\"path/to/new_file1.ext\"]. If no additional files are critical, return an empty list.", 
             payload.task_description, 
             initial_paths_text
         );
-
-        // Create messages using standardized utility
-        let messages = llm_api_utils::create_openrouter_messages(&system_prompt, &enhanced_user_prompt);
         
-        // Create API client options using standardized utility
-        let api_options = llm_api_utils::create_api_client_options(
-            model_used.clone(),
-            temperature,
-            max_output_tokens,
-            false,
-        )?;
+        // Create prompt context
+        let prompt_context = LlmPromptContext {
+            task_description: enhanced_task_description,
+            file_contents: Some(file_contents),
+            directory_tree: Some(directory_tree.clone()),
+            system_prompt_override: None,
+        };
         
         // Check for cancellation before LLM call using standardized utility
         if job_processor_utils::check_job_canceled(&repo, &job.id).await? {
@@ -211,13 +209,23 @@ impl JobProcessor for ExtendedPathFinderProcessor {
             return Ok(JobProcessResult::canceled(job.id.clone(), "Job was canceled by user".to_string()));
         }
         
-        // Call LLM using standardized utility
-        info!("Calling LLM for extended path finding with model {}", &api_options.model);
-        let api_options_clone = api_options.clone();
-        let llm_response = llm_api_utils::execute_llm_chat_completion(&app_handle, messages, api_options).await?;
+        // Execute LLM task using the task runner
+        info!("Calling LLM for extended path finding with model {}", model_used);
+        let llm_result = match task_runner.execute_llm_task(prompt_context, &settings_repo).await {
+            Ok(result) => result,
+            Err(e) => {
+                error!("Extended path finding LLM task execution failed: {}", e);
+                let error_msg = format!("LLM task execution failed: {}", e);
+                task_runner.finalize_failure(&repo, &job.id, &error_msg, Some(&e), None).await?;
+                return Ok(JobProcessResult::failure(job.id.clone(), error_msg));
+            }
+        };
+        
+        info!("Extended path finding LLM task completed successfully for job {}", job.id);
+        info!("System prompt ID: {}", llm_result.system_prompt_id);
         
         // Extract the response content
-        let response_content = llm_response.choices[0].message.content.clone();
+        let response_content = llm_result.response.clone();
         
         // Parse paths from the LLM response using standardized utility
         let extended_paths = match Self::parse_paths_from_text_response(&response_content, &project_directory) {
@@ -226,8 +234,8 @@ impl JobProcessor for ExtendedPathFinderProcessor {
                 let error_msg = format!("Failed to parse paths from LLM response: {}", e);
                 error!("{}", error_msg);
                 
-                // Finalize job failure using standardized utility - LLM succeeded but parsing failed
-                job_processor_utils::finalize_job_failure(&job.id, &repo, &error_msg, None, llm_response.usage, Some(api_options_clone.model)).await?;
+                // Finalize job failure using task runner
+                task_runner.finalize_failure(&repo, &job.id, &error_msg, Some(&e), llm_result.usage).await?;
                 
                 return Ok(JobProcessResult::failure(job.id.clone(), error_msg));
             }
@@ -274,7 +282,7 @@ impl JobProcessor for ExtendedPathFinderProcessor {
             "workflowId": job.id,
             "taskDescription": payload.task_description,
             "projectDirectory": project_directory,
-            "modelUsed": api_options_clone.model,
+            "modelUsed": model_used,
             "summary": format!("Extended path finding: {} AI-filtered initial + {} validated = {} total verified paths", 
                 payload.initial_paths.len(), 
                 validated_extended_paths.len(),
@@ -292,14 +300,15 @@ impl JobProcessor for ExtendedPathFinderProcessor {
                 combined_validated_paths.len())
         }).to_string();
         
-        // Finalize job success using standardized utility
-        job_processor_utils::finalize_job_success(
-            &job.id,
+        // Create a modified LLM result with our JSON response
+        let mut modified_llm_result = llm_result.clone();
+        modified_llm_result.response = response_json_content.clone();
+        
+        // Finalize job success using task runner
+        task_runner.finalize_success(
             &repo,
-            &response_json_content,
-            llm_response.usage,
-            &api_options_clone.model,
-            &system_prompt_id,
+            &job.id,
+            &modified_llm_result,
             Some(result_metadata),
         ).await?;
         

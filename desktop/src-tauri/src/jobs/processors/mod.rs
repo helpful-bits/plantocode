@@ -11,7 +11,6 @@ pub mod text_improvement_processor;
 pub mod generic_llm_stream_processor;
 pub mod regex_pattern_generation_processor;
 // Individual workflow stage processors
-pub mod local_file_filtering_processor;
 pub mod extended_path_finder_processor;
 pub mod file_relevance_assessment_processor;
 
@@ -27,6 +26,5 @@ pub use text_improvement_processor::TextImprovementProcessor;
 pub use generic_llm_stream_processor::GenericLlmStreamProcessor;
 pub use regex_pattern_generation_processor::RegexPatternGenerationProcessor;
 // Individual workflow stage processors
-pub use local_file_filtering_processor::LocalFileFilteringProcessor;
 pub use extended_path_finder_processor::ExtendedPathFinderProcessor;
 pub use file_relevance_assessment_processor::FileRelevanceAssessmentProcessor;

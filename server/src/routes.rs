@@ -86,6 +86,13 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig, strict_rate_limiter: RateL
         web::scope("/llm")
             .route("/chat/completions", web::post().to(handlers::proxy_handlers::llm_chat_completion_handler))
     );
+
+    // Audio transcription routes (/api/audio/*) - mimics OpenAI API structure
+    cfg.service(
+        web::scope("/audio")
+            .route("/transcriptions", web::post().to(handlers::proxy_handlers::transcription_handler))
+            .route("/transcriptions/batch", web::post().to(handlers::proxy_handlers::batch_transcription_handler))
+    );
 }
 
 /// Configures public authentication routes (not part of /api).

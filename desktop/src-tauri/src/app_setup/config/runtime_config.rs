@@ -2,8 +2,8 @@ use tauri::{AppHandle, Manager};
 use crate::error::AppError;
 use log::{info, error, warn};
 use crate::models::RuntimeAIConfig;
-use crate::config;
 use crate::AppState;
+use crate::services::config_cache_service::ConfigCache;
 use std::sync::Arc;
 
 /// Fetch runtime AI configuration from the server and update local config
@@ -56,19 +56,27 @@ pub async fn fetch_and_update_runtime_ai_config(app_handle: &AppHandle) -> Resul
         info!("Loaded {} models from server", total_models);
     }
     
-    if let Err(e) = config::update_runtime_ai_config(runtime_config) {
-        let error_msg = format!("Failed to update runtime AI config: {}", e);
-        error!("{}", error_msg);
-        
-        // Store error in app state
-        let app_state = app_handle.state::<AppState>();
-        if let Ok(mut guard) = app_state.config_load_error.lock() {
-            *guard = Some(error_msg.clone());
-        } else {
-            error!("Failed to acquire lock on config_load_error");
+    // Get the config cache from managed state and insert the RuntimeAIConfig
+    let config_cache = app_handle.state::<ConfigCache>();
+    match config_cache.lock() {
+        Ok(mut cache_guard) => {
+            // Store the fetched RuntimeAIConfig in the cache with key "runtime_ai_config"
+            cache_guard.insert("runtime_ai_config".to_string(), runtime_config_value);
         }
-        
-        return Err(AppError::ConfigError(error_msg));
+        Err(e) => {
+            let error_msg = format!("Failed to acquire cache lock to store runtime AI config: {}", e);
+            error!("{}", error_msg);
+            
+            // Store error in app state
+            let app_state = app_handle.state::<AppState>();
+            if let Ok(mut guard) = app_state.config_load_error.lock() {
+                *guard = Some(error_msg.clone());
+            } else {
+                error!("Failed to acquire lock on config_load_error");
+            }
+            
+            return Err(AppError::ConfigError(error_msg));
+        }
     }
     
     info!("Runtime AI configuration fetched and updated successfully");

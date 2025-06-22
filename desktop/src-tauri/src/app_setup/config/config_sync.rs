@@ -4,6 +4,7 @@ use log::{info, warn, error, debug};
 use crate::error::{AppError, AppResult};
 use crate::db_utils::SettingsRepository;
 use crate::models::RuntimeAIConfig;
+use crate::services::config_cache_service::ConfigCache;
 use crate::utils::get_timestamp;
 
 /// Configuration synchronization manager
@@ -47,12 +48,26 @@ impl ConfigSyncManager {
 
     /// Validate that current runtime config matches server expectations
     pub async fn validate_config_integrity(&self) -> AppResult<bool> {
-        // Get current runtime config
-        let runtime_config = match crate::config::get_runtime_ai_config()? {
-            Some(config) => config,
-            None => {
-                warn!("No runtime AI configuration loaded");
-                return Ok(false);
+        // Get current runtime config from cache
+        let config_cache = self.app_handle.state::<ConfigCache>();
+        let runtime_config = match config_cache.lock() {
+            Ok(cache_guard) => {
+                if let Some(config_value) = cache_guard.get("runtime_ai_config") {
+                    match serde_json::from_value::<RuntimeAIConfig>(config_value.clone()) {
+                        Ok(config) => config,
+                        Err(e) => {
+                            error!("Failed to deserialize runtime AI config from cache: {}", e);
+                            return Err(AppError::SerializationError(e.to_string()));
+                        }
+                    }
+                } else {
+                    warn!("No runtime AI configuration found in cache");
+                    return Ok(false);
+                }
+            }
+            Err(e) => {
+                error!("Failed to acquire cache lock: {}", e);
+                return Err(AppError::InternalError(format!("Failed to read configuration cache: {}", e)));
             }
         };
 

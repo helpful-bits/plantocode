@@ -6,7 +6,6 @@ use std::env;
 use tauri::Emitter;
 
 mod commands;
-pub mod config;
 pub mod constants;
 pub mod db_utils;
 pub mod error;
@@ -31,12 +30,26 @@ use crate::error::AppError;
 use crate::utils::FileLockManager;
 use crate::auth::TokenManager;
 use crate::auth::auth0_state::Auth0StateStore;
-use crate::services::server_config_service::ServerConfigCache;
+use crate::services::config_cache_service::ConfigCache;
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RuntimeConfig {
+    pub server_url: String,
+}
+
+impl Default for RuntimeConfig {
+    fn default() -> Self {
+        Self {
+            server_url: std::env::var("MAIN_SERVER_BASE_URL").expect("MAIN_SERVER_BASE_URL environment variable must be set"),
+        }
+    }
+}
 
 pub struct AppState {
     pub config_load_error: Mutex<Option<String>>,
     pub client: reqwest::Client,
-    pub settings: config::RuntimeConfig,
+    pub settings: RuntimeConfig,
     pub auth0_state_store: Auth0StateStore,
 }
 
@@ -45,7 +58,7 @@ impl Default for AppState {
         Self {
             config_load_error: Mutex::new(None),
             client: reqwest::Client::new(),
-            settings: config::RuntimeConfig::default(),
+            settings: RuntimeConfig::default(),
             auth0_state_store: Auth0StateStore::default(),
         }
     }
@@ -77,10 +90,10 @@ fn main() {
         .manage(AppState {
             config_load_error: Mutex::new(None),
             client: reqwest::Client::new(),
-            settings: config::RuntimeConfig::default(), // Now called AFTER dotenv
+            settings: RuntimeConfig::default(), // Now called AFTER dotenv
             auth0_state_store: Auth0StateStore::default(),
         })
-        .manage(ServerConfigCache::new(Mutex::new(HashMap::new())))
+        .manage(ConfigCache::new(Mutex::new(HashMap::new())))
         // TokenManager will be created in initialize_api_clients with the AppHandle
         .plugin(tauri_plugin_single_instance::init(|_app, _argv, _cwd| {
             info!("Another instance tried to launch. Focusing existing window.");
@@ -247,13 +260,7 @@ fn main() {
             // Settings commands
             commands::settings_commands::get_key_value_command,
             commands::settings_commands::set_key_value_command,
-            commands::settings_commands::get_project_task_model_settings_command,
-            commands::settings_commands::set_project_task_model_settings_command,
-            commands::settings_commands::get_all_task_model_settings_for_project_command,
             commands::settings_commands::get_server_default_task_model_settings_command,
-            commands::settings_commands::get_project_overrides_only_command,
-            commands::settings_commands::reset_project_setting_to_default_command,
-            commands::settings_commands::is_project_setting_customized_command,
             commands::settings_commands::validate_configuration_health,
             commands::settings_commands::set_onboarding_completed_command,
             commands::settings_commands::is_onboarding_completed_command,
@@ -261,14 +268,16 @@ fn main() {
             commands::settings_commands::set_workflow_setting_command,
             commands::settings_commands::delete_workflow_setting_command,
             commands::settings_commands::get_all_workflow_settings_command,
-            commands::settings_commands::get_project_system_prompt_command,
-            commands::settings_commands::set_project_system_prompt_command,
-            commands::settings_commands::reset_project_system_prompt_command,
             commands::settings_commands::fetch_default_system_prompts_from_server,
             commands::settings_commands::fetch_default_system_prompt_from_server,
             commands::settings_commands::initialize_system_prompts_from_server,
             commands::settings_commands::is_setting_customized_command,
             commands::settings_commands::reset_setting_to_default_command,
+            commands::settings_commands::get_project_system_prompt_command,
+            commands::settings_commands::set_project_system_prompt_command,
+            commands::settings_commands::reset_project_system_prompt_command,
+            commands::settings_commands::is_project_system_prompt_customized_command,
+            commands::settings_commands::get_server_default_system_prompts_command,
             
             
             // Session commands
@@ -293,11 +302,10 @@ fn main() {
             commands::database_maintenance_commands::repair_database_command,
             commands::database_maintenance_commands::reset_database_command,
             
-            // Server configuration commands
-            commands::server_config_commands::fetch_server_configurations_command,
-            commands::server_config_commands::get_cached_config_value_command,
-            commands::server_config_commands::get_all_cached_config_values_command,
-            commands::server_config_commands::refresh_server_config_cache_command,
+            // Configuration cache commands
+            commands::config_cache_commands::refresh_config_cache_command,
+            commands::config_cache_commands::get_cached_config_value,
+            commands::config_cache_commands::get_all_cached_config_values_command,
             
             // Backup commands
             commands::backup_commands::get_backup_stats_command,

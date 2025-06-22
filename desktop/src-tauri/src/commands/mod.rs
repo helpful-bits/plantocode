@@ -20,7 +20,7 @@ pub mod voice_commands;
 pub mod generic_task_commands;
 pub mod setup_commands;
 pub mod database_maintenance_commands;
-pub mod server_config_commands;
+pub mod config_cache_commands;
 pub mod backup_commands;
 
 // Re-export all command functions for easier imports
@@ -139,18 +139,14 @@ pub use db_commands::{
 pub use settings_commands::{
     get_key_value_command,
     set_key_value_command,
-    get_project_task_model_settings_command,
-    set_project_task_model_settings_command,
-    get_all_task_model_settings_for_project_command,
     validate_configuration_health,
     set_onboarding_completed_command,
     is_onboarding_completed_command,
-    get_project_system_prompt_command,
-    set_project_system_prompt_command,
-    reset_project_system_prompt_command,
     fetch_default_system_prompts_from_server,
     fetch_default_system_prompt_from_server,
     initialize_system_prompts_from_server,
+    get_all_task_model_settings_for_project_command,
+    set_project_task_model_settings_command,
 };
 
 // Re-exports from session commands module
@@ -176,12 +172,11 @@ pub use database_maintenance_commands::{
     reset_database_command,
 };
 
-// Re-exports from server config commands module
-pub use server_config_commands::{
-    fetch_server_configurations_command,
-    get_cached_config_value_command,
+// Re-exports from config cache commands module
+pub use config_cache_commands::{
+    refresh_config_cache_command,
+    get_cached_config_value,
     get_all_cached_config_values_command,
-    refresh_server_config_cache_command,
 };
 
 

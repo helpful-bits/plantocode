@@ -54,7 +54,7 @@ export async function startFileFinderWorkflowAction(
     if (!args.taskDescription || args.taskDescription.trim().length < 10) {
       return {
         isSuccess: false,
-        message: "Task description is required and must be at least 10 characters",
+        message: "Please provide a more detailed task description (minimum 10 characters). This helps the AI find the most relevant files for your project.",
       };
     }
 

@@ -47,16 +47,6 @@ impl JobProcessor for TaskRefinementProcessor {
         // Setup job processing
         let (repo, settings_repo, db_job) = job_processor_utils::setup_job_processing(&job_id, &app_handle).await?;
         
-        // Get task settings from database
-        let task_settings = settings_repo.get_task_settings(&job.session_id, &job.job_type.to_string()).await?
-            .ok_or_else(|| AppError::JobError(format!("No task settings found for session {} and task type {}", job.session_id, job.job_type.to_string())))?;
-        let model_used = task_settings.model;
-        let temperature = task_settings.temperature
-            .ok_or_else(|| AppError::JobError("Temperature not set in task settings".to_string()))?;
-        let max_output_tokens = task_settings.max_tokens as u32;
-        
-        job_processor_utils::log_job_start(&job_id, "task refinement");
-        
         // Get project directory from session
         let session = {
             use crate::db_utils::SessionRepository;
@@ -64,6 +54,16 @@ impl JobProcessor for TaskRefinementProcessor {
             session_repo.get_session_by_id(&job.session_id).await?
                 .ok_or_else(|| AppError::JobError(format!("Session {} not found", job.session_id)))?
         };
+        
+        // Get task settings from database
+        let task_settings = settings_repo.get_task_settings(&session.project_hash, &job.job_type.to_string()).await?
+            .ok_or_else(|| AppError::JobError(format!("No task settings found for project {} and task type {}", session.project_hash, job.job_type.to_string())))?;
+        let model_used = task_settings.model;
+        let temperature = task_settings.temperature
+            .ok_or_else(|| AppError::JobError("Temperature not set in task settings".to_string()))?;
+        let max_output_tokens = task_settings.max_tokens as u32;
+        
+        job_processor_utils::log_job_start(&job_id, "task refinement");
         let project_directory = &session.project_directory;
         
         // Load content of files in payload.relevant_files
@@ -104,19 +104,17 @@ impl JobProcessor for TaskRefinementProcessor {
         info!("Task Refinement LLM task completed successfully for job {}", job_id);
         info!("System prompt ID: {}", llm_result.system_prompt_id);
         
-        let refined_description = llm_result.response;
+        // Clone the response to avoid borrow checker issues
+        let refined_description = llm_result.response.clone();
         
         // Extract usage before moving it
         let usage_for_result = llm_result.usage.clone();
         
-        // Use finalize_job_success with refined description as response
-        job_processor_utils::finalize_job_success(
-            &job_id,
+        // Use task runner's finalize_success method to ensure consistent template handling
+        task_runner.finalize_success(
             &repo,
-            &refined_description,
-            llm_result.usage,
-            &model_used,
-            &llm_result.system_prompt_id,
+            &job_id,
+            &llm_result,
             None,
         ).await?;
         

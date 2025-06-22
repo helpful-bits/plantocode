@@ -7,6 +7,7 @@ import { useSessionStateContext } from "@/contexts/session";
 import { SearchScopeToggle } from "@/ui";
 import { Button } from "@/ui/button";
 
+import { useCorePromptContext } from "../_contexts/core-prompt-context";
 import FindModeToggle from "../_components/find-mode-toggle";
 
 interface ActionsSectionProps {
@@ -35,10 +36,12 @@ const ActionsSection = React.memo(function ActionsSection({
   canRedo,
   undoSelection,
   redoSelection,
-  disabled = false,
 }: ActionsSectionProps) {
   // Get states and actions from the granular contexts
   const { currentSession } = useSessionStateContext();
+  const {
+    state: { lifecycleStatus },
+  } = useCorePromptContext();
 
   const taskDescription = currentSession?.taskDescription || "";
 
@@ -53,14 +56,14 @@ const ActionsSection = React.memo(function ActionsSection({
               <FindModeToggle
                 currentMode={findFilesMode}
                 onModeChange={setFindFilesMode}
-                disabled={disabled || !taskDescription}
+                disabled={lifecycleStatus !== 'READY' || !taskDescription}
               />
 
               <div className="mt-1">
                 <SearchScopeToggle
                   searchSelectedFilesOnly={searchSelectedFilesOnly}
                   onToggle={toggleSearchSelectedFilesOnly}
-                  disabled={disabled}
+                  disabled={lifecycleStatus !== 'READY'}
                 />
               </div>
             </div>
@@ -70,7 +73,7 @@ const ActionsSection = React.memo(function ActionsSection({
                 variant="outline"
                 size="icon-sm"
                 onClick={undoSelection}
-                disabled={!canUndo || disabled}
+                disabled={!canUndo || lifecycleStatus !== 'READY'}
                 title="Undo last file selection"
               >
                 <Undo2 className="h-4 w-4" />
@@ -80,7 +83,7 @@ const ActionsSection = React.memo(function ActionsSection({
                 variant="outline"
                 size="icon-sm"
                 onClick={redoSelection}
-                disabled={!canRedo || disabled}
+                disabled={!canRedo || lifecycleStatus !== 'READY'}
                 title="Redo undone file selection"
               >
                 <Redo2 className="h-4 w-4" />
@@ -94,7 +97,7 @@ const ActionsSection = React.memo(function ActionsSection({
             size="sm"
             onClick={executeFindRelevantFiles}
             disabled={
-              disabled ||
+              lifecycleStatus !== 'READY' ||
               isFindingFiles ||
               !taskDescription.trim()
             }

@@ -58,7 +58,7 @@ export interface CheckoutSessionStatusResponse {
 
 // Commands from text_commands
 export interface ImproveTextCommandArgs {
-  sessionId: string;
+  projectHash: string;
   textToImprove: string;
   originalTranscriptionJobId?: string | null;
   projectDirectory?: string | null;
@@ -179,7 +179,7 @@ export interface PathIsAbsoluteCommandArgs {
 
 // Commands from generic_task_commands
 export interface GenericLLMStreamCommandArgs {
-  sessionId: string;
+  projectHash: string;
   promptText: string;
   systemPrompt?: string | null;
   model?: string | null;
@@ -191,7 +191,7 @@ export interface GenericLLMStreamCommandArgs {
 
 
 export interface RefineTaskDescriptionCommandArgs {
-  sessionId: string;
+  projectHash: string;
   taskDescription: string;
   relevantFiles: string[];
   projectDirectory: string;
@@ -200,7 +200,7 @@ export interface RefineTaskDescriptionCommandArgs {
 
 // Commands from guidance_commands
 export interface GenerateGuidanceCommandArgs {
-  sessionId: string;
+  projectHash: string;
   projectDirectory: string;
   taskDescription: string;
   paths?: Array<string> | null;
@@ -214,7 +214,7 @@ export interface GenerateGuidanceCommandArgs {
 
 // Commands from implementation_plan_commands
 export interface CreateImplementationPlanCommandArgs {
-  sessionId: string;
+  projectHash: string;
   taskDescription: string;
   projectDirectory: string;
   relevantFiles: Array<string>;
@@ -234,7 +234,7 @@ export interface UpdateImplementationPlanContentCommandArgs {
 }
 
 export interface GetPromptCommandArgs {
-  sessionId: string;
+  projectHash: string;
   taskDescription: string;
   projectDirectory: string;
   relevantFiles: Array<string>;
@@ -249,7 +249,7 @@ export interface PromptResponse {
 }
 
 export interface EstimatePromptTokensCommandArgs {
-  sessionId: string;
+  projectHash: string;
   taskDescription: string;
   projectDirectory: string;
   relevantFiles: Array<string>;
@@ -287,7 +287,7 @@ export interface CancelBackgroundJobCommandArgs {
 }
 
 export interface CancelSessionJobsCommandArgs {
-  sessionId: string;
+  projectHash: string;
 }
 
 
@@ -313,7 +313,7 @@ export interface PathFinderOptions {
 
 // Commands from path_finding_commands
 export interface FindRelevantFilesCommandArgs {
-  sessionId: string;
+  projectHash: string;
   taskDescription: string;
   projectDirectory?: string | null;
   modelOverride?: string | null;
@@ -328,7 +328,7 @@ export interface GenerateDirectoryTreeCommandArgs {
 }
 
 export interface EstimatePathFinderTokensCommandArgs {
-  sessionId: string;
+  projectHash: string;
   taskDescription: string;
   projectDirectory?: string | null;
   options?: PathFinderOptions | null;
@@ -338,7 +338,7 @@ export interface EstimatePathFinderTokensCommandArgs {
 
 // Commands from regex_commands
 export interface GenerateRegexCommandArgs {
-  sessionId: string;
+  projectHash: string;
   projectDirectory: string;
   description: string;
   examples?: Array<string> | null;
@@ -352,7 +352,7 @@ export interface GenerateRegexCommandArgs {
 
 // Commands from text_commands
 export interface ImproveTextCommandArgs {
-  sessionId: string;
+  projectHash: string;
   text: string;
   projectDirectory?: string | null;
   modelOverride?: string | null;
@@ -362,7 +362,7 @@ export interface ImproveTextCommandArgs {
 }
 
 export interface ImproveTextCommandArgs {
-  sessionId: string;
+  projectHash: string;
   textToImprove: string;
   originalTranscriptionJobId?: string | null;
   projectDirectory?: string | null;
@@ -380,7 +380,7 @@ export interface GenerateSimpleTextCommandArgs {
 
 // Commands from voice_commands
 export interface CreateTranscriptionJobCommandArgs {
-  sessionId: string;
+  projectHash: string;
   audioData: Uint8Array;
   filename?: string | null;
   projectDirectory?: string | null;
@@ -388,7 +388,7 @@ export interface CreateTranscriptionJobCommandArgs {
 }
 
 export interface TranscribeAudioBatchCommandArgs {
-  sessionId: string;
+  projectHash: string;
   audioBase64: string;
   chunkIndex: number;
   durationMs: number;
@@ -452,6 +452,11 @@ export interface SetProjectSystemPromptCommandArgs {
 }
 
 export interface ResetProjectSystemPromptCommandArgs {
+  projectDirectory: string;
+  taskType: string;
+}
+
+export interface IsProjectSystemPromptCustomizedCommandArgs {
   projectDirectory: string;
   taskType: string;
 }
@@ -527,7 +532,7 @@ export interface ResetDatabaseCommandArgs {
 // Commands from file_finder_workflow_commands
 
 export interface StartFileFinderWorkflowCommandArgs {
-  sessionId: string;
+  projectHash: string;
   taskDescription: string;
   projectDirectory: string;
   excludedPaths?: string[];
@@ -687,6 +692,7 @@ export type TauriInvoke = {
   "get_project_system_prompt_command": (args: GetProjectSystemPromptCommandArgs) => Promise<string | null>;
   "set_project_system_prompt_command": (args: SetProjectSystemPromptCommandArgs) => Promise<void>;
   "reset_project_system_prompt_command": (args: ResetProjectSystemPromptCommandArgs) => Promise<void>;
+  "is_project_system_prompt_customized_command": (args: IsProjectSystemPromptCustomizedCommandArgs) => Promise<boolean>;
   "fetch_default_system_prompts_from_server": (args: FetchDefaultSystemPromptsFromServerCommandArgs) => Promise<import("@/types/system-prompts").DefaultSystemPrompt[]>;
   "fetch_default_system_prompt_from_server": (args: FetchDefaultSystemPromptFromServerCommandArgs) => Promise<import("@/types/system-prompts").DefaultSystemPrompt | null>;
   "initialize_system_prompts_from_server": (args: InitializeSystemPromptsFromServerCommandArgs) => Promise<void>;

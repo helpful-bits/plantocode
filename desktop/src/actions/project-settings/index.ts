@@ -5,10 +5,9 @@ import { handleActionError } from "@/utils/action-utils";
 
 // Re-export functions from the primary project-settings.actions file
 export { 
-  getModelSettingsForProject,
-  saveProjectTaskModelSettingsAction as saveModelSettingsForProject,
   getProjectSettingAction as getProjectSetting,
-  saveProjectSettingAction as saveProjectSetting
+  saveProjectSettingAction as saveProjectSetting,
+  getServerDefaultTaskModelSettings
 } from "../project-settings.actions";
 
 // Define ConfigValue type to remove the redundant type constituents error

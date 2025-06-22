@@ -16,6 +16,7 @@ pub mod xml_utils;
 pub mod markdown_utils;
 pub mod config_resolver;
 pub mod context_resolver;
+pub mod config_helpers;
 
 
 pub use directory_tree::{generate_directory_tree, DirectoryTreeOptions};
@@ -29,7 +30,7 @@ pub use path_utils::{
 pub use token_estimator::{
     estimate_tokens, estimate_code_tokens, estimate_structured_data_tokens,
     estimate_tokens_for_texts, estimate_conversation_tokens, estimate_path_finder_tokens,
-    get_model_context_window
+    get_model_context_window as get_model_context_window_fallback
 };
 pub use file_lock_types::{FileLockId, LockMode, FileLockGuard};
 pub use file_lock_manager::FileLockManager;
@@ -43,6 +44,19 @@ pub use xml_utils::extract_xml_from_markdown;
 pub use markdown_utils::extract_json_from_markdown;
 pub use config_resolver::resolve_model_settings;
 pub use context_resolver::{get_project_directory_from_session, get_directory_tree_from_session, get_api_type_from_task_type, calculate_total_tokens, get_response_length, resolve_job_context, JobContext};
+pub use config_helpers::{
+    get_model_for_task, 
+    get_default_temperature_for_task,
+    get_default_max_tokens_for_task,
+    get_default_transcription_model_id,
+    get_model_context_window,
+    get_max_concurrent_jobs,
+    get_path_finder_max_files_with_content,
+    get_path_finder_include_file_contents,
+    get_path_finder_max_file_count,
+    get_path_finder_token_limit_buffer,
+    get_model_info
+};
 // UNIFIED PROMPT SYSTEM - CONSOLIDATES LEGACY PROMPT SYSTEMS
 pub mod unified_prompt_system;
 pub use unified_prompt_system::{UnifiedPromptProcessor, UnifiedPromptContext, UnifiedPromptContextBuilder, ComposedPrompt, PromptPlaceholders, substitute_placeholders, generate_system_prompt_id, get_template_for_display, convert_to_template};

@@ -20,7 +20,7 @@ import {
 } from "@/ui";
 import { useNotification } from "@/contexts/notification-context";
 import { getErrorMessage } from "@/utils/error-handling";
-import { getModelSettingsForProject } from "@/actions/project-settings.actions";
+import { getServerDefaultTaskModelSettings } from "@/actions/project-settings.actions";
 import { getSessionAction } from "@/actions/session/crud.actions";
 import { TaskModelSettings } from "@/types";
 
@@ -84,7 +84,7 @@ const VoiceTranscription = function VoiceTranscription({
       try {
         const sessionResult = await getSessionAction(activeSessionId);
         if (sessionResult.isSuccess && sessionResult.data?.projectDirectory) {
-          const settingsResult = await getModelSettingsForProject(sessionResult.data.projectDirectory);
+          const settingsResult = await getServerDefaultTaskModelSettings();
           if (settingsResult.isSuccess && settingsResult.data?.voiceTranscription) {
             setTranscriptionSettings(settingsResult.data.voiceTranscription);
             if (settingsResult.data.voiceTranscription.languageCode) {

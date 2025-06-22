@@ -89,16 +89,20 @@ pub fn estimate_conversation_tokens(
     total + overhead
 }
 
-/// Helper function to get the context window size from RuntimeAIConfig
+/// Helper function to get the context window size with a fallback
+/// NOTE: This is a fallback implementation. For better accuracy, use the async version
+/// from config_helpers that can access the runtime configuration cache.
 pub fn get_model_context_window(model_name: &str) -> u32 {
-    // Try to get the context window size from the configuration
-    match crate::config::get_model_context_window(model_name) {
-        Ok(context_window) => context_window,
-        Err(_) => {
-            // Log warning but don't panic - use a conservative default
-            log::warn!("Failed to get context window for model {}, using default", model_name);
-            32_000 // Conservative default for most modern models
-        }
+    // Use fallback logic based on model name patterns
+    // This is less accurate than the cache-based approach but works for token estimation
+    if model_name.contains("gpt-4") || model_name.contains("claude-3") {
+        200_000 // Large context models
+    } else if model_name.contains("gpt-3.5") {
+        16_000 // GPT-3.5 models
+    } else if model_name.contains("claude") {
+        100_000 // Claude models default
+    } else {
+        32_000 // Conservative default for most modern models
     }
 }
 

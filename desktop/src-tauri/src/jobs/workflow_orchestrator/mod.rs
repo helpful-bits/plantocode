@@ -315,7 +315,6 @@ impl WorkflowOrchestrator {
                                 if let Ok(task_type) = crate::models::TaskType::from_str(&job.task_type) {
                                     let stage_name = match task_type {
                                         crate::models::TaskType::RegexPatternGeneration => "RegexPatternGeneration",
-                                        crate::models::TaskType::LocalFileFiltering => "LocalFileFiltering",
                                         crate::models::TaskType::FileRelevanceAssessment => "FileRelevanceAssessment",
                                         crate::models::TaskType::ExtendedPathFinder => "ExtendedPathFinder",
                                         crate::models::TaskType::PathCorrection => "PathCorrection",
@@ -385,7 +384,6 @@ impl WorkflowOrchestrator {
                     if let Ok(task_type) = crate::models::TaskType::from_str(&job.task_type) {
                         let stage_name = match task_type {
                             crate::models::TaskType::RegexPatternGeneration => "RegexPatternGeneration",
-                            crate::models::TaskType::LocalFileFiltering => "LocalFileFiltering",
                             crate::models::TaskType::FileRelevanceAssessment => "FileRelevanceAssessment",
                             crate::models::TaskType::ExtendedPathFinder => "ExtendedPathFinder",
                             crate::models::TaskType::PathCorrection => "PathCorrection",

@@ -22,9 +22,9 @@ export function SystemPromptEditor({ projectDirectory, taskType, onSave }: Syste
     taskType: taskType as TaskTypeSupportingSystemPrompts,
     autoLoad: !!projectDirectory && supportsSystemPrompts(taskType)
   });
-  
+
   const isSupported = supportsSystemPrompts(taskType);
-  
+
   const [editedPrompt, setEditedPrompt] = useState('');
   const [validationError, setValidationError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -33,7 +33,7 @@ export function SystemPromptEditor({ projectDirectory, taskType, onSave }: Syste
 
   const currentPrompt = prompt || '';
   const defaultPrompt = serverDefault;
-  
+
   useEffect(() => {
     if (!isCustom && prompt) {
       setServerDefault({
@@ -85,9 +85,9 @@ export function SystemPromptEditor({ projectDirectory, taskType, onSave }: Syste
 
 
   const displayedPrompt = editedPrompt || currentPrompt;
-  const placeholders: string[] = currentPrompt ? 
+  const placeholders: string[] = currentPrompt ?
     (currentPrompt.match(/\{\{([A-Z_]+)\}\}/g) || []).map(match => match.slice(2, -2)) : [];
-  
+
   if (!isSupported) {
     return (
       <div className="mt-6 p-4 bg-muted/30 rounded-lg text-center">
@@ -102,7 +102,7 @@ export function SystemPromptEditor({ projectDirectory, taskType, onSave }: Syste
     return (
       <div className="mt-6 p-4 bg-muted/30 rounded-lg text-center">
         <p className="text-sm text-muted-foreground">
-          No project directory available. Please open a project to manage system prompts.
+          No project hash available. Please open a project to manage system prompts.
         </p>
       </div>
     );
@@ -149,7 +149,7 @@ export function SystemPromptEditor({ projectDirectory, taskType, onSave }: Syste
                 if (!isCustom) {
                   setIsSaving(true);
                   setValidationError(null);
-                  
+
                   try {
                     const promptToSave = defaultPrompt?.systemPrompt || '';
                     await update(promptToSave);
@@ -216,8 +216,8 @@ export function SystemPromptEditor({ projectDirectory, taskType, onSave }: Syste
 
           {isCustom && (
             <div className="flex justify-end gap-2">
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 size="sm"
                 onClick={handleReset}
                 disabled={isSaving}
@@ -225,7 +225,7 @@ export function SystemPromptEditor({ projectDirectory, taskType, onSave }: Syste
               >
                 Reset to Default
               </Button>
-              <Button 
+              <Button
                 variant={hasUnsavedChanges ? "default" : "outline"}
                 size="sm"
                 onClick={handleSave}

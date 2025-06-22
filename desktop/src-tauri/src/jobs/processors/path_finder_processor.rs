@@ -4,7 +4,7 @@ use log::{debug, info, warn, error};
 use serde_json::json;
 use tauri::AppHandle;
 
-use crate::config;
+// Config module removed - now using utils::config_helpers
 use crate::error::{AppError, AppResult};
 use crate::jobs::processor_trait::JobProcessor;
 use crate::jobs::types::{Job, JobPayload, JobProcessResult};
@@ -115,16 +115,6 @@ impl JobProcessor for PathFinderProcessor {
         // Setup job processing
         let (repo, settings_repo, db_job) = job_processor_utils::setup_job_processing(&job.id, &app_handle).await?;
         
-        // Get task settings from database
-        let task_settings = settings_repo.get_task_settings(&job.session_id, &job.job_type.to_string()).await?
-            .ok_or_else(|| AppError::JobError(format!("No task settings found for session {} and task type {}", job.session_id, job.job_type.to_string())))?;
-        let model_used = task_settings.model;
-        let temperature = task_settings.temperature
-            .ok_or_else(|| AppError::JobError("Temperature not set in task settings".to_string()))?;
-        let max_output_tokens = task_settings.max_tokens as u32;
-        
-        job_processor_utils::log_job_start(&job.id, "path finding");
-
         // Get project directory from session
         let session = {
             use crate::db_utils::SessionRepository;
@@ -132,6 +122,16 @@ impl JobProcessor for PathFinderProcessor {
             session_repo.get_session_by_id(&job.session_id).await?
                 .ok_or_else(|| AppError::JobError(format!("Session {} not found", job.session_id)))?
         };
+        
+        // Get task settings from database
+        let task_settings = settings_repo.get_task_settings(&session.project_hash, &job.job_type.to_string()).await?
+            .ok_or_else(|| AppError::JobError(format!("No task settings found for project {} and task type {}", session.project_hash, job.job_type.to_string())))?;
+        let model_used = task_settings.model;
+        let temperature = task_settings.temperature
+            .ok_or_else(|| AppError::JobError("Temperature not set in task settings".to_string()))?;
+        let max_output_tokens = task_settings.max_tokens as u32;
+        
+        job_processor_utils::log_job_start(&job.id, "path finding");
         let project_directory = &session.project_directory;
         
         // Check if directory tree is provided, otherwise generate it
@@ -157,7 +157,7 @@ impl JobProcessor for PathFinderProcessor {
         let mut relevant_file_contents = HashMap::new();
         
         // Get include_file_contents from config, use constant if not found
-        let include_file_contents = config::get_path_finder_include_file_contents_async(&app_handle).await
+        let include_file_contents = crate::utils::config_helpers::get_path_finder_include_file_contents(&app_handle).await
             .map_err(|e| AppError::ConfigError(format!("Failed to get path_finder include_file_contents setting: {}. Please ensure server database is properly configured.", e)))?;
         
         // Use the value from options if specified, otherwise use the config/constant value
@@ -203,7 +203,7 @@ impl JobProcessor for PathFinderProcessor {
             
             // Process priority file types if still under max files limit
             // Get max_files_with_content from config
-            let config_max_files = config::get_path_finder_max_files_with_content_async(&app_handle).await
+            let config_max_files = crate::utils::config_helpers::get_path_finder_max_files_with_content(&app_handle).await
                 .map_err(|e| AppError::ConfigError(format!("Failed to get path_finder max_files_with_content setting: {}. Please ensure server database is properly configured.", e)))?;
             // Use the value from options if specified, otherwise use the config/constant value
             let max_files_with_content = options.max_files_with_content.unwrap_or(config_max_files);

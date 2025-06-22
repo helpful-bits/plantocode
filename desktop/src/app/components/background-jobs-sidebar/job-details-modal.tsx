@@ -18,7 +18,7 @@ import { useState, useMemo, useCallback, useEffect } from "react";
 import { useNotification } from "@/contexts/notification-context";
 import { WorkflowUtils } from "@/utils/workflow-utils";
 import { type TaskModelSettings } from "@/types/task-settings-types";
-import { getModelSettingsForProject } from "@/actions/project-settings.actions";
+import { getServerDefaultTaskModelSettings } from "@/actions/project-settings.actions";
 import { useSessionStateContext } from "@/contexts/session";
 
 
@@ -32,6 +32,7 @@ import { JobDetailsResponseSection } from "./_components/job-details/JobDetailsR
 import { JobDetailsStatusSection } from "./_components/job-details/JobDetailsStatusSection";
 import { JobDetailsTimingSection } from "./_components/job-details/JobDetailsTimingSection";
 import { JobDetailsCostUsageSection } from "./_components/job-details/JobDetailsCostUsageSection";
+import { JobDetailsSystemPromptSection } from "./_components/job-details/JobDetailsSystemPromptSection";
 import { JobDetailsContextProvider } from "./_contexts/job-details-context";
 
 interface JobDetailsModalProps {
@@ -245,7 +246,7 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
       }
 
       try {
-        const settingsResult = await getModelSettingsForProject(currentSession.projectDirectory);
+        const settingsResult = await getServerDefaultTaskModelSettings();
         
         if (settingsResult.isSuccess && settingsResult.data) {
           // Extract settings for specific job taskType
@@ -619,6 +620,8 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
               <JobDetailsCostUsageSection />
             </div>
 
+            <JobDetailsSystemPromptSection />
+
             <JobDetailsAdditionalInfoSection />
             
             <JobDetailsErrorSection />
@@ -631,7 +634,6 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
 
             {/* Content sections */}
             <div className="space-y-4">
-              {/* System prompt section has been removed */}
               <JobDetailsPromptSection />
               <JobDetailsResponseSection />
               <JobDetailsMetadataSection />

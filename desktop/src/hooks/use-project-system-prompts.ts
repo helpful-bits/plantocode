@@ -1,12 +1,15 @@
 import { useState, useEffect, useCallback } from 'react';
-import { TaskType } from '../types/task-type-defs';
-import {
-  getProjectSystemPrompt,
-  setProjectSystemPrompt,
-  resetProjectSystemPrompt,
-  validateSystemPrompt,
-  getDefaultSystemPromptByTaskType
-} from '../actions/system-prompts.actions';
+import { invoke } from '@tauri-apps/api/core';
+import { type TaskType } from '@/types/task-type-defs';
+
+interface ProjectSystemPrompt {
+  projectHash: string;
+  taskType: string;
+  systemPrompt: string;
+  isCustom: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
 
 interface UseProjectSystemPromptOptions {
   projectDirectory: string;
@@ -19,139 +22,109 @@ interface UseProjectSystemPromptReturn {
   loading: boolean;
   error: string | null;
   isCustom: boolean;
-  refresh: () => Promise<void>;
   update: (newPrompt: string) => Promise<void>;
   reset: () => Promise<void>;
   validate: (prompt: string) => { isValid: boolean; errors: string[] };
 }
 
-/**
- * Hook for managing a single system prompt at project level
- */
-export function useProjectSystemPrompt({ 
-  projectDirectory, 
-  taskType, 
-  autoLoad = true 
+export function useProjectSystemPrompt({
+  projectDirectory,
+  taskType,
+  autoLoad = true
 }: UseProjectSystemPromptOptions): UseProjectSystemPromptReturn {
   const [prompt, setPrompt] = useState<string | null>(null);
-  const [loading, setLoading] = useState(autoLoad);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isCustom, setIsCustom] = useState(false);
 
-  const refresh = useCallback(async () => {
-    if (!projectDirectory || !taskType) {
-      setLoading(false);
-      return;
-    }
-    
+  const loadPrompt = useCallback(async () => {
+    if (!projectDirectory || !taskType) return;
+
     setLoading(true);
     setError(null);
-    setPrompt(null); // Clear previous state immediately
-    
+
     try {
-      const projectPrompt = await getProjectSystemPrompt(projectDirectory, taskType);
-      
-      if (projectPrompt !== null) {
-        setPrompt(projectPrompt);
+      // Check if custom prompt exists
+      const customPromptObj = await invoke<ProjectSystemPrompt | null>('get_project_system_prompt_command', {
+        projectDirectory,
+        taskType
+      });
+
+      if (customPromptObj) {
+        // Use custom prompt from database
+        setPrompt(customPromptObj.systemPrompt);
         setIsCustom(true);
       } else {
-        // Get default prompt directly from server (no caching)
-        try {
-          const defaultPrompt = await getDefaultSystemPromptByTaskType(taskType);
-          if (defaultPrompt) {
-            // Use the correct field name from the type definition
-            const promptText = defaultPrompt.systemPrompt || '';
-            setPrompt(promptText);
-          } else {
-            setPrompt('');
-          }
-          setIsCustom(false);
-        } catch (error) {
-          console.error('Failed to load default system prompt:', error);
-          setPrompt('');
-          setIsCustom(false);
-        }
+        // Load default system prompt from server
+        const serverSystemPrompts = await invoke<string>('get_server_default_system_prompts_command');
+        const systemPromptsMap = JSON.parse(serverSystemPrompts);
+        const defaultPrompt = systemPromptsMap[taskType];
+        setPrompt(defaultPrompt?.systemPrompt || '');
+        setIsCustom(false);
       }
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to load system prompt';
-      setError(errorMessage);
-      console.error('Error loading project system prompt:', {
-        projectDirectory,
-        taskType,
-        error: err
-      });
+      setError(err instanceof Error ? err.message : 'Failed to load system prompt');
+      setPrompt(null);
+      setIsCustom(false);
     } finally {
       setLoading(false);
     }
   }, [projectDirectory, taskType]);
 
   const update = useCallback(async (newPrompt: string) => {
-    if (!projectDirectory || !taskType) {
-      throw new Error('Project directory and task type are required');
-    }
-    
-    setLoading(true);
+    if (!projectDirectory || !taskType) throw new Error('Project directory and task type required');
+
+    await invoke('set_project_system_prompt_command', {
+      projectDirectory,
+      taskType,
+      systemPrompt: newPrompt
+    });
+
+    setPrompt(newPrompt);
+    setIsCustom(true);
     setError(null);
-    
-    try {
-      await setProjectSystemPrompt(projectDirectory, taskType, newPrompt);
-      await refresh();
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to update system prompt';
-      setError(errorMessage);
-      console.error('Error updating project system prompt:', {
-        projectDirectory,
-        taskType,
-        promptLength: newPrompt.length,
-        error: err
-      });
-      throw err;
-    } finally {
-      setLoading(false);
-    }
-  }, [projectDirectory, taskType, refresh]);
+  }, [projectDirectory, taskType]);
 
   const reset = useCallback(async () => {
-    if (!projectDirectory || !taskType) {
-      throw new Error('Project directory and task type are required');
-    }
-    
-    setLoading(true);
-    setError(null);
-    
-    try {
-      await resetProjectSystemPrompt(projectDirectory, taskType);
-      await refresh();
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to reset system prompt';
-      setError(errorMessage);
-      console.error('Error resetting project system prompt:', {
-        projectDirectory,
-        taskType,
-        error: err
-      });
-      throw err;
-    } finally {
-      setLoading(false);
-    }
-  }, [projectDirectory, taskType, refresh]);
+    if (!projectDirectory || !taskType) throw new Error('Project directory and task type required');
 
-  const validate = useCallback((prompt: string) => {
-    return validateSystemPrompt(prompt);
+    await invoke('reset_project_system_prompt_command', {
+      projectDirectory,
+      taskType
+    });
+
+    // Reload to get default prompt
+    await loadPrompt();
+  }, [projectDirectory, taskType, loadPrompt]);
+
+  const validate = useCallback((promptToValidate: string) => {
+    const errors: string[] = [];
+
+    if (!promptToValidate.trim()) {
+      errors.push('System prompt cannot be empty');
+    }
+
+    if (promptToValidate.length > 10000) {
+      errors.push('System prompt is too long (max 10,000 characters)');
+    }
+
+    return {
+      isValid: errors.length === 0,
+      errors
+    };
   }, []);
 
   useEffect(() => {
-    if (autoLoad) {
-      refresh();
+    if (autoLoad && projectDirectory && taskType) {
+      loadPrompt();
     }
-  }, [refresh, autoLoad]);
+  }, [autoLoad, projectDirectory, taskType, loadPrompt]);
 
   return {
     prompt,
     loading,
     error,
     isCustom,
-    refresh,
     update,
     reset,
     validate

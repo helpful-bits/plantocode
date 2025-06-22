@@ -123,39 +123,17 @@ pub async fn generate_simple_text_command(
         .and_then(|t| t.parse::<crate::models::TaskType>().ok())
         .unwrap_or(crate::models::TaskType::Unknown);
     
-    // Resolve model, temperature, and max_tokens using task_type_for_settings, explicit args, or defaults
-    // Note: For simple text generation, we don't have a project directory, so we use empty string (server defaults only)
-    let resolved_model = if let Some(model) = model_override {
-        model
-    } else {
-        match crate::config::get_model_for_task(task_type_enum) {
-            Ok(model) => model,
-            Err(_) => match crate::config::get_default_llm_model_id() {
-                Ok(model) => model,
-                Err(e) => return Err(AppError::ConfigError(
-                    format!("No suitable model could be configured for the task or as a default: {}", e)
-                )),
-            },
-        }
-    };
+    let resolved_settings = crate::utils::config_resolver::resolve_model_settings(
+        &app_handle,
+        task_type_enum,
+        "",
+        model_override,
+        temperature_override,
+        max_tokens_override,
+    ).await?;
     
-    let resolved_temperature = if let Some(temp) = temperature_override {
-        temp
-    } else {
-        match crate::config::get_default_temperature_for_task(Some(task_type_enum)) {
-            Ok(temp) => temp,
-            Err(_) => 0.7, // Default temperature
-        }
-    };
-    
-    let resolved_max_tokens = if let Some(tokens) = max_tokens_override {
-        tokens
-    } else {
-        match crate::config::get_default_max_tokens_for_task(Some(task_type_enum)) {
-            Ok(tokens) => tokens,
-            Err(_) => 1000, // Default max tokens
-        }
-    };
+    let (resolved_model, resolved_temperature, resolved_max_tokens) = resolved_settings
+        .ok_or_else(|| AppError::ConfigError("Model settings could not be resolved".to_string()))?;
     
     // Construct messages for LLM
     let mut messages = Vec::new();

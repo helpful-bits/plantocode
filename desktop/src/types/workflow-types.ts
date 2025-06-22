@@ -81,6 +81,7 @@ export interface WorkflowStageJob {
 export interface WorkflowState {
   workflowId: string;
   sessionId: string;
+  projectHash: string;
   status: WorkflowStatus;
   stageJobs: WorkflowStageJob[];
   progressPercentage: number;
@@ -107,6 +108,7 @@ export interface WorkflowCommandResponse {
 // Response from get_file_finder_workflow_status command - matches WorkflowStatusResponse in backend
 export interface WorkflowStatusResponse {
   workflowId: string;
+  sessionId: string;
   status: string; // String representation from backend (lowercase: "running", "completed", etc.)
   currentStage: string; // Human-readable display name from WorkflowStage::display_name()
   progressPercentage: number;
@@ -116,7 +118,7 @@ export interface WorkflowStatusResponse {
   updatedAt?: number; // Unix timestamp
   completedAt?: number; // Unix timestamp
   totalExecutionTimeMs?: number; // Total workflow execution time
-  sessionId?: string;
+  projectHash?: string;
   taskDescription?: string;
   projectDirectory?: string;
   excludedPaths?: string[];
