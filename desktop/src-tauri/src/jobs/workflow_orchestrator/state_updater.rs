@@ -17,18 +17,18 @@ pub(super) fn update_intermediate_data_internal(
         WorkflowStage::RegexPatternGeneration => {
             // Store the entire stage_data as raw JSON for later pattern extraction
             // This ensures we preserve all data regardless of its structure
-            workflow_state.intermediate_data.raw_regex_patterns = Some(stage_data);
+            workflow_state.intermediate_data.raw_regex_patterns = Some(stage_data.clone());
             debug!("Stored raw regex patterns data in intermediate_data");
-        }
-        WorkflowStage::LocalFileFiltering => {
+            
+            // Extract filtered files from RegexPatternGeneration (now integrated)
             if let Some(files) = stage_data.get("filteredFiles").and_then(|v| v.as_array()) {
                 workflow_state.intermediate_data.locally_filtered_files = files.iter()
                     .filter_map(|v| v.as_str().map(String::from))
                     .collect();
-                debug!("Stored {} locally filtered files in intermediate_data", 
+                debug!("Stored {} locally filtered files from RegexPatternGeneration in intermediate_data", 
                        workflow_state.intermediate_data.locally_filtered_files.len());
             } else {
-                warn!("LocalFiltering stage_data missing or invalid 'filteredFiles' field, keeping existing data");
+                warn!("RegexPatternGeneration stage_data missing or invalid 'filteredFiles' field");
             }
         }
         WorkflowStage::FileRelevanceAssessment => {

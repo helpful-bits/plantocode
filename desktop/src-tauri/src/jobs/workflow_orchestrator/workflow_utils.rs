@@ -14,9 +14,6 @@ pub(super) async fn get_stage_model_config(
 ) -> AppResult<Option<(String, f32, u32)>> {
     // Local tasks don't need LLM model configuration
     match task_type {
-        TaskType::LocalFileFiltering => {
-            Ok(None)
-        }
         _ => {
             // First try to get workflow-specific model override
             let stage_name = match task_type {
@@ -38,15 +35,15 @@ pub(super) async fn get_stage_model_config(
             let model = if let Some(workflow_model) = workflow_model {
                 workflow_model
             } else {
-                crate::config::get_model_for_task_with_project(task_type, project_directory, app_handle)
+                crate::utils::config_helpers::get_model_for_task(task_type, app_handle)
                     .await
                     .unwrap_or_else(|_| "file-finder-hybrid".to_string())
             };
 
-            let temperature = crate::config::get_temperature_for_task_with_project(task_type, project_directory, app_handle)
+            let temperature = crate::utils::config_helpers::get_default_temperature_for_task(Some(task_type), app_handle)
                 .await
                 .unwrap_or(0.5);
-            let max_tokens = crate::config::get_max_tokens_for_task_with_project(task_type, project_directory, app_handle)
+            let max_tokens = crate::utils::config_helpers::get_default_max_tokens_for_task(Some(task_type), app_handle)
                 .await
                 .unwrap_or(4000);
 

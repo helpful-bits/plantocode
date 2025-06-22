@@ -415,9 +415,9 @@ impl WorkflowCancellationHandler {
                 JobStatus::Idle
             });
             if status == JobStatus::Failed {
-                // Consider LocalFileFiltering as critical since it's usually the first stage
-                if job.task_type == crate::models::TaskType::LocalFileFiltering.to_string() {
-                    log::warn!("Critical stage failure detected in workflow {}: LocalFileFiltering", workflow_id);
+                // Consider RegexPatternGeneration as critical since it's usually the first stage
+                if job.task_type == crate::models::TaskType::RegexPatternGeneration.to_string() {
+                    log::warn!("Critical stage failure detected in workflow {}: RegexPatternGeneration", workflow_id);
                     return Ok(true);
                 }
             }
@@ -428,8 +428,8 @@ impl WorkflowCancellationHandler {
 
     fn is_critical_job(&self, job: &BackgroundJob) -> bool {
         // Define which job types are considered critical and shouldn't be interrupted
-        let local_file_filtering_str = crate::models::TaskType::LocalFileFiltering.to_string();
-        job.task_type == local_file_filtering_str || job.task_type == "DataPersistence"
+        let regex_pattern_generation_str = crate::models::TaskType::RegexPatternGeneration.to_string();
+        job.task_type == regex_pattern_generation_str || job.task_type == "DataPersistence"
     }
 
     fn current_timestamp(&self) -> i64 {

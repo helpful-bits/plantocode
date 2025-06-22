@@ -19,7 +19,7 @@ import {
   AlertDialogTitle,
 } from "@/ui/alert-dialog";
 import { Button } from "@/ui/button";
-import { getModelSettingsForProject } from "@/actions/project-settings.actions";
+import { getServerDefaultTaskModelSettings } from "@/actions/project-settings.actions";
 import {
   Card,
 } from "@/ui/card";
@@ -122,7 +122,7 @@ export function ImplementationPlansPanel({
     
     const loadSettings = async () => {
       try {
-        const result = await getModelSettingsForProject(projectDirectory);
+        const result = await getServerDefaultTaskModelSettings();
         if (result.isSuccess && result.data?.implementationPlan?.copyButtons) {
           setImplementationPlanSettings(result.data.implementationPlan.copyButtons);
         }

@@ -43,15 +43,6 @@ impl JobProcessor for GuidanceGenerationProcessor {
         // Setup job processing
         let (repo, settings_repo, db_job) = job_processor_utils::setup_job_processing(&job.id, &app_handle).await?;
         
-        // Extract model settings from BackgroundJob
-        // Get task settings from database
-        let task_settings = settings_repo.get_task_settings(&job.session_id, &job.job_type.to_string()).await?
-            .ok_or_else(|| AppError::JobError(format!("No task settings found for session {} and task type {}", job.session_id, job.job_type.to_string())))?;
-        let model_used = task_settings.model;
-        let temperature = task_settings.temperature
-            .ok_or_else(|| AppError::JobError("Temperature not set in task settings".to_string()))?;
-        let max_output_tokens = task_settings.max_tokens as u32;
-        
         // Get project directory from session
         let session = {
             use crate::db_utils::SessionRepository;
@@ -59,6 +50,15 @@ impl JobProcessor for GuidanceGenerationProcessor {
             session_repo.get_session_by_id(&job.session_id).await?
                 .ok_or_else(|| AppError::JobError(format!("Session {} not found", job.session_id)))?
         };
+        
+        // Extract model settings from BackgroundJob
+        // Get task settings from database
+        let task_settings = settings_repo.get_task_settings(&session.project_hash, &job.job_type.to_string()).await?
+            .ok_or_else(|| AppError::JobError(format!("No task settings found for project {} and task type {}", session.project_hash, job.job_type.to_string())))?;
+        let model_used = task_settings.model;
+        let temperature = task_settings.temperature
+            .ok_or_else(|| AppError::JobError("Temperature not set in task settings".to_string()))?;
+        let max_output_tokens = task_settings.max_tokens as u32;
         let project_directory = &session.project_directory;
         
         job_processor_utils::log_job_start(&job.id, "guidance generation");

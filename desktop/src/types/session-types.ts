@@ -24,6 +24,7 @@ export interface JobMetadata {
 export interface BackgroundJob {
   id: string;
   sessionId: string;
+  projectHash: string;
   taskType: TaskType;
   status: JobStatus;
   prompt: string;
@@ -32,12 +33,13 @@ export interface BackgroundJob {
   tokensSent?: number;
   tokensReceived?: number;
   modelUsed?: string;
+  cost?: number | null | undefined;
   metadata?: JobMetadata | string | null;
+  systemPromptTemplate?: string;
   createdAt: number;
   updatedAt?: number;
   startTime?: number;
   endTime?: number;
-  cost?: number | null | undefined;
 }
 
 // Session structure - stores user context and preferences, NOT workflow artifacts

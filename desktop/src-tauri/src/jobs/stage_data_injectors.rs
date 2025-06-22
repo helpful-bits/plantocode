@@ -1,6 +1,5 @@
 use log::{info, debug, warn};
 use crate::jobs::types::{
-    LocalFileFilteringPayload,
     ExtendedPathFinderPayload, PathCorrectionPayload,
     RegexPatternGenerationWorkflowPayload, FileRelevanceAssessmentPayload
 };
@@ -51,51 +50,6 @@ impl StageDataInjector {
             warn!("Invalid max files value '{}', using default: {}", max_files_str, default);
             default
         })
-    }
-    /// Create LocalFileFilteringPayload from specific data fields
-    /// Data sourced from WorkflowState.intermediate_data
-    /// Note: directory_tree is now generated on-demand by the processor
-    pub async fn create_local_filtering_payload(
-        settings_repo: &Arc<SettingsRepository>,
-        _workflow_id: String,
-        _session_id: String,
-        task_description: String,
-        _project_directory: String,
-        path_pattern: Option<String>,
-        content_pattern: Option<String>,
-        negative_path_pattern: Option<String>,
-        negative_content_pattern: Option<String>,
-        excluded_paths_from_workflow: Vec<String>
-    ) -> LocalFileFilteringPayload {
-        info!("Creating LocalFileFiltering payload from specific data fields");
-        
-        debug!("workflow_id: {}, path_pattern: {:?}, content_pattern: {:?}, negative_path_pattern: {:?}, negative_content_pattern: {:?}", 
-               _workflow_id, path_pattern, content_pattern, negative_path_pattern, negative_content_pattern);
-        
-        // Get excluded paths from workflow settings
-        let excluded_paths_setting = Self::get_workflow_setting(
-            settings_repo,
-            "FileFinderWorkflow",
-            "excludedPaths",
-            Some(".git,node_modules,target,dist,build")
-        ).await.unwrap_or_else(|| ".git,node_modules,target,dist,build".to_string());
-        
-        let settings_excluded_paths = Self::parse_excluded_paths(&excluded_paths_setting);
-        
-        // Merge excluded paths from workflow state with settings-derived excluded paths
-        let merged_excluded_paths = Self::merge_excluded_paths(
-            &excluded_paths_from_workflow,
-            &settings_excluded_paths
-        );
-        
-        LocalFileFilteringPayload {
-            task_description,
-            excluded_paths: merged_excluded_paths,
-            path_pattern,
-            content_pattern,
-            negative_path_pattern,
-            negative_content_pattern,
-        }
     }
 
     /// Create ExtendedPathFinderPayload from specific data fields
@@ -195,19 +149,6 @@ impl StageDataInjector {
     }
 
 
-    /// Clone filtering payload with new job ID
-    pub fn clone_filtering_with_new_job_id(
-        original: &LocalFileFilteringPayload
-    ) -> LocalFileFilteringPayload {
-        LocalFileFilteringPayload {
-            task_description: original.task_description.clone(),
-            excluded_paths: original.excluded_paths.clone(),
-            path_pattern: original.path_pattern.clone(),
-            content_pattern: original.content_pattern.clone(),
-            negative_path_pattern: original.negative_path_pattern.clone(),
-            negative_content_pattern: original.negative_content_pattern.clone(),
-        }
-    }
 
     /// Clone finder payload with new job ID
     pub fn clone_finder_with_new_job_id(
@@ -238,27 +179,6 @@ impl StageDataInjector {
     }
 
 
-    /// Validate filtering payload
-    /// Validates that at least one positive pattern (path or content) is provided
-    pub fn validate_filtering_payload(
-        payload: &LocalFileFilteringPayload
-    ) -> Result<(), String> {
-        // At least one positive pattern must be provided
-        if payload.path_pattern.is_none() && payload.content_pattern.is_none() {
-            return Err("At least one positive pattern (path_pattern or content_pattern) must be provided for LocalFileFilteringPayload".to_string());
-        }
-        
-        // Negative patterns are optional
-        if payload.negative_path_pattern.is_some() {
-            debug!("Negative path pattern provided for exclusion filtering");
-        }
-        
-        if payload.negative_content_pattern.is_some() {
-            debug!("Negative content pattern provided for exclusion filtering");
-        }
-        
-        Ok(())
-    }
 
     /// Validate finder payload
     /// Now allows empty directory_tree for graceful degradation
@@ -271,12 +191,6 @@ impl StageDataInjector {
 
 
 
-    /// Extract task description from filtering payload
-    pub fn extract_filtering_task_description(
-        payload: &LocalFileFilteringPayload
-    ) -> String {
-        payload.task_description.clone()
-    }
 
     /// Extract task description from finder payload
     pub fn extract_finder_task_description(

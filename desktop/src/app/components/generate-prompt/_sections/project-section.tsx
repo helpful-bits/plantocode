@@ -12,11 +12,9 @@ interface ProjectSectionProps {
   disabled?: boolean;
 }
 
-const ProjectSection = React.memo(function ProjectSection({
-  disabled,
-}: ProjectSectionProps) {
+const ProjectSection = React.memo(function ProjectSection({}: ProjectSectionProps) {
   const {
-    state: { projectDirectory },
+    state: { projectDirectory, lifecycleStatus },
   } = useCorePromptContext();
 
   const { actions: taskActions } = useTaskContext();
@@ -59,12 +57,12 @@ const ProjectSection = React.memo(function ProjectSection({
 
   return (
     <>
-      <ProjectDirectorySelector disabled={disabled} />
+      <ProjectDirectorySelector disabled={lifecycleStatus !== 'READY'} />
 
       <div className="mt-6">
         <SessionManager
           projectDirectory={projectDirectory || ""}
-          disabled={disabled}
+          disabled={lifecycleStatus !== 'READY'}
           onLoadSession={handleLoadSessionWithFlush}
         />
       </div>

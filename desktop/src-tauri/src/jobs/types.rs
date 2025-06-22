@@ -121,16 +121,6 @@ pub struct RegexPatternGenerationPayload {
     pub directory_tree: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct LocalFileFilteringPayload {
-    pub task_description: String,
-    pub excluded_paths: Vec<String>,
-    pub path_pattern: Option<String>,
-    pub content_pattern: Option<String>,
-    pub negative_path_pattern: Option<String>,
-    pub negative_content_pattern: Option<String>,
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -153,6 +143,42 @@ pub struct FileRelevanceAssessmentPayload {
     pub locally_filtered_files: Vec<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FileRelevanceAssessmentProcessingDetails {
+    pub approach: String,
+    pub total_files: usize,
+    pub total_chunks: usize,
+    pub processed_files: usize,
+    pub successful_chunks: usize,
+    pub failed_chunks: usize,
+    pub chunk_token_limit: usize,
+    pub model_context_window: usize,
+    pub context_window_utilization: String,
+    pub parallel_processing: bool,
+    pub concurrent_chunks: usize,
+    pub processing_duration_seconds: f64,
+    pub no_limits_applied: bool,
+    pub comprehensive_analysis: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FileRelevanceAssessmentQualityDetails {
+    pub all_files_processed: bool,
+    pub validated_results: bool,
+    pub duplicates_removed: bool,
+    pub filesystem_validated: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FileRelevanceAssessmentResponse {
+    pub relevant_files: Vec<String>,
+    pub count: usize,
+    pub summary: String,
+    pub token_count: usize,
+    pub processing: FileRelevanceAssessmentProcessingDetails,
+    pub quality: FileRelevanceAssessmentQualityDetails,
+}
+
 
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -168,7 +194,6 @@ pub enum JobPayload {
     GenericLlmStream(GenericLlmStreamPayload),
     RegexPatternGeneration(RegexPatternGenerationPayload),
     // Individual workflow stage payloads
-    LocalFileFiltering(LocalFileFilteringPayload),
     ExtendedPathFinder(ExtendedPathFinderPayload),
     RegexPatternGenerationWorkflow(RegexPatternGenerationWorkflowPayload),
     FileRelevanceAssessment(FileRelevanceAssessmentPayload),
@@ -301,20 +326,20 @@ impl Job {
 // Workflow stage enumeration for error tracking
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum WorkflowStage {
-    LocalFileFiltering,
     ExtendedPathFinder,
     PathCorrection,
     RegexPatternGeneration,
+    FileRelevanceAssessment,
     // Add more stages as workflows expand
 }
 
 impl std::fmt::Display for WorkflowStage {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            WorkflowStage::LocalFileFiltering => write!(f, "LocalFileFiltering"),
             WorkflowStage::ExtendedPathFinder => write!(f, "ExtendedPathFinder"),
             WorkflowStage::PathCorrection => write!(f, "PathCorrection"),
             WorkflowStage::RegexPatternGeneration => write!(f, "RegexPatternGeneration"),
+            WorkflowStage::FileRelevanceAssessment => write!(f, "FileRelevanceAssessment"),
         }
     }
 }

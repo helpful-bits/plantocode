@@ -35,7 +35,6 @@ use self::processors::{
     GenericLlmStreamProcessor,
     RegexPatternGenerationProcessor,
     // Individual workflow stage processors
-    LocalFileFilteringProcessor,
     ExtendedPathFinderProcessor,
     // File relevance assessment processor
     FileRelevanceAssessmentProcessor
@@ -48,8 +47,9 @@ pub async fn init_job_system() -> AppResult<()> {
     // Initialize the job registry
     let _registry = registry::init_job_registry().await?;
     
-    // Initialize the job queue with configurable concurrency limit
-    let max_concurrent_jobs = crate::config::get_max_concurrent_jobs();
+    // Initialize the job queue with default concurrency limit
+    // TODO: Make this configurable once runtime config is loaded
+    let max_concurrent_jobs = 4; // Default concurrent jobs
     let _queue = queue::init_job_queue(max_concurrent_jobs).await?;
     
     info!("Job system core components initialized");
@@ -73,7 +73,6 @@ pub async fn register_job_processors(app_handle: &AppHandle) -> AppResult<()> {
     let generic_llm_stream_processor = Arc::new(GenericLlmStreamProcessor::new());
     let regex_pattern_generation_processor = Arc::new(RegexPatternGenerationProcessor::new());
     // Individual workflow stage processors
-    let local_file_filtering_processor = Arc::new(LocalFileFilteringProcessor::new());
     let extended_path_finder_processor = Arc::new(ExtendedPathFinderProcessor::new());
     // File relevance assessment processor
     let file_relevance_assessment_processor = Arc::new(FileRelevanceAssessmentProcessor::new());
@@ -88,7 +87,6 @@ pub async fn register_job_processors(app_handle: &AppHandle) -> AppResult<()> {
     registry.register(generic_llm_stream_processor).await;
     registry.register(regex_pattern_generation_processor).await;
     // Individual workflow stage processors
-    registry.register(local_file_filtering_processor).await;
     registry.register(extended_path_finder_processor).await;
     // File relevance assessment processor
     registry.register(file_relevance_assessment_processor).await;
@@ -188,7 +186,6 @@ async fn recover_queued_jobs(app_handle: AppHandle) -> AppResult<()> {
                             None,
                             None,
                             None,
-                            None,
                             None
                         ).await {
                             error!("Failed to mark job {} as failed: {}", job_id, update_error);
@@ -202,7 +199,6 @@ async fn recover_queued_jobs(app_handle: AppHandle) -> AppResult<()> {
                 if let Err(update_error) = background_job_repo.mark_job_failed(
                     &db_job.id, 
                     &format!("Failed to convert job data on startup: {}", e),
-                    None,
                     None,
                     None,
                     None,

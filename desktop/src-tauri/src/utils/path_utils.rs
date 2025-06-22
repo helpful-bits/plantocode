@@ -8,7 +8,7 @@ use uuid::Uuid;
 use tauri::Manager;
 
 use crate::error::{AppError, AppResult};
-use crate::utils::fs_utils;
+use crate::utils::{fs_utils, git_utils};
 
 /// Normalize a path (sync version)
 /// 
@@ -581,6 +581,42 @@ pub fn validate_llm_paths(llm_paths: &[String], project_dir: &Path) -> AppResult
     }
     
     Ok(validated_paths)
+}
+
+/// Discover files in a directory, respecting git ignore patterns if it's a git repository
+pub fn discover_files(project_directory: &str, excluded_paths: &[String]) -> AppResult<Vec<String>> {
+    let project_path = Path::new(project_directory);
+    
+    // Check if this is a git repository
+    if git_utils::is_git_repository(project_path) {
+        // Use git to get all non-ignored files
+        match git_utils::get_all_non_ignored_files(project_path) {
+            Ok((files, _is_git_repo)) => {
+                let mut discovered_files = Vec::new();
+                
+                for file_path in files {
+                    // Keep paths relative to project root
+                    let file_path_string = file_path.to_string_lossy().to_string();
+                    
+                    // Check if file should be excluded based on excluded_paths patterns
+                    let should_exclude = excluded_paths.iter().any(|pattern| {
+                        matches_pattern(&file_path_string, pattern)
+                    });
+                    
+                    if !should_exclude {
+                        discovered_files.push(file_path_string);
+                    }
+                }
+                
+                Ok(discovered_files)
+            }
+            Err(e) => Err(e),
+        }
+    } else {
+        Err(AppError::FileSystemError(
+            "Directory is not a git repository. Only git repositories are supported for file discovery.".to_string()
+        ))
+    }
 }
 
 /// Creates a unique file path for an output file, similar to TypeScript's createUniqueFilePath

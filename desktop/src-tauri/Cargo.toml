@@ -14,10 +14,10 @@ tauri-build = { version = "2.2.0", features = [] }
 tauri = { version = "2.5.1", features = ["config-json5"] }
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.140"
-serde_with = "3.12.0"
+serde_with = "3.13.0"
 sqlx = { version = "0.8.6", features = ["sqlite", "runtime-tokio-rustls"] }
 tauri-plugin-http = "2.4.4"
-keyring = "2.3.3"
+keyring = "3.6.2"
 tauri-plugin-single-instance = "2.2.4"
 tauri-plugin-dialog = "2.2.2"
 tauri-plugin-fs = "2.3.0"
@@ -30,6 +30,7 @@ log = "0.4.27"
 dotenv = "0.15.0"
 tokio = { version = "1.45.0", features = ["full"] }
 reqwest = { version = "0.12.15", features = ["json", "stream", "multipart"] }
+reqwest-eventsource = "0.6.0"
 uuid = { version = "1.16.0", features = ["v4", "serde"] }
 rand = { version = "0.8", features = ["std_rng"] }
 chrono = { version = "0.4.41", features = ["serde"] }

@@ -6,6 +6,7 @@ use crate::db::repositories::spending_repository::{SpendingRepository, UserSpend
 use crate::db::repositories::user_credit_repository::UserCreditRepository;
 use crate::db::repositories::credit_transaction_repository::{CreditTransactionRepository, CreditTransaction};
 use crate::db::repositories::model_repository::ModelRepository;
+use crate::models::model_pricing::ModelPricing;
 use uuid::Uuid;
 use log::{debug, error, info, warn};
 use chrono::{DateTime, Utc, Datelike, NaiveDate, Duration};
@@ -159,7 +160,7 @@ impl CostBasedBillingService {
             // For duration-based models, we would need duration_ms instead of tokens
             return Err(AppError::Internal("Duration-based models require duration_ms parameter".to_string()));
         } else {
-            model.calculate_token_cost(tokens_input, tokens_output, &markup_percentage)?
+            model.calculate_token_cost(tokens_input as i64, tokens_output as i64)
         };
 
         // Record usage via existing method

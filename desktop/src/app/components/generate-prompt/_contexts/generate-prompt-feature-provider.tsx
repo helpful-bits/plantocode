@@ -197,8 +197,7 @@ export function GeneratePromptFeatureProvider({
         activeSessionId: sessionState.currentSession?.id || null,
         isStateLoaded: formState.isStateLoaded,
         isSwitchingSession: sessionState.isSessionLoading,
-        isRestoringSession: formState.isRestoringSession,
-        sessionInitialized: formState.sessionInitialized,
+        lifecycleStatus: formState.lifecycleStatus,
         sessionName: sessionState.currentSession?.name || "Untitled Session",
         hasUnsavedChanges: sessionState.isSessionModified,
         isFormSaving: sessionState.isSessionLoading || formState.isFormSaving,
@@ -216,7 +215,6 @@ export function GeneratePromptFeatureProvider({
         saveSessionState,
         flushPendingSaves,
         setHasUnsavedChanges: sessionActions.setSessionModified,
-        setSessionInitialized: formState.setSessionInitialized,
         handleInteraction,
         handleGenerateCodebase,
       },
@@ -230,12 +228,10 @@ export function GeneratePromptFeatureProvider({
       
       // Form state primitives and stable functions
       formState.isStateLoaded,
-      formState.isRestoringSession,
-      formState.sessionInitialized,
+      formState.lifecycleStatus,
       formState.isFormSaving,
       formState.error,
       formState.projectDataLoading,
-      formState.setSessionInitialized,
       
       // Project directory primitive
       projectDirectory,
