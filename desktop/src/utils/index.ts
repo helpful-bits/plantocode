@@ -33,10 +33,8 @@ export * from "./async-utils";
 export * from "./function-utils";
 
 // File system utilities
-export * from "./file-access-utils";
 export * from "./file-size";
 export * from "./file-binary-utils";
-export * from "./file-path-validator";
 export * from "./git-utils";
 
 // UI utilities

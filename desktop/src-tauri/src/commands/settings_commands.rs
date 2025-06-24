@@ -8,7 +8,7 @@ use serde::{Serialize, Deserialize};
 use log;
 use heck::ToLowerCamelCase;
 use crate::api_clients::ServerProxyClient;
-use crate::models::{DefaultSystemPrompt, TaskSettings, ProjectSystemPrompt};
+use crate::models::{DefaultSystemPrompt, ProjectSystemPrompt};
 use crate::services::config_cache_service::ConfigCache;
 use crate::models::RuntimeAIConfig;
 use std::collections::HashMap;
@@ -147,64 +147,7 @@ struct FrontendReadyTaskModelConfig {
 
 
 
-fn validate_project_settings_completeness(settings_json: &str) -> AppResult<bool> {
-    let _settings: serde_json::Value = serde_json::from_str(settings_json)
-        .map_err(|e| AppError::ConfigError(format!("Invalid project settings JSON: {}", e)))?;
-    
-    // Project settings are always valid if they parse as JSON
-    // The frontend will handle missing keys gracefully
-    log::info!("Project settings validation passed - valid JSON");
-    Ok(true)
-}
 
-fn merge_project_with_server_defaults(
-    project_settings_json: &str,
-    server_frontend_map: &Map<String, serde_json::Value>
-) -> AppResult<String> {
-    let mut project_settings: serde_json::Value = serde_json::from_str(project_settings_json)
-        .map_err(|e| AppError::ConfigError(format!("Invalid project settings JSON: {}", e)))?;
-    
-    let project_obj = project_settings.as_object_mut()
-        .ok_or_else(|| AppError::ConfigError("Project settings must be a JSON object".to_string()))?;
-    
-    let mut added_keys = Vec::new();
-    let mut merged_fields = Vec::new();
-    
-    // Deep merge: for each task in server defaults
-    for (server_task_key, server_task_value) in server_frontend_map {
-        if let Some(server_task_obj) = server_task_value.as_object() {
-            if project_obj.contains_key(server_task_key) {
-                // Task exists in project - deep merge individual fields
-                if let Some(project_task_value) = project_obj.get_mut(server_task_key) {
-                    if let Some(project_task_obj) = project_task_value.as_object_mut() {
-                        // Iterate through all server default fields
-                        for (field_key, field_value) in server_task_obj {
-                            if !project_task_obj.contains_key(field_key) {
-                                // Field missing from project, add from server default
-                                project_task_obj.insert(field_key.clone(), field_value.clone());
-                                merged_fields.push(format!("{}.{}", server_task_key, field_key));
-                            }
-                        }
-                    }
-                }
-            } else {
-                // Task doesn't exist in project - add entire task from server
-                project_obj.insert(server_task_key.clone(), server_task_value.clone());
-                added_keys.push(server_task_key.as_str());
-            }
-        }
-    }
-    
-    if !added_keys.is_empty() {
-        log::info!("Added missing task configurations from server defaults: {:?}", added_keys);
-    }
-    
-    if !merged_fields.is_empty() {
-        log::info!("Deep merged missing fields from server defaults: {:?}", merged_fields);
-    }
-    
-    Ok(project_settings.to_string())
-}
 
 #[tauri::command]
 pub async fn get_server_default_task_model_settings_command(app_handle: AppHandle) -> AppResult<String> {
@@ -304,42 +247,24 @@ async fn get_runtime_ai_config_from_cache(app_handle: &AppHandle) -> AppResult<R
 
 #[tauri::command]
 pub async fn get_all_task_model_settings_for_project_command(app_handle: AppHandle, project_directory: String) -> AppResult<serde_json::Value> {
-    let settings_repo = app_handle.state::<Arc<SettingsRepository>>().inner().clone();
-    let project_hash = hash_string(&project_directory);
-    
     // Get runtime config to know which task types exist
     let runtime_ai_config = get_runtime_ai_config_from_cache(&app_handle).await?;
     
     // Initialize result object
     let mut result = serde_json::Map::new();
     
-    // For each task type in the server config, check if there are project-specific settings
+    // Return only server defaults as AI configuration now comes from server-side exclusively
     for (snake_case_key, server_task_config) in &runtime_ai_config.tasks {
         let camel_case_key = snake_case_key.to_lower_camel_case();
         
-        // Try to get project-specific task settings
-        match settings_repo.get_task_settings(&project_hash, snake_case_key).await? {
-            Some(project_settings) => {
-                // Use project-specific settings
-                let mut task_config = serde_json::Map::new();
-                task_config.insert("model".to_string(), json!(project_settings.model));
-                task_config.insert("maxTokens".to_string(), json!(project_settings.max_tokens));
-                if let Some(temp) = project_settings.temperature {
-                    task_config.insert("temperature".to_string(), json!(temp));
-                }
-                result.insert(camel_case_key, serde_json::Value::Object(task_config));
-            }
-            None => {
-                // Fall back to server defaults
-                let mut task_config = serde_json::Map::new();
-                task_config.insert("model".to_string(), json!(server_task_config.model.clone().unwrap_or_default()));
-                task_config.insert("maxTokens".to_string(), json!(server_task_config.max_tokens.unwrap_or(0)));
-                if let Some(temp) = server_task_config.temperature {
-                    task_config.insert("temperature".to_string(), json!(temp));
-                }
-                result.insert(camel_case_key, serde_json::Value::Object(task_config));
-            }
+        // Use server defaults only
+        let mut task_config = serde_json::Map::new();
+        task_config.insert("model".to_string(), json!(server_task_config.model.clone().unwrap_or_default()));
+        task_config.insert("maxTokens".to_string(), json!(server_task_config.max_tokens.unwrap_or(0)));
+        if let Some(temp) = server_task_config.temperature {
+            task_config.insert("temperature".to_string(), json!(temp));
         }
+        result.insert(camel_case_key, serde_json::Value::Object(task_config));
     }
     
     Ok(serde_json::Value::Object(result))
@@ -347,50 +272,11 @@ pub async fn get_all_task_model_settings_for_project_command(app_handle: AppHand
 
 #[tauri::command]
 pub async fn set_project_task_model_settings_command(app_handle: AppHandle, project_directory: String, settings_json: String) -> AppResult<()> {
-    let settings_repo = app_handle.state::<Arc<SettingsRepository>>().inner().clone();
-    let project_hash = hash_string(&project_directory);
-    
-    // Parse the incoming settings JSON
-    let settings_value: serde_json::Value = serde_json::from_str(&settings_json)
-        .map_err(|e| AppError::SerializationError(format!("Invalid settings JSON: {}", e)))?;
-    
-    let settings_obj = settings_value.as_object()
-        .ok_or_else(|| AppError::SerializationError("Settings must be a JSON object".to_string()))?;
-    
-    // For each task type in the settings, save to database
-    for (camel_case_key, task_settings_value) in settings_obj {
-        let snake_case_key = camel_case_key.to_lowercase().replace('-', "_");
-        
-        if let Some(task_obj) = task_settings_value.as_object() {
-            // Extract required fields
-            let model = task_obj.get("model")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| AppError::SerializationError(format!("Missing or invalid model for task type {}", camel_case_key)))?
-                .to_string();
-            
-            let max_tokens = task_obj.get("maxTokens")
-                .and_then(|v| v.as_i64())
-                .ok_or_else(|| AppError::SerializationError(format!("Missing or invalid maxTokens for task type {}", camel_case_key)))? as i32;
-            
-            let temperature = task_obj.get("temperature")
-                .and_then(|v| v.as_f64())
-                .map(|t| t as f32);
-            
-            // Create TaskSettings object
-            let task_settings = TaskSettings {
-                project_hash: project_hash.clone(),
-                task_type: snake_case_key,
-                model,
-                max_tokens,
-                temperature,
-            };
-            
-            // Save to database
-            settings_repo.set_task_settings(&task_settings).await?;
-        }
-    }
-    
-    Ok(())
+    // Project-specific task settings are no longer supported
+    // All AI configuration now comes from server-side exclusively
+    Err(AppError::ConfigError(
+        "Project-specific task model settings are no longer supported. All AI configuration is now managed server-side. Please use server configuration overrides if needed.".to_string()
+    ))
 }
 
 #[tauri::command]
@@ -449,32 +335,3 @@ pub async fn get_server_default_system_prompts_command(app_handle: AppHandle) ->
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_validate_project_settings_completeness() {
-        let valid_settings = r#"
-        {
-            "pathFinder": {"model": "test", "maxTokens": 1000, "temperature": 0.5}
-        }
-        "#;
-        
-        assert!(validate_project_settings_completeness(valid_settings).unwrap());
-    }
-    
-    #[test]
-    fn test_validate_project_settings_empty_object() {
-        let empty_settings = r#"{}"#;
-        
-        assert!(validate_project_settings_completeness(empty_settings).unwrap());
-    }
-    
-    #[test]
-    fn test_validate_project_settings_invalid_json() {
-        let invalid_json = r#"{ invalid json "#;
-        
-        assert!(validate_project_settings_completeness(invalid_json).is_err());
-    }
-}

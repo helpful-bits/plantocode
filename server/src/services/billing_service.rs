@@ -64,7 +64,24 @@ impl BillingService {
         // Get default trial days from app settings
         let default_trial_days = app_settings.subscription.default_trial_days as i64;
         
-        // Create cost-based billing service with dual pools
+        // Initialize Stripe service first before creating cost-based billing service
+        let stripe_service_for_cost_billing = match (
+            env::var("STRIPE_SECRET_KEY"),
+            env::var("STRIPE_WEBHOOK_SECRET"), 
+            env::var("STRIPE_PUBLISHABLE_KEY")
+        ) {
+            (Ok(secret_key), Ok(webhook_secret), Ok(publishable_key)) => {
+                info!("Initializing Stripe service with async-stripe 0.41.0");
+                Arc::new(StripeService::new(secret_key.clone(), webhook_secret.clone(), publishable_key.clone()))
+            },
+            _ => {
+                warn!("Stripe environment variables not set, creating dummy service for cost-based billing");
+                // Create a dummy StripeService if not configured
+                Arc::new(StripeService::new("dummy".to_string(), "dummy".to_string(), "dummy".to_string()))
+            }
+        };
+
+        // Create cost-based billing service with dual pools including stripe service
         let cost_based_billing_service = Arc::new(CostBasedBillingService::new(
             db_pools.clone(),
             api_usage_repository.clone(),
@@ -74,6 +91,7 @@ impl BillingService {
             user_credit_repository,
             credit_transaction_repository,
             model_repository.clone(),
+            stripe_service_for_cost_billing,
             default_trial_days,
         ));
         
@@ -92,14 +110,13 @@ impl BillingService {
         // Create audit service
         let audit_service = Arc::new(AuditService::new(db_pools.clone()));
         
-        // Initialize Stripe service if environment variables are set
+        // Initialize Stripe service for BillingService if environment variables are set
         let stripe_service = match (
             env::var("STRIPE_SECRET_KEY"),
             env::var("STRIPE_WEBHOOK_SECRET"), 
             env::var("STRIPE_PUBLISHABLE_KEY")
         ) {
             (Ok(secret_key), Ok(webhook_secret), Ok(publishable_key)) => {
-                info!("Initializing Stripe service with async-stripe 0.41.0");
                 Some(StripeService::new(secret_key, webhook_secret, publishable_key))
             },
             _ => {
@@ -498,6 +515,7 @@ impl BillingService {
             credit_balance_usd: spending_status.credit_balance.to_f64().unwrap_or(0.0),
             subscription_status: subscription.status.clone(),
             trial_ends_at: subscription.trial_end.map(|dt| dt.to_rfc3339()),
+            services_blocked: spending_status.services_blocked,
         };
 
         info!("Successfully assembled billing dashboard data for user: {}", user_id);

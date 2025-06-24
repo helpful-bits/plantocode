@@ -105,8 +105,64 @@ impl StreamedResponseHandler {
                     
                     // Check for final usage information including server-calculated cost
                     if chunk.usage.is_some() {
-                        final_usage = chunk.usage;
+                        final_usage = chunk.usage.clone();
                         debug!("Received usage information from server: {:?}", final_usage);
+                        
+                        // If we have cost information, update the metadata immediately
+                        if let Some(ref usage) = final_usage {
+                            if let Some(cost) = usage.cost {
+                                // Parse existing metadata and add actual cost
+                                let updated_metadata = if let Some(metadata_str) = self.initial_db_job_metadata.as_deref() {
+                                    if let Ok(mut ui_metadata) = serde_json::from_str::<crate::jobs::types::JobUIMetadata>(metadata_str) {
+                                        // Add actualCost to task_data
+                                        if let serde_json::Value::Object(ref mut task_map) = ui_metadata.task_data {
+                                            task_map.insert("actualCost".to_string(), serde_json::json!(cost));
+                                        } else {
+                                            ui_metadata.task_data = serde_json::json!({
+                                                "actualCost": cost
+                                            });
+                                        }
+                                        
+                                        // Serialize back to string
+                                        match serde_json::to_string(&ui_metadata) {
+                                            Ok(serialized) => Some(serialized),
+                                            Err(e) => {
+                                                debug!("Failed to serialize metadata with cost: {}", e);
+                                                None
+                                            }
+                                        }
+                                    } else {
+                                        // Create new metadata with cost
+                                        let new_metadata = serde_json::json!({
+                                            "task_data": {
+                                                "actualCost": cost
+                                            }
+                                        });
+                                        serde_json::to_string(&new_metadata).ok()
+                                    }
+                                } else {
+                                    // No existing metadata, create new with cost
+                                    let new_metadata = serde_json::json!({
+                                        "task_data": {
+                                            "actualCost": cost
+                                        }
+                                    });
+                                    serde_json::to_string(&new_metadata).ok()
+                                };
+                                
+                                // Update job with the cost information (empty chunk, just metadata update)
+                                if let Some(metadata_str) = updated_metadata {
+                                    let _ = self.repo.update_job_stream_progress(
+                                        &self.job_id,
+                                        "", // Empty chunk - just updating metadata
+                                        0,  // No new tokens
+                                        accumulated_response.len() as i32,
+                                        Some(&metadata_str),
+                                        self.app_handle.as_ref(),
+                                    ).await;
+                                }
+                            }
+                        }
                     }
                     
                     // Check for completion
@@ -121,7 +177,7 @@ impl StreamedResponseHandler {
                 }
                 Err(e) => {
                     error!("Streaming error: {}", e);
-                    return Err(AppError::OpenRouterError(format!("Streaming error: {}", e)));
+                    return Err(e);
                 }
             }
         }

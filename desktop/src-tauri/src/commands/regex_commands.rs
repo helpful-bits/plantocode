@@ -3,7 +3,7 @@ use log::info;
 use serde::Deserialize;
 use crate::error::{AppError, AppResult};
 use crate::models::{TaskType, JobCommandResponse};
-use crate::jobs::types::{RegexPatternGenerationPayload, JobPayload};
+use crate::jobs::types::{RegexFileFilterPayload, JobPayload};
 
 /// Arguments for regex generation command (for the command handler service)
 #[derive(Debug, Deserialize)]
@@ -73,19 +73,17 @@ pub async fn generate_regex_patterns_command(
     }
     
     // Get model configuration for this task using centralized resolver
-    let model_settings = crate::utils::resolve_model_settings(
+    let model_settings = crate::utils::config_resolver::resolve_model_settings(
         &app_handle,
-        TaskType::RegexPatternGeneration,
-        &args.project_directory,
+        TaskType::RegexFileFilter,
         args.model_override.clone(),
         args.temperature_override,
         args.max_tokens_override,
     ).await?;
     
-    // Create the payload for the RegexPatternGenerationProcessor
-    let processor_payload = RegexPatternGenerationPayload {
+    // Create the payload for the RegexFileFilterProcessor
+    let processor_payload = RegexFileFilterPayload {
         task_description: args.task_description.clone(),
-        directory_tree: args.directory_tree.clone(),
     };
     
     // Create additional metadata for the job
@@ -104,11 +102,11 @@ pub async fn generate_regex_patterns_command(
         &args.session_id,
         &args.project_directory,
         "openrouter",
-        TaskType::RegexPatternGeneration,
+        TaskType::RegexFileFilter,
         "REGEX_PATTERN_GENERATION",
         &args.task_description,
         model_settings,
-        JobPayload::RegexPatternGeneration(processor_payload),
+        JobPayload::RegexFileFilter(processor_payload),
         2, // Priority
         None, // No workflow_id
         None, // No workflow_stage

@@ -29,7 +29,7 @@ impl WorkflowCleanupHandler {
     ) -> AppResult<CleanupResult> {
         log::info!("Starting cleanup for workflow: {}", workflow_id);
 
-        let workflow_jobs = self.repo.get_jobs_by_metadata_field("workflow_id", workflow_id).await?;
+        let workflow_jobs = self.repo.get_jobs_by_metadata_field("workflowId", workflow_id).await?;
         let mut cleaned_jobs = Vec::new();
         let mut failed_cleanups = Vec::new();
 
@@ -285,9 +285,9 @@ impl WorkflowCleanupHandler {
         // 3. Jobs with missing workflow references
         if let Some(metadata) = &job.metadata {
             if let Ok(meta_obj) = serde_json::from_str::<serde_json::Value>(metadata) {
-                if let Some(workflow_id) = meta_obj.get("workflow_id") {
+                if let Some(workflow_id) = meta_obj.get("workflowId") {
                     // Check if workflow still exists
-                    let workflow_jobs = self.repo.get_jobs_by_metadata_field("workflow_id", workflow_id.as_str().unwrap_or("")).await?;
+                    let workflow_jobs = self.repo.get_jobs_by_metadata_field("workflowId", workflow_id.as_str().unwrap_or("")).await?;
                     if workflow_jobs.is_empty() {
                         return Ok(true);
                     }
@@ -306,7 +306,7 @@ impl WorkflowCleanupHandler {
         for job in all_jobs {
             if let Some(metadata) = &job.metadata {
                 if let Ok(meta_obj) = serde_json::from_str::<serde_json::Value>(metadata) {
-                    if let Some(workflow_id) = meta_obj.get("workflow_id") {
+                    if let Some(workflow_id) = meta_obj.get("workflowId") {
                         let workflow_id = workflow_id.as_str().unwrap_or("");
                         let job_time = job.created_at;
                         

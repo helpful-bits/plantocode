@@ -148,7 +148,7 @@ pub async fn get_desktop_runtime_ai_config(
         .map_err(|e| AppError::Internal(format!("Failed to get AI settings from database: {}", e)))?;
     
     // Convert database types to response types
-    let tasks: std::collections::HashMap<String, TaskSpecificModelConfig> = task_configs.task_specific_configs
+    let mut tasks: std::collections::HashMap<String, TaskSpecificModelConfig> = task_configs.task_specific_configs
         .into_iter()
         .map(|(key, db_config)| {
             (key, TaskSpecificModelConfig {
@@ -159,6 +159,7 @@ pub async fn get_desktop_runtime_ai_config(
             })
         })
         .collect();
+
 
     let path_finder_settings = PathFinderSettings {
         max_files_with_content: task_configs.path_finder_settings.max_files_with_content,

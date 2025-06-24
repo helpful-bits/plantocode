@@ -55,16 +55,14 @@ const taskSettingsKeyToTaskType: Record<keyof TaskSettings, TaskType> = {
   voiceTranscription: "voice_transcription",
   pathCorrection: "path_correction",
   textImprovement: "text_improvement",
-  guidanceGeneration: "guidance_generation",
   implementationPlan: "implementation_plan",
   fileFinderWorkflow: "file_finder_workflow",
   localFileFiltering: "local_file_filtering",
   extendedPathFinder: "extended_path_finder",
-  extendedPathCorrection: "path_correction",
   fileRelevanceAssessment: "file_relevance_assessment",
   taskRefinement: "task_refinement",
   genericLlmStream: "generic_llm_stream",
-  regexPatternGeneration: "regex_pattern_generation",
+  regexFileFilter: "regex_file_filter",
   streaming: "streaming",
   unknown: "unknown",
 };
@@ -172,6 +170,7 @@ export function TaskSettingsEditor({
             selectedModelId={settings.model || (serverDefaults?.[taskKey]?.model || "")}
             onSelect={onModelChange}
             disableTooltips={isVoiceTranscription}
+            disabled={readOnly}
           />
         </div>
 
@@ -219,6 +218,7 @@ export function TaskSettingsEditor({
                 onValueCommit={onTemperatureCommit}
                 className="w-full"
                 aria-label="Temperature"
+                disabled={readOnly}
               />
             </div>
             <Input
@@ -249,6 +249,7 @@ export function TaskSettingsEditor({
               max={1}
               step={0.01}
               placeholder="0.70"
+              disabled={readOnly}
             />
           </div>
           <p className="text-xs text-muted-foreground text-balance">
@@ -284,6 +285,7 @@ export function TaskSettingsEditor({
             <Select
               value={currentLanguage}
               onValueChange={onTranscriptionLanguageChange}
+              disabled={readOnly}
             >
               <SelectTrigger className="w-full">
                 <SelectValue placeholder="Select language" />
@@ -338,6 +340,7 @@ export function TaskSettingsEditor({
                   onValueCommit={onMaxTokensCommit}
                   className="w-full"
                   aria-label="Max tokens"
+                  disabled={readOnly}
                 />
               </div>
               <Input
@@ -367,6 +370,7 @@ export function TaskSettingsEditor({
                 min={1000}
                 max={100000}
                 placeholder="4000"
+                disabled={readOnly}
               />
             </div>
             <p className="text-xs text-muted-foreground">
@@ -420,6 +424,7 @@ export function TaskSettingsEditor({
               const defaultButtons = serverDefaults?.[taskKey]?.copyButtons || [];
               onCopyButtonsChange([...defaultButtons]);
             }}
+            readOnly={readOnly}
           />
         </div>
       </TaskSettingsCard>

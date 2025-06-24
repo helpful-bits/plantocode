@@ -160,7 +160,6 @@ impl std::fmt::Display for ServiceProvider {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ApiProvider {
-    Gemini,
     Claude,
     Replicate,
     OpenAI,
@@ -171,7 +170,6 @@ pub enum ApiProvider {
 impl ApiProvider {
     pub fn as_str(&self) -> &'static str {
         match self {
-            ApiProvider::Gemini => "gemini",
             ApiProvider::Claude => "claude",
             ApiProvider::Replicate => "replicate",
             ApiProvider::OpenAI => "openai",
@@ -182,7 +180,6 @@ impl ApiProvider {
 
     pub fn all_valid() -> Vec<&'static str> {
         vec![
-            Self::Gemini.as_str(),
             Self::Claude.as_str(), 
             Self::Replicate.as_str(),
             Self::OpenAI.as_str(),

@@ -226,28 +226,19 @@ pub struct MoveFileArgs {
 pub async fn move_file_command(source_path: String, destination_path: String, project_directory: Option<String>, overwrite: Option<bool>, app_handle: AppHandle) -> AppResult<()> {
     info!("Moving file from {} to {}", source_path, destination_path);
     
-    // If project_directory is provided, ensure both source_path and destination_path are within it
-    if let Some(proj_dir) = &project_directory {
-        let source_path_ref = std::path::Path::new(&source_path);
-        let destination_path_ref = std::path::Path::new(&destination_path);
-        let project_path = std::path::Path::new(proj_dir);
-        
-        // Validate source path security
-        crate::utils::fs_utils::ensure_path_within_project(project_path, source_path_ref)
-            .map_err(|e| AppError::SecurityError(format!("Invalid source path: {}", e)))?;
-            
-        // Validate destination path security
-        crate::utils::fs_utils::ensure_path_within_project(project_path, destination_path_ref)
-            .map_err(|e| AppError::SecurityError(format!("Invalid destination path: {}", e)))?;
-    }
 
     // Resolve paths to absolute
     let source_path_ref = std::path::Path::new(&source_path);
     let destination_path_ref = std::path::Path::new(&destination_path);
     
     // Call the fs_utils move_item function with the overwrite flag
-    fs_utils::move_item(source_path_ref, destination_path_ref, overwrite.unwrap_or(false)).await
-        .map_err(|e| AppError::FileSystemError(format!("Failed to move file: {}", e)))?;
+    let project_path = project_directory.as_ref().map(|s| std::path::Path::new(s));
+    if let Some(proj_path) = project_path {
+        fs_utils::move_item(source_path_ref, destination_path_ref, overwrite.unwrap_or(false), proj_path).await
+            .map_err(|e| AppError::FileSystemError(format!("Failed to move file: {}", e)))?;
+    } else {
+        return Err(AppError::ValidationError("Project directory is required for move operations".to_string()));
+    }
 
     Ok(())
 }

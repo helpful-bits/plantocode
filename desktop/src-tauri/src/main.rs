@@ -249,7 +249,6 @@ fn main() {
             
             // Other task-specific commands
             commands::regex_commands::generate_regex_patterns_command,
-            commands::guidance_commands::generate_guidance_command,
             
             // Database commands
             commands::db_commands::db_execute_query,

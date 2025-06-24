@@ -20,11 +20,12 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig, strict_rate_limiter: RateL
         web::scope("/billing")
             // Dashboard route
             .route("/dashboard", web::get().to(handlers::billing::dashboard_handler::get_billing_dashboard_data_handler))
+            // Detailed usage route
+            .route("/detailed-usage", web::get().to(handlers::billing::dashboard_handler::get_detailed_usage))
             // Subscription management routes
             .service(handlers::billing::subscription_handlers::get_available_plans)
             .service(handlers::billing::subscription_handlers::get_current_plan)
             .service(handlers::billing::subscription_handlers::get_usage_summary)
-            .service(handlers::billing::subscription_handlers::get_detailed_usage)
             // Payment and billing portal routes
             .service(handlers::billing::payment_handlers::create_billing_portal_session)
             .service(handlers::billing::payment_handlers::get_payment_methods)

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { getBillingDashboardData } from '@/actions/billing';
+import { listen } from '@tauri-apps/api/event';
+import { getBillingOverviewData } from '@/actions/billing';
 import { type BillingDashboardData } from '@/types/tauri-commands';
 import { useNotification } from '@/contexts/notification-context';
 import { getErrorMessage } from '@/utils/error-handling';
@@ -7,6 +8,8 @@ import { getErrorMessage } from '@/utils/error-handling';
 export interface SpendingStatus {
   currentSpending: number;
   includedAllowance: number;
+  effectiveAllowance: number;
+  creditBalance: number;
   usagePercentage: number;
   servicesBlocked: boolean;
   currency: string;
@@ -34,7 +37,7 @@ export function useBillingData(): UseBillingDataReturn {
       setIsLoading(true);
       setError(null);
       
-      const data = await getBillingDashboardData();
+      const data = await getBillingOverviewData();
       setDashboardData(data);
     } catch (err) {
       const errorMessage = getErrorMessage(err);
@@ -43,7 +46,7 @@ export function useBillingData(): UseBillingDataReturn {
       if (errorMessage.includes('spending_limit_exceeded') || errorMessage.includes('services_blocked')) {
         showNotification({
           title: 'Service Access Limited',
-          message: 'AI services are currently blocked due to spending limits.',
+          message: 'AI services are currently blocked due to exceeded monthly allowance. Please visit your billing page to upgrade or purchase top-up credits.',
           type: 'error',
         });
       } else {
@@ -66,18 +69,55 @@ export function useBillingData(): UseBillingDataReturn {
     fetchBillingData();
   }, [fetchBillingData]);
 
+  // Listen for job-terminated events to refresh billing data in real-time
+  useEffect(() => {
+    let unlistenPromise: Promise<() => void> | null = null;
+
+    const setupListener = async () => {
+      try {
+        unlistenPromise = listen('job-terminated', async (event) => {
+          try {
+            // Event payload includes jobId and actualCost
+            const payload = event.payload as { jobId: string; actualCost?: number | null };
+            console.log('[BillingData] Job terminated, refreshing billing data:', payload);
+            
+            // Refresh billing data when a job completes to update cost tracking
+            await refreshBillingData();
+          } catch (err) {
+            console.error('[BillingData] Error processing job-terminated event:', err);
+          }
+        });
+      } catch (err) {
+        console.error('[BillingData] Error setting up job-terminated listener:', err);
+      }
+    };
+
+    void setupListener();
+
+    // Cleanup listener on unmount
+    return () => {
+      if (unlistenPromise) {
+        void unlistenPromise.then((cleanupFn) => cleanupFn());
+      }
+    };
+  }, [refreshBillingData]);
+
   const spendingStatus = useMemo((): SpendingStatus | null => {
     if (!dashboardData) {
       return null;
     }
 
     const { currentSpendingUsd, spendingLimitUsd } = dashboardData.spendingDetails;
+    const creditBalance = dashboardData.creditBalanceUsd;
+    const effectiveAllowance = spendingLimitUsd + creditBalance;
     
     return {
       currentSpending: currentSpendingUsd,
       includedAllowance: spendingLimitUsd,
-      usagePercentage: spendingLimitUsd > 0 ? (currentSpendingUsd / spendingLimitUsd) * 100 : 0,
-      servicesBlocked: currentSpendingUsd >= spendingLimitUsd,
+      effectiveAllowance: effectiveAllowance,
+      creditBalance: creditBalance,
+      usagePercentage: effectiveAllowance > 0 ? (currentSpendingUsd / effectiveAllowance) * 100 : 0,
+      servicesBlocked: dashboardData.servicesBlocked,
       currency: 'USD'
     };
   }, [dashboardData]);

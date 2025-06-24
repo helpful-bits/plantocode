@@ -560,14 +560,14 @@ impl StageDataExtractor {
         Ok(cleaned_paths)
     }
 
-    /// Extract regex patterns from RegexPatternGeneration job
+    /// Extract regex patterns from RegexFileFilter job
     /// Prioritizes job.metadata.additionalParams.parsedJsonData if available,
     /// then falls back to parsing job.response
     pub async fn extract_regex_patterns(
         job_id: &str, 
         repo: &BackgroundJobRepository
     ) -> AppResult<Vec<String>> {
-        DataFlowLogger::log_extraction_start(job_id, "RegexPatternGeneration", "regex_patterns");
+        DataFlowLogger::log_extraction_start(job_id, "RegexFileFilter", "regex_patterns");
         
         let job = repo.get_job_by_id(job_id).await?
             .ok_or_else(|| AppError::JobError(format!("Job {} not found", job_id)))?;
@@ -637,9 +637,9 @@ impl StageDataExtractor {
         
         // If no patterns found, this is an error - the regex generation stage failed
         if patterns.is_empty() {
-            error!("No regex patterns found in job {} - regex generation stage failed", job_id);
-            DataFlowLogger::log_extraction_failure(job_id, "RegexPatternGeneration", "No patterns found - regex generation failed");
-            return Err(AppError::JobError(format!("No regex patterns found in job {} - regex generation stage failed", job_id)));
+            error!("No regex patterns found in job {} - regex file filter stage failed", job_id);
+            DataFlowLogger::log_extraction_failure(job_id, "RegexFileFilter", "No patterns found - regex file filter failed");
+            return Err(AppError::JobError(format!("No regex patterns found in job {} - regex file filter stage failed", job_id)));
         }
         
         debug!("Extracted {} raw regex patterns before validation", patterns.len());
@@ -649,10 +649,10 @@ impl StageDataExtractor {
         WorkflowDataValidator::validate_regex_patterns(&cleaned_patterns)?;
         
         if cleaned_patterns.is_empty() {
-            warn!("No valid regex patterns extracted from RegexPatternGeneration job {}", job_id);
-            DataFlowLogger::log_extraction_failure(job_id, "RegexPatternGeneration", "All patterns failed validation");
+            warn!("No valid regex patterns extracted from RegexFileFilter job {}", job_id);
+            DataFlowLogger::log_extraction_failure(job_id, "RegexFileFilter", "All patterns failed validation");
         } else {
-            DataFlowLogger::log_extraction_success(job_id, "RegexPatternGeneration", cleaned_patterns.len(), "regex_patterns");
+            DataFlowLogger::log_extraction_success(job_id, "RegexFileFilter", cleaned_patterns.len(), "regex_patterns");
         }
         
         Ok(cleaned_patterns)
@@ -918,7 +918,7 @@ impl StageDataExtractor {
     }
 }
 
-/// Public async function for robust regex pattern extraction from RegexPatternGeneration jobs
+/// Public async function for robust regex pattern extraction from RegexFileFilter jobs
 /// This function prioritizes job.metadata.additionalParams.parsedJsonData if available,
 /// then falls back to parsing job.response
 pub async fn extract_regex_patterns(

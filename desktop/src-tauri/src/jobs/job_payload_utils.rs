@@ -29,26 +29,20 @@ pub fn convert_db_job_to_job(db_job: &BackgroundJob) -> AppResult<Job> {
 /// JSON payloads back into typed JobPayload structs.
 pub fn deserialize_value_to_job_payload(json_value: &serde_json::Value, task_type: &crate::models::TaskType) -> AppResult<JobPayload> {
     use crate::jobs::types::{
-        JobPayload, RegexPatternGenerationWorkflowPayload, 
+        JobPayload, RegexFileFilterPayload, 
         PathFinderPayload, PathCorrectionPayload, 
         ExtendedPathFinderPayload, ImplementationPlanPayload,
-        GuidanceGenerationPayload, TaskRefinementPayload,
-        TextImprovementPayload, GenericLlmStreamPayload, RegexPatternGenerationPayload,
+        TaskRefinementPayload,
+        TextImprovementPayload, GenericLlmStreamPayload,
         OpenRouterLlmPayload, FileRelevanceAssessmentPayload
     };
     use crate::models::TaskType;
     
     match task_type {
-        TaskType::RegexPatternGeneration => {
-            // Check if this is a workflow stage or standalone regex pattern generation
-            // Try workflow payload first, then fallback to standalone
-            if let Ok(workflow_payload) = serde_json::from_value::<RegexPatternGenerationWorkflowPayload>(json_value.clone()) {
-                Ok(JobPayload::RegexPatternGenerationWorkflow(workflow_payload))
-            } else {
-                let standalone_payload: RegexPatternGenerationPayload = serde_json::from_value(json_value.clone())
-                    .map_err(|e| AppError::JobError(format!("Failed to deserialize RegexPatternGenerationPayload: {}", e)))?;
-                Ok(JobPayload::RegexPatternGeneration(standalone_payload))
-            }
+        TaskType::RegexFileFilter => {
+            let workflow_payload: RegexFileFilterPayload = serde_json::from_value(json_value.clone())
+                .map_err(|e| AppError::JobError(format!("Failed to deserialize RegexFileFilterPayload: {}", e)))?;
+            Ok(JobPayload::RegexFileFilter(workflow_payload))
         }
         TaskType::PathFinder => {
             let payload: PathFinderPayload = serde_json::from_value(json_value.clone())
@@ -69,11 +63,6 @@ pub fn deserialize_value_to_job_payload(json_value: &serde_json::Value, task_typ
             let payload: ImplementationPlanPayload = serde_json::from_value(json_value.clone())
                 .map_err(|e| AppError::JobError(format!("Failed to deserialize ImplementationPlanPayload: {}", e)))?;
             Ok(JobPayload::ImplementationPlan(payload))
-        }
-        TaskType::GuidanceGeneration => {
-            let payload: GuidanceGenerationPayload = serde_json::from_value(json_value.clone())
-                .map_err(|e| AppError::JobError(format!("Failed to deserialize GuidanceGenerationPayload: {}", e)))?;
-            Ok(JobPayload::GuidanceGeneration(payload))
         }
         TaskType::TaskRefinement => {
             let payload: TaskRefinementPayload = serde_json::from_value(json_value.clone())

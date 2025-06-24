@@ -50,7 +50,7 @@ export async function createPathCorrectionJobAction(params: {
     }
 
     // Call the Tauri command to create a path correction job
-    const result = await invoke<{ jobId: string }>(
+    const result = await invoke<{ jobId: string; duration_ms?: number }>(
       "create_path_correction_job_command",
       {
         sessionId,
@@ -71,6 +71,7 @@ export async function createPathCorrectionJobAction(params: {
       metadata: {
         jobId: result.jobId,
         isBackgroundJob: true,
+        duration_ms: result.duration_ms,
       },
     };
   } catch (error) {

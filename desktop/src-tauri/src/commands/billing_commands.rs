@@ -807,4 +807,7 @@ pub struct CurrentPlanResponse {
     pub status: String,
 }
 
+/// Response structure for credit details (alias for CreditDetailsResponse)
+pub type CreditDetails = CreditDetailsResponse;
+
 

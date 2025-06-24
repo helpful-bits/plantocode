@@ -124,7 +124,6 @@ export function SystemPromptEditor({ projectDirectory, taskType, onSave }: Syste
       <div>
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h4 className="text-sm font-medium">System Prompt</h4>
             <p className="text-xs text-muted-foreground">{defaultPrompt?.description || 'Default system prompt'}</p>
           </div>
           <div className="flex items-center border border-border/50 rounded-lg overflow-hidden">

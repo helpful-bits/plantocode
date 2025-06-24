@@ -50,7 +50,7 @@ export function CostUsageIndicator({
 
   // Use provided values or fetched values with safe fallbacks
   const actualCurrentSpending = (currentSpending ?? spendingStatus?.currentSpending) ?? 0;
-  const actualMonthlyAllowance = (monthlyAllowance ?? spendingStatus?.includedAllowance) ?? 0;
+  const actualMonthlyAllowance = (monthlyAllowance ?? spendingStatus?.effectiveAllowance) ?? 0;
   const actualUsagePercentage = (usagePercentage ?? spendingStatus?.usagePercentage) ?? 0;
   const actualServicesBlocked = (servicesBlocked ?? spendingStatus?.servicesBlocked) ?? false;
   const actualTrialDaysLeft = trialDaysLeft ?? fetchedTrialDaysLeft;
@@ -84,7 +84,7 @@ export function CostUsageIndicator({
             actualServicesBlocked ? "border-destructive/50 text-destructive" : ""
           }`}
         >
-          {currencySymbol}{formattedSpending}
+          {actualMonthlyAllowance > 0 ? `${currencySymbol}${formattedSpending} / ${currencySymbol}${formattedAllowance}` : `${currencySymbol}${formattedSpending}`}
         </Badge>
 
         {actualServicesBlocked && (
@@ -110,7 +110,10 @@ export function CostUsageIndicator({
 
   // Show full card view with more details
   return (
-    <Card className={`p-4 shadow-soft backdrop-blur-sm bg-background/90 ${className}`}>
+    <Card 
+      className={`p-4 shadow-soft backdrop-blur-sm bg-background/90 ${onClick ? 'cursor-pointer hover:bg-muted/20 transition-colors' : ''} ${className}`}
+      onClick={onClick}
+    >
       <div className="space-y-3">
         {/* Usage title with spending and refresh button */}
         <div className="flex justify-between items-center">

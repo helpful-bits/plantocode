@@ -31,6 +31,7 @@ export function useSimpleFileSelection(projectDirectory?: string) {
   const [findingFiles, setFindingFiles] = useState(false);
   const [sortBy, setSortBy] = useState<"name" | "size" | "modified">("name");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   
   // Track active workflow to handle completion
   const activeWorkflowTracker = useRef<WorkflowTracker | null>(null);
@@ -160,15 +161,10 @@ export function useSimpleFileSelection(projectDirectory?: string) {
       return file;
     });
     
-    // Calculate new included files list
-    const newIncluded = updatedFiles
-      .filter(file => file.included && !file.excluded)
-      .map(file => file.path);
-    
     // Update states sequentially
     setFiles(updatedFiles);
-    updateCurrentSessionFields({ includedFiles: newIncluded });
-  }, [files, updateCurrentSessionFields, saveToHistory]);
+    setHasUnsavedChanges(true);
+  }, [files, saveToHistory]);
 
   // Toggle file exclusion
   const toggleFileExclusion = useCallback((path: string) => {
@@ -186,23 +182,11 @@ export function useSimpleFileSelection(projectDirectory?: string) {
       }
       return file;
     });
-    
-    // Calculate new excluded and included files lists
-    const newExcluded = updatedFiles
-      .filter(file => file.excluded)
-      .map(file => file.path);
-
-    const newIncluded = updatedFiles
-      .filter(file => file.included && !file.excluded)
-      .map(file => file.path);
 
     // Update states sequentially
     setFiles(updatedFiles);
-    updateCurrentSessionFields({ 
-      forceExcludedFiles: newExcluded,
-      includedFiles: newIncluded
-    });
-  }, [files, updateCurrentSessionFields, saveToHistory]);
+    setHasUnsavedChanges(true);
+  }, [files, saveToHistory]);
 
   // Undo functionality
   const undo = useCallback(() => {
@@ -291,6 +275,44 @@ export function useSimpleFileSelection(projectDirectory?: string) {
       setFindingFiles(false);
     }
   }, [activeSessionId]);
+
+  const saveSelectionsToSession = useCallback(async () => {
+    if (!currentSession) return;
+    
+    const newIncluded = files.filter(f => f.included).map(f => f.path);
+    const newExcluded = files.filter(f => f.excluded).map(f => f.path);
+    
+    await updateCurrentSessionFields({
+      includedFiles: newIncluded,
+      forceExcludedFiles: newExcluded
+    });
+    
+    setHasUnsavedChanges(false);
+  }, [files, currentSession, updateCurrentSessionFields]);
+
+  // Automatic save with 500ms debounce
+  const debouncedSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
+  useEffect(() => {
+    if (hasUnsavedChanges) {
+      // Clear existing timeout
+      if (debouncedSaveTimeoutRef.current) {
+        clearTimeout(debouncedSaveTimeoutRef.current);
+      }
+      
+      // Set new timeout for 500ms
+      debouncedSaveTimeoutRef.current = setTimeout(() => {
+        saveSelectionsToSession();
+      }, 500);
+    }
+    
+    // Cleanup on unmount
+    return () => {
+      if (debouncedSaveTimeoutRef.current) {
+        clearTimeout(debouncedSaveTimeoutRef.current);
+      }
+    };
+  }, [hasUnsavedChanges, saveSelectionsToSession]);
 
   // Apply workflow results to file selection
   const applyWorkflowResultsToSession = useCallback((paths: string[], source: string) => {
@@ -450,5 +472,6 @@ export function useSimpleFileSelection(projectDirectory?: string) {
     findingFiles,
     selectFiltered,
     deselectFiltered,
+    hasUnsavedChanges,
   };
 }

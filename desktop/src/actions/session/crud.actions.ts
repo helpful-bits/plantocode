@@ -225,12 +225,18 @@ export async function saveSessionAction(
       };
     }
 
-    // Remove projectHash - backend will generate it
-    const { projectHash, ...sessionDataWithoutHash } = sessionData;
+    // Ensure projectDirectory is present for hash generation
+    if (!sessionData.projectDirectory) {
+      return {
+        isSuccess: false,
+        data: undefined,
+        message: "Project directory is required for session update",
+      };
+    }
 
-    // Save the session using the Tauri command
+    // Save the session using the Tauri command (backend will generate projectHash from projectDirectory)
     const session = await invoke<Session>("update_session_command", {
-      sessionData: sessionDataWithoutHash,
+      sessionData: sessionData,
     });
 
     return {

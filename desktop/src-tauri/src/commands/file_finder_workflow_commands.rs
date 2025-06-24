@@ -157,98 +157,7 @@ pub async fn get_file_finder_workflow_status(
     let workflow_state = orchestrator.get_workflow_status(&workflow_id).await
         .map_err(|e| format!("Failed to get workflow status: {}", e))?;
     
-    // Convert workflow state to response format
-    let mut stage_statuses = Vec::new();
-    let all_stages = WorkflowStage::all_stages();
-    
-    for stage in &all_stages {
-        let stage_job = workflow_state.get_stage_job_by_name(&stage.display_name());
-        
-        let stage_status = if let Some(job) = stage_job {
-            let progress = match job.status {
-                crate::models::JobStatus::Completed => 100.0,
-                crate::models::JobStatus::Failed => 0.0,
-                crate::models::JobStatus::Running | crate::models::JobStatus::ProcessingStream => 50.0,
-                _ => 0.0,
-            };
-            
-            StageStatus {
-                stage_name: stage.display_name().to_string(),
-                job_id: Some(job.job_id.clone()), // Correctly populated from WorkflowStageJob.job_id
-                status: job.status.to_string(),
-                progress_percentage: progress,
-                started_at: job.started_at.map(|t| DateTime::<Utc>::from_timestamp_millis(t).map(|dt| dt.to_rfc3339()).unwrap_or_default()),
-                completed_at: job.completed_at.map(|t| DateTime::<Utc>::from_timestamp_millis(t).map(|dt| dt.to_rfc3339()).unwrap_or_default()),
-                depends_on: job.depends_on.clone(),
-                created_at: Some(DateTime::<Utc>::from_timestamp_millis(job.created_at).map(|dt| dt.to_rfc3339()).unwrap_or_default()),
-                error_message: job.error_message.clone(),
-                execution_time_ms: job.completed_at.and_then(|completed| 
-                    job.started_at.map(|started| (completed - started))
-                ),
-                sub_status_message: job.sub_status_message.clone(),
-            }
-        } else {
-            StageStatus {
-                stage_name: stage.display_name().to_string(),
-                job_id: None, // No job created yet for pending stages
-                status: "pending".to_string(),
-                progress_percentage: 0.0,
-                started_at: None,
-                completed_at: None,
-                depends_on: None,
-                created_at: None,
-                error_message: None,
-                execution_time_ms: None,
-                sub_status_message: None,
-            }
-        };
-        
-        stage_statuses.push(stage_status);
-    }
-    
-    // Calculate overall progress
-    let progress = workflow_state.calculate_progress();
-    
-    // Get current stage
-    let current_stage = workflow_state.current_stage()
-        .map(|stage_job| stage_job.stage_name.clone())
-        .unwrap_or_else(|| {
-            match workflow_state.status {
-                WorkflowStatus::Completed => "Completed".to_string(),
-                WorkflowStatus::Failed => "Failed".to_string(),
-                WorkflowStatus::Canceled => "Canceled".to_string(),
-                WorkflowStatus::Paused => "Paused".to_string(),
-                _ => "Unknown".to_string(),
-            }
-        });
-    
-    let status = match workflow_state.status {
-        WorkflowStatus::Running => "running".to_string(),
-        WorkflowStatus::Paused => "paused".to_string(),
-        WorkflowStatus::Completed => "completed".to_string(),
-        WorkflowStatus::Failed => "failed".to_string(),
-        WorkflowStatus::Canceled => "canceled".to_string(),
-        WorkflowStatus::Created => "created".to_string(),
-    };
-    
-    Ok(WorkflowStatusResponse {
-        workflow_id,
-        status,
-        progress_percentage: progress,
-        current_stage,
-        stage_statuses,
-        error_message: workflow_state.error_message.clone(),
-        created_at: Some(workflow_state.created_at),
-        updated_at: Some(workflow_state.updated_at),
-        completed_at: workflow_state.completed_at,
-        total_execution_time_ms: workflow_state.completed_at
-            .map(|completed| completed - workflow_state.created_at),
-        session_id: Some(workflow_state.session_id.clone()),
-        task_description: Some(workflow_state.task_description.clone()),
-        project_directory: Some(workflow_state.project_directory.clone()),
-        excluded_paths: Some(workflow_state.excluded_paths.clone()),
-        timeout_ms: workflow_state.timeout_ms,
-    })
+    Ok(convert_workflow_state_to_response(&workflow_state))
 }
 
 /// Cancel entire workflow using WorkflowOrchestrator
@@ -457,97 +366,7 @@ pub async fn get_all_workflows_command(
     let mut workflow_responses = Vec::new();
     
     for workflow_state in workflow_states {
-        // Convert workflow state to response format (similar to get_file_finder_workflow_status)
-        let mut stage_statuses = Vec::new();
-        let all_stages = WorkflowStage::all_stages();
-        
-        for stage in &all_stages {
-            let stage_job = workflow_state.get_stage_job_by_name(&stage.display_name());
-            
-            let stage_status = if let Some(job) = stage_job {
-                let progress = match job.status {
-                    crate::models::JobStatus::Completed => 100.0,
-                    crate::models::JobStatus::Failed => 0.0,
-                    crate::models::JobStatus::Running | crate::models::JobStatus::ProcessingStream => 50.0,
-                    _ => 0.0,
-                };
-                
-                StageStatus {
-                    stage_name: stage.display_name().to_string(),
-                    job_id: Some(job.job_id.clone()), // Correctly populated from WorkflowStageJob.job_id
-                    status: job.status.to_string(),
-                    progress_percentage: progress,
-                    started_at: job.started_at.map(|t| DateTime::<Utc>::from_timestamp_millis(t).map(|dt| dt.to_rfc3339()).unwrap_or_default()),
-                    completed_at: job.completed_at.map(|t| DateTime::<Utc>::from_timestamp_millis(t).map(|dt| dt.to_rfc3339()).unwrap_or_default()),
-                    depends_on: job.depends_on.clone(),
-                    created_at: Some(DateTime::<Utc>::from_timestamp_millis(job.created_at).map(|dt| dt.to_rfc3339()).unwrap_or_default()),
-                    error_message: job.error_message.clone(),
-                    execution_time_ms: job.completed_at.and_then(|completed| 
-                        job.started_at.map(|started| (completed - started))
-                    ),
-                    sub_status_message: job.sub_status_message.clone(),
-                }
-            } else {
-                StageStatus {
-                    stage_name: stage.display_name().to_string(),
-                    job_id: None, // No job created yet for pending stages
-                    status: "pending".to_string(),
-                    progress_percentage: 0.0,
-                    started_at: None,
-                    completed_at: None,
-                    depends_on: None,
-                    created_at: None,
-                    error_message: None,
-                    execution_time_ms: None,
-                    sub_status_message: None,
-                }
-            };
-            
-            stage_statuses.push(stage_status);
-        }
-        
-        // Calculate overall progress
-        let progress = workflow_state.calculate_progress();
-        
-        // Get current stage
-        let current_stage = workflow_state.current_stage()
-            .map(|stage_job| stage_job.stage_name.clone())
-            .unwrap_or_else(|| {
-                match workflow_state.status {
-                    WorkflowStatus::Completed => "Completed".to_string(),
-                    WorkflowStatus::Failed => "Failed".to_string(),
-                    WorkflowStatus::Canceled => "Canceled".to_string(),
-                    WorkflowStatus::Paused => "Paused".to_string(),
-                    _ => "Unknown".to_string(),
-                }
-            });
-        
-        let status = match workflow_state.status {
-            WorkflowStatus::Running => "running".to_string(),
-            WorkflowStatus::Paused => "paused".to_string(),
-            WorkflowStatus::Completed => "completed".to_string(),
-            WorkflowStatus::Failed => "failed".to_string(),
-            WorkflowStatus::Canceled => "canceled".to_string(),
-            WorkflowStatus::Created => "created".to_string(),
-        };
-        
-        workflow_responses.push(WorkflowStatusResponse {
-            workflow_id: workflow_state.workflow_id.clone(),
-            status,
-            progress_percentage: progress,
-            current_stage,
-            stage_statuses,
-            error_message: workflow_state.error_message.clone(),
-            created_at: Some(workflow_state.created_at),
-            updated_at: Some(workflow_state.updated_at),
-            completed_at: workflow_state.completed_at,
-            total_execution_time_ms: workflow_state.completed_at.map(|completed| completed - workflow_state.created_at),
-            session_id: Some(workflow_state.session_id.clone()),
-            task_description: Some(workflow_state.task_description.clone()),
-            project_directory: Some(workflow_state.project_directory.clone()),
-            excluded_paths: Some(workflow_state.excluded_paths.clone()),
-            timeout_ms: workflow_state.timeout_ms,
-        });
+        workflow_responses.push(convert_workflow_state_to_response(&workflow_state));
     }
     
     info!("Retrieved {} workflows", workflow_responses.len());
@@ -605,98 +424,99 @@ pub async fn get_workflow_details_command(
         .map_err(|e| format!("Failed to get workflow state: {}", e))?;
     
     if let Some(workflow_state) = workflow_state_opt {
-        // Convert workflow state to response format (reuse logic from get_file_finder_workflow_status)
-        let mut stage_statuses = Vec::new();
-        let all_stages = WorkflowStage::all_stages();
-        
-        for stage in &all_stages {
-            let stage_job = workflow_state.get_stage_job_by_name(&stage.display_name());
-            
-            let stage_status = if let Some(job) = stage_job {
-                let progress = match job.status {
-                    crate::models::JobStatus::Completed => 100.0,
-                    crate::models::JobStatus::Failed => 0.0,
-                    crate::models::JobStatus::Running | crate::models::JobStatus::ProcessingStream => 50.0,
-                    _ => 0.0,
-                };
-                
-                StageStatus {
-                    stage_name: stage.display_name().to_string(),
-                    job_id: Some(job.job_id.clone()), // Correctly populated from WorkflowStageJob.job_id
-                    status: job.status.to_string(),
-                    progress_percentage: progress,
-                    started_at: job.started_at.map(|t| DateTime::<Utc>::from_timestamp_millis(t).map(|dt| dt.to_rfc3339()).unwrap_or_default()),
-                    completed_at: job.completed_at.map(|t| DateTime::<Utc>::from_timestamp_millis(t).map(|dt| dt.to_rfc3339()).unwrap_or_default()),
-                    depends_on: job.depends_on.clone(),
-                    created_at: Some(DateTime::<Utc>::from_timestamp_millis(job.created_at).map(|dt| dt.to_rfc3339()).unwrap_or_default()),
-                    error_message: job.error_message.clone(),
-                    execution_time_ms: job.completed_at.and_then(|completed| 
-                        job.started_at.map(|started| (completed - started))
-                    ),
-                    sub_status_message: job.sub_status_message.clone(),
-                }
-            } else {
-                StageStatus {
-                    stage_name: stage.display_name().to_string(),
-                    job_id: None, // No job created yet for pending stages
-                    status: "pending".to_string(),
-                    progress_percentage: 0.0,
-                    started_at: None,
-                    completed_at: None,
-                    depends_on: None,
-                    created_at: None,
-                    error_message: None,
-                    execution_time_ms: None,
-                    sub_status_message: None,
-                }
-            };
-            
-            stage_statuses.push(stage_status);
-        }
-        
-        // Calculate overall progress
-        let progress = workflow_state.calculate_progress();
-        
-        // Get current stage
-        let current_stage = workflow_state.current_stage()
-            .map(|stage_job| stage_job.stage_name.clone())
-            .unwrap_or_else(|| {
-                match workflow_state.status {
-                    WorkflowStatus::Completed => "Completed".to_string(),
-                    WorkflowStatus::Failed => "Failed".to_string(),
-                    WorkflowStatus::Canceled => "Canceled".to_string(),
-                    WorkflowStatus::Paused => "Paused".to_string(),
-                    _ => "Unknown".to_string(),
-                }
-            });
-        
-        let status = match workflow_state.status {
-            WorkflowStatus::Running => "running".to_string(),
-            WorkflowStatus::Paused => "paused".to_string(),
-            WorkflowStatus::Completed => "completed".to_string(),
-            WorkflowStatus::Failed => "failed".to_string(),
-            WorkflowStatus::Canceled => "canceled".to_string(),
-            WorkflowStatus::Created => "created".to_string(),
-        };
-        
-        Ok(Some(WorkflowStatusResponse {
-            workflow_id: workflow_id.clone(),
-            status,
-            progress_percentage: progress,
-            current_stage,
-            stage_statuses,
-            error_message: workflow_state.error_message.clone(),
-            created_at: Some(workflow_state.created_at),
-            updated_at: Some(workflow_state.updated_at),
-            completed_at: workflow_state.completed_at,
-            total_execution_time_ms: workflow_state.completed_at.map(|completed| completed - workflow_state.created_at),
-            session_id: Some(workflow_state.session_id.clone()),
-            task_description: Some(workflow_state.task_description.clone()),
-            project_directory: Some(workflow_state.project_directory.clone()),
-            excluded_paths: Some(workflow_state.excluded_paths.clone()),
-            timeout_ms: workflow_state.timeout_ms,
-        }))
+        Ok(Some(convert_workflow_state_to_response(&workflow_state)))
     } else {
         Ok(None)
+    }
+}
+
+fn convert_workflow_state_to_response(workflow_state: &crate::jobs::workflow_types::WorkflowState) -> WorkflowStatusResponse {
+    let mut stage_statuses = Vec::new();
+    let all_stages = WorkflowStage::all_stages();
+    
+    for stage in &all_stages {
+        let stage_job = workflow_state.get_stage_job_by_name(&stage.display_name());
+        
+        let stage_status = if let Some(job) = stage_job {
+            let progress = match job.status {
+                crate::models::JobStatus::Completed => 100.0,
+                crate::models::JobStatus::Failed => 0.0,
+                crate::models::JobStatus::Running | crate::models::JobStatus::ProcessingStream => 50.0,
+                _ => 0.0,
+            };
+            
+            StageStatus {
+                stage_name: stage.display_name().to_string(),
+                job_id: Some(job.job_id.clone()),
+                status: job.status.to_string(),
+                progress_percentage: progress,
+                started_at: job.started_at.map(|t| DateTime::<Utc>::from_timestamp_millis(t).map(|dt| dt.to_rfc3339()).unwrap_or_default()),
+                completed_at: job.completed_at.map(|t| DateTime::<Utc>::from_timestamp_millis(t).map(|dt| dt.to_rfc3339()).unwrap_or_default()),
+                depends_on: job.depends_on.clone(),
+                created_at: Some(DateTime::<Utc>::from_timestamp_millis(job.created_at).map(|dt| dt.to_rfc3339()).unwrap_or_default()),
+                error_message: job.error_message.clone(),
+                execution_time_ms: job.completed_at.and_then(|completed| 
+                    job.started_at.map(|started| (completed - started))
+                ),
+                sub_status_message: job.sub_status_message.clone(),
+            }
+        } else {
+            StageStatus {
+                stage_name: stage.display_name().to_string(),
+                job_id: None,
+                status: "pending".to_string(),
+                progress_percentage: 0.0,
+                started_at: None,
+                completed_at: None,
+                depends_on: None,
+                created_at: None,
+                error_message: None,
+                execution_time_ms: None,
+                sub_status_message: None,
+            }
+        };
+        
+        stage_statuses.push(stage_status);
+    }
+    
+    let progress = workflow_state.calculate_progress();
+    
+    let current_stage = workflow_state.current_stage()
+        .map(|stage_job| stage_job.stage_name.clone())
+        .unwrap_or_else(|| {
+            match workflow_state.status {
+                WorkflowStatus::Completed => "Completed".to_string(),
+                WorkflowStatus::Failed => "Failed".to_string(),
+                WorkflowStatus::Canceled => "Canceled".to_string(),
+                WorkflowStatus::Paused => "Paused".to_string(),
+                _ => "Unknown".to_string(),
+            }
+        });
+    
+    let status = match workflow_state.status {
+        WorkflowStatus::Running => "running".to_string(),
+        WorkflowStatus::Paused => "paused".to_string(),
+        WorkflowStatus::Completed => "completed".to_string(),
+        WorkflowStatus::Failed => "failed".to_string(),
+        WorkflowStatus::Canceled => "canceled".to_string(),
+        WorkflowStatus::Created => "created".to_string(),
+    };
+    
+    WorkflowStatusResponse {
+        workflow_id: workflow_state.workflow_id.clone(),
+        status,
+        progress_percentage: progress,
+        current_stage,
+        stage_statuses,
+        error_message: workflow_state.error_message.clone(),
+        created_at: Some(workflow_state.created_at),
+        updated_at: Some(workflow_state.updated_at),
+        completed_at: workflow_state.completed_at,
+        total_execution_time_ms: workflow_state.completed_at.map(|completed| completed - workflow_state.created_at),
+        session_id: Some(workflow_state.session_id.clone()),
+        task_description: Some(workflow_state.task_description.clone()),
+        project_directory: Some(workflow_state.project_directory.clone()),
+        excluded_paths: Some(workflow_state.excluded_paths.clone()),
+        timeout_ms: workflow_state.timeout_ms,
     }
 }

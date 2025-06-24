@@ -24,6 +24,6 @@ export async function getAvailablePlans(): Promise<SubscriptionPlan[]> {
   return await invoke<SubscriptionPlan[]>('get_subscription_plans_command');
 }
 
-export async function getBillingDashboardData(): Promise<BillingDashboardData> {
+export async function getBillingOverviewData(): Promise<BillingDashboardData> {
   return await invoke<BillingDashboardData>('get_billing_dashboard_data_command');
 }

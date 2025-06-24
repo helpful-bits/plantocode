@@ -80,7 +80,6 @@ const PromptCopyModal: React.FC<PromptCopyModalProps> = ({
 
             <TabsContent value="system" className="flex-1">
               <div className="space-y-2">
-                <h3 className="font-medium text-sm text-foreground">System Prompt</h3>
                 <p className="text-xs text-muted-foreground">
                   Instructions that guide the AI's behavior and approach
                 </p>

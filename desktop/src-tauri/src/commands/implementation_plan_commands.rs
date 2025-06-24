@@ -68,10 +68,9 @@ pub async fn create_implementation_plan_command(
     }
     
     // Get model configuration for this task using centralized resolver
-    let model_settings = crate::utils::resolve_model_settings(
+    let model_settings = crate::utils::config_resolver::resolve_model_settings(
         &app_handle,
         TaskType::ImplementationPlan,
-        &args.project_directory,
         args.model,
         args.temperature,
         args.max_tokens,

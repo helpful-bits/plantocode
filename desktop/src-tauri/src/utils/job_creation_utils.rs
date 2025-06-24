@@ -47,8 +47,7 @@ pub async fn create_and_queue_background_job(
     additional_params: Option<Value>,
     app_handle: &AppHandle,
 ) -> AppResult<String> {
-    // Ensure task settings exist for this task type and session
-    ensure_task_settings_exist(session_id, project_dir, task_type_enum, app_handle).await?;
+    // Task settings are no longer stored locally - all configuration comes from server
     
     // Create a unique job ID
     let job_id = format!("job_{}", Uuid::new_v4());
@@ -129,7 +128,7 @@ pub async fn create_and_queue_background_job(
         tokens_sent: None,
         tokens_received: None,
         model_used,
-        cost: None,
+        actual_cost: None,
         metadata: Some(metadata_str),
         system_prompt_template: None,
         created_at: timestamp,
@@ -220,16 +219,15 @@ fn inject_job_id_into_payload(payload: &mut JobPayload, job_id: &str) {
     match payload {
         JobPayload::PathFinder(_) => {},
         JobPayload::ImplementationPlan(_) => {},
-        JobPayload::GuidanceGeneration(_) => {},
         JobPayload::PathCorrection(_) => {},
         JobPayload::TextImprovement(_) => {},
         JobPayload::GenericLlmStream(_) => {},
-        JobPayload::RegexPatternGeneration(_) => {},
+        JobPayload::RegexFileFilter(_) => {},
         JobPayload::TaskRefinement(_) => {},
         
         // Workflow stage payloads
         JobPayload::ExtendedPathFinder(_) => {},
-        JobPayload::RegexPatternGenerationWorkflow(_) => {},
+        JobPayload::RegexFileFilter(_) => {},
         JobPayload::FileRelevanceAssessment(_) => {},
         
         // Server proxy payloads (do not have background_job_id fields)
@@ -241,67 +239,4 @@ fn inject_job_id_into_payload(payload: &mut JobPayload, job_id: &str) {
     }
 }
 
-/// Ensure task settings exist for a specific session and task type
-/// This function initializes task settings from project/global defaults if they don't exist
-async fn ensure_task_settings_exist(
-    session_id: &str, 
-    project_dir: &str, 
-    task_type: TaskType,
-    app_handle: &AppHandle
-) -> AppResult<()> {
-    let settings_repo = app_handle.state::<Arc<crate::db_utils::settings_repository::SettingsRepository>>().inner().clone();
-    let task_type_str = task_type.to_string();
-    
-    // Check if task settings already exist
-    match settings_repo.get_task_settings(session_id, &task_type_str).await {
-        Ok(Some(_)) => {
-            // Settings already exist, no need to create
-            return Ok(());
-        }
-        Ok(None) => {
-            // Settings don't exist, need to create them
-        }
-        Err(e) => {
-            warn!("Error checking existing task settings for session {} and task type {}: {}", session_id, task_type_str, e);
-            // Continue and try to create settings
-        }
-    }
-    
-    // Only create settings for tasks that require LLM configuration
-    if !task_type.requires_llm() {
-        return Ok(());
-    }
-    
-    info!("Creating task settings for session {} and task type {}", session_id, task_type_str);
-    
-    // Get model configuration from server cache
-    let model = crate::utils::config_helpers::get_model_for_task(task_type, app_handle)
-        .await
-        .map_err(|e| AppError::ConfigError(format!("Failed to get model for task type {}: {}", task_type_str, e)))?;
-    
-    let temperature = crate::utils::config_helpers::get_default_temperature_for_task(Some(task_type), app_handle)
-        .await
-        .ok(); // Temperature is optional
-    
-    let max_tokens = crate::utils::config_helpers::get_default_max_tokens_for_task(Some(task_type), app_handle)
-        .await
-        .unwrap_or(4000) as i32; // Use safe default if config fails
-    
-    // Create the task settings
-    let task_settings = crate::models::TaskSettings {
-        project_hash: hash_string(project_dir),
-        task_type: task_type_str.clone(),
-        model,
-        max_tokens,
-        temperature,
-    };
-    
-    // Save to database
-    settings_repo.set_task_settings(&task_settings).await
-        .map_err(|e| AppError::DatabaseError(format!("Failed to save task settings for {}: {}", task_type_str, e)))?;
-    
-    info!("Created task settings for session {} and task type {}: model={}, max_tokens={}, temperature={:?}", 
-          session_id, task_type_str, task_settings.model, task_settings.max_tokens, task_settings.temperature);
-    
-    Ok(())
-}
+// Task settings functions removed - all AI configuration now comes from server-side exclusively
