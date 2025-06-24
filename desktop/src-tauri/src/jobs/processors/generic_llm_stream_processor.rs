@@ -2,6 +2,8 @@ use log::{info, error, debug};
 use tauri::AppHandle;
 use async_trait::async_trait;
 
+use crate::utils::config_resolver;
+
 use crate::error::{AppError, AppResult};
 use crate::jobs::types::{Job, JobPayload, JobProcessResult};
 use crate::jobs::processor_trait::JobProcessor;
@@ -47,13 +49,17 @@ impl JobProcessor for GenericLlmStreamProcessor {
                 .ok_or_else(|| AppError::JobError(format!("Session {} not found", job.session_id)))?
         };
         
-        // Get task settings from database
-        let task_settings = settings_repo.get_task_settings(&session.project_hash, &job.job_type.to_string()).await?
-            .ok_or_else(|| AppError::JobError(format!("No task settings found for project {} and task type {}", session.project_hash, job.job_type.to_string())))?;
-        let model_used = task_settings.model;
-        let temperature = task_settings.temperature
-            .ok_or_else(|| AppError::JobError("Temperature not set in task settings".to_string()))?;
-        let max_output_tokens = task_settings.max_tokens as u32;
+        // Get model settings using centralized config resolution
+        let model_settings = config_resolver::resolve_model_settings(
+            &app_handle,
+            job.job_type,
+            None, // model_override
+            None, // temperature_override  
+            None, // max_tokens_override
+        ).await?
+        .ok_or_else(|| AppError::ConfigError(format!("Task {:?} requires LLM configuration", job.job_type)))?;
+
+        let (model_used, temperature, max_output_tokens) = model_settings;
         
         job_processor_utils::log_job_start(&job.id, "generic LLM stream");
         
@@ -68,12 +74,11 @@ impl JobProcessor for GenericLlmStreamProcessor {
         // Create LLM task runner
         let task_runner = LlmTaskRunner::new(app_handle.clone(), job.clone(), llm_config);
         
-        // Create prompt context with system prompt override for generic streams
+        // Create prompt context for generic streams
         let prompt_context = LlmPromptContext {
             task_description: payload.prompt_text.clone(),
             file_contents: None,
             directory_tree: None,
-            system_prompt_override: payload.system_prompt.clone(),
         };
         
         // Execute streaming LLM task using the task runner

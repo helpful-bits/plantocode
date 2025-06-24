@@ -21,9 +21,10 @@ interface ModelSelectorProps {
   selectedModelId: string;
   onSelect: (modelId: string) => void;
   disableTooltips?: boolean;
+  disabled?: boolean;
 }
 
-export function ModelSelector({ providers, selectedModelId, onSelect, disableTooltips = false }: ModelSelectorProps) {
+export function ModelSelector({ providers, selectedModelId, onSelect, disableTooltips = false, disabled = false }: ModelSelectorProps) {
   const [overriddenProviderId, setOverriddenProviderId] = useState<string | null>(null);
 
   const selectedModel = providers.flatMap(p => p.models).find(m => m.id === selectedModelId);
@@ -59,6 +60,7 @@ export function ModelSelector({ providers, selectedModelId, onSelect, disableToo
           variant="outline"
           className="w-full justify-between"
           aria-label="Select model"
+          disabled={disabled}
         >
           <div className="flex items-center gap-2 truncate">
             {selectedModel ? (

@@ -53,7 +53,7 @@ const getResponsePreview = (job: BackgroundJob) => {
     case "implementation_plan":
       return "Implementation plan generated.";
 
-    case "regex_pattern_generation":
+    case "regex_file_filter":
       try {
         const parsed = JSON.parse(job.response);
         if (parsed && parsed.primaryPattern) {
@@ -160,7 +160,6 @@ export const JobCard = React.memo(
     const isCurrentJobDeleting = React.useMemo(() => Boolean(isDeleting?.[job.id]), [isDeleting, job.id]);
 
     // Use memoized helper functions with current job data
-    const responsePreview = React.useMemo(() => getResponsePreview(job), [job.response, job.taskType, job.status]);
     const errorPreview = React.useMemo(() => getErrorPreview(job.errorMessage), [job.errorMessage]);
 
     // Render the appropriate status icon
@@ -343,7 +342,7 @@ export const JobCard = React.memo(
                     title={modelUsed}
                   >
                     {modelUsed.includes("gemini")
-                      ? modelUsed.replace("gemini-", "Gemini ")
+                      ? modelUsed.replace("gemini-", "Google Gemini ")
                       : modelUsed.includes("claude")
                         ? modelUsed.replace(/-\d{8}$/, "")
                         : modelUsed}
@@ -365,114 +364,103 @@ export const JobCard = React.memo(
         )}
 
         <div className="flex-1 flex flex-col justify-end">
-          {JOB_STATUSES.COMPLETED.includes(job.status as JobStatus) &&
-            job.taskType === "implementation_plan" && (
-              <div className="text-[10px] mt-2 border-t border-border/60 pt-2 flex items-center gap-1.5 text-muted-foreground">
-                <FileCode className="h-3.5 w-3.5 text-primary" />
-                <span className="font-medium text-foreground">
+          {/* Bottom section - Only show unique information not already displayed */}
+          {JOB_STATUSES.COMPLETED.includes(job.status as JobStatus) && (
+            <div className="text-[10px] mt-2 border-t border-border/60 pt-2">
+              <div className="flex items-center justify-between gap-2">
+                {/* Results Summary (left side) - Only show meaningful results */}
+                <div className="flex items-center gap-1.5 text-muted-foreground min-w-0 flex-1">
                   {(() => {
                     const parsedMeta = getParsedMetadata(job.metadata);
-                    return parsedMeta?.taskData?.sessionName
-                      ? `Plan: ${parsedMeta.taskData.sessionName}`
-                      : "Implementation plan in database";
-                  })()}
-                </span>
-              </div>
-            )}
-
-
-          {(() => {
-            const parsedMeta = getParsedMetadata(job.metadata);
-            
-            if (parsedMeta?.workflowId) {
-              return (
-                <div className="text-[10px] mt-2 border-t border-primary/20 pt-2 flex items-center gap-1.5 text-muted-foreground bg-primary/5 rounded-md p-2">
-                  <div className="w-2 h-2 bg-primary rounded-full flex-shrink-0"></div>
-                  <div className="flex flex-col gap-0.5 min-w-0 flex-1">
-                    <span className="font-medium text-primary text-[11px]">
-                      File Finder Workflow
-                    </span>
-                    <span className="text-[9px] text-muted-foreground font-mono truncate">
-                      {parsedMeta.workflowId}
-                    </span>
-                    {parsedMeta?.taskData?.outputPath && (
-                      <span className="text-[9px] text-muted-foreground truncate">
-                        Output: {parsedMeta.taskData.outputPath}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              );
-            }
-            
-            return null;
-          })()}
-
-          {(job.taskType === "path_finder" || 
-            job.taskType === "extended_path_finder" ||
-            job.taskType === "file_finder_workflow") && 
-           JOB_STATUSES.COMPLETED.includes(job.status as JobStatus) && (
-            <div className="text-[10px] mt-2 border-t border-border/60 pt-2 flex items-center gap-1.5 text-muted-foreground">
-              {(() => {
-                const parsedMeta = getParsedMetadata(job.metadata);
-                
-                if (parsedMeta?.workflowId) {
-                  return null;
-                }
-                
-                let displayText = "";
-                if (job.response) {
-                  try {
-                    const parsed = JSON.parse(job.response);
                     
-                    if (job.taskType === "path_finder" && parsed && typeof parsed === 'object' && 'paths' in parsed && 'unverified_paths' in parsed) {
-                      const verifiedCount = Array.isArray(parsed.paths) ? parsed.paths.length : 0;
-                      const unverifiedCount = Array.isArray(parsed.unverified_paths) ? parsed.unverified_paths.length : 0;
-                      const totalCount = verifiedCount + unverifiedCount;
-                      
-                      if (totalCount > 0) {
-                        displayText = `Found ${verifiedCount} verified, ${unverifiedCount} unverified file${totalCount !== 1 ? "s" : ""}`;
-                      } else {
-                        displayText = "Path finder completed";
+                    // Handle all tasks that can produce file results
+                    const fileProducingTasks = [
+                      "path_finder", 
+                      "extended_path_finder", 
+                      "file_finder_workflow",
+                      "regex_file_filter",
+                      "file_relevance_assessment"
+                    ];
+                    
+                    if (fileProducingTasks.includes(job.taskType)) {
+                      if (job.response) {
+                        try {
+                          const parsed = JSON.parse(job.response);
+                          
+                          // Handle path_finder specific format with verified/unverified paths
+                          if (job.taskType === "path_finder" && parsed && typeof parsed === 'object' && 'paths' in parsed && 'unverified_paths' in parsed) {
+                            const verifiedCount = Array.isArray(parsed.paths) ? parsed.paths.length : 0;
+                            const unverifiedCount = Array.isArray(parsed.unverified_paths) ? parsed.unverified_paths.length : 0;
+                            const totalCount = verifiedCount + unverifiedCount;
+                            
+                            if (totalCount > 0) {
+                              return (
+                                <span className="font-medium text-foreground">
+                                  {verifiedCount} verified, {unverifiedCount} unverified
+                                </span>
+                              );
+                            }
+                          }
+                          // Handle array responses (most common format)
+                          else if (Array.isArray(parsed)) {
+                            const count = parsed.length;
+                            if (count > 0) {
+                              return (
+                                <span className="font-medium text-foreground">
+                                  {count} file{count !== 1 ? "s" : ""} found
+                                </span>
+                              );
+                            }
+                          }
+                          // Handle object responses with file arrays
+                          else if (parsed && typeof parsed === 'object') {
+                            // Check for common patterns in workflow responses
+                            const filePaths = parsed.filePaths || parsed.paths || parsed.files;
+                            if (Array.isArray(filePaths)) {
+                              const count = filePaths.length;
+                              if (count > 0) {
+                                return (
+                                  <span className="font-medium text-foreground">
+                                    {count} file{count !== 1 ? "s" : ""} found
+                                  </span>
+                                );
+                              }
+                            }
+                          }
+                        } catch {
+                          // Fallback to metadata count
+                          const count = (typeof parsedMeta?.taskData?.pathCount === 'number') ? parsedMeta.taskData.pathCount : 0;
+                          if (count > 0) {
+                            return (
+                              <span className="font-medium text-foreground">
+                                {count} file{count !== 1 ? "s" : ""} found
+                              </span>
+                            );
+                          }
+                        }
                       }
+                      
+                      return null; // Don't show generic completion message for file tasks
                     }
-                    else if (Array.isArray(parsed)) {
-                      const count = parsed.length;
-                      displayText = count > 0 ? `Found ${count} file${count !== 1 ? "s" : ""}` : "Path finder completed";
-                    }
-                  } catch {
-                    const parsedMeta = getParsedMetadata(job.metadata);
-                    const count = (typeof parsedMeta?.taskData?.pathCount === 'number') ? parsedMeta.taskData.pathCount : 0;
-                    displayText = count > 0 ? `Found ${count} file${count !== 1 ? "s" : ""}` : "Path finder completed";
-                  }
-                }
+                    
+                    // For implementation plans and other tasks, don't show redundant info
+                    return null;
+                  })()}
+                </div>
                 
-                if (!displayText) {
-                  displayText = job.taskType === "file_finder_workflow" ? "File finder completed" : "Path finder completed";
-                }
-                
-                return (
-                  <span className="font-medium text-foreground">
-                    {displayText}
-                  </span>
-                );
-              })()}
+                {/* Cost (right side) - Only show if meaningful */}
+                <div className="flex-shrink-0">
+                  {job.actualCost && job.actualCost > 0 ? (
+                    <span className="font-mono text-[9px] text-foreground">
+                      ${job.actualCost.toFixed(4)}
+                    </span>
+                  ) : null}
+                </div>
+              </div>
             </div>
           )}
 
-          {job.response &&
-            !((job.taskType === "path_finder" || 
-               job.taskType === "extended_path_finder" ||
-               job.taskType === "file_finder_workflow") && JOB_STATUSES.COMPLETED.includes(job.status as JobStatus)) && (
-              <div className="text-[10px] mt-2 border-t border-border/60 pt-2 text-muted-foreground break-words text-balance overflow-hidden">
-                <div className="h-[40px] w-full overflow-y-auto overflow-x-hidden">
-                  <div className="break-words whitespace-pre-wrap overflow-wrap-anywhere">
-                    {responsePreview}
-                  </div>
-                </div>
-              </div>
-            )}
-
+          {/* Error messages for failed jobs */}
           {JOB_STATUSES.FAILED.includes(job.status as JobStatus) &&
             job.errorMessage && (
               <div className="text-[10px] mt-2 border-t border-border/60 pt-2 text-destructive break-words text-balance overflow-hidden">
@@ -484,8 +472,8 @@ export const JobCard = React.memo(
               </div>
             )}
 
-          {!(job.taskType === "path_finder" && JOB_STATUSES.COMPLETED.includes(job.status as JobStatus)) &&
-            !job.response &&
+          {/* Spacer for non-completed jobs without errors */}
+          {!JOB_STATUSES.COMPLETED.includes(job.status as JobStatus) &&
             !JOB_STATUSES.FAILED.includes(job.status as JobStatus) && (
               <div className="h-[42px]"></div>
             )}

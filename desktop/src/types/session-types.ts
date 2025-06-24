@@ -33,7 +33,8 @@ export interface BackgroundJob {
   tokensSent?: number;
   tokensReceived?: number;
   modelUsed?: string;
-  cost?: number | null | undefined;
+  actualCost?: number | null | undefined; // Server-authoritative cost - single source of truth for billing
+  duration_ms?: number; // Duration of LLM API call in milliseconds
   metadata?: JobMetadata | string | null;
   systemPromptTemplate?: string;
   createdAt: number;

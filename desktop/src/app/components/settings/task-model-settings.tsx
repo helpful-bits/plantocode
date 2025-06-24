@@ -32,65 +32,49 @@ const taskSettingsKeyToTaskType: Record<keyof TaskSettings, TaskType> = {
   voiceTranscription: "voice_transcription",
   pathCorrection: "path_correction",
   textImprovement: "text_improvement",
-  guidanceGeneration: "guidance_generation",
   implementationPlan: "implementation_plan",
   fileFinderWorkflow: "file_finder_workflow",
   localFileFiltering: "local_file_filtering",
   extendedPathFinder: "extended_path_finder",
-  extendedPathCorrection: "path_correction",
   fileRelevanceAssessment: "file_relevance_assessment",
   taskRefinement: "task_refinement",
   genericLlmStream: "generic_llm_stream",
-  regexPatternGeneration: "regex_pattern_generation",
+  regexFileFilter: "regex_file_filter",
   streaming: "streaming",
   unknown: "unknown",
 };
 
 const FILE_FINDING_WORKFLOW_STAGES = [
   { 
-    key: 'regexPatternGeneration', 
+    key: 'regexFileFilter', 
     stageNumber: 1, 
-    displayName: 'Pattern Generation',
-    nextStage: 'File Filtering',
+    displayName: 'Regex File Filter',
+    nextStage: 'Relevance Assessment',
     description: 'Generate regex patterns to identify relevant files'
   },
   { 
-    key: 'localFileFiltering', 
-    stageNumber: 2, 
-    displayName: 'File Filtering',
-    nextStage: 'Relevance Assessment',
-    description: 'Filter project files using generated patterns'
-  },
-  { 
     key: 'fileRelevanceAssessment', 
-    stageNumber: 3, 
+    stageNumber: 2, 
     displayName: 'Relevance Assessment',
     nextStage: 'Extended Path Finding',
     description: 'AI-powered assessment of file relevance'
   },
   { 
     key: 'extendedPathFinder', 
-    stageNumber: 4, 
+    stageNumber: 3, 
     displayName: 'Extended Path Finding',
     nextStage: 'Path Correction',
     description: 'Deep analysis to find related files'
   },
   { 
     key: 'pathCorrection', 
-    stageNumber: 5, 
+    stageNumber: 4, 
     displayName: 'Path Correction',
     nextStage: null,
     description: 'Final refinement and path validation'
   },
 ] as const;
 
-const STANDALONE_FEATURES = [
-  { key: 'voiceTranscription', displayName: 'Voice Transcription', description: 'Convert speech to text' },
-  { key: 'textImprovement', displayName: 'Text Improvement', description: 'AI-powered text enhancement' },
-  { key: 'taskRefinement', displayName: 'Task Refinement', description: 'Refine and optimize task descriptions' },
-  { key: 'implementationPlan', displayName: 'Implementation Plans', description: 'Generate detailed development plans' },
-  { key: 'guidanceGeneration', displayName: 'AI Guidance', description: 'Contextual AI assistance' },
-] as const;
 
 
 
@@ -259,16 +243,38 @@ export default function TaskModelSettings({
       taskSettings[stage.key as keyof TaskSettings] !== undefined
     );
     
-    const features = STANDALONE_FEATURES.filter(feature => 
-      taskSettings[feature.key as keyof TaskSettings] !== undefined &&
-      !TaskTypeDetails[taskSettingsKeyToTaskType[feature.key as keyof TaskSettings]]?.hidden
-    );
+    const workflowStageKeys = new Set(FILE_FINDING_WORKFLOW_STAGES.map(stage => stage.key as keyof TaskSettings));
+    
+    const features = Object.keys(taskSettings)
+      .filter((key): key is keyof TaskSettings => {
+        const typedKey = key as keyof TaskSettings;
+        const taskType = taskSettingsKeyToTaskType[typedKey];
+        const taskDetails = TaskTypeDetails[taskType];
+        
+        return (
+          !workflowStageKeys.has(typedKey) &&
+          !taskDetails?.hidden &&
+          taskDetails?.category !== 'Workflow' &&
+          taskDetails?.category !== 'Workflow Stage'
+        );
+      })
+      .map(key => {
+        const taskType = taskSettingsKeyToTaskType[key];
+        const taskDetails = TaskTypeDetails[taskType];
+        
+        return {
+          key,
+          displayName: taskDetails?.displayName || key,
+          description: taskDetails?.description || ''
+        };
+      })
+      .sort((a, b) => a.displayName.localeCompare(b.displayName));
 
     return { workflowStages: stages, standaloneFeatures: features };
   }, [taskSettings]);
 
   const [selectedCategory, setSelectedCategory] = useState<'workflow' | 'standalone' | 'bulk-optimization'>('workflow');
-  const [selectedTask, setSelectedTask] = useState<string>('regexPatternGeneration');
+  const [selectedTask, setSelectedTask] = useState<string>('regexFileFilter');
 
   const filteredProvidersWithModels = useMemo(() => {
     if (!providersWithModels) return null;
@@ -315,7 +321,7 @@ export default function TaskModelSettings({
     const taskExists = taskSettings[selectedTask as keyof TaskSettings] !== undefined;
     const isBulkOptimization = selectedTask === 'bulk-optimization';
     if (!taskExists && !isBulkOptimization) {
-      const fallbackTask = workflowStages[0]?.key || standaloneFeatures[0]?.key || 'regexPatternGeneration';
+      const fallbackTask = workflowStages[0]?.key || standaloneFeatures[0]?.key || 'regexFileFilter';
       setSelectedTask(fallbackTask);
     }
   }, [taskSettings, selectedTask, workflowStages, standaloneFeatures]);

@@ -114,6 +114,7 @@ CREATE TABLE IF NOT EXISTS background_jobs (
   tokens_sent INTEGER DEFAULT 0,
   tokens_received INTEGER DEFAULT 0,
   model_used TEXT,
+  actual_cost REAL,
   metadata TEXT,
   system_prompt_template TEXT,
   created_at INTEGER DEFAULT (strftime('%s', 'now')) NOT NULL,
@@ -128,15 +129,8 @@ CREATE INDEX IF NOT EXISTS idx_background_jobs_session_id ON background_jobs(ses
 CREATE INDEX IF NOT EXISTS idx_background_jobs_status ON background_jobs(status);
 CREATE INDEX IF NOT EXISTS idx_background_jobs_task_type ON background_jobs(task_type);
 
--- Create task_settings table
-CREATE TABLE IF NOT EXISTS task_settings (
-  project_hash TEXT NOT NULL,
-  task_type TEXT NOT NULL,
-  model TEXT NOT NULL,
-  max_tokens INTEGER NOT NULL,
-  temperature REAL,
-  PRIMARY KEY (project_hash, task_type)
-);
+-- Task settings table removed in favor of server-side configuration
+-- All AI task configuration will be fetched exclusively from the server
 
 -- Create project_system_prompts table for project-specific system prompt overrides
 CREATE TABLE IF NOT EXISTS project_system_prompts (

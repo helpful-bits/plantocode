@@ -1,33 +1,44 @@
 use actix_web::{web, HttpResponse};
 use serde_json::{json, Value};
+use std::collections::HashMap;
 use tracing::{debug, error, info, instrument, warn};
 use uuid::{self, Uuid};
 use chrono;
 use crate::error::AppError;
 use crate::middleware::secure_auth::UserId;
 use crate::clients::{
-    OpenRouterClient, OpenAIClient, AnthropicClient, GoogleClient,
-    OpenRouterChatRequest, OpenAIChatRequest, AnthropicChatRequest, GoogleChatRequest
+    OpenRouterClient, OpenAIClient, AnthropicClient, GoogleClient
 };
+use crate::clients::open_router_client::{OpenRouterStreamChunk, OpenRouterStreamChoice, OpenRouterStreamDelta, OpenRouterUsage};
+use crate::clients::google_client::GoogleStreamChunk;
 use crate::db::repositories::model_repository::{ModelRepository, ModelWithProvider};
 use crate::models::model_pricing::ModelPricing;
 use crate::services::cost_based_billing_service::CostBasedBillingService;
 use crate::config::settings::AppSettings;
 use crate::db::connection::DatabasePools;
-use std::sync::Arc;
 use bigdecimal::BigDecimal;
-use futures_util::StreamExt;
+use futures_util::{StreamExt, TryStreamExt, TryFutureExt};
 use serde::{Deserialize, Serialize};
 use base64::Engine;
 use actix_multipart::Multipart;
-use futures_util::TryStreamExt;
-use std::str::FromStr;
+
+#[derive(Deserialize, Serialize, Clone)]
+pub struct LlmCompletionRequest {
+    pub model: String,
+    pub messages: Vec<Value>,
+    pub stream: Option<bool>,
+    pub max_tokens: Option<u32>,
+    pub temperature: Option<f32>,
+    pub duration_ms: Option<i64>,
+    #[serde(flatten)]
+    pub other: HashMap<String, Value>,
+}
 
 /// AI proxy handler for intelligent model routing
 /// Routes requests to appropriate AI providers based on model configuration
 #[instrument(skip(payload, app_settings, db_pools, cost_billing_service, model_repository, user_id))]
 pub async fn llm_chat_completion_handler(
-    payload: web::Json<Value>,
+    payload: web::Json<LlmCompletionRequest>,
     user_id: UserId,
     app_settings: web::Data<AppSettings>,
     db_pools: web::Data<DatabasePools>,
@@ -46,7 +57,7 @@ pub async fn llm_chat_completion_handler(
     }
     
     // Extract model ID from request payload
-    let model_id = extract_model_id(&payload)?;
+    let model_id = payload.model.clone();
     debug!("Routing request for model: {}", model_id);
     
     // Look up model with provider information
@@ -58,37 +69,44 @@ pub async fn llm_chat_completion_handler(
     info!("Routing to provider: {} for model: {}", model_with_provider.provider_code, model_with_provider.name);
     
     // Check if request is streaming
-    let is_streaming = extract_streaming_flag(&payload);
+    let is_streaming = payload.stream.unwrap_or(false);
+    
+    // Extract duration_ms for cost calculation
+    let duration_ms = payload.duration_ms;
+    
+    // Extract payload for different handler types
+    let payload_inner = payload.into_inner();
+    let payload_value = serde_json::to_value(&payload_inner)?;
     
     // Route to appropriate provider based on provider_code
     match model_with_provider.provider_code.as_str() {
         "openai" => {
             if is_streaming {
-                handle_openai_streaming_request(payload.into_inner(), &model_with_provider, &user_id, &app_settings, &cost_billing_service).await
+                handle_openai_streaming_request(payload_inner.clone(), &model_with_provider, &user_id, &app_settings, &cost_billing_service).await
             } else {
-                handle_openai_request(payload.into_inner(), &model_with_provider, &user_id, &app_settings, &cost_billing_service).await
+                handle_openai_request(payload_inner, &model_with_provider, &user_id, &app_settings, &cost_billing_service).await
             }
         },
         "anthropic" => {
             if is_streaming {
-                handle_anthropic_streaming_request(payload.into_inner(), &model_with_provider, &user_id, &app_settings, &cost_billing_service).await
+                handle_anthropic_streaming_request(payload_value.clone(), &model_with_provider, &user_id, &app_settings, &cost_billing_service).await
             } else {
-                handle_anthropic_request(payload.into_inner(), &model_with_provider, &user_id, &app_settings, &cost_billing_service).await
+                handle_anthropic_request(payload_value.clone(), &model_with_provider, &user_id, &app_settings, &cost_billing_service).await
             }
         },
         "google" => {
             if is_streaming {
-                handle_google_streaming_request(payload.into_inner(), &model_with_provider, &user_id, &app_settings, &cost_billing_service).await
+                handle_google_streaming_request(payload_value.clone(), &model_with_provider, &user_id, &app_settings, &cost_billing_service).await
             } else {
-                handle_google_request(payload.into_inner(), &model_with_provider, &user_id, &app_settings, &cost_billing_service).await
+                handle_google_request(payload_value.clone(), &model_with_provider, &user_id, &app_settings, &cost_billing_service).await
             }
         },
         "deepseek" => {
             // Route DeepSeek models through OpenRouter
             if is_streaming {
-                handle_openrouter_streaming_request(payload.into_inner(), &model_with_provider, &user_id, &app_settings, &cost_billing_service).await
+                handle_openrouter_streaming_request(payload_value.clone(), &model_with_provider, &user_id, &app_settings, &cost_billing_service).await
             } else {
-                handle_openrouter_request(payload.into_inner(), &model_with_provider, &user_id, &app_settings, &cost_billing_service).await
+                handle_openrouter_request(payload_value.clone(), &model_with_provider, &user_id, &app_settings, &cost_billing_service).await
             }
         },
         _ => {
@@ -100,47 +118,41 @@ pub async fn llm_chat_completion_handler(
 
 /// Handle OpenAI non-streaming request
 async fn handle_openai_request(
-    payload: Value,
+    payload: LlmCompletionRequest,
     model: &ModelWithProvider,
     user_id: &Uuid,
     app_settings: &AppSettings,
     cost_billing_service: &CostBasedBillingService,
 ) -> Result<HttpResponse, AppError> {
     let client = OpenAIClient::new(app_settings)?;
-    let mut request = client.convert_to_chat_request(payload)?;
+    // Convert LlmCompletionRequest to Value for client conversion
+    let payload_value = serde_json::to_value(&payload)?;
+    let mut request = client.convert_to_chat_request(payload_value)?;
     
     // Use the pre-computed API model ID
     request.model = model.api_model_id.clone();
     
     let (response, _headers, tokens_input, tokens_output) = client.chat_completion(request).await?;
     
-    // Token counts already extracted from the response tuple
-    
-    // Calculate cost using database pricing
-    let cost = model.calculate_token_cost(tokens_input as i64, tokens_output as i64);
-    
-    // Record usage and cost
-    cost_billing_service.record_usage_and_update_spending(
+    // Get authoritative cost from centralized billing service
+    let cost = cost_billing_service.calculate_and_report_usage(
         user_id,
-        "chat_completion",
+        &model.id,
         tokens_input,
         tokens_output,
-        &cost,
-        None,
-        None,
-        None,
-        None,
+        payload.duration_ms, // Pass actual duration from client
     ).await?;
     
-    // Convert to OpenRouter format for consistent client parsing
+    // Convert to OpenRouter format for consistent client parsing with standardized usage
     let mut response_value = serde_json::to_value(response)?;
     if let Some(obj) = response_value.as_object_mut() {
-        obj.insert("usage".to_string(), json!({
-            "prompt_tokens": tokens_input,
-            "completion_tokens": tokens_output,
-            "total_tokens": tokens_input + tokens_output,
-            "cost": cost.to_string().parse::<f64>().unwrap_or(0.0)
-        }));
+        let usage = OpenRouterUsage {
+            prompt_tokens: tokens_input,
+            completion_tokens: tokens_output,
+            total_tokens: tokens_input + tokens_output,
+            cost: Some(cost.to_string().parse::<f64>().unwrap_or(0.0)),
+        };
+        obj.insert("usage".to_string(), serde_json::to_value(usage)?);
     }
     
     Ok(HttpResponse::Ok().json(response_value))
@@ -148,14 +160,16 @@ async fn handle_openai_request(
 
 /// Handle OpenAI streaming request
 async fn handle_openai_streaming_request(
-    payload: Value,
+    payload: LlmCompletionRequest,
     model: &ModelWithProvider,
     user_id: &Uuid,
     app_settings: &AppSettings,
     cost_billing_service: &CostBasedBillingService,
 ) -> Result<HttpResponse, AppError> {
     let client = OpenAIClient::new(app_settings)?;
-    let mut request = client.convert_to_chat_request(payload)?;
+    // Convert LlmCompletionRequest to Value for client conversion
+    let payload_value = serde_json::to_value(&payload)?;
+    let mut request = client.convert_to_chat_request(payload_value)?;
     
     // Use the pre-computed API model ID
     request.model = model.api_model_id.clone();
@@ -166,39 +180,39 @@ async fn handle_openai_streaming_request(
     let user_id_clone = *user_id;
     let model_clone = model.clone();
     let cost_billing_service_clone = cost_billing_service.clone();
+    let duration_ms = payload.duration_ms;
     
-    let processed_stream = stream.map(move |chunk_result| {
-        match chunk_result {
-            Ok(bytes) => {
-                // Process chunk for token tracking
-                if let Ok(chunk_str) = std::str::from_utf8(&bytes) {
-                    // Extract tokens if this is the final chunk with usage
-                    if let Some((tokens_input, tokens_output)) = OpenAIClient::extract_tokens_from_chat_stream_chunk(chunk_str) {
-                        // Calculate cost and record usage
-                        tokio::spawn({
-                            let user_id = user_id_clone;
-                            let model = model_clone.clone();
-                            let cost_billing_service = cost_billing_service_clone.clone();
-                            async move {
-                                let cost = model.calculate_token_cost(tokens_input as i64, tokens_output as i64);
-                                let _ = cost_billing_service.record_usage_and_update_spending(
-                                    &user_id,
-                                    "chat_completion_stream",
-                                    tokens_input,
-                                    tokens_output,
-                                    &cost,
-                                    None,
-                                    None,
-                                    None,
-                                    None,
-                                ).await;
+    let processed_stream = stream.then(move |chunk_result| {
+        let cost_billing_service = cost_billing_service_clone.clone();
+        let model_id = model_clone.id.clone();
+        let user_id = user_id_clone;
+        
+        async move {
+            match chunk_result {
+                Ok(bytes) => {
+                    // Process chunk for token tracking
+                    if let Ok(chunk_str) = std::str::from_utf8(&bytes) {
+                        // Extract tokens if this is the final chunk with usage
+                        if let Some((tokens_input, tokens_output)) = OpenAIClient::extract_tokens_from_chat_stream_chunk(chunk_str) {
+                            // Get authoritative cost from centralized billing service
+                            if let Ok(cost) = cost_billing_service.calculate_and_report_usage(
+                                &user_id,
+                                &model_id,
+                                tokens_input,
+                                tokens_output,
+                                duration_ms, // Pass actual duration from client
+                            ).await {
+                                // Modify the chunk to include authoritative cost in usage
+                                if let Ok(modified_chunk) = add_cost_to_openai_stream_chunk(chunk_str, &cost) {
+                                    return Ok(web::Bytes::from(modified_chunk));
+                                }
                             }
-                        });
+                        }
                     }
-                }
-                Ok(bytes)
-            },
-            Err(e) => Err(e)
+                    Ok(bytes)
+                },
+                Err(e) => Err(e)
+            }
         }
     });
     
@@ -226,23 +240,23 @@ async fn handle_anthropic_request(
     // Extract token counts from response
     let (tokens_input, tokens_output) = client.extract_tokens_from_response(&response);
     
-    // Calculate cost using database pricing
-    let cost = model.calculate_token_cost(tokens_input as i64, tokens_output as i64);
-    
-    // Record usage and cost
-    cost_billing_service.record_usage_and_update_spending(
+    // Get authoritative cost from centralized billing service
+    let cost = cost_billing_service.calculate_and_report_usage(
         user_id,
-        "chat_completion",
+        &model.id,
         tokens_input,
         tokens_output,
-        &cost,
-        None,
-        None,
-        None,
-        None,
+        None, // duration_ms
     ).await?;
     
     // Transform Anthropic response to OpenRouter format for consistent client parsing
+    let usage = OpenRouterUsage {
+        prompt_tokens: tokens_input,
+        completion_tokens: tokens_output,
+        total_tokens: tokens_input + tokens_output,
+        cost: Some(cost.to_string().parse::<f64>().unwrap_or(0.0)),
+    };
+    
     let openrouter_response = json!({
         "id": response.id,
         "object": "chat.completion",
@@ -256,12 +270,7 @@ async fn handle_anthropic_request(
             },
             "finish_reason": response.stop_reason
         }],
-        "usage": {
-            "prompt_tokens": tokens_input,
-            "completion_tokens": tokens_output,
-            "total_tokens": tokens_input + tokens_output,
-            "cost": cost.to_string().parse::<f64>().unwrap_or(0.0)
-        }
+        "usage": serde_json::to_value(usage)?
     });
     
     Ok(HttpResponse::Ok().json(openrouter_response))
@@ -288,35 +297,35 @@ async fn handle_anthropic_streaming_request(
     let model_clone = model.clone();
     let cost_billing_service_clone = cost_billing_service.clone();
     
-    let processed_stream = stream.map(move |chunk_result| {
-        match chunk_result {
-            Ok(bytes) => {
-                if let Ok(chunk_str) = std::str::from_utf8(&bytes) {
-                    if let Some((tokens_input, tokens_output)) = AnthropicClient::extract_tokens_from_stream_chunk(chunk_str) {
-                        tokio::spawn({
-                            let user_id = user_id_clone;
-                            let model = model_clone.clone();
-                            let cost_billing_service = cost_billing_service_clone.clone();
-                            async move {
-                                let cost = model.calculate_token_cost(tokens_input as i64, tokens_output as i64);
-                                let _ = cost_billing_service.record_usage_and_update_spending(
-                                    &user_id,
-                                    "chat_completion_stream",
-                                    tokens_input,
-                                    tokens_output,
-                                    &cost,
-                                    None,
-                                    None,
-                                    None,
-                                    None,
-                                ).await;
+    let processed_stream = stream.then(move |chunk_result| {
+        let cost_billing_service = cost_billing_service_clone.clone();
+        let model_id = model_clone.id.clone();
+        let user_id = user_id_clone;
+        
+        async move {
+            match chunk_result {
+                Ok(bytes) => {
+                    if let Ok(chunk_str) = std::str::from_utf8(&bytes) {
+                        if let Some((tokens_input, tokens_output)) = AnthropicClient::extract_tokens_from_stream_chunk(chunk_str) {
+                            // Get authoritative cost from centralized billing service
+                            if let Ok(cost) = cost_billing_service.calculate_and_report_usage(
+                                &user_id,
+                                &model_id,
+                                tokens_input,
+                                tokens_output,
+                                None, // duration_ms
+                            ).await {
+                                // Modify the chunk to include authoritative cost in usage
+                                if let Ok(modified_chunk) = add_cost_to_anthropic_stream_chunk(chunk_str, &cost) {
+                                    return Ok(web::Bytes::from(modified_chunk));
+                                }
                             }
-                        });
+                        }
                     }
-                }
-                Ok(bytes)
-            },
-            Err(e) => Err(e)
+                    Ok(bytes)
+                },
+                Err(e) => Err(e)
+            }
         }
     });
     
@@ -334,27 +343,20 @@ async fn handle_google_request(
     cost_billing_service: &CostBasedBillingService,
 ) -> Result<HttpResponse, AppError> {
     let client = GoogleClient::new(app_settings)?;
-    let request = client.convert_to_chat_request(payload)?;
+    let request = client.convert_to_chat_request_with_capabilities(payload, Some(&model.capabilities))?;
     
     let (response, _headers) = client.chat_completion(request, &model.api_model_id, &user_id.to_string()).await?;
     
     // Extract token counts from response
     let (tokens_input, tokens_output) = client.extract_tokens_from_response(&response);
     
-    // Calculate cost using database pricing
-    let cost = model.calculate_token_cost(tokens_input as i64, tokens_output as i64);
-    
-    // Record usage and cost
-    cost_billing_service.record_usage_and_update_spending(
+    // Get authoritative cost from centralized billing service
+    let cost = cost_billing_service.calculate_and_report_usage(
         user_id,
-        "chat_completion",
+        &model.id,
         tokens_input,
         tokens_output,
-        &cost,
-        None,
-        None,
-        None,
-        None,
+        None, // duration_ms
     ).await?;
     
     // Transform Google response to OpenRouter format for consistent client parsing
@@ -362,6 +364,13 @@ async fn handle_google_request(
     let content = response_value["candidates"][0]["content"]["parts"][0]["text"]
         .as_str()
         .unwrap_or("");
+    
+    let usage = OpenRouterUsage {
+        prompt_tokens: tokens_input,
+        completion_tokens: tokens_output,
+        total_tokens: tokens_input + tokens_output,
+        cost: Some(cost.to_string().parse::<f64>().unwrap_or(0.0)),
+    };
     
     let openrouter_response = json!({
         "id": format!("chatcmpl-{}", uuid::Uuid::new_v4()),
@@ -376,12 +385,7 @@ async fn handle_google_request(
             },
             "finish_reason": "stop"
         }],
-        "usage": {
-            "prompt_tokens": tokens_input,
-            "completion_tokens": tokens_output,
-            "total_tokens": tokens_input + tokens_output,
-            "cost": cost.to_string().parse::<f64>().unwrap_or(0.0)
-        }
+        "usage": serde_json::to_value(usage)?
     });
     
     Ok(HttpResponse::Ok().json(openrouter_response))
@@ -396,7 +400,7 @@ async fn handle_google_streaming_request(
     cost_billing_service: &CostBasedBillingService,
 ) -> Result<HttpResponse, AppError> {
     let client = GoogleClient::new(app_settings)?;
-    let request = client.convert_to_chat_request(payload)?;
+    let request = client.convert_to_chat_request_with_capabilities(payload, Some(&model.capabilities))?;
     
     let (headers, stream) = client.stream_chat_completion(request, model.api_model_id.clone(), user_id.to_string()).await?;
     
@@ -404,36 +408,69 @@ async fn handle_google_streaming_request(
     let user_id_clone = *user_id;
     let model_clone = model.clone();
     let cost_billing_service_clone = cost_billing_service.clone();
+    let model_id_for_response = model.id.clone();
     
-    let processed_stream = stream.map(move |chunk_result| {
-        match chunk_result {
-            Ok(bytes) => {
-                if let Ok(chunk_str) = std::str::from_utf8(&bytes) {
-                    if let Some((tokens_input, tokens_output)) = GoogleClient::extract_tokens_from_stream_chunk(chunk_str) {
-                        tokio::spawn({
-                            let user_id = user_id_clone;
-                            let model = model_clone.clone();
-                            let cost_billing_service = cost_billing_service_clone.clone();
-                            async move {
-                                let cost = model.calculate_token_cost(tokens_input as i64, tokens_output as i64);
-                                let _ = cost_billing_service.record_usage_and_update_spending(
-                                    &user_id,
-                                    "chat_completion_stream",
-                                    tokens_input,
-                                    tokens_output,
-                                    &cost,
-                                    None,
-                                    None,
-                                    None,
-                                    None,
-                                ).await;
+    let processed_stream = stream.then(move |chunk_result| {
+        let cost_billing_service = cost_billing_service_clone.clone();
+        let model_id = model_clone.id.clone();
+        let user_id = user_id_clone;
+        let model_id_for_chunk = model_id_for_response.clone();
+        
+        async move {
+            match chunk_result {
+                Ok(bytes) => {
+                    if let Ok(chunk_str) = std::str::from_utf8(&bytes) {
+                        for line in chunk_str.lines() {
+                            if line.starts_with("data: ") {
+                                let json_str = &line[6..]; // Remove "data: " prefix
+                                if json_str.trim() == "[DONE]" {
+                                    return Ok(web::Bytes::from("data: [DONE]\n\n"));
+                                }
+                                
+                                match serde_json::from_str::<GoogleStreamChunk>(json_str.trim()) {
+                                    Ok(google_chunk) => {
+                                        let mut openrouter_chunk = convert_google_to_openrouter_chunk(google_chunk, &model_id_for_chunk);
+                                        
+                                        // Check if this chunk has usage data and get authoritative cost
+                                        if let Some(ref mut usage) = openrouter_chunk.usage {
+                                            let tokens_input = usage.prompt_tokens;
+                                            let tokens_output = usage.completion_tokens;
+                                            
+                                            // Get authoritative cost from centralized billing service
+                                            if let Ok(cost) = cost_billing_service.calculate_and_report_usage(
+                                                &user_id,
+                                                &model_id,
+                                                tokens_input,
+                                                tokens_output,
+                                                None, // duration_ms
+                                            ).await {
+                                                // Set authoritative cost in usage
+                                                usage.cost = Some(cost.to_string().parse::<f64>().unwrap_or(0.0));
+                                            }
+                                        }
+                                        
+                                        // Serialize the OpenRouter chunk
+                                        match serde_json::to_string(&openrouter_chunk) {
+                                            Ok(json_str) => {
+                                                let formatted_chunk = format!("data: {}\n\n", json_str);
+                                                return Ok(web::Bytes::from(formatted_chunk));
+                                            },
+                                            Err(e) => {
+                                                error!("Failed to serialize OpenRouter chunk: {}", e);
+                                            }
+                                        }
+                                    },
+                                    Err(e) => {
+                                        error!("Failed to parse Google stream chunk: {}", e);
+                                    }
+                                }
                             }
-                        });
+                        }
                     }
-                }
-                Ok(bytes)
-            },
-            Err(e) => Err(e)
+                    Ok(bytes)
+                },
+                Err(e) => Err(e)
+            }
         }
     });
     
@@ -460,31 +497,25 @@ async fn handle_openrouter_request(
     // Extract token counts from response (ignore OpenRouter's cost calculation)
     let (tokens_input, tokens_output) = client.extract_tokens_from_response(&response);
     
-    // Calculate cost using database pricing
-    let cost = model.calculate_token_cost(tokens_input as i64, tokens_output as i64);
-    
-    // Record usage and cost
-    cost_billing_service.record_usage_and_update_spending(
+    // Get authoritative cost from centralized billing service
+    let server_calculated_cost = cost_billing_service.calculate_and_report_usage(
         user_id,
-        "chat_completion",
+        &model.id,
         tokens_input,
         tokens_output,
-        &cost,
-        None,
-        None,
-        None,
-        None,
+        None, // duration_ms
     ).await?;
     
-    // Ensure usage format matches OpenRouter standard for consistent client parsing
+    // Replace OpenRouter's cost with server-calculated cost in response using standardized usage
     let mut response_value = serde_json::to_value(response)?;
     if let Some(obj) = response_value.as_object_mut() {
-        obj.insert("usage".to_string(), json!({
-            "prompt_tokens": tokens_input,
-            "completion_tokens": tokens_output,
-            "total_tokens": tokens_input + tokens_output,
-            "cost": cost.to_string().parse::<f64>().unwrap_or(0.0)
-        }));
+        let usage = OpenRouterUsage {
+            prompt_tokens: tokens_input,
+            completion_tokens: tokens_output,
+            total_tokens: tokens_input + tokens_output,
+            cost: Some(server_calculated_cost.to_string().parse::<f64>().unwrap_or(0.0)),
+        };
+        obj.insert("usage".to_string(), serde_json::to_value(usage)?);
     }
     
     Ok(HttpResponse::Ok().json(response_value))
@@ -505,40 +536,41 @@ async fn handle_openrouter_streaming_request(
     
     let (headers, stream) = client.stream_chat_completion(request, user_id.to_string()).await?;
     
-    // Create a stream processor to track tokens and calculate cost
+    // Create a stream processor to intercept final chunk with usage data
     let user_id_clone = *user_id;
     let model_clone = model.clone();
     let cost_billing_service_clone = cost_billing_service.clone();
     
-    let processed_stream = stream.map(move |chunk_result| {
-        match chunk_result {
-            Ok(bytes) => {
-                if let Ok(chunk_str) = std::str::from_utf8(&bytes) {
-                    if let Some((tokens_input, tokens_output)) = OpenRouterClient::extract_tokens_from_stream_chunk(chunk_str) {
-                        tokio::spawn({
-                            let user_id = user_id_clone;
-                            let model = model_clone.clone();
-                            let cost_billing_service = cost_billing_service_clone.clone();
-                            async move {
-                                let cost = model.calculate_token_cost(tokens_input as i64, tokens_output as i64);
-                                let _ = cost_billing_service.record_usage_and_update_spending(
-                                    &user_id,
-                                    "chat_completion_stream",
-                                    tokens_input,
-                                    tokens_output,
-                                    &cost,
-                                    None,
-                                    None,
-                                    None,
-                                    None,
-                                ).await;
+    let processed_stream = stream.then(move |chunk_result| {
+        let cost_billing_service = cost_billing_service_clone.clone();
+        let model_id = model_clone.id.clone();
+        let user_id = user_id_clone;
+        
+        async move {
+            match chunk_result {
+                Ok(bytes) => {
+                    if let Ok(chunk_str) = std::str::from_utf8(&bytes) {
+                        // Check if this chunk contains usage data (final chunk)
+                        if let Some((tokens_input, tokens_output)) = OpenRouterClient::extract_tokens_from_stream_chunk(chunk_str) {
+                            // Get authoritative cost from centralized billing service
+                            if let Ok(server_calculated_cost) = cost_billing_service.calculate_and_report_usage(
+                                &user_id,
+                                &model_id,
+                                tokens_input,
+                                tokens_output,
+                                None, // duration_ms
+                            ).await {
+                                // Replace OpenRouter's cost with server-calculated cost in the final chunk
+                                if let Ok(modified_chunk) = replace_cost_in_openrouter_stream_chunk(chunk_str, &server_calculated_cost) {
+                                    return Ok(web::Bytes::from(modified_chunk));
+                                }
                             }
-                        });
+                        }
                     }
-                }
-                Ok(bytes)
-            },
-            Err(e) => Err(e)
+                    Ok(bytes)
+                },
+                Err(e) => Err(e)
+            }
         }
     });
     
@@ -764,4 +796,169 @@ pub async fn batch_transcription_handler(
 
     info!("Batch transcription completed for chunk {} in {}ms", payload.chunk_index, processing_time_ms);
     Ok(HttpResponse::Ok().json(response))
+}
+
+/// Helper function to add cost to OpenAI stream chunk usage data
+fn add_cost_to_openai_stream_chunk(chunk_str: &str, cost: &BigDecimal) -> Result<String, AppError> {
+    let cost_float = cost.to_string().parse::<f64>().unwrap_or(0.0);
+    let mut modified_lines = Vec::new();
+    
+    for line in chunk_str.lines() {
+        if line.starts_with("data: ") {
+            let json_str = &line[6..]; // Remove "data: " prefix
+            if json_str.trim() == "[DONE]" {
+                modified_lines.push(line.to_string());
+                continue;
+            }
+            
+            match serde_json::from_str::<Value>(json_str.trim()) {
+                Ok(mut parsed) => {
+                    // Check if this chunk has usage data
+                    if let Some(usage) = parsed.get_mut("usage") {
+                        if let Some(usage_obj) = usage.as_object_mut() {
+                            usage_obj.insert("cost".to_string(), json!(cost_float));
+                        }
+                        let modified_json = serde_json::to_string(&parsed)
+                            .map_err(|e| AppError::Internal(format!("Failed to serialize modified chunk: {}", e)))?;
+                        modified_lines.push(format!("data: {}", modified_json));
+                    } else {
+                        modified_lines.push(line.to_string());
+                    }
+                },
+                Err(_) => {
+                    modified_lines.push(line.to_string());
+                }
+            }
+        } else {
+            modified_lines.push(line.to_string());
+        }
+    }
+    
+    Ok(modified_lines.join("\n"))
+}
+
+/// Helper function to add cost to Anthropic stream chunk usage data
+fn add_cost_to_anthropic_stream_chunk(chunk_str: &str, cost: &BigDecimal) -> Result<String, AppError> {
+    let cost_float = cost.to_string().parse::<f64>().unwrap_or(0.0);
+    let mut modified_lines = Vec::new();
+    
+    for line in chunk_str.lines() {
+        if line.starts_with("data: ") {
+            let json_str = &line[6..]; // Remove "data: " prefix
+            if json_str.trim() == "[DONE]" {
+                modified_lines.push(line.to_string());
+                continue;
+            }
+            
+            match serde_json::from_str::<Value>(json_str.trim()) {
+                Ok(mut parsed) => {
+                    // Check for message_stop event with usage data
+                    if parsed.get("type").and_then(|t| t.as_str()) == Some("message_stop") {
+                        if let Some(usage) = parsed.get_mut("usage") {
+                            if let Some(usage_obj) = usage.as_object_mut() {
+                                usage_obj.insert("cost".to_string(), json!(cost_float));
+                            }
+                        }
+                        let modified_json = serde_json::to_string(&parsed)
+                            .map_err(|e| AppError::Internal(format!("Failed to serialize modified chunk: {}", e)))?;
+                        modified_lines.push(format!("data: {}", modified_json));
+                    } else {
+                        modified_lines.push(line.to_string());
+                    }
+                },
+                Err(_) => {
+                    modified_lines.push(line.to_string());
+                }
+            }
+        } else {
+            modified_lines.push(line.to_string());
+        }
+    }
+    
+    Ok(modified_lines.join("\n"))
+}
+
+/// Helper function to convert Google stream chunk to OpenRouter format
+fn convert_google_to_openrouter_chunk(google_chunk: GoogleStreamChunk, model_id: &str) -> OpenRouterStreamChunk {
+    let choices = if let Some(candidates) = google_chunk.candidates {
+        candidates.into_iter().map(|candidate| {
+            let content = candidate.content
+                .and_then(|c| c.parts.into_iter().next())
+                .map(|p| p.text)
+                .unwrap_or_default();
+            
+            OpenRouterStreamChoice {
+                delta: OpenRouterStreamDelta {
+                    role: Some("assistant".to_string()),
+                    content: if content.is_empty() { None } else { Some(content) },
+                },
+                index: candidate.index,
+                finish_reason: candidate.finish_reason,
+            }
+        }).collect()
+    } else {
+        vec![]
+    };
+
+    let usage = google_chunk.usage_metadata.map(|metadata| OpenRouterUsage {
+        prompt_tokens: metadata.prompt_token_count,
+        completion_tokens: metadata.candidates_token_count,
+        total_tokens: metadata.total_token_count,
+        cost: None, // Will be filled in by caller
+    });
+
+    OpenRouterStreamChunk {
+        id: format!("chatcmpl-{}", uuid::Uuid::new_v4()),
+        choices,
+        created: Some(chrono::Utc::now().timestamp()),
+        model: model_id.to_string(),
+        object: Some("chat.completion.chunk".to_string()),
+        usage,
+    }
+}
+
+/// Helper function to replace OpenRouter's cost with server-calculated cost in stream chunk
+fn replace_cost_in_openrouter_stream_chunk(chunk_str: &str, server_cost: &BigDecimal) -> Result<String, AppError> {
+    let server_cost_float = server_cost.to_string().parse::<f64>().unwrap_or(0.0);
+    let mut modified_lines = Vec::new();
+    
+    for line in chunk_str.lines() {
+        if line.starts_with("data: ") {
+            let json_str = &line[6..]; // Remove "data: " prefix
+            if json_str.trim() == "[DONE]" {
+                modified_lines.push(line.to_string());
+                continue;
+            }
+            
+            match serde_json::from_str::<Value>(json_str.trim()) {
+                Ok(mut parsed) => {
+                    // Check if this chunk has usage data
+                    if let Some(usage) = parsed.get_mut("usage") {
+                        if let Some(usage_obj) = usage.as_object_mut() {
+                            // Replace OpenRouter's cost with server-calculated cost
+                            usage_obj.insert("cost".to_string(), json!(server_cost_float));
+                        }
+                        let modified_json = serde_json::to_string(&parsed)
+                            .map_err(|e| AppError::Internal(format!("Failed to serialize modified chunk: {}", e)))?;
+                        modified_lines.push(format!("data: {}", modified_json));
+                    } else {
+                        modified_lines.push(line.to_string());
+                    }
+                },
+                Err(_) => {
+                    modified_lines.push(line.to_string());
+                }
+            }
+        } else {
+            modified_lines.push(line.to_string());
+        }
+    }
+    
+    Ok(modified_lines.join("\n"))
+}
+
+/// Helper function to add cost to OpenRouter stream chunk usage data (legacy function)
+fn add_cost_to_openrouter_stream_chunk(chunk_str: &str, cost: &BigDecimal) -> Result<String, AppError> {
+    // Delegate to the new replace function for consistency
+    replace_cost_in_openrouter_stream_chunk(chunk_str, cost)
 }

@@ -45,7 +45,7 @@ export async function refineTaskDescriptionAction({
     }
 
     // Call the Tauri command for task refinement
-    const result = await invoke<{ jobId: string }>(
+    const result = await invoke<{ jobId: string; duration_ms?: number }>(
       "refine_task_description_command",
       {
         sessionId,
@@ -62,6 +62,7 @@ export async function refineTaskDescriptionAction({
       metadata: {
         jobId: result.jobId,
         isBackgroundJob: true,
+        duration_ms: result.duration_ms,
       },
     };
   } catch (error) {

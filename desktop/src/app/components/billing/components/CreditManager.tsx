@@ -150,15 +150,15 @@ export const CreditManager = ({ isOpen, onClose }: CreditManagerProps) => {
         {currentView === "selection" ? (
           <div className="space-y-6">
             <div>
-              <h2 className="text-2xl font-bold mb-2">Purchase Credits</h2>
-              <p className="text-muted-foreground">Add credits to your account for API usage</p>
+              <h2 className="text-2xl font-bold mb-2">Purchase Top-up Credits</h2>
+              <p className="text-muted-foreground">Add supplementary credits that are applied after your monthly subscription allowance has been exhausted. These are for one-time use.</p>
             </div>
 
             <Card>
               <CardContent className="pt-6">
                 <div className="flex items-center gap-2 mb-3">
                   <CreditCard className="h-5 w-5 text-primary" />
-                  <span className="text-sm font-medium text-muted-foreground">Current Balance</span>
+                  <span className="text-sm font-medium text-muted-foreground">Top-up Credits Balance</span>
                 </div>
                 <div className="text-3xl font-bold text-foreground">
                   ${balance.toFixed(2)}
@@ -175,7 +175,7 @@ export const CreditManager = ({ isOpen, onClose }: CreditManagerProps) => {
 
             <Card>
               <CardHeader>
-                <CardTitle>Select Credit Pack</CardTitle>
+                <CardTitle>Select Top-up Credit Pack</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 {isLoadingPacks ? (
@@ -185,7 +185,7 @@ export const CreditManager = ({ isOpen, onClose }: CreditManagerProps) => {
                   </div>
                 ) : creditPacks.length === 0 ? (
                   <div className="text-center py-8 text-muted-foreground">
-                    No credit packs available
+                    No top-up credit packs available
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -237,7 +237,7 @@ export const CreditManager = ({ isOpen, onClose }: CreditManagerProps) => {
                       Purchase {selectedPack.name} - ${selectedPack.priceAmount.toFixed(2)}
                     </>
                   ) : (
-                    'Select a credit pack'
+                    'Select a top-up credit pack'
                   )}
                 </Button>
               </CardContent>

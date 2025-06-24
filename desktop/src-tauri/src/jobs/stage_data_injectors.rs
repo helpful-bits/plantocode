@@ -1,7 +1,7 @@
 use log::{info, debug, warn};
 use crate::jobs::types::{
     ExtendedPathFinderPayload, PathCorrectionPayload,
-    RegexPatternGenerationWorkflowPayload, FileRelevanceAssessmentPayload
+    RegexFileFilterPayload, FileRelevanceAssessmentPayload
 };
 use crate::db_utils::SettingsRepository;
 use std::sync::Arc;
@@ -113,7 +113,7 @@ impl StageDataInjector {
     }
 
 
-    /// Create RegexPatternGenerationWorkflowPayload from specific data fields
+    /// Create RegexFileFilterPayload from specific data fields
     /// Data sourced from WorkflowState.intermediate_data
     /// Note: directory_tree is now generated on-demand by the processor
     pub fn create_regex_generation_payload(
@@ -121,12 +121,12 @@ impl StageDataInjector {
         _session_id: String,
         task_description: String,
         _project_directory: String
-    ) -> RegexPatternGenerationWorkflowPayload {
-        info!("Creating RegexPatternGeneration payload from specific data fields");
+    ) -> RegexFileFilterPayload {
+        info!("Creating RegexFileFilter payload from specific data fields");
         
         debug!("workflow_id: {}", _workflow_id);
         
-        RegexPatternGenerationWorkflowPayload {
+        RegexFileFilterPayload {
             task_description,
         }
     }
@@ -202,14 +202,14 @@ impl StageDataInjector {
 
     /// Extract task description from regex generation payload
     pub fn extract_regex_task_description(
-        payload: &RegexPatternGenerationWorkflowPayload
+        payload: &RegexFileFilterPayload
     ) -> String {
         payload.task_description.clone()
     }
 
     /// Validate regex generation payload
     pub fn validate_regex_generation_payload(
-        payload: &RegexPatternGenerationWorkflowPayload
+        payload: &RegexFileFilterPayload
     ) -> Result<(), String> {
         if payload.task_description.trim().is_empty() {
             return Err("Task description cannot be empty".to_string());
@@ -220,9 +220,9 @@ impl StageDataInjector {
 
     /// Clone regex payload with new job ID
     pub fn clone_regex_with_new_job_id(
-        original: &RegexPatternGenerationWorkflowPayload
-    ) -> RegexPatternGenerationWorkflowPayload {
-        RegexPatternGenerationWorkflowPayload {
+        original: &RegexFileFilterPayload
+    ) -> RegexFileFilterPayload {
+        RegexFileFilterPayload {
             task_description: original.task_description.clone(),
         }
     }
@@ -231,13 +231,13 @@ impl StageDataInjector {
 
     /// Add metadata to regex payload (stored as JSON in the background job)
     pub fn add_metadata_to_regex_payload(
-        payload: RegexPatternGenerationWorkflowPayload,
+        payload: RegexFileFilterPayload,
         metadata_key: &str,
         metadata_value: serde_json::Value
-    ) -> (RegexPatternGenerationWorkflowPayload, serde_json::Value) {
+    ) -> (RegexFileFilterPayload, serde_json::Value) {
         let metadata = serde_json::json!({
             metadata_key: metadata_value,
-            "workflow_stage": "RegexPatternGeneration",
+            "workflow_stage": "RegexFileFilter",
             "created_at": chrono::Utc::now().timestamp_millis()
         });
         

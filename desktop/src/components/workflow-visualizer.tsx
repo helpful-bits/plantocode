@@ -74,36 +74,10 @@ function mapWorkflowStage(stageName: string): WorkflowStage {
   }
   
   // Ultimate fallback with warning - log more details for debugging
-  console.warn(`Unknown workflow stage: "${stageName}" (normalized: "${normalizedStage}"), defaulting to REGEX_PATTERN_GENERATION`);
-  return 'REGEX_PATTERN_GENERATION';
+  console.warn(`Unknown workflow stage: "${stageName}" (normalized: "${normalizedStage}"), defaulting to REGEX_FILE_FILTER`);
+  return 'REGEX_FILE_FILTER';
 }
 
-// Helper function to get all workflow stages in order
-function getAllWorkflowStages(): WorkflowStage[] {
-  return [
-    'REGEX_PATTERN_GENERATION',
-    'LOCAL_FILE_FILTERING',
-    'FILE_RELEVANCE_ASSESSMENT',
-    'EXTENDED_PATH_FINDER',
-    'PATH_CORRECTION'
-  ];
-}
-
-// Helper function to create placeholder stage job for stages not yet started
-function createPlaceholderStageJob(stage: WorkflowStage): WorkflowStageJob {
-  return {
-    stage,
-    jobId: `placeholder-${stage}`,
-    status: 'idle',
-    createdAt: Date.now(),
-    startedAt: undefined,
-    completedAt: undefined,
-    executionTimeMs: undefined,
-    errorMessage: undefined,
-    subStatusMessage: undefined,
-    dependsOn: undefined,
-  };
-}
 
 export interface WorkflowVisualizerProps {
   workflowState?: WorkflowState;
@@ -259,7 +233,7 @@ export function WorkflowVisualizer({
           <Collapsible>
             <CollapsibleTrigger asChild>
               <Button variant="ghost" size="sm" className="w-full justify-between">
-                Stage Details ({getAllWorkflowStages().length} stages)
+                Stage Details ({effectiveWorkflowState.stageJobs.length} stages)
                 <svg
                   className="w-4 h-4 transition-transform group-data-[state=open]:rotate-180"
                   fill="none"
@@ -271,12 +245,11 @@ export function WorkflowVisualizer({
               </Button>
             </CollapsibleTrigger>
             <CollapsibleContent className="space-y-2 mt-2">
-              {getAllWorkflowStages().map((stage) => {
-                const stageJob = effectiveWorkflowState.stageJobs.find(job => job.stage === stage);
+              {effectiveWorkflowState.stageJobs.map((stageJob) => {
                 return (
                   <StageJobCard
-                    key={stage}
-                    stageJob={stageJob || createPlaceholderStageJob(stage)}
+                    key={stageJob.stage}
+                    stageJob={stageJob}
                     showTiming={showTiming}
                     enableStageActions={enableStageActions}
                     onStageRetry={onStageRetry}
@@ -681,27 +654,26 @@ export function WorkflowTimeline({
   const [retryingStage, setRetryingStage] = useState<string | null>(null);
   const [cancelingStage, setCancelingStage] = useState<string | null>(null);
   
-  // Get stages from WorkflowStage enum - all stages in workflow order
-  const stages: WorkflowStage[] = getAllWorkflowStages();
+  // Get stages from actual workflow state
+  const stageJobs = workflowState.stageJobs;
   
   return (
     <div className={`space-y-4 ${className}`}>
       <h3 className="font-medium text-sm">Workflow Timeline</h3>
       <div className="space-y-3">
-        {stages.map((stage, index) => {
-          const stageJob = workflowState.stageJobs.find(job => job.stage === stage);
-          const isCurrent = workflowState.currentStage === stage;
-          const isCompleted = stageJob?.status === 'completed' || stageJob?.status === 'completedByTag';
-          const isFailed = stageJob?.status === 'failed';
-          const isActive = stageJob?.status === 'running' || 
-                          stageJob?.status === 'preparing' || 
-                          stageJob?.status === 'preparingInput' ||
-                          stageJob?.status === 'generatingStream' ||
-                          stageJob?.status === 'processingStream' ||
-                          stageJob?.status === 'acknowledgedByWorker';
+        {stageJobs.map((stageJob, index) => {
+          const isCurrent = workflowState.currentStage === stageJob.stage;
+          const isCompleted = stageJob.status === 'completed' || stageJob.status === 'completedByTag';
+          const isFailed = stageJob.status === 'failed';
+          const isActive = stageJob.status === 'running' || 
+                          stageJob.status === 'preparing' || 
+                          stageJob.status === 'preparingInput' ||
+                          stageJob.status === 'generatingStream' ||
+                          stageJob.status === 'processingStream' ||
+                          stageJob.status === 'acknowledgedByWorker';
           
           return (
-            <div key={stage} className="flex items-center gap-3">
+            <div key={stageJob.stage} className="flex items-center gap-3">
               {/* Timeline connector */}
               <div className="flex flex-col items-center">
                 <div className={`w-3 h-3 rounded-full border-2 ${
@@ -711,7 +683,7 @@ export function WorkflowTimeline({
                   isCurrent ? 'bg-blue-200 border-blue-500' :
                   'bg-gray-200 border-gray-300'
                 }`} />
-                {index < stages.length - 1 && (
+                {index < stageJobs.length - 1 && (
                   <div className={`w-0.5 h-6 ${
                     isCompleted ? 'bg-green-200' : 'bg-gray-200'
                   }`} />
@@ -727,10 +699,10 @@ export function WorkflowTimeline({
                     isFailed ? 'text-red-600' :
                     'text-gray-600'
                   }`}>
-                    {WorkflowUtils.getStageName(stage)}
+                    {WorkflowUtils.getStageName(stageJob.stage)}
                   </span>
                   <div className="flex items-center gap-2">
-                    {stageJob?.executionTimeMs && (
+                    {stageJob.executionTimeMs && (
                       <span className="text-xs text-gray-500">
                         {WorkflowUtils.formatExecutionTime(stageJob.executionTimeMs)}
                       </span>
@@ -822,7 +794,7 @@ export function WorkflowTimeline({
                   </div>
                 </div>
                 <div className="text-xs text-gray-500 mt-1">
-                  {WorkflowUtils.getStageDescription(stage)}
+                  {WorkflowUtils.getStageDescription(stageJob.stage)}
                 </div>
               </div>
             </div>

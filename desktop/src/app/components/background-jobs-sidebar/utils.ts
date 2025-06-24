@@ -105,7 +105,7 @@ export function getApiTypeBadgeClasses(apiType: ApiType): string {
   let bgColor = "bg-primary/80";
 
   switch (apiType.toLowerCase()) {
-    case "gemini":
+    case "google":
       color = "text-success-foreground";
       bgColor = "bg-success";
       break;
@@ -219,28 +219,34 @@ export function getStreamingProgressValue(
   // Parse metadata to ensure consistent structure
   const parsedMetadata = getParsedMetadata(metadataInput);
   
-  // Get taskData from simplified metadata structure
-  const taskData = parsedMetadata?.taskData;
-  if (!taskData || typeof taskData !== 'object') {
-    // Try time-based fallback if we have no metadata but have startTime
-    return getTimeBasedFallbackProgress(startTime);
+  // DEBUG: Log metadata structure to understand what fields are available
+  if (parsedMetadata && process.env.NODE_ENV === 'development') {
+    console.log('Progress metadata:', {
+      taskData: parsedMetadata.taskData,
+      topLevel: Object.keys(parsedMetadata),
+      hasWorkflowId: !!parsedMetadata.workflowId
+    });
   }
   
+  // Check both taskData and top-level metadata for progress fields
+  const taskData = parsedMetadata?.taskData;
+  const topLevel = parsedMetadata;
+  
   // Priority 1: Use explicit streamProgress if available and valid
-  const streamProgress = taskData.streamProgress;
+  const streamProgress = taskData?.streamProgress ?? topLevel?.streamProgress;
   if (
     typeof streamProgress === "number" &&
     !isNaN(streamProgress) &&
     streamProgress >= 0 &&
     streamProgress <= 100
   ) {
-    // Cap at 99% to avoid showing 100% before job completion
-    return Math.min(streamProgress, 99);
+    // Don't cap at 99% - show actual progress for better UX
+    return Math.min(streamProgress, 100);
   }
 
-  // Priority 2: Calculate based on responseLength and estimatedTotalLength from taskData
-  const responseLength = taskData.responseLength;
-  const estimatedTotalLength = taskData.estimatedTotalLength;
+  // Priority 2: Calculate based on responseLength and estimatedTotalLength
+  const responseLength = taskData?.responseLength ?? topLevel?.responseLength;
+  const estimatedTotalLength = taskData?.estimatedTotalLength ?? topLevel?.estimatedTotalLength;
   
   if (
     typeof responseLength === "number" &&
@@ -251,16 +257,14 @@ export function getStreamingProgressValue(
     !isNaN(estimatedTotalLength)
   ) {
     const calculatedProgress = (responseLength / estimatedTotalLength) * 100;
-    // Ensure the calculated progress is reasonable (allow up to 200% for overruns)
     if (calculatedProgress >= 0 && calculatedProgress <= 200 && !isNaN(calculatedProgress)) {
-      // Cap at 99% for running jobs to avoid premature 100%
-      return Math.min(calculatedProgress, 99);
+      return Math.min(calculatedProgress, 100);
     }
   }
 
-  // Priority 3: Calculate based on tokensReceived from metadata
-  const tokensReceived = taskData.tokensReceived;
-  const maxTokens = taskData.maxTokens || taskData.maxOutputTokens;
+  // Priority 3: Calculate based on tokensReceived from metadata (check both levels)
+  const tokensReceived = taskData?.tokensReceived ?? topLevel?.tokensReceived;
+  const maxTokens = taskData?.maxTokens ?? taskData?.maxOutputTokens ?? topLevel?.maxTokens ?? topLevel?.maxOutputTokens;
   
   if (
     typeof tokensReceived === "number" &&
@@ -272,11 +276,33 @@ export function getStreamingProgressValue(
   ) {
     const calculatedProgress = (tokensReceived / maxTokens) * 100;
     if (calculatedProgress >= 0 && calculatedProgress <= 200 && !isNaN(calculatedProgress)) {
-      return Math.min(calculatedProgress, 99);
+      return Math.min(calculatedProgress, 100);
     }
   }
 
-  // Priority 4: Time-based fallback for initial animation
+  // Priority 4: For workflow jobs, check if there's a stage-based progress
+  if (topLevel?.workflowId) {
+    // Workflow jobs might have progress based on stage completion
+    const workflowStage = topLevel.workflowStage;
+    const progressPercentage = topLevel.progressPercentage;
+    
+    if (typeof progressPercentage === "number" && progressPercentage >= 0 && progressPercentage <= 100) {
+      return progressPercentage;
+    }
+    
+    // Estimate progress based on workflow stage
+    if (typeof workflowStage === "string") {
+      const stageProgressMap: Record<string, number> = {
+        "REGEX_FILE_FILTER": 25,
+        "FILE_RELEVANCE_ASSESSMENT": 50,
+        "EXTENDED_PATH_FINDER": 75,
+        "PATH_CORRECTION": 90
+      };
+      return stageProgressMap[workflowStage] ?? 10;
+    }
+  }
+
+  // Priority 5: Enhanced time-based fallback with better progression
   return getTimeBasedFallbackProgress(startTime);
 }
 
@@ -287,10 +313,21 @@ export function getStreamingProgressValue(
 function getTimeBasedFallbackProgress(startTime?: number | null): number | undefined {
   if (typeof startTime === "number" && startTime > 0 && !isNaN(startTime)) {
     const elapsedMs = Date.now() - startTime;
-    // Show very small, slow-growing progress to indicate minimal activity
+    // Show more responsive progress to indicate activity
     if (elapsedMs > 0) {
-      const timeBasedProgress = (elapsedMs / 1000) * 0.1;
-      return Math.min(timeBasedProgress, 5);
+      const elapsedSeconds = elapsedMs / 1000;
+      
+      // More dynamic progression:
+      // 0-10s: 0-20%
+      // 10-30s: 20-50% 
+      // 30s+: 50-80%
+      if (elapsedSeconds <= 10) {
+        return Math.min((elapsedSeconds / 10) * 20, 20);
+      } else if (elapsedSeconds <= 30) {
+        return Math.min(20 + ((elapsedSeconds - 10) / 20) * 30, 50);
+      } else {
+        return Math.min(50 + ((elapsedSeconds - 30) / 60) * 30, 80);
+      }
     }
   }
   

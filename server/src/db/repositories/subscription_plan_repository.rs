@@ -50,7 +50,6 @@ impl PlanFeatures {
         self.api_access
     }
 
-
     /// Get the support level as an enum-like value
     pub fn get_support_level(&self) -> SupportLevel {
         match self.support_level.to_lowercase().as_str() {
@@ -61,12 +60,12 @@ impl PlanFeatures {
         }
     }
 
-    /// Check if overage is allowed
+    /// Check if overage is allowed for metered billing
     pub fn allows_overage(&self) -> bool {
         !matches!(self.spending_details.overage_policy.as_str(), "none")
     }
 
-    /// Get the overage policy
+    /// Get the overage policy for metered billing decisions
     pub fn get_overage_policy(&self) -> OveragePolicy {
         match self.spending_details.overage_policy.as_str() {
             "none" => OveragePolicy::None,
@@ -74,6 +73,27 @@ impl PlanFeatures {
             "negotiated_rate" => OveragePolicy::NegotiatedRate,
             _ => OveragePolicy::None,
         }
+    }
+
+    /// Check if hard cutoff is enabled (blocks services when limit exceeded)
+    pub fn has_hard_cutoff(&self) -> bool {
+        self.spending_details.hard_cutoff
+    }
+
+    /// Determine if services should be blocked based on overage policy and hard cutoff
+    pub fn should_block_services_on_overage(&self) -> bool {
+        match self.get_overage_policy() {
+            OveragePolicy::None => true, // Always block if no overage allowed
+            OveragePolicy::StandardRate | OveragePolicy::NegotiatedRate => {
+                self.has_hard_cutoff() // Block only if hard cutoff is enabled
+            }
+        }
+    }
+
+    /// Check if the plan supports metered billing
+    pub fn supports_metered_billing(&self) -> bool {
+        // All plans with overage policies support metered billing
+        self.allows_overage() || self.has_hard_cutoff()
     }
 }
 
@@ -87,9 +107,28 @@ pub enum SupportLevel {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum OveragePolicy {
+    /// No overage allowed - services blocked at limit
     None,
+    /// Overage allowed at standard markup rate
     StandardRate,
+    /// Overage allowed at negotiated custom rate
     NegotiatedRate,
+}
+
+impl OveragePolicy {
+    /// Check if this policy allows usage beyond the included allowance
+    pub fn allows_overage(&self) -> bool {
+        matches!(self, OveragePolicy::StandardRate | OveragePolicy::NegotiatedRate)
+    }
+
+    /// Get the description of the overage policy for user-facing display
+    pub fn description(&self) -> &'static str {
+        match self {
+            OveragePolicy::None => "No overage allowed - services blocked at limit",
+            OveragePolicy::StandardRate => "Overage billed at standard rate",
+            OveragePolicy::NegotiatedRate => "Overage billed at negotiated rate",
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -120,13 +159,18 @@ impl SubscriptionPlan {
             Ok(typed_features.clone())
         } else {
             serde_json::from_value(self.features.clone())
-                .map_err(|e| AppError::Internal(format!("Failed to parse plan features: {}", e)))
+                .map_err(|e| AppError::Internal(format!("Failed to parse plan features for plan {}: {}", self.id, e)))
         }
     }
 
     /// Parse and cache typed features
     pub fn with_typed_features(mut self) -> Self {
-        self.typed_features = serde_json::from_value(self.features.clone()).ok();
+        self.typed_features = serde_json::from_value(self.features.clone())
+            .map_err(|e| {
+                log::warn!("Failed to parse features for plan {}: {}", self.id, e);
+                e
+            })
+            .ok();
         self
     }
 
@@ -141,6 +185,18 @@ impl SubscriptionPlan {
     pub fn allows_overage(&self) -> Result<bool, AppError> {
         let features = self.get_typed_features()?;
         Ok(features.allows_overage())
+    }
+
+    /// Check if services should be blocked when overage occurs
+    pub fn should_block_services_on_overage(&self) -> Result<bool, AppError> {
+        let features = self.get_typed_features()?;
+        Ok(features.should_block_services_on_overage())
+    }
+
+    /// Check if the plan supports metered billing
+    pub fn supports_metered_billing(&self) -> Result<bool, AppError> {
+        let features = self.get_typed_features()?;
+        Ok(features.supports_metered_billing())
     }
 
     /// Get the support level for this plan
@@ -160,9 +216,33 @@ impl SubscriptionPlan {
         self.base_price_monthly == bigdecimal::BigDecimal::from(0)
     }
 
-    /// Get the monthly price as a float
+    /// Get the monthly price as a float (for display purposes only)
+    /// WARNING: Use BigDecimal for all billing calculations!
     pub fn get_monthly_price_float(&self) -> f64 {
         self.base_price_monthly.to_f64().unwrap_or(0.0)
+    }
+
+    /// Get the monthly included spending allowance
+    pub fn get_monthly_spending_allowance(&self) -> &BigDecimal {
+        &self.included_spending_monthly
+    }
+
+    /// Get the cost markup percentage for overage billing
+    pub fn get_cost_markup_percentage(&self) -> &BigDecimal {
+        &self.cost_markup_percentage
+    }
+
+    /// Calculate overage cost based on usage and markup
+    pub fn calculate_overage_cost(&self, overage_amount: &BigDecimal) -> Result<BigDecimal, AppError> {
+        let features = self.get_typed_features()?;
+        
+        match features.get_overage_policy() {
+            OveragePolicy::None => Ok(BigDecimal::from(0)), // No overage billing
+            OveragePolicy::StandardRate | OveragePolicy::NegotiatedRate => {
+                // Apply cost markup to overage amount
+                Ok(overage_amount * &self.cost_markup_percentage)
+            }
+        }
     }
 
     /// Get the plan tier for upgrade/downgrade comparison
@@ -183,6 +263,23 @@ impl SubscriptionPlan {
     /// Check if another plan is the same tier
     pub fn is_same_tier_as(&self, other_plan: &SubscriptionPlan) -> bool {
         other_plan.plan_tier == self.plan_tier
+    }
+
+    /// Check if plan change affects billing behavior significantly
+    pub fn billing_behavior_changes_to(&self, other_plan: &SubscriptionPlan) -> Result<bool, AppError> {
+        let current_features = self.get_typed_features()?;
+        let new_features = other_plan.get_typed_features()?;
+        
+        // Check if overage policies differ
+        let overage_policy_changes = current_features.get_overage_policy() != new_features.get_overage_policy();
+        
+        // Check if hard cutoff settings differ
+        let hard_cutoff_changes = current_features.has_hard_cutoff() != new_features.has_hard_cutoff();
+        
+        // Check if spending allowances differ significantly
+        let allowance_changes = self.included_spending_monthly != other_plan.included_spending_monthly;
+        
+        Ok(overage_policy_changes || hard_cutoff_changes || allowance_changes)
     }
 }
 

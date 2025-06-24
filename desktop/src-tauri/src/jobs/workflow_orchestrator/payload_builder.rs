@@ -18,14 +18,14 @@ pub(super) async fn create_abstract_stage_payload(
     let settings_repo = app_handle.state::<std::sync::Arc<crate::db_utils::SettingsRepository>>().inner().clone();
 
     match task_type {
-        TaskType::RegexPatternGeneration => {
+        TaskType::RegexFileFilter => {
             let payload = StageDataInjector::create_regex_generation_payload(
                 workflow_state.workflow_id.clone(),
                 workflow_state.session_id.clone(),
                 workflow_state.task_description.clone(),
                 workflow_state.project_directory.clone()
             );
-            Ok(JobPayload::RegexPatternGenerationWorkflow(payload))
+            Ok(JobPayload::RegexFileFilter(payload))
         }
         TaskType::PathFinder => {
             // NOTE: This task type is superseded by ExtendedPathFinder for the main FileFinderWorkflow

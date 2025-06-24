@@ -83,6 +83,7 @@ export function preloadBillingComponents(): void {
     import('./components/PaymentMethodsList');
     import('./components/CreditTransactionHistory');
     import('./components/AddPaymentMethodModal');
+    import('./components/UsageDetailsModal');
   }, 500);
 }
 export { LoadingSkeleton, ErrorState, NoSubscriptionState, ProcessingState } from './components/loading-and-error-states';
