@@ -314,7 +314,7 @@ impl WorkflowOrchestrator {
                                 // This is an orphaned job - add it to the workflow
                                 if let Ok(task_type) = crate::models::TaskType::from_str(&job.task_type) {
                                     let stage_name = match task_type {
-                                        crate::models::TaskType::RegexPatternGeneration => "RegexPatternGeneration",
+                                        crate::models::TaskType::RegexFileFilter => "RegexFileFilter",
                                         crate::models::TaskType::FileRelevanceAssessment => "FileRelevanceAssessment",
                                         crate::models::TaskType::ExtendedPathFinder => "ExtendedPathFinder",
                                         crate::models::TaskType::PathCorrection => "PathCorrection",
@@ -383,7 +383,7 @@ impl WorkflowOrchestrator {
                     // This is an orphaned job - add it to the workflow
                     if let Ok(task_type) = crate::models::TaskType::from_str(&job.task_type) {
                         let stage_name = match task_type {
-                            crate::models::TaskType::RegexPatternGeneration => "RegexPatternGeneration",
+                            crate::models::TaskType::RegexFileFilter => "RegexFileFilter",
                             crate::models::TaskType::FileRelevanceAssessment => "FileRelevanceAssessment",
                             crate::models::TaskType::ExtendedPathFinder => "ExtendedPathFinder",
                             crate::models::TaskType::PathCorrection => "PathCorrection",
@@ -717,6 +717,9 @@ impl WorkflowOrchestrator {
         // Emit event to frontend
         event_emitter::emit_workflow_status_event_internal(&self.app_handle, &workflow_state, "Workflow completed successfully").await;
         
+        // Add delay before cleanup to allow frontend to fetch final status
+        tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+        
         // Perform cleanup for completed workflow
         match self.workflow_cleanup_handler.cleanup_workflow(workflow_id, &self.app_handle).await {
             Ok(cleanup_result) => {
@@ -736,6 +739,9 @@ impl WorkflowOrchestrator {
         
         // Emit event to frontend
         event_emitter::emit_workflow_status_event_internal(&self.app_handle, &workflow_state, &format!("Workflow failed: {}", error_message)).await;
+        
+        // Add delay before cleanup to allow frontend to fetch final status
+        tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
         
         // Perform cleanup for failed workflow
         match self.workflow_cleanup_handler.cleanup_workflow(workflow_id, &self.app_handle).await {

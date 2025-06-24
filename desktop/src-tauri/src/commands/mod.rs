@@ -1,6 +1,5 @@
 // Re-export all command modules
 pub mod regex_commands;
-pub mod guidance_commands;
 pub mod file_system_commands;
 pub mod app_commands;
 pub mod auth0_commands;
@@ -25,7 +24,6 @@ pub mod backup_commands;
 
 // Re-export all command functions for easier imports
 pub use regex_commands::{generate_regex_command, generate_regex_patterns_command};
-pub use guidance_commands::generate_guidance_command;
 pub use file_system_commands::{
     get_home_directory_command,
     list_files_command,

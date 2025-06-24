@@ -6,8 +6,7 @@
 // Core workflow stage definitions - aligned with backend WorkflowStage enum string representations
 // These match the SCREAMING_SNAKE_CASE enum variants from the Rust backend
 export type WorkflowStage =
-  | 'REGEX_PATTERN_GENERATION'
-  | 'LOCAL_FILE_FILTERING'
+  | 'REGEX_FILE_FILTER'
   | 'FILE_RELEVANCE_ASSESSMENT'
   | 'EXTENDED_PATH_FINDER'
   | 'PATH_CORRECTION';
@@ -73,8 +72,10 @@ export interface WorkflowStageJob {
   startedAt?: number;
   completedAt?: number;
   executionTimeMs?: number;
+  duration_ms?: number; // Duration of LLM API call in milliseconds
   errorMessage?: string;
   subStatusMessage?: string;
+  actualCost?: number | null | undefined; // Server-provided cost from API responses
 }
 
 // Complete workflow state
@@ -96,6 +97,7 @@ export interface WorkflowState {
   excludedPaths: string[];
   timeoutMs?: number;
   intermediateData: WorkflowIntermediateData;
+  totalActualCost?: number | null | undefined; // Total server-provided cost across all stages
 }
 
 // Command response types
@@ -137,7 +139,9 @@ export interface StageStatus {
   createdAt?: string; // ISO string timestamp
   errorMessage?: string;
   executionTimeMs?: number; // Calculated execution time for this specific stage
+  duration_ms?: number; // Duration of LLM API call in milliseconds
   subStatusMessage?: string; // Detailed stage progress message
+  actualCost?: number | null | undefined; // Server-provided cost from API responses
 }
 
 // Results from completed workflow
@@ -147,6 +151,7 @@ export interface WorkflowResultsResponse {
   stageResults: Record<string, any>;
   totalExecutionTime: number;
   intermediateData?: WorkflowIntermediateData;
+  totalActualCost?: number | null | undefined; // Total server-provided cost across all stages
 }
 
 // Detailed intermediate data from workflow stages

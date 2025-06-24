@@ -272,7 +272,7 @@ export function isValidApiType(
     };
   }
 
-  const validApiTypes = ["gemini", "claude", "whisper", "replicate"];
+  const validApiTypes = ["google", "claude", "whisper", "replicate"];
   if (!validApiTypes.includes(apiType)) {
     return {
       isValid: false,

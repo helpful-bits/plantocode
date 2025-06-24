@@ -3,14 +3,15 @@ use log::{debug, info, error, warn};
 use serde_json::json;
 use tauri::AppHandle;
 use futures::future;
-use regex::Regex;
+use chrono;
+
+use crate::utils::config_resolver;
 
 use crate::error::{AppError, AppResult};
 use crate::jobs::processor_trait::JobProcessor;
 use crate::jobs::types::{Job, JobPayload, JobProcessResult, FileRelevanceAssessmentPayload, FileRelevanceAssessmentResponse, FileRelevanceAssessmentProcessingDetails, FileRelevanceAssessmentQualityDetails};
 use crate::jobs::job_processor_utils;
 use crate::jobs::processors::abstract_llm_processor::{LlmTaskRunner, LlmTaskConfig, LlmTaskConfigBuilder, LlmPromptContext};
-use crate::jobs::processors::utils::fs_context_utils;
 use crate::utils::token_estimator::estimate_tokens_for_file_batch;
 
 pub struct FileRelevanceAssessmentProcessor;
@@ -20,192 +21,20 @@ impl FileRelevanceAssessmentProcessor {
         Self
     }
 
-    /// Parse paths from LLM text response with robust format handling for modern LLM responses
+    /// Parse paths from LLM text response using newline separation (as instructed in system prompt)
     fn parse_paths_from_text_response(response_text: &str, _project_directory: &str) -> AppResult<Vec<String>> {
         info!("Parsing LLM response of {} chars", response_text.len());
-        let mut paths = Vec::new();
         
-        // Normalize line endings
-        let normalized_text = response_text.replace("\r\n", "\n").replace("\r", "\n");
+        // Parse newline-separated paths as instructed in system prompt
+        let paths: Vec<String> = response_text
+            .lines()
+            .map(|line| line.trim())
+            .filter(|line| !line.is_empty())
+            .map(|line| line.to_string())
+            .collect();
         
-        // Try to extract JSON array first (common LLM response format)
-        if let Ok(json_value) = serde_json::from_str::<serde_json::Value>(&normalized_text) {
-            if let Some(array) = json_value.as_array() {
-                for item in array {
-                    if let Some(path_str) = item.as_str() {
-                        if !path_str.trim().is_empty() {
-                            paths.push(path_str.trim().to_string());
-                        }
-                    }
-                }
-                if !paths.is_empty() {
-                    return Ok(Self::deduplicate_paths(paths));
-                }
-            }
-        }
-        
-        // Split by newlines and process each line with aggressive path extraction
-        for line in normalized_text.lines() {
-            let line = line.trim();
-            
-            // Skip truly empty lines or obvious non-path content
-            if line.is_empty() 
-                || line.starts_with("//") 
-                || line.starts_with("<!--")
-                || line.len() < 2 
-            {
-                continue;
-            }
-            
-            // Extract potential file paths from this line using multiple strategies
-            Self::extract_paths_from_line(line, &mut paths);
-        }
-        
+        info!("Successfully parsed {} paths from newline-separated response", paths.len());
         Ok(Self::deduplicate_paths(paths))
-    }
-    
-    /// Extract file paths from a single line using multiple parsing strategies
-    fn extract_paths_from_line(line: &str, paths: &mut Vec<String>) {
-        let line = line.trim();
-        
-        // Strategy 1: Handle numbered lists (e.g., "1. path/to/file", "1) src/main.rs")
-        if let Some(path) = Self::extract_from_numbered_list(line) {
-            paths.push(path);
-            return;
-        }
-        
-        // Strategy 2: Handle bullet points (e.g., "- path/to/file", "* src/main.rs")
-        if let Some(path) = Self::extract_from_bullet_point(line) {
-            paths.push(path);
-            return;
-        }
-        
-        // Strategy 3: Handle quoted paths (e.g., "src/main.rs", 'lib/utils.rs')
-        if let Some(path) = Self::extract_quoted_path(line) {
-            paths.push(path);
-            return;
-        }
-        
-        // Strategy 4: Look for file patterns in explanatory text
-        if let Some(path) = Self::extract_file_pattern(line) {
-            paths.push(path);
-            return;
-        }
-        
-        // Strategy 5: Treat entire cleaned line as potential path if it looks like a file
-        let cleaned = Self::clean_path_string(line);
-        if Self::looks_like_file_path(&cleaned) {
-            paths.push(cleaned);
-        }
-    }
-    
-    /// Extract path from numbered list format
-    fn extract_from_numbered_list(line: &str) -> Option<String> {
-        // Match patterns like "1. path", "1) path", "1: path"
-        let re = Regex::new(r"^\s*\d+[.):]\s*(.+)$").ok()?;
-        if let Some(captures) = re.captures(line) {
-            let path = captures.get(1)?.as_str();
-            let cleaned = Self::clean_path_string(path);
-            if Self::looks_like_file_path(&cleaned) {
-                return Some(cleaned);
-            }
-        }
-        None
-    }
-    
-    /// Extract path from bullet point format
-    fn extract_from_bullet_point(line: &str) -> Option<String> {
-        // Match patterns like "- path", "* path", "+ path"
-        if line.starts_with("- ") || line.starts_with("* ") || line.starts_with("+ ") {
-            let path = &line[2..];
-            let cleaned = Self::clean_path_string(path);
-            if Self::looks_like_file_path(&cleaned) {
-                return Some(cleaned);
-            }
-        }
-        None
-    }
-    
-    /// Extract quoted path
-    fn extract_quoted_path(line: &str) -> Option<String> {
-        // Look for quoted content
-        for quote_char in ['"', '\'', '`'] {
-            if let Some(start) = line.find(quote_char) {
-                if let Some(end) = line[start + 1..].find(quote_char) {
-                    let path = &line[start + 1..start + 1 + end];
-                    let cleaned = Self::clean_path_string(path);
-                    if Self::looks_like_file_path(&cleaned) {
-                        return Some(cleaned);
-                    }
-                }
-            }
-        }
-        None
-    }
-    
-    /// Extract file patterns from explanatory text
-    fn extract_file_pattern(line: &str) -> Option<String> {
-        // Look for common file patterns in text
-        let file_patterns = [
-            r"\b([a-zA-Z0-9_/-]+\.[a-zA-Z0-9]+)\b",  // file.ext
-            r"\b(src/[a-zA-Z0-9_/-]+)\b",            // src/path
-            r"\b([a-zA-Z0-9_/-]+/[a-zA-Z0-9_/-]+)\b" // path/to/file
-        ];
-        
-        for pattern in file_patterns {
-            if let Ok(re) = Regex::new(pattern) {
-                if let Some(captures) = re.captures(line) {
-                    let path = captures.get(1)?.as_str();
-                    let cleaned = Self::clean_path_string(path);
-                    if Self::looks_like_file_path(&cleaned) {
-                        return Some(cleaned);
-                    }
-                }
-            }
-        }
-        None
-    }
-    
-    /// Clean path string of common prefixes/suffixes
-    fn clean_path_string(path: &str) -> String {
-        path.trim()
-            .trim_matches(|c| c == '\"' || c == '\'' || c == '`' || c == ',' || c == ':' || c == ';' || c == '.')
-            .trim()
-            .to_string()
-    }
-    
-    /// Check if string looks like a file path
-    fn looks_like_file_path(path: &str) -> bool {
-        // Must not be empty
-        if path.is_empty() || path.len() < 2 {
-            return false;
-        }
-        
-        // Skip obvious non-paths
-        if path.starts_with("http") 
-            || path.starts_with("www.")
-            || path.contains("://")
-            || path.starts_with("Based on")
-            || path.starts_with("Here are")
-            || path.starts_with("The following")
-            || path.starts_with("Analysis")
-            || path.starts_with("Note")
-            || path.starts_with("Summary")
-            || path.contains("relevant files")
-            || path.contains("according to")
-        {
-            return false;
-        }
-        
-        // Look for file-like characteristics
-        let has_extension = path.contains('.') && !path.ends_with('.');
-        let has_path_separator = path.contains('/') || path.contains('\\');
-        let looks_like_code_file = path.ends_with(".rs") || path.ends_with(".js") || path.ends_with(".ts") 
-            || path.ends_with(".py") || path.ends_with(".java") || path.ends_with(".cpp") 
-            || path.ends_with(".c") || path.ends_with(".h") || path.ends_with(".hpp");
-        
-        // Accept if it has extension OR path separator OR looks like code file
-        has_extension || has_path_separator || looks_like_code_file
     }
     
     /// Remove duplicates while preserving order
@@ -220,28 +49,9 @@ impl FileRelevanceAssessmentProcessor {
         unique_paths
     }
 
-    /// Get ACTUAL file size and estimate tokens precisely
-    fn estimate_file_tokens(file_path: &str, project_directory: &str) -> AppResult<u32> {
-        let full_path = std::path::Path::new(project_directory).join(file_path);
-        
-        // Get ACTUAL file size - no fallbacks!
-        let metadata = std::fs::metadata(&full_path)
-            .map_err(|e| AppError::FileSystemError(format!("Cannot read file metadata for {}: {}", file_path, e)))?;
-        
-        let file_size = metadata.len();
-        
-        // Precise token estimation: 1 token per 3.5 characters on average
-        let content_tokens = (file_size as f64 / 3.5) as u32;
-        
-        // Add overhead for file path and XML formatting in prompt
-        let path_overhead = (file_path.len() as f64 / 4.0) as u32;
-        let formatting_overhead = 100; // XML tags, spacing, etc.
-        
-        Ok(content_tokens + path_overhead + formatting_overhead)
-    }
 
     /// Create intelligent chunks based on ACTUAL file sizes - no fallbacks!
-    fn create_content_aware_chunks(files: &[String], project_directory: &str, max_chunk_tokens: u32) -> AppResult<Vec<Vec<String>>> {
+    async fn create_content_aware_chunks(files: &[String], project_directory: &str, max_chunk_tokens: u32) -> AppResult<Vec<Vec<String>>> {
         let mut chunks = Vec::new();
         let mut current_chunk = Vec::new();
         let mut current_chunk_tokens = 0u32;
@@ -254,11 +64,28 @@ impl FileRelevanceAssessmentProcessor {
         info!("Creating content-aware chunks with {} available tokens per chunk using ACTUAL file sizes", available_tokens);
         
         for file_path in files {
-            // Get ACTUAL file token count - fail if file doesn't exist
-            let file_tokens = match Self::estimate_file_tokens(file_path, project_directory) {
-                Ok(tokens) => tokens,
+            // Get content-based token estimation using standard utilities
+            let full_path = std::path::Path::new(project_directory).join(file_path);
+            let file_tokens = match tokio::fs::read_to_string(&full_path).await {
+                Ok(content) => {
+                    let extension = std::path::Path::new(file_path)
+                        .extension()
+                        .and_then(|ext| ext.to_str())
+                        .unwrap_or("");
+                    match extension {
+                        "json" | "xml" | "yml" | "yaml" | "toml" => {
+                            crate::utils::token_estimator::estimate_structured_data_tokens(&content)
+                        }
+                        "rs" | "ts" | "js" | "tsx" | "jsx" | "py" | "java" | "cpp" | "c" | "h" | "cs" | "go" | "php" | "rb" | "swift" | "kt" => {
+                            crate::utils::token_estimator::estimate_code_tokens(&content)
+                        }
+                        _ => {
+                            crate::utils::token_estimator::estimate_tokens(&content)
+                        }
+                    }
+                }
                 Err(e) => {
-                    error!("Cannot access file {}: {}. Skipping this file.", file_path, e);
+                    error!("Cannot read file {}: {}. Skipping.", file_path, e);
                     skipped_files.push(file_path.clone());
                     continue;
                 }
@@ -332,15 +159,28 @@ impl FileRelevanceAssessmentProcessor {
         }
 
         // Load content for files in this chunk
-        let file_contents = fs_context_utils::load_file_contents(chunk, project_directory).await;
+        let mut file_contents = std::collections::HashMap::new();
+        for relative_path_str in chunk {
+            let full_path = std::path::Path::new(project_directory).join(relative_path_str);
+            match crate::utils::fs_utils::read_file_to_string(&*full_path.to_string_lossy()).await {
+                Ok(content) => {
+                    file_contents.insert(relative_path_str.clone(), content);
+                }
+                Err(e) => {
+                    warn!("Failed to read file {}: {}", full_path.display(), e);
+                }
+            }
+        }
         info!("Loaded content for {}/{} files in chunk {}", file_contents.len(), chunk.len(), chunk_index + 1);
+        
+        // Log chunk details to file for debugging
+        Self::log_chunk_to_file(chunk_index + 1, total_chunks, chunk, &file_contents, task_description).await;
 
         // Create prompt context for this chunk
         let prompt_context = LlmPromptContext {
             task_description: task_description.to_string(),
             file_contents: Some(file_contents),
             directory_tree: None, // Not needed for relevance assessment
-            system_prompt_override: None,
         };
 
         // Log the system prompt being used for this chunk
@@ -379,6 +219,44 @@ impl FileRelevanceAssessmentProcessor {
         info!("Merged {} unique relevant files from {} chunks", all_results.len(), total_chunks);
         all_results
     }
+
+    /// Log chunk details to temporary file for debugging
+    async fn log_chunk_to_file(
+        chunk_index: usize,
+        total_chunks: usize,
+        files: &[String],
+        file_contents: &std::collections::HashMap<String, String>,
+        task_description: &str,
+    ) {
+        let base_dir = std::path::Path::new("/path/to/project/tmp");
+        let chunk_dir = base_dir.join("file_chunks").join("FileRelevanceAssessment");
+        
+        if let Err(_) = tokio::fs::create_dir_all(&chunk_dir).await {
+            return;
+        }
+        
+        let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S%.3f");
+        let filename = format!("chunk_{}_of_{}_{}.txt", chunk_index, total_chunks, timestamp);
+        let filepath = chunk_dir.join(filename);
+        
+        let mut chunk_info = format!(
+            "=== CHUNK {} OF {} ===\n=== TASK DESCRIPTION ===\n{}\n\n=== FILES IN CHUNK ({}) ===\n",
+            chunk_index, total_chunks, task_description, files.len()
+        );
+        
+        for file_path in files {
+            chunk_info.push_str(&format!("- {}\n", file_path));
+        }
+        
+        chunk_info.push_str("\n=== FILE CONTENTS ===\n");
+        for (file_path, content) in file_contents {
+            chunk_info.push_str(&format!("\n--- FILE: {} ({} chars) ---\n{}\n", file_path, content.len(), content));
+        }
+        
+        chunk_info.push_str("\n=== END CHUNK ===\n");
+        
+        let _ = tokio::fs::write(&filepath, chunk_info).await;
+    }
 }
 
 #[async_trait::async_trait]
@@ -413,13 +291,17 @@ impl JobProcessor for FileRelevanceAssessmentProcessor {
         };
         let project_directory = &session.project_directory;
         
-        // Get task settings from database
-        let task_settings = settings_repo.get_task_settings(&session.project_hash, &job.job_type.to_string()).await?
-            .ok_or_else(|| AppError::JobError(format!("No task settings found for project {} and task type {}", session.project_hash, job.job_type.to_string())))?;
-        let model_used = task_settings.model;
-        let temperature = task_settings.temperature
-            .ok_or_else(|| AppError::JobError("Temperature not set in task settings".to_string()))?;
-        let max_output_tokens = task_settings.max_tokens as u32;
+        // Get model settings using centralized config resolution
+        let model_settings = config_resolver::resolve_model_settings(
+            &app_handle,
+            job.job_type,
+            None, // model_override
+            None, // temperature_override  
+            None, // max_tokens_override
+        ).await?
+        .ok_or_else(|| AppError::ConfigError(format!("Task {:?} requires LLM configuration", job.job_type)))?;
+
+        let (model_used, temperature, max_output_tokens) = model_settings;
         
         job_processor_utils::log_job_start(&job.id, "File Relevance Assessment");
         info!("Starting COMPREHENSIVE file relevance assessment with {} files to analyze", 
@@ -460,7 +342,7 @@ impl JobProcessor for FileRelevanceAssessmentProcessor {
             &payload.locally_filtered_files,
             project_directory,
             chunk_token_limit,
-        ) {
+        ).await {
             Ok(chunks) => chunks,
             Err(e) => {
                 let error_msg = format!("Failed to create chunks using actual file sizes: {}", e);
@@ -589,11 +471,22 @@ impl JobProcessor for FileRelevanceAssessmentProcessor {
         info!("COMPREHENSIVE processing complete: {} files processed across {} chunks → {} relevant files identified", 
             total_processed_files, chunks.len(), relevant_paths.len());
         
-        // Validate the parsed paths against the filesystem using centralized utility
-        let (validated_relevant_paths, invalid_relevant_paths) = fs_context_utils::validate_paths_against_filesystem(
-            &relevant_paths, 
-            project_directory
-        ).await;
+        // Validate the parsed paths against the filesystem
+        let mut validated_relevant_paths = Vec::new();
+        let mut invalid_relevant_paths = Vec::new();
+        
+        for relative_path in &relevant_paths {
+            let absolute_path = std::path::Path::new(project_directory).join(relative_path);
+            match tokio::fs::metadata(&absolute_path).await {
+                Ok(metadata) if metadata.is_file() => {
+                    validated_relevant_paths.push(relative_path.clone());
+                },
+                _ => {
+                    debug!("Path doesn't exist or isn't a regular file: {}", absolute_path.display());
+                    invalid_relevant_paths.push(relative_path.clone());
+                }
+            }
+        }
         
         info!("File relevance assessment validation: {} valid, {} invalid paths", 
             validated_relevant_paths.len(), invalid_relevant_paths.len());
@@ -613,6 +506,38 @@ impl JobProcessor for FileRelevanceAssessmentProcessor {
             return Ok(JobProcessResult::canceled(job.id.clone(), "Job was canceled by user".to_string()));
         }
         
+        // Create chunk details outside the JSON macro
+        let mut chunk_details = Vec::new();
+        for (i, chunk) in chunks.iter().enumerate() {
+            let mut total_tokens = 0u32;
+            for f in chunk {
+                let full_path = std::path::Path::new(project_directory).join(f);
+                if let Ok(content) = tokio::fs::read_to_string(&full_path).await {
+                    let extension = std::path::Path::new(f)
+                        .extension()
+                        .and_then(|ext| ext.to_str())
+                        .unwrap_or("");
+                    let tokens = match extension {
+                        "json" | "xml" | "yml" | "yaml" | "toml" => {
+                            crate::utils::token_estimator::estimate_structured_data_tokens(&content)
+                        }
+                        "rs" | "ts" | "js" | "tsx" | "jsx" | "py" | "java" | "cpp" | "c" | "h" | "cs" | "go" | "php" | "rb" | "swift" | "kt" => {
+                            crate::utils::token_estimator::estimate_code_tokens(&content)
+                        }
+                        _ => {
+                            crate::utils::token_estimator::estimate_tokens(&content)
+                        }
+                    };
+                    total_tokens += tokens;
+                }
+            }
+            chunk_details.push(json!({
+                "chunkIndex": i + 1,
+                "fileCount": chunk.len(),
+                "actualTokens": total_tokens
+            }));
+        }
+
         // Store comprehensive results in job metadata
         let result_metadata = json!({
             "processingApproach": "intelligent_chunked_processing",
@@ -644,16 +569,7 @@ impl JobProcessor for FileRelevanceAssessmentProcessor {
                 chunks.len(),
                 total_processed_files,
                 validated_relevant_paths.len()),
-            "chunkDetails": chunks.iter().enumerate().map(|(i, chunk)| {
-                let total_tokens: u32 = chunk.iter()
-                    .filter_map(|f| Self::estimate_file_tokens(f, project_directory).ok())
-                    .sum();
-                json!({
-                    "chunkIndex": i + 1,
-                    "fileCount": chunk.len(),
-                    "actualTokens": total_tokens
-                })
-            }).collect::<Vec<_>>()
+            "chunkDetails": chunk_details
         });
         
         // Create comprehensive response with strongly-typed structs

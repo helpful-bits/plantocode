@@ -43,6 +43,9 @@ pub enum AppError {
     #[error("Validation error: {0}")]
     ValidationError(String),
     
+    #[error("Invalid path: {0}")]
+    InvalidPath(String),
+    
     #[error("Not found: {0}")]
     NotFoundError(String),
     
@@ -133,6 +136,9 @@ pub enum AppError {
     
     #[error("Stripe error: {0}")]
     StripeError(String),
+    
+    #[error("Checkout error: {0}")]
+    CheckoutError(String),
 }
 
 impl From<std::io::Error> for AppError {
@@ -211,6 +217,7 @@ impl From<AppError> for SerializableError {
             AppError::FileSystemError(_) => "FILE_SYSTEM_ERROR",
             AppError::GitError(_) => "GIT_ERROR",
             AppError::ValidationError(_) => "VALIDATION_ERROR",
+            AppError::InvalidPath(_) => "INVALID_PATH_ERROR",
             AppError::NotFoundError(_) => "NOT_FOUND_ERROR",
             AppError::AuthError(_) => "AUTH_ERROR",
             AppError::SecurityError(_) => "SECURITY_ERROR",
@@ -241,6 +248,7 @@ impl From<AppError> for SerializableError {
             AppError::SpendingLimitExceeded(_) => "SPENDING_LIMIT_EXCEEDED",
             AppError::InvoiceError(_) => "INVOICE_ERROR",
             AppError::StripeError(_) => "STRIPE_ERROR",
+            AppError::CheckoutError(_) => "CHECKOUT_ERROR",
         }.to_string();
         
         SerializableError {

@@ -17,12 +17,17 @@ const GOOGLE_BASE_URL: &str = "https://generativelanguage.googleapis.com/v1beta"
 // Google Chat Completion Request Structs
 #[skip_serializing_none]
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct GoogleChatRequest {
     pub contents: Vec<GoogleContent>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub generationConfig: Option<GoogleGenerationConfig>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub safetySettings: Option<Vec<GoogleSafetySetting>>,
+    pub system_instruction: Option<GoogleSystemInstruction>,
+    pub generation_config: Option<GoogleGenerationConfig>,
+    pub safety_settings: Option<Vec<GoogleSafetySetting>>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct GoogleSystemInstruction {
+    pub parts: Vec<GooglePart>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -35,28 +40,35 @@ pub struct GoogleContent {
 #[serde(untagged)]
 pub enum GooglePart {
     Text { text: String },
-    InlineData { inlineData: GoogleInlineData },
+    InlineData { 
+        inline_data: GoogleInlineData 
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct GoogleInlineData {
-    pub mimeType: String,
+    pub mime_type: String,
     pub data: String,
 }
 
 #[skip_serializing_none]
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct GoogleGenerationConfig {
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub temperature: Option<f32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub topP: Option<f32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub topK: Option<i32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub maxOutputTokens: Option<i32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub candidateCount: Option<i32>,
+    pub top_p: Option<f32>,
+    pub top_k: Option<i32>,
+    pub max_output_tokens: Option<i32>,
+    pub candidate_count: Option<i32>,
+    pub stop_sequences: Option<Vec<String>>,
+    pub thinking_config: Option<GoogleThinkingConfig>,
+}
+
+#[skip_serializing_none]
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct GoogleThinkingConfig {
+    pub thinking_budget: Option<i32>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -67,17 +79,19 @@ pub struct GoogleSafetySetting {
 
 // Google Chat Completion Response Structs
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct GoogleChatResponse {
     pub candidates: Vec<GoogleCandidate>,
-    pub usageMetadata: Option<GoogleUsageMetadata>,
+    pub usage_metadata: Option<GoogleUsageMetadata>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct GoogleCandidate {
     pub content: GoogleResponseContent,
-    pub finishReason: Option<String>,
+    pub finish_reason: Option<String>,
     pub index: i32,
-    pub safetyRatings: Option<Vec<GoogleSafetyRating>>,
+    pub safety_ratings: Option<Vec<GoogleSafetyRating>>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -99,24 +113,27 @@ pub struct GoogleSafetyRating {
 
 #[skip_serializing_none]
 #[derive(Debug, Deserialize, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct GoogleUsageMetadata {
-    pub promptTokenCount: i32,
-    pub candidatesTokenCount: i32,
-    pub totalTokenCount: i32,
+    pub prompt_token_count: i32,
+    pub candidates_token_count: i32,
+    pub total_token_count: i32,
 }
 
 // Google Streaming Structs
 #[skip_serializing_none]
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct GoogleStreamChunk {
     pub candidates: Option<Vec<GoogleStreamCandidate>>,
-    pub usageMetadata: Option<GoogleUsageMetadata>,
+    pub usage_metadata: Option<GoogleUsageMetadata>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct GoogleStreamCandidate {
     pub content: Option<GoogleStreamContent>,
-    pub finishReason: Option<String>,
+    pub finish_reason: Option<String>,
     pub index: i32,
 }
 
@@ -243,7 +260,7 @@ impl GoogleClient {
                 &model_id
             };
             
-            let url = format!("{}/models/{}:streamGenerateContent?key={}", base_url, clean_model_id, api_key);
+            let url = format!("{}/models/{}:streamGenerateContent?key={}&alt=sse", base_url, clean_model_id, api_key);
             
             let response = client
                 .post(&url)
@@ -292,7 +309,7 @@ impl GoogleClient {
         }
         
         match serde_json::from_str::<GoogleStreamChunk>(chunk_str.trim()) {
-            Ok(parsed) => parsed.usageMetadata,
+            Ok(parsed) => parsed.usage_metadata,
             Err(_) => None,
         }
     }
@@ -300,12 +317,17 @@ impl GoogleClient {
     // Helper method to extract tokens from a stream chunk
     pub fn extract_tokens_from_stream_chunk(chunk_str: &str) -> Option<(i32, i32)> {
         Self::extract_usage_from_stream_chunk(chunk_str).map(|usage| 
-            (usage.promptTokenCount, usage.candidatesTokenCount)
+            (usage.prompt_token_count, usage.candidates_token_count)
         )
     }
     
     // Convert a generic JSON Value into a GoogleChatRequest
     pub fn convert_to_chat_request(&self, payload: Value) -> Result<GoogleChatRequest, AppError> {
+        self.convert_to_chat_request_with_capabilities(payload, None)
+    }
+
+    // Convert a generic JSON Value into a GoogleChatRequest with model capabilities
+    pub fn convert_to_chat_request_with_capabilities(&self, payload: Value, model_capabilities: Option<&serde_json::Value>) -> Result<GoogleChatRequest, AppError> {
         // First, try to extract the messages array from the generic payload
         let messages = payload
             .get("messages")
@@ -313,145 +335,45 @@ impl GoogleClient {
             .ok_or_else(|| AppError::BadRequest("Request must contain 'messages' array".to_string()))?;
 
         let mut contents = Vec::new();
-        let mut system_messages = Vec::new();
+        let mut system_instruction: Option<GoogleSystemInstruction> = None;
 
-        // First pass: collect system messages separately
+        // Process all messages, extracting system prompts properly
         for message in messages {
             let role = message
                 .get("role")
                 .and_then(|r| r.as_str())
                 .ok_or_else(|| AppError::BadRequest("Each message must have a 'role' field".to_string()))?;
-
-            if role == "system" {
-                let content = message
-                    .get("content")
-                    .ok_or_else(|| AppError::BadRequest("Each message must have a 'content' field".to_string()))?;
-
-                if let Value::String(text) = content {
-                    system_messages.push(text.clone());
-                }
-            }
-        }
-
-        // Second pass: process non-system messages
-        for message in messages {
-            let role = message
-                .get("role")
-                .and_then(|r| r.as_str())
-                .ok_or_else(|| AppError::BadRequest("Each message must have a 'role' field".to_string()))?;
-
-            // Skip system messages in this pass
-            if role == "system" {
-                continue;
-            }
-
-            // Google API uses "user" and "model" roles
-            let google_role = match role {
-                "user" => "user",
-                "assistant" => "model",
-                _ => {
-                    return Err(AppError::BadRequest(format!("Unsupported role: {}", role)));
-                }
-            };
 
             let content = message
                 .get("content")
                 .ok_or_else(|| AppError::BadRequest("Each message must have a 'content' field".to_string()))?;
 
             // Handle different content formats
-            let parts = match content {
-                Value::String(text) => {
-                    vec![GooglePart::Text { text: text.clone() }]
-                },
-                Value::Array(parts_array) => {
-                    let mut google_parts = Vec::new();
-                    for part in parts_array {
-                        if let Some(part_type) = part.get("type").and_then(|t| t.as_str()) {
-                            match part_type {
-                                "text" => {
-                                    if let Some(text) = part.get("text").and_then(|t| t.as_str()) {
-                                        google_parts.push(GooglePart::Text {
-                                            text: text.to_string(),
-                                        });
-                                    }
-                                },
-                                "image_url" => {
-                                    // Handle image content if needed
-                                    if let Some(image_url) = part.get("image_url").and_then(|u| u.get("url")).and_then(|url| url.as_str()) {
-                                        // Convert base64 image to inline data format
-                                        if image_url.starts_with("data:") {
-                                            if let Some(comma_pos) = image_url.find(',') {
-                                                let header = &image_url[..comma_pos];
-                                                let data = &image_url[comma_pos + 1..];
-                                                
-                                                // Extract MIME type from data URI
-                                                let mime_type = if header.contains("image/jpeg") {
-                                                    "image/jpeg"
-                                                } else if header.contains("image/png") {
-                                                    "image/png"
-                                                } else if header.contains("image/webp") {
-                                                    "image/webp"
-                                                } else {
-                                                    "image/jpeg" // Default fallback
-                                                };
+            let parts = self.parse_message_content(content)?;
 
-                                                google_parts.push(GooglePart::InlineData {
-                                                    inlineData: GoogleInlineData {
-                                                        mimeType: mime_type.to_string(),
-                                                        data: data.to_string(),
-                                                    },
-                                                });
-                                            }
-                                        }
-                                    }
-                                },
-                                _ => {
-                                    // Skip unsupported content types
-                                }
-                            }
-                        }
-                    }
-                    google_parts
-                },
-                _ => {
-                    return Err(AppError::BadRequest("Content must be a string or array".to_string()));
-                }
-            };
-
-            contents.push(GoogleContent {
-                role: google_role.to_string(),
-                parts,
-            });
-        }
-
-        // Add system messages as the first user message if any exist
-        if !system_messages.is_empty() {
-            let combined_system = system_messages.join("\n\n");
-            
-            // If there's already a user message, prepend system to it
-            if let Some(first_content) = contents.first_mut() {
-                if first_content.role == "user" {
-                    // Prepend system message to first user message
-                    if let Some(GooglePart::Text { text }) = first_content.parts.first_mut() {
-                        *text = format!("{}\n\n{}", combined_system, text);
-                    } else {
-                        // Insert system message as first part
-                        first_content.parts.insert(0, GooglePart::Text { 
-                            text: combined_system 
-                        });
-                    }
+            if role == "system" {
+                // Properly handle system prompts using systemInstruction field
+                if system_instruction.is_none() {
+                    system_instruction = Some(GoogleSystemInstruction { parts });
                 } else {
-                    // Insert system message as a new user message at the beginning
-                    contents.insert(0, GoogleContent {
-                        role: "user".to_string(),
-                        parts: vec![GooglePart::Text { text: combined_system }],
-                    });
+                    // Append to existing system instruction
+                    if let Some(ref mut sys_inst) = system_instruction {
+                        sys_inst.parts.extend(parts);
+                    }
                 }
             } else {
-                // No other messages, create a user message with system content
+                // Google API uses "user" and "model" roles
+                let google_role = match role {
+                    "user" => "user",
+                    "assistant" => "model",
+                    _ => {
+                        return Err(AppError::BadRequest(format!("Unsupported role: {}", role)));
+                    }
+                };
+
                 contents.push(GoogleContent {
-                    role: "user".to_string(),
-                    parts: vec![GooglePart::Text { text: combined_system }],
+                    role: google_role.to_string(),
+                    parts,
                 });
             }
         }
@@ -480,46 +402,136 @@ impl GoogleClient {
         }
 
         // Extract generation config from payload if present
-        let generation_config = if let Some(config_value) = payload.get("generationConfig") {
-            serde_json::from_value(config_value.clone()).ok()
+        let mut generation_config = if let Some(config_value) = payload.get("generationConfig") {
+            serde_json::from_value(config_value.clone()).unwrap_or_else(|_| GoogleGenerationConfig {
+                temperature: None,
+                top_p: None,
+                top_k: None,
+                max_output_tokens: None,
+                candidate_count: None,
+                stop_sequences: None,
+                thinking_config: None,
+            })
         } else {
             // Create generation config from common parameters
             let mut config = GoogleGenerationConfig {
                 temperature: None,
-                topP: None,
-                topK: None,
-                maxOutputTokens: None,
-                candidateCount: None,
+                top_p: None,
+                top_k: None,
+                max_output_tokens: None,
+                candidate_count: None,
+                stop_sequences: None,
+                thinking_config: None,
             };
 
             if let Some(temp) = payload.get("temperature").and_then(|t| t.as_f64()) {
                 config.temperature = Some(temp as f32);
             }
             if let Some(top_p) = payload.get("top_p").and_then(|t| t.as_f64()) {
-                config.topP = Some(top_p as f32);
+                config.top_p = Some(top_p as f32);
             }
             if let Some(max_tokens) = payload.get("max_tokens").and_then(|t| t.as_u64()) {
-                config.maxOutputTokens = Some(max_tokens as i32);
+                config.max_output_tokens = Some(max_tokens as i32);
             }
 
-            Some(config)
+            config
         };
+
+        // Check if model has thinking capabilities and automatically configure thinking
+        if let Some(capabilities) = model_capabilities {
+            if let Some(thinking) = capabilities.get("thinking").and_then(|t| t.as_bool()) {
+                if thinking && generation_config.thinking_config.is_none() {
+                    // Set default thinking budget if not already configured
+                    generation_config.thinking_config = Some(GoogleThinkingConfig {
+                        thinking_budget: Some(10000), // Default thinking budget
+                    });
+                    debug!("Automatically enabled thinking configuration with budget: 10000");
+                }
+            }
+        }
+
+        let generation_config = Some(generation_config);
 
         let google_request = GoogleChatRequest {
             contents,
-            generationConfig: generation_config,
-            safetySettings: None, // Use default safety settings
+            system_instruction,
+            generation_config,
+            safety_settings: None, // Use default safety settings
         };
 
-        debug!("Converted to Google request with {} contents", google_request.contents.len());
+        debug!("Converted to Google request with {} contents and system instruction: {}", 
+               google_request.contents.len(), 
+               google_request.system_instruction.is_some());
         
         Ok(google_request)
+    }
+
+    // Helper method to parse message content into GooglePart vector
+    fn parse_message_content(&self, content: &Value) -> Result<Vec<GooglePart>, AppError> {
+        match content {
+            Value::String(text) => {
+                Ok(vec![GooglePart::Text { text: text.clone() }])
+            },
+            Value::Array(parts_array) => {
+                let mut google_parts = Vec::new();
+                for part in parts_array {
+                    if let Some(part_type) = part.get("type").and_then(|t| t.as_str()) {
+                        match part_type {
+                            "text" => {
+                                if let Some(text) = part.get("text").and_then(|t| t.as_str()) {
+                                    google_parts.push(GooglePart::Text {
+                                        text: text.to_string(),
+                                    });
+                                }
+                            },
+                            "image_url" => {
+                                // Handle image content if needed
+                                if let Some(image_url) = part.get("image_url").and_then(|u| u.get("url")).and_then(|url| url.as_str()) {
+                                    // Convert base64 image to inline data format
+                                    if image_url.starts_with("data:") {
+                                        if let Some(comma_pos) = image_url.find(',') {
+                                            let header = &image_url[..comma_pos];
+                                            let data = &image_url[comma_pos + 1..];
+                                            
+                                            // Extract MIME type from data URI
+                                            let mime_type = if header.contains("image/jpeg") {
+                                                "image/jpeg"
+                                            } else if header.contains("image/png") {
+                                                "image/png"
+                                            } else if header.contains("image/webp") {
+                                                "image/webp"
+                                            } else {
+                                                "image/jpeg" // Default fallback
+                                            };
+
+                                            google_parts.push(GooglePart::InlineData {
+                                                inline_data: GoogleInlineData {
+                                                    mime_type: mime_type.to_string(),
+                                                    data: data.to_string(),
+                                                },
+                                            });
+                                        }
+                                    }
+                                }
+                            },
+                            _ => {
+                                // Skip unsupported content types
+                            }
+                        }
+                    }
+                }
+                Ok(google_parts)
+            },
+            _ => {
+                Err(AppError::BadRequest("Content must be a string or array".to_string()))
+            }
+        }
     }
     
     // Helper functions for token and usage tracking
     pub fn extract_tokens_from_response(&self, response: &GoogleChatResponse) -> (i32, i32) {
-        if let Some(usage) = &response.usageMetadata {
-            (usage.promptTokenCount, usage.candidatesTokenCount)
+        if let Some(usage) = &response.usage_metadata {
+            (usage.prompt_token_count, usage.candidates_token_count)
         } else {
             (0, 0)
         }

@@ -39,7 +39,7 @@ impl WorkflowCancellationHandler {
     ) -> AppResult<CancellationResult> {
         log::info!("Canceling workflow {} with reason: {}", workflow_id, reason);
 
-        let workflow_jobs = self.repo.get_jobs_by_metadata_field("workflow_id", workflow_id).await?;
+        let workflow_jobs = self.repo.get_jobs_by_metadata_field("workflowId", workflow_id).await?;
         let mut canceled_jobs = Vec::new();
         let mut failed_cancellations = Vec::new();
 
@@ -94,7 +94,7 @@ impl WorkflowCancellationHandler {
     ) -> AppResult<CancellationResult> {
         log::info!("Canceling workflow {} from stage {} with reason: {}", workflow_id, from_stage_name, reason);
 
-        let workflow_jobs = self.repo.get_jobs_by_metadata_field("workflow_id", workflow_id).await?;
+        let workflow_jobs = self.repo.get_jobs_by_metadata_field("workflowId", workflow_id).await?;
         let stages_to_cancel = self.get_subsequent_stages(from_stage_name, workflow_definition);
         
         let mut canceled_jobs = Vec::new();
@@ -151,7 +151,7 @@ impl WorkflowCancellationHandler {
         }
 
         // Check total failure count
-        let workflow_jobs = self.repo.get_jobs_by_metadata_field("workflow_id", workflow_id).await?;
+        let workflow_jobs = self.repo.get_jobs_by_metadata_field("workflowId", workflow_id).await?;
         let total_failures = workflow_jobs.iter()
             .filter(|job| {
                 let status = Self::safe_job_status_from_str(&job.status).unwrap_or_else(|e| {
@@ -259,7 +259,7 @@ impl WorkflowCancellationHandler {
 
     /// Check if cancellation is safe (no critical operations in progress)
     pub async fn is_cancellation_safe(&self, workflow_id: &str) -> AppResult<bool> {
-        let workflow_jobs = self.repo.get_jobs_by_metadata_field("workflow_id", workflow_id).await?;
+        let workflow_jobs = self.repo.get_jobs_by_metadata_field("workflowId", workflow_id).await?;
         
         // Check for jobs that shouldn't be interrupted
         for job in workflow_jobs {
@@ -415,9 +415,9 @@ impl WorkflowCancellationHandler {
                 JobStatus::Idle
             });
             if status == JobStatus::Failed {
-                // Consider RegexPatternGeneration as critical since it's usually the first stage
-                if job.task_type == crate::models::TaskType::RegexPatternGeneration.to_string() {
-                    log::warn!("Critical stage failure detected in workflow {}: RegexPatternGeneration", workflow_id);
+                // Consider RegexFileFilter as critical since it's usually the first stage
+                if job.task_type == crate::models::TaskType::RegexFileFilter.to_string() {
+                    log::warn!("Critical stage failure detected in workflow {}: RegexFileFilter", workflow_id);
                     return Ok(true);
                 }
             }
@@ -428,8 +428,8 @@ impl WorkflowCancellationHandler {
 
     fn is_critical_job(&self, job: &BackgroundJob) -> bool {
         // Define which job types are considered critical and shouldn't be interrupted
-        let regex_pattern_generation_str = crate::models::TaskType::RegexPatternGeneration.to_string();
-        job.task_type == regex_pattern_generation_str || job.task_type == "DataPersistence"
+        let regex_file_filter_str = crate::models::TaskType::RegexFileFilter.to_string();
+        job.task_type == regex_file_filter_str || job.task_type == "DataPersistence"
     }
 
     fn current_timestamp(&self) -> i64 {

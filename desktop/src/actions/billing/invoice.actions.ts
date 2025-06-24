@@ -2,20 +2,18 @@ import { invoke } from '@tauri-apps/api/core';
 
 export interface Invoice {
   id: string;
-  amount: number;
+  amountDue: number;
+  amountPaid: number;
   currency: string;
   status: string;
   created: number;
-  dueDate?: number;
-  paidAt?: number;
-  description?: string;
-  invoiceUrl?: string;
-  invoicePdf?: string;
+  dueDate: number;
+  invoicePdfUrl?: string;
 }
 
 export interface ListInvoicesResponse {
   invoices: Invoice[];
-  totalCount: number;
+  totalInvoices: number;
   hasMore: boolean;
 }
 

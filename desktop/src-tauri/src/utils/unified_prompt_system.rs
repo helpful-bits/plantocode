@@ -102,7 +102,7 @@ pub struct UnifiedPromptContext {
     // Advanced features
     pub metadata: Option<HashMap<String, String>>,
     
-    // Text correction specific
+    // Language setting for transcription and other language-specific tasks
     pub language: Option<String>,
 }
 

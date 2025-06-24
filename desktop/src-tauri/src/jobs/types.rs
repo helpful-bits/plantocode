@@ -76,13 +76,6 @@ pub struct ImplementationPlanPayload {
 }
 
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct GuidanceGenerationPayload {
-    pub task_description: String,
-    pub paths: Option<Vec<String>>,
-    pub file_contents_summary: Option<String>,
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -114,12 +107,6 @@ pub struct GenericLlmStreamPayload {
     pub metadata: Option<serde_json::Value>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RegexPatternGenerationPayload {
-    pub task_description: String,
-    pub directory_tree: Option<String>,
-}
 
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -132,7 +119,7 @@ pub struct ExtendedPathFinderPayload {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct RegexPatternGenerationWorkflowPayload {
+pub struct RegexFileFilterPayload {
     pub task_description: String,
 }
 
@@ -170,6 +157,7 @@ pub struct FileRelevanceAssessmentQualityDetails {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct FileRelevanceAssessmentResponse {
     pub relevant_files: Vec<String>,
     pub count: usize,
@@ -187,15 +175,13 @@ pub enum JobPayload {
     OpenRouterLlm(OpenRouterLlmPayload),
     PathFinder(PathFinderPayload),
     ImplementationPlan(ImplementationPlanPayload),
-    GuidanceGeneration(GuidanceGenerationPayload),
     PathCorrection(PathCorrectionPayload),
     TaskRefinement(TaskRefinementPayload),
     TextImprovement(TextImprovementPayload),
     GenericLlmStream(GenericLlmStreamPayload),
-    RegexPatternGeneration(RegexPatternGenerationPayload),
     // Individual workflow stage payloads
     ExtendedPathFinder(ExtendedPathFinderPayload),
-    RegexPatternGenerationWorkflow(RegexPatternGenerationWorkflowPayload),
+    RegexFileFilter(RegexFileFilterPayload),
     FileRelevanceAssessment(FileRelevanceAssessmentPayload),
 }
 
@@ -328,7 +314,7 @@ impl Job {
 pub enum WorkflowStage {
     ExtendedPathFinder,
     PathCorrection,
-    RegexPatternGeneration,
+    RegexFileFilter,
     FileRelevanceAssessment,
     // Add more stages as workflows expand
 }
@@ -338,7 +324,7 @@ impl std::fmt::Display for WorkflowStage {
         match self {
             WorkflowStage::ExtendedPathFinder => write!(f, "ExtendedPathFinder"),
             WorkflowStage::PathCorrection => write!(f, "PathCorrection"),
-            WorkflowStage::RegexPatternGeneration => write!(f, "RegexPatternGeneration"),
+            WorkflowStage::RegexFileFilter => write!(f, "RegexFileFilter"),
             WorkflowStage::FileRelevanceAssessment => write!(f, "FileRelevanceAssessment"),
         }
     }

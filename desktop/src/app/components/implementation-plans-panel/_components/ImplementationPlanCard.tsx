@@ -55,7 +55,7 @@ const ImplementationPlanCard = React.memo<ImplementationPlanCardProps>(({
     
     // Format common model names for better display
     if (model.includes("gemini")) {
-      return model.replace("gemini-", "Gemini ");
+      return model.replace("gemini-", "Google Gemini ");
     } else if (model.includes("claude")) {
       return model.replace(/-\d{8}$/, ""); // Remove date suffix
     } else if (model.includes("gpt")) {

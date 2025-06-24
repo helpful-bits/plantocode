@@ -1,12 +1,12 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { ExternalLink, Calendar, Download, ChevronLeft, ChevronRight } from "lucide-react";
+import { Calendar, Download, ChevronLeft, ChevronRight } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/ui/card";
 import { Button } from "@/ui/button";
 import { Badge } from "@/ui/badge";
 import { LoadingSkeleton, ErrorState } from "./loading-and-error-states";
-import { listInvoices, type Invoice, type ListInvoicesResponse } from "@/actions/billing";
+import { listInvoices, type Invoice, type ListInvoicesResponse } from "@/actions/billing/invoice.actions";
 import { getErrorMessage } from "@/utils/error-handling";
 import { formatUsdCurrency } from "@/utils/currency-utils";
 
@@ -73,7 +73,7 @@ export function InvoicesList({ className }: InvoicesListProps) {
       
       // Check if error is 404/Not Found - treat as empty state
       if (errorMessage.includes('404') || errorMessage.toLowerCase().includes('not found')) {
-        setInvoicesData({ invoices: [], totalCount: 0, hasMore: false });
+        setInvoicesData({ invoices: [], totalInvoices: 0, hasMore: false });
         setError(null);
       } else {
         setError(errorMessage);
@@ -98,10 +98,8 @@ export function InvoicesList({ className }: InvoicesListProps) {
   };
 
   const handleDownloadInvoice = (invoice: Invoice) => {
-    if (invoice.invoicePdf) {
-      window.open(invoice.invoicePdf, '_blank');
-    } else if (invoice.invoiceUrl) {
-      window.open(invoice.invoiceUrl, '_blank');
+    if (invoice.invoicePdfUrl) {
+      window.open(invoice.invoicePdfUrl, '_blank');
     }
   };
 
@@ -147,7 +145,7 @@ export function InvoicesList({ className }: InvoicesListProps) {
             Billing History
           </div>
           <Badge variant="secondary">
-            {invoicesData.totalCount} total
+            {invoicesData.totalInvoices} total
           </Badge>
         </CardTitle>
       </CardHeader>
@@ -162,7 +160,7 @@ export function InvoicesList({ className }: InvoicesListProps) {
               <div className="flex-1 space-y-1">
                 <div className="flex items-center gap-3">
                   <span className="font-medium">
-                    {formatUsdCurrency(invoice.amount / 100)}
+                    {formatUsdCurrency(invoice.amountDue / 100)}
                   </span>
                   <Badge variant={getStatusVariant(invoice.status)}>
                     <span className={getStatusColor(invoice.status)}>
@@ -179,16 +177,11 @@ export function InvoicesList({ className }: InvoicesListProps) {
                       Due: {formatInvoiceDate(invoice.dueDate)}
                     </span>
                   )}
-                  {invoice.description && (
-                    <span className="flex-1 truncate">
-                      {invoice.description}
-                    </span>
-                  )}
                 </div>
               </div>
               
               <div className="flex items-center gap-2">
-                {(invoice.invoicePdf || invoice.invoiceUrl) && (
+                {invoice.invoicePdfUrl && (
                   <Button
                     variant="outline"
                     size="sm"
@@ -196,18 +189,7 @@ export function InvoicesList({ className }: InvoicesListProps) {
                     className="flex items-center gap-2"
                   >
                     <Download className="h-4 w-4" />
-                    PDF
-                  </Button>
-                )}
-                {invoice.invoiceUrl && !invoice.invoicePdf && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => window.open(invoice.invoiceUrl, '_blank')}
-                    className="flex items-center gap-2"
-                  >
-                    <ExternalLink className="h-4 w-4" />
-                    View
+                    View PDF
                   </Button>
                 )}
               </div>

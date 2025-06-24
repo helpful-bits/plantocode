@@ -47,6 +47,7 @@ pub fn format_user_error(error: &AppError) -> String {
             }
         },
         AppError::ValidationError(msg) => format!("Invalid input: {}", msg),
+        AppError::InvalidPath(msg) => format!("Invalid file path: {}", msg),
         AppError::NotFoundError(msg) => format!("Not found: {}", msg),
         AppError::ConfigError(msg) => {
             if msg.contains("missing") {
@@ -133,6 +134,7 @@ pub fn format_user_error(error: &AppError) -> String {
         AppError::SubscriptionConflict(msg) => format!("Subscription conflict: {}", msg),
         AppError::SpendingLimitExceeded(msg) => format!("Spending limit exceeded: {}", msg),
         AppError::InvoiceError(msg) => format!("Invoice error: {}", msg),
+        AppError::CheckoutError(msg) => format!("Checkout error: {}", msg),
     }
 }
 

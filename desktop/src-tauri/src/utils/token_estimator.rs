@@ -108,28 +108,32 @@ pub fn get_model_context_window(model_name: &str) -> u32 {
 
 /// Estimate tokens for a batch of files
 pub async fn estimate_tokens_for_file_batch(project_dir: &std::path::Path, files: &[String]) -> crate::error::AppResult<u32> {
-    let file_contents = crate::jobs::processors::utils::fs_context_utils::load_file_contents(
-        files,
-        &project_dir.to_string_lossy()
-    ).await;
-    
     let mut total = 0;
     
-    for (filepath, content) in &file_contents {
-        let extension = std::path::Path::new(filepath)
-            .extension()
-            .and_then(|ext| ext.to_str())
-            .unwrap_or("");
-            
-        match extension {
-            "json" | "xml" | "yml" | "yaml" | "toml" => {
-                total += estimate_structured_data_tokens(content);
+    for relative_path_str in files {
+        let full_path = project_dir.join(relative_path_str);
+        match crate::utils::fs_utils::read_file_to_string(&*full_path.to_string_lossy()).await {
+            Ok(content) => {
+                let extension = std::path::Path::new(relative_path_str)
+                    .extension()
+                    .and_then(|ext| ext.to_str())
+                    .unwrap_or("");
+                    
+                match extension {
+                    "json" | "xml" | "yml" | "yaml" | "toml" => {
+                        total += estimate_structured_data_tokens(&content);
+                    }
+                    "rs" | "ts" | "js" | "tsx" | "jsx" | "py" | "java" | "cpp" | "c" | "h" | "cs" | "go" | "php" | "rb" | "swift" | "kt" => {
+                        total += estimate_code_tokens(&content);
+                    }
+                    _ => {
+                        total += estimate_tokens(&content);
+                    }
+                }
             }
-            "rs" | "ts" | "js" | "tsx" | "jsx" | "py" | "java" | "cpp" | "c" | "h" | "cs" | "go" | "php" | "rb" | "swift" | "kt" => {
-                total += estimate_code_tokens(content);
-            }
-            _ => {
-                total += estimate_tokens(content);
+            Err(_) => {
+                // Skip files that can't be read
+                continue;
             }
         }
     }

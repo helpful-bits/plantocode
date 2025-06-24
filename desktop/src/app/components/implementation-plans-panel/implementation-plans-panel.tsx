@@ -139,7 +139,7 @@ export function ImplementationPlansPanel({
     try {
       const fullPlan = plan.response || '';
       const data = {
-        RESPONSE: fullPlan,
+        IMPLEMENTATION_PLAN: fullPlan,
         STEP_CONTENT: selectedStepNumber ? getContentForStep(fullPlan, selectedStepNumber) : ''
       };
       const processedContent = replacePlaceholders(buttonConfig.content, data);

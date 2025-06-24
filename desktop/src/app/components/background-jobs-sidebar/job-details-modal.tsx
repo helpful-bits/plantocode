@@ -9,7 +9,6 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/ui/dialog";
-import { formatJobDuration } from "@/utils/date-utils";
 import { useExistingWorkflowTracker } from "@/hooks/use-workflow-tracker";
 import { getParsedMetadata } from "./utils";
 import { WorkflowVisualizer } from "@/components/workflow-visualizer";
@@ -20,6 +19,7 @@ import { WorkflowUtils } from "@/utils/workflow-utils";
 import { type TaskModelSettings } from "@/types/task-settings-types";
 import { getServerDefaultTaskModelSettings } from "@/actions/project-settings.actions";
 import { useSessionStateContext } from "@/contexts/session";
+import { useLiveDuration } from "@/hooks/use-live-duration";
 
 
 // Import component sections
@@ -237,6 +237,9 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
   // Get current session context for project directory
   const { currentSession } = useSessionStateContext();
 
+  // Get live duration that updates every second for running jobs
+  const liveDuration = useLiveDuration(job?.startTime, job?.endTime, job?.status || '');
+
   // Load task settings when job changes
   useEffect(() => {
     const loadTaskSettings = async () => {
@@ -250,7 +253,8 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
         
         if (settingsResult.isSuccess && settingsResult.data) {
           // Extract settings for specific job taskType
-          const taskKey = job.taskType as keyof typeof settingsResult.data;
+          const toCamelCase = (s: string) => s.replace(/(_\w)/g, m => m[1].toUpperCase());
+          const taskKey = toCamelCase(job.taskType) as keyof typeof settingsResult.data;
           const taskSettings = settingsResult.data[taskKey];
           setJobTaskSettings(taskSettings || null);
         } else {
@@ -293,7 +297,6 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
         "planData", // This is displayed separately in MetadataSection
         "pathFinderData", // Task-specific data shown in response
         "fileFinderData", // Task-specific data shown in response
-        "guidanceData", // Task-specific data shown in response
         "implementationPlanData", // Task-specific data shown in response
         "textImprovementData", // Task-specific data shown in response
         "taskRefinementData", // Task-specific data shown in response
@@ -383,10 +386,8 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
   const contextValue = useMemo(() => {
     if (!job) return null;
 
-    // Get job duration if possible, using startTime and endTime if available
-    const jobDuration = job.startTime
-      ? formatJobDuration(job.startTime, job.endTime, job.status)
-      : "N/A";
+    // Use live duration from hook that updates every second for running jobs
+    const jobDuration = liveDuration;
 
     // Determine which content to show as the prompt
     const promptContent = job.prompt || "No prompt data available";
@@ -409,7 +410,7 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
         "local_file_filtering", "path_correction", "initial_path_correction",
         "file_finder_workflow",
         // Other structured JSON tasks
-        "regex_pattern_generation", "regex_summary_generation", "guidance_generation",
+        "regex_file_filter", "regex_summary_generation",
         "text_improvement"
       ];
       return structuredTaskTypes.includes(taskType);
@@ -521,7 +522,7 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
       formatRegexPatterns,
       copyButtons: jobTaskSettings?.copyButtons || [],
     };
-  }, [job, formatMetadata, formatRegexPatterns, jobTaskSettings]);
+  }, [job, formatMetadata, formatRegexPatterns, jobTaskSettings, liveDuration]);
 
   if (!job || !contextValue) return null;
 

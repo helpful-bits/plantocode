@@ -1,6 +1,8 @@
 use async_trait::async_trait;
-use log::{info, error, debug};
+use log::{info, error, debug, warn};
 use tauri::AppHandle;
+
+use crate::utils::config_resolver;
 
 use crate::error::{AppError, AppResult};
 use crate::jobs::types::{Job, JobPayload, JobProcessResult};
@@ -8,7 +10,6 @@ use crate::jobs::processor_trait::JobProcessor;
 use crate::models::TaskType;
 use crate::jobs::job_processor_utils;
 use crate::jobs::processors::{LlmTaskRunner, LlmTaskConfigBuilder, LlmPromptContext};
-use crate::jobs::processors::utils::fs_context_utils;
 
 pub struct TaskRefinementProcessor;
 
@@ -55,19 +56,34 @@ impl JobProcessor for TaskRefinementProcessor {
                 .ok_or_else(|| AppError::JobError(format!("Session {} not found", job.session_id)))?
         };
         
-        // Get task settings from database
-        let task_settings = settings_repo.get_task_settings(&session.project_hash, &job.job_type.to_string()).await?
-            .ok_or_else(|| AppError::JobError(format!("No task settings found for project {} and task type {}", session.project_hash, job.job_type.to_string())))?;
-        let model_used = task_settings.model;
-        let temperature = task_settings.temperature
-            .ok_or_else(|| AppError::JobError("Temperature not set in task settings".to_string()))?;
-        let max_output_tokens = task_settings.max_tokens as u32;
+        // Get model settings using centralized config resolution
+        let model_settings = config_resolver::resolve_model_settings(
+            &app_handle,
+            job.job_type,
+            None, // model_override
+            None, // temperature_override  
+            None, // max_tokens_override
+        ).await?
+        .ok_or_else(|| AppError::ConfigError(format!("Task {:?} requires LLM configuration", job.job_type)))?;
+
+        let (model_used, temperature, max_output_tokens) = model_settings;
         
         job_processor_utils::log_job_start(&job_id, "task refinement");
         let project_directory = &session.project_directory;
         
         // Load content of files in payload.relevant_files
-        let file_contents = fs_context_utils::load_file_contents(&payload.relevant_files, project_directory).await;
+        let mut file_contents = std::collections::HashMap::new();
+        for relative_path_str in &payload.relevant_files {
+            let full_path = std::path::Path::new(project_directory).join(relative_path_str);
+            match crate::utils::fs_utils::read_file_to_string(&*full_path.to_string_lossy()).await {
+                Ok(content) => {
+                    file_contents.insert(relative_path_str.clone(), content);
+                }
+                Err(e) => {
+                    warn!("Failed to read file {}: {}", full_path.display(), e);
+                }
+            }
+        }
         
         // Setup LLM task configuration
         let llm_config = LlmTaskConfigBuilder::new()
@@ -85,7 +101,6 @@ impl JobProcessor for TaskRefinementProcessor {
             task_description: payload.task_description.clone(),
             file_contents: Some(file_contents),
             directory_tree: None,
-            system_prompt_override: None,
         };
         
         debug!("Using model: {} for Task Refinement", model_used);

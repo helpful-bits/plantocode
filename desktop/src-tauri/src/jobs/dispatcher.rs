@@ -2,6 +2,7 @@ use std::sync::Arc;
 use log::{info, error, debug, warn};
 use tauri::{AppHandle, Manager, Emitter};
 use tokio::time::{timeout, Duration};
+use chrono::Utc;
 
 use crate::constants::DEFAULT_JOB_TIMEOUT_SECONDS;
 use crate::error::{AppError, AppResult};
@@ -195,7 +196,8 @@ async fn handle_job_success(
                     result.tokens_sent,
                     result.tokens_received,
                     None,
-                    None
+                    None,
+                    None // actual_cost
                 ).await?;
             } else {
                 background_job_repo.mark_job_completed(
@@ -205,7 +207,8 @@ async fn handle_job_success(
                     result.tokens_sent,
                     result.tokens_received,
                     None,
-                    None
+                    None,
+                    None // actual_cost
                 ).await?;
             }
             
@@ -228,7 +231,7 @@ async fn handle_job_success(
             error!("Job {} failed: {}", job_id, error_message);
             
             // Update job status to failed with detailed error information
-            background_job_repo.mark_job_failed(job_id, &error_message, None, None, None, None).await?;
+            background_job_repo.mark_job_failed(job_id, &error_message, None, None, None, None, None).await?;
             
             // Emit job status change event
             emit_job_status_change(
@@ -238,8 +241,26 @@ async fn handle_job_success(
                 Some(&error_message),
             )?;
         },
+        JobStatus::Canceled => {
+            // Update job status to canceled with error message
+            let cancel_reason = result.error.as_deref().unwrap_or("Job canceled");
+            background_job_repo.mark_job_canceled(job_id, cancel_reason).await?;
+            
+            // Emit job status change event
+            emit_job_status_change(
+                app_handle,
+                job_id,
+                &JobStatus::Canceled.to_string(),
+                result.error.as_deref(),
+            )?;
+            
+            // Handle workflow job completion for canceled jobs
+            if let Err(e) = handle_workflow_job_completion(job_id, result, app_handle).await {
+                error!("Failed to handle workflow job completion for canceled job {}: {}", job_id, e);
+            }
+        },
         _ => {
-            warn!("Unexpected job status: {:?}", result.status);
+            warn!("Unexpected job status in handle_job_success: {:?}", result.status);
         }
     }
     
@@ -364,6 +385,10 @@ async fn handle_job_failure_or_retry_internal(
             &JobStatus::Failed.to_string(),
             Some(&user_facing_error)
         )?;
+        
+        if let Err(e) = handle_workflow_job_completion(&job_id, &JobProcessResult::failure(job_id.to_string(), error.to_string()), app_handle).await {
+            error!("Failed to handle workflow job failure for job {}: {}", job_id, e);
+        }
         
         return Ok(JobFailureHandlingResult::PermanentFailure(format!("Workflow job failed. Orchestrator will handle: {}", error.to_string())));
     }
@@ -794,7 +819,7 @@ async fn add_orphaned_job_to_workflow(
     
     // Determine stage name from task type
     let stage_name = match task_type {
-        TaskType::RegexPatternGeneration => "RegexPatternGeneration",
+        TaskType::RegexFileFilter => "RegexFileFilter",
  
         TaskType::FileRelevanceAssessment => "FileRelevanceAssessment",
         TaskType::ExtendedPathFinder => "ExtendedPathFinder",

@@ -39,7 +39,7 @@ function CopyButtonListEditorComponent({ copyButtons, onChange, readOnly, showCu
     <div className="space-y-3">
       {/* Help text first - users need context before action */}
       <p className="text-xs text-muted-foreground">
-        Add buttons that will appear when viewing implementation plans. Use <code className="bg-muted px-1 rounded">{"{{RESPONSE}}"}</code> for full content, <code className="bg-muted px-1 rounded">{"{{STEP_CONTENT}}"}</code> for specific steps.
+        Add buttons that will appear when viewing implementation plans. Use <code className="bg-muted px-1 rounded">{"{{IMPLEMENTATION_PLAN}}"}</code> for full content, <code className="bg-muted px-1 rounded">{"{{STEP_CONTENT}}"}</code> for specific steps.
       </p>
       
       {showCustomizeButton && onCustomize && (

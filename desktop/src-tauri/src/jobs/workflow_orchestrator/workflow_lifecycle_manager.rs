@@ -9,6 +9,7 @@ use crate::error::{AppError, AppResult};
 use crate::models::{JobStatus, TaskType};
 use crate::jobs::types::JobPayload;
 use crate::utils::job_creation_utils;
+use crate::utils::config_resolver;
 use crate::jobs::workflow_types::{
     WorkflowState, WorkflowStatus, WorkflowStage, WorkflowStageJob,
     WorkflowDefinition, WorkflowStageDefinition
@@ -229,7 +230,7 @@ async fn create_abstract_stage_job_with_lock(
     
     // Convert to WorkflowStage for model configuration
     let stage = match task_type {
-        TaskType::RegexPatternGeneration => WorkflowStage::RegexPatternGeneration,
+        TaskType::RegexFileFilter => WorkflowStage::RegexFileFilter,
         TaskType::FileRelevanceAssessment => WorkflowStage::FileRelevanceAssessment,
         TaskType::ExtendedPathFinder => WorkflowStage::ExtendedPathFinder,
         TaskType::PathCorrection => WorkflowStage::PathCorrection,
@@ -425,74 +426,26 @@ async fn initialize_workflow_task_settings(
     for task_type in task_types {
         let task_type_str = task_type.to_string();
         
-        // Check if task settings already exist for this session and task type
-        match settings_repo.get_task_settings(session_id, &task_type_str).await {
-            Ok(Some(_)) => {
-                // Settings already exist, skip
-                debug!("Task settings already exist for session {} and task type {}", session_id, task_type_str);
-                continue;
-            }
-            Ok(None) => {
-                // Settings don't exist, need to create them
-                debug!("Creating task settings for session {} and task type {}", session_id, task_type_str);
-            }
-            Err(e) => {
-                warn!("Error checking existing task settings for session {} and task type {}: {}", session_id, task_type_str, e);
-                // Continue and try to create settings
-            }
-        }
-        
-        // Only create settings for tasks that require LLM configuration
+        // Only resolve settings for tasks that require LLM configuration
         if !task_type.requires_llm() {
-            debug!("Skipping task settings creation for local task type: {}", task_type_str);
+            debug!("Skipping model configuration for local task type: {}", task_type_str);
             continue;
         }
         
-        // Get model configuration from project/global settings
-        let model = match crate::utils::config_helpers::get_model_for_task(task_type, app_handle).await {
-            Ok(model) => model,
-            Err(e) => {
-                error!("Failed to get model for task type {} in project {}: {}", task_type_str, project_directory, e);
-                continue;
-            }
-        };
+        // Use centralized config resolution instead of deprecated get_task_settings
+        let model_settings = config_resolver::resolve_model_settings(
+            app_handle,
+            task_type,
+            None, // model_override
+            None, // temperature_override  
+            None, // max_tokens_override
+        ).await?
+        .ok_or_else(|| AppError::ConfigError(format!("Task {:?} requires LLM configuration", task_type)))?;
+
+        let (model, temperature, max_tokens) = model_settings;
         
-        let temperature = match crate::utils::config_helpers::get_default_temperature_for_task(Some(task_type), app_handle).await {
-            Ok(temp) => Some(temp),
-            Err(e) => {
-                warn!("Failed to get temperature for task type {} in project {}: {}", task_type_str, project_directory, e);
-                None
-            }
-        };
-        
-        let max_tokens = match crate::utils::config_helpers::get_default_max_tokens_for_task(Some(task_type), app_handle).await {
-            Ok(tokens) => tokens as i32,
-            Err(e) => {
-                warn!("Failed to get max_tokens for task type {} in project {}: {}", task_type_str, project_directory, e);
-                4000 // Safe default
-            }
-        };
-        
-        // Create the task settings
-        let task_settings = crate::models::TaskSettings {
-            project_hash: crate::utils::hash_utils::hash_string(project_directory),
-            task_type: task_type_str.clone(),
-            model,
-            max_tokens,
-            temperature,
-        };
-        
-        // Save to database
-        match settings_repo.set_task_settings(&task_settings).await {
-            Ok(()) => {
-                info!("Created task settings for session {} and task type {}: model={}, max_tokens={}, temperature={:?}", 
-                      session_id, task_type_str, task_settings.model, task_settings.max_tokens, task_settings.temperature);
-            }
-            Err(e) => {
-                error!("Failed to save task settings for session {} and task type {}: {}", session_id, task_type_str, e);
-                return Err(AppError::DatabaseError(format!("Failed to initialize task settings for {}: {}", task_type_str, e)));
-            }
-        }
+        info!("Resolved model configuration for session {} and task type {}: model={}, max_tokens={}, temperature={}", 
+              session_id, task_type_str, model, max_tokens, temperature);
     }
     
     info!("Successfully initialized task settings for workflow session: {}", session_id);

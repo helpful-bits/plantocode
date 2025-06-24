@@ -13,10 +13,9 @@ export type TaskType =
   | "voice_transcription"
   | "text_improvement"
   | "path_correction"
-  | "guidance_generation"
   | "task_refinement"
   | "generic_llm_stream"
-  | "regex_pattern_generation"
+  | "regex_file_filter"
   | "file_finder_workflow"
   | "streaming"
   // New orchestrated workflow stage types
@@ -29,12 +28,11 @@ export type TaskType =
 export type TaskTypeSupportingSystemPrompts =
   | "path_finder"
   | "voice_transcription"
-  | "guidance_generation"
   | "text_improvement"
   | "implementation_plan"
   | "path_correction"
   | "task_refinement"
-  | "regex_pattern_generation"
+  | "regex_file_filter"
   | "generic_llm_stream"
   | "extended_path_finder"
   | "file_relevance_assessment";
@@ -46,10 +44,9 @@ export const ALL_TASK_TYPES: readonly TaskType[] = [
   "voice_transcription",
   "text_improvement",
   "path_correction",
-  "guidance_generation",
   "task_refinement",
   "generic_llm_stream",
-  "regex_pattern_generation",
+  "regex_file_filter",
   "file_finder_workflow",
   "streaming",
   "local_file_filtering",
@@ -62,12 +59,11 @@ export const ALL_TASK_TYPES: readonly TaskType[] = [
 export const SYSTEM_PROMPT_TASK_TYPES: readonly TaskTypeSupportingSystemPrompts[] = [
   "path_finder",
   "voice_transcription",
-  "guidance_generation",
   "text_improvement",
   "implementation_plan",
   "path_correction",
   "task_refinement",
-  "regex_pattern_generation",
+  "regex_file_filter",
   "generic_llm_stream",
   "extended_path_finder",
   "file_relevance_assessment",
@@ -136,14 +132,6 @@ export const TaskTypeDetails: Record<TaskType, {
     description: "Automatically correct and improve file paths",
     defaultProvider: "google"
   },
-  guidance_generation: { 
-    requiresLlm: true, 
-    displayName: "AI Guidance", 
-    category: "Development",
-    description: "Generate contextual guidance for your tasks",
-    hidden: true,
-    defaultProvider: "google"
-  },
   task_refinement: { 
     requiresLlm: true, 
     displayName: "Task Refinement", 
@@ -158,11 +146,11 @@ export const TaskTypeDetails: Record<TaskType, {
     hidden: true,
     defaultProvider: "google"
   },
-  regex_pattern_generation: { 
+  regex_file_filter: { 
     requiresLlm: true, 
-    displayName: "Regex Pattern Generation", 
+    displayName: "Regex File Filter", 
     category: "Workflow Stage",
-    description: "Generate regex patterns to filter relevant files",
+    description: "Generate regex patterns and filter relevant files",
     defaultProvider: "anthropic"
   },
   file_finder_workflow: { 

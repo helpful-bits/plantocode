@@ -41,7 +41,7 @@ export function JobDetailsResponseSection() {
   const handleCopy = async (button: CopyButtonConfig) => {
     try {
       const stepContent = job.taskType === 'implementation_plan' && selectedStepNumber ? getContentForStep(displayContentForViewer, selectedStepNumber) : '';
-      const data = { RESPONSE: displayContentForViewer, STEP_CONTENT: stepContent };
+      const data = { IMPLEMENTATION_PLAN: displayContentForViewer, STEP_CONTENT: stepContent };
       
       const processedContent = replacePlaceholders(button.content, data);
       await navigator.clipboard.writeText(processedContent);
@@ -198,7 +198,7 @@ export function JobDetailsResponseSection() {
                       : job.status === "completed"
                         ? "border-success/60 bg-success/5"
                         : undefined
-                    : job.taskType === "path_finder" || job.taskType === "regex_pattern_generation"
+                    : job.taskType === "path_finder" || job.taskType === "regex_file_filter"
                       ? "border-border/60 bg-slate-50/50 dark:bg-slate-900/50"
                       : undefined
                 }

@@ -194,6 +194,16 @@ export function areJobsEqual(
     }
   }
 
+  // Check cost field for completed jobs (cost data is typically available only after completion)
+  if (jobA.status === "completed" || jobA.status === "completedByTag") {
+    if (jobA.actualCost !== jobB.actualCost) {
+      logger.debug(
+        `Actual cost (server-provided) changed for job ${jobA.id}: ${jobA.actualCost} → ${jobB.actualCost}`
+      );
+      return false;
+    }
+  }
+
   // Task-specific checks
   // For path finder jobs, check pathCount in metadata
   if (jobA.taskType === "path_finder" && jobA.status === "completed") {

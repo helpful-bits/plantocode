@@ -4,12 +4,16 @@
 //! For specialized utilities, see the `processors::utils` modules:
 //! - `llm_api_utils`: LLM API interactions and message formatting
 //! - `prompt_utils`: Prompt building and composition
-//! - `fs_context_utils`: File system operations and directory trees
 //! 
 //! ## Standard Processor Pattern:
 //! 1. Use `setup_job_processing()` to initialize repos and mark job as running
 //! 2. Use `check_job_canceled()` at key points to handle cancellation
 //! 3. Use `finalize_job_success()` or `finalize_job_failure()` for completion
+//!
+//! ## Cost Handling Policy:
+//! The desktop client NEVER calculates costs locally. All cost calculations are performed
+//! server-side and returned as authoritative values in the `OpenRouterUsage.cost` field.
+//! This ensures consistency across the application and prevents billing discrepancies.
 
 use std::sync::Arc;
 use tauri::{AppHandle, Manager};
@@ -89,10 +93,17 @@ pub async fn check_job_canceled(
 
 
 /// Finalizes job success with response and usage information
-/// Ensures all token counts (tokens_sent, tokens_received, total_tokens) are correctly updated from OpenRouterUsage
-/// The metadata parameter accepts Option<serde_json::Value> for type safety and flexibility
-/// Correctly merges provided metadata (additional_params) into existing JobWorkerMetadata structure
-/// Centralized finalization logic used by LlmTaskRunner and other processors
+/// 
+/// ## Server-Authoritative Cost Handling
+/// Extracts the `actual_cost` from the `llm_usage.cost` field, which is the definitive, 
+/// server-calculated cost. This cost is saved to the `background_jobs` table and should 
+/// be treated as the single source of truth for billing and user-facing cost display.
+/// 
+/// ## Other Parameters
+/// - Ensures all token counts (tokens_sent, tokens_received, total_tokens) are correctly updated from OpenRouterUsage
+/// - The metadata parameter accepts Option<serde_json::Value> for type safety and flexibility
+/// - Correctly merges provided metadata (additional_params) into existing JobWorkerMetadata structure
+/// - Centralized finalization logic used by LlmTaskRunner and other processors
 pub async fn finalize_job_success(
     job_id: &str,
     repo: &BackgroundJobRepository,
@@ -104,7 +115,7 @@ pub async fn finalize_job_success(
     metadata: Option<Value>,
     app_handle: &AppHandle,
 ) -> AppResult<()> {
-    // Cost tracking is handled by server billing service, not stored in local BackgroundJob
+    // Extract token counts from server response - cost is server-authoritative and stored in background_jobs table
     let (tokens_sent, tokens_received) = if let Some(usage) = &llm_usage {
         (Some(usage.prompt_tokens), Some(usage.completion_tokens))
     } else {
@@ -167,6 +178,9 @@ pub async fn finalize_job_success(
             .map_err(|e| AppError::SerializationError(format!("Failed to serialize new JobUIMetadata for job {}: {}", job_id, e)))?)
     };
     
+    // Extract actual cost from LLM usage
+    let actual_cost = llm_usage.as_ref().and_then(|usage| usage.cost);
+    
     repo.mark_job_completed(
         job_id,
         response_content,
@@ -175,6 +189,7 @@ pub async fn finalize_job_success(
         tokens_received,
         Some(model_used),
         Some(system_prompt_template),
+        actual_cost,
     ).await?;
     
     info!("Job {} completed successfully", job_id);
@@ -182,6 +197,15 @@ pub async fn finalize_job_success(
 }
 
 /// Finalizes job failure with error message, optional structured error information, and cost tracking
+/// 
+/// ## Partial Usage Tracking for Failed Jobs
+/// Even when jobs fail mid-stream, the server proxy attempts to return partial usage information
+/// including any costs incurred up to the point of failure. This function properly logs this
+/// partial usage and cost data to ensure that even failed jobs that incurred costs are tracked
+/// accurately for billing purposes.
+/// 
+/// The `llm_usage` parameter contains server-authoritative cost information (if available) and
+/// should be treated as the ground truth for any costs incurred during the failed job execution.
 pub async fn finalize_job_failure(
     job_id: &str,
     repo: &BackgroundJobRepository,
@@ -196,8 +220,8 @@ pub async fn finalize_job_failure(
         Some(job) => job,
         None => {
             error!("Job {} not found during failure finalization", job_id);
-            // No usage info available when job not found
-            repo.mark_job_failed(job_id, error_message, None, None, None, None).await?;
+            // No usage info available when job not found, including no cost
+            repo.mark_job_failed(job_id, error_message, None, None, None, None, None).await?;
             return Ok(());
         }
     };
@@ -231,13 +255,16 @@ pub async fn finalize_job_failure(
         None
     };
 
-    // Cost tracking is handled by server billing service, not stored in local BackgroundJob
+    // Extract token counts and cost from server response for tracking partial usage in failed jobs
     let (tokens_sent, tokens_received) = if let Some(usage) = &llm_usage {
         (Some(usage.prompt_tokens), Some(usage.completion_tokens))
     } else {
         (None, None)
     };
 
+    // Extract actual cost from LLM usage
+    let actual_cost = llm_usage.as_ref().and_then(|usage| usage.cost);
+    
     // Mark the job as failed with usage tracking
     repo.mark_job_failed(
         job_id, 
@@ -246,6 +273,7 @@ pub async fn finalize_job_failure(
         tokens_sent,
         tokens_received,
         model_used.as_deref(),
+        actual_cost,
     ).await?;
     
     error!("Job {} failed: {}", job_id, error_message);

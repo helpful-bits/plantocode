@@ -1,7 +1,7 @@
 "use client";
 
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
+import { listen, emit } from "@tauri-apps/api/event";
 import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 
 import {
@@ -309,8 +309,13 @@ export function useOrchestratedBackgroundJobsState({
         // Listen for job status changes
         unlistenStatusPromise = listen("job_status_change", async (event) => {
           try {
-            // The payload should include the job ID and potentially other metadata
-            const payload = event.payload as { jobId: string; status: string; message?: string };
+            // The payload should include the job ID and potentially other metadata including actualCost
+            const payload = event.payload as { 
+              jobId: string; 
+              status: string; 
+              message?: string;
+              actualCost?: number | null; // Server-provided cost from API responses
+            };
             const jobId = payload.jobId;
 
             if (!jobId) {
@@ -336,8 +341,25 @@ export function useOrchestratedBackgroundJobsState({
                 return;
               }
 
+              // If actualCost is provided in the event payload, ensure it's included in the job
+              if (payload.actualCost !== undefined && updatedJob.actualCost !== payload.actualCost) {
+                updatedJob.actualCost = payload.actualCost;
+              }
+
               // Use optimized update function
               updateJobInState(updatedJob);
+
+              // Check if job has transitioned to terminal state and emit job-terminated event
+              if (JOB_STATUSES.TERMINAL.includes(updatedJob.status)) {
+                try {
+                  await emit('job-terminated', { 
+                    jobId: payload.jobId, 
+                    actualCost: payload.actualCost || updatedJob.actualCost 
+                  });
+                } catch (err) {
+                  console.error(`[BackgroundJobs] Error emitting job-terminated event for job ${payload.jobId}:`, err);
+                }
+              }
 
               // Special handling for workflow jobs: If this job belongs to a workflow,
               // the workflow state managed by useWorkflowTracker should be refreshed
@@ -365,7 +387,8 @@ export function useOrchestratedBackgroundJobsState({
               job_id: string; 
               response_chunk: string; 
               tokens_received: number; 
-              metadata: string; 
+              metadata: string;
+              actual_cost?: number | null; // Server-provided cost from API responses
             };
             
             if (!payload.job_id) {
@@ -394,6 +417,8 @@ export function useOrchestratedBackgroundJobsState({
                 tokensReceived: payload.tokens_received,
                 updatedAt: Date.now(),
                 metadata: payload.metadata,
+                // Extract actualCost from payload if provided
+                actualCost: payload.actual_cost !== undefined ? payload.actual_cost : existingJob.actualCost,
               };
 
               // Check if this is actually a change to avoid unnecessary re-renders

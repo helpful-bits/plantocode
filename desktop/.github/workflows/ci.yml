@@ -31,15 +31,15 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Rust Format Check
-        working-directory: ./src-tauri
+        working-directory: ./desktop/src-tauri
         run: cargo fmt --all -- --check
 
       - name: Clippy Check
-        working-directory: ./src-tauri
+        working-directory: ./desktop/src-tauri
         run: cargo clippy --all-targets -- -D warnings
 
       - name: Rust Tests
-        working-directory: ./src-tauri
+        working-directory: ./desktop/src-tauri
         run: cargo test
 
       - name: Setup Node.js
@@ -73,5 +73,5 @@ jobs:
         run: cargo install cargo-audit
 
       - name: Audit Dependencies
-        working-directory: ./src-tauri
+        working-directory: ./desktop/src-tauri
         run: cargo audit

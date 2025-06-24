@@ -198,18 +198,6 @@ export interface RefineTaskDescriptionCommandArgs {
 }
 
 
-// Commands from guidance_commands
-export interface GenerateGuidanceCommandArgs {
-  projectHash: string;
-  projectDirectory: string;
-  taskDescription: string;
-  paths?: Array<string> | null;
-  fileContentsSummary?: string | null;
-  systemPromptOverride?: string | null;
-  modelOverride?: string | null;
-  temperatureOverride?: number | null;
-  maxTokensOverride?: number | null;
-}
 
 
 // Commands from implementation_plan_commands
@@ -350,17 +338,7 @@ export interface GenerateRegexCommandArgs {
 }
 
 
-// Commands from text_commands
-export interface ImproveTextCommandArgs {
-  projectHash: string;
-  text: string;
-  projectDirectory?: string | null;
-  modelOverride?: string | null;
-  temperatureOverride?: number | null;
-  maxTokensOverride?: number | null;
-  targetField?: string | null;
-}
-
+// Commands from text_commands  
 export interface ImproveTextCommandArgs {
   projectHash: string;
   textToImprove: string;
@@ -404,40 +382,6 @@ export interface TranscribeAudioDirectCommandArgs {
   durationMs: number;
 }
 
-// Commands from voice_commands - transcription settings
-export interface TranscriptionSettings {
-  defaultLanguage?: string | null;
-  defaultPrompt?: string | null;
-  defaultTemperature?: number | null;
-  model?: string | null;
-}
-
-export interface GetTranscriptionSettingsCommandArgs {
-}
-
-export interface SetTranscriptionSettingsCommandArgs {
-  settings: TranscriptionSettings;
-}
-
-export interface GetProjectTranscriptionSettingsCommandArgs {
-  projectDirectory: string;
-}
-
-export interface SetProjectTranscriptionSettingsCommandArgs {
-  projectDirectory: string;
-  settings: TranscriptionSettings;
-}
-
-export interface ResetTranscriptionSettingsCommandArgs {
-}
-
-export interface GetEffectiveTranscriptionSettingsCommandArgs {
-  projectDirectory?: string | null;
-}
-
-export interface ValidateTranscriptionSettingsCommandArgs {
-  settings: TranscriptionSettings;
-}
 
 // Commands from settings_commands - system prompt related
 export interface GetProjectSystemPromptCommandArgs {
@@ -580,6 +524,7 @@ export interface CancelWorkflowStageCommandArgs {
 // Common result types
 export interface JobResult {
   jobId: string;
+  duration_ms?: number;
 }
 
 export interface DatabaseInfo {
@@ -603,6 +548,7 @@ export interface BatchTranscriptionResponse {
   chunkIndex: number;
   text: string;
   processingTimeMs?: number;
+  duration_ms?: number;
 }
 
 // Tauri invoke function type
@@ -643,7 +589,6 @@ export type TauriInvoke = {
   "refine_task_description_command": (args: RefineTaskDescriptionCommandArgs) => Promise<JobResult>;
   "estimate_prompt_tokens_command": (args: EstimatePromptTokensCommandArgs) => Promise<PromptTokenEstimateResponse>;
   "get_prompt_command": (args: GetPromptCommandArgs) => Promise<PromptResponse>;
-  "generate_guidance_command": (args: GenerateGuidanceCommandArgs) => Promise<JobResult>;
   "create_implementation_plan_command": (args: CreateImplementationPlanCommandArgs) => Promise<JobResult>;
   "read_implementation_plan_command": (args: ReadImplementationPlanCommandArgs) => Promise<{
     id: string;
@@ -665,17 +610,10 @@ export type TauriInvoke = {
   "estimate_path_finder_tokens_command": (args: EstimatePathFinderTokensCommandArgs) => Promise<import("@/actions/ai/path-finder.actions").TokenEstimateResponse>;
   "generate_regex_command": (args: GenerateRegexCommandArgs) => Promise<JobResult>;
   "improve_text_command": (args: ImproveTextCommandArgs) => Promise<JobResult>;
-  "generate_simple_text_command": (args: GenerateSimpleTextCommandArgs) => Promise<string>;
+  "generate_simple_text_command": (args: GenerateSimpleTextCommandArgs) => Promise<{ text: string; duration_ms?: number }>;
   "create_transcription_job_command": (args: CreateTranscriptionJobCommandArgs) => Promise<JobResult>;
   "transcribe_audio_batch_command": (args: TranscribeAudioBatchCommandArgs) => Promise<BatchTranscriptionResponse>;
-  "transcribe_audio_direct_command": (args: TranscribeAudioDirectCommandArgs) => Promise<{ text: string }>;
-  "get_transcription_settings_command": (args: GetTranscriptionSettingsCommandArgs) => Promise<TranscriptionSettings>;
-  "set_transcription_settings_command": (args: SetTranscriptionSettingsCommandArgs) => Promise<void>;
-  "get_project_transcription_settings_command": (args: GetProjectTranscriptionSettingsCommandArgs) => Promise<TranscriptionSettings>;
-  "set_project_transcription_settings_command": (args: SetProjectTranscriptionSettingsCommandArgs) => Promise<void>;
-  "reset_transcription_settings_command": (args: ResetTranscriptionSettingsCommandArgs) => Promise<void>;
-  "get_effective_transcription_settings_command": (args: GetEffectiveTranscriptionSettingsCommandArgs) => Promise<TranscriptionSettings>;
-  "validate_transcription_settings_command": (args: ValidateTranscriptionSettingsCommandArgs) => Promise<string[]>;
+  "transcribe_audio_direct_command": (args: TranscribeAudioDirectCommandArgs) => Promise<{ text: string; duration_ms?: number }>;
   "get_key_value_command": (args: GetKeyValueCommandArgs) => Promise<string | null>;
   "set_key_value_command": (args: SetKeyValueCommandArgs) => Promise<void>;
   "get_workflow_setting_command": (args: GetWorkflowSettingCommandArgs) => Promise<string | null>;
@@ -1076,12 +1014,20 @@ export interface BillingDashboardSpendingDetails {
   periodEnd: string;
 }
 
+export interface BillingDashboardAllowanceDetails {
+  usedAmountUsd: number;
+  totalAllowanceUsd: number;
+  periodEnd: string;
+}
+
 export interface BillingDashboardData {
   planDetails: BillingDashboardPlanDetails;
   spendingDetails: BillingDashboardSpendingDetails;
+  allowanceDetails: BillingDashboardAllowanceDetails;
   creditBalanceUsd: number;
   subscriptionStatus: string;
   trialEndsAt?: string;
+  servicesBlocked: boolean;
 }
 
 // Strongly typed invoke function

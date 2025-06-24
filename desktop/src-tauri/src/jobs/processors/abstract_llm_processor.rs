@@ -2,6 +2,7 @@ use std::sync::Arc;
 use tauri::AppHandle;
 use log::{debug, info, warn};
 use serde_json::Value;
+use chrono;
 
 use crate::error::{AppError, AppResult};
 use crate::models::OpenRouterUsage;
@@ -46,7 +47,6 @@ pub struct LlmPromptContext {
     pub task_description: String,
     pub file_contents: Option<std::collections::HashMap<String, String>>,
     pub directory_tree: Option<String>,
-    pub system_prompt_override: Option<String>,
 }
 
 /// Abstract LLM task runner that provides common functionality for all LLM-based processors
@@ -75,7 +75,7 @@ impl LlmTaskRunner {
         debug!("Executing LLM task for job {}", self.job.id);
 
         // Build unified prompt
-        let composed_prompt = self.build_prompt(context, settings_repo).await?;
+        let composed_prompt = self.build_prompt(context).await?;
         
         // Extract system and user prompts using direct field access
         let system_prompt = composed_prompt.system_prompt.clone();
@@ -84,7 +84,10 @@ impl LlmTaskRunner {
         let system_prompt_template = composed_prompt.system_prompt_template.clone();
         
         // Log the actual system prompt being sent to the LLM
-        info!("System prompt (ID: {}) being sent to LLM: {}", system_prompt_id, system_prompt);
+        info!("System prompt (ID: {}) being sent to LLM", system_prompt_id);
+        
+        // Log full prompt to file for debugging
+        self.log_prompt_to_file(&system_prompt, &user_prompt, "non_streaming").await;
         
         // Create messages
         let messages = llm_api_utils::create_openrouter_messages(&system_prompt, &user_prompt);
@@ -114,6 +117,9 @@ impl LlmTaskRunner {
         // Ensure we capture server-calculated cost from the non-streaming response
         debug!("Non-streaming LLM response usage: {:?}", response.usage);
         
+        // Log complete interaction (prompt + response) to file for debugging
+        self.log_complete_interaction(&system_prompt, &user_prompt, &response_text, &response.usage, "non_streaming").await;
+        
         Ok(LlmTaskResult {
             response: response_text,
             usage: response.usage, // Contains server-calculated cost
@@ -137,7 +143,7 @@ impl LlmTaskRunner {
             .ok_or_else(|| AppError::JobError(format!("Job {} not found for streaming metadata", job_id)))?;
 
         // Build unified prompt
-        let composed_prompt = self.build_prompt(context, settings_repo).await?;
+        let composed_prompt = self.build_prompt(context).await?;
         
         // Extract system and user prompts using direct field access
         let system_prompt = composed_prompt.system_prompt.clone();
@@ -152,6 +158,9 @@ impl LlmTaskRunner {
             self.config.max_tokens,
             true, // Force streaming
         )?;
+        
+        // Log full prompt to file for debugging
+        self.log_prompt_to_file(&system_prompt, &user_prompt, "streaming").await;
         
         info!("Making streaming LLM API call with model: {}", self.config.model);
         
@@ -181,6 +190,9 @@ impl LlmTaskRunner {
         // Ensure we capture server-calculated cost from the streaming response
         debug!("Streaming LLM response usage: {:?}", stream_result.final_usage);
         
+        // Log complete interaction (prompt + response) to file for debugging
+        self.log_complete_interaction(&system_prompt, &user_prompt, &stream_result.accumulated_response, &stream_result.final_usage, "streaming").await;
+        
         Ok(LlmTaskResult {
             response: stream_result.accumulated_response,
             usage: stream_result.final_usage, // Contains server-calculated cost from final stream chunk
@@ -194,29 +206,7 @@ impl LlmTaskRunner {
     async fn build_prompt(
         &self,
         context: LlmPromptContext,
-        settings_repo: &crate::db_utils::SettingsRepository,
     ) -> AppResult<ComposedPrompt> {
-        // Handle system prompt override
-        if let Some(override_prompt) = &context.system_prompt_override {
-            if context.task_description.is_empty() {
-                warn!("LlmTaskRunner (job {}): Using system_prompt_override with an empty task_description.", self.job.id);
-            }
-            
-            // Calculate tokens based on combined prompt
-            let combined_content = format!("{}\n\n{}", override_prompt, context.task_description);
-            
-            return Ok(crate::utils::unified_prompt_system::ComposedPrompt {
-                system_prompt: override_prompt.clone(),
-                user_prompt: context.task_description.clone(),
-                system_prompt_id: "override".to_string(),
-                system_prompt_template: override_prompt.clone(), // For override, template and resolved are the same
-                context_sections: vec![], // No context sections for override
-                estimated_total_tokens: Some(crate::utils::token_estimator::estimate_tokens(&combined_content) as usize),
-                estimated_system_tokens: Some(0),
-                estimated_user_tokens: Some(crate::utils::token_estimator::estimate_tokens(&combined_content) as usize),
-            });
-        }
-
         // Validate that we have at least task_description for meaningful prompt generation
         if context.task_description.trim().is_empty() {
             warn!("LlmTaskRunner (job {}): Task description is empty, prompt quality may be poor", self.job.id);
@@ -230,7 +220,6 @@ impl LlmTaskRunner {
             context.task_description,
             context.file_contents,
             context.directory_tree,
-            settings_repo,
             &self.config.model,
         ).await
     }
@@ -277,6 +266,63 @@ impl LlmTaskRunner {
             Some(self.config.model.clone()),
             &self.app_handle,
         ).await
+    }
+
+    /// Log prompt to temporary file for debugging
+    async fn log_prompt_to_file(&self, system_prompt: &str, user_prompt: &str, prompt_type: &str) {
+        let base_dir = std::path::Path::new("/path/to/project/tmp");
+        let task_type_dir = base_dir.join("llm_logs").join(format!("{:?}", self.job.job_type));
+        
+        if let Err(_) = tokio::fs::create_dir_all(&task_type_dir).await {
+            // Silently fail if can't create directory
+            return;
+        }
+        
+        let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S%.3f");
+        let filename = format!("prompt_{}_{}.txt", self.job.id, timestamp);
+        let filepath = task_type_dir.join(filename);
+        
+        let full_prompt = format!(
+            "=== JOB ID: {} ===\n=== TASK TYPE: {:?} ===\n=== MODEL: {} ===\n=== TEMPERATURE: {} ===\n=== PROMPT TYPE: {} ===\n\n=== SYSTEM PROMPT ===\n{}\n\n=== USER PROMPT ===\n{}\n\n=== END ===\n",
+            self.job.id, self.job.job_type, self.config.model, self.config.temperature, prompt_type, system_prompt, user_prompt
+        );
+        
+        let _ = tokio::fs::write(&filepath, full_prompt).await;
+    }
+    
+    /// Log complete LLM interaction (prompt + response) to temporary file for debugging
+    async fn log_complete_interaction(&self, system_prompt: &str, user_prompt: &str, response: &str, usage: &Option<crate::models::OpenRouterUsage>, prompt_type: &str) {
+        let base_dir = std::path::Path::new("/path/to/project/tmp");
+        let task_type_dir = base_dir.join("llm_interactions").join(format!("{:?}", self.job.job_type));
+        
+        if let Err(_) = tokio::fs::create_dir_all(&task_type_dir).await {
+            // Silently fail if can't create directory
+            return;
+        }
+        
+        let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S%.3f");
+        let filename = format!("interaction_{}_{}.txt", self.job.id, timestamp);
+        let filepath = task_type_dir.join(filename);
+        
+        // Format usage information
+        let usage_info = if let Some(usage) = usage {
+            format!(
+                "=== USAGE ===\nInput Tokens: {}\nOutput Tokens: {}\nTotal Tokens: {}\nCost: ${:.6}\n\n",
+                usage.prompt_tokens,
+                usage.completion_tokens,
+                usage.total_tokens,
+                usage.cost.unwrap_or(0.0)
+            )
+        } else {
+            "=== USAGE ===\nNo usage information available\n\n".to_string()
+        };
+        
+        let full_interaction = format!(
+            "=== LLM INTERACTION LOG ===\n=== JOB ID: {} ===\n=== TASK TYPE: {:?} ===\n=== MODEL: {} ===\n=== TEMPERATURE: {} ===\n=== PROMPT TYPE: {} ===\n\n{}\n=== SYSTEM PROMPT ===\n{}\n\n=== USER PROMPT ===\n{}\n\n=== LLM RESPONSE ===\n{}\n\n=== END INTERACTION ===\n",
+            self.job.id, self.job.job_type, self.config.model, self.config.temperature, prompt_type, usage_info, system_prompt, user_prompt, response
+        );
+        
+        let _ = tokio::fs::write(&filepath, full_interaction).await;
     }
 }
 

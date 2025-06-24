@@ -175,7 +175,7 @@ export function UsageDetailsModal({ open, onOpenChange }: UsageDetailsModalProps
                   {data.map((usage, index) => (
                     <tr key={index} className="hover:bg-muted/30">
                       <td className="border border-border px-4 py-2 text-sm">
-                        {usage.modelDisplayName}
+                        {usage.serviceName}
                       </td>
                       <td className="border border-border px-4 py-2 text-sm">
                         {usage.providerCode}
@@ -187,7 +187,7 @@ export function UsageDetailsModal({ open, onOpenChange }: UsageDetailsModalProps
                         {formatUsdCurrency(usage.totalCost)}
                       </td>
                       <td className="border border-border px-4 py-2 text-sm text-right">
-                        {usage.totalRequests?.toLocaleString() ?? 'N/A'}
+                        {usage.totalRequests.toLocaleString()}
                       </td>
                     </tr>
                   ))}

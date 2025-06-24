@@ -277,6 +277,306 @@ impl ServerProxyClient {
             map_server_proxy_error(status_code, error_text)
         }
     }
+    
+    /// Log detailed API request information to debug files
+    async fn log_api_request_details(&self, request: &OpenRouterRequest, endpoint_url: &str, is_streaming: bool) {
+        use chrono;
+        
+        let base_dir = std::path::Path::new("/path/to/project/tmp");
+        let api_logs_dir = base_dir.join("api_requests");
+        
+        if let Err(_) = tokio::fs::create_dir_all(&api_logs_dir).await {
+            // Silently fail if can't create directory
+            return;
+        }
+        
+        let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S%.3f");
+        let request_type = if is_streaming { "streaming" } else { "non_streaming" };
+        let filename = format!("api_request_{}_{}.txt", request_type, timestamp);
+        let filepath = api_logs_dir.join(filename);
+        
+        // Extract message content for logging
+        let mut message_summary = String::new();
+        for (i, message) in request.messages.iter().enumerate() {
+            message_summary.push_str(&format!("Message {}: Role: {}\n", i + 1, message.role));
+            for (j, content) in message.content.iter().enumerate() {
+                match content {
+                    OpenRouterContent::Text { text, .. } => {
+                        let preview = if text.len() > 500 {
+                            format!("{}... ({} total chars)", &text[..500], text.len())
+                        } else {
+                            text.clone()
+                        };
+                        message_summary.push_str(&format!("  Content {}: {}\n", j + 1, preview));
+                    }
+                    OpenRouterContent::Image { .. } => {
+                        message_summary.push_str(&format!("  Content {}: [Image]\n", j + 1));
+                    }
+                }
+            }
+            message_summary.push('\n');
+        }
+        
+        // Serialize request for complete details
+        let request_json = match serde_json::to_string_pretty(request) {
+            Ok(json) => json,
+            Err(_) => "Failed to serialize request".to_string(),
+        };
+        
+        let log_content = format!(
+            "=== API REQUEST LOG ===\n\
+            Timestamp: {}\n\
+            Request Type: {}\n\
+            Endpoint URL: {}\n\
+            Server URL: {}\n\n\
+            === REQUEST PARAMETERS ===\n\
+            Model: {}\n\
+            Max Tokens: {:?}\n\
+            Temperature: {:?}\n\
+            Stream: {}\n\
+            Total Messages: {}\n\n\
+            === MESSAGE SUMMARY ===\n\
+            {}\n\
+            === COMPLETE REQUEST JSON ===\n\
+            {}\n\n\
+            === END API REQUEST LOG ===\n",
+            chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC"),
+            request_type,
+            endpoint_url,
+            self.server_url,
+            request.model,
+            request.max_tokens,
+            request.temperature,
+            request.stream,
+            request.messages.len(),
+            message_summary,
+            request_json
+        );
+        
+        let _ = tokio::fs::write(&filepath, log_content).await;
+        info!("API request details logged to: {:?}", filepath);
+    }
+    
+    /// Execute chat completion with duration measurement and retry logic
+    /// For duration-based models, we make two attempts: first with estimated duration,
+    /// then retry with actual measured duration if the first fails
+    async fn execute_chat_completion_with_duration(
+        &self,
+        messages: Vec<crate::models::OpenRouterRequestMessage>,
+        options: ApiClientOptions,
+        auth_token: String,
+    ) -> AppResult<OpenRouterResponse> {
+        // Create request with estimated duration (used for initial attempt)
+        let estimated_duration_ms = self.estimate_request_duration(&messages, &options.model);
+        
+        let mut request = OpenRouterRequest {
+            model: options.model.clone(),
+            messages: messages.clone(),
+            stream: options.stream,
+            max_tokens: Some(options.max_tokens),
+            temperature: Some(options.temperature),
+            duration_ms: Some(estimated_duration_ms),
+        };
+        
+        // Create the server proxy endpoint URL for LLM chat completions
+        let proxy_url = format!("{}/api/llm/chat/completions", self.server_url);
+        
+        // Log detailed API request information before sending
+        self.log_api_request_details(&request, &proxy_url, false).await;
+        
+        // Record start time for actual duration measurement
+        let start_time = std::time::Instant::now();
+        
+        // Make the HTTP request with estimated duration
+        let response = self.http_client
+            .post(&proxy_url)
+            .header(header::CONTENT_TYPE, "application/json")
+            .header("Authorization", format!("Bearer {}", auth_token))
+            .header("HTTP-Referer", APP_HTTP_REFERER)
+            .header("X-Title", APP_X_TITLE)
+            .json(&request)
+            .send()
+            .await
+            .map_err(|e| AppError::HttpError(e.to_string()))?;
+        
+        // Record actual duration
+        let actual_duration = start_time.elapsed();
+        let actual_duration_ms = actual_duration.as_millis() as i64;
+        debug!("LLM API call duration: {}ms (estimated: {}ms)", actual_duration_ms, estimated_duration_ms);
+            
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_text = response.text().await.unwrap_or_else(|_| "Failed to get error text".to_string());
+            
+            // Check if error is specifically about duration_ms parameter
+            if error_text.contains("Duration-based models require duration_ms parameter") {
+                warn!("Retrying request with actual measured duration: {}ms", actual_duration_ms);
+                
+                // Retry with actual measured duration
+                request.duration_ms = Some(actual_duration_ms);
+                
+                let retry_response = self.http_client
+                    .post(&proxy_url)
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .header("Authorization", format!("Bearer {}", auth_token))
+                    .header("HTTP-Referer", APP_HTTP_REFERER)
+                    .header("X-Title", APP_X_TITLE)
+                    .json(&request)
+                    .send()
+                    .await
+                    .map_err(|e| AppError::HttpError(e.to_string()))?;
+                
+                if !retry_response.status().is_success() {
+                    let retry_status = retry_response.status();
+                    let retry_error_text = retry_response.text().await.unwrap_or_else(|_| "Failed to get error text".to_string());
+                    return Err(self.handle_auth_error(retry_status.as_u16(), &retry_error_text).await);
+                }
+                
+                let server_response: OpenRouterResponse = retry_response.json().await
+                    .map_err(|e| AppError::ServerProxyError(format!("Failed to parse server proxy response: {}", e)))?;
+                
+                trace!("Server proxy chat completion response (after retry): {:?}", server_response);
+                return Ok(server_response);
+            }
+            
+            // Use enhanced auth error handling for other errors
+            return Err(self.handle_auth_error(status.as_u16(), &error_text).await);
+        }
+        
+        let server_response: OpenRouterResponse = response.json().await
+            .map_err(|e| AppError::ServerProxyError(format!("Failed to parse server proxy response: {}", e)))?;
+            
+        trace!("Server proxy chat completion response: {:?}", server_response);
+        Ok(server_response)
+    }
+    
+    /// Estimate request duration based on message content and model
+    /// This provides a reasonable duration estimate for initial requests
+    fn estimate_request_duration(&self, messages: &[crate::models::OpenRouterRequestMessage], model: &str) -> i64 {
+        // Calculate total content length
+        let total_chars: usize = messages.iter()
+            .flat_map(|msg| &msg.content)
+            .map(|content| match content {
+                crate::models::OpenRouterContent::Text { text, .. } => text.len(),
+                crate::models::OpenRouterContent::Image { .. } => 100, // Estimate for image processing
+            })
+            .sum();
+        
+        // Base duration estimation based on content length and model type
+        let base_duration = if total_chars < 1000 {
+            2000 // 2 seconds for short requests
+        } else if total_chars < 5000 {
+            5000 // 5 seconds for medium requests
+        } else {
+            10000 // 10 seconds for long requests
+        };
+        
+        // Adjust based on model (some models are slower)
+        let model_multiplier = if model.contains("gpt-4") || model.contains("claude") {
+            1.5 // Slower, more capable models
+        } else {
+            1.0 // Standard models
+        };
+        
+        (base_duration as f64 * model_multiplier) as i64
+    }
+    
+    /// Execute streaming chat completion with duration measurement
+    /// For streaming requests, we estimate duration and include it in the initial request
+    async fn execute_chat_completion_stream_with_duration(
+        &self,
+        messages: Vec<crate::models::OpenRouterRequestMessage>,
+        options: ApiClientOptions,
+        auth_token: String,
+    ) -> AppResult<Pin<Box<dyn Stream<Item = AppResult<OpenRouterStreamChunk>> + Send>>> {
+        // Ensure streaming is enabled
+        let mut options = options;
+        options.stream = true;
+        
+        // Estimate duration for the streaming request
+        let estimated_duration_ms = self.estimate_request_duration(&messages, &options.model);
+        
+        // Create request with estimated duration
+        let request = OpenRouterRequest {
+            model: options.model.clone(),
+            messages,
+            stream: options.stream,
+            max_tokens: Some(options.max_tokens),
+            temperature: Some(options.temperature),
+            duration_ms: Some(estimated_duration_ms),
+        };
+        
+        // Create the server proxy endpoint URL for streaming LLM chat completions
+        let proxy_url = format!("{}/api/llm/chat/completions", self.server_url);
+        
+        // Log detailed API request information before sending
+        self.log_api_request_details(&request, &proxy_url, true).await;
+        
+        debug!("Starting streaming request with estimated duration: {}ms", estimated_duration_ms);
+        
+        let request_builder = self.http_client
+            .post(&proxy_url)
+            .header(header::CONTENT_TYPE, "application/json")
+            .header("Authorization", format!("Bearer {}", auth_token))
+            .header("HTTP-Referer", APP_HTTP_REFERER)
+            .header("X-Title", APP_X_TITLE)
+            .json(&request);
+        
+        let event_source = EventSource::new(request_builder)
+            .map_err(|e| AppError::HttpError(format!("Failed to create EventSource: {}", e)))?;
+        
+        // Track stream start time for actual duration measurement
+        let stream_start_time = std::time::Instant::now();
+        
+        let stream = futures::stream::unfold((event_source, stream_start_time, false), move |(mut event_source, start_time, mut stream_ended)| async move {
+            loop {
+                match event_source.next().await {
+                    Some(Ok(Event::Message(message))) => {
+                        if message.data == "[DONE]" {
+                            if !stream_ended {
+                                let actual_duration = start_time.elapsed();
+                                let actual_duration_ms = actual_duration.as_millis() as i64;
+                                debug!("Streaming completed in {}ms (estimated: {}ms)", actual_duration_ms, estimated_duration_ms);
+                                stream_ended = true;
+                            }
+                            debug!("Received [DONE] signal, ending stream");
+                            return None;
+                        }
+                        
+                        match serde_json::from_str::<OpenRouterStreamChunk>(&message.data) {
+                            Ok(chunk) => {
+                                trace!("Successfully parsed stream chunk");
+                                return Some((Ok(chunk), (event_source, start_time, stream_ended)));
+                            },
+                            Err(e) => {
+                                debug!("Failed to parse streaming chunk: {} - Data: '{}'", e, message.data);
+                                return Some((Err(AppError::InvalidResponse(format!("Invalid streaming JSON: {}", e))), (event_source, start_time, stream_ended)));
+                            }
+                        }
+                    },
+                    Some(Ok(Event::Open)) => {
+                        debug!("EventSource stream opened");
+                        continue;
+                    },
+                    Some(Err(e)) => {
+                        error!("EventSource error: {}", e);
+                        return Some((Err(AppError::NetworkError(format!("EventSource error: {}", e))), (event_source, start_time, stream_ended)));
+                    },
+                    None => {
+                        if !stream_ended {
+                            let actual_duration = start_time.elapsed();
+                            let actual_duration_ms = actual_duration.as_millis() as i64;
+                            debug!("Streaming ended in {}ms (estimated: {}ms)", actual_duration_ms, estimated_duration_ms);
+                        }
+                        debug!("EventSource stream ended");
+                        return None;
+                    }
+                }
+            }
+        });
+        
+        Ok(Box::pin(stream))
+    }
 }
 
 #[async_trait]
@@ -348,42 +648,8 @@ impl ApiClient for ServerProxyClient {
         // Get auth token
         let auth_token = self.get_auth_token().await?;
         
-        // Create request with the provided messages
-        let request = OpenRouterRequest {
-            model: options.model.clone(),
-            messages,
-            stream: options.stream,
-            max_tokens: Some(options.max_tokens),
-            temperature: Some(options.temperature),
-        };
-        
-        // Create the server proxy endpoint URL for LLM chat completions
-        let proxy_url = format!("{}/api/llm/chat/completions", self.server_url);
-        
-        let response = self.http_client
-            .post(&proxy_url)
-            .header(header::CONTENT_TYPE, "application/json")
-            .header("Authorization", format!("Bearer {}", auth_token))
-            .header("HTTP-Referer", APP_HTTP_REFERER)
-            .header("X-Title", APP_X_TITLE)
-            .json(&request)
-            .send()
-            .await
-            .map_err(|e| AppError::HttpError(e.to_string()))?;
-            
-        if !response.status().is_success() {
-            let status = response.status();
-            let error_text = response.text().await.unwrap_or_else(|_| "Failed to get error text".to_string());
-            
-            // Use enhanced auth error handling
-            return Err(self.handle_auth_error(status.as_u16(), &error_text).await);
-        }
-        
-        let server_response: OpenRouterResponse = response.json().await
-            .map_err(|e| AppError::ServerProxyError(format!("Failed to parse server proxy response: {}", e)))?;
-            
-        trace!("Server proxy chat completion response: {:?}", server_response);
-        Ok(server_response)
+        // Perform the API call with duration measurement using internal helper
+        self.execute_chat_completion_with_duration(messages, options, auth_token).await
     }
     
     
@@ -399,69 +665,7 @@ impl ApiClient for ServerProxyClient {
         // Get auth token
         let auth_token = self.get_auth_token().await?;
         
-        // Ensure streaming is enabled
-        let mut options = options;
-        options.stream = true;
-        
-        // Create request with the provided messages
-        let request = OpenRouterRequest {
-            model: options.model.clone(),
-            messages,
-            stream: options.stream,
-            max_tokens: Some(options.max_tokens),
-            temperature: Some(options.temperature),
-        };
-        
-        // Create the server proxy endpoint URL for streaming LLM chat completions
-        let proxy_url = format!("{}/api/llm/chat/completions", self.server_url);
-        
-        let request_builder = self.http_client
-            .post(&proxy_url)
-            .header(header::CONTENT_TYPE, "application/json")
-            .header("Authorization", format!("Bearer {}", auth_token))
-            .header("HTTP-Referer", APP_HTTP_REFERER)
-            .header("X-Title", APP_X_TITLE)
-            .json(&request);
-        
-        let event_source = EventSource::new(request_builder)
-            .map_err(|e| AppError::HttpError(format!("Failed to create EventSource: {}", e)))?;
-        
-        let stream = futures::stream::unfold(event_source, |mut event_source| async move {
-            loop {
-                match event_source.next().await {
-                    Some(Ok(Event::Message(message))) => {
-                        if message.data == "[DONE]" {
-                            debug!("Received [DONE] signal, ending stream");
-                            return None;
-                        }
-                        
-                        match serde_json::from_str::<OpenRouterStreamChunk>(&message.data) {
-                            Ok(chunk) => {
-                                trace!("Successfully parsed stream chunk");
-                                return Some((Ok(chunk), event_source));
-                            },
-                            Err(e) => {
-                                debug!("Failed to parse streaming chunk: {} - Data: '{}'", e, message.data);
-                                return Some((Err(AppError::InvalidResponse(format!("Invalid streaming JSON: {}", e))), event_source));
-                            }
-                        }
-                    },
-                    Some(Ok(Event::Open)) => {
-                        debug!("EventSource stream opened");
-                        continue;
-                    },
-                    Some(Err(e)) => {
-                        error!("EventSource error: {}", e);
-                        return Some((Err(AppError::NetworkError(format!("EventSource error: {}", e))), event_source));
-                    },
-                    None => {
-                        debug!("EventSource stream ended");
-                        return None;
-                    }
-                }
-            }
-        });
-        
-        Ok(Box::pin(stream))
+        // Execute streaming with duration measurement using internal helper
+        self.execute_chat_completion_stream_with_duration(messages, options, auth_token).await
     }
 }

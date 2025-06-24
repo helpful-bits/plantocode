@@ -7,6 +7,7 @@ use crate::db::repositories::user_credit_repository::UserCreditRepository;
 use crate::db::repositories::credit_transaction_repository::{CreditTransactionRepository, CreditTransaction};
 use crate::db::repositories::model_repository::ModelRepository;
 use crate::models::model_pricing::ModelPricing;
+use crate::services::stripe_service::StripeService;
 use uuid::Uuid;
 use log::{debug, error, info, warn};
 use chrono::{DateTime, Utc, Datelike, NaiveDate, Duration};
@@ -84,6 +85,7 @@ pub struct CostBasedBillingService {
     user_credit_repository: Arc<UserCreditRepository>,
     credit_transaction_repository: Arc<CreditTransactionRepository>,
     model_repository: Arc<ModelRepository>,
+    stripe_service: Arc<StripeService>,
     default_trial_days: i64,
 }
 
@@ -97,6 +99,7 @@ impl CostBasedBillingService {
         user_credit_repository: Arc<UserCreditRepository>,
         credit_transaction_repository: Arc<CreditTransactionRepository>,
         model_repository: Arc<ModelRepository>,
+        stripe_service: Arc<StripeService>,
         default_trial_days: i64,
     ) -> Self {
         Self {
@@ -108,8 +111,130 @@ impl CostBasedBillingService {
             user_credit_repository,
             credit_transaction_repository,
             model_repository,
+            stripe_service,
             default_trial_days,
         }
+    }
+
+
+    /// Calculate cost, apply markup, record usage, and report to Stripe for metered billing
+    /// This centralizes all cost logic and integrates with Stripe's metered billing system
+    pub async fn calculate_and_report_usage(
+        &self,
+        user_id: &Uuid,
+        model_id: &str,
+        input_tokens: i32,
+        output_tokens: i32,
+        duration_ms: Option<i64>,
+    ) -> Result<BigDecimal, AppError> {
+        // Start a transaction for atomic operations
+        let mut tx = self.db_pools.user_pool.begin().await.map_err(AppError::from)?;
+        
+        // Set user context for RLS within the transaction
+        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
+            .bind(user_id.to_string())
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| AppError::Database(format!("Failed to set user context in transaction: {}", e)))?;
+
+        // Fetch the model using ModelRepository
+        let model = self.model_repository.find_by_id(model_id).await?
+            .ok_or_else(|| AppError::NotFound(format!("Model not found: {}", model_id)))?;
+
+        // Validate model configuration for duration-based models
+        model.validate_duration_model_config()
+            .map_err(|e| AppError::InvalidArgument(format!("Model configuration error: {}", e)))?;
+
+        // Fetch user's active subscription to get plan details and markup percentage
+        let subscription = self.subscription_repository.get_by_user_id_with_executor(user_id, &mut tx).await?
+            .ok_or_else(|| AppError::NotFound("User subscription not found".to_string()))?;
+
+        // Get plan markup percentage
+        let plan = sqlx::query!(
+            r#"
+            SELECT cost_markup_percentage
+            FROM subscription_plans 
+            WHERE id = $1
+            "#,
+            subscription.plan_id
+        )
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(AppError::from)?;
+
+        let markup_percentage = plan.cost_markup_percentage;
+
+        // Calculate base cost using model pricing with strict validation
+        let base_cost = if model.is_duration_based() {
+            let duration = duration_ms.ok_or_else(|| 
+                AppError::InvalidArgument("Duration-based models require duration_ms parameter".to_string()))?;
+            model.calculate_duration_cost(duration)
+                .map_err(|e| AppError::InvalidArgument(format!("Duration cost calculation failed: {}", e)))?
+        } else {
+            model.calculate_token_cost(input_tokens as i64, output_tokens as i64)
+        };
+
+        // Apply markup to determine final cost
+        let markup_multiplier = (markup_percentage.clone() + safe_bigdecimal_from_str("100")?) / safe_bigdecimal_from_str("100")?;
+        let final_cost = base_cost.clone() * markup_multiplier;
+
+        info!("Cost calculation for user {}: model={}, base_cost=${}, markup={}%, final_cost=${}", 
+              user_id, model_id, base_cost, markup_percentage, final_cost);
+
+        // Log detailed usage and calculated cost to api_usage table
+        self._record_usage_and_update_spending_in_tx(
+            user_id,
+            model_id,
+            input_tokens,
+            output_tokens,
+            &final_cost,
+            None, // request_id
+            Some(serde_json::json!({
+                "base_cost": base_cost.to_string(),
+                "markup_percentage": markup_percentage.to_string(),
+                "final_cost": final_cost.to_string(),
+                "model_pricing_used": true
+            })),
+            duration_ms.map(|d| d as i32), // processing_ms
+            duration_ms, // input_duration_ms
+            &mut tx,
+        ).await?;
+
+        // Report usage to Stripe's metered billing if customer has Stripe details
+        if let Some(stripe_customer_id) = &subscription.stripe_customer_id {
+            // Convert final cost to cents for Stripe (assuming USD)
+            let usage_quantity = (final_cost.to_f64().unwrap_or(0.0) * 100.0) as i64;
+            
+            // TODO: Configure subscription_item_id in application settings or environment
+            // For now, use a placeholder - this should be configurable based on the user's subscription
+            let subscription_item_id = subscription.stripe_subscription_id
+                .as_ref()
+                .map(|s| format!("{}_item", s)) // Construct item ID from subscription ID
+                .unwrap_or_else(|| "si_placeholder".to_string()); // Fallback placeholder
+            
+            match self.stripe_service.report_usage_record(
+                &subscription_item_id,
+                usage_quantity,
+                None, // timestamp - let Stripe use current time
+            ).await {
+                Ok(usage_record) => {
+                    info!("Successfully reported usage to Stripe for user {}: record_id={}, quantity={} cents", 
+                          user_id, usage_record.id, usage_quantity);
+                }
+                Err(e) => {
+                    error!("Failed to report usage to Stripe for user {}: {}", user_id, e);
+                    // Don't fail the entire operation if Stripe reporting fails
+                    // This ensures the local billing system remains functional
+                }
+            }
+        } else {
+            debug!("User {} has no Stripe customer ID, skipping usage record reporting", user_id);
+        }
+
+        // Commit transaction
+        tx.commit().await.map_err(AppError::from)?;
+
+        Ok(final_cost)
     }
 
     /// Calculate cost and record usage for a given model and token usage
@@ -136,6 +261,10 @@ impl CostBasedBillingService {
         let model = self.model_repository.find_by_id(model_id).await?
             .ok_or_else(|| AppError::NotFound(format!("Model not found: {}", model_id)))?;
 
+        // Validate model configuration for duration-based models
+        model.validate_duration_model_config()
+            .map_err(|e| AppError::InvalidArgument(format!("Model configuration error: {}", e)))?;
+
         // Fetch user's subscription to get plan markup percentage
         let subscription = self.subscription_repository.get_by_user_id_with_executor(user_id, &mut tx).await?
             .ok_or_else(|| AppError::NotFound("User subscription not found".to_string()))?;
@@ -155,10 +284,11 @@ impl CostBasedBillingService {
 
         let markup_percentage = plan.cost_markup_percentage;
 
-        // Calculate cost using model pricing with plan markup
+        // Calculate cost using model pricing with plan markup - strict validation for duration-based models
         let calculated_cost = if model.is_duration_based() {
-            // For duration-based models, we would need duration_ms instead of tokens
-            return Err(AppError::Internal("Duration-based models require duration_ms parameter".to_string()));
+            return Err(AppError::InvalidArgument(
+                "Duration-based models cannot be used with calculate_and_record_usage. Use calculate_and_report_usage with duration_ms parameter instead.".to_string()
+            ));
         } else {
             model.calculate_token_cost(tokens_input as i64, tokens_output as i64)
         };
@@ -183,15 +313,44 @@ impl CostBasedBillingService {
         Ok((calculated_cost, tokens_input, tokens_output))
     }
 
-    /// Check if user can access AI services based on spending limits
+    /// Check if user can access AI services based on spending limits and plan overage policies
     pub async fn check_service_access(&self, user_id: &Uuid) -> Result<bool, AppError> {
         // Get current spending status
         let spending_status = self.get_current_spending_status(user_id).await?;
         
-        // Use services_blocked flag from UserSpendingLimit struct returned by get_current_spending_status
+        // Use services_blocked flag from UserSpendingLimit struct
         if spending_status.services_blocked {
             debug!("Services blocked for user {} - spending limit exceeded", user_id);
             return Ok(false);
+        }
+
+        // Get user's subscription and plan to check overage policy
+        let subscription = self.subscription_repository.get_by_user_id(user_id).await?
+            .ok_or_else(|| AppError::NotFound("User subscription not found".to_string()))?;
+        
+        let plan = self.subscription_plan_repository.get_plan_by_id(&subscription.plan_id).await?;
+        
+        // Check if user has exceeded included allowance (before credits)
+        let has_exceeded_allowance = spending_status.current_spending > spending_status.included_allowance;
+        
+        if has_exceeded_allowance {
+            // Check plan's overage policy to determine if services should be blocked
+            match plan.should_block_services_on_overage() {
+                Ok(should_block) => {
+                    if should_block {
+                        info!("METERED BILLING: User {} exceeded allowance and plan doesn't allow overage - blocking services", user_id);
+                        self.block_services(user_id).await?;
+                        return Ok(false);
+                    } else {
+                        info!("METERED BILLING: User {} exceeded allowance but plan allows overage - services continue", user_id);
+                    }
+                },
+                Err(e) => {
+                    warn!("Failed to check overage policy for user {}: {} - defaulting to block", user_id, e);
+                    self.block_services(user_id).await?;
+                    return Ok(false);
+                }
+            }
         }
 
         // Check if hard limit would be exceeded with minimal additional cost
@@ -201,7 +360,7 @@ impl CostBasedBillingService {
         let effective_hard_limit = &spending_status.hard_limit + &spending_status.credit_balance;
         
         if projected_spending > effective_hard_limit {
-            warn!("User {} approaching effective hard limit (including credits), blocking services preemptively", user_id);
+            warn!("METERED BILLING: User {} approaching effective hard limit (including credits), blocking services preemptively", user_id);
             self.block_services(user_id).await?;
             return Ok(false);
         }
@@ -210,13 +369,15 @@ impl CostBasedBillingService {
     }
 
     /// Record AI service usage and update spending in real-time
+    /// This function is called by proxy handlers with server-calculated cost
+    /// ensuring the server is the single source of truth for cost calculation
     pub async fn record_usage_and_update_spending(
         &self,
         user_id: &Uuid,
         service_name: &str,
         tokens_input: i32,
         tokens_output: i32,
-        cost: &BigDecimal,
+        cost: &BigDecimal, // Server-calculated cost (definitive)
         request_id: Option<String>,
         metadata: Option<serde_json::Value>,
         processing_ms: Option<i32>,
@@ -242,7 +403,7 @@ impl CostBasedBillingService {
             service_name,
             tokens_input,
             tokens_output,
-            cost,
+            cost, // Use server-calculated cost
             request_id,
             metadata,
             processing_ms,
@@ -254,24 +415,26 @@ impl CostBasedBillingService {
             Ok(_) => {
                 tx.commit().await.map_err(AppError::from)?;
                 
-                
+                debug!("Successfully recorded usage and updated spending for user {}: cost=${}", user_id, cost);
                 Ok(())
             }
             Err(e) => {
                 let _ = tx.rollback().await; // Rollback on error
+                error!("Failed to record usage and update spending for user {}: {}", user_id, e);
                 Err(e)
             }
         }
     }
 
     /// Internal transactional version of record_usage_and_update_spending
+    /// Atomically records usage in api_usage table and updates current_spending in user_spending_limits
     async fn _record_usage_and_update_spending_in_tx(
         &self,
         user_id: &Uuid,
         service_name: &str,
         tokens_input: i32,
         tokens_output: i32,
-        cost: &BigDecimal,
+        cost: &BigDecimal, // Server-calculated definitive cost
         request_id: Option<String>,
         metadata: Option<serde_json::Value>,
         processing_ms: Option<i32>,
@@ -284,20 +447,21 @@ impl CostBasedBillingService {
             service_name: service_name.to_string(),
             tokens_input,
             tokens_output,
-            cost: cost.clone(),
+            cost: cost.clone(), // Use server-calculated cost
             request_id,
             metadata,
             processing_ms,
             input_duration_ms,
         };
         
+        // Record usage in api_usage table
         let api_usage_record = self.api_usage_repository.record_usage_with_executor(entry_dto, executor).await?;
 
-        // After recording in api_usage, call spending_repository.increment_spending_with_executor
-        // The increment should be atomic - removing ALL manual calculation logic
+        // Atomically update current_spending in user_spending_limits table
+        // This ensures single transaction for both operations
         self.increment_spending_with_executor(user_id, cost, executor).await?;
         
-        // Handle remaining cost with credits (simplified logic)
+        // Handle credit consumption (if user has available credits)
         let credit_balance_option = self.user_credit_repository.get_balance_with_executor(user_id, executor).await?;
         let credit_balance = credit_balance_option
             .map(|uc| uc.balance)
@@ -307,23 +471,24 @@ impl CostBasedBillingService {
             let cost_covered_by_credits = cost.clone().min(credit_balance);
             
             if cost_covered_by_credits > safe_bigdecimal_from_str("0")? {
-                // Deduct credits
+                // Deduct credits atomically
                 let negative_cost = -cost_covered_by_credits.clone();
                 self.user_credit_repository.increment_balance_with_executor(user_id, &negative_cost, executor).await?;
                 
-                // Record credit consumption transaction (amount should be negative for consumption)
+                // Record credit consumption transaction
                 let negative_amount = -cost_covered_by_credits.clone();
                 self.credit_transaction_repository.create_consumption_transaction_with_executor(
                     user_id,
                     &negative_amount,
                     &api_usage_record.id.unwrap_or_else(|| uuid::Uuid::new_v4()),
-                    Some(format!("Credit consumption for {} usage", service_name)),
+                    Some(format!("Credit consumption for {} usage (server-calculated cost)", service_name)),
                     executor,
                 ).await?;
             }
         }
 
-        debug!("Processed API usage for user {}: cost=${}", user_id, cost);
+        debug!("Processed API usage for user {}: service={}, tokens_in={}, tokens_out={}, cost=${}", 
+               user_id, service_name, tokens_input, tokens_output, cost);
 
         Ok(())
     }
@@ -516,6 +681,7 @@ impl CostBasedBillingService {
         .await
         .map_err(AppError::from)?;
         
+        // Get included allowance from plan
         let included_allowance: BigDecimal = if subscription.plan_id == "free" {
             safe_bigdecimal_from_str("2")?  // Set to exactly $2 for free plan
         } else {
@@ -523,7 +689,32 @@ impl CostBasedBillingService {
                 .unwrap_or_else(|| BigDecimal::from(0))
         };
 
-        let hard_limit: BigDecimal = included_allowance.clone();
+        // For metered billing, hard limit can be higher than included allowance if overage is allowed
+        // Check plan features to determine appropriate hard limit
+        let hard_limit: BigDecimal = {
+            // First get plan from subscription_plan_repository to check overage policy
+            let plan_features_result = self.subscription_plan_repository.get_plan_by_id(&subscription.plan_id).await;
+            match plan_features_result {
+                Ok(plan_obj) => {
+                    match plan_obj.allows_overage() {
+                        Ok(true) => {
+                            // If overage is allowed, set hard limit higher than included allowance
+                            // This allows for billing of overage charges
+                            let overage_multiplier = safe_bigdecimal_from_str("10")?; // Allow up to 10x overage
+                            &included_allowance * &overage_multiplier
+                        },
+                        Ok(false) | Err(_) => {
+                            // If no overage allowed or error checking, hard limit equals included allowance
+                            included_allowance.clone()
+                        }
+                    }
+                },
+                Err(_) => {
+                    // If can't get plan features, default to included allowance
+                    included_allowance.clone()
+                }
+            }
+        };
 
         // Create new spending limit struct and save using create_or_update_user_spending_limit_with_executor
         let new_spending_limit = UserSpendingLimit {
@@ -543,8 +734,8 @@ impl CostBasedBillingService {
         
         let _result = self.spending_repository.create_or_update_user_spending_limit_with_executor(&new_spending_limit, executor).await?;
 
-        info!("Created new spending limit for user {}: allowance=${}, hard_limit=${}", 
-              user_id, included_allowance, hard_limit);
+        info!("METERED BILLING: Created new spending limit for user {}: allowance=${}, hard_limit=${}, plan={}", 
+              user_id, included_allowance, hard_limit, subscription.plan_id);
 
         Ok(new_spending_limit)
     }
@@ -919,6 +1110,41 @@ impl CostBasedBillingService {
         let status_text = if blocked { "blocked" } else { "unblocked" };
         info!("Services {} for user {} via repository update", status_text, user_id);
         Ok(())
+    }
+
+    /// Calculate overage charges for billing based on plan's overage policy
+    pub async fn calculate_overage_charges(&self, user_id: &Uuid) -> Result<BigDecimal, AppError> {
+        // Get current spending status
+        let spending_status = self.get_current_spending_status(user_id).await?;
+        
+        // If no overage, return zero
+        if spending_status.overage_amount <= BigDecimal::from(0) {
+            return Ok(BigDecimal::from(0));
+        }
+        
+        // Get user's subscription and plan
+        let subscription = self.subscription_repository.get_by_user_id(user_id).await?
+            .ok_or_else(|| AppError::NotFound("User subscription not found".to_string()))?;
+        
+        let plan = self.subscription_plan_repository.get_plan_by_id(&subscription.plan_id).await?;
+        
+        // Calculate overage charges using plan's cost markup
+        let overage_charges = plan.calculate_overage_cost(&spending_status.overage_amount)?;
+        
+        info!("METERED BILLING: Calculated overage charges for user {}: overage_amount=${}, charges=${}", 
+              user_id, spending_status.overage_amount, overage_charges);
+              
+        Ok(overage_charges)
+    }
+
+    /// Check if user's plan supports metered billing
+    pub async fn plan_supports_metered_billing(&self, user_id: &Uuid) -> Result<bool, AppError> {
+        let subscription = self.subscription_repository.get_by_user_id(user_id).await?
+            .ok_or_else(|| AppError::NotFound("User subscription not found".to_string()))?;
+        
+        let plan = self.subscription_plan_repository.get_plan_by_id(&subscription.plan_id).await?;
+        
+        plan.supports_metered_billing()
     }
 
     /// Update spending limits when user changes subscription plans

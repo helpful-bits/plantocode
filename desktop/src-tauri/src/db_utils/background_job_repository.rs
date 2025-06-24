@@ -160,13 +160,29 @@ impl BackgroundJobRepository {
             
         // Emit streaming response update event to frontend if AppHandle is provided
         if let Some(handle) = app_handle {
-            let event_payload = serde_json::json!({
+            // Try to extract actualCost from metadata if present
+            let actual_cost = if let Ok(ui_metadata) = serde_json::from_str::<crate::jobs::types::JobUIMetadata>(&metadata_str) {
+                if let serde_json::Value::Object(ref task_map) = ui_metadata.task_data {
+                    task_map.get("actualCost").and_then(|v| v.as_f64())
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+            
+            let mut event_payload = serde_json::json!({
                 "job_id": job_id,
                 "response_chunk": chunk,
                 "chars_received": current_total_response_length,
                 "tokens_received": tokens_received,
                 "metadata": metadata_str
             });
+            
+            // Add actual_cost to the event payload if present
+            if let Some(cost) = actual_cost {
+                event_payload["actual_cost"] = serde_json::json!(cost);
+            }
             
             if let Err(e) = handle.emit("VIBE_MANAGER_JOB_RESPONSE_UPDATE_EVENT", &event_payload) {
                 log::warn!("Failed to emit job response update event for job {}: {}", job_id, e);
@@ -351,9 +367,9 @@ impl BackgroundJobRepository {
             r#"
             INSERT INTO background_jobs (
                 id, session_id, task_type, status, prompt, response, error_message,
-                tokens_sent, tokens_received, model_used, metadata, system_prompt_template,
+                tokens_sent, tokens_received, model_used, actual_cost, metadata, system_prompt_template,
                 created_at, updated_at, start_time, end_time
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
             "#)
             .bind(&job.id)
             .bind(&job.session_id)
@@ -365,6 +381,7 @@ impl BackgroundJobRepository {
             .bind(job.tokens_sent.map(|v| v as i64))
             .bind(job.tokens_received.map(|v| v as i64))
             .bind(&job.model_used)
+            .bind(job.actual_cost)
             // Note: cost field is not stored in database, only kept in memory
             .bind(&job.metadata)
             .bind(&job.system_prompt_template)
@@ -396,9 +413,10 @@ impl BackgroundJobRepository {
                 tokens_sent = $10,
                 tokens_received = $11,
                 model_used = $12,
-                metadata = $13,
-                system_prompt_template = $14
-            WHERE id = $15
+                actual_cost = $13,
+                metadata = $14,
+                system_prompt_template = $15
+            WHERE id = $16
             "#)
             .bind(&job.session_id)
             .bind(&job.task_type)
@@ -412,6 +430,7 @@ impl BackgroundJobRepository {
             .bind(job.tokens_sent.map(|v| v as i64))
             .bind(job.tokens_received.map(|v| v as i64))
             .bind(&job.model_used)
+            .bind(job.actual_cost)
             // Note: cost field is not stored in database, only kept in memory
             .bind(&job.metadata)
             .bind(&job.system_prompt_template)
@@ -491,6 +510,7 @@ impl BackgroundJobRepository {
         tokens_received: Option<i32>,
         model_used: Option<&str>,
         system_prompt_template: Option<&str>,
+        actual_cost: Option<f64>,
     ) -> AppResult<()> {
         let now = get_timestamp();
         
@@ -520,6 +540,11 @@ impl BackgroundJobRepository {
         
         if system_prompt_template.is_some() {
             final_query.push_str(&format!(", system_prompt_template = ${}", param_index));
+            param_index += 1;
+        }
+        
+        if actual_cost.is_some() {
+            final_query.push_str(&format!(", actual_cost = ${}", param_index));
             param_index += 1;
         }
         
@@ -556,6 +581,10 @@ impl BackgroundJobRepository {
             query_obj = query_obj.bind(template);
         }
         
+        if let Some(cost) = actual_cost {
+            query_obj = query_obj.bind(cost);
+        }
+        
         // Bind job_id last
         query_obj = query_obj.bind(job_id);
         
@@ -569,7 +598,7 @@ impl BackgroundJobRepository {
     }
     
     /// Mark a job as failed with error message and optional metadata
-    pub async fn mark_job_failed(&self, job_id: &str, error_message: &str, metadata: Option<&str>, tokens_sent: Option<i32>, tokens_received: Option<i32>, model_used: Option<&str>) -> AppResult<()> {
+    pub async fn mark_job_failed(&self, job_id: &str, error_message: &str, metadata: Option<&str>, tokens_sent: Option<i32>, tokens_received: Option<i32>, model_used: Option<&str>, actual_cost: Option<f64>) -> AppResult<()> {
         let now = get_timestamp();
         
         // Build the SQL dynamically based on which parameters are provided
@@ -593,6 +622,11 @@ impl BackgroundJobRepository {
         
         if model_used.is_some() {
             final_query.push_str(&format!(", model_used = ${}", param_index));
+            param_index += 1;
+        }
+        
+        if actual_cost.is_some() {
+            final_query.push_str(&format!(", actual_cost = ${}", param_index));
             param_index += 1;
         }
         
@@ -623,6 +657,10 @@ impl BackgroundJobRepository {
         
         if let Some(model) = model_used {
             query_obj = query_obj.bind(model);
+        }
+        
+        if let Some(cost) = actual_cost {
+            query_obj = query_obj.bind(cost);
         }
         
         // Bind job_id last
@@ -670,6 +708,7 @@ impl BackgroundJobRepository {
         tokens_sent: Option<i32>,
         tokens_received: Option<i32>,
         model_used: Option<&str>,
+        actual_cost: Option<f64>,
     ) -> AppResult<()> {
         let now = get_timestamp();
         
@@ -689,6 +728,11 @@ impl BackgroundJobRepository {
         
         if model_used.is_some() {
             final_query.push_str(&format!(", model_used = ${}", param_index));
+            param_index += 1;
+        }
+        
+        if actual_cost.is_some() {
+            final_query.push_str(&format!(", actual_cost = ${}", param_index));
             param_index += 1;
         }
         
@@ -715,6 +759,10 @@ impl BackgroundJobRepository {
         
         if let Some(model) = model_used {
             query_obj = query_obj.bind(model);
+        }
+        
+        if let Some(cost) = actual_cost {
+            query_obj = query_obj.bind(cost);
         }
         
         // Bind job_id last
@@ -897,7 +945,7 @@ impl BackgroundJobRepository {
             tokens_sent,
             tokens_received,
             model_used,
-            cost: None, // Cost field is not stored in database, set to None
+            actual_cost: row.try_get::<'_, Option<f64>, _>("actual_cost").unwrap_or(None),
             metadata,
             system_prompt_template,
             created_at,

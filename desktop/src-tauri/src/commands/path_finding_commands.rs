@@ -107,10 +107,9 @@ pub async fn find_relevant_files_command(
     };
     
     // Get model configuration for this task using centralized resolver
-    let model_settings = crate::utils::resolve_model_settings(
+    let model_settings = crate::utils::config_resolver::resolve_model_settings(
         &app_handle,
         TaskType::PathFinder,
-        &project_directory,
         args.model_override.clone(),
         args.temperature_override,
         args.max_tokens_override,
@@ -232,10 +231,9 @@ pub async fn create_path_correction_job_command(
     }
     
     // Get model configuration for this task using centralized resolver
-    let model_settings = crate::utils::resolve_model_settings(
+    let model_settings = crate::utils::config_resolver::resolve_model_settings(
         &app_handle,
         TaskType::PathCorrection,
-        &args.project_directory,
         args.model_override.clone(),
         args.temperature_override,
         args.max_tokens_override,

@@ -86,7 +86,7 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
     // Default implementation using replacePlaceholders
     try {
       const data = {
-        RESPONSE: displayContent,
+        IMPLEMENTATION_PLAN: displayContent,
         STEP_CONTENT: selectedStepNumber ? getContentForStep(displayContent, selectedStepNumber) : ''
       };
       

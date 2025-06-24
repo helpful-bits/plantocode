@@ -9,6 +9,7 @@ use stripe::{
     ApiVersion,
     CreateInvoice, InvoiceStatus, ListInvoices,
     CheckoutSession, CreateCheckoutSession, CheckoutSessionMode,
+    UsageRecord, CreateUsageRecord,
 };
 use chrono::{DateTime, Utc};
 use hmac::{Hmac, Mac};
@@ -16,6 +17,7 @@ use sha2::Sha256;
 use std::collections::HashMap;
 use uuid::Uuid;
 use log::{debug, error, info, warn};
+use hex;
 
 #[derive(Debug, thiserror::Error)]
 pub enum StripeServiceError {
@@ -47,6 +49,16 @@ pub struct StripeService {
     client: Client,
     webhook_secret: String,
     publishable_key: String,
+}
+
+impl std::fmt::Debug for StripeService {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("StripeService")
+            .field("client", &"<stripe::Client>")
+            .field("webhook_secret", &"<redacted>")
+            .field("publishable_key", &self.publishable_key)
+            .finish()
+    }
 }
 
 impl StripeService {
@@ -208,11 +220,12 @@ impl StripeService {
         let parsed_price_id = price_id.parse()
             .map_err(|_| StripeServiceError::Configuration("Invalid Stripe price ID format".to_string()))?;
         
-        let items = vec![stripe::CreateSubscriptionItems {
+        let item = stripe::CreateSubscriptionItems {
             price: Some(parsed_price_id),
-            quantity: Some(1),
+            quantity: Some(1u64),
             ..Default::default()
-        }];
+        };
+        let items = vec![item];
         create_sub.items = Some(items);
         
         // Set trial period
@@ -447,6 +460,35 @@ impl StripeService {
             .map_err(|_| StripeServiceError::Configuration("Invalid Stripe session ID format".to_string()))?;
         let session = CheckoutSession::retrieve(&self.client, &parsed_session_id, &[]).await?;
         Ok(session)
+    }
+
+    /// Report usage to a Stripe subscription item for billing purposes
+    pub async fn report_usage_record(
+        &self,
+        subscription_item_id: &str,
+        quantity: i64,
+        timestamp: Option<i64>,
+    ) -> Result<UsageRecord, StripeServiceError> {
+        let parsed_subscription_item_id = subscription_item_id.parse()
+            .map_err(|_| StripeServiceError::Configuration("Invalid Stripe subscription item ID format".to_string()))?;
+        
+        let create_usage_record = CreateUsageRecord {
+            quantity: quantity as u64, // Convert i64 to u64 for Stripe API
+            timestamp,
+            ..Default::default()
+        };
+        
+        let usage_record = UsageRecord::create(&self.client, &parsed_subscription_item_id, create_usage_record).await
+            .map_err(|e| {
+                error!("Failed to report usage record to Stripe: subscription_item={}, quantity={}, error={}", 
+                       subscription_item_id, quantity, e);
+                StripeServiceError::StripeApi(e)
+            })?;
+        
+        info!("Successfully reported usage record to Stripe: subscription_item={}, quantity={}, record_id={}", 
+              subscription_item_id, quantity, usage_record.id);
+        
+        Ok(usage_record)
     }
 
 }

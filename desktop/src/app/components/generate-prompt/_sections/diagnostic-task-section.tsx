@@ -9,7 +9,6 @@ import TaskDescriptionArea from "../_components/task-description";
 interface TaskSectionProps {
   state: {
     taskDescription: string;
-    isGeneratingGuidance: boolean;
     projectDirectory: string;
     taskDescriptionRef: React.RefObject<TaskDescriptionHandle>;
   };

@@ -42,51 +42,21 @@ pub(super) async fn extract_and_store_stage_data_internal(
         
         // Extract stage-specific data using StageDataExtractor
         let stage_data = match stage_job.task_type {
-            TaskType::RegexPatternGeneration => {
-                // Parse job's response into patterns_json value
+            TaskType::RegexFileFilter => {
+                // Parse job's response as {"filteredFiles": [...]} and extract the filteredFiles array
                 let raw_response = job.response.as_ref()
-                    .ok_or_else(|| AppError::JobError(format!("No response found for regex generation job {}", job_id)))?;
+                    .ok_or_else(|| AppError::JobError(format!("No response found for regex file filter job {}", job_id)))?;
                 
-                let patterns_json = serde_json::from_str::<serde_json::Value>(raw_response)
-                    .map_err(|e| AppError::JobError(format!("Invalid JSON response from regex generation job {}: {}", job_id, e)))?;
+                let response_json = serde_json::from_str::<serde_json::Value>(raw_response)
+                    .map_err(|e| AppError::JobError(format!("Invalid JSON response from regex file filter job {}: {}", job_id, e)))?;
                 
-                // Parse job's metadata to extract filteredFiles and fileCount from JobUIMetadata
-                let mut filtered_files: Vec<String> = Vec::new();
-                let mut file_count = 0;
+                // Extract filteredFiles array from the response
+                let filtered_files = response_json.get("filteredFiles")
+                    .and_then(|v| v.as_array())
+                    .ok_or_else(|| AppError::JobError(format!("Missing or invalid 'filteredFiles' field in regex file filter job {}", job_id)))?;
                 
-                if let Some(metadata_str) = &job.metadata {
-                    match serde_json::from_str::<JobUIMetadata>(metadata_str) {
-                        Ok(ui_metadata) => {
-                            // Extract filteredFiles as Vec<String>
-                            if let Some(files_value) = ui_metadata.task_data.get("filteredFiles") {
-                                if let Some(files_array) = files_value.as_array() {
-                                    filtered_files = files_array.iter()
-                                        .filter_map(|v| v.as_str().map(String::from))
-                                        .collect();
-                                }
-                            }
-                            
-                            // Extract fileCount
-                            if let Some(count_value) = ui_metadata.task_data.get("fileCount") {
-                                if let Some(count_num) = count_value.as_u64() {
-                                    file_count = count_num;
-                                } else if let Some(count_num) = count_value.as_i64() {
-                                    file_count = count_num as u64;
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            warn!("Failed to parse metadata as JobUIMetadata for job {}: {}", job_id, e);
-                        }
-                    }
-                }
-                
-                // Construct structured JSON using serde_json::json!
-                serde_json::json!({
-                    "patterns": patterns_json,
-                    "filteredFiles": filtered_files,
-                    "fileCount": file_count
-                })
+                // Return just the array of file paths as a serde_json::Value
+                serde_json::Value::Array(filtered_files.clone())
             }
             TaskType::PathFinder => {
                 let initial_paths = StageDataExtractor::extract_initial_paths(job_id, &repo).await

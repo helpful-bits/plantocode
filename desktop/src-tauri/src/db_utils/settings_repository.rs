@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use sqlx::{sqlite::SqliteRow, Row, SqlitePool};
 use crate::error::{AppError, AppResult};
-use crate::models::{TaskSettings, Settings, ProjectSystemPrompt};
+use crate::models::{Settings, ProjectSystemPrompt};
 use crate::utils::get_timestamp;
 use crate::services::BackupConfig;
 use tauri::{AppHandle, Manager};
@@ -71,71 +71,7 @@ impl SettingsRepository {
         Ok(())
     }
     
-    /// Get task settings for a specific project and task type
-    pub async fn get_task_settings(&self, project_hash: &str, task_type: &str) -> AppResult<Option<TaskSettings>> {
-        let row = sqlx::query("SELECT * FROM task_settings WHERE project_hash = $1 AND task_type = $2")
-            .bind(project_hash)
-            .bind(task_type)
-            .fetch_optional(&*self.pool)
-            .await
-            .map_err(|e| AppError::DatabaseError(format!("Failed to fetch task settings: {}", e)))?;
-            
-        match row {
-            Some(row) => {
-                let project_hash: String = row.try_get::<'_, String, _>("project_hash")?;
-                let task_type: String = row.try_get::<'_, String, _>("task_type")?;
-                let model: String = row.try_get::<'_, String, _>("model")?;
-                let max_tokens: i64 = row.try_get::<'_, i64, _>("max_tokens")?;
-                let temperature: Option<f64> = row.try_get::<'_, Option<f64>, _>("temperature").unwrap_or(None);
-                
-                let settings = TaskSettings {
-                    project_hash,
-                    task_type,
-                    model,
-                    max_tokens: max_tokens as i32,
-                    temperature: temperature.map(|t| t as f32),
-                };
-                
-                Ok(Some(settings))
-            },
-            None => Ok(None)
-        }
-    }
-    
-    /// Set task settings for a specific project and task type
-    pub async fn set_task_settings(&self, settings: &TaskSettings) -> AppResult<()> {
-        sqlx::query(
-            r#"
-            INSERT INTO task_settings (project_hash, task_type, model, max_tokens, temperature)
-            VALUES ($1, $2, $3, $4, $5)
-            ON CONFLICT (project_hash, task_type) DO UPDATE SET
-                model = excluded.model,
-                max_tokens = excluded.max_tokens,
-                temperature = excluded.temperature
-            "#)
-            .bind(&settings.project_hash)
-            .bind(&settings.task_type)
-            .bind(&settings.model)
-            .bind(settings.max_tokens as i64)
-            .bind(settings.temperature.map(|t| t as f64))
-            .execute(&*self.pool)
-            .await
-            .map_err(|e| AppError::DatabaseError(format!("Failed to set task settings: {}", e)))?;
-            
-        Ok(())
-    }
-    
-    /// Delete task settings for a specific project and task type
-    pub async fn delete_task_settings(&self, project_hash: &str, task_type: &str) -> AppResult<()> {
-        sqlx::query("DELETE FROM task_settings WHERE project_hash = $1 AND task_type = $2")
-            .bind(project_hash)
-            .bind(task_type)
-            .execute(&*self.pool)
-            .await
-            .map_err(|e| AppError::DatabaseError(format!("Failed to delete task settings: {}", e)))?;
-            
-        Ok(())
-    }
+    // Task settings functions removed - AI configuration now fetched exclusively from server
     
     /// Get the active session ID
     pub async fn get_active_session_id(&self) -> AppResult<Option<String>> {

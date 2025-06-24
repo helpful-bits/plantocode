@@ -53,11 +53,9 @@ pub async fn improve_text_command(
     };
     
     // Get the model and settings for this task using centralized resolver
-    let project_dir = args.project_directory.clone().unwrap_or_default();
-    let model_settings = crate::utils::resolve_model_settings(
+    let model_settings = crate::utils::config_resolver::resolve_model_settings(
         &app_handle,
         crate::models::TaskType::TextImprovement,
-        &project_dir,
         None, // no model override for this command
         None, // no temperature override for this command
         None, // no max_tokens override for this command
@@ -126,7 +124,6 @@ pub async fn generate_simple_text_command(
     let resolved_settings = crate::utils::config_resolver::resolve_model_settings(
         &app_handle,
         task_type_enum,
-        "",
         model_override,
         temperature_override,
         max_tokens_override,

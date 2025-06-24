@@ -51,7 +51,7 @@ export async function createImplementationPlanAction(params: {
   try {
     // Call the Tauri command to create the implementation plan
     // The backend now handles dynamic title generation and all prompt construction
-    const result = await invoke<{ jobId: string }>(
+    const result = await invoke<{ jobId: string; duration_ms?: number }>(
       "create_implementation_plan_command",
       {
         sessionId,
@@ -72,6 +72,7 @@ export async function createImplementationPlanAction(params: {
       metadata: {
         jobId: result.jobId,
         isBackgroundJob: true,
+        duration_ms: result.duration_ms,
       },
     };
   } catch (error) {

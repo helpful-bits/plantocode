@@ -5,6 +5,7 @@ use serde_json::json;
 use tauri::AppHandle;
 
 // Config module removed - now using utils::config_helpers
+use crate::utils::config_resolver;
 use crate::error::{AppError, AppResult};
 use crate::jobs::processor_trait::JobProcessor;
 use crate::jobs::types::{Job, JobPayload, JobProcessResult};
@@ -14,7 +15,6 @@ use crate::utils::fs_utils;
 use crate::utils::git_utils;
 use crate::utils::token_estimator::{estimate_tokens, estimate_structured_data_tokens, estimate_code_tokens};
 use crate::jobs::job_processor_utils;
-use crate::jobs::processors::utils::fs_context_utils;
 use crate::jobs::processors::{LlmTaskRunner, LlmTaskConfigBuilder, LlmPromptContext};
 
 pub struct PathFinderProcessor;
@@ -123,13 +123,17 @@ impl JobProcessor for PathFinderProcessor {
                 .ok_or_else(|| AppError::JobError(format!("Session {} not found", job.session_id)))?
         };
         
-        // Get task settings from database
-        let task_settings = settings_repo.get_task_settings(&session.project_hash, &job.job_type.to_string()).await?
-            .ok_or_else(|| AppError::JobError(format!("No task settings found for project {} and task type {}", session.project_hash, job.job_type.to_string())))?;
-        let model_used = task_settings.model;
-        let temperature = task_settings.temperature
-            .ok_or_else(|| AppError::JobError("Temperature not set in task settings".to_string()))?;
-        let max_output_tokens = task_settings.max_tokens as u32;
+        // Get model settings using centralized config resolution
+        let model_settings = config_resolver::resolve_model_settings(
+            &app_handle,
+            job.job_type,
+            None, // model_override
+            None, // temperature_override  
+            None, // max_tokens_override
+        ).await?
+        .ok_or_else(|| AppError::ConfigError(format!("Task {:?} requires LLM configuration", job.job_type)))?;
+
+        let (model_used, temperature, max_output_tokens) = model_settings;
         
         job_processor_utils::log_job_start(&job.id, "path finding");
         let project_directory = &session.project_directory;
@@ -141,13 +145,17 @@ impl JobProcessor for PathFinderProcessor {
                 tree.clone()
             } else {
                 info!("Generating directory tree for project");
-                fs_context_utils::generate_directory_tree_for_context(project_directory)
-                    .await.unwrap_or_else(|| "Directory tree generation failed".to_string())
+                match crate::utils::directory_tree::get_directory_tree_with_defaults(project_directory).await {
+                    Ok(tree) => tree,
+                    Err(_) => "Directory tree generation failed".to_string()
+                }
             }
         } else {
             info!("Generating directory tree for project");
-            fs_context_utils::generate_directory_tree_for_context(project_directory)
-                .await.unwrap_or_else(|| "Directory tree generation failed".to_string())
+            match crate::utils::directory_tree::get_directory_tree_with_defaults(project_directory).await {
+                Ok(tree) => tree,
+                Err(_) => "Directory tree generation failed".to_string()
+            }
         };
         
         // Use PathFinderOptions directly from payload
@@ -295,7 +303,6 @@ impl JobProcessor for PathFinderProcessor {
             task_description: final_task_description,
             file_contents: if final_file_contents.is_empty() { None } else { Some(final_file_contents) },
             directory_tree: Some(final_directory_tree),
-            system_prompt_override: None,
         };
         
         // Check if job has been canceled before calling the LLM
@@ -330,9 +337,22 @@ impl JobProcessor for PathFinderProcessor {
             }
         };
 
-        // Validate paths against the file system using centralized utility
+        // Validate paths against the file system
         info!("Validating {} parsed paths against filesystem...", raw_paths.len());
-        let (validated_paths, unverified_paths_raw) = fs_context_utils::validate_paths_against_filesystem(&raw_paths, project_directory).await;
+        let mut validated_paths = Vec::new();
+        let mut unverified_paths_raw = Vec::new();
+        
+        for relative_path in &raw_paths {
+            let absolute_path = std::path::Path::new(project_directory).join(relative_path);
+            match tokio::fs::metadata(&absolute_path).await {
+                Ok(metadata) if metadata.is_file() => {
+                    validated_paths.push(relative_path.clone());
+                },
+                _ => {
+                    unverified_paths_raw.push(relative_path.clone());
+                }
+            }
+        }
 
         info!("Path validation: {} valid, {} invalid paths", validated_paths.len(), unverified_paths_raw.len());
 

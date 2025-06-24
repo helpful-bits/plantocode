@@ -481,28 +481,28 @@ function applyContextSpecificTransformations(
         return "Additional authentication is required for this payment. Please complete the verification process.";
       
       case ErrorType.SUBSCRIPTION_EXPIRED:
-        return "Your subscription has expired. Please upgrade your plan to continue using premium features.";
+        return "Your subscription has expired. Please visit your billing page to reactivate your subscription and continue using premium features.";
       
       case ErrorType.SUBSCRIPTION_CANCELLED:
-        return "Your subscription has been cancelled. You can reactivate it anytime from your account settings.";
+        return "Your subscription has been cancelled. You can reactivate it anytime by visiting your billing page.";
       
       case ErrorType.CREDIT_INSUFFICIENT:
-        return "Insufficient credits to complete this operation. Services may be limited until you purchase more credits from your account page.";
+        return "Insufficient top-up credits to complete this operation. Please visit your billing page to purchase additional top-up credits or upgrade your plan for a higher monthly allowance.";
       
       case ErrorType.PLAN_UPGRADE_REQUIRED:
-        return "This feature requires a plan upgrade. Please upgrade your subscription to access this functionality.";
+        return "This feature requires a plan upgrade. Please visit your billing page to upgrade your subscription and access this functionality.";
       
       case ErrorType.PAYMENT_METHOD_REQUIRED:
-        return "A valid payment method is required. Please add a payment method to your account.";
+        return "A valid payment method is required. Please visit your billing page to add a payment method to your account.";
       
       case ErrorType.BILLING_ADDRESS_REQUIRED:
-        return "A billing address is required to complete this transaction. Please update your billing information.";
+        return "A billing address is required to complete this transaction. Please visit your billing page to update your billing information.";
       
       case ErrorType.SUBSCRIPTION_CONFLICT:
         return "There's a conflict with your subscription status. Please refresh and try again, or contact support.";
       
       case ErrorType.SPENDING_LIMIT_EXCEEDED:
-        return "Your spending limit has been exceeded and services may be blocked. Please upgrade your plan or increase your spending limit to continue using premium features.";
+        return "Your monthly allowance has been exceeded and services may be blocked. Please visit your billing page to upgrade your plan or purchase top-up credits to continue using premium features.";
       
       case ErrorType.INVOICE_ERROR:
         return "There was an error processing your invoice. Please contact support for assistance.";
@@ -898,28 +898,28 @@ export function createUserFriendlyErrorMessage(
       return "Additional authentication is required for this payment. Please complete the verification process.";
     
     case ErrorType.SUBSCRIPTION_EXPIRED:
-      return "Your subscription has expired. Please upgrade your plan to continue using premium features.";
+      return "Your subscription has expired. Please visit your billing page to reactivate your subscription and continue using premium features.";
     
     case ErrorType.SUBSCRIPTION_CANCELLED:
-      return "Your subscription has been cancelled. You can reactivate it anytime from your account settings.";
+      return "Your subscription has been cancelled. You can reactivate it anytime by visiting your billing page.";
     
     case ErrorType.CREDIT_INSUFFICIENT:
-      return "Insufficient credits to complete this operation. Services may be limited until you purchase more credits from your account page.";
+      return "Insufficient top-up credits to complete this operation. Please visit your billing page to purchase additional top-up credits or upgrade your plan for a higher monthly allowance.";
     
     case ErrorType.PLAN_UPGRADE_REQUIRED:
-      return "This feature requires a plan upgrade. Please upgrade your subscription to access this functionality.";
+      return "This feature requires a plan upgrade. Please visit your billing page to upgrade your subscription and access this functionality.";
     
     case ErrorType.PAYMENT_METHOD_REQUIRED:
-      return "A valid payment method is required. Please add a payment method to your account.";
+      return "A valid payment method is required. Please visit your billing page to add a payment method to your account.";
     
     case ErrorType.BILLING_ADDRESS_REQUIRED:
-      return "A billing address is required to complete this transaction. Please update your billing information.";
+      return "A billing address is required to complete this transaction. Please visit your billing page to update your billing information.";
     
     case ErrorType.SUBSCRIPTION_CONFLICT:
       return "There's a conflict with your subscription status. Please refresh and try again, or contact support.";
     
     case ErrorType.SPENDING_LIMIT_EXCEEDED:
-      return "Your spending limit has been exceeded and services may be blocked. Please upgrade your plan or increase your spending limit to continue using premium features.";
+      return "Your monthly allowance has been exceeded and services may be blocked. Please visit your billing page to upgrade your plan or purchase top-up credits to continue using premium features.";
     
     case ErrorType.INVOICE_ERROR:
       return "There was an error processing your invoice. Please contact support for assistance.";
@@ -961,11 +961,8 @@ export function createUserFriendlyErrorMessage(
         let stageGuidance = '';
         if (stageEnum) {
           switch (stageEnum) {
-            case 'REGEX_PATTERN_GENERATION':
+            case 'REGEX_FILE_FILTER':
               stageGuidance = ' Consider simplifying your search criteria or providing more specific terms.';
-              break;
-            case 'LOCAL_FILE_FILTERING':
-              stageGuidance = ' Check if the specified files exist and are accessible.';
               break;
             case 'FILE_RELEVANCE_ASSESSMENT':
               stageGuidance = ' The AI had trouble assessing file relevance. Try refining your task description.';

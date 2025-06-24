@@ -13,7 +13,26 @@ use bigdecimal::{BigDecimal, ToPrimitive};
 use stripe::{Event, EventObject, Webhook, PaymentIntent};
 
 // ========================================
-// SIMPLIFIED STRIPE WEBHOOK HANDLERS
+// METERED BILLING STRIPE WEBHOOK HANDLERS
+// ========================================
+//
+// This module handles Stripe webhook events for the metered billing system:
+//
+// 1. invoice.payment_succeeded - Handles subscription payments and resets monthly spending allowances
+//    - Calls CostBasedBillingService.reset_billing_period() for subscription invoices
+//    - Unblocks services that were blocked due to spending limits
+//    - Sends admin alerts if billing period reset fails
+//
+// 2. payment_intent.succeeded - Handles credit top-up purchases (NOT subscription payments)
+//    - Delegates to CreditService for one-time credit purchases
+//    - Does NOT handle subscription payments (those go through invoice.payment_succeeded)
+//    - Includes proper logging to distinguish between top-up vs subscription handling
+//
+// 3. Proper integration with CostBasedBillingService:
+//    - Webhook handlers have access to CostBasedBillingService via BillingService
+//    - Comprehensive error handling for billing service failures
+//    - Admin alerts for critical billing failures
+//    - Webhook processing continues even if optional operations fail
 // ========================================
 
 /// Handle Stripe webhook events (simplified for Customer Portal integration)
@@ -88,8 +107,9 @@ pub async fn stripe_webhook(
         }
         Err(e) => {
             let error_message = format!("{}", e);
-            error!("Failed to process webhook event {}: {}", event.id, error_message);
+            error!("METERED BILLING: Failed to process webhook event {} (type: {}): {}", event.id, event.type_, error_message);
             
+            // Send admin alert with metered billing context
             crate::utils::admin_alerting::send_stripe_webhook_failure_alert(
                 &event.id,
                 &error_message,
@@ -144,6 +164,11 @@ async fn process_stripe_webhook_event(
     let db_pools = billing_service.get_db_pools();
     let email_service = crate::services::email_notification_service::EmailNotificationService::new(db_pools.clone())?;
     let audit_service = billing_service.get_audit_service();
+    
+    // Ensure CostBasedBillingService is available for metered billing operations
+    let _cost_based_billing_service = billing_service.get_cost_based_billing_service();
+    info!("METERED BILLING: Processing Stripe webhook event {} of type {} with cost-based billing service", 
+          event.id, event.type_);
 
     match event.type_.to_string().as_str() {
         "customer.subscription.updated" => {
@@ -240,8 +265,15 @@ async fn process_stripe_webhook_event(
             }
         },
         "payment_intent.succeeded" => {
-            info!("Processing payment intent succeeded: {}", event.id);
+            info!("Processing payment intent succeeded for metered billing: {}", event.id);
             if let stripe::EventObject::PaymentIntent(payment_intent) = &event.data.object {
+                // Determine payment type from metadata to differentiate subscription vs top-up
+                let payment_type = payment_intent.metadata.get("type")
+                    .map(|t| t.as_str())
+                    .unwrap_or("unknown");
+                
+                info!("METERED BILLING: Payment intent {} type: {} - delegating to appropriate handler", payment_intent.id, payment_type);
+                
                 // Log audit event for successful payment
                 if let Some(user_id_str) = payment_intent.metadata.get("user_id") {
                     if let Ok(user_id) = Uuid::parse_str(user_id_str) {
@@ -256,8 +288,10 @@ async fn process_stripe_webhook_event(
                             .with_metadata(serde_json::json!({
                                 "amount": payment_intent.amount,
                                 "currency": payment_intent.currency,
-                                "payment_type": payment_intent.metadata.get("type").unwrap_or(&"unknown".to_string()),
-                                "event_id": event.id
+                                "payment_type": payment_type,
+                                "event_id": event.id,
+                                "metered_billing": true,
+                                "handler": "payment_intent.succeeded"
                             }))
                         ).await {
                             warn!("Failed to log payment success audit for user {}: {}", user_id, e);
@@ -265,25 +299,95 @@ async fn process_stripe_webhook_event(
                     }
                 }
                 
-                match process_credit_purchase(payment_intent, billing_service, &email_service).await {
-                    Ok(_) => {},
-                    Err(e) => {
-                        crate::utils::admin_alerting::send_payment_processing_error_alert(
-                            &payment_intent.id.to_string(),
-                            &payment_intent.customer.as_ref()
-                                .map(|c| c.id().to_string())
-                                .unwrap_or_else(|| "unknown".to_string()),
-                            &format!("{}", e),
-                        ).await;
-                        return Err(e);
+                // Handle different payment types for metered billing
+                match payment_type {
+                    "credit_purchase" => {
+                        // Process one-time credit top-up - this is the primary use case for payment_intent.succeeded
+                        info!("METERED BILLING: Processing credit top-up for payment intent {}", payment_intent.id);
+                        match process_credit_purchase(payment_intent, billing_service, &email_service).await {
+                            Ok(_) => {
+                                info!("METERED BILLING: Successfully processed credit top-up for payment intent {}", payment_intent.id);
+                            },
+                            Err(e) => {
+                                error!("METERED BILLING: Failed to process credit top-up for payment intent {}: {}", payment_intent.id, e);
+                                crate::utils::admin_alerting::send_payment_processing_error_alert(
+                                    &payment_intent.id.to_string(),
+                                    &payment_intent.customer.as_ref()
+                                        .map(|c| c.id().to_string())
+                                        .unwrap_or_else(|| "unknown".to_string()),
+                                    &format!("{}", e),
+                                ).await;
+                                return Err(e);
+                            }
+                        }
+                    },
+                    "subscription" => {
+                        // Subscription payments should NOT be handled here - they go through invoice.payment_succeeded
+                        info!("METERED BILLING: Subscription payment detected in payment_intent.succeeded for {} - delegating to invoice.payment_succeeded event handler", payment_intent.id);
+                        warn!("Payment intent {} marked as subscription type but processed through payment_intent.succeeded - this should be handled by invoice.payment_succeeded event", payment_intent.id);
+                    },
+                    _ => {
+                        // Unknown payment type - try to process as credit purchase for backward compatibility
+                        warn!("METERED BILLING: Unknown payment type '{}' for payment intent {} - attempting credit purchase processing", payment_type, payment_intent.id);
+                        match process_credit_purchase(payment_intent, billing_service, &email_service).await {
+                            Ok(_) => {
+                                info!("METERED BILLING: Successfully processed unknown payment type as credit top-up for payment intent {}", payment_intent.id);
+                            },
+                            Err(e) => {
+                                warn!("METERED BILLING: Failed to process unknown payment type for payment intent {}: {} - continuing webhook processing", payment_intent.id, e);
+                                // Don't return error for unknown types to avoid webhook failures
+                            }
+                        }
                     }
                 }
             }
         },
         "invoice.payment_succeeded" => {
-            info!("Processing invoice payment succeeded: {}", event.id);
+            info!("Processing invoice payment succeeded for metered billing: {}", event.id);
             if let stripe::EventObject::Invoice(invoice) = &event.data.object {
-                reset_usage_allowances(invoice, billing_service, &audit_service).await?;
+                // Distinguish between subscription payments and credit top-ups
+                let is_subscription_related = invoice.subscription.is_some();
+                
+                if is_subscription_related {
+                    info!("METERED BILLING: Subscription invoice payment succeeded for {} - resetting monthly allowances", invoice.id);
+                    
+                    // For metered billing, subscription invoice.payment_succeeded triggers monthly allowance reset
+                    match reset_monthly_spending_allowances(invoice, billing_service, &audit_service).await {
+                        Ok(_) => {
+                            info!("METERED BILLING: Successfully reset monthly spending allowances for subscription invoice {}", invoice.id);
+                        },
+                        Err(e) => {
+                            error!("CRITICAL: Failed to reset monthly spending allowances for subscription invoice {}: {}", invoice.id, e);
+                            
+                            // Find user for admin alert
+                            let customer_id = invoice.customer.as_ref()
+                                .map(|c| c.id().to_string())
+                                .unwrap_or_else(|| "unknown".to_string());
+                            
+                            let user_repo = crate::db::repositories::user_repository::UserRepository::new(billing_service.get_db_pool().clone());
+                            let user_id = match user_repo.get_by_stripe_customer_id(&customer_id).await {
+                                Ok(user) => user.id,
+                                Err(_) => {
+                                    error!("Could not find user for customer {} to send billing alert", customer_id);
+                                    // Generate a placeholder UUID for alerting - this should not happen in normal operation
+                                    Uuid::new_v4()
+                                }
+                            };
+                            
+                            // Send critical admin alert - customer paid but didn't get allowance reset
+                            crate::utils::admin_alerting::send_billing_allowance_reset_failure_alert(
+                                &user_id,
+                                &invoice.id.to_string(),
+                                &format!("{}", e),
+                            ).await;
+                            
+                            // This is critical - fail the webhook to trigger retry
+                            return Err(e);
+                        }
+                    }
+                } else {
+                    info!("METERED BILLING: Non-subscription invoice payment succeeded for {} - not resetting allowances", invoice.id);
+                }
             }
         },
         "payment_method.attached" => {
@@ -323,22 +427,31 @@ async fn process_stripe_webhook_event(
 // ========================================
 
 
-/// Process credit purchase from successful payment intent
+/// Process credit purchase from successful payment intent (one-time top-up)
+/// This handles individual credit purchases separate from subscription billing
 async fn process_credit_purchase(
     payment_intent: &stripe::PaymentIntent,
     billing_service: &BillingService,
     email_service: &crate::services::email_notification_service::EmailNotificationService,
 ) -> Result<(), AppError> {
-    info!("Processing payment_intent.succeeded for PaymentIntent: {}", payment_intent.id);
+    info!("METERED BILLING: Processing credit top-up for PaymentIntent: {}", payment_intent.id);
     
     // Check if this is a credit purchase by examining metadata
     let metadata = &payment_intent.metadata;
-    if metadata.get("type").map(|t| t.as_str()) != Some("credit_purchase") {
-        info!("PaymentIntent {} is not a credit purchase, ignoring", payment_intent.id);
-        return Ok(());
+    let payment_type = metadata.get("type").map(|t| t.as_str()).unwrap_or("unknown");
+    
+    // For metered billing, we need to be more lenient about payment types
+    // as this function might be called for various one-time payments
+    if payment_type != "credit_purchase" {
+        // Try to determine if this could be a credit purchase based on other metadata
+        if metadata.get("credit_amount").is_none() && metadata.get("amount").is_none() {
+            info!("METERED BILLING: PaymentIntent {} is not a credit top-up (type: {}), skipping credit processing", payment_intent.id, payment_type);
+            return Ok(());
+        }
+        warn!("METERED BILLING: PaymentIntent {} has type '{}' but appears to be a credit top-up, processing", payment_intent.id, payment_type);
     }
     
-    info!("PaymentIntent {} is a credit purchase, processing", payment_intent.id);
+    info!("METERED BILLING: PaymentIntent {} confirmed as credit top-up, processing", payment_intent.id);
     
     // Extract required metadata with robust validation
     let user_id_str = match metadata.get("user_id").map(|v| v.as_str()) {
@@ -392,8 +505,8 @@ async fn process_credit_purchase(
         }
     };
     
-    info!("Processing credit purchase for user {} with amount {} {}", 
-          user_uuid, amount, currency);
+    info!("METERED BILLING: Processing credit top-up for user {} with amount {} {} (payment type: {})", 
+          user_uuid, amount, currency, payment_type);
     
     // Process credit purchase directly from amount
     let db_pools = billing_service.get_db_pools();
@@ -415,15 +528,21 @@ async fn process_credit_purchase(
         return Err(AppError::Payment("Currency mismatch".to_string()));
     }
     
-    // Process the credit purchase using the new method
-    let updated_balance = credit_service.process_credit_purchase_from_payment_intent(
+    // Process the credit purchase using the credit service
+    let updated_balance = match credit_service.process_credit_purchase_from_payment_intent(
         &user_uuid,
         &amount,
         currency,
         payment_intent,
-    ).await?;
+    ).await {
+        Ok(balance) => balance,
+        Err(e) => {
+            error!("METERED BILLING: Failed to process credit top-up for PaymentIntent {}: {}", payment_intent.id, e);
+            return Err(AppError::Payment(format!("Credit top-up processing failed: {}", e)));
+        }
+    };
     
-    info!("Successfully processed credit purchase for PaymentIntent {}: user {} new balance: {}", 
+    info!("METERED BILLING: Successfully processed credit top-up for PaymentIntent {}: user {} new balance: {}", 
           payment_intent.id, user_uuid, updated_balance.balance);
     
     // Send success email notification
@@ -444,26 +563,27 @@ async fn process_credit_purchase(
             error!("Failed to send credit purchase notification for PaymentIntent {}: {}", payment_intent.id, e);
         });
         
-        info!("Sent success email notification for user {} after PaymentIntent {}", user_uuid, payment_intent.id);
+        info!("Sent credit top-up success email notification for user {} after PaymentIntent {}", user_uuid, payment_intent.id);
     } else {
-        warn!("Could not find user {} to send email notification for PaymentIntent {}", user_uuid, payment_intent.id);
+        warn!("Could not find user {} to send credit top-up email notification for PaymentIntent {}", user_uuid, payment_intent.id);
     }
     
     Ok(())
 }
 
 
-/// Reset usage allowances after successful invoice payment
-async fn reset_usage_allowances(
+/// Reset monthly spending allowances after successful subscription invoice payment
+/// This is the core function for metered billing - it resets the user's monthly allowance
+async fn reset_monthly_spending_allowances(
     invoice: &stripe::Invoice,
     billing_service: &BillingService,
     audit_service: &crate::services::audit_service::AuditService,
 ) -> Result<(), AppError> {
-    info!("Processing invoice payment for usage reset: {}", invoice.id);
+    info!("METERED BILLING: Processing subscription invoice payment for monthly allowance reset: {}", invoice.id);
     
     // Verify this is a subscription invoice (not a one-time payment)
     if invoice.subscription.is_none() {
-        info!("Invoice {} is not subscription-related, skipping usage reset", invoice.id);
+        info!("Invoice {} is not subscription-related, skipping monthly allowance reset", invoice.id);
         return Ok(());
     }
     
@@ -473,16 +593,43 @@ async fn reset_usage_allowances(
         .ok_or_else(|| AppError::InvalidArgument("Invoice missing customer information".to_string()))?
         .id().to_string();
     
-    let user = user_repo.get_by_stripe_customer_id(&customer_id).await?;
+    let user = match user_repo.get_by_stripe_customer_id(&customer_id).await {
+        Ok(user) => user,
+        Err(e) => {
+            error!("METERED BILLING: Could not find user for customer {} in invoice {}: {}", customer_id, invoice.id, e);
+            return Err(AppError::InvalidArgument(format!("User not found for customer {}", customer_id)));
+        }
+    };
     
-    info!("Resetting monthly usage allowances for user {} after successful invoice payment {}", user.id, invoice.id);
+    info!("METERED BILLING: Resetting monthly spending allowances for user {} after successful subscription invoice payment {}", user.id, invoice.id);
     
+    // Get the cost-based billing service which handles spending limits
     let cost_based_billing_service = billing_service.get_cost_based_billing_service();
     
+    // Reset the billing period - this creates a new spending limit for the current month
+    // and ensures services are unblocked if they were previously blocked due to overage
     match cost_based_billing_service.reset_billing_period(&user.id).await {
         Ok(_) => {
-            info!("Successfully reset monthly spending allowances for user {} after invoice {}", user.id, invoice.id);
+            info!("METERED BILLING: Successfully reset billing period for user {} after subscription invoice {}", user.id, invoice.id);
             
+            // Unblock services if they were blocked due to spending limits
+            match cost_based_billing_service.unblock_services(&user.id).await {
+                Ok(_) => {
+                    info!("METERED BILLING: Services unblocked for user {} after monthly allowance reset", user.id);
+                },
+                Err(e) => {
+                    // Log warning but don't fail the webhook - allowance reset succeeded
+                    warn!("METERED BILLING: Failed to unblock services for user {} after allowance reset (billing period reset succeeded): {}", user.id, e);
+                    // Send admin alert for service unblocking failure
+                    crate::utils::admin_alerting::send_billing_allowance_reset_failure_alert(
+                        &user.id,
+                        &invoice.id.to_string(),
+                        &format!("Billing period reset succeeded but service unblocking failed: {}", e),
+                    ).await;
+                }
+            }
+            
+            // Log audit event for allowance reset
             let audit_context = AuditContext::new(user.id);
             if let Err(e) = audit_service.log_spending_limit_reset(
                 &audit_context,
@@ -492,20 +639,27 @@ async fn reset_usage_allowances(
                 warn!("Failed to log spending limit reset audit for user {}: {}", user.id, e);
             }
             
-            info!("Audit: Monthly spending allowances reset for user {} after successful subscription payment (invoice {})", 
+            info!("METERED BILLING: Monthly spending allowances reset complete for user {} after successful subscription payment (invoice {})", 
                   user.id, invoice.id);
         }
         Err(e) => {
-            error!("CRITICAL: Failed to reset monthly spending allowances for user {} after successful invoice payment {}: {}", 
+            error!("CRITICAL METERED BILLING ERROR: Failed to reset monthly spending allowances for user {} after successful subscription invoice payment {}: {}", 
                    user.id, invoice.id, e);
             
-            error!("BILLING ALERT: User {} paid subscription but allowances not reset - manual intervention required", user.id);
+            error!("BILLING ALERT: User {} paid subscription invoice {} but monthly allowances not reset - MANUAL INTERVENTION REQUIRED", user.id, invoice.id);
             
+            // This is a critical billing error - the user paid but didn't get their allowance reset
+            // This will prevent them from using services they've paid for
             crate::utils::admin_alerting::send_billing_allowance_reset_failure_alert(
                 &user.id,
                 &invoice.id.to_string(),
-                &format!("{}", e),
+                &format!("Critical billing period reset failure: {}", e),
             ).await;
+            
+            return Err(AppError::Internal(format!(
+                "Critical metered billing failure: Could not reset billing period for user {} after successful payment (invoice {}): {}", 
+                user.id, invoice.id, e
+            )));
         }
     }
     

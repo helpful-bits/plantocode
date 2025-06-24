@@ -6,7 +6,7 @@ import type { ReactNode } from "react";
 import { useSessionStateContext } from "@/contexts/session";
 import { useProject } from "@/contexts/project-context";
 import { useBackgroundJob } from "@/contexts/_hooks/use-background-job";
-import { createImproveTextJobAction } from "@/actions/ai/text-improvement.actions";
+import { createImproveTextJobAction } from "@/actions/ai/improve-text";
 import { logError } from "@/utils/error-handling";
 
 interface TextImprovementContextType {
@@ -270,11 +270,12 @@ export function TextImprovementProvider({ children }: TextImprovementProviderPro
     }
 
     try {
-      const result = await createImproveTextJobAction({
-        text: selectedText,
-        sessionId: sessionBasicFields.id,
-        projectDirectory,
-      });
+      const result = await createImproveTextJobAction(
+        selectedText,
+        sessionBasicFields.id,
+        null, // originalJobId
+        projectDirectory
+      );
 
       if (result.isSuccess && result.data?.jobId) {
         setJobId(result.data.jobId);

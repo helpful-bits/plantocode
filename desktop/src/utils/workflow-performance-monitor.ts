@@ -197,8 +197,8 @@ export class WorkflowPerformanceMonitor {
     if (allMetrics.length === 0) {
       return {
         averageExecutionTime: 0,
-        slowestStage: 'REGEX_PATTERN_GENERATION',
-        fastestStage: 'REGEX_PATTERN_GENERATION',
+        slowestStage: 'REGEX_FILE_FILTER',
+        fastestStage: 'REGEX_FILE_FILTER',
         failureRate: 0,
         recommendations: ['No workflow data available'],
       };
@@ -227,8 +227,8 @@ export class WorkflowPerformanceMonitor {
     }));
 
     avgStagePerformance.sort((a, b) => b.avgTime - a.avgTime);
-    const slowestStage = avgStagePerformance[0]?.stage as WorkflowStage || 'REGEX_PATTERN_GENERATION';
-    const fastestStage = avgStagePerformance[avgStagePerformance.length - 1]?.stage as WorkflowStage || 'REGEX_PATTERN_GENERATION';
+    const slowestStage = avgStagePerformance[0]?.stage as WorkflowStage || 'REGEX_FILE_FILTER';
+    const fastestStage = avgStagePerformance[avgStagePerformance.length - 1]?.stage as WorkflowStage || 'REGEX_FILE_FILTER';
 
     // Calculate failure rate
     const failedWorkflows = Array.from(this.performanceData.values()).filter(data => {
@@ -411,10 +411,8 @@ export class WorkflowPerformanceMonitor {
   private estimateStageInputSize(stage: WorkflowStage, workflowState: WorkflowState): number {
     // Estimate input size based on stage type and available data
     switch (stage) {
-      case 'REGEX_PATTERN_GENERATION':
+      case 'REGEX_FILE_FILTER':
         return workflowState.taskDescription.length;
-      case 'LOCAL_FILE_FILTERING':
-        return workflowState.intermediateData.directoryTreeContent?.length || 0;
       case 'FILE_RELEVANCE_ASSESSMENT':
         return workflowState.intermediateData.locallyFilteredFiles.length;
       case 'EXTENDED_PATH_FINDER':
@@ -429,10 +427,8 @@ export class WorkflowPerformanceMonitor {
   private estimateStageOutputSize(stage: WorkflowStage, workflowState: WorkflowState): number {
     // Estimate output size based on stage type and available data
     switch (stage) {
-      case 'REGEX_PATTERN_GENERATION':
+      case 'REGEX_FILE_FILTER':
         return JSON.stringify(workflowState.intermediateData.rawRegexPatterns).length || 0;
-      case 'LOCAL_FILE_FILTERING':
-        return workflowState.intermediateData.locallyFilteredFiles.length;
       case 'FILE_RELEVANCE_ASSESSMENT':
         return workflowState.intermediateData.aiFilteredFiles.length;
       case 'EXTENDED_PATH_FINDER':

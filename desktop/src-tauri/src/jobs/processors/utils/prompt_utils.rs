@@ -6,7 +6,7 @@ use std::sync::Arc;
 use tauri::{AppHandle, Manager};
 
 use crate::error::{AppResult, AppError};
-use crate::db_utils::{SettingsRepository, SessionRepository};
+use crate::db_utils::SessionRepository;
 use crate::jobs::types::Job;
 use crate::utils::unified_prompt_system::{
     UnifiedPromptProcessor, UnifiedPromptContextBuilder, ComposedPrompt
@@ -53,7 +53,6 @@ pub async fn build_unified_prompt(
     task_description: String,
     file_contents: Option<std::collections::HashMap<String, String>>,
     directory_tree: Option<String>,
-    settings_repo: &SettingsRepository,
     model_name: &str,
 ) -> AppResult<ComposedPrompt> {
     // Check if cache service is available and refresh if needed

@@ -4,6 +4,8 @@ use log::{debug, info, warn, error};
 use serde_json::json;
 use tauri::AppHandle;
 
+use crate::utils::config_resolver;
+
 use crate::error::{AppError, AppResult};
 use crate::jobs::processor_trait::JobProcessor;
 use crate::jobs::types::{Job, JobPayload, JobProcessResult, StructuredImplementationPlan, StructuredImplementationPlanStep};
@@ -12,7 +14,7 @@ use crate::utils::{get_timestamp, fs_utils, path_utils};
 use crate::utils::xml_utils::extract_xml_from_markdown;
 use crate::utils::job_metadata_builder::JobMetadataBuilder;
 use crate::jobs::job_processor_utils;
-use crate::jobs::processors::utils::{fs_context_utils, prompt_utils};
+use crate::jobs::processors::utils::{prompt_utils};
 use crate::jobs::processors::{LlmTaskRunner, LlmTaskConfigBuilder, LlmPromptContext, LlmTaskResult};
 
 pub struct ImplementationPlanProcessor;
@@ -197,13 +199,17 @@ impl JobProcessor for ImplementationPlanProcessor {
                 .ok_or_else(|| AppError::JobError(format!("Session {} not found", job.session_id)))?
         };
         
-        // Get task settings from database
-        let task_settings = settings_repo.get_task_settings(&session.project_hash, &job.job_type.to_string()).await?
-            .ok_or_else(|| AppError::JobError(format!("No task settings found for project {} and task type {}", session.project_hash, job.job_type.to_string())))?;
-        let model_used = task_settings.model;
-        let temperature = task_settings.temperature
-            .ok_or_else(|| AppError::JobError("Temperature not set in task settings".to_string()))?;
-        let max_output_tokens = task_settings.max_tokens as u32;
+        // Get model settings using centralized config resolution
+        let model_settings = config_resolver::resolve_model_settings(
+            &app_handle,
+            job.job_type,
+            None, // model_override
+            None, // temperature_override  
+            None, // max_tokens_override
+        ).await?
+        .ok_or_else(|| AppError::ConfigError(format!("Task {:?} requires LLM configuration", job.job_type)))?;
+
+        let (model_used, temperature, max_output_tokens) = model_settings;
         let llm_client = crate::jobs::processors::utils::llm_api_utils::get_api_client(&app_handle)?;
         let job_id = job.id.clone();
         
@@ -211,8 +217,26 @@ impl JobProcessor for ImplementationPlanProcessor {
         let project_directory = &session.project_directory;
             
         // Load file contents and generate directory tree - FULL CONTENT WITHOUT TRUNCATION
-        let file_contents = Some(fs_context_utils::load_file_contents(&payload.relevant_files, project_directory).await);
-        let directory_tree = fs_context_utils::generate_directory_tree_for_context(project_directory).await;
+        let mut file_contents_map = std::collections::HashMap::new();
+        for relative_path_str in &payload.relevant_files {
+            let full_path = std::path::Path::new(project_directory).join(relative_path_str);
+            match crate::utils::fs_utils::read_file_to_string(&*full_path.to_string_lossy()).await {
+                Ok(content) => {
+                    file_contents_map.insert(relative_path_str.clone(), content);
+                }
+                Err(e) => {
+                    warn!("Failed to read file {}: {}", full_path.display(), e);
+                }
+            }
+        }
+        let file_contents = Some(file_contents_map);
+        let directory_tree = match crate::utils::directory_tree::get_directory_tree_with_defaults(project_directory).await {
+            Ok(tree) => Some(tree),
+            Err(e) => {
+                warn!("Failed to generate directory tree: {}", e);
+                None
+            }
+        };
         
         // Build unified prompt using full content without preemptive truncation
         let composed_prompt = prompt_utils::build_unified_prompt(
@@ -221,7 +245,6 @@ impl JobProcessor for ImplementationPlanProcessor {
             payload.task_description.clone(),
             file_contents,
             directory_tree,
-            &settings_repo,
             &model_used,
         ).await?;
 
@@ -292,11 +315,28 @@ impl JobProcessor for ImplementationPlanProcessor {
         let task_runner = LlmTaskRunner::new(app_handle.clone(), job.clone(), llm_config);
         
         // Create prompt context
+        let mut file_contents_map = std::collections::HashMap::new();
+        for relative_path_str in &payload.relevant_files {
+            let full_path = std::path::Path::new(project_directory).join(relative_path_str);
+            match crate::utils::fs_utils::read_file_to_string(&*full_path.to_string_lossy()).await {
+                Ok(content) => {
+                    file_contents_map.insert(relative_path_str.clone(), content);
+                }
+                Err(e) => {
+                    warn!("Failed to read file {}: {}", full_path.display(), e);
+                }
+            }
+        }
         let prompt_context = LlmPromptContext {
             task_description: payload.task_description.clone(),
-            file_contents: Some(fs_context_utils::load_file_contents(&payload.relevant_files, project_directory).await),
-            directory_tree: fs_context_utils::generate_directory_tree_for_context(project_directory).await,
-            system_prompt_override: None,
+            file_contents: Some(file_contents_map),
+            directory_tree: match crate::utils::directory_tree::get_directory_tree_with_defaults(project_directory).await {
+                Ok(tree) => Some(tree),
+                Err(e) => {
+                    warn!("Failed to generate directory tree: {}", e);
+                    None
+                }
+            },
         };
         
         // Check if job has been canceled before calling the LLM

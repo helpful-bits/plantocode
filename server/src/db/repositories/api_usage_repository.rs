@@ -193,6 +193,19 @@ impl ApiUsageRepository {
         })
     }
 
+    /// Gets detailed usage data with model and provider information for a user in a period
+    pub async fn get_detailed_usage_for_user_in_period(
+        &self,
+        user_id: &Uuid,
+        start_date: DateTime<Utc>,
+        end_date: DateTime<Utc>,
+    ) -> Result<Vec<DetailedUsageRecord>, AppError> {
+        let mut tx = self.db_pool.begin().await.map_err(AppError::from)?;
+        let result = self.get_detailed_usage(user_id, start_date, end_date, &mut tx).await?;
+        tx.commit().await.map_err(AppError::from)?;
+        Ok(result)
+    }
+
     /// Gets detailed usage data with model and provider information
     pub async fn get_detailed_usage(
         &self,

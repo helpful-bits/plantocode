@@ -172,10 +172,9 @@ pub enum TaskType {
     VoiceTranscription,
     TextImprovement,
     PathCorrection,
-    GuidanceGeneration,
     TaskRefinement,
     GenericLlmStream,
-    RegexPatternGeneration,
+    RegexFileFilter,
     FileFinderWorkflow,
     // New individual workflow stage types
     FileRelevanceAssessment,
@@ -192,10 +191,9 @@ impl ToString for TaskType {
             TaskType::VoiceTranscription => "voice_transcription".to_string(),
             TaskType::TextImprovement => "text_improvement".to_string(),
             TaskType::PathCorrection => "path_correction".to_string(),
-            TaskType::GuidanceGeneration => "guidance_generation".to_string(),
             TaskType::TaskRefinement => "task_refinement".to_string(),
             TaskType::GenericLlmStream => "generic_llm_stream".to_string(),
-            TaskType::RegexPatternGeneration => "regex_pattern_generation".to_string(),
+            TaskType::RegexFileFilter => "regex_file_filter".to_string(),
             TaskType::FileFinderWorkflow => "file_finder_workflow".to_string(),
             TaskType::FileRelevanceAssessment => "file_relevance_assessment".to_string(),
             TaskType::ExtendedPathFinder => "extended_path_finder".to_string(),
@@ -215,10 +213,9 @@ impl std::str::FromStr for TaskType {
             "voice_transcription" => Ok(TaskType::VoiceTranscription),
             "text_improvement" => Ok(TaskType::TextImprovement),
             "path_correction" => Ok(TaskType::PathCorrection),
-            "guidance_generation" => Ok(TaskType::GuidanceGeneration),
             "task_refinement" => Ok(TaskType::TaskRefinement),
             "generic_llm_stream" => Ok(TaskType::GenericLlmStream),
-            "regex_pattern_generation" => Ok(TaskType::RegexPatternGeneration),
+            "regex_file_filter" => Ok(TaskType::RegexFileFilter),
             "file_finder_workflow" => Ok(TaskType::FileFinderWorkflow),
             "file_relevance_assessment" => Ok(TaskType::FileRelevanceAssessment),
             "extended_path_finder" => Ok(TaskType::ExtendedPathFinder),
@@ -242,10 +239,9 @@ impl TaskType {
             | TaskType::PathFinder
             | TaskType::TextImprovement
             | TaskType::PathCorrection
-            | TaskType::GuidanceGeneration
             | TaskType::TaskRefinement
             | TaskType::GenericLlmStream
-            | TaskType::RegexPatternGeneration => true,
+            | TaskType::RegexFileFilter => true,
             // Streaming and Unknown default to true for safety
             TaskType::Streaming
             | TaskType::Unknown => true,
@@ -281,7 +277,7 @@ pub struct BackgroundJob {
     pub tokens_sent: Option<i32>,
     pub tokens_received: Option<i32>,
     pub model_used: Option<String>,
-    pub cost: Option<String>,
+    pub actual_cost: Option<f64>,
     pub metadata: Option<String>,
     pub system_prompt_template: Option<String>,
     pub created_at: i64,
@@ -411,6 +407,7 @@ pub struct OpenRouterRequest {
     pub stream: bool,
     pub max_tokens: Option<u32>,
     pub temperature: Option<f32>,
+    pub duration_ms: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -748,6 +745,7 @@ pub struct SubscriptionPlan {
 
 /// Invoice model for billing operations
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Invoice {
     pub id: String,
     pub created: i64,
@@ -761,6 +759,7 @@ pub struct Invoice {
 
 /// Response structure for listing invoices
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ListInvoicesResponse {
     pub invoices: Vec<Invoice>,
     pub total_invoices: i32,

@@ -45,59 +45,9 @@ impl CreditService {
             .await
     }
 
-    /// Consume credits for API usage (atomic operation with proper transaction handling)
-    pub async fn consume_credits(
-        &self,
-        user_id: &Uuid,
-        amount: &BigDecimal,
-        api_usage_id: &Uuid,
-        description: Option<String>,
-    ) -> Result<UserCredit, AppError> {
-        // Start a database transaction to ensure atomicity
-        let pool = self.user_credit_repository.get_pool();
-        let mut tx = pool.begin().await.map_err(AppError::from)?;
-
-        // First, check and deduct credits atomically within the transaction
-        let has_credits = self.user_credit_repository
-            .has_sufficient_credits_with_executor(user_id, amount, &mut tx)
-            .await?;
-        
-        if !has_credits {
-            return Err(AppError::Payment(
-                "Insufficient credit balance for this operation".to_string()
-            ));
-        }
-
-        // Deduct the credits within the same transaction
-        let negative_amount = -amount;
-        let updated_balance = self.user_credit_repository
-            .increment_balance_with_executor(user_id, &negative_amount, &mut tx)
-            .await?;
-
-        // Record the consumption transaction within the same transaction
-        let transaction = CreditTransaction {
-            id: Uuid::new_v4(),
-            user_id: *user_id,
-            transaction_type: "consumption".to_string(),
-            amount: negative_amount.clone(),
-            currency: "USD".to_string(),
-            description,
-            stripe_charge_id: None,
-            related_api_usage_id: Some(*api_usage_id),
-            metadata: None,
-            created_at: Some(Utc::now()),
-        };
-
-        let _created_transaction = self.credit_transaction_repository
-            .create_transaction_with_executor(&transaction, &mut tx)
-            .await?;
-
-        // Commit the transaction
-        tx.commit().await.map_err(AppError::from)?;
-
-        info!("Atomically consumed {} credits for user {}", amount, user_id);
-        Ok(updated_balance)
-    }
+    // Note: consume_credits method has been removed as part of billing system refactor
+    // Credit consumption is now handled via Stripe's metered billing system
+    // Usage reporting is handled by CostBasedBillingService.calculate_and_report_usage
 
 
     /// Get available credit packs
@@ -287,7 +237,8 @@ impl CreditService {
         Ok(updated_balance)
     }
 
-    /// Process credit purchase from payment intent without credit pack validation
+    /// Process credit top-up purchase from payment intent
+    /// This handles one-time credit purchases that supplement metered billing
     pub async fn process_credit_purchase_from_payment_intent(
         &self,
         user_id: &Uuid,
@@ -301,6 +252,8 @@ impl CreditService {
                 format!("Only USD currency is supported, got: {}", currency)
             ));
         }
+        
+        info!("Processing credit top-up purchase for user {}: {} {}", user_id, amount, currency);
         
         // Start a database transaction to ensure atomicity
         let pool = self.user_credit_repository.get_pool();
@@ -316,14 +269,14 @@ impl CreditService {
             .increment_balance_with_executor(user_id, amount, &mut tx)
             .await?;
 
-        // Record the purchase transaction within the same transaction
+        // Record the top-up purchase transaction within the same transaction
         let transaction = CreditTransaction {
             id: Uuid::new_v4(),
             user_id: *user_id,
             transaction_type: "purchase".to_string(),
             amount: amount.clone(),
             currency: currency.to_string(),
-            description: Some(format!("Credit purchase via Stripe PaymentIntent {}", payment_intent.id)),
+            description: Some(format!("Credit top-up purchase via Stripe PaymentIntent {} (supplements metered billing)", payment_intent.id)),
             stripe_charge_id: Some(payment_intent.id.to_string()),
             related_api_usage_id: None,
             metadata: Some(serde_json::to_value(&payment_intent.metadata).unwrap_or_default()),
@@ -337,7 +290,7 @@ impl CreditService {
         // Commit the transaction
         tx.commit().await.map_err(AppError::from)?;
 
-        info!("Atomically processed credit purchase for user {} via PaymentIntent {}: {} {} added", 
+        info!("Successfully processed credit top-up purchase for user {} via PaymentIntent {}: {} {} added to balance (new system: credits supplement metered billing)", 
               user_id, payment_intent.id, amount, currency);
         Ok(updated_balance)
     }

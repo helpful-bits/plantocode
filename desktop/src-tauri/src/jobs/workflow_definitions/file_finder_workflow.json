@@ -3,8 +3,8 @@
   "description": "Finds relevant files based on a task description.",
   "stages": [
     {
-      "stage_name": "RegexPatternGeneration", 
-      "task_type": "regex_pattern_generation",
+      "stage_name": "RegexFileFilter", 
+      "task_type": "regex_file_filter",
       "processor_name": null,
       "dependencies": [],
       "allow_parallel_execution": false
@@ -13,7 +13,7 @@
       "stage_name": "FileRelevanceAssessment",
       "task_type": "file_relevance_assessment",
       "processor_name": null,
-      "dependencies": ["RegexPatternGeneration"],
+      "dependencies": ["RegexFileFilter"],
       "allow_parallel_execution": false
     },
     {

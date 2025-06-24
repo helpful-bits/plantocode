@@ -7,11 +7,10 @@ export interface TaskModelSettings extends BaseTaskModelSettings {
 export interface TaskSettings {
   pathFinder: TaskModelSettings;
   voiceTranscription: TaskModelSettings;
-  regexPatternGeneration: TaskModelSettings;
+  regexFileFilter: TaskModelSettings;
   pathCorrection: TaskModelSettings;
   textImprovement: TaskModelSettings;
   taskRefinement: TaskModelSettings;
-  guidanceGeneration: TaskModelSettings;
   implementationPlan: TaskModelSettings;
   genericLlmStream: TaskModelSettings;
   fileFinderWorkflow: TaskModelSettings;
@@ -21,5 +20,4 @@ export interface TaskSettings {
   localFileFiltering: TaskModelSettings;
   fileRelevanceAssessment: TaskModelSettings;
   extendedPathFinder: TaskModelSettings;
-  extendedPathCorrection: TaskModelSettings;
 }

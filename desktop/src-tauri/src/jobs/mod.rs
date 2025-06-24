@@ -28,12 +28,11 @@ use crate::models::JobStatus;
 use self::processors::{
     PathFinderProcessor,
     ImplementationPlanProcessor,
-    GuidanceGenerationProcessor,
     PathCorrectionProcessor,
     TaskRefinementProcessor,
     TextImprovementProcessor,
     GenericLlmStreamProcessor,
-    RegexPatternGenerationProcessor,
+    RegexFileFilterProcessor,
     // Individual workflow stage processors
     ExtendedPathFinderProcessor,
     // File relevance assessment processor
@@ -66,12 +65,11 @@ pub async fn register_job_processors(app_handle: &AppHandle) -> AppResult<()> {
     // Create processor instances
     let path_finder_processor = Arc::new(PathFinderProcessor::new());
     let implementation_plan_processor = Arc::new(ImplementationPlanProcessor::new());
-    let guidance_generation_processor = Arc::new(GuidanceGenerationProcessor::new());
     let path_correction_processor = Arc::new(PathCorrectionProcessor::new());
     let task_refinement_processor = Arc::new(TaskRefinementProcessor::new());
     let text_improvement_processor = Arc::new(TextImprovementProcessor::new());
     let generic_llm_stream_processor = Arc::new(GenericLlmStreamProcessor::new());
-    let regex_pattern_generation_processor = Arc::new(RegexPatternGenerationProcessor::new());
+    let regex_file_filter_processor = Arc::new(RegexFileFilterProcessor::new());
     // Individual workflow stage processors
     let extended_path_finder_processor = Arc::new(ExtendedPathFinderProcessor::new());
     // File relevance assessment processor
@@ -80,12 +78,11 @@ pub async fn register_job_processors(app_handle: &AppHandle) -> AppResult<()> {
     // Register processors
     registry.register(path_finder_processor).await;
     registry.register(implementation_plan_processor).await;
-    registry.register(guidance_generation_processor).await;
     registry.register(path_correction_processor).await;
     registry.register(task_refinement_processor).await;
     registry.register(text_improvement_processor).await;
     registry.register(generic_llm_stream_processor).await;
-    registry.register(regex_pattern_generation_processor).await;
+    registry.register(regex_file_filter_processor).await;
     // Individual workflow stage processors
     registry.register(extended_path_finder_processor).await;
     // File relevance assessment processor
@@ -186,7 +183,8 @@ async fn recover_queued_jobs(app_handle: AppHandle) -> AppResult<()> {
                             None,
                             None,
                             None,
-                            None
+                            None,
+                            None // actual_cost
                         ).await {
                             error!("Failed to mark job {} as failed: {}", job_id, update_error);
                         }
@@ -202,7 +200,8 @@ async fn recover_queued_jobs(app_handle: AppHandle) -> AppResult<()> {
                     None,
                     None,
                     None,
-                    None
+                    None,
+                    None // actual_cost
                 ).await {
                     error!("Failed to mark job {} as failed: {}", db_job.id, update_error);
                 }

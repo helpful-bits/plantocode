@@ -17,7 +17,7 @@ pub(super) async fn get_stage_model_config(
         _ => {
             // First try to get workflow-specific model override
             let stage_name = match task_type {
-                TaskType::RegexPatternGeneration => "GeneratingRegex_model",
+                TaskType::RegexFileFilter => "GeneratingRegex_model",
                 TaskType::FileRelevanceAssessment => "FileRelevanceAssessment_model",
                 TaskType::ExtendedPathFinder => "ExtendedPathFinder_model",
                 TaskType::PathCorrection => "PathCorrection_model",

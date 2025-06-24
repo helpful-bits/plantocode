@@ -12,7 +12,6 @@ use crate::models::TaskType;
 pub async fn resolve_model_settings(
     app_handle: &AppHandle,
     task_type: TaskType,
-    _project_directory: &str, // No longer used, keeping for API compatibility
     model_override: Option<String>,
     temperature_override: Option<f32>,
     max_tokens_override: Option<u32>,

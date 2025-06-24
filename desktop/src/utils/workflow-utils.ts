@@ -316,6 +316,7 @@ export class WorkflowTracker {
         completedAt: status.completedAt ? new Date(status.completedAt).getTime() : undefined,
         executionTimeMs,
         errorMessage: status.errorMessage,
+        actualCost: status.actualCost, // Server-provided cost from API responses
       };
     });
     
@@ -325,6 +326,9 @@ export class WorkflowTracker {
     // Calculate total execution time - prioritize response value, fallback to calculation
     const totalExecutionTimeMs = response.totalExecutionTimeMs || 
       this.calculateTotalExecutionTime(stageJobs, response.createdAt, response.completedAt);
+    
+    // Calculate total cost from stage jobs
+    const totalActualCost = stageJobs.reduce((sum, job) => sum + (job.actualCost || 0), 0) || undefined;
     
     return {
       workflowId: response.workflowId,
@@ -343,6 +347,7 @@ export class WorkflowTracker {
       projectDirectory: response.projectDirectory || '',
       excludedPaths: response.excludedPaths || [],
       timeoutMs: response.timeoutMs,
+      totalActualCost, // Total server-provided cost across all stages
       intermediateData: {
         directoryTreeContent: undefined,
         rawRegexPatterns: undefined,
@@ -466,6 +471,7 @@ export class WorkflowTracker {
     const preservedTaskDescription = this.lastKnownState?.taskDescription || '';
     const preservedProjectDirectory = this.lastKnownState?.projectDirectory || '';
     const preservedExcludedPaths = this.lastKnownState?.excludedPaths || [];
+    const preservedTotalActualCost = this.lastKnownState?.totalActualCost;
     const preservedIntermediateData = this.lastKnownState?.intermediateData || {
       directoryTreeContent: undefined,
       rawRegexPatterns: undefined,
@@ -494,6 +500,7 @@ export class WorkflowTracker {
       projectDirectory: preservedProjectDirectory,
       excludedPaths: preservedExcludedPaths,
       timeoutMs: this.lastKnownState?.timeoutMs,
+      totalActualCost: preservedTotalActualCost, // Preserve server-provided cost data
       intermediateData: preservedIntermediateData,
     };
     this.notifyProgress(eventBasedState);
@@ -545,7 +552,7 @@ export class WorkflowTracker {
   
   private mapStageNameToType(stageName: string): WorkflowStage {
     // STANDARDIZED: Convert ANY backend stage name format to SCREAMING_SNAKE_CASE
-    return WorkflowUtils.mapStageNameToEnum(stageName) || 'REGEX_PATTERN_GENERATION';
+    return WorkflowUtils.mapStageNameToEnum(stageName) || 'REGEX_FILE_FILTER';
   }
 
   private notifyProgress(state: WorkflowState): void {
@@ -694,9 +701,7 @@ export const WorkflowUtils = {
     switch (normalizedStageName) {
       // Human-readable names from WorkflowStage::display_name() (status responses)
       case 'Generating Regex Patterns':
-        return 'REGEX_PATTERN_GENERATION';
-      case 'Local File Filtering':
-        return 'LOCAL_FILE_FILTERING';
+        return 'REGEX_FILE_FILTER';
       case 'AI File Relevance Assessment':
         return 'FILE_RELEVANCE_ASSESSMENT';
       case 'Extended Path Finding':
@@ -705,10 +710,8 @@ export const WorkflowUtils = {
         return 'PATH_CORRECTION';
         
       // PascalCase variants from results responses
-      case 'GeneratingRegex':
-        return 'REGEX_PATTERN_GENERATION';
-      case 'LocalFiltering':
-        return 'LOCAL_FILE_FILTERING';
+      case 'RegexFileFilter':
+        return 'REGEX_FILE_FILTER';
       case 'FileRelevanceAssessment':
         return 'FILE_RELEVANCE_ASSESSMENT';
       case 'ExtendedPathFinder':
@@ -717,10 +720,8 @@ export const WorkflowUtils = {
         return 'PATH_CORRECTION';
         
       // SCREAMING_SNAKE_CASE from WorkflowStageJob.stage and WorkflowStageEvent.stage
-      case 'REGEX_PATTERN_GENERATION':
-        return 'REGEX_PATTERN_GENERATION';
-      case 'LOCAL_FILE_FILTERING':
-        return 'LOCAL_FILE_FILTERING';
+      case 'REGEX_FILE_FILTER':
+        return 'REGEX_FILE_FILTER';
       case 'FILE_RELEVANCE_ASSESSMENT':
         return 'FILE_RELEVANCE_ASSESSMENT';
       case 'EXTENDED_PATH_FINDER':
@@ -738,8 +739,7 @@ export const WorkflowUtils = {
    */
   tryDirectScreamingSnakeCaseMatch(stageName: string): WorkflowStage | null {
     const validStages: WorkflowStage[] = [
-      'REGEX_PATTERN_GENERATION', 
-      'LOCAL_FILE_FILTERING',
+      'REGEX_FILE_FILTER', 
       'FILE_RELEVANCE_ASSESSMENT',
       'EXTENDED_PATH_FINDER',
       'PATH_CORRECTION'
@@ -754,7 +754,7 @@ export const WorkflowUtils = {
   calculateProgress(stageJobs: any[]): number {
     if (stageJobs.length === 0) return 0;
     
-    const totalStages = 5; // Updated to match FileFinderWorkflow: REGEX_PATTERN_GENERATION, LOCAL_FILE_FILTERING, FILE_RELEVANCE_ASSESSMENT, EXTENDED_PATH_FINDER, PATH_CORRECTION
+    const totalStages = 4; // Updated to match FileFinderWorkflow: REGEX_FILE_FILTER, FILE_RELEVANCE_ASSESSMENT, EXTENDED_PATH_FINDER, PATH_CORRECTION
     const completedStages = stageJobs.filter(job => job.status === 'completed' || job.status === 'completedByTag').length;
     const runningStages = stageJobs.filter(job => 
       job.status === 'running' || 
@@ -774,8 +774,7 @@ export const WorkflowUtils = {
    */
   getStageName(stage: string): string {
     const stageNames: Record<string, string> = {
-      'REGEX_PATTERN_GENERATION': 'Generating Regex Patterns',
-      'LOCAL_FILE_FILTERING': 'Local File Filtering',
+      'REGEX_FILE_FILTER': 'Filtering Files with Regex',
       'FILE_RELEVANCE_ASSESSMENT': 'AI File Relevance Assessment',
       'EXTENDED_PATH_FINDER': 'Extended Path Finding',
       'PATH_CORRECTION': 'Path Correction',
@@ -788,8 +787,7 @@ export const WorkflowUtils = {
    */
   getStageDescription(stage: string): string {
     const descriptions: Record<string, string> = {
-      'REGEX_PATTERN_GENERATION': 'Creating regex patterns based on task description',
-      'LOCAL_FILE_FILTERING': 'Filtering files based on local patterns and criteria',
+      'REGEX_FILE_FILTER': 'Creating regex patterns to filter relevant files',
       'FILE_RELEVANCE_ASSESSMENT': 'Using AI to assess relevance of filtered files to the task',
       'EXTENDED_PATH_FINDER': 'Finding additional relevant paths for comprehensive results',
       'PATH_CORRECTION': 'Path correction and validation',

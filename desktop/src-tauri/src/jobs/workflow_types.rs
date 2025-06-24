@@ -24,7 +24,7 @@ impl Default for WorkflowStatus {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Hash, Eq)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum WorkflowStage {
-    RegexPatternGeneration,
+    RegexFileFilter,
     FileRelevanceAssessment,
     ExtendedPathFinder,
     PathCorrection,
@@ -40,7 +40,7 @@ impl WorkflowStage {
     /// Get all stages in execution order
     pub fn all_stages() -> Vec<WorkflowStage> {
         vec![
-            WorkflowStage::RegexPatternGeneration,
+            WorkflowStage::RegexFileFilter,
             WorkflowStage::FileRelevanceAssessment,
             WorkflowStage::ExtendedPathFinder,
             WorkflowStage::PathCorrection,
@@ -50,7 +50,7 @@ impl WorkflowStage {
     /// Get the next stage in the workflow
     pub fn next_stage(&self) -> Option<WorkflowStage> {
         match self {
-            WorkflowStage::RegexPatternGeneration => Some(WorkflowStage::FileRelevanceAssessment),
+            WorkflowStage::RegexFileFilter => Some(WorkflowStage::FileRelevanceAssessment),
             WorkflowStage::FileRelevanceAssessment => Some(WorkflowStage::ExtendedPathFinder),
             WorkflowStage::ExtendedPathFinder => Some(WorkflowStage::PathCorrection),
             WorkflowStage::PathCorrection => None,
@@ -60,8 +60,8 @@ impl WorkflowStage {
     /// Get the previous stage in the workflow
     pub fn previous_stage(&self) -> Option<WorkflowStage> {
         match self {
-            WorkflowStage::RegexPatternGeneration => None,
-            WorkflowStage::FileRelevanceAssessment => Some(WorkflowStage::RegexPatternGeneration),
+            WorkflowStage::RegexFileFilter => None,
+            WorkflowStage::FileRelevanceAssessment => Some(WorkflowStage::RegexFileFilter),
             WorkflowStage::ExtendedPathFinder => Some(WorkflowStage::FileRelevanceAssessment),
             WorkflowStage::PathCorrection => Some(WorkflowStage::ExtendedPathFinder),
         }
@@ -70,7 +70,7 @@ impl WorkflowStage {
     /// Get stage index for progress calculation (0-based)
     pub fn stage_index(&self) -> usize {
         match self {
-            WorkflowStage::RegexPatternGeneration => 0,
+            WorkflowStage::RegexFileFilter => 0,
             WorkflowStage::FileRelevanceAssessment => 1,
             WorkflowStage::ExtendedPathFinder => 2,
             WorkflowStage::PathCorrection => 3,
@@ -80,7 +80,7 @@ impl WorkflowStage {
     /// Get stage display name
     pub fn display_name(&self) -> &'static str {
         match self {
-            WorkflowStage::RegexPatternGeneration => "Generating Regex Patterns",
+            WorkflowStage::RegexFileFilter => "Regex File Filtering",
             WorkflowStage::FileRelevanceAssessment => "AI File Relevance Assessment",
             WorkflowStage::ExtendedPathFinder => "Extended Path Finding",
             WorkflowStage::PathCorrection => "Path Correction",
@@ -90,7 +90,7 @@ impl WorkflowStage {
     /// Convert from stage display name to WorkflowStage enum
     pub fn from_display_name(display_name: &str) -> Option<WorkflowStage> {
         match display_name {
-            "Generating Regex Patterns" => Some(WorkflowStage::RegexPatternGeneration),
+            "Regex File Filtering" => Some(WorkflowStage::RegexFileFilter),
             "AI File Relevance Assessment" => Some(WorkflowStage::FileRelevanceAssessment),
             "Extended Path Finding" => Some(WorkflowStage::ExtendedPathFinder),
             "Path Correction" => Some(WorkflowStage::PathCorrection),
@@ -101,7 +101,7 @@ impl WorkflowStage {
     /// Convert from TaskType to WorkflowStage enum
     pub fn from_task_type(task_type: &TaskType) -> Option<WorkflowStage> {
         match task_type {
-            TaskType::RegexPatternGeneration => Some(WorkflowStage::RegexPatternGeneration),
+            TaskType::RegexFileFilter => Some(WorkflowStage::RegexFileFilter),
             TaskType::FileRelevanceAssessment => Some(WorkflowStage::FileRelevanceAssessment),
             TaskType::ExtendedPathFinder => Some(WorkflowStage::ExtendedPathFinder),
             TaskType::PathCorrection => Some(WorkflowStage::PathCorrection),
@@ -503,7 +503,7 @@ impl Default for ErrorRecoveryConfig {
         let mut strategy_map = HashMap::new();
         
         // Define default strategies for each stage
-        strategy_map.insert("RegexPatternGeneration".to_string(), RecoveryStrategy::RetryStage { max_attempts: 3, delay_ms: 3000 });
+        strategy_map.insert("RegexFileFilter".to_string(), RecoveryStrategy::RetryStage { max_attempts: 3, delay_ms: 3000 });
         strategy_map.insert("FileRelevanceAssessment".to_string(), RecoveryStrategy::RetryStage { max_attempts: 3, delay_ms: 4000 });
         strategy_map.insert("ExtendedPathFinder".to_string(), RecoveryStrategy::RetryStage { max_attempts: 2, delay_ms: 5000 });
         strategy_map.insert("PathCorrection".to_string(), RecoveryStrategy::RetryStage { max_attempts: 2, delay_ms: 3000 });

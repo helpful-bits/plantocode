@@ -14,21 +14,16 @@ pub(super) fn update_intermediate_data_internal(
     stage_data: serde_json::Value,
 ) -> AppResult<()> {
     match stage {
-        WorkflowStage::RegexPatternGeneration => {
-            // Store the entire stage_data as raw JSON for later pattern extraction
-            // This ensures we preserve all data regardless of its structure
-            workflow_state.intermediate_data.raw_regex_patterns = Some(stage_data.clone());
-            debug!("Stored raw regex patterns data in intermediate_data");
-            
-            // Extract filtered files from RegexPatternGeneration (now integrated)
-            if let Some(files) = stage_data.get("filteredFiles").and_then(|v| v.as_array()) {
-                workflow_state.intermediate_data.locally_filtered_files = files.iter()
+        WorkflowStage::RegexFileFilter => {
+            // Expect stage_data as JSON array of strings (file paths)
+            if let Some(files_array) = stage_data.as_array() {
+                workflow_state.intermediate_data.locally_filtered_files = files_array.iter()
                     .filter_map(|v| v.as_str().map(String::from))
                     .collect();
-                debug!("Stored {} locally filtered files from RegexPatternGeneration in intermediate_data", 
+                debug!("Stored {} locally filtered files from RegexFileFilter in intermediate_data", 
                        workflow_state.intermediate_data.locally_filtered_files.len());
             } else {
-                warn!("RegexPatternGeneration stage_data missing or invalid 'filteredFiles' field");
+                warn!("RegexFileFilter stage_data is not a valid JSON array of file paths");
             }
         }
         WorkflowStage::FileRelevanceAssessment => {

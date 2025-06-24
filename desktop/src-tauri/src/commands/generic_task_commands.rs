@@ -93,10 +93,9 @@ pub async fn generic_llm_stream_command(
     };
     
     // Get model configuration for this task using centralized resolver
-    let model_settings = crate::utils::resolve_model_settings(
+    let model_settings = crate::utils::config_resolver::resolve_model_settings(
         &app_handle,
         TaskType::GenericLlmStream,
-        &project_dir,
         args.model.clone(),
         args.temperature,
         args.max_output_tokens,
@@ -179,10 +178,9 @@ pub async fn refine_task_description_command(
     }
     
     // Get model configuration for this task using centralized resolver
-    let model_settings = crate::utils::resolve_model_settings(
+    let model_settings = crate::utils::config_resolver::resolve_model_settings(
         &app_handle,
         TaskType::TaskRefinement,
-        &project_directory,
         None,
         None,
         None,

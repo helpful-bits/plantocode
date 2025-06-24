@@ -15,7 +15,6 @@ import { Button } from "@/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/ui/alert";
 import { Card, CardContent, CardHeader, CardTitle } from "@/ui/card";
 import { Badge } from "@/ui/badge";
-import { AnimatedNumber } from "@/ui/animated-number";
 import { useBillingData } from "@/hooks/use-billing-data";
 import { CreditManager, PaymentMethodsList, InvoicesList, CreditTransactionHistory } from "./billing-components";
 import { SubscriptionModal } from "./components/subscription-modal";
@@ -38,8 +37,12 @@ interface BillingOverviewCardProps {
     spendingLimitUsd: number;
     periodEnd: string;
   };
+  allowanceDetails?: {
+    usedAmountUsd: number;
+    totalAllowanceUsd: number;
+    periodEnd: string;
+  };
   creditBalanceUsd?: number;
-  previousCreditBalance?: number | null;
   onManageSubscription: () => void;
   onBuyCredits: () => void;
 }
@@ -49,8 +52,8 @@ function BillingOverviewCard({
   subscriptionStatus,
   trialEndsAt,
   spendingDetails,
+  allowanceDetails,
   creditBalanceUsd,
-  previousCreditBalance,
   onManageSubscription,
   onBuyCredits
 }: BillingOverviewCardProps) {
@@ -59,7 +62,7 @@ function BillingOverviewCard({
       <CardHeader>
         <CardTitle className="text-lg font-semibold flex items-center gap-2">
           <Zap className="h-5 w-5 text-primary" />
-          Plan & Credits
+          Plan & Usage
         </CardTitle>
       </CardHeader>
       <CardContent>
@@ -130,32 +133,39 @@ function BillingOverviewCard({
             </Button>
           </div>
 
-          {/* Credit Balance */}
+          {/* Monthly Usage Allowance */}
           <div className="space-y-4">
             <div>
               <h4 className="text-sm font-medium text-muted-foreground flex items-center gap-2 mb-3">
                 <DollarSign className="h-4 w-4" />
-                Credit Balance
+                Monthly Usage Allowance
               </h4>
-              <div className="text-2xl font-bold mb-4">
-                {creditBalanceUsd !== undefined ? (
-                  <AnimatedNumber
-                    value={creditBalanceUsd}
-                    previousValue={previousCreditBalance}
-                    formatValue={(value) => formatUsdCurrency(value)}
-                    className="text-2xl font-bold"
-                  />
+              <div className="text-2xl font-bold mb-2">
+                {allowanceDetails ? (
+                  <span>
+                    {formatUsdCurrency(allowanceDetails.usedAmountUsd)} / {formatUsdCurrency(allowanceDetails.totalAllowanceUsd)} used
+                  </span>
                 ) : (
                   <span className="text-muted-foreground">Loading...</span>
                 )}
               </div>
+              {allowanceDetails && (
+                <div className="text-sm text-muted-foreground mb-4">
+                  Resets: {new Date(allowanceDetails.periodEnd).toLocaleDateString()}
+                </div>
+              )}
+              {creditBalanceUsd !== undefined && creditBalanceUsd > 0 && (
+                <div className="text-sm text-muted-foreground mb-4">
+                  Top-up Credits: {formatUsdCurrency(creditBalanceUsd)}
+                </div>
+              )}
               <Button 
                 size="sm" 
                 onClick={onBuyCredits}
                 className="w-full"
               >
                 <Plus className="h-4 w-4 mr-2" />
-                Buy Credits
+                Buy Top-up Credits
               </Button>
             </div>
           </div>
@@ -168,7 +178,6 @@ function BillingOverviewCard({
 export function BillingDashboard({}: BillingDashboardProps = {}) {
   const [isCreditManagerOpen, setIsCreditManagerOpen] = useState(false);
   const [isSubscriptionModalOpen, setIsSubscriptionModalOpen] = useState(false);
-  const [previousCreditBalance, setPreviousCreditBalance] = useState<number | null>(null);
 
   const { 
     dashboardData,
@@ -181,11 +190,6 @@ export function BillingDashboard({}: BillingDashboardProps = {}) {
 
   const hasAnyData = dashboardData !== null;
 
-  useEffect(() => {
-    if (dashboardData?.creditBalanceUsd !== undefined) {
-      setPreviousCreditBalance(dashboardData.creditBalanceUsd);
-    }
-  }, [dashboardData?.creditBalanceUsd]);
 
   useEffect(() => {
     const handleOpenSubscriptionModal = () => {
@@ -279,7 +283,7 @@ export function BillingDashboard({}: BillingDashboardProps = {}) {
           <AlertTitle>AI Services Blocked</AlertTitle>
           <AlertDescription className="mt-2">
             <p className="mb-4">
-              Your AI services have been blocked because you've exceeded your spending limit.
+              Your AI services have been blocked because you've exceeded your monthly allowance and don't have sufficient top-up credits.
             </p>
             <div className="flex gap-3">
               <Button 
@@ -287,7 +291,7 @@ export function BillingDashboard({}: BillingDashboardProps = {}) {
                 onClick={() => setIsCreditManagerOpen(true)}
               >
                 <CreditCard className="h-4 w-4 mr-2" />
-                Buy Credits
+                Buy Top-up Credits
               </Button>
               <Button 
                 size="sm" 
@@ -310,8 +314,8 @@ export function BillingDashboard({}: BillingDashboardProps = {}) {
           subscriptionStatus={dashboardData?.subscriptionStatus}
           trialEndsAt={dashboardData?.trialEndsAt}
           spendingDetails={dashboardData?.spendingDetails}
+          allowanceDetails={dashboardData?.allowanceDetails}
           creditBalanceUsd={dashboardData?.creditBalanceUsd}
-          previousCreditBalance={previousCreditBalance}
           onManageSubscription={() => setIsSubscriptionModalOpen(true)}
           onBuyCredits={() => setIsCreditManagerOpen(true)}
         />

@@ -3,7 +3,7 @@ export const replacePlaceholders = (template: string, data: Record<string, strin
   
   for (const [key, value] of Object.entries(data)) {
     const placeholder = `{{${key}}}`;
-    result = result.replace(new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), value || '');
+    result = result.replace(new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gs'), value || '');
   }
   
   return result;

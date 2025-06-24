@@ -3,11 +3,13 @@ use log::{debug, info, error, warn};
 use serde_json::json;
 use tauri::AppHandle;
 
+use crate::utils::config_resolver;
+
 use crate::error::{AppError, AppResult};
 use crate::jobs::processor_trait::JobProcessor;
 use crate::jobs::types::{Job, JobPayload, JobProcessResult, ExtendedPathFinderPayload};
 use crate::jobs::job_processor_utils;
-use crate::jobs::processors::utils::{prompt_utils, fs_context_utils};
+use crate::jobs::processors::utils::{prompt_utils};
 use crate::jobs::processors::{LlmTaskRunner, LlmTaskConfigBuilder, LlmPromptContext};
 use crate::models::TaskType;
 use crate::utils::directory_tree::get_directory_tree_with_defaults;
@@ -121,13 +123,17 @@ impl JobProcessor for ExtendedPathFinderProcessor {
                 .ok_or_else(|| AppError::JobError(format!("Session {} not found", job.session_id)))?
         };
         
-        // Get task settings from database
-        let task_settings = settings_repo.get_task_settings(&session.project_hash, &job.job_type.to_string()).await?
-            .ok_or_else(|| AppError::JobError(format!("No task settings found for project {} and task type {}", session.project_hash, job.job_type.to_string())))?;
-        let model_used = task_settings.model;
-        let temperature = task_settings.temperature
-            .ok_or_else(|| AppError::JobError("Temperature not set in task settings".to_string()))?;
-        let max_output_tokens = task_settings.max_tokens as u32;
+        // Get model settings using centralized config resolution
+        let model_settings = config_resolver::resolve_model_settings(
+            &app_handle,
+            job.job_type,
+            None, // model_override
+            None, // temperature_override  
+            None, // max_tokens_override
+        ).await?
+        .ok_or_else(|| AppError::ConfigError(format!("Task {:?} requires LLM configuration", job.job_type)))?;
+
+        let (model_used, temperature, max_output_tokens) = model_settings;
         
         job_processor_utils::log_job_start(&job.id, "Extended Path Finding");
         info!("Starting extended path finding with {} AI-filtered initial paths", 
@@ -200,7 +206,6 @@ impl JobProcessor for ExtendedPathFinderProcessor {
             task_description: enhanced_task_description,
             file_contents: Some(file_contents),
             directory_tree: Some(directory_tree.clone()),
-            system_prompt_override: None,
         };
         
         // Check for cancellation before LLM call using standardized utility
@@ -241,11 +246,21 @@ impl JobProcessor for ExtendedPathFinderProcessor {
             }
         };
         
-        // Validate extended paths found by LLM using centralized utility
-        let (validated_extended_paths, unverified_extended_paths) = fs_context_utils::validate_paths_against_filesystem(
-            &extended_paths, 
-            &project_directory
-        ).await;
+        // Validate extended paths found by LLM
+        let mut validated_extended_paths = Vec::new();
+        let mut unverified_extended_paths = Vec::new();
+        
+        for relative_path in &extended_paths {
+            let absolute_path = std::path::Path::new(&project_directory).join(relative_path);
+            match tokio::fs::metadata(&absolute_path).await {
+                Ok(metadata) if metadata.is_file() => {
+                    validated_extended_paths.push(relative_path.clone());
+                },
+                _ => {
+                    unverified_extended_paths.push(relative_path.clone());
+                }
+            }
+        }
         
         info!("Extended paths validation: {} valid, {} invalid paths", 
             validated_extended_paths.len(), unverified_extended_paths.len());
