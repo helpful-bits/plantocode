@@ -1,14 +1,12 @@
-use actix_web::{web, HttpResponse, get, post};
+use actix_web::{web, HttpResponse, get};
 use serde::{Deserialize, Serialize};
 use crate::error::AppError;
 use crate::services::billing_service::BillingService;
 use crate::middleware::secure_auth::UserId;
 use crate::models::runtime_config::AppState;
-use crate::db::repositories::subscription_plan_repository::{PlanFeatures, SpendingDetails};
-use log::{debug, info, error};
-use uuid::Uuid;
-use bigdecimal::{BigDecimal, ToPrimitive};
-use std::collections::HashMap;
+use crate::db::repositories::subscription_plan_repository::PlanFeatures;
+use log::{debug, error};
+use bigdecimal::ToPrimitive;
 use chrono::{DateTime, Utc};
 
 // ========================================
@@ -26,32 +24,14 @@ pub async fn get_usage_summary(
     // Get consolidated billing dashboard data
     let dashboard_data = billing_service.get_billing_dashboard_data(&user_id.0).await?;
     
-    // Return the spending details as usage summary
-    Ok(HttpResponse::Ok().json(dashboard_data.spending_details))
+    // Return consolidated billing dashboard data
+    Ok(HttpResponse::Ok().json(dashboard_data))
 }
 
 // ========================================
 // SUBSCRIPTION PLAN HANDLERS
 // ========================================
 
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PlanLimits {
-    pub monthly_allowance: f64,
-    pub cost_markup_percentage: f64,
-    pub models: Vec<String>,
-    pub support: String,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PlanDetails {
-    pub name: String,
-    pub price: String,
-    pub period: String,
-    pub features: Vec<String>,
-    pub limits: PlanLimits,
-}
 
 /// Get available subscription plans - using subscription_plan_repository and returning Vec<SubscriptionPlan>
 #[get("/subscription-plans")]
@@ -68,9 +48,9 @@ pub async fn get_available_plans(
         pub id: String,
         pub name: String,
         pub description: String,
-        pub weekly_price: f64,
-        pub monthly_price: f64,
-        pub yearly_price: f64,
+        pub weekly_price: String,
+        pub monthly_price: String,
+        pub yearly_price: String,
         pub currency: String,
         pub trial_days: i32,
         pub features: Vec<String>,
@@ -92,10 +72,6 @@ pub async fn get_available_plans(
                 support_level: "Standard".to_string(),
                 api_access: false,
                 analytics_level: "Basic".to_string(),
-                spending_details: SpendingDetails {
-                    overage_policy: "none".to_string(),
-                    hard_cutoff: true,
-                },
             }
         });
         
@@ -103,9 +79,9 @@ pub async fn get_available_plans(
             id: plan.id.clone(),
             name: plan.name.clone(),
             description: plan.description.unwrap_or_else(|| format!("{} subscription plan", plan.name)),
-            weekly_price: plan.base_price_weekly.to_f64().unwrap_or(0.0),
-            monthly_price: plan.base_price_monthly.to_f64().unwrap_or(0.0),
-            yearly_price: plan.base_price_yearly.to_f64().unwrap_or(0.0),
+            weekly_price: plan.base_price_weekly.to_string(),
+            monthly_price: plan.base_price_monthly.to_string(),
+            yearly_price: plan.base_price_yearly.to_string(),
             currency: plan.currency.clone(),
             trial_days: app_state.settings.subscription.default_trial_days as i32,
             features: typed_features.core_features,
@@ -165,14 +141,14 @@ pub async fn get_current_plan(
     pub struct CurrentPlanResponse {
         pub plan_id: String,
         pub plan_name: String,
-        pub overage_rate: f64,
+        pub monthly_price: f64,
         pub status: String,
     }
     
     let response = CurrentPlanResponse {
         plan_id: plan.id.clone(),
         plan_name: plan.name.clone(),
-        overage_rate: plan.cost_markup_percentage.to_f64().unwrap_or(0.0),
+        monthly_price: plan.get_monthly_price_float(),
         status: subscription.status.clone(),
     };
     

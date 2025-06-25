@@ -95,14 +95,14 @@ export function useImplementationPlanActions() {
           const errorType = errorState.error.type;
           
           if ([ErrorType.PAYMENT_FAILED, ErrorType.PLAN_UPGRADE_REQUIRED,
-               ErrorType.CREDIT_INSUFFICIENT, ErrorType.SPENDING_LIMIT_EXCEEDED].includes(errorType)) {
+               ErrorType.CREDIT_INSUFFICIENT].includes(errorType)) {
             showNotification({
               title: "Billing Issue",
               message: errorState.error.message || "This feature requires a billing upgrade.",
               type: "warning",
               duration: 0,
               actionButton: {
-                label: "Manage Billing",
+                label: "Purchase Credits",
                 onClick: () => window.location.pathname = '/settings',
                 variant: "default",
                 className: "bg-primary text-primary-foreground hover:bg-primary/90"

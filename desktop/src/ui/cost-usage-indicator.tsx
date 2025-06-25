@@ -5,14 +5,10 @@ import { useBillingData } from "@/hooks/use-billing-data";
 import { Badge } from "./badge";
 import { Button } from "./button";
 import { Card } from "./card";
-import { Progress } from "./progress";
 
 interface CostUsageIndicatorProps {
   // Override props (for when you want to provide data directly instead of fetching)
-  currentSpending?: number;
-  monthlyAllowance?: number;
-  usagePercentage?: number;
-  servicesBlocked?: boolean;
+  creditBalance?: number;
   trialDaysLeft?: number;
 
   // Component display options
@@ -20,20 +16,16 @@ interface CostUsageIndicatorProps {
   showRefreshButton?: boolean;
   className?: string;
   onClick?: () => void;
-
 }
 
 /**
  * CostUsageIndicator component
- * Displays cost-based usage statistics and trial information
+ * Displays credit balance and trial information
  * Can either fetch data automatically or display provided data
  */
 export function CostUsageIndicator({
   // Override props
-  currentSpending,
-  monthlyAllowance,
-  usagePercentage,
-  servicesBlocked,
+  creditBalance,
   trialDaysLeft,
 
   // Display options
@@ -41,23 +33,16 @@ export function CostUsageIndicator({
   showRefreshButton = true,
   className = "",
   onClick,
-
 }: CostUsageIndicatorProps) {
-  // Fetch usage data if no override props provided
-  const shouldFetch = currentSpending === undefined || monthlyAllowance === undefined;
-  const { spendingStatus, trialDaysLeft: fetchedTrialDaysLeft, isLoading, error, refreshBillingData } = useBillingData();
-
+  // Fetch billing data
+  const { creditBalanceUsd, trialDaysLeft: fetchedTrialDaysLeft, isLoading, error, refreshBillingData } = useBillingData();
 
   // Use provided values or fetched values with safe fallbacks
-  const actualCurrentSpending = (currentSpending ?? spendingStatus?.currentSpending) ?? 0;
-  const actualMonthlyAllowance = (monthlyAllowance ?? spendingStatus?.effectiveAllowance) ?? 0;
-  const actualUsagePercentage = (usagePercentage ?? spendingStatus?.usagePercentage) ?? 0;
-  const actualServicesBlocked = (servicesBlocked ?? spendingStatus?.servicesBlocked) ?? false;
+  const actualCreditBalance = (creditBalance ?? creditBalanceUsd) ?? 0;
   const actualTrialDaysLeft = trialDaysLeft ?? fetchedTrialDaysLeft;
 
   // Format currency with 2 decimal places
-  const formattedSpending = actualCurrentSpending.toFixed(2);
-  const formattedAllowance = actualMonthlyAllowance.toFixed(2);
+  const formattedCreditBalance = actualCreditBalance.toFixed(2);
 
   // Format currency symbol
   const currencySymbol = '$';
@@ -80,20 +65,12 @@ export function CostUsageIndicator({
 
         <Badge 
           variant="outline" 
-          className={`bg-background/80 border-border/60 backdrop-blur-sm text-foreground ${
-            actualServicesBlocked ? "border-destructive/50 text-destructive" : ""
-          }`}
+          className="bg-background/80 border-border/60 backdrop-blur-sm text-foreground"
         >
-          {actualMonthlyAllowance > 0 ? `${currencySymbol}${formattedSpending} / ${currencySymbol}${formattedAllowance}` : `${currencySymbol}${formattedSpending}`}
+          Credits: {currencySymbol}{formattedCreditBalance}
         </Badge>
 
-        {actualServicesBlocked && (
-          <Badge variant="destructive" className="text-xs">
-            Blocked
-          </Badge>
-        )}
-
-        {showRefreshButton && shouldFetch && (
+        {showRefreshButton && (
           <Button
             variant="ghost"
             size="icon"
@@ -115,22 +92,20 @@ export function CostUsageIndicator({
       onClick={onClick}
     >
       <div className="space-y-3">
-        {/* Usage title with spending and refresh button */}
+        {/* Credit balance title with refresh button */}
         <div className="flex justify-between items-center">
           <h3 className="text-sm font-medium text-foreground">
-            {actualServicesBlocked ? "⚠️ Usage (Blocked)" : "AI Usage"}
+            Credit Balance
           </h3>
           <div className="flex items-center gap-2">
             <Badge 
               variant="outline" 
-              className={`bg-background/80 border-border/60 backdrop-blur-sm text-xs text-foreground ${
-                actualServicesBlocked ? "border-destructive/50 text-destructive" : ""
-              }`}
+              className="bg-background/80 border-border/60 backdrop-blur-sm text-xs text-foreground"
             >
-              {currencySymbol}{formattedSpending}
+              {currencySymbol}{formattedCreditBalance}
             </Badge>
 
-            {showRefreshButton && shouldFetch && (
+            {showRefreshButton && (
               <Button
                 variant="ghost"
                 size="icon"
@@ -143,45 +118,6 @@ export function CostUsageIndicator({
             )}
           </div>
         </div>
-
-        {/* Cost usage progress bar */}
-        <div className="space-y-1">
-          <Progress 
-            value={actualUsagePercentage} 
-            className={`h-2 ${
-              actualUsagePercentage > 90 ? "bg-destructive/20" : 
-              actualUsagePercentage >= 75 ? "bg-warning/20" : ""
-            }`}
-          />
-          <div className="flex justify-between text-xs text-muted-foreground">
-            <span>{currencySymbol}{formattedSpending} used</span>
-            <span>{currencySymbol}{formattedAllowance} allowance</span>
-          </div>
-        </div>
-
-        {/* Services blocked warning */}
-        {actualServicesBlocked && (
-          <div className="mt-2">
-            <Badge variant="destructive" className="w-full justify-center text-xs">
-              AI services blocked - Hard limit reached
-            </Badge>
-          </div>
-        )}
-
-        {/* High usage warning */}
-        {!actualServicesBlocked && actualUsagePercentage > 75 && (
-          <div className="mt-2">
-            <Badge 
-              variant={actualUsagePercentage > 90 ? "destructive" : "warning"} 
-              className="w-full justify-center text-xs"
-            >
-              {actualUsagePercentage > 90 
-                ? `${actualUsagePercentage.toFixed(0)}% used - Approaching limit`
-                : `${actualUsagePercentage.toFixed(0)}% used`
-              }
-            </Badge>
-          </div>
-        )}
 
         {/* Trial days left indicator */}
         {actualTrialDaysLeft !== undefined && actualTrialDaysLeft !== null && (

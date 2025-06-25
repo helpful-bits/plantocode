@@ -4,22 +4,6 @@ use serde::{Deserialize, Serialize};
 use bigdecimal::{BigDecimal, ToPrimitive};
 use crate::error::AppError;
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct SpendingDetails {
-    #[serde(default = "default_overage_policy")]
-    pub overage_policy: String,
-    #[serde(default = "default_hard_cutoff")]
-    pub hard_cutoff: bool,
-}
-
-fn default_overage_policy() -> String {
-    "none".to_string()
-}
-
-fn default_hard_cutoff() -> bool {
-    true
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -32,8 +16,6 @@ pub struct PlanFeatures {
     pub api_access: bool,
     #[serde(default = "default_analytics_level")]
     pub analytics_level: String,
-    #[serde(default)]
-    pub spending_details: SpendingDetails,
 }
 
 fn default_support_level() -> String {
@@ -60,41 +42,6 @@ impl PlanFeatures {
         }
     }
 
-    /// Check if overage is allowed for metered billing
-    pub fn allows_overage(&self) -> bool {
-        !matches!(self.spending_details.overage_policy.as_str(), "none")
-    }
-
-    /// Get the overage policy for metered billing decisions
-    pub fn get_overage_policy(&self) -> OveragePolicy {
-        match self.spending_details.overage_policy.as_str() {
-            "none" => OveragePolicy::None,
-            "standard_rate" => OveragePolicy::StandardRate,
-            "negotiated_rate" => OveragePolicy::NegotiatedRate,
-            _ => OveragePolicy::None,
-        }
-    }
-
-    /// Check if hard cutoff is enabled (blocks services when limit exceeded)
-    pub fn has_hard_cutoff(&self) -> bool {
-        self.spending_details.hard_cutoff
-    }
-
-    /// Determine if services should be blocked based on overage policy and hard cutoff
-    pub fn should_block_services_on_overage(&self) -> bool {
-        match self.get_overage_policy() {
-            OveragePolicy::None => true, // Always block if no overage allowed
-            OveragePolicy::StandardRate | OveragePolicy::NegotiatedRate => {
-                self.has_hard_cutoff() // Block only if hard cutoff is enabled
-            }
-        }
-    }
-
-    /// Check if the plan supports metered billing
-    pub fn supports_metered_billing(&self) -> bool {
-        // All plans with overage policies support metered billing
-        self.allows_overage() || self.has_hard_cutoff()
-    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -105,31 +52,6 @@ pub enum SupportLevel {
     Dedicated,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum OveragePolicy {
-    /// No overage allowed - services blocked at limit
-    None,
-    /// Overage allowed at standard markup rate
-    StandardRate,
-    /// Overage allowed at negotiated custom rate
-    NegotiatedRate,
-}
-
-impl OveragePolicy {
-    /// Check if this policy allows usage beyond the included allowance
-    pub fn allows_overage(&self) -> bool {
-        matches!(self, OveragePolicy::StandardRate | OveragePolicy::NegotiatedRate)
-    }
-
-    /// Get the description of the overage policy for user-facing display
-    pub fn description(&self) -> &'static str {
-        match self {
-            OveragePolicy::None => "No overage allowed - services blocked at limit",
-            OveragePolicy::StandardRate => "Overage billed at standard rate",
-            OveragePolicy::NegotiatedRate => "Overage billed at negotiated rate",
-        }
-    }
-}
 
 #[derive(Debug, Clone)]
 pub struct SubscriptionPlan {
@@ -139,14 +61,10 @@ pub struct SubscriptionPlan {
     pub base_price_weekly: BigDecimal,
     pub base_price_monthly: BigDecimal,
     pub base_price_yearly: BigDecimal,
-    pub included_spending_weekly: BigDecimal,
-    pub included_spending_monthly: BigDecimal,
-    pub cost_markup_percentage: BigDecimal,
     pub currency: String,
     pub stripe_price_id_weekly: Option<String>,
     pub stripe_price_id_monthly: Option<String>,
     pub stripe_price_id_yearly: Option<String>,
-    pub plan_tier: i32,
     pub features: Value,
     pub active: bool,
     pub typed_features: Option<PlanFeatures>,
@@ -181,23 +99,6 @@ impl SubscriptionPlan {
         Ok(features.has_api_access())
     }
 
-    /// Check if overage is allowed for this plan
-    pub fn allows_overage(&self) -> Result<bool, AppError> {
-        let features = self.get_typed_features()?;
-        Ok(features.allows_overage())
-    }
-
-    /// Check if services should be blocked when overage occurs
-    pub fn should_block_services_on_overage(&self) -> Result<bool, AppError> {
-        let features = self.get_typed_features()?;
-        Ok(features.should_block_services_on_overage())
-    }
-
-    /// Check if the plan supports metered billing
-    pub fn supports_metered_billing(&self) -> Result<bool, AppError> {
-        let features = self.get_typed_features()?;
-        Ok(features.supports_metered_billing())
-    }
 
     /// Get the support level for this plan
     pub fn get_support_level(&self) -> Result<SupportLevel, AppError> {
@@ -205,11 +106,6 @@ impl SubscriptionPlan {
         Ok(features.get_support_level())
     }
 
-    /// Get the overage policy for this plan
-    pub fn get_overage_policy(&self) -> Result<OveragePolicy, AppError> {
-        let features = self.get_typed_features()?;
-        Ok(features.get_overage_policy())
-    }
 
     /// Check if this is a free plan
     pub fn is_free_plan(&self) -> bool {
@@ -222,65 +118,8 @@ impl SubscriptionPlan {
         self.base_price_monthly.to_f64().unwrap_or(0.0)
     }
 
-    /// Get the monthly included spending allowance
-    pub fn get_monthly_spending_allowance(&self) -> &BigDecimal {
-        &self.included_spending_monthly
-    }
 
-    /// Get the cost markup percentage for overage billing
-    pub fn get_cost_markup_percentage(&self) -> &BigDecimal {
-        &self.cost_markup_percentage
-    }
 
-    /// Calculate overage cost based on usage and markup
-    pub fn calculate_overage_cost(&self, overage_amount: &BigDecimal) -> Result<BigDecimal, AppError> {
-        let features = self.get_typed_features()?;
-        
-        match features.get_overage_policy() {
-            OveragePolicy::None => Ok(BigDecimal::from(0)), // No overage billing
-            OveragePolicy::StandardRate | OveragePolicy::NegotiatedRate => {
-                // Apply cost markup to overage amount
-                Ok(overage_amount * &self.cost_markup_percentage)
-            }
-        }
-    }
-
-    /// Get the plan tier for upgrade/downgrade comparison
-    pub fn get_plan_tier(&self) -> i32 {
-        self.plan_tier
-    }
-
-    /// Check if changing to another plan is an upgrade (higher tier)
-    pub fn is_upgrade_to(&self, other_plan: &SubscriptionPlan) -> bool {
-        other_plan.plan_tier > self.plan_tier
-    }
-
-    /// Check if changing to another plan is a downgrade (lower tier)
-    pub fn is_downgrade_to(&self, other_plan: &SubscriptionPlan) -> bool {
-        other_plan.plan_tier < self.plan_tier
-    }
-
-    /// Check if another plan is the same tier
-    pub fn is_same_tier_as(&self, other_plan: &SubscriptionPlan) -> bool {
-        other_plan.plan_tier == self.plan_tier
-    }
-
-    /// Check if plan change affects billing behavior significantly
-    pub fn billing_behavior_changes_to(&self, other_plan: &SubscriptionPlan) -> Result<bool, AppError> {
-        let current_features = self.get_typed_features()?;
-        let new_features = other_plan.get_typed_features()?;
-        
-        // Check if overage policies differ
-        let overage_policy_changes = current_features.get_overage_policy() != new_features.get_overage_policy();
-        
-        // Check if hard cutoff settings differ
-        let hard_cutoff_changes = current_features.has_hard_cutoff() != new_features.has_hard_cutoff();
-        
-        // Check if spending allowances differ significantly
-        let allowance_changes = self.included_spending_monthly != other_plan.included_spending_monthly;
-        
-        Ok(overage_policy_changes || hard_cutoff_changes || allowance_changes)
-    }
 }
 
 #[derive(Debug)]
@@ -294,7 +133,7 @@ impl SubscriptionPlanRepository {
     }
 
     pub async fn get_plan_by_id(&self, plan_id: &str) -> Result<SubscriptionPlan, AppError> {
-        let query_str = "SELECT id, name, description, base_price_weekly, base_price_monthly, base_price_yearly, included_spending_weekly, included_spending_monthly, cost_markup_percentage, currency, stripe_price_id_weekly, stripe_price_id_monthly, stripe_price_id_yearly, plan_tier, features, active FROM subscription_plans WHERE id = $1";
+        let query_str = "SELECT id, name, description, base_price_weekly, base_price_monthly, base_price_yearly, currency, stripe_price_id_weekly, stripe_price_id_monthly, stripe_price_id_yearly, features, active FROM subscription_plans WHERE id = $1";
         
         let record = sqlx::query(query_str)
             .bind(plan_id)
@@ -306,14 +145,10 @@ impl SubscriptionPlanRepository {
                     base_price_weekly: row.get("base_price_weekly"),
                     base_price_monthly: row.get("base_price_monthly"),
                     base_price_yearly: row.get("base_price_yearly"),
-                    included_spending_weekly: row.get("included_spending_weekly"),
-                    included_spending_monthly: row.get("included_spending_monthly"),
-                    cost_markup_percentage: row.get("cost_markup_percentage"),
                     currency: row.get("currency"),
                     stripe_price_id_weekly: row.get("stripe_price_id_weekly"),
                     stripe_price_id_monthly: row.get("stripe_price_id_monthly"),
                     stripe_price_id_yearly: row.get("stripe_price_id_yearly"),
-                    plan_tier: row.get("plan_tier"),
                     features: row.get("features"),
                     active: row.get("active"),
                     typed_features: None,
@@ -327,7 +162,7 @@ impl SubscriptionPlanRepository {
     }
 
     pub async fn get_all_plans(&self) -> Result<Vec<SubscriptionPlan>, AppError> {
-        let query_str = "SELECT id, name, description, base_price_weekly, base_price_monthly, base_price_yearly, included_spending_weekly, included_spending_monthly, cost_markup_percentage, currency, stripe_price_id_weekly, stripe_price_id_monthly, stripe_price_id_yearly, plan_tier, features, active FROM subscription_plans ORDER BY plan_tier, id";
+        let query_str = "SELECT id, name, description, base_price_weekly, base_price_monthly, base_price_yearly, currency, stripe_price_id_weekly, stripe_price_id_monthly, stripe_price_id_yearly, features, active FROM subscription_plans ORDER BY id";
         
         let records = sqlx::query(query_str)
             .map(|row: PgRow| {
@@ -338,14 +173,10 @@ impl SubscriptionPlanRepository {
                     base_price_weekly: row.get("base_price_weekly"),
                     base_price_monthly: row.get("base_price_monthly"),
                     base_price_yearly: row.get("base_price_yearly"),
-                    included_spending_weekly: row.get("included_spending_weekly"),
-                    included_spending_monthly: row.get("included_spending_monthly"),
-                    cost_markup_percentage: row.get("cost_markup_percentage"),
                     currency: row.get("currency"),
                     stripe_price_id_weekly: row.get("stripe_price_id_weekly"),
                     stripe_price_id_monthly: row.get("stripe_price_id_monthly"),
                     stripe_price_id_yearly: row.get("stripe_price_id_yearly"),
-                    plan_tier: row.get("plan_tier"),
                     features: row.get("features"),
                     active: row.get("active"),
                     typed_features: None,

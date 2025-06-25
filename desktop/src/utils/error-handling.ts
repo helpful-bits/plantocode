@@ -33,9 +33,10 @@ export enum ErrorType {
   PAYMENT_METHOD_REQUIRED = "PAYMENT_METHOD_REQUIRED",
   BILLING_ADDRESS_REQUIRED = "BILLING_ADDRESS_REQUIRED",
   SUBSCRIPTION_CONFLICT = "SUBSCRIPTION_CONFLICT",
-  SPENDING_LIMIT_EXCEEDED = "SPENDING_LIMIT_EXCEEDED",
   INVOICE_ERROR = "INVOICE_ERROR",
   CHECKOUT_ERROR = "CHECKOUT_ERROR",
+  PAYMENT_REQUIRED = "PAYMENT_REQUIRED",
+  PAYMENT_ERROR = "PAYMENT_ERROR",
 }
 
 
@@ -487,7 +488,7 @@ function applyContextSpecificTransformations(
         return "Your subscription has been cancelled. You can reactivate it anytime by visiting your billing page.";
       
       case ErrorType.CREDIT_INSUFFICIENT:
-        return "Insufficient top-up credits to complete this operation. Please visit your billing page to purchase additional top-up credits or upgrade your plan for a higher monthly allowance.";
+        return "Insufficient credits to complete this operation. Please purchase additional credits to continue.";
       
       case ErrorType.PLAN_UPGRADE_REQUIRED:
         return "This feature requires a plan upgrade. Please visit your billing page to upgrade your subscription and access this functionality.";
@@ -501,14 +502,18 @@ function applyContextSpecificTransformations(
       case ErrorType.SUBSCRIPTION_CONFLICT:
         return "There's a conflict with your subscription status. Please refresh and try again, or contact support.";
       
-      case ErrorType.SPENDING_LIMIT_EXCEEDED:
-        return "Your monthly allowance has been exceeded and services may be blocked. Please visit your billing page to upgrade your plan or purchase top-up credits to continue using premium features.";
       
       case ErrorType.INVOICE_ERROR:
         return "There was an error processing your invoice. Please contact support for assistance.";
       
       case ErrorType.CHECKOUT_ERROR:
         return "There was an error with the checkout process. Please try again or contact support if the issue persists.";
+      
+      case ErrorType.PAYMENT_REQUIRED:
+        return "Payment required. Please complete your payment to continue.";
+      
+      case ErrorType.PAYMENT_ERROR:
+        return "Payment processing error. Please try again or contact support.";
     }
   }
 
@@ -846,8 +851,6 @@ export function mapRustErrorCodeToErrorType(code: string): ErrorType {
       return ErrorType.PAYMENT_FAILED;
     case "SUBSCRIPTION_CONFLICT":
       return ErrorType.SUBSCRIPTION_CONFLICT;
-    case "SPENDING_LIMIT_EXCEEDED":
-      return ErrorType.SPENDING_LIMIT_EXCEEDED;
     case "INVOICE_ERROR":
       return ErrorType.INVOICE_ERROR;
     case "CHECKOUT_ERROR":
@@ -856,7 +859,7 @@ export function mapRustErrorCodeToErrorType(code: string): ErrorType {
       return ErrorType.CHECKOUT_ERROR;
     // Additional billing-related error code mappings from server AppError variants
     case "PAYMENT_REQUIRED":
-      return ErrorType.PAYMENT_FAILED;
+      return ErrorType.PAYMENT_REQUIRED;
     case "SERIALIZATION_ERROR":
     case "SERIALIZATION":
       return ErrorType.INTERNAL_ERROR;
@@ -868,7 +871,26 @@ export function mapRustErrorCodeToErrorType(code: string): ErrorType {
       return ErrorType.API_ERROR;
     // Handle generic billing error
     case "BILLING":
-      return ErrorType.PAYMENT_FAILED;
+    case "BILLING_ERROR":
+      return ErrorType.PAYMENT_ERROR;
+    // Map additional server error variants to appropriate frontend types
+    case "AUTH":
+    case "AUTH_ERROR":
+      return ErrorType.PERMISSION_ERROR;
+    case "UNAUTHORIZED":
+      return ErrorType.PERMISSION_ERROR;
+    case "FORBIDDEN":
+      return ErrorType.PERMISSION_ERROR;
+    case "BAD_REQUEST":
+      return ErrorType.VALIDATION_ERROR;
+    case "NOT_FOUND":
+      return ErrorType.NOT_FOUND_ERROR;
+    case "EXTERNAL":
+    case "EXTERNAL_ERROR":
+      return ErrorType.API_ERROR;
+    case "INTERNAL":
+    case "INTERNAL_ERROR":
+      return ErrorType.INTERNAL_ERROR;
     default:
       return ErrorType.UNKNOWN_ERROR;
   }
@@ -904,7 +926,7 @@ export function createUserFriendlyErrorMessage(
       return "Your subscription has been cancelled. You can reactivate it anytime by visiting your billing page.";
     
     case ErrorType.CREDIT_INSUFFICIENT:
-      return "Insufficient top-up credits to complete this operation. Please visit your billing page to purchase additional top-up credits or upgrade your plan for a higher monthly allowance.";
+      return "Insufficient credits to complete this operation. Please purchase additional credits to continue.";
     
     case ErrorType.PLAN_UPGRADE_REQUIRED:
       return "This feature requires a plan upgrade. Please visit your billing page to upgrade your subscription and access this functionality.";
@@ -918,14 +940,18 @@ export function createUserFriendlyErrorMessage(
     case ErrorType.SUBSCRIPTION_CONFLICT:
       return "There's a conflict with your subscription status. Please refresh and try again, or contact support.";
     
-    case ErrorType.SPENDING_LIMIT_EXCEEDED:
-      return "Your monthly allowance has been exceeded and services may be blocked. Please visit your billing page to upgrade your plan or purchase top-up credits to continue using premium features.";
     
     case ErrorType.INVOICE_ERROR:
       return "There was an error processing your invoice. Please contact support for assistance.";
     
     case ErrorType.CHECKOUT_ERROR:
       return "There was an error with the checkout process. Please try again or contact support if the issue persists.";
+    
+    case ErrorType.PAYMENT_REQUIRED:
+      return "Payment required. Please complete your payment to continue.";
+    
+    case ErrorType.PAYMENT_ERROR:
+      return "Payment processing error. Please try again or contact support.";
     
     case ErrorType.TOKEN_LIMIT_ERROR:
       return "The prompt is too long for the selected model. Please reduce the number of selected files, shorten the task description, or choose a model with a larger context window.";

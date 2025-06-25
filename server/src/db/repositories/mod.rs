@@ -10,7 +10,6 @@ pub mod user_repository;
 pub mod settings_repository;
 pub mod model_repository;
 pub mod provider_repository;
-pub mod spending_repository;
 pub mod webhook_idempotency_repository;
 
 pub use api_usage_repository::ApiUsageRepository;
@@ -18,12 +17,11 @@ pub use audit_log_repository::{AuditLogRepository, AuditLog, CreateAuditLogReque
 pub use credit_pack_repository::{CreditPackRepository, CreditPack};
 pub use credit_transaction_repository::{CreditTransactionRepository, CreditTransaction, CreditTransactionStats};
 pub use subscription_repository::SubscriptionRepository;
-pub use subscription_plan_repository::{SubscriptionPlanRepository, SubscriptionPlan, PlanFeatures, SpendingDetails, SupportLevel, OveragePolicy};
+pub use subscription_plan_repository::{SubscriptionPlanRepository, SubscriptionPlan, PlanFeatures, SupportLevel};
 pub use user_credit_repository::{UserCreditRepository, UserCredit};
 pub use user_repository::UserRepository;
 pub use settings_repository::{SettingsRepository, DatabaseAIModelSettings, DatabaseTaskConfig, DatabasePathFinderSettings};
 pub use model_repository::{ModelRepository, ModelWithProvider, Model};
 pub use provider_repository::{ProviderRepository, Provider, ProviderWithModelCount};
-pub use spending_repository::{SpendingRepository, UserSpendingLimit};
 pub use system_prompts_repository::{SystemPromptsRepository, DefaultSystemPrompt};
 pub use webhook_idempotency_repository::{WebhookIdempotencyRepository, WebhookIdempotencyRecord, WebhookProcessingStats};

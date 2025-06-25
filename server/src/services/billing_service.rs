@@ -1,13 +1,12 @@
 use crate::error::AppError;
-use crate::handlers::billing::dashboard_handler::{BillingDashboardData, BillingDashboardPlanDetails, BillingDashboardSpendingDetails};
+use crate::handlers::billing::dashboard_handler::{BillingDashboardData, BillingDashboardPlanDetails};
 use crate::db::repositories::api_usage_repository::{ApiUsageRepository, DetailedUsageRecord};
 use crate::db::repositories::subscription_repository::{SubscriptionRepository, Subscription};
 use crate::db::repositories::subscription_plan_repository::{SubscriptionPlanRepository, SubscriptionPlan};
-use crate::db::repositories::spending_repository::SpendingRepository;
 use crate::db::repositories::user_credit_repository::UserCreditRepository;
 use crate::db::repositories::credit_transaction_repository::CreditTransactionRepository;
 use crate::db::repositories::model_repository::ModelRepository;
-use crate::services::cost_based_billing_service::CostBasedBillingService;
+use crate::services::credit_service::CreditService;
 use crate::services::email_notification_service::EmailNotificationService;
 use crate::services::audit_service::{AuditService, AuditContext};
 use crate::utils::error_handling::{retry_with_backoff, RetryConfig, validate_amount, validate_currency};
@@ -35,7 +34,7 @@ pub struct BillingService {
     subscription_repository: Arc<SubscriptionRepository>,
     subscription_plan_repository: Arc<SubscriptionPlanRepository>,
     api_usage_repository: Arc<ApiUsageRepository>,
-    cost_based_billing_service: Arc<CostBasedBillingService>,
+    credit_service: Arc<CreditService>,
     email_notification_service: Option<Arc<EmailNotificationService>>,
     audit_service: Arc<AuditService>,
     stripe_service: Option<StripeService>,
@@ -52,48 +51,19 @@ impl BillingService {
         // User-specific operations use user pool (subject to RLS)
         let subscription_repository = Arc::new(SubscriptionRepository::new(db_pools.user_pool.clone()));
         let api_usage_repository = Arc::new(ApiUsageRepository::new(db_pools.user_pool.clone()));
-        let spending_repository = Arc::new(SpendingRepository::new(db_pools.system_pool.clone()));
-        let credit_transaction_repository = Arc::new(CreditTransactionRepository::new(db_pools.user_pool.clone()));
         
-        // System operations use system pool (including credit balance checks for billing)
+        // System operations use system pool (plans, models, etc.)
         let subscription_plan_repository = Arc::new(SubscriptionPlanRepository::new(db_pools.system_pool.clone()));
-        let user_credit_repository = Arc::new(UserCreditRepository::new(db_pools.system_pool.clone()));
         let model_repository = Arc::new(ModelRepository::new(Arc::new(db_pools.system_pool.clone())));
+        
+        // Note: CreditService handles its own pool configuration for user credit operations
         
         
         // Get default trial days from app settings
         let default_trial_days = app_settings.subscription.default_trial_days as i64;
         
-        // Initialize Stripe service first before creating cost-based billing service
-        let stripe_service_for_cost_billing = match (
-            env::var("STRIPE_SECRET_KEY"),
-            env::var("STRIPE_WEBHOOK_SECRET"), 
-            env::var("STRIPE_PUBLISHABLE_KEY")
-        ) {
-            (Ok(secret_key), Ok(webhook_secret), Ok(publishable_key)) => {
-                info!("Initializing Stripe service with async-stripe 0.41.0");
-                Arc::new(StripeService::new(secret_key.clone(), webhook_secret.clone(), publishable_key.clone()))
-            },
-            _ => {
-                warn!("Stripe environment variables not set, creating dummy service for cost-based billing");
-                // Create a dummy StripeService if not configured
-                Arc::new(StripeService::new("dummy".to_string(), "dummy".to_string(), "dummy".to_string()))
-            }
-        };
-
-        // Create cost-based billing service with dual pools including stripe service
-        let cost_based_billing_service = Arc::new(CostBasedBillingService::new(
-            db_pools.clone(),
-            api_usage_repository.clone(),
-            subscription_repository.clone(),
-            subscription_plan_repository.clone(),
-            spending_repository,
-            user_credit_repository,
-            credit_transaction_repository,
-            model_repository.clone(),
-            stripe_service_for_cost_billing,
-            default_trial_days,
-        ));
+        // Create credit service for pure prepaid billing
+        let credit_service = Arc::new(CreditService::new(db_pools.clone()));
         
         // Create email notification service
         let email_notification_service = match EmailNotificationService::new(db_pools.clone()) {
@@ -130,7 +100,7 @@ impl BillingService {
             subscription_repository,
             subscription_plan_repository,
             api_usage_repository,
-            cost_based_billing_service,
+            credit_service,
             email_notification_service,
             audit_service,
             stripe_service,
@@ -139,72 +109,26 @@ impl BillingService {
         }
     }
     
-    // COST-BASED BILLING: Check if user can access AI services based on spending limits
+    // PURE PREPAID: Check if user can access AI services based on credit balance
     pub async fn check_service_access(
         &self,
         user_id: &Uuid,
         _model_id: &str, // Model restrictions removed - all models available
     ) -> Result<bool, AppError> {
-        // Get user's subscription
-        let mut sub_option = self.subscription_repository.get_by_user_id(user_id).await?;
+        // Ensure user has a subscription
+        let _ = self.ensure_user_has_subscription(user_id).await?;
         
-        if sub_option.is_none() {
-            debug!("No subscription found for user {}, creating trial and initial limit", user_id);
-            // Start a transaction for atomic subscription and spending limit creation
-            let mut tx = self.get_db_pool().begin().await.map_err(AppError::from)?;
-            
-            // Set user context for RLS within the transaction
-            sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
-                .bind(user_id.to_string())
-                .execute(&mut *tx)
-                .await
-                .map_err(|e| AppError::Database(format!("Failed to set user context in transaction: {}", e)))?;
-            
-            let new_subscription = self.create_trial_subscription_and_limit_in_tx(user_id, &mut tx).await?;
-            tx.commit().await.map_err(AppError::from)?;
-            sub_option = Some(new_subscription);
-        }
+        // Check if user has any credits
+        let user_balance = self.credit_service.get_user_balance(user_id).await?;
         
-        let subscription = sub_option.ok_or_else(|| {
-            // This error should ideally not be reached if trial creation succeeds and re-fetch works.
-            // It implies failure to create or retrieve the trial subscription.
-            AppError::Internal(format!("No active subscription found for user {} after attempting trial creation.", user_id))
-        })?;
-        
-        // Check subscription status first
-        match subscription.status.as_str() {
-            "active" | "trialing" => {
-                // Check if trial or subscription has expired
-                if subscription.status == "trialing" {
-                    if let Some(trial_ends_at) = subscription.trial_end {
-                        if trial_ends_at < Utc::now() {
-                            debug!("Trial expired for user {}", user_id);
-                            return Err(AppError::Payment("Trial period has expired".to_string()));
-                        }
-                    }
-                }
-                
-                let current_period_ends_at = subscription.current_period_end;
-                if current_period_ends_at < Utc::now() {
-                    debug!("Subscription expired for user {}", user_id);
-                    return Err(AppError::Payment("Subscription has expired".to_string()));
-                }
-                
-                // COST-BASED ACCESS CHECK: Use spending limits instead of token limits
-                self.cost_based_billing_service.check_service_access(user_id).await
-            },
-            "canceled" | "unpaid" | "past_due" => {
-                debug!("Subscription is not active for user {}: {}", user_id, subscription.status);
-                Err(AppError::Payment("Subscription is not active".to_string()))
-            },
-            _ => {
-                debug!("Unknown subscription status for user {}: {}", user_id, subscription.status);
-                Err(AppError::Payment("Invalid subscription status".to_string()))
-            }
+        if user_balance.balance > BigDecimal::from(0) {
+            Ok(true)
+        } else {
+            Err(AppError::CreditInsufficient("No credits available. Please purchase credits to continue using AI services.".to_string()))
         }
     }
     
-    // COST-BASED BILLING: Record usage with real-time spending tracking
+    // PURE PREPAID: Record usage and consume credits atomically
     pub async fn record_ai_service_usage(
         &self,
         user_id: &Uuid,
@@ -217,26 +141,36 @@ impl BillingService {
         processing_ms: Option<i32>,
         input_duration_ms: Option<i64>,
     ) -> Result<(), AppError> {
-        self.cost_based_billing_service.record_usage_and_update_spending(
-            user_id,
-            service_name,
+        // First record the API usage
+        let api_usage_record = self.api_usage_repository.record_usage(crate::db::repositories::api_usage_repository::ApiUsageEntryDto {
+            user_id: *user_id,
+            service_name: service_name.to_string(),
             tokens_input,
             tokens_output,
-            cost,
+            cost: cost.clone(),
             request_id,
-            metadata,
+            metadata: metadata.clone(),
             processing_ms,
             input_duration_ms,
-        ).await
+        }).await?;
+        let api_usage_id = api_usage_record.id.ok_or_else(|| AppError::Database("Failed to get API usage record ID".to_string()))?;
+        
+        // Then consume credits atomically
+        let usage_description = format!("{} - {} tokens in, {} tokens out", service_name, tokens_input, tokens_output);
+        self.credit_service.consume_credits_for_usage_in_tx(
+            user_id,
+            cost,
+            usage_description,
+            Some(api_usage_id),
+            metadata,
+        ).await?;
+        
+        Ok(())
     }
     
-    // Get current spending status for user
-    pub async fn get_spending_status(&self, user_id: &Uuid) -> Result<crate::services::cost_based_billing_service::SpendingStatus, AppError> {
-        self.cost_based_billing_service.get_current_spending_status(user_id).await
-    }
     
-    // Create a trial subscription and initial spending limit atomically
-    async fn create_trial_subscription_and_limit_in_tx<'a>(
+    // Create a trial subscription and grant initial credits atomically
+    async fn create_trial_subscription_with_credits_in_tx<'a>(
         &self, 
         user_id: &Uuid, 
         tx: &mut sqlx::Transaction<'a, sqlx::Postgres>
@@ -264,8 +198,15 @@ impl BillingService {
             tx,
         ).await?;
         
-        // Create initial spending limit for the user using the same transaction
-        self.cost_based_billing_service.get_or_create_current_spending_limit_in_tx(user_id, tx).await?;
+        // Grant initial trial credits (e.g., $5.00 worth of credits)
+        let initial_credits = BigDecimal::from_f64(5.0).unwrap_or_else(|| BigDecimal::from(5));
+        self.credit_service.adjust_credits_with_executor(
+            user_id,
+            &initial_credits,
+            "Initial trial credits".to_string(),
+            Some(serde_json::json!({"type": "trial_grant", "subscription_id": subscription_id})),
+            tx,
+        ).await?;
         
         // Instead of retrieving from database, construct the subscription from known data
         let subscription = Subscription {
@@ -286,7 +227,7 @@ impl BillingService {
             pending_plan_id: None,
         };
         
-        info!("Created trial subscription and initial spending limit for user {}", user_id);
+        info!("Created trial subscription and granted initial credits for user {}", user_id);
         Ok(subscription)
     }
 
@@ -303,7 +244,7 @@ impl BillingService {
             .await
             .map_err(|e| AppError::Database(format!("Failed to set user context in transaction: {}", e)))?;
             
-        let subscription = self.create_trial_subscription_and_limit_in_tx(user_id, &mut tx).await?;
+        let subscription = self.create_trial_subscription_with_credits_in_tx(user_id, &mut tx).await?;
         
         tx.commit().await
             .map_err(|e| AppError::Database(format!("Failed to commit transaction: {}", e)))?;
@@ -412,7 +353,7 @@ impl BillingService {
             Some(subscription) => subscription,
             None => {
                 info!("User {} accessing billing portal has no subscription, creating default subscription", user_id);
-                let subscription = self.create_trial_subscription_and_limit_in_tx(user_id, &mut tx).await?;
+                let subscription = self.create_trial_subscription_with_credits_in_tx(user_id, &mut tx).await?;
                 subscription
             }
         };
@@ -470,14 +411,14 @@ impl BillingService {
                     "active" | "trialing" => sub,
                     _ => {
                         // Create a trial subscription for invalid status
-                        let subscription = self.create_trial_subscription_and_limit_in_tx(user_id, &mut transaction).await?;
+                        let subscription = self.create_trial_subscription_with_credits_in_tx(user_id, &mut transaction).await?;
                         subscription
                     }
                 }
             },
             None => {
                 // Create a trial subscription and initial spending limit within the transaction
-                let subscription = self.create_trial_subscription_and_limit_in_tx(user_id, &mut transaction).await?;
+                let subscription = self.create_trial_subscription_with_credits_in_tx(user_id, &mut transaction).await?;
                 subscription
             }
         };
@@ -485,8 +426,8 @@ impl BillingService {
         // Get plan details using system pool (not affected by user context)
         let plan = self.get_plan_by_id(&subscription.plan_id).await?;
 
-        // Get spending status within the same transaction context to ensure visibility
-        let spending_status = self.cost_based_billing_service.get_current_spending_status_in_tx(user_id, &mut transaction).await?;
+        // Get credit balance for pure prepaid model
+        let credit_balance = self.credit_service.get_user_balance_with_executor(user_id, &mut transaction).await?;
         
         // Commit transaction after all operations
         transaction.commit().await
@@ -500,71 +441,23 @@ impl BillingService {
             billing_interval: "monthly".to_string(),
         };
 
-        // Build spending details
-        let spending_details = BillingDashboardSpendingDetails {
-            current_spending_usd: spending_status.current_spending.to_f64().unwrap_or(0.0),
-            spending_limit_usd: spending_status.hard_limit.to_f64().unwrap_or(0.0),
-            period_start: spending_status.billing_period_start.to_rfc3339(),
-            period_end: spending_status.next_billing_date.to_rfc3339(),
-        };
-
         // Build consolidated response
         let dashboard_data = BillingDashboardData {
             plan_details,
-            spending_details,
-            credit_balance_usd: spending_status.credit_balance.to_f64().unwrap_or(0.0),
+            credit_balance_usd: credit_balance.balance.to_f64().unwrap_or(0.0),
             subscription_status: subscription.status.clone(),
             trial_ends_at: subscription.trial_end.map(|dt| dt.to_rfc3339()),
-            services_blocked: spending_status.services_blocked,
+            services_blocked: credit_balance.balance <= BigDecimal::from(0),
         };
 
         info!("Successfully assembled billing dashboard data for user: {}", user_id);
         Ok(dashboard_data)
     }
 
-    /// Calculate the next invoice amount based on overage and subscription
-    async fn calculate_next_invoice_amount(
-        &self,
-        user_id: &Uuid,
-        spending_status: &crate::services::cost_based_billing_service::SpendingStatus,
-    ) -> Result<Option<f64>, AppError> {
-        // Get user's subscription
-        let subscription = self.subscription_repository.get_by_user_id(user_id).await?;
-        let subscription = match subscription {
-            Some(sub) => sub,
-            None => return Ok(None), // No subscription, no invoice
-        };
 
-        // Get plan details
-        let plan = self.get_plan_by_id(&subscription.plan_id).await?;
-
-        // Calculate base subscription amount (monthly price)
-        let base_amount = &plan.base_price_monthly;
-
-        // Calculate overage charges using cost markup percentage
-        let overage_amount = if spending_status.overage_amount > BigDecimal::from(0) {
-            &spending_status.overage_amount * &plan.cost_markup_percentage
-        } else {
-            BigDecimal::from(0)
-        };
-
-        // Total next invoice amount
-        let total_amount = base_amount + &overage_amount;
-
-        // Convert to f64 for return (this is acceptable here as it's for display purposes)
-        let amount_f64 = total_amount.to_f64().unwrap_or(0.0);
-
-        // Return None if amount is 0 (free plans)
-        if amount_f64 <= 0.0 {
-            Ok(None)
-        } else {
-            Ok(Some(amount_f64))
-        }
-    }
-
-    /// Get access to the cost-based billing service
-    pub fn get_cost_based_billing_service(&self) -> &Arc<CostBasedBillingService> {
-        &self.cost_based_billing_service
+    /// Get access to the credit service
+    pub fn get_credit_service(&self) -> &Arc<CreditService> {
+        &self.credit_service
     }
 
     /// Get access to the subscription repository
@@ -610,7 +503,7 @@ impl BillingService {
         // Ensure user has subscription
         let mut subscription = match self.subscription_repository.get_by_user_id_with_executor(user_id, &mut transaction).await? {
             Some(subscription) => subscription,
-            None => self.create_trial_subscription_and_limit_in_tx(user_id, &mut transaction).await?,
+            None => self.create_trial_subscription_with_credits_in_tx(user_id, &mut transaction).await?,
         };
 
         // Get or create Stripe customer within transaction
@@ -675,7 +568,7 @@ impl BillingService {
         // Ensure user has subscription
         let subscription = match self.subscription_repository.get_by_user_id_with_executor(user_id, &mut transaction).await? {
             Some(subscription) => subscription,
-            None => self.create_trial_subscription_and_limit_in_tx(user_id, &mut transaction).await?,
+            None => self.create_trial_subscription_with_credits_in_tx(user_id, &mut transaction).await?,
         };
         
         let customer_id = self._get_or_create_stripe_customer_with_executor(user_id, &mut transaction).await?;
@@ -719,7 +612,7 @@ impl BillingService {
         // Ensure user has subscription
         let subscription = match self.subscription_repository.get_by_user_id_with_executor(user_id, &mut transaction).await? {
             Some(subscription) => subscription,
-            None => self.create_trial_subscription_and_limit_in_tx(user_id, &mut transaction).await?,
+            None => self.create_trial_subscription_with_credits_in_tx(user_id, &mut transaction).await?,
         };
 
         // Get customer ID within transaction
@@ -888,9 +781,17 @@ impl BillingService {
         let stripe_service = self.stripe_service.as_ref()
             .ok_or_else(|| AppError::Internal("Stripe service not configured".to_string()))?;
 
-        // List invoices from Stripe
-        let stripe_invoices = stripe_service.list_invoices(&customer_id).await
+        // List invoices from Stripe with pagination
+        let stripe_invoices = stripe_service.list_invoices_with_filter(
+            &customer_id,
+            None, // No status filter
+            Some((limit + offset) as u64), // Get more than needed to handle offset
+            None, // No cursor-based pagination for now
+        ).await
             .map_err(|e| AppError::External(format!("Failed to list invoices from Stripe: {:?}", e)))?;
+
+        // Calculate total count before consuming the vector
+        let total_invoices_retrieved = stripe_invoices.len() as i32;
 
         // Convert Stripe invoices to our Invoice model
         let invoices: Result<Vec<crate::models::Invoice>, AppError> = stripe_invoices
@@ -928,14 +829,13 @@ impl BillingService {
             
         let invoices = invoices?;
 
-        // For simplicity, assume total_invoices equals the current batch size
-        // In a real implementation, you'd make a separate count query
-        let total_invoices = invoices.len() as i32;
-        let has_more = invoices.len() == limit as usize;
+        // Calculate proper pagination info
+        let returned_invoices_count = invoices.len() as i32;
+        let has_more = total_invoices_retrieved > (offset + limit);
 
         Ok(crate::models::ListInvoicesResponse {
             invoices,
-            total_invoices,
+            total_invoices: returned_invoices_count,
             has_more,
         })
     }

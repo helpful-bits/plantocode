@@ -1,6 +1,7 @@
 use actix_web::{web, HttpResponse};
 use serde_json::{json, Value};
 use std::collections::HashMap;
+use std::sync::Arc;
 use tracing::{debug, error, info, instrument, warn};
 use uuid::{self, Uuid};
 use chrono;
@@ -13,9 +14,8 @@ use crate::clients::open_router_client::{OpenRouterStreamChunk, OpenRouterStream
 use crate::clients::google_client::GoogleStreamChunk;
 use crate::db::repositories::model_repository::{ModelRepository, ModelWithProvider};
 use crate::models::model_pricing::ModelPricing;
-use crate::services::cost_based_billing_service::CostBasedBillingService;
+use crate::services::billing_service::BillingService;
 use crate::config::settings::AppSettings;
-use crate::db::connection::DatabasePools;
 use bigdecimal::BigDecimal;
 use futures_util::{StreamExt, TryStreamExt, TryFutureExt};
 use serde::{Deserialize, Serialize};
@@ -36,13 +36,12 @@ pub struct LlmCompletionRequest {
 
 /// AI proxy handler for intelligent model routing
 /// Routes requests to appropriate AI providers based on model configuration
-#[instrument(skip(payload, app_settings, db_pools, cost_billing_service, model_repository, user_id))]
+#[instrument(skip(payload, app_settings, billing_service, model_repository, user_id))]
 pub async fn llm_chat_completion_handler(
     payload: web::Json<LlmCompletionRequest>,
     user_id: UserId,
     app_settings: web::Data<AppSettings>,
-    db_pools: web::Data<DatabasePools>,
-    cost_billing_service: web::Data<CostBasedBillingService>,
+    billing_service: web::Data<BillingService>,
     model_repository: web::Data<ModelRepository>,
 ) -> Result<HttpResponse, AppError> {
     // User ID is already extracted by authentication middleware
@@ -50,10 +49,11 @@ pub async fn llm_chat_completion_handler(
     
     info!("Processing LLM chat completion request for user: {}", user_id);
     
-    // Check if services are available for this user
-    if !cost_billing_service.check_service_access(&user_id).await? {
-        warn!("Service access blocked for user: {}", user_id);
-        return Err(AppError::Payment("AI services blocked due to spending limit".to_string()));
+    // Check if user has sufficient credits
+    let balance = billing_service.get_credit_service().get_user_balance(&user_id).await?;
+    if balance.balance <= BigDecimal::from(0) {
+        warn!("Insufficient credits for user: {}", user_id);
+        return Err(AppError::CreditInsufficient("Insufficient credits for AI service usage".to_string()));
     }
     
     // Extract model ID from request payload
@@ -72,7 +72,7 @@ pub async fn llm_chat_completion_handler(
     let is_streaming = payload.stream.unwrap_or(false);
     
     // Extract duration_ms for cost calculation
-    let duration_ms = payload.duration_ms;
+    let _duration_ms = payload.duration_ms;
     
     // Extract payload for different handler types
     let payload_inner = payload.into_inner();
@@ -82,31 +82,31 @@ pub async fn llm_chat_completion_handler(
     match model_with_provider.provider_code.as_str() {
         "openai" => {
             if is_streaming {
-                handle_openai_streaming_request(payload_inner.clone(), &model_with_provider, &user_id, &app_settings, &cost_billing_service).await
+                handle_openai_streaming_request(payload_inner.clone(), &model_with_provider, &user_id, &app_settings, Arc::clone(&billing_service)).await
             } else {
-                handle_openai_request(payload_inner, &model_with_provider, &user_id, &app_settings, &cost_billing_service).await
+                handle_openai_request(payload_inner, &model_with_provider, &user_id, &app_settings, Arc::clone(&billing_service)).await
             }
         },
         "anthropic" => {
             if is_streaming {
-                handle_anthropic_streaming_request(payload_value.clone(), &model_with_provider, &user_id, &app_settings, &cost_billing_service).await
+                handle_anthropic_streaming_request(payload_value.clone(), &model_with_provider, &user_id, &app_settings, Arc::clone(&billing_service)).await
             } else {
-                handle_anthropic_request(payload_value.clone(), &model_with_provider, &user_id, &app_settings, &cost_billing_service).await
+                handle_anthropic_request(payload_value.clone(), &model_with_provider, &user_id, &app_settings, Arc::clone(&billing_service)).await
             }
         },
         "google" => {
             if is_streaming {
-                handle_google_streaming_request(payload_value.clone(), &model_with_provider, &user_id, &app_settings, &cost_billing_service).await
+                handle_google_streaming_request(payload_value.clone(), &model_with_provider, &user_id, &app_settings, Arc::clone(&billing_service)).await
             } else {
-                handle_google_request(payload_value.clone(), &model_with_provider, &user_id, &app_settings, &cost_billing_service).await
+                handle_google_request(payload_value.clone(), &model_with_provider, &user_id, &app_settings, Arc::clone(&billing_service)).await
             }
         },
         "deepseek" => {
             // Route DeepSeek models through OpenRouter
             if is_streaming {
-                handle_openrouter_streaming_request(payload_value.clone(), &model_with_provider, &user_id, &app_settings, &cost_billing_service).await
+                handle_openrouter_streaming_request(payload_value.clone(), &model_with_provider, &user_id, &app_settings, Arc::clone(&billing_service)).await
             } else {
-                handle_openrouter_request(payload_value.clone(), &model_with_provider, &user_id, &app_settings, &cost_billing_service).await
+                handle_openrouter_request(payload_value.clone(), &model_with_provider, &user_id, &app_settings, Arc::clone(&billing_service)).await
             }
         },
         _ => {
@@ -122,7 +122,7 @@ async fn handle_openai_request(
     model: &ModelWithProvider,
     user_id: &Uuid,
     app_settings: &AppSettings,
-    cost_billing_service: &CostBasedBillingService,
+    billing_service: Arc<BillingService>,
 ) -> Result<HttpResponse, AppError> {
     let client = OpenAIClient::new(app_settings)?;
     // Convert LlmCompletionRequest to Value for client conversion
@@ -134,14 +134,13 @@ async fn handle_openai_request(
     
     let (response, _headers, tokens_input, tokens_output) = client.chat_completion(request).await?;
     
-    // Get authoritative cost from centralized billing service
-    let cost = cost_billing_service.calculate_and_report_usage(
-        user_id,
+    // Calculate cost and consume credits
+    let cost = billing_service.get_credit_service().calculate_cost(
         &model.id,
         tokens_input,
         tokens_output,
-        payload.duration_ms, // Pass actual duration from client
     ).await?;
+    billing_service.get_credit_service().consume_credits(user_id, &cost).await?;
     
     // Convert to OpenRouter format for consistent client parsing with standardized usage
     let mut response_value = serde_json::to_value(response)?;
@@ -164,7 +163,7 @@ async fn handle_openai_streaming_request(
     model: &ModelWithProvider,
     user_id: &Uuid,
     app_settings: &AppSettings,
-    cost_billing_service: &CostBasedBillingService,
+    billing_service: Arc<BillingService>,
 ) -> Result<HttpResponse, AppError> {
     let client = OpenAIClient::new(app_settings)?;
     // Convert LlmCompletionRequest to Value for client conversion
@@ -179,11 +178,11 @@ async fn handle_openai_streaming_request(
     // Create a stream processor to track tokens and calculate cost
     let user_id_clone = *user_id;
     let model_clone = model.clone();
-    let cost_billing_service_clone = cost_billing_service.clone();
-    let duration_ms = payload.duration_ms;
+    let billing_service_clone = Arc::clone(&billing_service);
+    let _duration_ms = payload.duration_ms;
     
     let processed_stream = stream.then(move |chunk_result| {
-        let cost_billing_service = cost_billing_service_clone.clone();
+        let billing_service_inner = billing_service_clone.clone();
         let model_id = model_clone.id.clone();
         let user_id = user_id_clone;
         
@@ -194,17 +193,17 @@ async fn handle_openai_streaming_request(
                     if let Ok(chunk_str) = std::str::from_utf8(&bytes) {
                         // Extract tokens if this is the final chunk with usage
                         if let Some((tokens_input, tokens_output)) = OpenAIClient::extract_tokens_from_chat_stream_chunk(chunk_str) {
-                            // Get authoritative cost from centralized billing service
-                            if let Ok(cost) = cost_billing_service.calculate_and_report_usage(
-                                &user_id,
+                            // Calculate cost and consume credits
+                                                    if let Ok(cost) = billing_service_inner.get_credit_service().calculate_cost(
                                 &model_id,
                                 tokens_input,
                                 tokens_output,
-                                duration_ms, // Pass actual duration from client
                             ).await {
-                                // Modify the chunk to include authoritative cost in usage
-                                if let Ok(modified_chunk) = add_cost_to_openai_stream_chunk(chunk_str, &cost) {
-                                    return Ok(web::Bytes::from(modified_chunk));
+                                if billing_service_inner.get_credit_service().consume_credits(&user_id, &cost).await.is_ok() {
+                                    // Modify the chunk to include authoritative cost in usage
+                                    if let Ok(modified_chunk) = add_cost_to_openai_stream_chunk(chunk_str, &cost) {
+                                        return Ok(web::Bytes::from(modified_chunk));
+                                    }
                                 }
                             }
                         }
@@ -227,7 +226,7 @@ async fn handle_anthropic_request(
     model: &ModelWithProvider,
     user_id: &Uuid,
     app_settings: &AppSettings,
-    cost_billing_service: &CostBasedBillingService,
+    billing_service: Arc<BillingService>,
 ) -> Result<HttpResponse, AppError> {
     let client = AnthropicClient::new(app_settings)?;
     let mut request = client.convert_to_chat_request(payload)?;
@@ -240,14 +239,13 @@ async fn handle_anthropic_request(
     // Extract token counts from response
     let (tokens_input, tokens_output) = client.extract_tokens_from_response(&response);
     
-    // Get authoritative cost from centralized billing service
-    let cost = cost_billing_service.calculate_and_report_usage(
-        user_id,
+    // Calculate cost and consume credits
+    let cost = billing_service.get_credit_service().calculate_cost(
         &model.id,
         tokens_input,
         tokens_output,
-        None, // duration_ms
     ).await?;
+    billing_service.get_credit_service().consume_credits(user_id, &cost).await?;
     
     // Transform Anthropic response to OpenRouter format for consistent client parsing
     let usage = OpenRouterUsage {
@@ -282,7 +280,7 @@ async fn handle_anthropic_streaming_request(
     model: &ModelWithProvider,
     user_id: &Uuid,
     app_settings: &AppSettings,
-    cost_billing_service: &CostBasedBillingService,
+    billing_service: Arc<BillingService>,
 ) -> Result<HttpResponse, AppError> {
     let client = AnthropicClient::new(app_settings)?;
     let mut request = client.convert_to_chat_request(payload)?;
@@ -290,15 +288,15 @@ async fn handle_anthropic_streaming_request(
     // Use the pre-computed API model ID
     request.model = model.api_model_id.clone();
     
-    let (headers, stream) = client.stream_chat_completion(request, user_id.to_string()).await?;
+    let (_headers, stream) = client.stream_chat_completion(request, user_id.to_string()).await?;
     
     // Create a stream processor to track tokens and calculate cost
     let user_id_clone = *user_id;
     let model_clone = model.clone();
-    let cost_billing_service_clone = cost_billing_service.clone();
+    let billing_service_clone = Arc::clone(&billing_service);
     
     let processed_stream = stream.then(move |chunk_result| {
-        let cost_billing_service = cost_billing_service_clone.clone();
+        let billing_service_inner = billing_service_clone.clone();
         let model_id = model_clone.id.clone();
         let user_id = user_id_clone;
         
@@ -307,17 +305,17 @@ async fn handle_anthropic_streaming_request(
                 Ok(bytes) => {
                     if let Ok(chunk_str) = std::str::from_utf8(&bytes) {
                         if let Some((tokens_input, tokens_output)) = AnthropicClient::extract_tokens_from_stream_chunk(chunk_str) {
-                            // Get authoritative cost from centralized billing service
-                            if let Ok(cost) = cost_billing_service.calculate_and_report_usage(
-                                &user_id,
+                            // Calculate cost and consume credits
+                                                    if let Ok(cost) = billing_service_inner.get_credit_service().calculate_cost(
                                 &model_id,
                                 tokens_input,
                                 tokens_output,
-                                None, // duration_ms
                             ).await {
-                                // Modify the chunk to include authoritative cost in usage
-                                if let Ok(modified_chunk) = add_cost_to_anthropic_stream_chunk(chunk_str, &cost) {
-                                    return Ok(web::Bytes::from(modified_chunk));
+                                if billing_service_inner.get_credit_service().consume_credits(&user_id, &cost).await.is_ok() {
+                                    // Modify the chunk to include authoritative cost in usage
+                                    if let Ok(modified_chunk) = add_cost_to_anthropic_stream_chunk(chunk_str, &cost) {
+                                        return Ok(web::Bytes::from(modified_chunk));
+                                    }
                                 }
                             }
                         }
@@ -340,7 +338,7 @@ async fn handle_google_request(
     model: &ModelWithProvider,
     user_id: &Uuid,
     app_settings: &AppSettings,
-    cost_billing_service: &CostBasedBillingService,
+    billing_service: Arc<BillingService>,
 ) -> Result<HttpResponse, AppError> {
     let client = GoogleClient::new(app_settings)?;
     let request = client.convert_to_chat_request_with_capabilities(payload, Some(&model.capabilities))?;
@@ -350,14 +348,13 @@ async fn handle_google_request(
     // Extract token counts from response
     let (tokens_input, tokens_output) = client.extract_tokens_from_response(&response);
     
-    // Get authoritative cost from centralized billing service
-    let cost = cost_billing_service.calculate_and_report_usage(
-        user_id,
+    // Calculate cost and consume credits
+    let cost = billing_service.get_credit_service().calculate_cost(
         &model.id,
         tokens_input,
         tokens_output,
-        None, // duration_ms
     ).await?;
+    billing_service.get_credit_service().consume_credits(user_id, &cost).await?;
     
     // Transform Google response to OpenRouter format for consistent client parsing
     let response_value = serde_json::to_value(&response)?;
@@ -397,7 +394,7 @@ async fn handle_google_streaming_request(
     model: &ModelWithProvider,
     user_id: &Uuid,
     app_settings: &AppSettings,
-    cost_billing_service: &CostBasedBillingService,
+    billing_service: Arc<BillingService>,
 ) -> Result<HttpResponse, AppError> {
     let client = GoogleClient::new(app_settings)?;
     let request = client.convert_to_chat_request_with_capabilities(payload, Some(&model.capabilities))?;
@@ -407,11 +404,11 @@ async fn handle_google_streaming_request(
     // Create a stream processor to track tokens and calculate cost
     let user_id_clone = *user_id;
     let model_clone = model.clone();
-    let cost_billing_service_clone = cost_billing_service.clone();
+    let billing_service_clone = Arc::clone(&billing_service);
     let model_id_for_response = model.id.clone();
     
     let processed_stream = stream.then(move |chunk_result| {
-        let cost_billing_service = cost_billing_service_clone.clone();
+        let billing_service_inner = billing_service_clone.clone();
         let model_id = model_clone.id.clone();
         let user_id = user_id_clone;
         let model_id_for_chunk = model_id_for_response.clone();
@@ -436,16 +433,16 @@ async fn handle_google_streaming_request(
                                             let tokens_input = usage.prompt_tokens;
                                             let tokens_output = usage.completion_tokens;
                                             
-                                            // Get authoritative cost from centralized billing service
-                                            if let Ok(cost) = cost_billing_service.calculate_and_report_usage(
-                                                &user_id,
+                                            // Calculate cost and consume credits
+                                                                                    if let Ok(cost) = billing_service_inner.get_credit_service().calculate_cost(
                                                 &model_id,
                                                 tokens_input,
                                                 tokens_output,
-                                                None, // duration_ms
                                             ).await {
-                                                // Set authoritative cost in usage
-                                                usage.cost = Some(cost.to_string().parse::<f64>().unwrap_or(0.0));
+                                                if billing_service_inner.get_credit_service().consume_credits(&user_id, &cost).await.is_ok() {
+                                                    // Set authoritative cost in usage
+                                                    usage.cost = Some(cost.to_string().parse::<f64>().unwrap_or(0.0));
+                                                }
                                             }
                                         }
                                         
@@ -485,7 +482,7 @@ async fn handle_openrouter_request(
     model: &ModelWithProvider,
     user_id: &Uuid,
     app_settings: &AppSettings,
-    cost_billing_service: &CostBasedBillingService,
+    billing_service: Arc<BillingService>,
 ) -> Result<HttpResponse, AppError> {
     let client = OpenRouterClient::new(app_settings)?;
     let mut request = client.convert_to_chat_request(payload)?;
@@ -497,14 +494,13 @@ async fn handle_openrouter_request(
     // Extract token counts from response (ignore OpenRouter's cost calculation)
     let (tokens_input, tokens_output) = client.extract_tokens_from_response(&response);
     
-    // Get authoritative cost from centralized billing service
-    let server_calculated_cost = cost_billing_service.calculate_and_report_usage(
-        user_id,
+    // Calculate cost and consume credits
+    let server_calculated_cost = billing_service.get_credit_service().calculate_cost(
         &model.id,
         tokens_input,
         tokens_output,
-        None, // duration_ms
     ).await?;
+    billing_service.get_credit_service().consume_credits(user_id, &server_calculated_cost).await?;
     
     // Replace OpenRouter's cost with server-calculated cost in response using standardized usage
     let mut response_value = serde_json::to_value(response)?;
@@ -527,22 +523,22 @@ async fn handle_openrouter_streaming_request(
     model: &ModelWithProvider,
     user_id: &Uuid,
     app_settings: &AppSettings,
-    cost_billing_service: &CostBasedBillingService,
+    billing_service: Arc<BillingService>,
 ) -> Result<HttpResponse, AppError> {
     let client = OpenRouterClient::new(app_settings)?;
     let mut request = client.convert_to_chat_request(payload)?;
     
     request.model = model.api_model_id.clone();
     
-    let (headers, stream) = client.stream_chat_completion(request, user_id.to_string()).await?;
+    let (_headers, stream) = client.stream_chat_completion(request, user_id.to_string()).await?;
     
     // Create a stream processor to intercept final chunk with usage data
     let user_id_clone = *user_id;
     let model_clone = model.clone();
-    let cost_billing_service_clone = cost_billing_service.clone();
+    let billing_service_clone = Arc::clone(&billing_service);
     
     let processed_stream = stream.then(move |chunk_result| {
-        let cost_billing_service = cost_billing_service_clone.clone();
+        let billing_service_inner = billing_service_clone.clone();
         let model_id = model_clone.id.clone();
         let user_id = user_id_clone;
         
@@ -552,17 +548,17 @@ async fn handle_openrouter_streaming_request(
                     if let Ok(chunk_str) = std::str::from_utf8(&bytes) {
                         // Check if this chunk contains usage data (final chunk)
                         if let Some((tokens_input, tokens_output)) = OpenRouterClient::extract_tokens_from_stream_chunk(chunk_str) {
-                            // Get authoritative cost from centralized billing service
-                            if let Ok(server_calculated_cost) = cost_billing_service.calculate_and_report_usage(
-                                &user_id,
+                            // Calculate cost and consume credits
+                                                    if let Ok(server_calculated_cost) = billing_service_inner.get_credit_service().calculate_cost(
                                 &model_id,
                                 tokens_input,
                                 tokens_output,
-                                None, // duration_ms
                             ).await {
-                                // Replace OpenRouter's cost with server-calculated cost in the final chunk
-                                if let Ok(modified_chunk) = replace_cost_in_openrouter_stream_chunk(chunk_str, &server_calculated_cost) {
-                                    return Ok(web::Bytes::from(modified_chunk));
+                                if billing_service_inner.get_credit_service().consume_credits(&user_id, &server_calculated_cost).await.is_ok() {
+                                    // Replace OpenRouter's cost with server-calculated cost in the final chunk
+                                    if let Ok(modified_chunk) = replace_cost_in_openrouter_stream_chunk(chunk_str, &server_calculated_cost) {
+                                        return Ok(web::Bytes::from(modified_chunk));
+                                    }
                                 }
                             }
                         }
@@ -629,20 +625,21 @@ pub struct TranscriptionResponse {
 }
 
 /// Handle audio transcription (multipart form) - mimics OpenAI's /v1/audio/transcriptions
-#[instrument(skip(payload, user_id, app_settings, cost_billing_service))]
+#[instrument(skip(payload, user_id, app_settings, billing_service))]
 pub async fn transcription_handler(
     mut payload: Multipart,
     user_id: UserId,
     app_settings: web::Data<AppSettings>,
-    cost_billing_service: web::Data<CostBasedBillingService>,
+    billing_service: web::Data<BillingService>,
 ) -> Result<HttpResponse, AppError> {
     let user_id = user_id.0;
     info!("Processing transcription request for user: {}", user_id);
 
-    // Check if services are available for this user
-    if !cost_billing_service.check_service_access(&user_id).await? {
-        warn!("Service access blocked for user: {}", user_id);
-        return Err(AppError::Payment("Transcription services blocked due to spending limit".to_string()));
+    // Check if user has sufficient credits
+    let balance = billing_service.get_credit_service().get_user_balance(&user_id).await?;
+    if balance.balance <= BigDecimal::from(0) {
+        warn!("Insufficient credits for user: {}", user_id);
+        return Err(AppError::CreditInsufficient("Insufficient credits for transcription service usage".to_string()));
     }
 
     let mut model = String::new();
@@ -745,22 +742,23 @@ pub async fn transcription_handler(
 }
 
 /// Handle batch transcription (JSON payload with base64 audio)
-#[instrument(skip(payload, user_id, app_settings, cost_billing_service))]
+#[instrument(skip(payload, user_id, app_settings, billing_service))]
 pub async fn batch_transcription_handler(
     payload: web::Json<BatchTranscriptionRequest>,
     user_id: UserId,
     app_settings: web::Data<AppSettings>,
-    cost_billing_service: web::Data<CostBasedBillingService>,
+    billing_service: web::Data<BillingService>,
 ) -> Result<HttpResponse, AppError> {
     let user_id = user_id.0;
     let start_time = std::time::Instant::now();
     
     info!("Processing batch transcription request for user: {} chunk: {}", user_id, payload.chunk_index);
 
-    // Check if services are available for this user
-    if !cost_billing_service.check_service_access(&user_id).await? {
-        warn!("Service access blocked for user: {}", user_id);
-        return Err(AppError::Payment("Transcription services blocked due to spending limit".to_string()));
+    // Check if user has sufficient credits
+    let balance = billing_service.get_credit_service().get_user_balance(&user_id).await?;
+    if balance.balance <= BigDecimal::from(0) {
+        warn!("Insufficient credits for user: {}", user_id);
+        return Err(AppError::CreditInsufficient("Insufficient credits for transcription service usage".to_string()));
     }
 
     let model = payload.model.as_deref()

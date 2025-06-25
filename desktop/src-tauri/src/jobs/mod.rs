@@ -26,7 +26,6 @@ use crate::error::AppResult;
 use crate::db_utils::BackgroundJobRepository;
 use crate::models::JobStatus;
 use self::processors::{
-    PathFinderProcessor,
     ImplementationPlanProcessor,
     PathCorrectionProcessor,
     TaskRefinementProcessor,
@@ -63,7 +62,6 @@ pub async fn register_job_processors(app_handle: &AppHandle) -> AppResult<()> {
     let registry = get_job_registry().await?;
     
     // Create processor instances
-    let path_finder_processor = Arc::new(PathFinderProcessor::new());
     let implementation_plan_processor = Arc::new(ImplementationPlanProcessor::new());
     let path_correction_processor = Arc::new(PathCorrectionProcessor::new());
     let task_refinement_processor = Arc::new(TaskRefinementProcessor::new());
@@ -76,7 +74,6 @@ pub async fn register_job_processors(app_handle: &AppHandle) -> AppResult<()> {
     let file_relevance_assessment_processor = Arc::new(FileRelevanceAssessmentProcessor::new());
     
     // Register processors
-    registry.register(path_finder_processor).await;
     registry.register(implementation_plan_processor).await;
     registry.register(path_correction_processor).await;
     registry.register(task_refinement_processor).await;

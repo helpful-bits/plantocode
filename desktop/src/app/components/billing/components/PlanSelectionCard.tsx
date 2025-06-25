@@ -42,7 +42,7 @@ export function PlanSelectionCard({
         <CardTitle className="text-lg">{plan.name}</CardTitle>
         <div className="space-y-1">
           <div className="text-3xl font-bold">
-            {formatUsdCurrency(plan.monthlyPrice)}
+            {formatUsdCurrency(Number(plan.monthlyPrice))}
           </div>
           <div className="text-sm text-muted-foreground">
             per month
