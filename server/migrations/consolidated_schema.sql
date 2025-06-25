@@ -45,6 +45,10 @@ CREATE TABLE IF NOT EXISTS subscriptions (
     version INTEGER NOT NULL DEFAULT 1,
     management_state VARCHAR(50) DEFAULT 'active',
     pending_payment_intent_secret VARCHAR(255),
+    -- Auto top-off feature fields
+    auto_top_off_enabled BOOLEAN NOT NULL DEFAULT false,
+    auto_top_off_threshold DECIMAL(12, 4),
+    auto_top_off_amount DECIMAL(12, 4),
     CONSTRAINT fk_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
@@ -263,7 +267,7 @@ INSERT INTO subscription_plans (
  
 ('pro', 'Pro', 'For power users and small teams', 
  5.00, 20.00, 200.00, 'USD',
- NULL, NULL, NULL, 1,
+ NULL, 'price_pro_monthly', 'price_pro_yearly', 1,
  '{
    "coreFeatures": ["All AI models", "Priority support", "Advanced analytics", "API access"],
    "allowedModels": ["all"],
@@ -274,7 +278,7 @@ INSERT INTO subscription_plans (
  
 ('enterprise', 'Enterprise', 'For organizations with high AI usage', 
  25.00, 100.00, 1000.00, 'USD',
- NULL, NULL, NULL, 2,
+ NULL, 'price_enterprise_monthly', 'price_enterprise_yearly', 2,
  '{
    "coreFeatures": ["All AI models", "Dedicated support", "Custom integrations", "Advanced analytics", "Team management", "SLA guarantee"],
    "allowedModels": ["all"],
@@ -606,7 +610,6 @@ VALUES
   "default_max_tokens": 4096,
   "task_specific_configs": {
     "implementation_plan": {"model": "google/gemini-2.5-pro", "max_tokens": 65536, "temperature": 0.7, "copyButtons": [{"label": "Parallel Claude Coding Agents", "content": "{{IMPLEMENTATION_PLAN}}\nNOW, think deeply! Read the files mentioned, understand them and launch parallel Claude coding agents that run AT THE SAME TIME TO SAVE TIME and implement EVERY SINGLE aspect of the perfect plan precisely and systematically, and instruct the agents EXACTLY about what they are supposed to do in great detail. Think even more deeply to give REALLY clear instructions for the agents! Instruct each of the agents NOT to run any git, cargo, or TypeScript check commands. I do not need deprecated comments or annotations; the deprecated or fallback features must be COMPLETELY REMOVED!"}, {"label": "Investigate Results", "content": "Investigate the results of the work of each of the agents, and be sure that we've implemented the plan CORRECTLY!"}]},
-    "path_finder": {"model": "google/gemini-2.5-flash", "max_tokens": 8192, "temperature": 0.3, "copyButtons": [{"label": "Copy Results", "content": "{{FULL_RESPONSE}}"}, {"label": "Copy File Paths", "content": "{{FILE_PATHS}}"}]},
     "text_improvement": {"model": "anthropic/claude-sonnet-4-20250514", "max_tokens": 4096, "temperature": 0.7, "copyButtons": [{"label": "Copy Improved Text", "content": "{{FULL_RESPONSE}}"}, {"label": "Copy Changes Only", "content": "{{CHANGES_SUMMARY}}"}]},
     "voice_transcription": {"model": "openai/gpt-4o-transcribe", "max_tokens": 4096, "temperature": 0.0, "copyButtons": [{"label": "Copy Transcription", "content": "{{FULL_RESPONSE}}"}, {"label": "Copy Plain Text", "content": "{{TEXT_ONLY}}"}]},
     "path_correction": {"model": "google/gemini-2.5-flash", "max_tokens": 4096, "temperature": 0.3, "copyButtons": [{"label": "Copy Corrected Paths", "content": "{{FULL_RESPONSE}}"}, {"label": "Copy Path List", "content": "{{PATH_LIST}}"}]},
@@ -973,100 +976,8 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON refresh_tokens TO vibe_manager_app;
 
 -- Grant permissions needed for billing and credit operations
 GRANT SELECT, INSERT, UPDATE ON user_credits TO vibe_manager_app;
-GRANT SELECT, INSERT, UPDATE ON credit_packs TO vibe_manager_app;
-GRANT SELECT, INSERT, UPDATE ON credit_pack_stripe_config TO vibe_manager_app;
 GRANT SELECT, INSERT ON credit_transactions TO vibe_manager_app;
 
--- Credit packs table - proper normalized structure instead of JSON
-CREATE TABLE IF NOT EXISTS credit_packs (
-    id VARCHAR(50) PRIMARY KEY,
-    name VARCHAR(100) NOT NULL,
-    value_credits DECIMAL(12, 4) NOT NULL,  -- Amount of credits user gets
-    price_amount DECIMAL(12, 4) NOT NULL,   -- Price user pays
-    currency VARCHAR(3) NOT NULL DEFAULT 'USD',
-    description TEXT,
-    is_active BOOLEAN NOT NULL DEFAULT TRUE,
-    display_order INTEGER NOT NULL DEFAULT 0,  -- For UI ordering
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
--- Environment-specific Stripe configuration for credit packs
-CREATE TABLE IF NOT EXISTS credit_pack_stripe_config (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    credit_pack_id VARCHAR(50) NOT NULL REFERENCES credit_packs(id) ON DELETE CASCADE,
-    environment VARCHAR(20) NOT NULL, -- production, development, staging
-    stripe_price_id VARCHAR(255) NOT NULL,
-    is_active BOOLEAN NOT NULL DEFAULT TRUE,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT unique_pack_environment UNIQUE (credit_pack_id, environment),
-    CONSTRAINT fk_credit_pack_stripe_config_pack FOREIGN KEY (credit_pack_id) REFERENCES credit_packs(id) ON DELETE CASCADE
-);
-
--- Insert default credit packs
-INSERT INTO credit_packs (id, name, value_credits, price_amount, currency, description) VALUES
-('credits_5', '5 Credits', 5.00, 5.00, 'USD', 'Perfect for occasional usage'),
-('credits_10', '10 Credits', 10.00, 10.00, 'USD', 'Great for regular users'),
-('credits_25', '25 Credits', 25.00, 25.00, 'USD', 'Best value for power users'),
-('credits_50', '50 Credits', 50.00, 50.00, 'USD', 'Maximum credits for heavy usage')
-ON CONFLICT (id) DO UPDATE SET
-    name = EXCLUDED.name,
-    value_credits = EXCLUDED.value_credits,
-    price_amount = EXCLUDED.price_amount,
-    description = EXCLUDED.description;
-
--- Insert Stripe configurations for different environments
-INSERT INTO credit_pack_stripe_config (credit_pack_id, environment, stripe_price_id) VALUES
-('credits_5', 'production', 'price_credits_5_usd'),
-('credits_10', 'production', 'price_credits_10_usd'),
-('credits_25', 'production', 'price_credits_25_usd'),
-('credits_50', 'production', 'price_credits_50_usd'),
-('credits_5', 'development', 'price_test_credits_5_usd'),
-('credits_10', 'development', 'price_test_credits_10_usd'),
-('credits_25', 'development', 'price_test_credits_25_usd'),
-('credits_50', 'development', 'price_test_credits_50_usd')
-ON CONFLICT (credit_pack_id, environment) DO UPDATE SET
-    stripe_price_id = EXCLUDED.stripe_price_id;
-
--- Create indexes for credit packs
-CREATE INDEX IF NOT EXISTS idx_credit_packs_active ON credit_packs(is_active);
-CREATE INDEX IF NOT EXISTS idx_credit_packs_display_order ON credit_packs(display_order);
-CREATE INDEX IF NOT EXISTS idx_credit_pack_stripe_config_environment ON credit_pack_stripe_config(environment);
-CREATE INDEX IF NOT EXISTS idx_credit_pack_stripe_config_active ON credit_pack_stripe_config(is_active);
-
--- RLS for credit_packs table
-ALTER TABLE credit_packs ENABLE ROW LEVEL SECURITY;
-
--- Public read access to active credit packs for all authenticated users
-CREATE POLICY "Public can select active credit packs"
-ON credit_packs FOR SELECT
-TO authenticated, vibe_manager_app
-USING (is_active = true);
-
--- App can manage all credit packs
-CREATE POLICY "App can manage credit packs"
-ON credit_packs FOR ALL
-TO vibe_manager_app
-USING (true);
-
--- RLS for credit_pack_stripe_config table  
-ALTER TABLE credit_pack_stripe_config ENABLE ROW LEVEL SECURITY;
-
--- Public read access to active credit pack configurations
-CREATE POLICY "Public can select active credit pack stripe config"
-ON credit_pack_stripe_config FOR SELECT
-TO authenticated, vibe_manager_app
-USING (is_active = true);
-
--- App can manage all credit pack stripe configurations
-CREATE POLICY "App can manage credit pack stripe config"
-ON credit_pack_stripe_config FOR ALL
-TO vibe_manager_app
-USING (true);
-
--- Grant SELECT permissions to authenticated role for credit tables
-GRANT SELECT ON credit_packs TO authenticated;
-GRANT SELECT ON credit_pack_stripe_config TO authenticated;
 
 -- User credits balance tracking
 CREATE TABLE IF NOT EXISTS user_credits (
@@ -1090,6 +1001,7 @@ CREATE TABLE IF NOT EXISTS credit_transactions (
     stripe_charge_id VARCHAR(255), -- For purchases
     related_api_usage_id UUID REFERENCES api_usage(id), -- For consumptions
     metadata JSONB,
+    balance_after DECIMAL(12, 4) NOT NULL, -- Balance after this transaction
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CONSTRAINT fk_credit_transactions_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     CONSTRAINT fk_credit_transactions_api_usage FOREIGN KEY (related_api_usage_id) REFERENCES api_usage(id)

@@ -6,9 +6,9 @@ import { VisuallyHidden } from "@/ui/visually-hidden";
 import { Button } from "@/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/ui/card";
 import { Alert, AlertDescription } from "@/ui/alert";
-import { Badge } from "@/ui/badge";
-import { Loader2, CreditCard, AlertCircle, Star } from "lucide-react";
-import { getCreditDetails, getCreditPacks, type CreditPack } from "@/actions/billing/credit.actions";
+import { Input } from "@/ui/input";
+import { Loader2, CreditCard, AlertCircle, DollarSign } from "lucide-react";
+import { getCreditDetails } from "@/actions/billing/credit.actions";
 import { createCreditCheckoutSession } from "@/actions/billing/checkout.actions";
 import { useNotification } from "@/contexts/notification-context";
 import { getErrorMessage } from "@/utils/error-handling";
@@ -23,12 +23,10 @@ export interface CreditManagerProps {
 type CurrentView = "selection" | "polling";
 export const CreditManager = ({ isOpen, onClose }: CreditManagerProps) => {
   const [currentView, setCurrentView] = useState<CurrentView>("selection");
-  const [creditPacks, setCreditPacks] = useState<CreditPack[]>([]);
-  const [selectedPackId, setSelectedPackId] = useState<string | null>(null);
+  const [purchaseAmount, setPurchaseAmount] = useState<string>("");
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [balance, setBalance] = useState<number>(0);
   const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [isLoadingPacks, setIsLoadingPacks] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
   const { showNotification } = useNotification();
@@ -36,7 +34,6 @@ export const CreditManager = ({ isOpen, onClose }: CreditManagerProps) => {
   useEffect(() => {
     if (isOpen) {
       loadCreditDetails();
-      loadCreditPacks();
     }
   }, [isOpen]);
 
@@ -44,7 +41,7 @@ export const CreditManager = ({ isOpen, onClose }: CreditManagerProps) => {
     try {
       setError(null);
       const creditDetails = await getCreditDetails();
-      setBalance(creditDetails.balance);
+      setBalance(creditDetails.stats.currentBalance);
     } catch (err) {
       const errorMessage = getErrorMessage(err);
       setError(errorMessage);
@@ -52,27 +49,11 @@ export const CreditManager = ({ isOpen, onClose }: CreditManagerProps) => {
     }
   };
 
-  const loadCreditPacks = async () => {
-    try {
-      setIsLoadingPacks(true);
-      setError(null);
-      const packs = await getCreditPacks();
-      const sortedPacks = packs
-        .filter(pack => pack.isActive)
-        .sort((a, b) => a.displayOrder - b.displayOrder);
-      setCreditPacks(sortedPacks);
-    } catch (err) {
-      const errorMessage = getErrorMessage(err);
-      setError(errorMessage);
-      console.error("Failed to load credit packs:", err);
-    } finally {
-      setIsLoadingPacks(false);
-    }
-  };
 
   const handlePurchase = async () => {
-    if (!selectedPackId) {
-      setError("Please select a credit pack");
+    const amount = parseFloat(purchaseAmount);
+    if (isNaN(amount) || amount < 1 || amount > 1000) {
+      setError("Please enter a valid amount between $1 and $1000");
       return;
     }
 
@@ -80,7 +61,7 @@ export const CreditManager = ({ isOpen, onClose }: CreditManagerProps) => {
       setIsLoading(true);
       setError(null);
 
-      const response = await createCreditCheckoutSession(selectedPackId);
+      const response = await createCreditCheckoutSession(amount);
       
       setSessionId(response.sessionId);
       await open(response.url);
@@ -107,7 +88,7 @@ export const CreditManager = ({ isOpen, onClose }: CreditManagerProps) => {
     
     setCurrentView("selection");
     setSessionId(null);
-    setSelectedPackId(null);
+    setPurchaseAmount("");
     setError(null);
     loadCreditDetails();
     onClose();
@@ -133,12 +114,30 @@ export const CreditManager = ({ isOpen, onClose }: CreditManagerProps) => {
   const handleClose = () => {
     setCurrentView("selection");
     setSessionId(null);
-    setSelectedPackId(null);
+    setPurchaseAmount("");
     setError(null);
     onClose();
   };
 
-  const selectedPack = creditPacks.find(pack => pack.id === selectedPackId);
+  const handleQuickSelect = (amount: number) => {
+    setPurchaseAmount(amount.toString());
+    setError(null);
+  };
+
+  const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    // Allow only numbers and decimal point
+    if (value === '' || /^\d*\.?\d*$/.test(value)) {
+      setPurchaseAmount(value);
+      setError(null);
+    }
+  };
+
+  const isValidAmount = () => {
+    const amount = parseFloat(purchaseAmount);
+    return !isNaN(amount) && amount >= 1 && amount <= 1000;
+  };
+
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
@@ -151,7 +150,7 @@ export const CreditManager = ({ isOpen, onClose }: CreditManagerProps) => {
           <div className="space-y-6">
             <div>
               <h2 className="text-2xl font-bold mb-2">Purchase Top-up Credits</h2>
-              <p className="text-muted-foreground">Purchase additional credits to continue using AI features. These credits are consumed as you use the service.</p>
+              <p className="text-muted-foreground">Purchase additional top-up credits separate from your monthly subscription allowance. These credits do not expire and are consumed as you use the service.</p>
             </div>
 
             <Card>
@@ -175,55 +174,68 @@ export const CreditManager = ({ isOpen, onClose }: CreditManagerProps) => {
 
             <Card>
               <CardHeader>
-                <CardTitle>Select Top-up Credit Pack</CardTitle>
+                <CardTitle>Purchase Top-up Credits</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-4">
-                {isLoadingPacks ? (
-                  <div className="flex items-center justify-center py-8">
-                    <Loader2 className="h-6 w-6 animate-spin mr-2" />
-                    <span>Loading credit packs...</span>
+              <CardContent className="space-y-6">
+                <div className="space-y-4">
+                  <div>
+                    <label htmlFor="purchase-amount" className="block text-sm font-medium mb-2">
+                      Enter amount to purchase
+                    </label>
+                    <div className="relative">
+                      <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        id="purchase-amount"
+                        type="text"
+                        placeholder="25.00"
+                        value={purchaseAmount}
+                        onChange={handleAmountChange}
+                        className="pl-10"
+                        disabled={isLoading}
+                      />
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Minimum: $1.00, Maximum: $1,000.00
+                    </p>
                   </div>
-                ) : creditPacks.length === 0 ? (
-                  <div className="text-center py-8 text-muted-foreground">
-                    No top-up credit packs available
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {creditPacks.map((pack) => (
+
+                  <div>
+                    <p className="text-sm font-medium mb-3">Quick select amounts:</p>
+                    <div className="flex gap-2">
                       <Button
-                        key={pack.id}
-                        variant={selectedPackId === pack.id ? "default" : "outline"}
-                        onClick={() => setSelectedPackId(pack.id)}
-                        className="h-auto p-4 flex flex-col items-start justify-start text-left relative"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleQuickSelect(10)}
+                        disabled={isLoading}
+                        className="flex-1"
                       >
-                        {pack.isPopular && (
-                          <Badge className="absolute -top-2 -right-2 bg-primary text-primary-foreground text-xs">
-                            <Star className="h-3 w-3 mr-1" />
-                            Popular
-                          </Badge>
-                        )}
-                        <div className="text-lg font-bold">
-                          ${pack.priceAmount.toFixed(2)}
-                        </div>
-                        <div className="text-sm text-muted-foreground">
-                          {pack.name}
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          ${pack.valueCredits.toFixed(2)} in credits
-                        </div>
-                        {pack.bonusPercentage && pack.bonusPercentage > 0 && (
-                          <Badge variant="secondary" className="mt-1 text-xs">
-                            +{pack.bonusPercentage}% bonus
-                          </Badge>
-                        )}
+                        $10
                       </Button>
-                    ))}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleQuickSelect(25)}
+                        disabled={isLoading}
+                        className="flex-1"
+                      >
+                        $25
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleQuickSelect(50)}
+                        disabled={isLoading}
+                        className="flex-1"
+                      >
+                        $50
+                      </Button>
+                    </div>
                   </div>
-                )}
+                </div>
 
                 <Button 
                   onClick={handlePurchase}
-                  disabled={!selectedPackId || isLoading || isLoadingPacks}
+                  disabled={!isValidAmount() || isLoading}
                   className="w-full h-12 text-lg font-medium"
                   size="lg"
                 >
@@ -232,12 +244,12 @@ export const CreditManager = ({ isOpen, onClose }: CreditManagerProps) => {
                       <Loader2 className="h-5 w-5 mr-2 animate-spin" />
                       Processing...
                     </>
-                  ) : selectedPack ? (
+                  ) : isValidAmount() ? (
                     <>
-                      Purchase {selectedPack.name} - ${selectedPack.priceAmount.toFixed(2)}
+                      Purchase ${parseFloat(purchaseAmount).toFixed(2)} in Credits
                     </>
                   ) : (
-                    'Select a top-up credit pack'
+                    'Enter a valid amount to purchase'
                   )}
                 </Button>
               </CardContent>

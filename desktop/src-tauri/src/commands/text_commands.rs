@@ -1,10 +1,12 @@
 use tauri::{command, AppHandle, Manager};
 use log::info;
 use serde::{Serialize, Deserialize};
+use std::sync::Arc;
 use crate::error::AppResult;
 use crate::models::{JobStatus, JobCommandResponse};
 use crate::error::AppError;
 use crate::jobs::types::JobPayload;
+use crate::db_utils::{SessionRepository, BackgroundJobRepository};
 
 
 
@@ -52,10 +54,17 @@ pub async fn improve_text_command(
         original_transcription_job_id: args.original_transcription_job_id.clone(),
     };
     
+    // Get session to access project directory
+    let background_job_repo = app_handle.state::<Arc<BackgroundJobRepository>>().inner().clone();
+    let session_repo = SessionRepository::new(background_job_repo.get_pool());
+    let session = session_repo.get_session_by_id(&args.session_id).await?
+        .ok_or_else(|| AppError::JobError(format!("Session {} not found", args.session_id)))?;
+    
     // Get the model and settings for this task using centralized resolver
     let model_settings = crate::utils::config_resolver::resolve_model_settings(
         &app_handle,
         crate::models::TaskType::TextImprovement,
+        &session.project_directory,
         None, // no model override for this command
         None, // no temperature override for this command
         None, // no max_tokens override for this command
@@ -124,6 +133,7 @@ pub async fn generate_simple_text_command(
     let resolved_settings = crate::utils::config_resolver::resolve_model_settings(
         &app_handle,
         task_type_enum,
+        "", // No project directory for simple text generation
         model_override,
         temperature_override,
         max_tokens_override,

@@ -1,6 +1,5 @@
 pub mod api_usage_repository;
 pub mod audit_log_repository;
-pub mod credit_pack_repository;
 pub mod credit_transaction_repository;
 pub mod subscription_repository;
 pub mod subscription_plan_repository;
@@ -14,7 +13,6 @@ pub mod webhook_idempotency_repository;
 
 pub use api_usage_repository::ApiUsageRepository;
 pub use audit_log_repository::{AuditLogRepository, AuditLog, CreateAuditLogRequest, AuditLogFilter};
-pub use credit_pack_repository::{CreditPackRepository, CreditPack};
 pub use credit_transaction_repository::{CreditTransactionRepository, CreditTransaction, CreditTransactionStats};
 pub use subscription_repository::SubscriptionRepository;
 pub use subscription_plan_repository::{SubscriptionPlanRepository, SubscriptionPlan, PlanFeatures, SupportLevel};

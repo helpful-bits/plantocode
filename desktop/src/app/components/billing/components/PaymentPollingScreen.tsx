@@ -41,7 +41,7 @@ export function PaymentPollingScreen({
         
         if (!isMounted) return;
 
-        if (result.status === 'complete' && (result.payment_status === 'paid' || result.payment_status === 'no_payment_required')) {
+        if (result.status === 'complete' && (result.paymentStatus === 'paid' || result.paymentStatus === 'no_payment_required')) {
           setStatus('success');
           setMessage("Payment completed successfully!");
           cleanup();
@@ -51,7 +51,9 @@ export function PaymentPollingScreen({
           setError("Payment session expired. Please try again.");
           cleanup();
           onError("Payment session expired");
-        } else if (result.payment_status === 'unpaid' && result.status === 'complete') {
+        } else if (result.status === 'open' && result.paymentStatus === 'unpaid') {
+          scheduleNextPoll();
+        } else if (result.paymentStatus === 'unpaid' && result.status === 'complete') {
           setStatus('error');
           setError("Payment was not completed. Please try again.");
           cleanup();

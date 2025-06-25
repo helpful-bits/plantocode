@@ -46,20 +46,17 @@ impl JobProcessor for TaskRefinementProcessor {
         };
         
         // Setup job processing
-        let (repo, settings_repo, db_job) = job_processor_utils::setup_job_processing(&job_id, &app_handle).await?;
+        let (repo, session_repo, settings_repo, db_job) = job_processor_utils::setup_job_processing(&job_id, &app_handle).await?;
         
-        // Get project directory from session
-        let session = {
-            use crate::db_utils::SessionRepository;
-            let session_repo = SessionRepository::new(repo.get_pool());
-            session_repo.get_session_by_id(&job.session_id).await?
-                .ok_or_else(|| AppError::JobError(format!("Session {} not found", job.session_id)))?
-        };
+        // Get session using centralized repository
+        let session = session_repo.get_session_by_id(&job.session_id).await?
+            .ok_or_else(|| AppError::JobError(format!("Session {} not found", job.session_id)))?;
         
         // Get model settings using centralized config resolution
         let model_settings = config_resolver::resolve_model_settings(
             &app_handle,
             job.job_type,
+            &session.project_directory,
             None, // model_override
             None, // temperature_override  
             None, // max_tokens_override

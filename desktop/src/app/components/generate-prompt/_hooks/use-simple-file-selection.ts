@@ -29,6 +29,7 @@ export function useSimpleFileSelection(projectDirectory?: string) {
   const [searchTerm, setSearchTerm] = useState("");
   const [filterMode, setFilterMode] = useState<"all" | "selected">("all");
   const [findingFiles, setFindingFiles] = useState(false);
+  const [findingFilesError, setFindingFilesError] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<"name" | "size" | "modified">("name");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
@@ -356,6 +357,7 @@ export function useSimpleFileSelection(projectDirectory?: string) {
     }
 
     setFindingFiles(true);
+    setFindingFilesError(null);
     setError(null);
 
     try {
@@ -374,6 +376,10 @@ export function useSimpleFileSelection(projectDirectory?: string) {
       tracker.onComplete(async (results) => {
         try {
           applyWorkflowResultsToSession(results.finalPaths || [], "workflow completion");
+          // Switch to "selected" filter mode to show the newly found files
+          if (results.finalPaths && results.finalPaths.length > 0) {
+            setFilterMode("selected");
+          }
         } catch (error) {
           console.error("Failed to apply workflow completion results:", error);
           setError("Failed to apply workflow results");
@@ -386,7 +392,9 @@ export function useSimpleFileSelection(projectDirectory?: string) {
       // Listen for workflow errors
       tracker.onError((error) => {
         console.error("Workflow error:", error);
-        setError(`Workflow failed: ${error.message}`);
+        const errorMessage = error.message || "Unknown workflow error";
+        setFindingFilesError(errorMessage);
+        setError(`Workflow failed: ${errorMessage}`);
         setFindingFiles(false);
         activeWorkflowTracker.current = null;
       });
@@ -394,7 +402,9 @@ export function useSimpleFileSelection(projectDirectory?: string) {
       console.log("File finder workflow started:", tracker.getWorkflowId());
     } catch (error) {
       console.error("Error starting file finder workflow:", error);
-      setError(error instanceof Error ? error.message : "Failed to start workflow");
+      const errorMessage = error instanceof Error ? error.message : "Failed to start workflow";
+      setFindingFilesError(errorMessage);
+      setError(errorMessage);
       setFindingFiles(false);
     }
   }, [activeSessionId, projectDirectory, currentSession?.taskDescription, currentSession?.forceExcludedFiles, applyWorkflowResultsToSession]);
@@ -470,6 +480,7 @@ export function useSimpleFileSelection(projectDirectory?: string) {
     canRedo: historyIndex < history.length - 1,
     triggerFind,
     findingFiles,
+    findingFilesError,
     selectFiltered,
     deselectFiltered,
     hasUnsavedChanges,

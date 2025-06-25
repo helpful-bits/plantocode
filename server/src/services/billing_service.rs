@@ -1,5 +1,6 @@
 use crate::error::AppError;
 use crate::handlers::billing::dashboard_handler::{BillingDashboardData, BillingDashboardPlanDetails};
+use crate::handlers::billing::subscription_handlers::AutoTopOffSettings;
 use crate::db::repositories::api_usage_repository::{ApiUsageRepository, DetailedUsageRecord};
 use crate::db::repositories::subscription_repository::{SubscriptionRepository, Subscription};
 use crate::db::repositories::subscription_plan_repository::{SubscriptionPlanRepository, SubscriptionPlan};
@@ -109,16 +110,11 @@ impl BillingService {
         }
     }
     
-    // PURE PREPAID: Check if user can access AI services based on credit balance
     pub async fn check_service_access(
         &self,
         user_id: &Uuid,
-        _model_id: &str, // Model restrictions removed - all models available
+        _model_id: &str,
     ) -> Result<bool, AppError> {
-        // Ensure user has a subscription
-        let _ = self.ensure_user_has_subscription(user_id).await?;
-        
-        // Check if user has any credits
         let user_balance = self.credit_service.get_user_balance(user_id).await?;
         
         if user_balance.balance > BigDecimal::from(0) {
@@ -128,7 +124,6 @@ impl BillingService {
         }
     }
     
-    // PURE PREPAID: Record usage and consume credits atomically
     pub async fn record_ai_service_usage(
         &self,
         user_id: &Uuid,
@@ -141,7 +136,6 @@ impl BillingService {
         processing_ms: Option<i32>,
         input_duration_ms: Option<i64>,
     ) -> Result<(), AppError> {
-        // First record the API usage
         let api_usage_record = self.api_usage_repository.record_usage(crate::db::repositories::api_usage_repository::ApiUsageEntryDto {
             user_id: *user_id,
             service_name: service_name.to_string(),
@@ -155,7 +149,6 @@ impl BillingService {
         }).await?;
         let api_usage_id = api_usage_record.id.ok_or_else(|| AppError::Database("Failed to get API usage record ID".to_string()))?;
         
-        // Then consume credits atomically
         let usage_description = format!("{} - {} tokens in, {} tokens out", service_name, tokens_input, tokens_output);
         self.credit_service.consume_credits_for_usage_in_tx(
             user_id,
@@ -225,6 +218,9 @@ impl BillingService {
             trial_start: Some(now),
             trial_end: Some(trial_ends_at),
             pending_plan_id: None,
+            auto_top_off_enabled: false,
+            auto_top_off_threshold: None,
+            auto_top_off_amount: None,
         };
         
         info!("Created trial subscription and granted initial credits for user {}", user_id);
@@ -232,12 +228,10 @@ impl BillingService {
     }
 
     
-    // Create a default free trial subscription for a new user (public method)
     pub async fn create_default_subscription_for_new_user(&self, user_id: &Uuid) -> Result<Subscription, AppError> {
         let mut tx = self.db_pools.user_pool.begin().await
             .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
         
-        // Set user context for RLS within the transaction
         sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
             .bind(user_id.to_string())
             .execute(&mut *tx)
@@ -312,7 +306,9 @@ impl BillingService {
         ).get_by_id(user_id).await?;
 
         // Create a new Stripe customer
+        let idempotency_key = uuid::Uuid::new_v4().to_string();
         let customer = stripe_service.create_or_get_customer(
+            &idempotency_key,
             user_id,
             &user.email,
             user.full_name.as_deref(),
@@ -366,7 +362,9 @@ impl BillingService {
         };
 
         // Create portal session
+        let idempotency_key = uuid::Uuid::new_v4().to_string();
         let session = match stripe_service.create_billing_portal_session(
+            &idempotency_key,
             &customer_id,
             &self.app_settings.stripe.portal_return_url,
         ).await {
@@ -426,7 +424,7 @@ impl BillingService {
         // Get plan details using system pool (not affected by user context)
         let plan = self.get_plan_by_id(&subscription.plan_id).await?;
 
-        // Get credit balance for pure prepaid model
+        // Get credit balance from credit service
         let credit_balance = self.credit_service.get_user_balance_with_executor(user_id, &mut transaction).await?;
         
         // Commit transaction after all operations
@@ -441,7 +439,7 @@ impl BillingService {
             billing_interval: "monthly".to_string(),
         };
 
-        // Build consolidated response
+        // Build consolidated response with correct subscription status
         let dashboard_data = BillingDashboardData {
             plan_details,
             credit_balance_usd: credit_balance.balance.to_f64().unwrap_or(0.0),
@@ -524,7 +522,9 @@ impl BillingService {
         metadata.insert("source".to_string(), "billing_service".to_string());
 
         // Create subscription with 1-day trial
+        let idempotency_key = uuid::Uuid::new_v4().to_string();
         let subscription = match stripe_service.create_subscription_with_trial(
+            &idempotency_key,
             &customer_id,
             &price_id,
             Some(1), // 1-day trial
@@ -737,6 +737,7 @@ impl BillingService {
         local_subscription.current_period_end = current_period_end;
         local_subscription.trial_start = trial_start;
         local_subscription.trial_end = trial_end;
+        // Auto top-off settings are not updated from Stripe webhooks, keeping existing values
         
         // Update the subscription in the database
         self.subscription_repository.update_with_executor(&local_subscription, &mut tx).await
@@ -781,6 +782,17 @@ impl BillingService {
         let stripe_service = self.stripe_service.as_ref()
             .ok_or_else(|| AppError::Internal("Stripe service not configured".to_string()))?;
 
+        // Get total count from Stripe first without limit to know the actual total
+        let all_stripe_invoices = stripe_service.list_invoices_with_filter(
+            &customer_id,
+            None, // No status filter
+            None, // Get all invoices to count them
+            None, // No cursor-based pagination for now
+        ).await
+            .map_err(|e| AppError::External(format!("Failed to list invoices from Stripe: {:?}", e)))?;
+
+        let total_invoices = all_stripe_invoices.len() as i32;
+
         // List invoices from Stripe with pagination
         let stripe_invoices = stripe_service.list_invoices_with_filter(
             &customer_id,
@@ -789,9 +801,6 @@ impl BillingService {
             None, // No cursor-based pagination for now
         ).await
             .map_err(|e| AppError::External(format!("Failed to list invoices from Stripe: {:?}", e)))?;
-
-        // Calculate total count before consuming the vector
-        let total_invoices_retrieved = stripe_invoices.len() as i32;
 
         // Convert Stripe invoices to our Invoice model
         let invoices: Result<Vec<crate::models::Invoice>, AppError> = stripe_invoices
@@ -829,105 +838,73 @@ impl BillingService {
             
         let invoices = invoices?;
 
-        // Calculate proper pagination info
-        let returned_invoices_count = invoices.len() as i32;
-        let has_more = total_invoices_retrieved > (offset + limit);
+        // Fix has_more logic to correctly reflect if there are more invoices beyond current page
+        let has_more = total_invoices > (offset + limit);
 
         Ok(crate::models::ListInvoicesResponse {
             invoices,
-            total_invoices: returned_invoices_count,
+            total_invoices,
             has_more,
         })
     }
 
-    /// Set the default payment method for a user
-    pub async fn set_default_payment_method(
+
+    /// Create a custom credit purchase checkout session
+    pub async fn create_custom_credit_checkout_session(
         &self,
         user_id: &Uuid,
-        payment_method_id: &str,
-    ) -> Result<stripe::Customer, AppError> {
-        // Ensure Stripe is configured
-        let stripe_service = match &self.stripe_service {
-            Some(service) => service,
-            None => return Err(AppError::Configuration("Stripe not configured".to_string())),
-        };
-
-        // Get customer ID
-        let customer_id = self.get_or_create_stripe_customer(user_id).await?;
-
-        // Set default payment method via Stripe service
-        stripe_service.set_default_payment_method(&customer_id, payment_method_id).await
-            .map_err(|e| AppError::External(format!("Failed to set default payment method: {}", e)))
-    }
-
-    /// Detach a payment method from a user
-    pub async fn detach_payment_method(
-        &self,
-        user_id: &Uuid,
-        payment_method_id: &str,
-    ) -> Result<stripe::PaymentMethod, AppError> {
-        // Ensure Stripe is configured
-        let stripe_service = match &self.stripe_service {
-            Some(service) => service,
-            None => return Err(AppError::Configuration("Stripe not configured".to_string())),
-        };
-
-        // Verify the user owns this payment method by checking their customer ID
-        let customer_id = self.get_or_create_stripe_customer(user_id).await?;
-        let payment_methods = stripe_service.list_payment_methods(&customer_id).await
-            .map_err(|e| AppError::External(format!("Failed to list payment methods: {}", e)))?;
-        
-        // Check if the payment method belongs to this customer
-        let payment_method_exists = payment_methods.iter()
-            .any(|pm| pm.id.to_string() == payment_method_id);
-        
-        if !payment_method_exists {
-            return Err(AppError::Forbidden("Payment method does not belong to this user".to_string()));
-        }
-
-        // Detach payment method via Stripe service
-        stripe_service.detach_payment_method(payment_method_id).await
-            .map_err(|e| AppError::External(format!("Failed to detach payment method: {}", e)))
-    }
-
-    /// Create a credit purchase checkout session
-    pub async fn create_credit_checkout_session(
-        &self,
-        user_id: &Uuid,
-        credit_pack_id: &str,
-        success_url: &str,
-        cancel_url: &str,
+        amount: f64,
     ) -> Result<stripe::CheckoutSession, AppError> {
         let stripe_service = self.get_stripe_service()?;
         let customer_id = self.get_or_create_stripe_customer(user_id).await?;
         
-        // Get credit pack details
-        let credit_service = crate::services::credit_service::CreditService::new(self.db_pools.clone());
-        let credit_pack = credit_service.get_credit_pack_by_id(credit_pack_id).await?
-            .ok_or_else(|| AppError::NotFound("Credit pack not found".to_string()))?;
+        // Validate amount
+        if amount <= 0.0 || amount > 10000.0 {
+            return Err(AppError::InvalidArgument("Amount must be between $0.01 and $10,000.00".to_string()));
+        }
+
+        // Create one-time price/product for custom amount
+        let product_name = format!("${:.2} Credit Top-up", amount);
+        let amount_cents = (amount * 100.0) as i64;
+        
+        let idempotency_key = uuid::Uuid::new_v4().to_string();
+        let (product, price) = stripe_service.create_product_and_price(
+            &format!("{}_product", idempotency_key),
+            &product_name,
+            amount_cents,
+            stripe::Currency::USD,
+            None, // No recurring interval for one-time payment
+        ).await.map_err(|e| AppError::External(format!("Failed to create one-time price: {}", e)))?;
 
         // Create line items
         let line_items = vec![stripe::CreateCheckoutSessionLineItems {
-            price: Some(credit_pack.stripe_price_id.parse()
+            price: Some(price.id.to_string().parse()
                 .map_err(|_| AppError::Configuration("Invalid Stripe price ID".to_string()))?),
             quantity: Some(1),
             ..Default::default()
         }];
 
-        // Add metadata
+        // Add metadata for webhook fulfillment
         let mut metadata = std::collections::HashMap::new();
         metadata.insert("type".to_string(), "credit_purchase".to_string());
         metadata.insert("user_id".to_string(), user_id.to_string());
-        metadata.insert("credit_pack_id".to_string(), credit_pack_id.to_string());
-        metadata.insert("credit_amount".to_string(), credit_pack.value_credits.to_string());
+        metadata.insert("amount".to_string(), amount.to_string());
+        metadata.insert("currency".to_string(), "USD".to_string());
+
+        // Use hardcoded URLs that match the frontend expectations
+        let success_url = "http://localhost:1420/billing/success";
+        let cancel_url = "http://localhost:1420/billing/cancel";
 
         let session = stripe_service.create_checkout_session(
+            &format!("{}_session", idempotency_key),
             &customer_id,
             stripe::CheckoutSessionMode::Payment,
             Some(line_items),
             success_url,
             cancel_url,
             metadata,
+            None, // billing_address_collection not required for credit purchases
+            None, // automatic_tax not required for credit purchases
         ).await.map_err(|e| AppError::External(format!("Failed to create checkout session: {}", e)))?;
 
         Ok(session)
@@ -939,8 +916,6 @@ impl BillingService {
         &self,
         user_id: &Uuid,
         plan_id: &str,
-        success_url: &str,
-        cancel_url: &str,
     ) -> Result<stripe::CheckoutSession, AppError> {
         let stripe_service = self.get_stripe_service()?;
         let customer_id = self.get_or_create_stripe_customer(user_id).await?;
@@ -950,6 +925,11 @@ impl BillingService {
         let price_id = plan.stripe_price_id_monthly
             .ok_or_else(|| AppError::Configuration(format!("No Stripe price ID for plan: {}", plan_id)))?;
 
+        // Check if stripe_price_id_monthly is not empty
+        if price_id.is_empty() {
+            return Err(AppError::Configuration("Stripe price ID monthly is empty for plan".to_string()));
+        }
+
         // Create line items
         let line_items = vec![stripe::CreateCheckoutSessionLineItems {
             price: Some(price_id.parse()
@@ -958,19 +938,27 @@ impl BillingService {
             ..Default::default()
         }];
 
-        // Add metadata
+        // Add metadata for webhook fulfillment
         let mut metadata = std::collections::HashMap::new();
         metadata.insert("type".to_string(), "subscription".to_string());
         metadata.insert("user_id".to_string(), user_id.to_string());
         metadata.insert("plan_id".to_string(), plan_id.to_string());
 
+        // Use hardcoded URLs that match the frontend expectations
+        let success_url = "http://localhost:1420/billing/success";
+        let cancel_url = "http://localhost:1420/billing/cancel";
+
+        let idempotency_key = uuid::Uuid::new_v4().to_string();
         let session = stripe_service.create_checkout_session(
+            &idempotency_key,
             &customer_id,
             stripe::CheckoutSessionMode::Subscription,
             Some(line_items),
             success_url,
             cancel_url,
             metadata,
+            Some(true), // billing_address_collection: required
+            Some(true), // automatic_tax: enabled
         ).await.map_err(|e| AppError::External(format!("Failed to create checkout session: {}", e)))?;
 
         Ok(session)
@@ -1016,8 +1004,6 @@ impl BillingService {
     pub async fn create_setup_checkout_session(
         &self,
         user_id: &Uuid,
-        success_url: &str,
-        cancel_url: &str,
     ) -> Result<stripe::CheckoutSession, AppError> {
         let stripe_service = self.get_stripe_service()?;
         let customer_id = self.get_or_create_stripe_customer(user_id).await?;
@@ -1027,16 +1013,169 @@ impl BillingService {
         metadata.insert("type".to_string(), "setup_payment_method".to_string());
         metadata.insert("user_id".to_string(), user_id.to_string());
 
+        // Use hardcoded URLs for setup payment method
+        let success_url = "http://localhost:1420/billing/payment-method/success";
+        let cancel_url = "http://localhost:1420/billing/payment-method/cancel";
+
+        let idempotency_key = uuid::Uuid::new_v4().to_string();
         let session = stripe_service.create_checkout_session(
+            &idempotency_key,
             &customer_id,
             stripe::CheckoutSessionMode::Setup,
             None, // No line items for setup mode
             success_url,
             cancel_url,
             metadata,
+            None, // billing_address_collection not applicable for setup mode
+            None, // automatic_tax not applicable for setup mode
         ).await.map_err(|e| AppError::External(format!("Failed to create setup checkout session: {}", e)))?;
 
         Ok(session)
+    }
+
+    /// Get auto top-off settings for a user
+    pub async fn get_auto_top_off_settings(&self, user_id: &Uuid) -> Result<AutoTopOffSettings, AppError> {
+        debug!("Getting auto top-off settings for user: {}", user_id);
+        
+        // Start transaction for atomic operations
+        let mut transaction = self.db_pools.user_pool.begin().await
+            .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
+
+        // Set user context for RLS within the transaction
+        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
+            .bind(user_id.to_string())
+            .execute(&mut *transaction)
+            .await
+            .map_err(|e| AppError::Database(format!("Failed to set user context in transaction: {}", e)))?;
+
+        // Get subscription
+        let subscription = self.subscription_repository.get_by_user_id_with_executor(user_id, &mut transaction).await?
+            .ok_or_else(|| AppError::NotFound("No subscription found for user".to_string()))?;
+
+        // Commit transaction
+        transaction.commit().await
+            .map_err(|e| AppError::Database(format!("Failed to commit transaction: {}", e)))?;
+
+        let settings = AutoTopOffSettings {
+            enabled: subscription.auto_top_off_enabled,
+            threshold: subscription.auto_top_off_threshold.map(|t| t.to_f64().unwrap_or(0.0)),
+            amount: subscription.auto_top_off_amount.map(|a| a.to_f64().unwrap_or(0.0)),
+        };
+
+        info!("Successfully retrieved auto top-off settings for user: {}", user_id);
+        Ok(settings)
+    }
+
+    /// Update auto top-off settings for a user
+    pub async fn update_auto_top_off_settings(
+        &self,
+        user_id: &Uuid,
+        enabled: bool,
+        threshold: Option<BigDecimal>,
+        amount: Option<BigDecimal>,
+    ) -> Result<AutoTopOffSettings, AppError> {
+        debug!("Updating auto top-off settings for user: {}", user_id);
+        
+        // Start transaction for atomic operations
+        let mut transaction = self.db_pools.user_pool.begin().await
+            .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
+
+        // Set user context for RLS within the transaction
+        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
+            .bind(user_id.to_string())
+            .execute(&mut *transaction)
+            .await
+            .map_err(|e| AppError::Database(format!("Failed to set user context in transaction: {}", e)))?;
+
+        // Get subscription
+        let mut subscription = self.subscription_repository.get_by_user_id_with_executor(user_id, &mut transaction).await?
+            .ok_or_else(|| AppError::NotFound("No subscription found for user".to_string()))?;
+
+        // Update the subscription with new auto top-off settings
+        subscription.auto_top_off_enabled = enabled;
+        subscription.auto_top_off_threshold = threshold;
+        subscription.auto_top_off_amount = amount;
+
+        // Save the updated subscription
+        self.subscription_repository.update_with_executor(&subscription, &mut transaction).await?;
+
+        // Commit transaction
+        transaction.commit().await
+            .map_err(|e| AppError::Database(format!("Failed to commit transaction: {}", e)))?;
+
+        let settings = AutoTopOffSettings {
+            enabled: subscription.auto_top_off_enabled,
+            threshold: subscription.auto_top_off_threshold.map(|t| t.to_f64().unwrap_or(0.0)),
+            amount: subscription.auto_top_off_amount.map(|a| a.to_f64().unwrap_or(0.0)),
+        };
+
+        info!("Successfully updated auto top-off settings for user: {}", user_id);
+        Ok(settings)
+    }
+
+    /// Perform auto top-off using customer's default payment method
+    pub async fn perform_auto_top_off(&self, user_id: &Uuid, amount: &BigDecimal) -> Result<(), AppError> {
+        info!("Performing auto top-off for user {} with amount {}", user_id, amount);
+        
+        // Ensure Stripe is configured
+        let stripe_service = match &self.stripe_service {
+            Some(service) => service,
+            None => {
+                warn!("Stripe not configured, cannot perform auto top-off for user {}", user_id);
+                return Err(AppError::Configuration("Stripe not configured".to_string()));
+            }
+        };
+
+        // Start transaction for atomic operations
+        let mut transaction = self.db_pools.user_pool.begin().await
+            .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
+
+        // Set user context for RLS within the transaction
+        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
+            .bind(user_id.to_string())
+            .execute(&mut *transaction)
+            .await
+            .map_err(|e| AppError::Database(format!("Failed to set user context in transaction: {}", e)))?;
+
+        // Get subscription
+        let subscription = self.subscription_repository.get_by_user_id_with_executor(user_id, &mut transaction).await?
+            .ok_or_else(|| AppError::NotFound("No subscription found for user".to_string()))?;
+
+        // Get customer ID
+        let customer_id = subscription.stripe_customer_id
+            .ok_or_else(|| AppError::Configuration("User has no Stripe customer ID".to_string()))?;
+
+        // Commit transaction (no longer needed)
+        transaction.commit().await
+            .map_err(|e| AppError::Database(format!("Failed to commit transaction: {}", e)))?;
+
+        // Create and pay invoice with Stripe for the auto top-off amount
+        let amount_cents = amount.to_f64().unwrap_or(0.0) * 100.0;
+        let idempotency_key = format!("auto_topoff_{}_{}", user_id, Utc::now().timestamp());
+        
+        // Create invoice item and invoice, then pay it
+        let invoice = stripe_service.create_and_pay_invoice(
+            &idempotency_key,
+            &customer_id,
+            amount_cents as i64,
+            "USD",
+            &format!("Automatic credit top-off for ${}", amount),
+        ).await.map_err(|e| AppError::External(format!("Failed to create and pay auto top-off invoice: {}", e)))?;
+
+        // If successful, add credits to the user's account
+        self.credit_service.adjust_credits(
+            user_id,
+            amount,
+            format!("Auto top-off via Stripe invoice {}", invoice.id),
+            Some(serde_json::json!({
+                "type": "auto_top_off",
+                "stripe_invoice_id": invoice.id.to_string(),
+                "amount": amount.to_f64().unwrap_or(0.0)
+            })),
+        ).await?;
+
+        info!("Successfully completed auto top-off for user {} with amount {}", user_id, amount);
+        Ok(())
     }
 
 }

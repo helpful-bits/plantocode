@@ -12,7 +12,6 @@ pub struct DetailedUsage {
     pub service_name: String,
     pub model_display_name: String,
     pub provider_code: String,
-    pub model_type: String,
     pub total_cost: f64,
     pub total_requests: i64,
     pub total_input_tokens: i64,
@@ -258,10 +257,10 @@ pub struct SubscriptionDetails {
 #[serde(rename_all = "camelCase")]
 pub struct BillingDashboardData {
     pub plan_details: BillingDashboardPlanDetails,
-    pub spending_details: BillingDashboardSpendingDetails,
     pub credit_balance_usd: f64,
     pub subscription_status: String,
     pub trial_ends_at: Option<String>,
+    pub services_blocked: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -273,14 +272,6 @@ pub struct BillingDashboardPlanDetails {
     pub billing_interval: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct BillingDashboardSpendingDetails {
-    pub current_spending_usd: f64,
-    pub spending_limit_usd: f64,
-    pub period_start: String,
-    pub period_end: String,
-}
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -355,22 +346,6 @@ pub struct CreditStats {
     pub currency: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CreditPack {
-    pub id: String,
-    pub name: String,
-    pub value_credits: f64,
-    pub price_amount: f64,
-    pub currency: String,
-    pub description: Option<String>,
-    pub recommended: bool,
-    pub bonus_percentage: Option<f64>,
-    pub is_popular: Option<bool>,
-    pub is_active: bool,
-    pub display_order: i32,
-    pub stripe_price_id: String,
-}
 
 
 /// Get consolidated billing dashboard data
@@ -525,18 +500,6 @@ pub async fn get_credit_details_command(
     Ok(credit_details)
 }
 
-/// Get available credit packs for purchase
-#[tauri::command]
-pub async fn get_credit_packs_command(
-    billing_client: State<'_, Arc<BillingClient>>,
-) -> Result<Vec<CreditPack>, AppError> {
-    debug!("Getting credit packs via Tauri command");
-    
-    let credit_packs = billing_client.get_available_credit_packs().await?;
-    
-    info!("Successfully retrieved credit packs");
-    Ok(credit_packs)
-}
 
 // ========================================
 // STRIPE CHECKOUT SESSION COMMANDS
@@ -547,14 +510,15 @@ pub async fn get_credit_packs_command(
 #[tauri::command]
 pub async fn create_credit_checkout_session_command(
     billing_client: State<'_, Arc<BillingClient>>,
-    credit_pack_id: String,
+    amount: f64,
 ) -> Result<CheckoutSessionResponse, AppError> {
-    debug!("Creating checkout session for credit pack: {}", credit_pack_id);
+    debug!("Creating checkout session for credit amount: {}", amount);
     
     // Security validation
     check_rate_limit("create_credit_checkout_session")?;
+    validate_payment_amount(amount, "amount")?;
     
-    let checkout_response = billing_client.create_credit_checkout_session(&credit_pack_id).await?;
+    let checkout_response = billing_client.create_credit_checkout_session(amount).await?;
     
     info!("Successfully created checkout session for credit purchase");
     Ok(CheckoutSessionResponse {
@@ -714,41 +678,7 @@ pub async fn get_payment_methods_command(
 
 
 
-/// Set default payment method for the user
-#[tauri::command]
-pub async fn set_default_payment_method_command(
-    payment_method_id: String,
-    billing_client: State<'_, Arc<BillingClient>>,
-) -> Result<serde_json::Value, AppError> {
-    debug!("Setting default payment method: {}", payment_method_id);
-    
-    // Security validation
-    check_rate_limit("set_default_payment_method")?;
-    validate_payment_method_id(&payment_method_id)?;
-    
-    let result = billing_client.set_default_payment_method(&payment_method_id).await?;
-    
-    info!("Successfully set default payment method");
-    Ok(result)
-}
 
-/// Detach payment method from the user
-#[tauri::command]
-pub async fn detach_payment_method_command(
-    payment_method_id: String,
-    billing_client: State<'_, Arc<BillingClient>>,
-) -> Result<serde_json::Value, AppError> {
-    debug!("Detaching payment method: {}", payment_method_id);
-    
-    // Security validation
-    check_rate_limit("detach_payment_method")?;
-    validate_payment_method_id(&payment_method_id)?;
-    
-    let result = billing_client.detach_payment_method(&payment_method_id).await?;
-    
-    info!("Successfully detached payment method");
-    Ok(result)
-}
 
 /// List invoices with optional pagination
 #[tauri::command]
@@ -817,5 +747,74 @@ pub struct CurrentPlanResponse {
 
 /// Response structure for credit details (alias for CreditDetailsResponse)
 pub type CreditDetails = CreditDetailsResponse;
+
+// ========================================
+// AUTO TOP-OFF STRUCTURES AND COMMANDS
+// ========================================
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AutoTopOffSettings {
+    pub enabled: bool,
+    pub threshold: Option<f64>,
+    pub amount: Option<f64>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateAutoTopOffRequest {
+    pub enabled: bool,
+    pub threshold: Option<f64>,
+    pub amount: Option<f64>,
+}
+
+/// Get auto top-off settings for the user
+#[tauri::command]
+pub async fn get_auto_top_off_settings_command(
+    billing_client: State<'_, Arc<BillingClient>>,
+) -> Result<AutoTopOffSettings, AppError> {
+    debug!("Getting auto top-off settings via Tauri command");
+    
+    let settings = billing_client.get_auto_top_off_settings().await?;
+    
+    info!("Successfully retrieved auto top-off settings");
+    Ok(settings)
+}
+
+/// Update auto top-off settings for the user
+#[tauri::command]
+pub async fn update_auto_top_off_settings_command(
+    request: UpdateAutoTopOffRequest,
+    billing_client: State<'_, Arc<BillingClient>>,
+) -> Result<AutoTopOffSettings, AppError> {
+    debug!("Updating auto top-off settings via Tauri command");
+    
+    // Validate the request
+    if request.enabled {
+        if request.threshold.is_none() {
+            return Err(AppError::ValidationError("Auto top-off threshold is required when auto top-off is enabled".to_string()));
+        }
+        if request.amount.is_none() {
+            return Err(AppError::ValidationError("Auto top-off amount is required when auto top-off is enabled".to_string()));
+        }
+        
+        if let Some(threshold) = request.threshold {
+            if threshold <= 0.0 || threshold > 1000.0 {
+                return Err(AppError::ValidationError("Auto top-off threshold must be between $0.01 and $1000.00".to_string()));
+            }
+        }
+        
+        if let Some(amount) = request.amount {
+            if amount <= 0.0 || amount > 1000.0 {
+                return Err(AppError::ValidationError("Auto top-off amount must be between $0.01 and $1000.00".to_string()));
+            }
+        }
+    }
+    
+    let settings = billing_client.update_auto_top_off_settings(&request).await?;
+    
+    info!("Successfully updated auto top-off settings");
+    Ok(settings)
+}
 
 

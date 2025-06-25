@@ -71,8 +71,9 @@ export function SubscriptionModal({
       
       setPlans(deduplicatedPlans);
       
-      const recommendedPlan = deduplicatedPlans.find(plan => plan.recommended);
-      setSelectedPlanId(recommendedPlan?.id || deduplicatedPlans[0]?.id || null);
+      const filteredPlans = deduplicatedPlans.filter(plan => plan.id !== dashboardData?.planDetails?.planId);
+      const recommendedPlan = filteredPlans.find(plan => plan.recommended);
+      setSelectedPlanId(recommendedPlan?.id || filteredPlans[0]?.id || null);
       
     } catch (err) {
       const errorMessage = getErrorMessage(err);
@@ -164,7 +165,7 @@ export function SubscriptionModal({
 
 
   const selectedPlan = plans.find(plan => plan.id === selectedPlanId);
-  const availablePlans = plans;
+  const availablePlans = plans.filter(plan => plan.id !== dashboardData?.planDetails?.planId);
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
@@ -179,10 +180,12 @@ export function SubscriptionModal({
             <DialogHeader>
               <DialogTitle id="subscription-modal-title" className="flex items-center gap-2">
                 <Crown className="h-5 w-5 text-yellow-500" />
-                Start Your Free Trial
+                {dashboardData?.planDetails?.priceUsd && dashboardData.planDetails.priceUsd > 0 ? 'Manage Subscription' : 'Start Your Free Trial'}
               </DialogTitle>
               <DialogDescription id="subscription-modal-description">
-                Choose a plan to start your free trial. You can manage your subscription anytime through your account settings.
+                {dashboardData?.planDetails?.priceUsd && dashboardData.planDetails.priceUsd > 0 
+                  ? 'Manage your subscription plan or visit the billing portal for detailed settings.'
+                  : 'Choose a plan to start your free trial. You can manage your subscription anytime through your account settings.'}
               </DialogDescription>
             </DialogHeader>
 
@@ -205,7 +208,7 @@ export function SubscriptionModal({
                       key={plan.id}
                       plan={plan}
                       isSelected={plan.id === selectedPlanId}
-                      isCurrentPlan={plan.id === dashboardData?.planDetails?.planId}
+                      isCurrentPlan={false}
                       onClick={() => setSelectedPlanId(plan.id)}
                     />
                   ))}
@@ -241,8 +244,13 @@ export function SubscriptionModal({
                       </Button>
                     ) : (
                       <Button
-                        onClick={() => handlePlanChange(selectedPlan)}
-                        disabled={isCreating}
+                        onClick={() => {
+                          if (selectedPlan.id === 'free') {
+                            return;
+                          }
+                          handlePlanChange(selectedPlan);
+                        }}
+                        disabled={isCreating || selectedPlan.id === 'free'}
                         className="transition-all duration-200 hover:scale-105 hover:shadow-md"
                       >
                         {isCreating ? (
@@ -253,7 +261,7 @@ export function SubscriptionModal({
                         ) : (
                           <>
                             <Zap className="h-4 w-4 mr-2" />
-                            {dashboardData?.planDetails?.price && dashboardData.planDetails.price > 0 ? `Switch to ${selectedPlan.name}` : `Upgrade to ${selectedPlan.name}`}
+                            {dashboardData?.planDetails?.priceUsd && dashboardData.planDetails.priceUsd > 0 ? `Switch to ${selectedPlan.name}` : `Upgrade to ${selectedPlan.name}`}
                           </>
                         )}
                       </Button>

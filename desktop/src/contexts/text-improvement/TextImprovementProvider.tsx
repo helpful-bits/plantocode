@@ -3,7 +3,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, useMemo } from "react";
 import type { ReactNode } from "react";
 
-import { useSessionStateContext } from "@/contexts/session";
+import { useSessionStateContext, useSessionActionsContext } from "@/contexts/session";
 import { useProject } from "@/contexts/project-context";
 import { useBackgroundJob } from "@/contexts/_hooks/use-background-job";
 import { createImproveTextJobAction } from "@/actions/ai/improve-text";
@@ -37,6 +37,7 @@ interface TextImprovementProviderProps {
 
 export function TextImprovementProvider({ children }: TextImprovementProviderProps) {
   const { sessionBasicFields } = useSessionStateContext();
+  const { updateCurrentSessionFields, flushSaves } = useSessionActionsContext();
   const { projectDirectory } = useProject();
   
   // State for popover visibility and position
@@ -86,6 +87,21 @@ export function TextImprovementProvider({ children }: TextImprovementProviderPro
               improvedText + 
               currentValue.slice(selectionRange.end);
             
+            // Flush any pending saves before applying changes to prevent conflicts
+            flushSaves();
+            
+            // For task description fields, also trigger any component-level flush
+            const isTaskDescriptionField = targetElement.id === 'taskDescArea' || 
+                                         targetElement.id === 'task-description' || 
+                                         targetElement.getAttribute('data-field') === 'taskDescription' ||
+                                         targetElement.closest('[data-task-description]') !== null;
+            
+            if (isTaskDescriptionField) {
+              // Try to flush pending changes at component level if available
+              const flushEvent = new CustomEvent('flush-pending-changes', { bubbles: true });
+              targetElement.dispatchEvent(flushEvent);
+            }
+            
             // Use native value setter to properly update React controlled components
             const valueSetter = Object.getOwnPropertyDescriptor(targetElement, 'value') || 
                               Object.getOwnPropertyDescriptor(Object.getPrototypeOf(targetElement), 'value');
@@ -96,6 +112,11 @@ export function TextImprovementProvider({ children }: TextImprovementProviderPro
             // Dispatch single input event to notify React of the change
             const inputEvent = new Event('input', { bubbles: true });
             targetElement.dispatchEvent(inputEvent);
+            
+            if (isTaskDescriptionField) {
+              // Update session state immediately to prevent reversion
+              updateCurrentSessionFields({ taskDescription: newValue });
+            }
           }
         }
         
@@ -113,7 +134,7 @@ export function TextImprovementProvider({ children }: TextImprovementProviderPro
         setJobId(null);
       }
     }
-  }, [job, status, targetElement, targetMonacoEditor, selectionRange, selectedText]);
+  }, [job, status, targetElement, targetMonacoEditor, selectionRange, selectedText, flushSaves, updateCurrentSessionFields]);
 
   // Handle Monaco Editor selection events
   const handleMonacoSelection = useCallback((event: CustomEvent) => {

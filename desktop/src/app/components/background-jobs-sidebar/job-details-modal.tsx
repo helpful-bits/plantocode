@@ -17,7 +17,7 @@ import { useState, useMemo, useCallback, useEffect } from "react";
 import { useNotification } from "@/contexts/notification-context";
 import { WorkflowUtils } from "@/utils/workflow-utils";
 import { type TaskModelSettings } from "@/types/task-settings-types";
-import { getServerDefaultTaskModelSettings } from "@/actions/project-settings.actions";
+import { getProjectTaskModelSettings } from "@/actions/project-settings.actions";
 import { useSessionStateContext } from "@/contexts/session";
 import { useLiveDuration } from "@/hooks/use-live-duration";
 
@@ -249,7 +249,7 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
       }
 
       try {
-        const settingsResult = await getServerDefaultTaskModelSettings();
+        const settingsResult = await getProjectTaskModelSettings(currentSession.projectDirectory);
         
         if (settingsResult.isSuccess && settingsResult.data) {
           // Extract settings for specific job taskType

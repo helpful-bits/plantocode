@@ -35,7 +35,7 @@ export interface ClearStoredAppJwtArgs {
 }
 
 export interface CreateCreditCheckoutSessionCommandArgs {
-  creditPackId: string;
+  amount: number;
 }
 
 export interface CreateSubscriptionCheckoutSessionCommandArgs {
@@ -646,7 +646,6 @@ export type TauriInvoke = {
   
   // Credit system commands
   "get_credit_history_command": (args: { limit?: number; offset?: number }) => Promise<CreditHistoryResponse>;
-  "get_credit_packs_command": () => Promise<CreditPack[]>;
   "get_credit_balance_command": () => Promise<CreditBalanceResponse>;
   "get_credit_details_command": () => Promise<CreditDetailsResponse>;
   "get_credit_stats_command": () => Promise<CreditStats>;
@@ -668,8 +667,6 @@ export type TauriInvoke = {
   "list_invoices_command": (args: { limit?: number; offset?: number }) => Promise<import("@/actions/billing/invoice.actions").ListInvoicesResponse>;
   
   // Payment method management commands
-  "set_default_payment_method_command": (args: { paymentMethodId: string }) => Promise<any>;
-  "detach_payment_method_command": (args: { paymentMethodId: string }) => Promise<any>;
   "get_detailed_usage_command": (args: { startDate: string; endDate: string }) => Promise<DetailedUsage[]>;
   
   // File Finder Workflow commands
@@ -690,7 +687,6 @@ export interface DetailedUsage {
   serviceName: string;
   modelDisplayName: string;
   providerCode: string;
-  modelType: string;
   totalCost: number;
   totalRequests: number;
   totalInputTokens: number;
@@ -719,9 +715,9 @@ export interface SubscriptionPlan {
   id: string;
   name: string;
   description: string;
-  weeklyPrice: string;
-  monthlyPrice: string;
-  yearlyPrice: string;
+  weeklyPrice: number;
+  monthlyPrice: number;
+  yearlyPrice: number;
   currency: string;
   features: string[];
   recommended: boolean;
@@ -826,28 +822,12 @@ export interface CreditHistoryResponse {
 }
 
 export interface CreditDetailsResponse {
-  balance: number;
-  currency: string;
-  lastUpdated?: string;
+  stats: CreditStats;
   transactions: CreditTransactionEntry[];
   totalTransactionCount: number;
   hasMore: boolean;
 }
 
-export interface CreditPack {
-  id: string;
-  name: string;
-  valueCredits: number;
-  priceAmount: number;
-  currency: string;
-  description?: string;
-  recommended: boolean;
-  bonusPercentage?: number;
-  isPopular?: boolean;
-  isActive: boolean;
-  displayOrder: number;
-  stripePriceId: string;
-}
 
 export interface CreditStats {
   userId: string;
@@ -998,8 +978,7 @@ export interface UpdateInvoiceSettingsRequest {
 export interface BillingDashboardPlanDetails {
   planId: string;
   name: string;
-  price: number;
-  currency: string;
+  priceUsd: number;
   billingInterval: string;
 }
 
@@ -1008,6 +987,25 @@ export interface BillingDashboardData {
   creditBalanceUsd: number;
   subscriptionStatus: string;
   trialEndsAt?: string;
+  servicesBlocked: boolean;
+}
+
+// Invoice interfaces
+export interface Invoice {
+  id: string;
+  created: number;
+  due_date?: number;
+  amount_due: number;
+  amount_paid: number;
+  currency: string;
+  status: string;
+  invoice_pdf_url?: string;
+}
+
+export interface ListInvoicesResponse {
+  invoices: Invoice[];
+  totalInvoices: number;
+  hasMore: boolean;
 }
 
 // Strongly typed invoke function

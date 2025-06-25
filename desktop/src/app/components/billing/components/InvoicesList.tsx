@@ -71,12 +71,26 @@ export function InvoicesList({ className }: InvoicesListProps) {
     } catch (err) {
       const errorMessage = getErrorMessage(err);
       
-      // Check if error is 404/Not Found - treat as empty state
-      if (errorMessage.includes('404') || errorMessage.toLowerCase().includes('not found')) {
+      // Check if error is 404/Not Found or similar - treat as empty state for billing history
+      if (errorMessage.includes('404') || 
+          errorMessage.toLowerCase().includes('not found') ||
+          errorMessage.toLowerCase().includes('no invoices') ||
+          errorMessage.toLowerCase().includes('no customer') ||
+          errorMessage.toLowerCase().includes('no billing history') ||
+          errorMessage.toLowerCase().includes('customer not found')) {
         setInvoicesData({ invoices: [], totalInvoices: 0, hasMore: false });
         setError(null);
       } else {
-        setError(errorMessage);
+        // Provide more user-friendly error messages
+        let friendlyError = errorMessage;
+        if (errorMessage.toLowerCase().includes('network') || errorMessage.toLowerCase().includes('fetch')) {
+          friendlyError = 'Unable to load billing history. Please check your internet connection and try again.';
+        } else if (errorMessage.toLowerCase().includes('timeout')) {
+          friendlyError = 'Request timed out while loading billing history. Please try again.';
+        } else if (errorMessage.toLowerCase().includes('unauthorized') || errorMessage.toLowerCase().includes('forbidden')) {
+          friendlyError = 'Unable to access billing history. Please refresh the page or contact support.';
+        }
+        setError(friendlyError);
       }
       
       console.error('Failed to load invoices:', err);
@@ -123,9 +137,9 @@ export function InvoicesList({ className }: InvoicesListProps) {
         <CardContent>
           <div className="text-center py-8">
             <Calendar className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-            <h3 className="font-semibold mb-2">No Invoices Found</h3>
+            <h3 className="font-semibold mb-2">No Billing History</h3>
             <p className="text-sm text-muted-foreground">
-              Your billing history will appear here once you have transactions.
+              Your invoice history for credit pack purchases will appear here. Start by purchasing credits to see your billing records.
             </p>
           </div>
         </CardContent>

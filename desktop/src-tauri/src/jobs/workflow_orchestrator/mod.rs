@@ -290,7 +290,14 @@ impl WorkflowOrchestrator {
         use crate::db_utils::BackgroundJobRepository;
         use std::sync::Arc;
         
-        let background_job_repo = self.app_handle.state::<Arc<BackgroundJobRepository>>().inner().clone();
+        let background_job_repo = match self.app_handle.try_state::<Arc<BackgroundJobRepository>>() {
+            Some(repo) => repo.inner().clone(),
+            None => {
+                return Err(AppError::InitializationError(
+                    "BackgroundJobRepository not available in app state. App initialization may be incomplete.".to_string()
+                ));
+            }
+        };
         
         // Get all jobs that have workflow metadata but are not in completed/failed/canceled status
         let active_jobs = background_job_repo.get_jobs_by_status(&[
@@ -368,7 +375,14 @@ impl WorkflowOrchestrator {
         use crate::db_utils::BackgroundJobRepository;
         use std::sync::Arc;
         
-        let background_job_repo = self.app_handle.state::<Arc<BackgroundJobRepository>>().inner().clone();
+        let background_job_repo = match self.app_handle.try_state::<Arc<BackgroundJobRepository>>() {
+            Some(repo) => repo.inner().clone(),
+            None => {
+                return Err(AppError::InitializationError(
+                    "BackgroundJobRepository not available in app state. App initialization may be incomplete.".to_string()
+                ));
+            }
+        };
         
         // Get all jobs that have this specific workflow ID in their metadata
         let workflow_jobs = background_job_repo.get_jobs_by_metadata_field("workflowId", workflow_id).await?;
@@ -583,7 +597,14 @@ impl WorkflowOrchestrator {
         workflow_definition: &super::workflow_types::WorkflowDefinition,
     ) -> AppResult<String> {
         // Get settings repository from app state
-        let settings_repo = self.app_handle.state::<Arc<crate::db_utils::settings_repository::SettingsRepository>>().inner().clone();
+        let settings_repo = match self.app_handle.try_state::<Arc<crate::db_utils::settings_repository::SettingsRepository>>() {
+            Some(repo) => repo.inner().clone(),
+            None => {
+                return Err(AppError::InitializationError(
+                    "SettingsRepository not available in app state. App initialization may be incomplete.".to_string()
+                ));
+            }
+        };
         
         stage_job_manager::create_abstract_stage_job_with_lock_internal(
             workflows,
@@ -614,7 +635,14 @@ impl WorkflowOrchestrator {
         project_directory: &str,
     ) -> AppResult<Option<(String, f32, u32)>> {
         // Get settings repository from app state
-        let settings_repo = self.app_handle.state::<Arc<crate::db_utils::settings_repository::SettingsRepository>>().inner().clone();
+        let settings_repo = match self.app_handle.try_state::<Arc<crate::db_utils::settings_repository::SettingsRepository>>() {
+            Some(repo) => repo.inner().clone(),
+            None => {
+                return Err(AppError::InitializationError(
+                    "SettingsRepository not available in app state. App initialization may be incomplete.".to_string()
+                ));
+            }
+        };
         
         stage_job_manager::get_stage_model_config_for_definition_internal(
             stage_definition,
@@ -859,12 +887,15 @@ static WORKFLOW_ORCHESTRATOR: OnceCell<Arc<WorkflowOrchestrator>> = OnceCell::co
 
 /// Initialize the workflow orchestrator
 pub async fn init_workflow_orchestrator(app_handle: AppHandle) -> AppResult<Arc<WorkflowOrchestrator>> {
-    // Get the database pool from app state (managed by Tauri)
-    let db_pool: sqlx::SqlitePool = app_handle.state::<sqlx::SqlitePool>().inner().clone();
-    let pool_arc = Arc::new(db_pool);
-    
-    // Initialize the background job repository with the proper database pool
-    let repo = Arc::new(BackgroundJobRepository::new(pool_arc));
+    // Get the managed background job repository from app state
+    let repo = match app_handle.try_state::<Arc<BackgroundJobRepository>>() {
+        Some(repo) => repo.inner().clone(),
+        None => {
+            return Err(AppError::InitializationError(
+                "BackgroundJobRepository not available in app state. App initialization may be incomplete.".to_string()
+            ));
+        }
+    };
     
     // Create the workflow cleanup handler
     let cleanup_handler = Arc::new(WorkflowCleanupHandler::new(repo.clone()));

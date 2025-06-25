@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { listen } from '@tauri-apps/api/event';
-import { getBillingOverviewData } from '@/actions/billing';
+import { getBillingOverviewData } from '@/actions/billing/plan.actions';
 import { type BillingDashboardData } from '@/types/tauri-commands';
 import { useNotification } from '@/contexts/notification-context';
 import { getErrorMessage } from '@/utils/error-handling';
