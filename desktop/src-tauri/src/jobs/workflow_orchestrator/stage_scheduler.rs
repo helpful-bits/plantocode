@@ -153,7 +153,14 @@ pub(super) async fn get_stage_model_config_internal(
     let task_type = stage_to_task_type_internal(stage);
     
     // Get settings repository from app state
-    let settings_repo = app_handle.state::<std::sync::Arc<crate::db_utils::settings_repository::SettingsRepository>>().inner().clone();
+    let settings_repo = match app_handle.try_state::<std::sync::Arc<crate::db_utils::settings_repository::SettingsRepository>>() {
+        Some(repo) => repo.inner().clone(),
+        None => {
+            return Err(AppError::InitializationError(
+                "Settings repository not yet initialized. Please wait for app initialization to complete.".to_string()
+            ));
+        }
+    };
     
     // Use the refactored function from workflow_utils
     super::workflow_utils::get_stage_model_config(

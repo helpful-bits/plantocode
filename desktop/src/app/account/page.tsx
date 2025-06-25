@@ -9,20 +9,6 @@ import { Badge } from "@/ui/badge";
 import { useNotification } from "@/contexts/notification-context";
 
 import { BillingDashboard } from "@/app/components/billing/BillingDashboard";
-
-/**
- * Modern Account Page (2025 Design Patterns)
- * 
- * Architecture:
- * 1. User Profile - Clean presentation of user info
- * 2. Subscription & Billing - Single comprehensive section (ComprehensiveBillingDashboard)
- * 3. Account Actions - Security and account management
- * 
- * Principles:
- * - No duplication: ComprehensiveBillingDashboard is single source of truth for billing
- * - Clear hierarchy: Profile → Billing → Actions
- * - Single responsibility: Each section handles one concern
- */
 export default function AccountPage() {
   const { user, signOut } = useAuth();
   const { showNotification } = useNotification();
@@ -60,58 +46,54 @@ export default function AccountPage() {
   }
 
   return (
-    <div className="container mx-auto px-4 sm:px-6 pt-6 pb-8 max-w-4xl">
-      <div className="content-spacing">
-        {/* Page Header - Modern, minimal */}
-        <div className="space-y-2">
-          <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight">Account</h1>
-          <p className="text-sm sm:text-base text-muted-foreground leading-relaxed">Manage your profile and subscription</p>
+    <div className="container mx-auto px-4 sm:px-6 pt-6 pb-8 max-w-5xl">
+      <div className="space-y-8">
+        <div className="space-y-3">
+          <h1 className="text-3xl font-bold tracking-tight">Account</h1>
+          <p className="text-muted-foreground text-lg">Manage your profile, billing, and account settings</p>
         </div>
 
-        {/* User Profile Section - Clean, focused */}
-        <Card className="border border-border/50 bg-card/80 backdrop-blur-sm hover-card">
-          <CardContent className="p-4 sm:p-6">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-              <div className="h-12 w-12 bg-primary/10 rounded-full flex items-center justify-center flex-shrink-0">
-                <User className="h-6 w-6 text-primary" />
+        <Card className="bg-gradient-to-r from-card to-card/90 border-2 border-border/20 shadow-sm">
+          <CardContent className="p-6">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-6">
+              <div className="h-16 w-16 bg-primary/15 rounded-full flex items-center justify-center flex-shrink-0 ring-4 ring-primary/10">
+                <User className="h-8 w-8 text-primary" />
               </div>
-              <div className="flex-1 min-w-0 space-y-1">
-                <h3 className="font-medium text-base sm:text-lg leading-tight break-words">
+              <div className="flex-1 min-w-0 space-y-2">
+                <h2 className="font-semibold text-xl leading-tight break-words">
                   {user.name || user.email}
-                </h3>
-                <p className="text-sm text-muted-foreground leading-relaxed break-all">
+                </h2>
+                <p className="text-muted-foreground break-all">
                   {user.email}
                 </p>
               </div>
-              <Badge variant="secondary" className="text-xs px-3 py-1.5 self-start sm:self-auto">
-                {user.role === 'user' ? 'User' : user.role}
+              <Badge variant="secondary" className="px-4 py-2 font-medium self-start sm:self-auto">
+                {user.role === 'user' ? 'User Account' : user.role}
               </Badge>
             </div>
           </CardContent>
         </Card>
 
-        {/* Subscription & Billing - Single source of truth */}
         <BillingDashboard />
 
-        {/* Account Actions - Separated, clean */}
-        <Card className="border border-border/50 bg-card/80 backdrop-blur-sm hover-card">
+        <Card className="bg-gradient-to-r from-card to-card/90 border border-border/50 shadow-sm">
           <CardHeader className="pb-4">
-            <h3 className="font-medium text-base">Account Actions</h3>
+            <h3 className="font-semibold text-lg">Account Management</h3>
+            <p className="text-sm text-muted-foreground">Manage your account security and data</p>
           </CardHeader>
           <CardContent className="pt-0">
-            <div className="space-y-3">
+            <div className="grid gap-3 sm:grid-cols-2">
               <Button 
                 onClick={handleSignOut}
                 variant="outline"
-                size="sm"
-                className="w-full justify-start h-10 text-sm"
+                size="default"
+                className="justify-start font-medium"
               >
-                <LogOut className="h-4 w-4 mr-2" />
+                <LogOut className="h-4 w-4 mr-3" />
                 Sign Out
               </Button>
               <Button 
                 onClick={() => {
-                  // TODO: Implement delete account functionality
                   showNotification({
                     title: "Feature Coming Soon",
                     message: "Account deletion will be available in a future update.",
@@ -119,10 +101,10 @@ export default function AccountPage() {
                   });
                 }}
                 variant="destructive"
-                size="sm"
-                className="w-full justify-start h-10 text-sm"
+                size="default"
+                className="justify-start font-medium"
               >
-                <Trash2 className="h-4 w-4 mr-2" />
+                <Trash2 className="h-4 w-4 mr-3" />
                 Delete Account
               </Button>
             </div>

@@ -6,15 +6,14 @@ use std::fs;
 use regex::Regex;
 use futures::{stream, StreamExt};
 
-use crate::utils::config_resolver;
 
 use crate::error::{AppError, AppResult};
 use crate::jobs::processor_trait::JobProcessor;
 use crate::jobs::types::{Job, JobPayload, JobProcessResult};
 use crate::models::TaskType;
 use crate::jobs::job_processor_utils;
-use crate::jobs::processors::utils::{prompt_utils};
-use crate::jobs::processors::{LlmTaskRunner, LlmTaskConfigBuilder, LlmPromptContext};
+use crate::jobs::processors::utils::{prompt_utils, llm_api_utils};
+use crate::jobs::processors::{LlmTaskRunner, LlmTaskConfigBuilder, LlmPromptContext, LlmTaskResult};
 use crate::utils::directory_tree::get_directory_tree_with_defaults;
 use crate::utils::{path_utils, git_utils};
 
@@ -84,18 +83,14 @@ impl JobProcessor for RegexFileFilterProcessor {
         };
         
         // Setup job processing
-        let (repo, settings_repo, db_job) = job_processor_utils::setup_job_processing(&job.id, &app_handle).await?;
+        let (repo, session_repo, settings_repo, db_job) = job_processor_utils::setup_job_processing(&job.id, &app_handle).await?;
         
         // Get session to access project_hash
-        let session = {
-            use crate::db_utils::SessionRepository;
-            let session_repo = SessionRepository::new(repo.get_pool());
-            session_repo.get_session_by_id(&job.session_id).await?
-                .ok_or_else(|| AppError::JobError(format!("Session {} not found", job.session_id)))?
-        };
+        let session = session_repo.get_session_by_id(&job.session_id).await?
+            .ok_or_else(|| AppError::JobError(format!("Session {} not found", job.session_id)))?;
         
         // Generate directory tree using session-based utility (avoids duplicate session lookup)
-        let directory_tree_for_prompt = match crate::utils::get_directory_tree_from_session(&job.session_id, &app_handle).await {
+        let directory_tree_for_prompt = match get_directory_tree_with_defaults(&session.project_directory).await {
             Ok(tree) => {
                 info!("Generated directory tree using session-based utility for regex pattern generation ({} lines)", tree.lines().count());
                 Some(tree)
@@ -106,16 +101,8 @@ impl JobProcessor for RegexFileFilterProcessor {
             }
         };
         
-        // Get model settings using centralized config resolution
-        let model_settings = config_resolver::resolve_model_settings(
-            &app_handle,
-            job.job_type,
-            None, // model_override
-            None, // temperature_override  
-            None, // max_tokens_override
-        ).await?
-        .ok_or_else(|| AppError::ConfigError(format!("Task {:?} requires LLM configuration", job.job_type)))?;
-
+        // Get model settings using project-aware configuration
+        let model_settings = job_processor_utils::get_llm_task_config(&db_job, &app_handle, &session).await?;
         let (model_used, temperature, max_output_tokens) = model_settings;
         
         job_processor_utils::log_job_start(&job.id, "regex pattern generation");
@@ -148,25 +135,52 @@ impl JobProcessor for RegexFileFilterProcessor {
         // Create LLM task runner
         let task_runner = LlmTaskRunner::new(app_handle.clone(), job.clone(), llm_config);
         
-        // Create prompt context
-        let prompt_context = LlmPromptContext {
-            task_description: task_description_for_prompt.clone(),
-            file_contents: None,
-            directory_tree: directory_tree_for_prompt.clone(), // This is now correctly an Option<String>
-        };
-        
         info!("Generating regex patterns for task: {}", &task_description_for_prompt);
         info!("Calling LLM for regex pattern generation with model {}", &model_used);
         
-        // Execute LLM task using the task runner
-        let llm_result = match task_runner.execute_llm_task(prompt_context, &settings_repo).await {
-            Ok(result) => result,
+        // Extract system and user prompts from the already built composed_prompt
+        let system_prompt = composed_prompt.system_prompt.clone();
+        let user_prompt = composed_prompt.user_prompt.clone();
+        let system_prompt_id = composed_prompt.system_prompt_id.clone();
+        let system_prompt_template = composed_prompt.system_prompt_template.clone();
+        
+        // Create messages using llm_api_utils
+        let messages = llm_api_utils::create_openrouter_messages(&system_prompt, &user_prompt);
+        
+        // Create API options using llm_api_utils
+        let api_options = llm_api_utils::create_api_client_options(
+            model_used.clone(),
+            temperature,
+            max_output_tokens,
+            false,
+        )?;
+        
+        // Execute LLM call directly using llm_api_utils
+        let response = match llm_api_utils::execute_llm_chat_completion(
+            &app_handle,
+            messages,
+            api_options,
+        ).await {
+            Ok(response) => response,
             Err(e) => {
                 error!("Regex Pattern Generation LLM task execution failed: {}", e);
                 let error_msg = format!("LLM task execution failed: {}", e);
                 task_runner.finalize_failure(&repo, &job.id, &error_msg, Some(&e), None).await?;
                 return Ok(JobProcessResult::failure(job.id.clone(), error_msg));
             }
+        };
+        
+        let response_text = response.choices
+            .first()
+            .map(|choice| choice.message.content.clone())
+            .unwrap_or_default();
+        
+        // Create LlmTaskResult for compatibility with existing code
+        let llm_result = LlmTaskResult {
+            response: response_text,
+            usage: response.usage,
+            system_prompt_id,
+            system_prompt_template,
         };
         
         info!("Regex Pattern Generation LLM task completed successfully for job {}", job.id);

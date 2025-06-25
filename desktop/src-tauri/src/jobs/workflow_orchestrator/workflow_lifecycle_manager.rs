@@ -9,7 +9,6 @@ use crate::error::{AppError, AppResult};
 use crate::models::{JobStatus, TaskType};
 use crate::jobs::types::JobPayload;
 use crate::utils::job_creation_utils;
-use crate::utils::config_resolver;
 use crate::jobs::workflow_types::{
     WorkflowState, WorkflowStatus, WorkflowStage, WorkflowStageJob,
     WorkflowDefinition, WorkflowStageDefinition
@@ -46,8 +45,8 @@ pub async fn start_workflow_internal(
             .ok_or_else(|| AppError::JobError(format!("Workflow definition not found: {}", workflow_definition_name)))?
     };
 
-    // Initialize task settings for all task types in this workflow
-    initialize_workflow_task_settings(app_handle, &session_id, &project_directory, &workflow_definition).await?;
+    // Task settings will be initialized lazily when jobs actually need them
+    // This avoids database access during workflow startup before all states are ready
 
     // Create initial workflow state
     let mut workflow_state = WorkflowState::new(
@@ -404,50 +403,3 @@ async fn emit_workflow_status_event_internal(app_handle: &AppHandle, workflow_st
     event_emitter::emit_workflow_status_event_internal(app_handle, workflow_state, message).await;
 }
 
-/// Initialize task settings for all task types in a workflow
-/// This ensures that processors can find the necessary TaskSettings when they run
-async fn initialize_workflow_task_settings(
-    app_handle: &AppHandle, 
-    session_id: &str, 
-    project_directory: &str, 
-    workflow_definition: &WorkflowDefinition
-) -> AppResult<()> {
-    info!("Initializing task settings for workflow session: {}", session_id);
-    
-    let settings_repo = app_handle.state::<Arc<crate::db_utils::settings_repository::SettingsRepository>>().inner().clone();
-    
-    // Collect all unique task types from the workflow definition
-    let mut task_types = std::collections::HashSet::new();
-    for stage_def in &workflow_definition.stages {
-        task_types.insert(stage_def.task_type);
-    }
-    
-    // Initialize task settings for each task type
-    for task_type in task_types {
-        let task_type_str = task_type.to_string();
-        
-        // Only resolve settings for tasks that require LLM configuration
-        if !task_type.requires_llm() {
-            debug!("Skipping model configuration for local task type: {}", task_type_str);
-            continue;
-        }
-        
-        // Use centralized config resolution instead of deprecated get_task_settings
-        let model_settings = config_resolver::resolve_model_settings(
-            app_handle,
-            task_type,
-            None, // model_override
-            None, // temperature_override  
-            None, // max_tokens_override
-        ).await?
-        .ok_or_else(|| AppError::ConfigError(format!("Task {:?} requires LLM configuration", task_type)))?;
-
-        let (model, temperature, max_tokens) = model_settings;
-        
-        info!("Resolved model configuration for session {} and task type {}: model={}, max_tokens={}, temperature={}", 
-              session_id, task_type_str, model, max_tokens, temperature);
-    }
-    
-    info!("Successfully initialized task settings for workflow session: {}", session_id);
-    Ok(())
-}

@@ -154,12 +154,13 @@ fn main() {
             commands::billing_commands::get_spending_analytics_command,
             commands::billing_commands::get_spending_forecast_command,
             commands::billing_commands::get_payment_methods_command,
-            commands::billing_commands::set_default_payment_method_command,
-            commands::billing_commands::detach_payment_method_command,
+            
+            // Auto top-off commands
+            commands::billing_commands::get_auto_top_off_settings_command,
+            commands::billing_commands::update_auto_top_off_settings_command,
             
             // Credit system commands
             commands::billing_commands::get_credit_history_command,
-            commands::billing_commands::get_credit_packs_command,
             commands::billing_commands::get_credit_balance_command,
             commands::billing_commands::get_credit_details_command,
             commands::billing_commands::get_credit_stats_command,

@@ -390,7 +390,8 @@ export const JobCard = React.memo(
                           }
                         } catch {
                           // Fallback to metadata count
-                          const count = (typeof parsedMeta?.taskData?.pathCount === 'number') ? parsedMeta.taskData.pathCount : 0;
+                          const count = (typeof parsedMeta?.finalVerifiedPaths === 'number') ? parsedMeta.finalVerifiedPaths : 
+                                       (typeof parsedMeta?.taskData?.pathCount === 'number') ? parsedMeta.taskData.pathCount : 0;
                           if (count > 0) {
                             return (
                               <span className="font-medium text-foreground">
@@ -399,6 +400,17 @@ export const JobCard = React.memo(
                             );
                           }
                         }
+                      }
+                      
+                      // Check metadata before showing "No files found"
+                      const count = (typeof parsedMeta?.finalVerifiedPaths === 'number') ? parsedMeta.finalVerifiedPaths : 
+                                   (typeof parsedMeta?.taskData?.pathCount === 'number') ? parsedMeta.taskData.pathCount : 0;
+                      if (count > 0) {
+                        return (
+                          <span className="font-medium text-foreground">
+                            {count} file{count !== 1 ? "s" : ""} found
+                          </span>
+                        );
                       }
                       
                       // Show "No files found" for all file finding tasks

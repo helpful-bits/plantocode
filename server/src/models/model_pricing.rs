@@ -1,6 +1,24 @@
 use bigdecimal::BigDecimal;
 use std::str::FromStr;
 
+/// Defines the server's authoritative cost calculation logic for AI model usage.
+/// 
+/// This trait provides the core billing functionality that ensures consistent cost calculations
+/// across all AI providers integrated into the system. The calculations are based on token counts
+/// and duration metrics reported by upstream providers, but use pricing rates stored in the local
+/// database rather than provider-reported costs.
+/// 
+/// This approach enables several key benefits:
+/// - **Custom markups**: Apply organization-specific markup rates to base provider costs
+/// - **Flexible billing models**: Support token-based, duration-based, or hybrid pricing schemes
+/// - **Consistent billing**: Ensure uniform cost calculation logic regardless of provider
+/// - **Rate stability**: Maintain stable pricing even when providers change their rates
+/// - **Audit trail**: Track cost calculations with local pricing data for compliance
+/// 
+/// The trait supports multiple pricing models:
+/// - Token-based: Costs calculated from input/output token counts
+/// - Duration-based: Costs calculated from request duration with minimum billing periods
+/// - Hybrid: Combines both token and duration costs for comprehensive billing
 pub trait ModelPricing {
     fn get_input_cost_per_million_tokens(&self) -> Option<BigDecimal>;
     fn get_output_cost_per_million_tokens(&self) -> Option<BigDecimal>;

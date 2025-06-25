@@ -4,7 +4,6 @@ import { useState, useEffect, useCallback } from "react";
 import { DollarSign, ChevronLeft, ChevronRight, History } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/ui/card";
 import { Button } from "@/ui/button";
-import { Badge } from "@/ui/badge";
 import { LoadingSkeleton, ErrorState } from "./loading-and-error-states";
 import { getCreditHistory, type CreditHistoryResponse } from "@/actions/billing/credit.actions";
 import { getErrorMessage } from "@/utils/error-handling";
@@ -26,37 +25,7 @@ function formatTransactionDate(dateString: string): string {
   });
 }
 
-function getTransactionTypeVariant(type: string): "default" | "secondary" | "destructive" | "outline" {
-  switch (type.toLowerCase()) {
-    case 'purchase':
-    case 'refund':
-      return 'default';
-    case 'usage':
-    case 'consumption':
-      return 'secondary';
-    case 'expired':
-    case 'cancelled':
-      return 'destructive';
-    default:
-      return 'outline';
-  }
-}
 
-function getTransactionTypeColor(type: string): string {
-  switch (type.toLowerCase()) {
-    case 'purchase':
-    case 'refund':
-      return 'text-green-600';
-    case 'usage':
-    case 'consumption':
-      return 'text-blue-600';
-    case 'expired':
-    case 'cancelled':
-      return 'text-red-600';
-    default:
-      return 'text-gray-600';
-  }
-}
 
 export function CreditTransactionHistory({ className }: CreditTransactionHistoryProps) {
   const [historyData, setHistoryData] = useState<CreditHistoryResponse | null>(null);
@@ -134,12 +103,12 @@ export function CreditTransactionHistory({ className }: CreditTransactionHistory
       <CardHeader>
         <CardTitle className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <History className="h-5 w-5" />
+            <History className="h-4 w-4" />
             Credit Transaction History
           </div>
-          <Badge variant="secondary">
+          <span className="text-xs text-muted-foreground">
             {historyData.totalCount} total
-          </Badge>
+          </span>
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -147,32 +116,23 @@ export function CreditTransactionHistory({ className }: CreditTransactionHistory
           {historyData.transactions.map((transaction) => (
             <div
               key={transaction.id}
-              className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors"
+              className="flex items-center justify-between py-2 px-1 border-b border-border/30 last:border-b-0 hover:bg-muted/30 transition-colors"
             >
-              <div className="flex-1 space-y-1">
-                <div className="flex items-center gap-3">
-                  <span className="font-medium">
-                    {transaction.amount >= 0 ? '+' : ''}{formatUsdCurrency(transaction.amount)}
+              <div className="flex items-center gap-4 text-xs text-muted-foreground w-full">
+                <span className={`font-medium text-sm ${transaction.amount >= 0 ? 'text-green-600' : 'text-foreground'}`}>
+                  {transaction.amount >= 0 ? '+' : ''}{formatUsdCurrency(transaction.amount)}
+                </span>
+                <span>
+                  {formatTransactionDate(transaction.createdAt)}
+                </span>
+                {transaction.description && (
+                  <span className="flex-1 truncate">
+                    {transaction.description}
                   </span>
-                  <Badge variant={getTransactionTypeVariant(transaction.transactionType)}>
-                    <span className={getTransactionTypeColor(transaction.transactionType)}>
-                      {transaction.transactionType.charAt(0).toUpperCase() + transaction.transactionType.slice(1)}
-                    </span>
-                  </Badge>
-                </div>
-                <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                  <span>
-                    {formatTransactionDate(transaction.createdAt)}
-                  </span>
-                  {transaction.description && (
-                    <span className="flex-1 truncate">
-                      {transaction.description}
-                    </span>
-                  )}
-                  <span className="text-xs">
-                    Balance: {formatUsdCurrency(transaction.balanceAfter)}
-                  </span>
-                </div>
+                )}
+                <span className="text-xs">
+                  Balance: {formatUsdCurrency(transaction.balanceAfter)}
+                </span>
               </div>
             </div>
           ))}

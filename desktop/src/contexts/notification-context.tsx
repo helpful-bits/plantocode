@@ -138,14 +138,8 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         return {
           label: "Upgrade Plan",
           onClick: () => {
-            // Try to open subscription modal if on account page
-            if (window.location.pathname === '/account') {
-              const event = new CustomEvent('open-subscription-modal');
-              window.dispatchEvent(event);
-            } else {
-              // Navigate to account page with upgrade parameter
-              window.location.href = '/account?upgrade=true';
-            }
+            const event = new CustomEvent('open-subscription-modal');
+            window.dispatchEvent(event);
           },
           variant: "default" as const
         };
@@ -161,32 +155,21 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       
       case ErrorType.CREDIT_INSUFFICIENT:
         return {
-          label: "Buy Credits",
+          label: "Buy Credits Now",
           onClick: () => {
-            // Try to open credit manager if on account page
-            if (window.location.pathname === '/account') {
-              const event = new CustomEvent('open-credit-manager');
-              window.dispatchEvent(event);
-            } else {
-              // Navigate to account page with credits parameter
-              window.location.href = '/account?credits=true';
-            }
+            const event = new CustomEvent('open-credit-manager');
+            window.dispatchEvent(event);
           },
-          variant: "default" as const
+          variant: "default" as const,
+          className: "bg-red-600 hover:bg-red-700 text-white"
         };
       
       case ErrorType.PLAN_UPGRADE_REQUIRED:
         return {
           label: "Upgrade Plan",
           onClick: () => {
-            // Try to open subscription modal if on account page
-            if (window.location.pathname === '/account') {
-              const event = new CustomEvent('open-subscription-modal');
-              window.dispatchEvent(event);
-            } else {
-              // Navigate to account page with upgrade parameter
-              window.location.href = '/account?upgrade=true';
-            }
+            const event = new CustomEvent('open-subscription-modal');
+            window.dispatchEvent(event);
           },
           variant: "default" as const
         };
@@ -227,6 +210,43 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
             window.location.pathname = '/settings';
           },
           variant: "default" as const
+        };
+      
+      case ErrorType.AUTO_TOP_OFF_FAILED:
+        return {
+          label: "Configure Auto Top-off",
+          onClick: () => {
+            window.location.pathname = '/settings';
+          },
+          variant: "default" as const
+        };
+      
+      case ErrorType.INVALID_CREDIT_AMOUNT:
+        return {
+          label: "Try Again",
+          onClick: () => {
+            const event = new CustomEvent('open-credit-manager');
+            window.dispatchEvent(event);
+          },
+          variant: "outline" as const
+        };
+      
+      case ErrorType.PAYMENT_SETUP_REQUIRED:
+        return {
+          label: "Add Payment Method",
+          onClick: () => {
+            window.location.pathname = '/settings';
+          },
+          variant: "default" as const
+        };
+      
+      case ErrorType.CREDIT_LIMIT_EXCEEDED:
+        return {
+          label: "Contact Support",
+          onClick: () => {
+            window.location.pathname = '/settings';
+          },
+          variant: "outline" as const
         };
       
       case ErrorType.ACTION_REQUIRED:
@@ -343,7 +363,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       case ErrorType.SUBSCRIPTION_CANCELLED:
         return "Subscription Cancelled";
       case ErrorType.CREDIT_INSUFFICIENT:
-        return "Insufficient Credits";
+        return "No Credits Available";
       case ErrorType.PLAN_UPGRADE_REQUIRED:
         return "Upgrade Required";
       case ErrorType.SUBSCRIPTION_CONFLICT:
@@ -356,6 +376,14 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         return "Payment Required";
       case ErrorType.PAYMENT_ERROR:
         return "Payment Error";
+      case ErrorType.AUTO_TOP_OFF_FAILED:
+        return "Auto Top-off Failed";
+      case ErrorType.INVALID_CREDIT_AMOUNT:
+        return "Invalid Amount";
+      case ErrorType.PAYMENT_SETUP_REQUIRED:
+        return "Payment Setup Required";
+      case ErrorType.CREDIT_LIMIT_EXCEEDED:
+        return "Credit Limit Exceeded";
       case ErrorType.PERMISSION_ERROR:
         return "Access Denied";
       case ErrorType.CONFIGURATION_ERROR:
@@ -390,8 +418,8 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         ErrorType.PAYMENT_FAILED, ErrorType.PAYMENT_DECLINED, ErrorType.SUBSCRIPTION_EXPIRED,
         ErrorType.SUBSCRIPTION_CANCELLED, ErrorType.CREDIT_INSUFFICIENT, ErrorType.PLAN_UPGRADE_REQUIRED,
         ErrorType.PAYMENT_METHOD_REQUIRED, ErrorType.BILLING_ADDRESS_REQUIRED, ErrorType.PAYMENT_AUTHENTICATION_REQUIRED,
-        ErrorType.SUBSCRIPTION_CONFLICT, ErrorType.INVOICE_ERROR,
-        ErrorType.ACTION_REQUIRED, ErrorType.CONFIGURATION_ERROR, ErrorType.DATABASE_ERROR, ErrorType.INTERNAL_ERROR
+        ErrorType.SUBSCRIPTION_CONFLICT, ErrorType.INVOICE_ERROR, ErrorType.AUTO_TOP_OFF_FAILED, ErrorType.PAYMENT_SETUP_REQUIRED,
+        ErrorType.CREDIT_LIMIT_EXCEEDED, ErrorType.ACTION_REQUIRED, ErrorType.CONFIGURATION_ERROR, ErrorType.DATABASE_ERROR, ErrorType.INTERNAL_ERROR
       ];
       
       if (criticalErrors.includes(errorInfo.type)) return 0;

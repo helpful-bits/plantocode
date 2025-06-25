@@ -22,7 +22,7 @@ use crate::auth_stores::{PollingStore, Auth0StateStore};
 use crate::auth_stores::store_utils;
 use crate::config::AppSettings;
 use crate::db::connection::{create_dual_pools, verify_connection, DatabasePools};
-use crate::db::{ApiUsageRepository, SubscriptionRepository, UserRepository, SettingsRepository, ModelRepository, SubscriptionPlanRepository, SystemPromptsRepository, CreditPackRepository};
+use crate::db::{ApiUsageRepository, SubscriptionRepository, UserRepository, SettingsRepository, ModelRepository, SubscriptionPlanRepository, SystemPromptsRepository};
 use crate::middleware::{
     SecureAuthentication, 
     create_rate_limit_storage,
@@ -272,6 +272,7 @@ async fn main() -> std::io::Result<()> {
         // Initialize services with dual pools
         let billing_service = BillingService::new(db_pools.clone(), app_settings.clone());
         let api_usage_repository = std::sync::Arc::new(api_usage_repository);
+        let credit_service = crate::services::credit_service::CreditService::new(db_pools.clone());
         
         // Configure CORS using actix-cors
         let mut cors = Cors::default()
@@ -300,7 +301,6 @@ async fn main() -> std::io::Result<()> {
         let settings_repository = std::sync::Arc::new(SettingsRepository::new(db_pools.system_pool.clone()));
         let subscription_plan_repository = std::sync::Arc::new(SubscriptionPlanRepository::new(db_pools.system_pool.clone()));
         let system_prompts_repository = std::sync::Arc::new(SystemPromptsRepository::new(db_pools.system_pool.clone()));
-        let credit_pack_repository = std::sync::Arc::new(CreditPackRepository::new(db_pools.system_pool.clone()));
         
         // User-specific operations - use user pool  
         let subscription_repository = std::sync::Arc::new(SubscriptionRepository::new(db_pools.user_pool.clone()));
@@ -361,7 +361,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(web::Data::new(user_repository.clone()))
             .app_data(web::Data::new((*app_state.model_repository).clone()))
             .app_data(web::Data::new(system_prompts_repository.clone()))
-            .app_data(web::Data::new(credit_pack_repository.clone()))
+            .app_data(web::Data::new(credit_service.clone()))
             .app_data(web::Data::new(app_settings.clone()))
             .app_data(web::Data::new(db_pools.clone()))
             

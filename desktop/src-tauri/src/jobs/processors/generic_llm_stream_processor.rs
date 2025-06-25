@@ -2,7 +2,6 @@ use log::{info, error, debug};
 use tauri::AppHandle;
 use async_trait::async_trait;
 
-use crate::utils::config_resolver;
 
 use crate::error::{AppError, AppResult};
 use crate::jobs::types::{Job, JobPayload, JobProcessResult};
@@ -39,26 +38,14 @@ impl JobProcessor for GenericLlmStreamProcessor {
         };
         
         // Setup job processing
-        let (repo, settings_repo, db_job) = job_processor_utils::setup_job_processing(&job.id, &app_handle).await?;
+        let (repo, session_repo, settings_repo, db_job) = job_processor_utils::setup_job_processing(&job.id, &app_handle).await?;
         
-        // Get session to access project_hash
-        let session = {
-            use crate::db_utils::SessionRepository;
-            let session_repo = SessionRepository::new(repo.get_pool());
-            session_repo.get_session_by_id(&job.session_id).await?
-                .ok_or_else(|| AppError::JobError(format!("Session {} not found", job.session_id)))?
-        };
+        // Get session object using the session repository
+        let session = session_repo.get_session_by_id(&job.session_id).await?
+            .ok_or_else(|| AppError::JobError(format!("Session {} not found", job.session_id)))?;
         
-        // Get model settings using centralized config resolution
-        let model_settings = config_resolver::resolve_model_settings(
-            &app_handle,
-            job.job_type,
-            None, // model_override
-            None, // temperature_override  
-            None, // max_tokens_override
-        ).await?
-        .ok_or_else(|| AppError::ConfigError(format!("Task {:?} requires LLM configuration", job.job_type)))?;
-
+        // Get model settings using project-aware configuration
+        let model_settings = job_processor_utils::get_llm_task_config(&db_job, &app_handle, &session).await?;
         let (model_used, temperature, max_output_tokens) = model_settings;
         
         job_processor_utils::log_job_start(&job.id, "generic LLM stream");

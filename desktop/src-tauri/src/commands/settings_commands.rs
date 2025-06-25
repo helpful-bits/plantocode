@@ -6,7 +6,7 @@ use crate::utils::hash_utils::hash_string;
 use serde_json::{json, Map};
 use serde::{Serialize, Deserialize};
 use log;
-use heck::ToLowerCamelCase;
+use heck::{ToLowerCamelCase, ToSnakeCase};
 use crate::api_clients::ServerProxyClient;
 use crate::models::{DefaultSystemPrompt, ProjectSystemPrompt, TaskType};
 use crate::services::config_cache_service::ConfigCache;
@@ -280,6 +280,9 @@ pub async fn get_project_task_model_settings_command(app_handle: AppHandle, proj
         if let Some(temp) = server_task_config.temperature {
             task_config.insert("temperature".to_string(), json!(temp));
         }
+        if let Some(copy_buttons) = &server_task_config.copy_buttons {
+            task_config.insert("copyButtons".to_string(), json!(copy_buttons));
+        }
         
         // Apply project-specific overrides
         for (override_key, override_value) in &project_overrides {
@@ -302,7 +305,7 @@ pub async fn set_project_task_setting_command(app_handle: AppHandle, project_dir
     let project_hash = hash_string(&project_directory);
     let settings_repo = app_handle.state::<Arc<SettingsRepository>>().inner().clone();
     
-    let key = format!("project_task_settings:{}:{}:{}", project_hash, task_key, setting_key);
+    let key = format!("project_task_settings:{}:{}:{}", project_hash, task_key.to_snake_case(), setting_key);
     settings_repo.set_value(&key, &value_json).await
 }
 
@@ -311,7 +314,7 @@ pub async fn reset_project_task_setting_command(app_handle: AppHandle, project_d
     let project_hash = hash_string(&project_directory);
     let settings_repo = app_handle.state::<Arc<SettingsRepository>>().inner().clone();
     
-    let key = format!("project_task_settings:{}:{}:{}", project_hash, task_key, setting_key);
+    let key = format!("project_task_settings:{}:{}:{}", project_hash, task_key.to_snake_case(), setting_key);
     settings_repo.delete_value(&key).await
 }
 

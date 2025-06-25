@@ -1,13 +1,12 @@
-use actix_web::{web, HttpResponse, get};
+use actix_web::{web, HttpResponse, get, post};
 use serde::{Deserialize, Serialize};
 use crate::error::AppError;
 use crate::services::billing_service::BillingService;
 use crate::middleware::secure_auth::UserId;
 use crate::models::runtime_config::AppState;
-use crate::db::repositories::subscription_plan_repository::PlanFeatures;
-use log::{debug, error};
-use bigdecimal::ToPrimitive;
+use log::{debug, info};
 use chrono::{DateTime, Utc};
+use bigdecimal::{BigDecimal, FromPrimitive};
 
 // ========================================
 // SUBSCRIPTION MANAGEMENT HANDLERS
@@ -42,60 +41,7 @@ pub async fn get_available_plans(
     
     let plans = app_state.subscription_plan_repository.get_all_plans().await?;
     
-    #[derive(Debug, Serialize)]
-    #[serde(rename_all = "camelCase")]
-    pub struct ClientSubscriptionPlan {
-        pub id: String,
-        pub name: String,
-        pub description: String,
-        pub weekly_price: String,
-        pub monthly_price: String,
-        pub yearly_price: String,
-        pub currency: String,
-        pub trial_days: i32,
-        pub features: Vec<String>,
-        pub active: bool,
-        pub recommended: bool,
-        pub stripe_weekly_price_id: Option<String>,
-        pub stripe_monthly_price_id: Option<String>,
-        pub stripe_yearly_price_id: Option<String>,
-        pub created_at: Option<chrono::DateTime<chrono::Utc>>,
-        pub updated_at: Option<chrono::DateTime<chrono::Utc>>,
-    }
-
-    let client_plans: Result<Vec<ClientSubscriptionPlan>, AppError> = plans.into_iter().map(|plan| {
-        // Get typed features (fallback to defaults if parsing fails)
-        let typed_features = plan.get_typed_features().unwrap_or_else(|e| {
-            error!("Failed to parse features for plan '{}': {}", plan.id, e);
-            PlanFeatures {
-                core_features: vec!["Basic features".to_string()],
-                support_level: "Standard".to_string(),
-                api_access: false,
-                analytics_level: "Basic".to_string(),
-            }
-        });
-        
-        Ok(ClientSubscriptionPlan {
-            id: plan.id.clone(),
-            name: plan.name.clone(),
-            description: plan.description.unwrap_or_else(|| format!("{} subscription plan", plan.name)),
-            weekly_price: plan.base_price_weekly.to_string(),
-            monthly_price: plan.base_price_monthly.to_string(),
-            yearly_price: plan.base_price_yearly.to_string(),
-            currency: plan.currency.clone(),
-            trial_days: app_state.settings.subscription.default_trial_days as i32,
-            features: typed_features.core_features,
-            active: plan.active,
-            recommended: plan.id == "pro",
-            stripe_weekly_price_id: plan.stripe_price_id_weekly,
-            stripe_monthly_price_id: plan.stripe_price_id_monthly,
-            stripe_yearly_price_id: plan.stripe_price_id_yearly,
-            created_at: None,
-            updated_at: None,
-        })
-    }).collect();
-    
-    Ok(HttpResponse::Ok().json(client_plans?))
+    Ok(HttpResponse::Ok().json(plans))
 }
 
 #[derive(Debug, Deserialize)]
@@ -112,7 +58,13 @@ pub async fn get_detailed_usage(
 ) -> Result<HttpResponse, AppError> {
     debug!("Getting detailed usage for user: {} from {} to {}", user_id.0, query.start_date, query.end_date);
     
+    if query.start_date >= query.end_date {
+        return Err(AppError::BadRequest("start_date must be before end_date".to_string()));
+    }
+    
     let usage_records = billing_service.get_detailed_usage(&user_id.0, query.start_date, query.end_date).await?;
+    
+    info!("Successfully retrieved {} usage records for user: {}", usage_records.len(), user_id.0);
     
     Ok(HttpResponse::Ok().json(usage_records))
 }
@@ -153,5 +105,78 @@ pub async fn get_current_plan(
     };
     
     Ok(HttpResponse::Ok().json(response))
+}
+
+// ========================================
+// AUTO TOP-OFF HANDLERS
+// ========================================
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AutoTopOffSettings {
+    pub enabled: bool,
+    pub threshold: Option<f64>,
+    pub amount: Option<f64>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateAutoTopOffRequest {
+    pub enabled: bool,
+    pub threshold: Option<f64>,
+    pub amount: Option<f64>,
+}
+
+/// Get auto top-off settings for the user
+#[get("/auto-top-off-settings")]
+pub async fn get_auto_top_off_settings_handler(
+    user_id: UserId,
+    billing_service: web::Data<BillingService>,
+) -> Result<HttpResponse, AppError> {
+    debug!("Getting auto top-off settings for user: {}", user_id.0);
+    
+    let settings = billing_service.get_auto_top_off_settings(&user_id.0).await?;
+    
+    info!("Successfully retrieved auto top-off settings for user: {}", user_id.0);
+    Ok(HttpResponse::Ok().json(settings))
+}
+
+/// Update auto top-off settings for the user
+#[post("/auto-top-off-settings")]
+pub async fn update_auto_top_off_settings_handler(
+    user_id: UserId,
+    request: web::Json<UpdateAutoTopOffRequest>,
+    billing_service: web::Data<BillingService>,
+) -> Result<HttpResponse, AppError> {
+    debug!("Updating auto top-off settings for user: {}", user_id.0);
+    
+    // Validate the request
+    if request.enabled {
+        if let Some(threshold) = request.threshold {
+            if threshold <= 0.0 || threshold > 1000.0 {
+                return Err(AppError::BadRequest("Auto top-off threshold must be between $0.01 and $1000.00".to_string()));
+            }
+        } else {
+            return Err(AppError::BadRequest("Auto top-off threshold is required when auto top-off is enabled".to_string()));
+        }
+        
+        if let Some(amount) = request.amount {
+            if amount <= 0.0 || amount > 1000.0 {
+                return Err(AppError::BadRequest("Auto top-off amount must be between $0.01 and $1000.00".to_string()));
+            }
+        } else {
+            return Err(AppError::BadRequest("Auto top-off amount is required when auto top-off is enabled".to_string()));
+        }
+    }
+    
+    let settings = billing_service.update_auto_top_off_settings(
+        &user_id.0,
+        request.enabled,
+        request.threshold.map(|t| BigDecimal::from_f64(t).unwrap_or_default()),
+        request.amount.map(|a| BigDecimal::from_f64(a).unwrap_or_default()),
+    ).await?;
+    
+    info!("Successfully updated auto top-off settings for user: {}", user_id.0);
+    Ok(HttpResponse::Ok().json(settings))
 }
 

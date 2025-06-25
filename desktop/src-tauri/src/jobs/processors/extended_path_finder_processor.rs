@@ -3,7 +3,6 @@ use log::{debug, info, error, warn};
 use serde_json::json;
 use tauri::AppHandle;
 
-use crate::utils::config_resolver;
 
 use crate::error::{AppError, AppResult};
 use crate::jobs::processor_trait::JobProcessor;
@@ -110,29 +109,17 @@ impl JobProcessor for ExtendedPathFinderProcessor {
         };
         
         // Setup job processing using standardized utility
-        let (repo, settings_repo, db_job) = job_processor_utils::setup_job_processing(
+        let (repo, session_repo, settings_repo, db_job) = job_processor_utils::setup_job_processing(
             &job.id,
             &app_handle,
         ).await?;
         
-        // Get session to access project_hash
-        let session = {
-            use crate::db_utils::SessionRepository;
-            let session_repo = SessionRepository::new(repo.get_pool());
-            session_repo.get_session_by_id(&job.session_id).await?
-                .ok_or_else(|| AppError::JobError(format!("Session {} not found", job.session_id)))?
-        };
+        // Get session using centralized repository
+        let session = session_repo.get_session_by_id(&job.session_id).await?
+            .ok_or_else(|| AppError::JobError(format!("Session {} not found", job.session_id)))?;
         
-        // Get model settings using centralized config resolution
-        let model_settings = config_resolver::resolve_model_settings(
-            &app_handle,
-            job.job_type,
-            None, // model_override
-            None, // temperature_override  
-            None, // max_tokens_override
-        ).await?
-        .ok_or_else(|| AppError::ConfigError(format!("Task {:?} requires LLM configuration", job.job_type)))?;
-
+        // Get model settings using project-aware configuration
+        let model_settings = job_processor_utils::get_llm_task_config(&db_job, &app_handle, &session).await?;
         let (model_used, temperature, max_output_tokens) = model_settings;
         
         job_processor_utils::log_job_start(&job.id, "Extended Path Finding");
@@ -145,15 +132,15 @@ impl JobProcessor for ExtendedPathFinderProcessor {
             return Ok(JobProcessResult::canceled(job.id.clone(), "Job was canceled by user".to_string()));
         }
         
-        // Get project directory and directory tree using session-based utilities
-        let project_directory = crate::utils::get_project_directory_from_session(&job.session_id, &app_handle).await?;
-        let directory_tree = match crate::utils::get_directory_tree_from_session(&job.session_id, &app_handle).await {
+        // Get project directory and directory tree from session
+        let project_directory = &session.project_directory;
+        let directory_tree = match get_directory_tree_with_defaults(project_directory).await {
             Ok(tree) => {
-                info!("Generated directory tree using session-based utility for extended path finder ({} lines)", tree.lines().count());
+                info!("Generated directory tree for extended path finder ({} lines)", tree.lines().count());
                 tree
             }
             Err(e) => {
-                warn!("Failed to generate directory tree using session-based utility: {}. Using empty fallback.", e);
+                warn!("Failed to generate directory tree: {}. Using empty fallback.", e);
                 "No directory structure available".to_string()
             }
         };
@@ -161,7 +148,7 @@ impl JobProcessor for ExtendedPathFinderProcessor {
         // Read file contents for all initial paths to provide complete context
         let mut file_contents = std::collections::HashMap::new();
         for path in &payload.initial_paths {
-            let absolute_path = Path::new(&project_directory).join(path);
+            let absolute_path = Path::new(project_directory).join(path);
             match tokio::fs::read_to_string(&absolute_path).await {
                 Ok(content) => {
                     info!("Read file content for AI context: {} ({} bytes)", path, content.len());
@@ -233,7 +220,7 @@ impl JobProcessor for ExtendedPathFinderProcessor {
         let response_content = llm_result.response.clone();
         
         // Parse paths from the LLM response using standardized utility
-        let extended_paths = match Self::parse_paths_from_text_response(&response_content, &project_directory) {
+        let extended_paths = match Self::parse_paths_from_text_response(&response_content, project_directory) {
             Ok(paths) => paths,
             Err(e) => {
                 let error_msg = format!("Failed to parse paths from LLM response: {}", e);
@@ -251,7 +238,7 @@ impl JobProcessor for ExtendedPathFinderProcessor {
         let mut unverified_extended_paths = Vec::new();
         
         for relative_path in &extended_paths {
-            let absolute_path = std::path::Path::new(&project_directory).join(relative_path);
+            let absolute_path = std::path::Path::new(project_directory).join(relative_path);
             match tokio::fs::metadata(&absolute_path).await {
                 Ok(metadata) if metadata.is_file() => {
                     validated_extended_paths.push(relative_path.clone());
@@ -296,7 +283,7 @@ impl JobProcessor for ExtendedPathFinderProcessor {
             "llmResponse": response_content,
             "workflowId": job.id,
             "taskDescription": payload.task_description,
-            "projectDirectory": project_directory,
+            "projectDirectory": project_directory.clone(),
             "modelUsed": model_used,
             "summary": format!("Extended path finding: {} AI-filtered initial + {} validated = {} total verified paths", 
                 payload.initial_paths.len(), 

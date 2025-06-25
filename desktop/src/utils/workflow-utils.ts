@@ -453,14 +453,25 @@ export class WorkflowTracker {
   }
 
   private handleWorkflowFailure(statusEvent: WorkflowStatusEvent): void {
-    // Create error from status event
+    // Create detailed error message from status event
+    let errorMessage = statusEvent.errorMessage || statusEvent.message || 'Workflow failed';
+    
+    // Enhance error message with context if available
+    if (statusEvent.currentStage) {
+      errorMessage = `${errorMessage} (Stage: ${statusEvent.currentStage})`;
+    }
+    
     const workflowError = new WorkflowError(
-      statusEvent.message || 'Workflow failed',
+      errorMessage,
       this.workflowId,
       statusEvent.currentStage,
       statusEvent.errorMessage,
       statusEvent.status === WORKFLOW_STATUSES.CANCELED ? 'WORKFLOW_CANCELED' : 'WORKFLOW_FAILED'
     );
+    
+    // Reset internal state to ensure clean retry
+    this.completionHandled = false;
+    this.lastKnownState = null;
     
     this.notifyError(workflowError);
   }

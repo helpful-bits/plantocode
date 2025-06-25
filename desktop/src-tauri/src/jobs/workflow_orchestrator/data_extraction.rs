@@ -19,7 +19,14 @@ pub(super) async fn extract_and_store_stage_data_internal(
     debug!("Extracting and storing stage data for job: {}", job_id);
     
     // Get the database repository
-    let repo = app_handle.state::<Arc<BackgroundJobRepository>>().inner().clone();
+    let repo = match app_handle.try_state::<Arc<BackgroundJobRepository>>() {
+        Some(repo) => repo.inner().clone(),
+        None => {
+            return Err(AppError::InitializationError(
+                "BackgroundJobRepository not available in app state. App initialization may be incomplete.".to_string()
+            ));
+        }
+    };
     
     // Get the job to verify status and extract raw response
     let job = repo.get_job_by_id(job_id).await?

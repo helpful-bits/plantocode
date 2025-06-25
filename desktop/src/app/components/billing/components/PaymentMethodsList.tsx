@@ -1,30 +1,19 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { CreditCard, Plus, Trash2, Star, AlertCircle, Shield } from "lucide-react";
+import { CreditCard, Plus, Shield, Settings } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/ui/card";
 import { Button } from "@/ui/button";
 import { Badge } from "@/ui/badge";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/ui/alert-dialog";
 import { LoadingSkeleton, ErrorState } from "./loading-and-error-states";
 import { 
   getPaymentMethods, 
-  setDefaultPaymentMethod, 
-  detachPaymentMethod
-} from "@/actions/billing";
+  openBillingPortal
+} from "@/actions/billing/payment-method.actions";
 import type { PaymentMethodsResponse } from "@/types/tauri-commands";
 import { getErrorMessage } from "@/utils/error-handling";
 import { useNotification } from "@/contexts/notification-context";
+import { open } from "@/utils/shell-utils";
 import { AddPaymentMethodModal } from "../billing-components";
 
 export interface PaymentMethodsListProps {
@@ -66,8 +55,8 @@ export function PaymentMethodsList({ className }: PaymentMethodsListProps) {
   const [paymentMethodsData, setPaymentMethodsData] = useState<PaymentMethodsResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [processingMethodId, setProcessingMethodId] = useState<string | null>(null);
   const [isAddModalOpen, setAddModalOpen] = useState(false);
+  const [isManaging, setIsManaging] = useState(false);
   
   const { showNotification } = useNotification();
 
@@ -95,57 +84,21 @@ export function PaymentMethodsList({ className }: PaymentMethodsListProps) {
     loadPaymentMethods();
   };
 
-  const handleSetAsDefault = async (paymentMethodId: string) => {
+  const handleManagePaymentMethods = async () => {
     try {
-      setProcessingMethodId(paymentMethodId);
-      
-      await setDefaultPaymentMethod(paymentMethodId);
-      
-      showNotification({
-        title: 'Default Payment Method Updated',
-        message: 'Your default payment method has been updated successfully.',
-        type: 'success',
-      });
-      
-      // Reload payment methods to reflect changes
-      await loadPaymentMethods();
+      setIsManaging(true);
+      const portalUrl = await openBillingPortal();
+      await open(portalUrl);
     } catch (err) {
       const errorMessage = getErrorMessage(err);
       showNotification({
-        title: 'Failed to Update Default',
+        title: 'Failed to Open Billing Portal',
         message: errorMessage,
         type: 'error',
       });
-      console.error('Failed to set default payment method:', err);
+      console.error('Failed to open billing portal:', err);
     } finally {
-      setProcessingMethodId(null);
-    }
-  };
-
-  const handleRemovePaymentMethod = async (paymentMethodId: string) => {
-    try {
-      setProcessingMethodId(paymentMethodId);
-      
-      await detachPaymentMethod(paymentMethodId);
-      
-      showNotification({
-        title: 'Payment Method Removed',
-        message: 'Your payment method has been removed successfully.',
-        type: 'success',
-      });
-      
-      // Reload payment methods to reflect changes
-      await loadPaymentMethods();
-    } catch (err) {
-      const errorMessage = getErrorMessage(err);
-      showNotification({
-        title: 'Failed to Remove Payment Method',
-        message: errorMessage,
-        type: 'error',
-      });
-      console.error('Failed to remove payment method:', err);
-    } finally {
-      setProcessingMethodId(null);
+      setIsManaging(false);
     }
   };
 
@@ -166,9 +119,21 @@ export function PaymentMethodsList({ className }: PaymentMethodsListProps) {
     <>
       <Card className={className}>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <CreditCard className="h-5 w-5" />
-            Payment Methods
+          <CardTitle className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <CreditCard className="h-5 w-5" />
+              Payment Methods
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleManagePaymentMethods}
+              disabled={isManaging}
+              className="flex items-center gap-2"
+            >
+              <Settings className="h-4 w-4" />
+              {isManaging ? 'Opening...' : 'Manage Payment Methods'}
+            </Button>
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -207,7 +172,6 @@ export function PaymentMethodsList({ className }: PaymentMethodsListProps) {
                         </span>
                         {method.isDefault && (
                           <Badge variant="default" className="flex items-center gap-1">
-                            <Star className="h-3 w-3" />
                             Default
                           </Badge>
                         )}
@@ -228,60 +192,6 @@ export function PaymentMethodsList({ className }: PaymentMethodsListProps) {
                         </div>
                       </div>
                     </div>
-                  </div>
-                  
-                  <div className="flex items-center gap-2">
-                    {!method.isDefault && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleSetAsDefault(method.id)}
-                        disabled={processingMethodId === method.id}
-                        className="flex items-center gap-2"
-                      >
-                        <Star className="h-4 w-4" />
-                        Set as Default
-                      </Button>
-                    )}
-                    
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          disabled={processingMethodId === method.id}
-                          className="flex items-center gap-2 hover:border-destructive hover:text-destructive"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                          Remove
-                        </Button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>Remove Payment Method</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            Are you sure you want to remove this payment method? This action cannot be undone.
-                            {method.isDefault && (
-                              <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded">
-                                <div className="flex items-center gap-2 text-yellow-800 text-sm">
-                                  <AlertCircle className="h-4 w-4" />
-                                  This is your default payment method. You may want to set another card as default first.
-                                </div>
-                              </div>
-                            )}
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>Cancel</AlertDialogCancel>
-                          <AlertDialogAction
-                            onClick={() => handleRemovePaymentMethod(method.id)}
-                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                          >
-                            Remove Payment Method
-                          </AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
                   </div>
                 </div>
               ))}

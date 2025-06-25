@@ -11,8 +11,8 @@ use log::{debug, info};
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct CreateCreditCheckoutRequest {
-    pub credit_pack_id: String,
+pub struct CreateCustomCreditCheckoutRequest {
+    pub amount: f64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -36,25 +36,19 @@ pub struct CheckoutSessionStatusResponse {
     pub payment_status: String,
 }
 
-/// Create a checkout session for credit purchase
-#[post("/credit-session")]
-pub async fn create_credit_checkout_session_handler(
+/// Create a checkout session for custom credit purchase
+#[post("/custom-credit-session")]
+pub async fn create_custom_credit_checkout_session_handler(
     user_id: UserId,
     billing_service: web::Data<BillingService>,
-    request: web::Json<CreateCreditCheckoutRequest>,
+    request: web::Json<CreateCustomCreditCheckoutRequest>,
 ) -> Result<HttpResponse, AppError> {
-    info!("Creating credit checkout session for user: {} with credit pack: {}", 
-          user_id.0, request.credit_pack_id);
+    info!("Creating custom credit checkout session for user: {} with amount: {}", 
+          user_id.0, request.amount);
     
-    // Generate success and cancel URLs
-    let success_url = "http://localhost:1420/billing/success".to_string();
-    let cancel_url = "http://localhost:1420/billing/cancel".to_string();
-    
-    let session = billing_service.create_credit_checkout_session(
+    let session = billing_service.create_custom_credit_checkout_session(
         &user_id.0,
-        &request.credit_pack_id,
-        &success_url,
-        &cancel_url,
+        request.amount,
     ).await?;
     
     let response = CheckoutSessionResponse {
@@ -62,7 +56,7 @@ pub async fn create_credit_checkout_session_handler(
         url: session.url.unwrap_or_default(),
     };
     
-    info!("Successfully created credit checkout session for user: {}", user_id.0);
+    info!("Successfully created custom credit checkout session for user: {}", user_id.0);
     Ok(HttpResponse::Ok().json(response))
 }
 
@@ -75,15 +69,9 @@ pub async fn create_subscription_checkout_session_handler(
 ) -> Result<HttpResponse, AppError> {
     info!("Creating subscription checkout session for user: {}", user_id.0);
     
-    // Generate success and cancel URLs
-    let success_url = "http://localhost:1420/billing/success".to_string();
-    let cancel_url = "http://localhost:1420/billing/cancel".to_string();
-    
     let session = billing_service.create_subscription_checkout_session(
         &user_id.0,
         &request.plan_id,
-        &success_url,
-        &cancel_url,
     ).await?;
     
     let response = CheckoutSessionResponse {
@@ -103,14 +91,8 @@ pub async fn create_setup_checkout_session_handler(
 ) -> Result<HttpResponse, AppError> {
     info!("Creating setup checkout session for user: {}", user_id.0);
     
-    // Generate success and cancel URLs
-    let success_url = "http://localhost:1420/billing/payment-method/success".to_string();
-    let cancel_url = "http://localhost:1420/billing/payment-method/cancel".to_string();
-    
     let session = billing_service.create_setup_checkout_session(
         &user_id.0,
-        &success_url,
-        &cancel_url,
     ).await?;
     
     let response = CheckoutSessionResponse {
@@ -134,6 +116,20 @@ pub async fn get_checkout_session_status_handler(
     
     let session = billing_service.get_checkout_session_status(&session_id).await?;
     
+    let response = CheckoutSessionStatusResponse {
+        status: match session.status.unwrap_or(stripe::CheckoutSessionStatus::Open) {
+            stripe::CheckoutSessionStatus::Open => "open".to_string(),
+            stripe::CheckoutSessionStatus::Complete => "complete".to_string(),
+            stripe::CheckoutSessionStatus::Expired => "expired".to_string(),
+        },
+        payment_status: match session.payment_status {
+            stripe::CheckoutSessionPaymentStatus::Paid => "paid".to_string(),
+            stripe::CheckoutSessionPaymentStatus::Unpaid => "unpaid".to_string(),
+            stripe::CheckoutSessionPaymentStatus::NoPaymentRequired => "no_payment_required".to_string(),
+        },
+        customer_email: session.customer_email,
+    };
+    
     info!("Successfully retrieved checkout session status for user: {}", user_id.0);
-    Ok(HttpResponse::Ok().json(session))
+    Ok(HttpResponse::Ok().json(response))
 }

@@ -91,9 +91,13 @@ impl WorkflowStage {
     pub fn from_display_name(display_name: &str) -> Option<WorkflowStage> {
         match display_name {
             "Regex File Filtering" => Some(WorkflowStage::RegexFileFilter),
+            "RegexFileFilter" => Some(WorkflowStage::RegexFileFilter), // Handle enum variant name
             "AI File Relevance Assessment" => Some(WorkflowStage::FileRelevanceAssessment),
+            "FileRelevanceAssessment" => Some(WorkflowStage::FileRelevanceAssessment), // Handle enum variant name
             "Extended Path Finding" => Some(WorkflowStage::ExtendedPathFinder),
+            "ExtendedPathFinder" => Some(WorkflowStage::ExtendedPathFinder), // Handle enum variant name
             "Path Correction" => Some(WorkflowStage::PathCorrection),
+            "PathCorrection" => Some(WorkflowStage::PathCorrection), // Handle enum variant name
             _ => None,
         }
     }
