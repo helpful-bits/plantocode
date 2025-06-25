@@ -126,22 +126,34 @@ impl WorkflowErrorHandler {
         delay_ms: u64,
         comprehensive_error: &str,
     ) -> AppResult<WorkflowErrorResponse> {
-        // Get current retry count for the job
-        let queue = get_job_queue().await?;
-        let current_retry_count = queue.get_retry_count(failed_job_id)?;
+        // Special handling for initialization errors - use longer delay and different tracking
+        let (actual_delay, actual_max_attempts) = if comprehensive_error.contains("Database pool not yet initialized") {
+            // For initialization errors, use exponential backoff starting at 10 seconds
+            // and limit retries to 5 attempts over 5 minutes total
+            let backoff_delay = 10000; // 10 seconds base delay
+            (backoff_delay, 5) // Max 5 attempts for init errors
+        } else {
+            (delay_ms, max_attempts)
+        };
 
-        if current_retry_count >= max_attempts {
-            warn!("Job {} has reached max retry attempts ({}), aborting workflow {}", 
-                  failed_job_id, max_attempts, workflow_id);
+        // Use workflow stage as key for retry tracking instead of job ID
+        // since new job IDs are created for each retry
+        let stage_retry_key = format!("{}_{:?}", workflow_id, stage);
+        let queue = get_job_queue().await?;
+        let current_retry_count = queue.get_retry_count(&stage_retry_key)?;
+
+        if current_retry_count >= actual_max_attempts {
+            warn!("Stage {:?} in workflow {} has reached max retry attempts ({}), aborting workflow", 
+                  stage, workflow_id, actual_max_attempts);
             let abort_message = format!("Max retry attempts ({}) exceeded for stage '{}'. Original error: {}", 
-                                      max_attempts, stage.display_name(), comprehensive_error);
+                                      actual_max_attempts, stage.display_name(), comprehensive_error);
             return self.handle_abort_strategy(workflow_id, &abort_message).await;
         }
 
-        // Increment retry count
-        let new_retry_count = queue.increment_retry_count(failed_job_id)?;
+        // Increment retry count for the stage
+        let new_retry_count = queue.increment_retry_count(&stage_retry_key)?;
         info!("Retrying stage {:?} for workflow {}, attempt {} of {}", 
-              stage, workflow_id, new_retry_count, max_attempts);
+              stage, workflow_id, new_retry_count, actual_max_attempts);
 
         // Delegate to the WorkflowOrchestrator's retry mechanism
         let orchestrator = get_workflow_orchestrator().await?;
@@ -151,14 +163,10 @@ impl WorkflowErrorHandler {
             workflow_id, 
             stage.clone(), 
             failed_job_id,
-            Some(delay_ms),
+            Some(actual_delay),
             Some(new_retry_count),
         ).await {
             Ok(retry_job_id) => {
-                // If delay is specified, log it (actual delay would need queue support)
-                if delay_ms > 0 {
-                    info!("Would delay retry job {} by {}ms (delay not yet implemented in queue)", retry_job_id, delay_ms);
-                }
 
                 Ok(WorkflowErrorResponse {
                     error_handled: true,

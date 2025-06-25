@@ -160,14 +160,20 @@ export function UsageDetailsModal({ open, onOpenChange }: UsageDetailsModalProps
                     <th className="border border-border px-4 py-2 text-left text-sm font-medium">
                       Provider
                     </th>
-                    <th className="border border-border px-4 py-2 text-left text-sm font-medium">
-                      Type
-                    </th>
                     <th className="border border-border px-4 py-2 text-right text-sm font-medium">
                       Cost
                     </th>
                     <th className="border border-border px-4 py-2 text-right text-sm font-medium">
                       Requests
+                    </th>
+                    <th className="border border-border px-4 py-2 text-right text-sm font-medium">
+                      Input Tokens
+                    </th>
+                    <th className="border border-border px-4 py-2 text-right text-sm font-medium">
+                      Output Tokens
+                    </th>
+                    <th className="border border-border px-4 py-2 text-right text-sm font-medium">
+                      Duration (ms)
                     </th>
                   </tr>
                 </thead>
@@ -175,19 +181,25 @@ export function UsageDetailsModal({ open, onOpenChange }: UsageDetailsModalProps
                   {data.map((usage, index) => (
                     <tr key={index} className="hover:bg-muted/30">
                       <td className="border border-border px-4 py-2 text-sm">
-                        {usage.serviceName}
+                        {usage.modelDisplayName}
                       </td>
                       <td className="border border-border px-4 py-2 text-sm">
                         {usage.providerCode}
-                      </td>
-                      <td className="border border-border px-4 py-2 text-sm">
-                        {usage.modelType}
                       </td>
                       <td className="border border-border px-4 py-2 text-sm text-right">
                         {formatUsdCurrency(usage.totalCost)}
                       </td>
                       <td className="border border-border px-4 py-2 text-sm text-right">
                         {usage.totalRequests.toLocaleString()}
+                      </td>
+                      <td className="border border-border px-4 py-2 text-sm text-right">
+                        {usage.totalInputTokens.toLocaleString()}
+                      </td>
+                      <td className="border border-border px-4 py-2 text-sm text-right">
+                        {usage.totalOutputTokens.toLocaleString()}
+                      </td>
+                      <td className="border border-border px-4 py-2 text-sm text-right">
+                        {usage.totalDurationMs.toLocaleString()}
                       </td>
                     </tr>
                   ))}

@@ -27,12 +27,6 @@ pub struct BillingDashboardData {
     pub services_blocked: bool,
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct UsageDateRange {
-    pub start_date: String,
-    pub end_date: String,
-}
 
 /// Get consolidated billing dashboard data
 pub async fn get_billing_dashboard_data_handler(
@@ -47,31 +41,3 @@ pub async fn get_billing_dashboard_data_handler(
     Ok(HttpResponse::Ok().json(dashboard_data))
 }
 
-/// Get detailed usage data for a user within a date range
-pub async fn get_detailed_usage(
-    user_id: UserId,
-    query: web::Query<UsageDateRange>,
-    billing_service: web::Data<BillingService>,
-) -> Result<HttpResponse, AppError> {
-    debug!("Getting detailed usage data for user: {} from {} to {}", user_id.0, query.start_date, query.end_date);
-    
-    // Parse the date strings into DateTime<Utc>
-    let start_date = DateTime::parse_from_rfc3339(&query.start_date)
-        .map_err(|e| AppError::BadRequest(format!("Invalid start_date format: {}", e)))?
-        .with_timezone(&Utc);
-    
-    let end_date = DateTime::parse_from_rfc3339(&query.end_date)
-        .map_err(|e| AppError::BadRequest(format!("Invalid end_date format: {}", e)))?
-        .with_timezone(&Utc);
-    
-    // Validate date range
-    if start_date >= end_date {
-        return Err(AppError::BadRequest("start_date must be before end_date".to_string()));
-    }
-    
-    // Call the billing service method
-    let detailed_usage = billing_service.get_detailed_usage(&user_id.0, start_date, end_date).await?;
-    
-    info!("Successfully retrieved {} detailed usage records for user: {}", detailed_usage.len(), user_id.0);
-    Ok(HttpResponse::Ok().json(detailed_usage))
-}

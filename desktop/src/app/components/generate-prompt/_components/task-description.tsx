@@ -189,6 +189,29 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
         extraHeight: 50,
       });
 
+      // Add event listener for flush-pending-changes event from text improvement
+      useEffect(() => {
+        const handleFlushEvent = () => {
+          // Immediately flush any pending debounced changes
+          if (debounceTimeoutRef.current) {
+            clearTimeout(debounceTimeoutRef.current);
+            debounceTimeoutRef.current = null;
+            onChange(internalValue);
+          }
+        };
+
+        const element = internalTextareaRef.current;
+        if (element) {
+          element.addEventListener('flush-pending-changes', handleFlushEvent);
+          return () => {
+            element.removeEventListener('flush-pending-changes', handleFlushEvent);
+          };
+        }
+        
+        // Return empty cleanup function if no element
+        return () => {};
+      }, [internalValue, onChange]);
+
       // Simple empty check
       const effectiveIsEmpty = !internalValue?.trim();
 
@@ -243,6 +266,7 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
             <Textarea
               ref={internalTextareaRef}
               id="taskDescArea"
+              data-field="taskDescription"
               className={`border border-border/60 rounded-xl bg-background backdrop-blur-sm text-foreground p-4 w-full resize-y font-normal shadow-soft ${effectiveIsEmpty ? "border-destructive/20 bg-destructive/5" : ""}`}
               value={internalValue}
               onChange={handleChange}

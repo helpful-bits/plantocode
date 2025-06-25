@@ -18,12 +18,14 @@ pub mod stage_data_extractors;
 pub mod stage_data_injectors;
 
 use std::sync::Arc;
-use log::{info, debug, error};
+use log::{info, debug, error, warn};
 use tauri::AppHandle;
 use tokio::time::{sleep, Duration};
 
-use crate::error::AppResult;
-use crate::db_utils::BackgroundJobRepository;
+use crate::error::{AppResult, AppError};
+use crate::db_utils::{BackgroundJobRepository, SessionRepository, SettingsRepository};
+use crate::services::SystemPromptCacheService;
+use crate::utils::file_lock_manager::FileLockManager;
 use crate::models::JobStatus;
 use self::processors::{
     ImplementationPlanProcessor,
@@ -89,8 +91,88 @@ pub async fn register_job_processors(app_handle: &AppHandle) -> AppResult<()> {
     Ok(())
 }
 
+/// Wait for all core services required by the job system to initialize
+async fn wait_for_core_services(app_handle: &AppHandle) -> AppResult<()> {
+    use tauri::Manager;
+    
+    const MAX_WAIT_TIME_MS: u64 = 30000; // 30 seconds max wait
+    const CHECK_INTERVAL_MS: u64 = 100;   // Check every 100ms
+    let mut elapsed_ms = 0;
+    
+    while elapsed_ms < MAX_WAIT_TIME_MS {
+        let mut missing_services = Vec::new();
+        
+        // Check for database pool
+        if app_handle.try_state::<sqlx::SqlitePool>().is_none() {
+            missing_services.push("SqlitePool");
+        }
+        
+        // Check for repositories required by job processors
+        if app_handle.try_state::<Arc<BackgroundJobRepository>>().is_none() {
+            missing_services.push("BackgroundJobRepository");
+        }
+        if app_handle.try_state::<Arc<SessionRepository>>().is_none() {
+            missing_services.push("SessionRepository");
+        }
+        if app_handle.try_state::<Arc<SettingsRepository>>().is_none() {
+            missing_services.push("SettingsRepository");
+        }
+        
+        // Check for system services required by job processors
+        if app_handle.try_state::<Arc<SystemPromptCacheService>>().is_none() {
+            missing_services.push("SystemPromptCacheService");
+        }
+        if app_handle.try_state::<Arc<FileLockManager>>().is_none() {
+            missing_services.push("FileLockManager");
+        }
+        
+        // If all services are available, we're ready
+        if missing_services.is_empty() {
+            debug!("All core services are initialized and ready for job system");
+            return Ok(());
+        }
+        
+        // Wait a bit before retrying
+        sleep(Duration::from_millis(CHECK_INTERVAL_MS)).await;
+        elapsed_ms += CHECK_INTERVAL_MS;
+        
+        if elapsed_ms % 5000 == 0 { // Log every 5 seconds
+            info!("Waiting for core services initialization... ({}ms elapsed). Missing: {:?}", elapsed_ms, missing_services);
+        }
+    }
+    
+    // Determine which services are still missing for error message
+    let mut missing_services = Vec::new();
+    if app_handle.try_state::<sqlx::SqlitePool>().is_none() {
+        missing_services.push("SqlitePool");
+    }
+    if app_handle.try_state::<Arc<BackgroundJobRepository>>().is_none() {
+        missing_services.push("BackgroundJobRepository");
+    }
+    if app_handle.try_state::<Arc<SessionRepository>>().is_none() {
+        missing_services.push("SessionRepository");
+    }
+    if app_handle.try_state::<Arc<SettingsRepository>>().is_none() {
+        missing_services.push("SettingsRepository");
+    }
+    if app_handle.try_state::<Arc<SystemPromptCacheService>>().is_none() {
+        missing_services.push("SystemPromptCacheService");
+    }
+    if app_handle.try_state::<Arc<FileLockManager>>().is_none() {
+        missing_services.push("FileLockManager");
+    }
+    
+    Err(AppError::InitializationError(
+        format!("Core services did not initialize within {}ms. Missing services: {:?}", MAX_WAIT_TIME_MS, missing_services)
+    ))
+}
+
 /// Start the job system (workflow orchestrator and background job worker)
 pub async fn start_job_system(app_handle: AppHandle) -> AppResult<()> {
+    // Wait for all core services to be fully initialized before starting job system
+    wait_for_core_services(&app_handle).await?;
+    debug!("Core services confirmed ready for job system");
+    
     // Initialize the workflow orchestrator
     let _workflow_orchestrator = init_workflow_orchestrator(app_handle.clone()).await?;
     debug!("Workflow orchestrator initialized");
@@ -142,7 +224,14 @@ async fn recover_queued_jobs(app_handle: AppHandle) -> AppResult<()> {
     use tauri::Manager;
     
     // Get the background job repository
-    let background_job_repo = app_handle.state::<Arc<BackgroundJobRepository>>();
+    let background_job_repo = match app_handle.try_state::<Arc<BackgroundJobRepository>>() {
+        Some(repo) => repo,
+        None => {
+            return Err(AppError::InitializationError(
+                "Background job repository not yet initialized. Please wait for app initialization to complete.".to_string()
+            ));
+        }
+    };
     
     // Get all active jobs (queued and running) from the database
     let active_jobs = background_job_repo.get_active_jobs().await?;

@@ -5,35 +5,12 @@ use crate::services::audit_service::{AuditService, AuditContext};
 use crate::db::repositories::webhook_idempotency_repository::WebhookIdempotencyRepository;
 use crate::db::repositories::user_credit_repository::UserCreditRepository;
 use crate::db::repositories::credit_transaction_repository::{CreditTransactionRepository, CreditTransaction};
-use crate::db::repositories::credit_pack_repository::CreditPackRepository;
 use uuid::Uuid;
 use log::{error, info, warn};
 use chrono::Utc;
-use bigdecimal::{BigDecimal, ToPrimitive};
+use bigdecimal::{BigDecimal, ToPrimitive, FromPrimitive};
 use stripe::{Event, EventObject, Webhook, PaymentIntent};
 
-// ========================================
-// METERED BILLING STRIPE WEBHOOK HANDLERS
-// ========================================
-//
-// This module handles Stripe webhook events for the metered billing system:
-//
-// 1. invoice.payment_succeeded - Handles subscription payments and resets monthly spending allowances
-//    - Calls CostBasedBillingService.reset_billing_period() for subscription invoices
-//    - Unblocks services that were blocked due to spending limits
-//    - Sends admin alerts if billing period reset fails
-//
-// 2. payment_intent.succeeded - Handles credit top-up purchases (NOT subscription payments)
-//    - Delegates to CreditService for one-time credit purchases
-//    - Does NOT handle subscription payments (those go through invoice.payment_succeeded)
-//    - Includes proper logging to distinguish between top-up vs subscription handling
-//
-// 3. Proper integration with CostBasedBillingService:
-//    - Webhook handlers have access to CostBasedBillingService via BillingService
-//    - Comprehensive error handling for billing service failures
-//    - Admin alerts for critical billing failures
-//    - Webhook processing continues even if optional operations fail
-// ========================================
 
 /// Handle Stripe webhook events (simplified for Customer Portal integration)
 #[post("/stripe")]
@@ -121,7 +98,7 @@ pub async fn stripe_webhook(
         }
         Err(e) => {
             let error_message = format!("{}", e);
-            error!("METERED BILLING: Failed to process webhook event {} (type: {}): {}", event.id, event.type_, error_message);
+            error!("Failed to process webhook event {} (type: {}): {}", event.id, event.type_, error_message);
             
             // Send admin alert with metered billing context
             crate::utils::admin_alerting::send_stripe_webhook_failure_alert(
@@ -181,8 +158,7 @@ async fn process_stripe_webhook_event(
     
     // Get credit service for metered billing operations  
     let _credit_service = billing_service.get_credit_service();
-    info!("METERED BILLING: Processing Stripe webhook event {} of type {} with credit service", 
-          event.id, event.type_);
+    info!("Processing Stripe webhook event {} of type {}", event.id, event.type_);
 
     match event.type_.to_string().as_str() {
         "customer.subscription.updated" => {
@@ -279,51 +255,59 @@ async fn process_stripe_webhook_event(
             }
         },
         "payment_intent.succeeded" => {
-            info!("Processing payment intent succeeded for metered billing: {}", event.id);
+            info!("Processing payment intent succeeded: {}", event.id);
             if let stripe::EventObject::PaymentIntent(payment_intent) = &event.data.object {
                 // Determine payment type from metadata to differentiate subscription vs top-up
                 let payment_type = payment_intent.metadata.get("type")
                     .map(|t| t.as_str())
                     .unwrap_or("unknown");
                 
-                info!("METERED BILLING: Payment intent {} type: {} - delegating to appropriate handler", payment_intent.id, payment_type);
+                info!("Payment intent {} type: {} - processing", payment_intent.id, payment_type);
                 
-                // Log audit event for successful payment
-                if let Some(user_id_str) = payment_intent.metadata.get("user_id") {
-                    if let Ok(user_id) = Uuid::parse_str(user_id_str) {
-                        let audit_context = crate::services::audit_service::AuditContext::new(user_id);
-                        if let Err(e) = audit_service.log_event(
-                            &audit_context,
-                            crate::services::audit_service::AuditEvent::new(
-                                "payment_succeeded",
-                                "payment"
-                            )
-                            .with_entity_id(payment_intent.id.to_string())
-                            .with_metadata(serde_json::json!({
-                                "amount": payment_intent.amount,
-                                "currency": payment_intent.currency,
-                                "payment_type": payment_type,
-                                "event_id": event.id,
-                                "metered_billing": true,
-                                "handler": "payment_intent.succeeded"
-                            }))
-                        ).await {
-                            warn!("Failed to log payment success audit for user {}: {}", user_id, e);
+                // Log audit event for successful payment (excluding credit purchases, which have their own specific audit logging)
+                if payment_type != "credit_purchase" {
+                    if let Some(user_id_str) = payment_intent.metadata.get("user_id") {
+                        if let Ok(user_id) = Uuid::parse_str(user_id_str) {
+                            let audit_context = crate::services::audit_service::AuditContext::new(user_id);
+                            if let Err(e) = audit_service.log_event(
+                                &audit_context,
+                                crate::services::audit_service::AuditEvent::new(
+                                    "payment_succeeded",
+                                    "payment"
+                                )
+                                .with_entity_id(payment_intent.id.to_string())
+                                .with_metadata(serde_json::json!({
+                                    "amount": payment_intent.amount,
+                                    "currency": payment_intent.currency,
+                                    "payment_type": payment_type,
+                                    "event_id": event.id,
+                                    "handler": "payment_intent.succeeded"
+                                }))
+                            ).await {
+                                warn!("Failed to log payment success audit for user {}: {}", user_id, e);
+                            }
                         }
                     }
                 }
                 
-                // Handle different payment types for metered billing
                 match payment_type {
                     "credit_purchase" => {
-                        // Process one-time credit top-up - this is the primary use case for payment_intent.succeeded
-                        info!("METERED BILLING: Processing credit top-up for payment intent {}", payment_intent.id);
+                        let user_id_str = payment_intent.metadata.get("user_id").map(|v| v.as_str()).unwrap_or("unknown");
+                        let amount = payment_intent.metadata.get("amount")
+                            .or_else(|| payment_intent.metadata.get("credit_amount"))
+                            .map(|v| v.as_str()).unwrap_or("unknown");
+                        
+                        info!("Processing credit purchase for payment intent {} - user_id: {}, amount: {}", 
+                              payment_intent.id, user_id_str, amount);
+                        
                         match process_credit_purchase(payment_intent, billing_service, &email_service).await {
                             Ok(_) => {
-                                info!("METERED BILLING: Successfully processed credit top-up for payment intent {}", payment_intent.id);
+                                info!("Successfully processed credit purchase for payment intent {} - user_id: {}, amount: {}", 
+                                      payment_intent.id, user_id_str, amount);
                             },
                             Err(e) => {
-                                error!("METERED BILLING: Failed to process credit top-up for payment intent {}: {}", payment_intent.id, e);
+                                error!("Failed to process credit purchase for payment intent {} - user_id: {}, amount: {} - Error: {}", 
+                                       payment_intent.id, user_id_str, amount, e);
                                 crate::utils::admin_alerting::send_payment_processing_error_alert(
                                     &payment_intent.id.to_string(),
                                     &payment_intent.customer.as_ref()
@@ -335,21 +319,14 @@ async fn process_stripe_webhook_event(
                             }
                         }
                     },
-                    "subscription" => {
-                        // Subscription payments should NOT be handled here - they go through invoice.payment_succeeded
-                        info!("METERED BILLING: Subscription payment detected in payment_intent.succeeded for {} - delegating to invoice.payment_succeeded event handler", payment_intent.id);
-                        warn!("Payment intent {} marked as subscription type but processed through payment_intent.succeeded - this should be handled by invoice.payment_succeeded event", payment_intent.id);
-                    },
                     _ => {
-                        // Unknown payment type - try to process as credit purchase for backward compatibility
-                        warn!("METERED BILLING: Unknown payment type '{}' for payment intent {} - attempting credit purchase processing", payment_type, payment_intent.id);
+                        warn!("Unknown payment type '{}' for payment intent {} - attempting credit purchase processing", payment_type, payment_intent.id);
                         match process_credit_purchase(payment_intent, billing_service, &email_service).await {
                             Ok(_) => {
-                                info!("METERED BILLING: Successfully processed unknown payment type as credit top-up for payment intent {}", payment_intent.id);
+                                info!("Successfully processed unknown payment type as credit purchase for payment intent {}", payment_intent.id);
                             },
                             Err(e) => {
-                                warn!("METERED BILLING: Failed to process unknown payment type for payment intent {}: {} - continuing webhook processing", payment_intent.id, e);
-                                // Don't return error for unknown types to avoid webhook failures
+                                warn!("Failed to process unknown payment type for payment intent {}: {} - continuing webhook processing", payment_intent.id, e);
                             }
                         }
                     }
@@ -359,6 +336,35 @@ async fn process_stripe_webhook_event(
         "invoice.payment_succeeded" => {
             info!("Processing invoice payment succeeded: {}", event.id);
             if let stripe::EventObject::Invoice(invoice) = &event.data.object {
+                if let Some(subscription_id) = &invoice.subscription {
+                    let stripe_service = billing_service.get_stripe_service()?;
+                    let subscription = stripe_service.get_subscription(&subscription_id.id().to_string()).await
+                        .map_err(|e| AppError::External(format!("Failed to retrieve subscription: {}", e)))?;
+                    
+                    let customer_id = subscription.customer.id().to_string();
+                    let user_repo = crate::db::repositories::user_repository::UserRepository::new(billing_service.get_db_pool().clone());
+                    
+                    if let Ok(user) = user_repo.get_by_stripe_customer_id(&customer_id).await {
+                        let monthly_credits = BigDecimal::from_f64(10.0).unwrap_or_else(|| BigDecimal::from(10));
+                        match billing_service.get_credit_service().adjust_credits(
+                            &user.id,
+                            &monthly_credits,
+                            "Monthly subscription credits".to_string(),
+                            Some(serde_json::json!({
+                                "type": "subscription_grant",
+                                "subscription_id": subscription_id.id().to_string(),
+                                "invoice_id": invoice.id.to_string()
+                            }))
+                        ).await {
+                            Ok(_) => {
+                                info!("Granted monthly credits to user {} for subscription {}", user.id, subscription_id.id());
+                            },
+                            Err(e) => {
+                                error!("Failed to grant monthly credits to user {} for subscription {}: {}", user.id, subscription_id.id(), e);
+                            }
+                        }
+                    }
+                }
                 info!("Invoice payment succeeded for {} - webhook processing complete", invoice.id);
             }
         },
@@ -406,61 +412,66 @@ async fn process_credit_purchase(
     billing_service: &BillingService,
     email_service: &crate::services::email_notification_service::EmailNotificationService,
 ) -> Result<(), AppError> {
-    info!("METERED BILLING: Processing credit top-up for PaymentIntent: {}", payment_intent.id);
+    info!("Processing credit purchase for PaymentIntent: {}", payment_intent.id);
     
     // Check if this is a credit purchase by examining metadata
     let metadata = &payment_intent.metadata;
     let payment_type = metadata.get("type").map(|t| t.as_str()).unwrap_or("unknown");
     
-    // For metered billing, we need to be more lenient about payment types
-    // as this function might be called for various one-time payments
     if payment_type != "credit_purchase" {
-        // Try to determine if this could be a credit purchase based on other metadata
         if metadata.get("credit_amount").is_none() && metadata.get("amount").is_none() {
-            info!("METERED BILLING: PaymentIntent {} is not a credit top-up (type: {}), skipping credit processing", payment_intent.id, payment_type);
+            info!("PaymentIntent {} is not a credit purchase (type: {}), skipping credit processing", payment_intent.id, payment_type);
             return Ok(());
         }
-        warn!("METERED BILLING: PaymentIntent {} has type '{}' but appears to be a credit top-up, processing", payment_intent.id, payment_type);
+        warn!("PaymentIntent {} has type '{}' but appears to be a credit purchase, processing", payment_intent.id, payment_type);
     }
     
-    info!("METERED BILLING: PaymentIntent {} confirmed as credit top-up, processing", payment_intent.id);
+    info!("PaymentIntent {} confirmed as credit purchase, processing", payment_intent.id);
     
-    // Extract required metadata with robust validation and detailed logging
-    info!("METERED BILLING: Validating metadata for PaymentIntent {}: available keys: {:?}", 
+    info!("Validating metadata for PaymentIntent {}: available keys: {:?}", 
           payment_intent.id, metadata.keys().collect::<Vec<_>>());
     
     let user_id_str = match metadata.get("user_id").map(|v| v.as_str()) {
         Some(user_id) => {
-            info!("METERED BILLING: Found user_id in metadata for PaymentIntent {}: {}", payment_intent.id, user_id);
+            info!("Found user_id in metadata for PaymentIntent {}: {}", payment_intent.id, user_id);
             user_id
         },
         None => {
-            error!("METERED BILLING: Missing required metadata field 'user_id' in PaymentIntent {}. Available metadata keys: {:?}, full metadata: {:?}", 
+            error!("Missing required metadata field 'user_id' in PaymentIntent {}. Available metadata keys: {:?}, full metadata: {:?}", 
                    payment_intent.id, metadata.keys().collect::<Vec<_>>(), metadata);
             return Err(AppError::InvalidArgument("Missing required user_id in credit purchase metadata. This field is required to identify the user for credit top-up.".to_string()));
         }
     };
     
-    // Extract amount and currency from metadata with detailed validation logging
+    // Extract amount from metadata with enhanced validation and fallback logic
     let amount_str = match metadata.get("amount").map(|v| v.as_str()) {
         Some(amount) => {
-            info!("METERED BILLING: Found amount in metadata for PaymentIntent {}: {}", payment_intent.id, amount);
+            info!("Found amount in metadata for PaymentIntent {}: {}", payment_intent.id, amount);
             amount
         },
         None => {
-            error!("METERED BILLING: Missing required metadata field 'amount' in PaymentIntent {}. Available metadata keys: {:?}, full metadata: {:?}", 
-                   payment_intent.id, metadata.keys().collect::<Vec<_>>(), metadata);
-            return Err(AppError::InvalidArgument("Missing required amount in credit purchase metadata. This field specifies the credit amount to add to the user's account.".to_string()));
+            // Try to extract amount from credit_amount for backward compatibility
+            match metadata.get("credit_amount").map(|v| v.as_str()) {
+                Some(credit_amount) => {
+                    info!("Found credit_amount in metadata for PaymentIntent {} (fallback): {}", payment_intent.id, credit_amount);
+                    credit_amount
+                },
+                None => {
+                    error!("Missing required metadata field 'amount' or 'credit_amount' in PaymentIntent {}. Available metadata keys: {:?}, full metadata: {:?}", 
+                           payment_intent.id, metadata.keys().collect::<Vec<_>>(), metadata);
+                    return Err(AppError::InvalidArgument("Missing required amount in credit purchase metadata. This field specifies the credit amount to add to the user's account.".to_string()));
+                }
+            }
         }
     };
     
     let currency = match metadata.get("currency").map(|v| v.as_str()) {
         Some(currency) => {
-            info!("METERED BILLING: Found currency in metadata for PaymentIntent {}: {}", payment_intent.id, currency);
+            info!("Found currency in metadata for PaymentIntent {}: {}", payment_intent.id, currency);
             currency
         },
         None => {
-            error!("METERED BILLING: Missing required metadata field 'currency' in PaymentIntent {}. Available metadata keys: {:?}, full metadata: {:?}", 
+            error!("Missing required metadata field 'currency' in PaymentIntent {}. Available metadata keys: {:?}, full metadata: {:?}", 
                    payment_intent.id, metadata.keys().collect::<Vec<_>>(), metadata);
             return Err(AppError::InvalidArgument("Missing required currency in credit purchase metadata. This field specifies the currency for the credit purchase (must be USD).".to_string()));
         }
@@ -468,23 +479,23 @@ async fn process_credit_purchase(
     
     // Validate that the currency is USD with detailed logging
     if currency.to_uppercase() != "USD" {
-        error!("METERED BILLING: PaymentIntent {} uses unsupported currency: {}. Only USD is supported. Available metadata keys: {:?}, full metadata: {:?}", 
+        error!("PaymentIntent {} uses unsupported currency: {}. Only USD is supported. Available metadata keys: {:?}, full metadata: {:?}", 
                payment_intent.id, currency, metadata.keys().collect::<Vec<_>>(), metadata);
         return Err(AppError::InvalidArgument(
             format!("Only USD currency is supported for credit purchases, got: {}. Please ensure metadata includes currency='USD'.", currency)
         ));
     }
     
-    info!("METERED BILLING: All required metadata fields validated successfully for PaymentIntent {}", payment_intent.id);
+    info!("All required metadata fields validated successfully for PaymentIntent {}", payment_intent.id);
     
     // Parse and validate user_id UUID with enhanced logging
     let user_uuid = match Uuid::parse_str(user_id_str) {
         Ok(uuid) => {
-            info!("METERED BILLING: Successfully parsed user_id UUID for PaymentIntent {}: {}", payment_intent.id, uuid);
+            info!("Successfully parsed user_id UUID for PaymentIntent {}: {}", payment_intent.id, uuid);
             uuid
         },
         Err(e) => {
-            error!("METERED BILLING: Invalid user_id UUID format in PaymentIntent {}: '{}' - {}", payment_intent.id, user_id_str, e);
+            error!("Invalid user_id UUID format in PaymentIntent {}: '{}' - {}", payment_intent.id, user_id_str, e);
             return Err(AppError::InvalidArgument(format!("Invalid user_id UUID format '{}': {}. User ID must be a valid UUID.", user_id_str, e)));
         }
     };
@@ -498,7 +509,7 @@ async fn process_credit_purchase(
         }
     };
     
-    info!("METERED BILLING: Processing credit top-up for user {} with amount {} {} (payment type: {})", 
+    info!("Processing credit purchase for user {} with amount {} {} (payment type: {})", 
           user_uuid, amount, currency, payment_type);
     
     // Process credit purchase directly from amount
@@ -521,21 +532,25 @@ async fn process_credit_purchase(
         return Err(AppError::Payment("Currency mismatch".to_string()));
     }
     
+    // Create audit context for the credit purchase
+    let audit_context = AuditContext::new(user_uuid);
+    
     // Process the credit purchase using the credit service
     let updated_balance = match credit_service.process_credit_purchase_from_payment_intent(
         &user_uuid,
         &amount,
         currency,
         payment_intent,
+        &audit_context,
     ).await {
         Ok(balance) => balance,
         Err(e) => {
-            error!("METERED BILLING: Failed to process credit top-up for PaymentIntent {}: {}", payment_intent.id, e);
-            return Err(AppError::Payment(format!("Credit top-up processing failed: {}", e)));
+            error!("Failed to process credit purchase for PaymentIntent {}: {}", payment_intent.id, e);
+            return Err(AppError::Payment(format!("Credit purchase processing failed: {}", e)));
         }
     };
     
-    info!("METERED BILLING: Successfully processed credit top-up for PaymentIntent {}: user {} new balance: {}", 
+    info!("Successfully processed credit purchase for PaymentIntent {}: user {} new balance: {}", 
           payment_intent.id, user_uuid, updated_balance.balance);
     
     // Send success email notification
@@ -556,9 +571,9 @@ async fn process_credit_purchase(
             error!("Failed to send credit purchase notification for PaymentIntent {}: {}", payment_intent.id, e);
         });
         
-        info!("Sent credit top-up success email notification for user {} after PaymentIntent {}", user_uuid, payment_intent.id);
+        info!("Sent credit purchase success email notification for user {} after PaymentIntent {}", user_uuid, payment_intent.id);
     } else {
-        warn!("Could not find user {} to send credit top-up email notification for PaymentIntent {}", user_uuid, payment_intent.id);
+        warn!("Could not find user {} to send credit purchase email notification for PaymentIntent {}", user_uuid, payment_intent.id);
     }
     
     Ok(())

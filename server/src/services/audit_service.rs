@@ -14,7 +14,7 @@ use crate::db::repositories::audit_log_repository::{
 };
 
 /// High-level audit service for tracking subscription management operations
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct AuditService {
     audit_log_repository: Arc<AuditLogRepository>,
 }
@@ -825,6 +825,33 @@ impl AuditService {
         let event = AuditEvent::new("spending_limit_reset", "spending_limit")
             .with_entity_id(&user_id.to_string())
             .with_metadata(metadata)
+            .with_performed_by("stripe_webhook");
+
+        self.log_event(context, event).await
+    }
+
+    /// Log credit purchase success
+    pub async fn log_credit_purchase_succeeded(
+        &self,
+        context: &AuditContext,
+        payment_intent_id: &str,
+        amount: &bigdecimal::BigDecimal,
+        currency: &str,
+        metadata: serde_json::Value,
+    ) -> Result<AuditLog, AppError> {
+        let mut enhanced_metadata = metadata;
+        enhanced_metadata["amount"] = serde_json::Value::String(amount.to_string());
+        enhanced_metadata["currency"] = serde_json::Value::String(currency.to_string());
+        enhanced_metadata["action_timestamp"] = serde_json::Value::String(Utc::now().to_rfc3339());
+
+        let event = AuditEvent::new("credit_purchase_succeeded", "payment")
+            .with_entity_id(payment_intent_id)
+            .with_new_values(serde_json::json!({
+                "amount": amount.to_string(),
+                "currency": currency,
+                "status": "succeeded"
+            }))
+            .with_metadata(enhanced_metadata)
             .with_performed_by("stripe_webhook");
 
         self.log_event(context, event).await

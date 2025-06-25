@@ -138,9 +138,14 @@ pub async fn create_and_queue_background_job(
     };
     
     // Get the background job repository from app state
-    let repo = app_handle.state::<Arc<crate::db_utils::BackgroundJobRepository>>()
-        .inner()
-        .clone();
+    let repo = match app_handle.try_state::<Arc<crate::db_utils::BackgroundJobRepository>>() {
+        Some(repo) => repo.inner().clone(),
+        None => {
+            return Err(AppError::InitializationError(
+                "Background job repository not yet initialized. Please wait for app initialization to complete.".to_string()
+            ));
+        }
+    };
     
     // Save the job to the database
     repo.create_job(&job_to_save)

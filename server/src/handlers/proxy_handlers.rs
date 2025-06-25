@@ -1,7 +1,8 @@
 use actix_web::{web, HttpResponse};
 use serde_json::{json, Value};
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
+use crate::db::repositories::api_usage_repository::ApiUsageEntryDto;
 use tracing::{debug, error, info, instrument, warn};
 use uuid::{self, Uuid};
 use chrono;
@@ -21,6 +22,61 @@ use futures_util::{StreamExt, TryStreamExt, TryFutureExt};
 use serde::{Deserialize, Serialize};
 use base64::Engine;
 use actix_multipart::Multipart;
+
+/// Private struct to hold billing state for streaming requests
+struct StreamBillingState {
+    last_billed_tokens: (i32, i32),
+    total_cost: BigDecimal,
+}
+
+impl StreamBillingState {
+    fn new() -> Self {
+        Self {
+            last_billed_tokens: (0, 0),
+            total_cost: BigDecimal::from(0),
+        }
+    }
+}
+
+/// Centralized logic for handling chunk billing in streaming responses.
+/// Ensures accurate, incremental billing for streaming responses, correctly 
+/// handling costs for user-interrupted requests.
+async fn handle_chunk_billing(
+    state: &mut StreamBillingState,
+    current_tokens: (i32, i32),
+    user_id: uuid::Uuid,
+    model_id: String,
+    billing_service: Arc<BillingService>,
+    request_id: String,
+) -> Result<BigDecimal, crate::error::AppError> {
+    let (current_input, current_output) = current_tokens;
+    let delta_input = current_input - state.last_billed_tokens.0;
+    let delta_output = current_output - state.last_billed_tokens.1;
+    
+    if delta_input > 0 || delta_output > 0 {
+        let entry = ApiUsageEntryDto {
+            user_id,
+            service_name: model_id,
+            tokens_input: delta_input,
+            tokens_output: delta_output,
+            cost: BigDecimal::from(0),
+            request_id: Some(request_id),
+            metadata: None,
+            processing_ms: None,
+            input_duration_ms: None,
+        };
+        
+        let (delta_cost, _) = billing_service.get_credit_service()
+            .record_and_bill_api_usage(entry).await?;
+        
+        state.last_billed_tokens = (current_input, current_output);
+        state.total_cost = state.total_cost.clone() + delta_cost.clone();
+        
+        Ok(delta_cost)
+    } else {
+        Ok(BigDecimal::from(0))
+    }
+}
 
 #[derive(Deserialize, Serialize, Clone)]
 pub struct LlmCompletionRequest {
@@ -125,6 +181,8 @@ async fn handle_openai_request(
     billing_service: Arc<BillingService>,
 ) -> Result<HttpResponse, AppError> {
     let client = OpenAIClient::new(app_settings)?;
+    let request_id = uuid::Uuid::new_v4().to_string();
+    
     // Convert LlmCompletionRequest to Value for client conversion
     let payload_value = serde_json::to_value(&payload)?;
     let mut request = client.convert_to_chat_request(payload_value)?;
@@ -134,13 +192,22 @@ async fn handle_openai_request(
     
     let (response, _headers, tokens_input, tokens_output) = client.chat_completion(request).await?;
     
-    // Calculate cost and consume credits
-    let cost = billing_service.get_credit_service().calculate_cost(
-        &model.id,
+    // Create API usage entry and bill atomically
+    let entry = ApiUsageEntryDto {
+        user_id: *user_id,
+        service_name: model.id.clone(),
         tokens_input,
         tokens_output,
-    ).await?;
-    billing_service.get_credit_service().consume_credits(user_id, &cost).await?;
+        cost: BigDecimal::from(0), // Will be calculated by the service
+        request_id: Some(request_id),
+        metadata: None,
+        processing_ms: None,
+        input_duration_ms: None,
+    };
+    
+    let (cost, _api_usage_record) = billing_service.get_credit_service()
+        .record_and_bill_api_usage(entry)
+        .await?;
     
     // Convert to OpenRouter format for consistent client parsing with standardized usage
     let mut response_value = serde_json::to_value(response)?;
@@ -175,6 +242,9 @@ async fn handle_openai_streaming_request(
     
     let (headers, stream, _token_counter) = client.stream_chat_completion(request).await?;
     
+    let request_id = uuid::Uuid::new_v4().to_string();
+    let billing_state = Arc::new(Mutex::new(StreamBillingState::new()));
+    
     // Create a stream processor to track tokens and calculate cost
     let user_id_clone = *user_id;
     let model_clone = model.clone();
@@ -185,6 +255,8 @@ async fn handle_openai_streaming_request(
         let billing_service_inner = billing_service_clone.clone();
         let model_id = model_clone.id.clone();
         let user_id = user_id_clone;
+        let billing_state_clone = Arc::clone(&billing_state);
+        let request_id_clone = request_id.clone();
         
         async move {
             match chunk_result {
@@ -192,18 +264,20 @@ async fn handle_openai_streaming_request(
                     // Process chunk for token tracking
                     if let Ok(chunk_str) = std::str::from_utf8(&bytes) {
                         // Extract tokens if this is the final chunk with usage
-                        if let Some((tokens_input, tokens_output)) = OpenAIClient::extract_tokens_from_chat_stream_chunk(chunk_str) {
-                            // Calculate cost and consume credits
-                                                    if let Ok(cost) = billing_service_inner.get_credit_service().calculate_cost(
-                                &model_id,
-                                tokens_input,
-                                tokens_output,
+                        if let Some((current_input, current_output)) = OpenAIClient::extract_tokens_from_chat_stream_chunk(chunk_str) {
+                            let mut state = billing_state_clone.lock().unwrap();
+                            
+                            if let Ok(_delta_cost) = handle_chunk_billing(
+                                &mut state,
+                                (current_input, current_output),
+                                user_id,
+                                model_id.clone(),
+                                billing_service_inner.clone(),
+                                request_id_clone.clone(),
                             ).await {
-                                if billing_service_inner.get_credit_service().consume_credits(&user_id, &cost).await.is_ok() {
-                                    // Modify the chunk to include authoritative cost in usage
-                                    if let Ok(modified_chunk) = add_cost_to_openai_stream_chunk(chunk_str, &cost) {
-                                        return Ok(web::Bytes::from(modified_chunk));
-                                    }
+                                let total_cost_f64 = state.total_cost.to_string().parse::<f64>().unwrap_or(0.0);
+                                if let Ok(modified_chunk) = add_cost_to_openai_stream_chunk(chunk_str, &state.total_cost) {
+                                    return Ok(web::Bytes::from(modified_chunk));
                                 }
                             }
                         }
@@ -229,6 +303,8 @@ async fn handle_anthropic_request(
     billing_service: Arc<BillingService>,
 ) -> Result<HttpResponse, AppError> {
     let client = AnthropicClient::new(app_settings)?;
+    let request_id = uuid::Uuid::new_v4().to_string();
+    
     let mut request = client.convert_to_chat_request(payload)?;
     
     // Use the pre-computed API model ID
@@ -239,13 +315,22 @@ async fn handle_anthropic_request(
     // Extract token counts from response
     let (tokens_input, tokens_output) = client.extract_tokens_from_response(&response);
     
-    // Calculate cost and consume credits
-    let cost = billing_service.get_credit_service().calculate_cost(
-        &model.id,
+    // Create API usage entry and bill atomically
+    let entry = ApiUsageEntryDto {
+        user_id: *user_id,
+        service_name: model.id.clone(),
         tokens_input,
         tokens_output,
-    ).await?;
-    billing_service.get_credit_service().consume_credits(user_id, &cost).await?;
+        cost: BigDecimal::from(0), // Will be calculated by the service
+        request_id: Some(request_id),
+        metadata: None,
+        processing_ms: None,
+        input_duration_ms: None,
+    };
+    
+    let (cost, _api_usage_record) = billing_service.get_credit_service()
+        .record_and_bill_api_usage(entry)
+        .await?;
     
     // Transform Anthropic response to OpenRouter format for consistent client parsing
     let usage = OpenRouterUsage {
@@ -290,6 +375,9 @@ async fn handle_anthropic_streaming_request(
     
     let (_headers, stream) = client.stream_chat_completion(request, user_id.to_string()).await?;
     
+    let request_id = uuid::Uuid::new_v4().to_string();
+    let billing_state = Arc::new(Mutex::new(StreamBillingState::new()));
+    
     // Create a stream processor to track tokens and calculate cost
     let user_id_clone = *user_id;
     let model_clone = model.clone();
@@ -299,23 +387,27 @@ async fn handle_anthropic_streaming_request(
         let billing_service_inner = billing_service_clone.clone();
         let model_id = model_clone.id.clone();
         let user_id = user_id_clone;
+        let billing_state_clone = Arc::clone(&billing_state);
+        let request_id_clone = request_id.clone();
         
         async move {
             match chunk_result {
                 Ok(bytes) => {
                     if let Ok(chunk_str) = std::str::from_utf8(&bytes) {
-                        if let Some((tokens_input, tokens_output)) = AnthropicClient::extract_tokens_from_stream_chunk(chunk_str) {
-                            // Calculate cost and consume credits
-                                                    if let Ok(cost) = billing_service_inner.get_credit_service().calculate_cost(
-                                &model_id,
-                                tokens_input,
-                                tokens_output,
+                        if let Some((current_input, current_output)) = AnthropicClient::extract_tokens_from_stream_chunk(chunk_str) {
+                            let mut state = billing_state_clone.lock().unwrap();
+                            
+                            if let Ok(_delta_cost) = handle_chunk_billing(
+                                &mut state,
+                                (current_input, current_output),
+                                user_id,
+                                model_id.clone(),
+                                billing_service_inner.clone(),
+                                request_id_clone.clone(),
                             ).await {
-                                if billing_service_inner.get_credit_service().consume_credits(&user_id, &cost).await.is_ok() {
-                                    // Modify the chunk to include authoritative cost in usage
-                                    if let Ok(modified_chunk) = add_cost_to_anthropic_stream_chunk(chunk_str, &cost) {
-                                        return Ok(web::Bytes::from(modified_chunk));
-                                    }
+                                let total_cost_f64 = state.total_cost.to_string().parse::<f64>().unwrap_or(0.0);
+                                if let Ok(modified_chunk) = add_cost_to_anthropic_stream_chunk(chunk_str, &state.total_cost) {
+                                    return Ok(web::Bytes::from(modified_chunk));
                                 }
                             }
                         }
@@ -341,6 +433,8 @@ async fn handle_google_request(
     billing_service: Arc<BillingService>,
 ) -> Result<HttpResponse, AppError> {
     let client = GoogleClient::new(app_settings)?;
+    let request_id = uuid::Uuid::new_v4().to_string();
+    
     let request = client.convert_to_chat_request_with_capabilities(payload, Some(&model.capabilities))?;
     
     let (response, _headers) = client.chat_completion(request, &model.api_model_id, &user_id.to_string()).await?;
@@ -348,13 +442,22 @@ async fn handle_google_request(
     // Extract token counts from response
     let (tokens_input, tokens_output) = client.extract_tokens_from_response(&response);
     
-    // Calculate cost and consume credits
-    let cost = billing_service.get_credit_service().calculate_cost(
-        &model.id,
+    // Create API usage entry and bill atomically
+    let entry = ApiUsageEntryDto {
+        user_id: *user_id,
+        service_name: model.id.clone(),
         tokens_input,
         tokens_output,
-    ).await?;
-    billing_service.get_credit_service().consume_credits(user_id, &cost).await?;
+        cost: BigDecimal::from(0), // Will be calculated by the service
+        request_id: Some(request_id),
+        metadata: None,
+        processing_ms: None,
+        input_duration_ms: None,
+    };
+    
+    let (cost, _api_usage_record) = billing_service.get_credit_service()
+        .record_and_bill_api_usage(entry)
+        .await?;
     
     // Transform Google response to OpenRouter format for consistent client parsing
     let response_value = serde_json::to_value(&response)?;
@@ -401,6 +504,9 @@ async fn handle_google_streaming_request(
     
     let (headers, stream) = client.stream_chat_completion(request, model.api_model_id.clone(), user_id.to_string()).await?;
     
+    let request_id = uuid::Uuid::new_v4().to_string();
+    let billing_state = Arc::new(Mutex::new(StreamBillingState::new()));
+    
     // Create a stream processor to track tokens and calculate cost
     let user_id_clone = *user_id;
     let model_clone = model.clone();
@@ -412,6 +518,8 @@ async fn handle_google_streaming_request(
         let model_id = model_clone.id.clone();
         let user_id = user_id_clone;
         let model_id_for_chunk = model_id_for_response.clone();
+        let billing_state_clone = Arc::clone(&billing_state);
+        let request_id_clone = request_id.clone();
         
         async move {
             match chunk_result {
@@ -430,19 +538,21 @@ async fn handle_google_streaming_request(
                                         
                                         // Check if this chunk has usage data and get authoritative cost
                                         if let Some(ref mut usage) = openrouter_chunk.usage {
-                                            let tokens_input = usage.prompt_tokens;
-                                            let tokens_output = usage.completion_tokens;
+                                            let current_input = usage.prompt_tokens;
+                                            let current_output = usage.completion_tokens;
                                             
-                                            // Calculate cost and consume credits
-                                                                                    if let Ok(cost) = billing_service_inner.get_credit_service().calculate_cost(
-                                                &model_id,
-                                                tokens_input,
-                                                tokens_output,
+                                            let mut state = billing_state_clone.lock().unwrap();
+                                            
+                                            if let Ok(_delta_cost) = handle_chunk_billing(
+                                                &mut state,
+                                                (current_input, current_output),
+                                                user_id,
+                                                model_id.clone(),
+                                                billing_service_inner.clone(),
+                                                request_id_clone.clone(),
                                             ).await {
-                                                if billing_service_inner.get_credit_service().consume_credits(&user_id, &cost).await.is_ok() {
-                                                    // Set authoritative cost in usage
-                                                    usage.cost = Some(cost.to_string().parse::<f64>().unwrap_or(0.0));
-                                                }
+                                                let total_cost_f64 = state.total_cost.to_string().parse::<f64>().unwrap_or(0.0);
+                                                usage.cost = Some(total_cost_f64);
                                             }
                                         }
                                         
@@ -485,6 +595,8 @@ async fn handle_openrouter_request(
     billing_service: Arc<BillingService>,
 ) -> Result<HttpResponse, AppError> {
     let client = OpenRouterClient::new(app_settings)?;
+    let request_id = uuid::Uuid::new_v4().to_string();
+    
     let mut request = client.convert_to_chat_request(payload)?;
     
     request.model = model.api_model_id.clone();
@@ -494,13 +606,22 @@ async fn handle_openrouter_request(
     // Extract token counts from response (ignore OpenRouter's cost calculation)
     let (tokens_input, tokens_output) = client.extract_tokens_from_response(&response);
     
-    // Calculate cost and consume credits
-    let server_calculated_cost = billing_service.get_credit_service().calculate_cost(
-        &model.id,
+    // Create API usage entry and bill atomically
+    let entry = ApiUsageEntryDto {
+        user_id: *user_id,
+        service_name: model.id.clone(),
         tokens_input,
         tokens_output,
-    ).await?;
-    billing_service.get_credit_service().consume_credits(user_id, &server_calculated_cost).await?;
+        cost: BigDecimal::from(0), // Will be calculated by the service
+        request_id: Some(request_id),
+        metadata: None,
+        processing_ms: None,
+        input_duration_ms: None,
+    };
+    
+    let (cost, _api_usage_record) = billing_service.get_credit_service()
+        .record_and_bill_api_usage(entry)
+        .await?;
     
     // Replace OpenRouter's cost with server-calculated cost in response using standardized usage
     let mut response_value = serde_json::to_value(response)?;
@@ -509,7 +630,7 @@ async fn handle_openrouter_request(
             prompt_tokens: tokens_input,
             completion_tokens: tokens_output,
             total_tokens: tokens_input + tokens_output,
-            cost: Some(server_calculated_cost.to_string().parse::<f64>().unwrap_or(0.0)),
+            cost: Some(cost.to_string().parse::<f64>().unwrap_or(0.0)),
         };
         obj.insert("usage".to_string(), serde_json::to_value(usage)?);
     }
@@ -532,6 +653,9 @@ async fn handle_openrouter_streaming_request(
     
     let (_headers, stream) = client.stream_chat_completion(request, user_id.to_string()).await?;
     
+    let request_id = uuid::Uuid::new_v4().to_string();
+    let billing_state = Arc::new(Mutex::new(StreamBillingState::new()));
+    
     // Create a stream processor to intercept final chunk with usage data
     let user_id_clone = *user_id;
     let model_clone = model.clone();
@@ -541,24 +665,28 @@ async fn handle_openrouter_streaming_request(
         let billing_service_inner = billing_service_clone.clone();
         let model_id = model_clone.id.clone();
         let user_id = user_id_clone;
+        let billing_state_clone = Arc::clone(&billing_state);
+        let request_id_clone = request_id.clone();
         
         async move {
             match chunk_result {
                 Ok(bytes) => {
                     if let Ok(chunk_str) = std::str::from_utf8(&bytes) {
                         // Check if this chunk contains usage data (final chunk)
-                        if let Some((tokens_input, tokens_output)) = OpenRouterClient::extract_tokens_from_stream_chunk(chunk_str) {
-                            // Calculate cost and consume credits
-                                                    if let Ok(server_calculated_cost) = billing_service_inner.get_credit_service().calculate_cost(
-                                &model_id,
-                                tokens_input,
-                                tokens_output,
+                        if let Some((current_input, current_output)) = OpenRouterClient::extract_tokens_from_stream_chunk(chunk_str) {
+                            let mut state = billing_state_clone.lock().unwrap();
+                            
+                            if let Ok(_delta_cost) = handle_chunk_billing(
+                                &mut state,
+                                (current_input, current_output),
+                                user_id,
+                                model_id.clone(),
+                                billing_service_inner.clone(),
+                                request_id_clone.clone(),
                             ).await {
-                                if billing_service_inner.get_credit_service().consume_credits(&user_id, &server_calculated_cost).await.is_ok() {
-                                    // Replace OpenRouter's cost with server-calculated cost in the final chunk
-                                    if let Ok(modified_chunk) = replace_cost_in_openrouter_stream_chunk(chunk_str, &server_calculated_cost) {
-                                        return Ok(web::Bytes::from(modified_chunk));
-                                    }
+                                let total_cost_f64 = state.total_cost.to_string().parse::<f64>().unwrap_or(0.0);
+                                if let Ok(modified_chunk) = replace_cost_in_openrouter_stream_chunk(chunk_str, &state.total_cost) {
+                                    return Ok(web::Bytes::from(modified_chunk));
                                 }
                             }
                         }

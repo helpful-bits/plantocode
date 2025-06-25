@@ -110,48 +110,4 @@ pub async fn get_stripe_publishable_key(
 // PAYMENT METHOD MANAGEMENT HANDLERS
 // ========================================
 
-/// Set default payment method for a user
-#[post("/payment-methods/{payment_method_id}/set-default")]
-pub async fn set_default_payment_method(
-    billing_service: web::Data<BillingService>,
-    user_id: UserId,
-    path: web::Path<String>,
-) -> Result<HttpResponse, AppError> {
-    let payment_method_id = path.into_inner();
-    info!("Setting default payment method {} for user: {}", payment_method_id, user_id.0);
-
-    let customer = billing_service.set_default_payment_method(&user_id.0, &payment_method_id).await?;
-
-    let response = serde_json::json!({
-        "success": true,
-        "customerId": customer.id,
-        "defaultPaymentMethod": payment_method_id,
-        "message": "Default payment method updated successfully"
-    });
-
-    info!("Successfully set default payment method for user: {}", user_id.0);
-    Ok(HttpResponse::Ok().json(response))
-}
-
-/// Detach/remove a payment method from a user
-#[actix_web::delete("/payment-methods/{payment_method_id}")]
-pub async fn detach_payment_method(
-    billing_service: web::Data<BillingService>,
-    user_id: UserId,
-    path: web::Path<String>,
-) -> Result<HttpResponse, AppError> {
-    let payment_method_id = path.into_inner();
-    info!("Detaching payment method {} for user: {}", payment_method_id, user_id.0);
-
-    let payment_method = billing_service.detach_payment_method(&user_id.0, &payment_method_id).await?;
-
-    let response = serde_json::json!({
-        "success": true,
-        "paymentMethodId": payment_method.id,
-        "message": "Payment method removed successfully"
-    });
-
-    info!("Successfully detached payment method for user: {}", user_id.0);
-    Ok(HttpResponse::Ok().json(response))
-}
 

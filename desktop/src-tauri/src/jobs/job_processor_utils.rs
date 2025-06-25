@@ -22,27 +22,43 @@ use serde_json::Value;
 use std::str::FromStr;
 
 use crate::error::{AppError, AppResult};
-use crate::models::{TaskType, JobStatus, OpenRouterUsage};
-use crate::db_utils::{BackgroundJobRepository, SettingsRepository};
+use crate::models::{TaskType, JobStatus, OpenRouterUsage, Session};
+use crate::db_utils::{BackgroundJobRepository, SettingsRepository, SessionRepository};
 use crate::models::BackgroundJob;
 use crate::api_clients::client_factory;
 use crate::jobs::types::JobUIMetadata;
 use crate::utils::job_metadata_builder::JobMetadataBuilder;
 
 /// Setup repositories from app state and fetch the job, marking it as running
-/// Returns (background_job_repo, settings_repo, background_job)
+/// Returns (background_job_repo, session_repo, settings_repo, background_job)
 pub async fn setup_job_processing(
     job_id: &str,
     app_handle: &AppHandle,
-) -> AppResult<(Arc<BackgroundJobRepository>, Arc<SettingsRepository>, BackgroundJob)> {
-    let repo = app_handle
-        .state::<Arc<BackgroundJobRepository>>()
-        .inner()
-        .clone();
-    let settings_repo = app_handle
-        .state::<Arc<SettingsRepository>>()
-        .inner()
-        .clone();
+) -> AppResult<(Arc<BackgroundJobRepository>, Arc<SessionRepository>, Arc<SettingsRepository>, BackgroundJob)> {
+    let repo = match app_handle.try_state::<Arc<BackgroundJobRepository>>() {
+        Some(repo) => repo.inner().clone(),
+        None => {
+            return Err(AppError::InitializationError(
+                "BackgroundJobRepository not available in app state. App initialization may be incomplete.".to_string()
+            ));
+        }
+    };
+    let session_repo = match app_handle.try_state::<Arc<SessionRepository>>() {
+        Some(repo) => repo.inner().clone(),
+        None => {
+            return Err(AppError::InitializationError(
+                "SessionRepository not available in app state. App initialization may be incomplete.".to_string()
+            ));
+        }
+    };
+    let settings_repo = match app_handle.try_state::<Arc<SettingsRepository>>() {
+        Some(repo) => repo.inner().clone(),
+        None => {
+            return Err(AppError::InitializationError(
+                "SettingsRepository not available in app state. App initialization may be incomplete.".to_string()
+            ));
+        }
+    };
     
     // Fetch the job from database
     let background_job = repo
@@ -53,7 +69,7 @@ pub async fn setup_job_processing(
     // Update job status to running
     repo.mark_job_running(job_id).await?;
     
-    Ok((repo, settings_repo, background_job))
+    Ok((repo, session_repo, settings_repo, background_job))
 }
 
 /// Log job processing start with standardized format
@@ -278,4 +294,27 @@ pub async fn finalize_job_failure(
     
     error!("Job {} failed: {}", job_id, error_message);
     Ok(())
+}
+
+pub async fn get_llm_task_config(
+    job: &BackgroundJob,
+    app_handle: &AppHandle,
+    session: &crate::models::Session,
+) -> AppResult<(String, f32, u32)> {
+    let task_type = TaskType::from_str(&job.task_type)
+        .map_err(|_| AppError::ValidationError(format!("Invalid task type: {}", job.task_type)))?;
+    
+    let config = crate::utils::config_resolver::resolve_model_settings(
+        app_handle,
+        task_type,
+        &session.project_directory,
+        None,
+        None,
+        None,
+    ).await?;
+    
+    match config {
+        Some((model, temperature, max_tokens)) => Ok((model, temperature, max_tokens)),
+        None => Err(AppError::ConfigError(format!("Task {:?} does not require LLM configuration", task_type))),
+    }
 }

@@ -7,11 +7,10 @@ use crate::models::BackgroundJob;
 use crate::models::JobStatus;
 use crate::utils::get_timestamp;
 use crate::models::TaskType;
-use crate::db_utils::BackgroundJobRepository;
+use crate::db_utils::{BackgroundJobRepository, SessionRepository, SettingsRepository};
 use crate::error::{AppError, AppResult};
 use crate::models::JobCommandResponse;
 use crate::utils::unified_prompt_system::{UnifiedPromptProcessor, UnifiedPromptContextBuilder, ComposedPrompt as UnifiedComposedPrompt};
-use crate::db_utils::SettingsRepository;
 use crate::jobs::types::JobPayload;
 
 /// Request payload for the implementation plan generation command
@@ -71,6 +70,7 @@ pub async fn create_implementation_plan_command(
     let model_settings = crate::utils::config_resolver::resolve_model_settings(
         &app_handle,
         TaskType::ImplementationPlan,
+        &args.project_directory,
         args.model,
         args.temperature,
         args.max_tokens,
@@ -172,12 +172,19 @@ pub async fn estimate_prompt_tokens_command(
     let parsed_task_type = task_type.parse::<TaskType>()
         .map_err(|_| AppError::ValidationError(format!("Unsupported task type: {}", task_type)))?;
     
+    // Get session to access actual project directory
+    let background_job_repo = app_handle.state::<Arc<BackgroundJobRepository>>().inner().clone();
+    let session_repo = crate::db_utils::SessionRepository::new(background_job_repo.get_pool());
+    let session = session_repo.get_session_by_id(&session_id).await?
+        .ok_or_else(|| AppError::JobError(format!("Session {} not found", session_id)))?;
+    let actual_project_directory = &session.project_directory;
+    
     // Read file contents for relevant files
     let mut file_contents_map: std::collections::HashMap<String, String> = std::collections::HashMap::new();
     
     for relative_path_str in &relevant_files {
         // Construct full path
-        let full_path = std::path::Path::new(&project_directory).join(relative_path_str);
+        let full_path = std::path::Path::new(actual_project_directory).join(relative_path_str);
         
         // Read file content
         match crate::utils::fs_utils::read_file_to_string(&*full_path.to_string_lossy()).await {
@@ -197,7 +204,7 @@ pub async fn estimate_prompt_tokens_command(
     
     // Create unified prompt context
     let context = UnifiedPromptContextBuilder::new(
-        project_directory.clone(),
+        actual_project_directory.clone(),
         parsed_task_type,
         task_description.clone(),
     )
@@ -245,6 +252,13 @@ pub async fn get_prompt_command(
         return Err(AppError::ValidationError("Project directory is required".to_string()));
     }
     
+    // Get session to access actual project directory
+    let background_job_repo = app_handle.state::<Arc<BackgroundJobRepository>>().inner().clone();
+    let session_repo = SessionRepository::new(background_job_repo.get_pool());
+    let session = session_repo.get_session_by_id(&session_id).await?
+        .ok_or_else(|| AppError::JobError(format!("Session {} not found", session_id)))?;
+    let actual_project_directory = &session.project_directory;
+    
     // Parse task_type string into TaskType enum using the FromStr implementation
     let parsed_task_type = task_type.parse::<TaskType>()
         .map_err(|_| AppError::ValidationError(format!("Unsupported task type: {}", task_type)))?;
@@ -254,7 +268,7 @@ pub async fn get_prompt_command(
     
     for relative_path_str in &relevant_files {
         // Construct full path
-        let full_path = std::path::Path::new(&project_directory).join(relative_path_str);
+        let full_path = std::path::Path::new(actual_project_directory).join(relative_path_str);
         
         // Read file content
         match crate::utils::fs_utils::read_file_to_string(&*full_path.to_string_lossy()).await {
@@ -274,7 +288,7 @@ pub async fn get_prompt_command(
     
     // Create unified prompt context
     let context = UnifiedPromptContextBuilder::new(
-        project_directory.clone(),
+        actual_project_directory.clone(),
         parsed_task_type,
         task_description.clone(),
     )

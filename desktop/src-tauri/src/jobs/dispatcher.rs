@@ -59,7 +59,14 @@ pub async fn process_next_job(app_handle: AppHandle) -> AppResult<Option<JobProc
     info!("Processing job {} with task type {}", job_id, task_type);
     
     // Update job status to running
-    let background_job_repo = app_handle.state::<Arc<BackgroundJobRepository>>();
+    let background_job_repo = match app_handle.try_state::<Arc<BackgroundJobRepository>>() {
+        Some(repo) => repo,
+        None => {
+            return Err(AppError::InitializationError(
+                "BackgroundJobRepository not available in app state. App initialization may be incomplete.".to_string()
+            ));
+        }
+    };
     background_job_repo.mark_job_running(&job_id).await?;
     
     // Emit job status change event
@@ -722,7 +729,14 @@ async fn handle_workflow_job_completion(
     app_handle: &AppHandle,
 ) -> AppResult<()> {
     // Get the completed job from the database to check if it's part of a workflow
-    let background_job_repo = app_handle.state::<Arc<BackgroundJobRepository>>();
+    let background_job_repo = match app_handle.try_state::<Arc<BackgroundJobRepository>>() {
+        Some(repo) => repo,
+        None => {
+            return Err(AppError::InitializationError(
+                "BackgroundJobRepository not available in app state. App initialization may be incomplete.".to_string()
+            ));
+        }
+    };
     let job = match background_job_repo.get_job_by_id(job_id).await? {
         Some(job) => job,
         None => {

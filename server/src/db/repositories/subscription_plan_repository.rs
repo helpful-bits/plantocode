@@ -1,6 +1,6 @@
 use sqlx::{PgPool, query, postgres::PgRow, Row};
 use serde_json::Value;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, Serializer};
 use bigdecimal::{BigDecimal, ToPrimitive};
 use crate::error::AppError;
 
@@ -53,12 +53,14 @@ pub enum SupportLevel {
 }
 
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SubscriptionPlan {
     pub id: String,
     pub name: String,
     pub description: Option<String>,
     pub base_price_weekly: BigDecimal,
+    #[serde(serialize_with = "serialize_bigdecimal_as_f64")]
     pub base_price_monthly: BigDecimal,
     pub base_price_yearly: BigDecimal,
     pub currency: String,
@@ -117,9 +119,14 @@ impl SubscriptionPlan {
     pub fn get_monthly_price_float(&self) -> f64 {
         self.base_price_monthly.to_f64().unwrap_or(0.0)
     }
+}
 
-
-
+fn serialize_bigdecimal_as_f64<S>(value: &BigDecimal, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    let float_value = value.to_f64().unwrap_or(0.0);
+    serializer.serialize_f64(float_value)
 }
 
 #[derive(Debug)]

@@ -76,6 +76,7 @@ pub async fn generate_regex_patterns_command(
     let model_settings = crate::utils::config_resolver::resolve_model_settings(
         &app_handle,
         TaskType::RegexFileFilter,
+        &args.project_directory,
         args.model_override.clone(),
         args.temperature_override,
         args.max_tokens_override,

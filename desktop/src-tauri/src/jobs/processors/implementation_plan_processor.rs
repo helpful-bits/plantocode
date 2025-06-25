@@ -4,7 +4,6 @@ use log::{debug, info, warn, error};
 use serde_json::json;
 use tauri::AppHandle;
 
-use crate::utils::config_resolver;
 
 use crate::error::{AppError, AppResult};
 use crate::jobs::processor_trait::JobProcessor;
@@ -189,26 +188,14 @@ impl JobProcessor for ImplementationPlanProcessor {
         };
         
         // Setup job processing
-        let (repo, settings_repo, mut db_job) = job_processor_utils::setup_job_processing(&job.id, &app_handle).await?;
+        let (repo, session_repo, settings_repo, mut db_job) = job_processor_utils::setup_job_processing(&job.id, &app_handle).await?;
         
-        // Get project directory from session
-        let session = {
-            use crate::db_utils::SessionRepository;
-            let session_repo = SessionRepository::new(repo.get_pool());
-            session_repo.get_session_by_id(&job.session_id).await?
-                .ok_or_else(|| AppError::JobError(format!("Session {} not found", job.session_id)))?
-        };
+        // Get session object using the session repository
+        let session = session_repo.get_session_by_id(&job.session_id).await?
+            .ok_or_else(|| AppError::JobError(format!("Session {} not found", job.session_id)))?;
         
-        // Get model settings using centralized config resolution
-        let model_settings = config_resolver::resolve_model_settings(
-            &app_handle,
-            job.job_type,
-            None, // model_override
-            None, // temperature_override  
-            None, // max_tokens_override
-        ).await?
-        .ok_or_else(|| AppError::ConfigError(format!("Task {:?} requires LLM configuration", job.job_type)))?;
-
+        // Get model settings using project-aware configuration
+        let model_settings = job_processor_utils::get_llm_task_config(&db_job, &app_handle, &session).await?;
         let (model_used, temperature, max_output_tokens) = model_settings;
         let llm_client = crate::jobs::processors::utils::llm_api_utils::get_api_client(&app_handle)?;
         let job_id = job.id.clone();
@@ -431,7 +418,7 @@ impl JobProcessor for ImplementationPlanProcessor {
             .ok_or_else(|| AppError::JobError(format!("Job not found: {}", job.id)))?;
         
         // Get session name for better UI display
-        let session_name = crate::jobs::processors::utils::prompt_utils::get_session_name(&job.session_id, &app_handle).await.unwrap_or_else(|_| Some("Untitled Session".to_string())).unwrap_or_else(|| "Untitled Session".to_string());
+        let session_name = session.name;
             
         // Construct the additional_params specific to the implementation plan
         let mut impl_plan_additional_params = json!({

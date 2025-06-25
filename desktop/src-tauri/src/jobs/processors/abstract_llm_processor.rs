@@ -66,6 +66,10 @@ impl LlmTaskRunner {
         }
     }
 
+    pub fn get_config(&self) -> &LlmTaskConfig {
+        &self.config
+    }
+
     /// Execute a non-streaming LLM task with unified prompt building
     pub async fn execute_llm_task(
         &self,

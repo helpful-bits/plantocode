@@ -19,6 +19,7 @@ pub struct CreditTransaction {
     pub related_api_usage_id: Option<Uuid>,
     pub metadata: Option<JsonValue>,
     pub created_at: Option<DateTime<Utc>>,
+    pub balance_after: BigDecimal,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -49,6 +50,7 @@ impl CreditTransactionRepository {
     pub async fn create_transaction_with_executor(
         &self,
         transaction: &CreditTransaction,
+        balance_after: &BigDecimal,
         executor: &mut sqlx::Transaction<'_, sqlx::Postgres>
     ) -> Result<CreditTransaction, AppError> {
         let result = sqlx::query_as!(
@@ -56,11 +58,11 @@ impl CreditTransactionRepository {
             r#"
             INSERT INTO credit_transactions 
             (id, user_id, transaction_type, amount, currency, description, 
-             stripe_charge_id, related_api_usage_id, metadata, created_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+             stripe_charge_id, related_api_usage_id, metadata, balance_after, created_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
             RETURNING id, user_id, transaction_type, amount, currency, 
                       description, stripe_charge_id, related_api_usage_id, 
-                      metadata, created_at
+                      metadata, created_at, balance_after
             "#,
             transaction.id,
             transaction.user_id,
@@ -70,7 +72,8 @@ impl CreditTransactionRepository {
             transaction.description,
             transaction.stripe_charge_id,
             transaction.related_api_usage_id,
-            transaction.metadata
+            transaction.metadata,
+            balance_after
         )
         .fetch_one(&mut **executor)
         .await
@@ -92,7 +95,7 @@ impl CreditTransactionRepository {
             r#"
             SELECT id, user_id, transaction_type, amount, currency, 
                    description, stripe_charge_id, related_api_usage_id, 
-                   metadata, created_at
+                   metadata, created_at, balance_after
             FROM credit_transactions 
             WHERE user_id = $1
             ORDER BY created_at DESC
@@ -122,7 +125,7 @@ impl CreditTransactionRepository {
             r#"
             SELECT id, user_id, transaction_type, amount, currency, 
                    description, stripe_charge_id, related_api_usage_id, 
-                   metadata, created_at
+                   metadata, created_at, balance_after
             FROM credit_transactions 
             WHERE user_id = $1 AND transaction_type = $2
             ORDER BY created_at DESC
@@ -183,7 +186,7 @@ impl CreditTransactionRepository {
             r#"
             SELECT id, user_id, transaction_type, amount, currency, 
                    description, stripe_charge_id, related_api_usage_id, 
-                   metadata, created_at
+                   metadata, created_at, balance_after
             FROM credit_transactions 
             WHERE id = $1 AND user_id = $2
             "#,
@@ -209,7 +212,7 @@ impl CreditTransactionRepository {
             r#"
             SELECT id, user_id, transaction_type, amount, currency, 
                    description, stripe_charge_id, related_api_usage_id, 
-                   metadata, created_at
+                   metadata, created_at, balance_after
             FROM credit_transactions 
             WHERE user_id = $1
             ORDER BY created_at DESC
@@ -281,7 +284,7 @@ impl CreditTransactionRepository {
             r#"
             SELECT id, user_id, transaction_type, amount, currency, 
                    description, stripe_charge_id, related_api_usage_id, 
-                   metadata, created_at
+                   metadata, created_at, balance_after
             FROM credit_transactions 
             WHERE stripe_charge_id = $1
             ORDER BY created_at DESC
@@ -307,7 +310,7 @@ impl CreditTransactionRepository {
             r#"
             SELECT id, user_id, transaction_type, amount, currency, 
                    description, stripe_charge_id, related_api_usage_id, 
-                   metadata, created_at
+                   metadata, created_at, balance_after
             FROM credit_transactions 
             WHERE related_api_usage_id = $1 AND user_id = $2
             ORDER BY created_at DESC
@@ -330,6 +333,7 @@ impl CreditTransactionRepository {
         amount: &BigDecimal,
         api_usage_id: &Uuid,
         description: Option<String>,
+        balance_after: &BigDecimal,
         executor: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     ) -> Result<CreditTransaction, AppError> {
         let transaction = CreditTransaction {
@@ -343,8 +347,9 @@ impl CreditTransactionRepository {
             related_api_usage_id: Some(*api_usage_id),
             metadata: None,
             created_at: None, // Will be set in the database
+            balance_after: balance_after.clone(),
         };
 
-        self.create_transaction_with_executor(&transaction, executor).await
+        self.create_transaction_with_executor(&transaction, balance_after, executor).await
     }
 }

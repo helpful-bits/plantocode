@@ -1,29 +1,15 @@
 import { invoke } from '@tauri-apps/api/core';
 import type { 
-  CreditBalanceResponse,
+  CreditDetailsResponse,
   CreditHistoryResponse,
   CreditTransactionEntry
 } from '@/types/tauri-commands';
 
-export interface CreditPack {
-  id: string;
-  name: string;
-  valueCredits: number;
-  priceAmount: number;
-  currency: string;
-  description?: string;
-  recommended: boolean;
-  bonusPercentage?: number;
-  isPopular?: boolean;
-  isActive: boolean;
-  displayOrder: number;
-  stripePriceId: string;
-}
 
 export type { CreditHistoryResponse, CreditTransactionEntry };
 
-export async function getCreditDetails(): Promise<CreditBalanceResponse> {
-  return await invoke<CreditBalanceResponse>('get_credit_balance_command');
+export async function getCreditDetails(): Promise<CreditDetailsResponse> {
+  return await invoke<CreditDetailsResponse>('get_credit_details_command');
 }
 
 export async function getCreditHistory(
@@ -36,6 +22,3 @@ export async function getCreditHistory(
   });
 }
 
-export async function getCreditPacks(): Promise<CreditPack[]> {
-  return await invoke<CreditPack[]>('get_credit_packs_command');
-}

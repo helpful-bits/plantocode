@@ -14,8 +14,22 @@ pub(super) async fn create_abstract_stage_payload(
     workflow_definition: &WorkflowDefinition
 ) -> AppResult<JobPayload> {
     let task_type = stage_definition.task_type;
-    let repo = app_handle.state::<std::sync::Arc<crate::db_utils::BackgroundJobRepository>>().inner().clone();
-    let settings_repo = app_handle.state::<std::sync::Arc<crate::db_utils::SettingsRepository>>().inner().clone();
+    let repo = match app_handle.try_state::<std::sync::Arc<crate::db_utils::BackgroundJobRepository>>() {
+        Some(repo) => repo.inner().clone(),
+        None => {
+            return Err(AppError::InitializationError(
+                "Background job repository not yet initialized. Please wait for app initialization to complete.".to_string()
+            ));
+        }
+    };
+    let settings_repo = match app_handle.try_state::<std::sync::Arc<crate::db_utils::SettingsRepository>>() {
+        Some(repo) => repo.inner().clone(),
+        None => {
+            return Err(AppError::InitializationError(
+                "Settings repository not yet initialized. Please wait for app initialization to complete.".to_string()
+            ));
+        }
+    };
 
     match task_type {
         TaskType::RegexFileFilter => {

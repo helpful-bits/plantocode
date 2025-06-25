@@ -143,20 +143,32 @@ impl UserCreditRepository {
         user_id: &Uuid,
         executor: &mut sqlx::Transaction<'_, sqlx::Postgres>
     ) -> Result<UserCredit, AppError> {
-        let result = sqlx::query_as!(
-            UserCredit,
+        // First try to insert, ignore if already exists
+        sqlx::query!(
             r#"
             INSERT INTO user_credits (user_id, balance, currency, created_at, updated_at)
             VALUES ($1, 0.0000, 'USD', NOW(), NOW())
-            ON CONFLICT (user_id, currency) 
-            DO UPDATE SET updated_at = NOW()
-            RETURNING user_id, balance, currency, created_at, updated_at
+            ON CONFLICT (user_id) DO NOTHING
+            "#,
+            user_id
+        )
+        .execute(&mut **executor)
+        .await
+        .map_err(|e| AppError::Database(format!("Failed to insert user credit record: {}", e)))?;
+
+        // Then select the record
+        let result = sqlx::query_as!(
+            UserCredit,
+            r#"
+            SELECT user_id, balance, currency, created_at, updated_at
+            FROM user_credits 
+            WHERE user_id = $1
             "#,
             user_id
         )
         .fetch_one(&mut **executor)
         .await
-        .map_err(|e| AppError::Database(format!("Failed to ensure user credit record exists: {}", e)))?;
+        .map_err(|e| AppError::Database(format!("Failed to select user credit record: {}", e)))?;
 
         Ok(result)
     }

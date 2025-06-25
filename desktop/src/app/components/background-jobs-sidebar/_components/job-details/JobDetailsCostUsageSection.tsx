@@ -29,7 +29,7 @@ export function JobDetailsCostUsageSection() {
   const outputTokens = job.tokensReceived || 0;
   const totalTokens = (inputTokens + outputTokens);
   
-  // Get cost from server-provided data only
+  // Always use the server-authoritative 'actualCost' for display to ensure consistency with billing.
   const jobCost = job.actualCost;
 
   return (

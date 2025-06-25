@@ -52,13 +52,20 @@ The server exposes the following proxy endpoints:
 
 ## Usage Tracking
 
+The server implements a centralized, server-authoritative usage tracking mechanism for all API calls. For both streaming and non-streaming requests, the server calculates the final cost based on:
+
+- Token counts reported by the AI service provider
+- Pricing models stored in the application's database
+
+For streaming requests, this calculation happens incrementally as tokens are received. If a user cancels a streaming request, they are only billed for tokens processed up to the point of cancellation.
+
 Each API request is tracked in the `api_usage` table with:
 
 - `user_id`: The ID of the user making the request
 - `service_name`: The API service being used (e.g., "openai/gpt-4o-transcribe", "anthropic/claude-4-sonnet")
-- `tokens_input`: Number of input tokens used
-- `tokens_output`: Number of output tokens generated
-- `cost`: Calculated cost of the request
+- `tokens_input`: Number of input tokens used (as reported by the provider)
+- `tokens_output`: Number of output tokens generated (as reported by the provider)
+- `cost`: Server-calculated cost based on provider token counts and database pricing models
 - `timestamp`: When the request was made
 - `input_duration_ms`: Duration of audio input in milliseconds (for transcription services)
 

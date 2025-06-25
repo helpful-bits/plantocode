@@ -57,6 +57,7 @@ pub struct AuditLogFilter {
     pub date_to: Option<DateTime<Utc>>,
 }
 
+#[derive(Debug)]
 pub struct AuditLogRepository {
     pool: PgPool,
 }

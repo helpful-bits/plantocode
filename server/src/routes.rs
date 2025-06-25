@@ -20,25 +20,24 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig, strict_rate_limiter: RateL
         web::scope("/billing")
             // Dashboard route
             .route("/dashboard", web::get().to(handlers::billing::dashboard_handler::get_billing_dashboard_data_handler))
-            // Detailed usage route
-            .route("/detailed-usage", web::get().to(handlers::billing::dashboard_handler::get_detailed_usage))
             // Subscription management routes
             .service(handlers::billing::subscription_handlers::get_available_plans)
             .service(handlers::billing::subscription_handlers::get_current_plan)
             .service(handlers::billing::subscription_handlers::get_usage_summary)
+            .service(handlers::billing::subscription_handlers::get_detailed_usage)
+            // Auto top-off settings routes
+            .service(handlers::billing::subscription_handlers::get_auto_top_off_settings_handler)
+            .service(handlers::billing::subscription_handlers::update_auto_top_off_settings_handler)
             // Payment and billing portal routes
             .service(handlers::billing::payment_handlers::create_billing_portal_session)
             .service(handlers::billing::payment_handlers::get_payment_methods)
             .service(handlers::billing::payment_handlers::get_stripe_publishable_key)
-            // Payment method management routes
-            .service(handlers::billing::payment_handlers::set_default_payment_method)
-            .service(handlers::billing::payment_handlers::detach_payment_method)
             // Invoice management routes
             .service(handlers::billing::invoice_handlers::list_invoices)
             // Stripe Checkout routes (/api/billing/checkout/*)
             .service(
                 web::scope("/checkout")
-                    .service(handlers::billing::checkout_handlers::create_credit_checkout_session_handler)
+                    .service(handlers::billing::checkout_handlers::create_custom_credit_checkout_session_handler)
                     .service(handlers::billing::checkout_handlers::create_subscription_checkout_session_handler)
                     .service(handlers::billing::checkout_handlers::create_setup_checkout_session_handler)
                     .service(handlers::billing::checkout_handlers::get_checkout_session_status_handler)
@@ -47,7 +46,6 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig, strict_rate_limiter: RateL
             .service(
                 web::scope("/credits")
                     .service(handlers::billing::credit_handlers::get_credit_balance)
-                    .service(handlers::billing::credit_handlers::get_available_credit_packs)
                     .route("/details", web::get().to(handlers::billing::credit_handlers::get_credit_details))
                     .route("/transaction-history", web::get().to(handlers::billing::credit_handlers::get_credit_transaction_history))
                     .route("/admin/adjust", web::post().to(handlers::billing::credit_handlers::admin_adjust_credits))

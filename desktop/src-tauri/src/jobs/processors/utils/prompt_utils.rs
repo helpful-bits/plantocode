@@ -17,10 +17,14 @@ pub async fn get_session_name(
     session_id: &str,
     app_handle: &AppHandle,
 ) -> AppResult<Option<String>> {
-    let session_repo = app_handle
-        .state::<Arc<SessionRepository>>()
-        .inner()
-        .clone();
+    let session_repo = match app_handle.try_state::<Arc<SessionRepository>>() {
+        Some(repo) => repo.inner().clone(),
+        None => {
+            return Err(AppError::InitializationError(
+                "SessionRepository not available in app state. App initialization may be incomplete.".to_string()
+            ));
+        }
+    };
     
     if let Some(session) = session_repo.get_session_by_id(session_id).await? {
         Ok(Some(session.name))
@@ -34,10 +38,14 @@ pub async fn get_project_directory_from_session(
     session_id: &str,
     app_handle: &AppHandle,
 ) -> AppResult<String> {
-    let session_repo = app_handle
-        .state::<Arc<SessionRepository>>()
-        .inner()
-        .clone();
+    let session_repo = match app_handle.try_state::<Arc<SessionRepository>>() {
+        Some(repo) => repo.inner().clone(),
+        None => {
+            return Err(AppError::InitializationError(
+                "SessionRepository not available in app state. App initialization may be incomplete.".to_string()
+            ));
+        }
+    };
     
     if let Some(session) = session_repo.get_session_by_id(session_id).await? {
         Ok(session.project_directory)

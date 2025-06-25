@@ -1,6 +1,7 @@
 use uuid::Uuid;
 use sqlx::{PgPool, query, query_as};
 use chrono::{DateTime, Utc};
+use bigdecimal::BigDecimal;
 use crate::error::AppError;
 use std::sync::Arc;
 
@@ -23,6 +24,10 @@ pub struct Subscription {
     pub trial_start: Option<DateTime<Utc>>,
     pub trial_end: Option<DateTime<Utc>>,
     pub pending_plan_id: Option<String>,
+    // Auto top-off settings
+    pub auto_top_off_enabled: bool,
+    pub auto_top_off_threshold: Option<BigDecimal>,
+    pub auto_top_off_amount: Option<BigDecimal>,
 }
 
 #[derive(Debug)]
@@ -123,6 +128,7 @@ impl SubscriptionRepository {
                    cancel_at_period_end,
                    stripe_plan_id, current_period_start, current_period_end,
                    trial_start, trial_end, pending_plan_id,
+                   auto_top_off_enabled, auto_top_off_threshold, auto_top_off_amount,
                    created_at, updated_at
             FROM subscriptions
             WHERE id = $1
@@ -147,6 +153,7 @@ impl SubscriptionRepository {
                    cancel_at_period_end,
                    stripe_plan_id, current_period_start, current_period_end,
                    trial_start, trial_end, pending_plan_id,
+                   auto_top_off_enabled, auto_top_off_threshold, auto_top_off_amount,
                    created_at, updated_at
             FROM subscriptions
             WHERE id = $1
@@ -182,6 +189,7 @@ impl SubscriptionRepository {
                    cancel_at_period_end,
                    stripe_plan_id, current_period_start, current_period_end,
                    trial_start, trial_end, pending_plan_id,
+                   auto_top_off_enabled, auto_top_off_threshold, auto_top_off_amount,
                    created_at, updated_at
             FROM subscriptions
             WHERE user_id = $1
@@ -209,6 +217,7 @@ impl SubscriptionRepository {
                    cancel_at_period_end,
                    stripe_plan_id, current_period_start, current_period_end,
                    trial_start, trial_end, pending_plan_id,
+                   auto_top_off_enabled, auto_top_off_threshold, auto_top_off_amount,
                    created_at, updated_at
             FROM subscriptions
             WHERE stripe_subscription_id = $1
@@ -251,8 +260,11 @@ impl SubscriptionRepository {
                 trial_start = $9,
                 trial_end = $10,
                 pending_plan_id = $11,
+                auto_top_off_enabled = $12,
+                auto_top_off_threshold = $13,
+                auto_top_off_amount = $14,
                 updated_at = now()
-            WHERE id = $12
+            WHERE id = $15
             "#,
             subscription.stripe_customer_id,
             subscription.stripe_subscription_id,
@@ -265,6 +277,9 @@ impl SubscriptionRepository {
             subscription.trial_start,
             subscription.trial_end,
             subscription.pending_plan_id,
+            subscription.auto_top_off_enabled,
+            subscription.auto_top_off_threshold,
+            subscription.auto_top_off_amount,
             subscription.id
         )
         .execute(&mut **executor)

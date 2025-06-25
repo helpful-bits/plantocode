@@ -38,6 +38,12 @@ pub async fn run_async_initialization(app_handle: &AppHandle) -> Result<(), AppE
         error!("API client initialization failed: {}", e);
         return Err(e);
     }
+
+    // Initialize system prompts
+    if let Err(e) = services::initialize_system_prompts(app_handle).await {
+        error!("System prompts initialization failed: {}", e);
+        return Err(e);
+    }
     
     // Initialize backup service
     if let Err(e) = services::initialize_backup_service(app_handle).await {

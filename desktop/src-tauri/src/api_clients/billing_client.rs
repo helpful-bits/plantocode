@@ -6,7 +6,7 @@ use crate::commands::billing_commands::{
     CreditBalanceResponse, CreditHistoryResponse,
     CreditStats,
     PaymentMethodsResponse, PaymentMethod, PaymentMethodCard,
-    BillingDashboardData, CreditPack
+    BillingDashboardData
 };
 use crate::models::ListInvoicesResponse;
 use serde::{Deserialize, Serialize};
@@ -19,22 +19,6 @@ pub struct CheckoutSessionResponse {
 }
 
 
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ServerCreditPack {
-    pub id: String,
-    pub name: String,
-    pub value_credits: f64,
-    pub price_amount: f64,
-    pub currency: String,
-    pub description: Option<String>,
-    pub recommended: bool,
-    pub bonus_percentage: Option<f64>,
-    pub is_popular: Option<bool>,
-    pub is_active: bool,
-    pub display_order: i32,
-    pub stripe_price_id: String,
-}
 use reqwest::Client;
 
 // Server-side payment method structures for robust deserialization
@@ -67,6 +51,7 @@ pub struct ServerPaymentMethodsResponse {
 }
 use std::sync::Arc;
 use log::{debug, error, info};
+use crate::commands::billing_commands::{AutoTopOffSettings, UpdateAutoTopOffRequest};
 
 /// Dedicated client for handling billing-related API calls
 pub struct BillingClient {
@@ -286,37 +271,6 @@ impl BillingClient {
     }
 
 
-    /// Get available credit packs
-    pub async fn get_available_credit_packs(&self) -> Result<Vec<CreditPack>, AppError> {
-        debug!("Getting available credit packs via BillingClient");
-        
-        let server_packs: Vec<ServerCreditPack> = self.make_authenticated_request(
-            "GET",
-            "/api/billing/credits/packs",
-            None,
-        ).await?;
-        
-        let credit_packs: Vec<CreditPack> = server_packs
-            .into_iter()
-            .map(|server_pack| CreditPack {
-                id: server_pack.id,
-                name: server_pack.name,
-                value_credits: server_pack.value_credits,
-                price_amount: server_pack.price_amount,
-                currency: server_pack.currency,
-                description: server_pack.description,
-                recommended: server_pack.recommended,
-                bonus_percentage: server_pack.bonus_percentage,
-                is_popular: server_pack.is_popular,
-                is_active: server_pack.is_active,
-                display_order: server_pack.display_order,
-                stripe_price_id: server_pack.stripe_price_id,
-            })
-            .collect();
-        
-        info!("Successfully retrieved available credit packs");
-        Ok(credit_packs)
-    }
 
     /// Get current credit balance
     pub async fn get_credit_balance(&self) -> Result<CreditBalanceResponse, AppError> {
@@ -388,12 +342,12 @@ impl BillingClient {
     /// Create a checkout session for credit purchase
     pub async fn create_credit_checkout_session(
         &self,
-        credit_pack_id: &str,
+        amount: f64,
     ) -> Result<CheckoutSessionResponse, AppError> {
-        debug!("Creating checkout session for credit pack: {}", credit_pack_id);
+        debug!("Creating checkout session for credit amount: {}", amount);
         
         let request_body = serde_json::json!({
-            "creditPackId": credit_pack_id
+            "amount": amount
         });
         
         let response: CheckoutSessionResponse = self.make_authenticated_request(
@@ -445,17 +399,17 @@ impl BillingClient {
 
     /// Confirm checkout session status
     pub async fn confirm_checkout_session(&self, session_id: &str) -> Result<serde_json::Value, AppError> {
-        debug!("Confirming checkout session status for: {}", session_id);
+        debug!("Getting checkout session status for: {}", session_id);
         
         let endpoint = format!("/api/billing/checkout/session-status/{}", session_id);
         
         let status = self.make_authenticated_request(
-            "POST",
+            "GET",
             &endpoint,
             None,
         ).await?;
         
-        info!("Successfully confirmed checkout session status");
+        info!("Successfully retrieved checkout session status");
         Ok(status)
     }
 
@@ -499,37 +453,7 @@ impl BillingClient {
     // PAYMENT METHOD MANAGEMENT
     // ========================================
 
-    /// Set default payment method for the user
-    pub async fn set_default_payment_method(&self, payment_method_id: &str) -> Result<serde_json::Value, AppError> {
-        debug!("Setting default payment method: {}", payment_method_id);
-        
-        let endpoint = format!("/api/billing/payment-methods/{}/set-default", payment_method_id);
-        
-        let result = self.make_authenticated_request(
-            "POST",
-            &endpoint,
-            None,
-        ).await?;
-        
-        info!("Successfully set default payment method");
-        Ok(result)
-    }
 
-    /// Detach payment method from the user
-    pub async fn detach_payment_method(&self, payment_method_id: &str) -> Result<serde_json::Value, AppError> {
-        debug!("Detaching payment method: {}", payment_method_id);
-        
-        let endpoint = format!("/api/billing/payment-methods/{}", payment_method_id);
-        
-        let result = self.make_authenticated_request(
-            "DELETE",
-            &endpoint,
-            None,
-        ).await?;
-        
-        info!("Successfully detached payment method");
-        Ok(result)
-    }
 
     /// List invoices with optional pagination
     pub async fn list_invoices(
@@ -555,6 +479,44 @@ impl BillingClient {
         
         info!("Successfully retrieved {} invoices", response.invoices.len());
         Ok(response)
+    }
+
+    // ========================================
+    // AUTO TOP-OFF METHODS
+    // ========================================
+
+    /// Get auto top-off settings for the user
+    pub async fn get_auto_top_off_settings(&self) -> Result<AutoTopOffSettings, AppError> {
+        debug!("Getting auto top-off settings via BillingClient");
+        
+        let settings = self.make_authenticated_request(
+            "GET",
+            "/api/billing/auto-top-off-settings",
+            None,
+        ).await?;
+        
+        info!("Successfully retrieved auto top-off settings");
+        Ok(settings)
+    }
+
+    /// Update auto top-off settings for the user
+    pub async fn update_auto_top_off_settings(&self, request: &UpdateAutoTopOffRequest) -> Result<AutoTopOffSettings, AppError> {
+        debug!("Updating auto top-off settings via BillingClient");
+        
+        let request_body = serde_json::json!({
+            "enabled": request.enabled,
+            "threshold": request.threshold,
+            "amount": request.amount
+        });
+        
+        let settings = self.make_authenticated_request(
+            "POST",
+            "/api/billing/auto-top-off-settings",
+            Some(request_body),
+        ).await?;
+        
+        info!("Successfully updated auto top-off settings");
+        Ok(settings)
     }
 
 }

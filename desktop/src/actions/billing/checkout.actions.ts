@@ -6,10 +6,10 @@ export interface CheckoutSessionResponse {
 }
 
 export async function createCreditCheckoutSession(
-  packId: string
+  amount: number
 ): Promise<CheckoutSessionResponse> {
   return await invoke<CheckoutSessionResponse>('create_credit_checkout_session_command', {
-    creditPackId: packId,
+    amount,
   });
 }
 
@@ -24,8 +24,14 @@ export async function createSetupCheckoutSession(): Promise<CheckoutSessionRespo
 }
 
 
-export async function getCheckoutSessionStatus(sessionId: string): Promise<any> {
-  return await invoke<any>('get_checkout_session_status_command', {
+export interface CheckoutSessionStatusResponse {
+  status: string;
+  paymentStatus: string;
+  customerEmail?: string;
+}
+
+export async function getCheckoutSessionStatus(sessionId: string): Promise<CheckoutSessionStatusResponse> {
+  return await invoke<CheckoutSessionStatusResponse>('get_checkout_session_status_command', {
     sessionId,
   });
 }

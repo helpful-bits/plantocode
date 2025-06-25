@@ -37,6 +37,11 @@ export enum ErrorType {
   CHECKOUT_ERROR = "CHECKOUT_ERROR",
   PAYMENT_REQUIRED = "PAYMENT_REQUIRED",
   PAYMENT_ERROR = "PAYMENT_ERROR",
+  // Auto top-off and credit management errors
+  AUTO_TOP_OFF_FAILED = "AUTO_TOP_OFF_FAILED",
+  INVALID_CREDIT_AMOUNT = "INVALID_CREDIT_AMOUNT",
+  PAYMENT_SETUP_REQUIRED = "PAYMENT_SETUP_REQUIRED",
+  CREDIT_LIMIT_EXCEEDED = "CREDIT_LIMIT_EXCEEDED",
 }
 
 
@@ -514,6 +519,18 @@ function applyContextSpecificTransformations(
       
       case ErrorType.PAYMENT_ERROR:
         return "Payment processing error. Please try again or contact support.";
+      
+      case ErrorType.AUTO_TOP_OFF_FAILED:
+        return "Automatic top-off failed. Please check your payment method and try again, or disable auto top-off in your settings.";
+      
+      case ErrorType.INVALID_CREDIT_AMOUNT:
+        return "Invalid credit amount specified. Please enter a valid amount between the minimum and maximum allowed values.";
+      
+      case ErrorType.PAYMENT_SETUP_REQUIRED:
+        return "Payment setup is required to continue. Please add a valid payment method to your account.";
+      
+      case ErrorType.CREDIT_LIMIT_EXCEEDED:
+        return "Credit purchase limit exceeded. Please contact support to increase your credit limit or try a smaller amount.";
     }
   }
 
@@ -824,8 +841,9 @@ export function mapRustErrorCodeToErrorType(code: string): ErrorType {
       return ErrorType.INTERNAL_ERROR;
     // Billing-specific error code mappings
     case "PAYMENT_FAILED":
-    case "PAYMENT_ERROR":
       return ErrorType.PAYMENT_FAILED;
+    case "PAYMENT_ERROR":
+      return ErrorType.PAYMENT_ERROR;
     case "PAYMENT_DECLINED":
     case "CARD_DECLINED":
       return ErrorType.PAYMENT_DECLINED;
@@ -860,6 +878,18 @@ export function mapRustErrorCodeToErrorType(code: string): ErrorType {
     // Additional billing-related error code mappings from server AppError variants
     case "PAYMENT_REQUIRED":
       return ErrorType.PAYMENT_REQUIRED;
+    case "AUTO_TOP_OFF_FAILED":
+    case "AUTO_TOPOFF_FAILED":
+      return ErrorType.AUTO_TOP_OFF_FAILED;
+    case "INVALID_CREDIT_AMOUNT":
+    case "INVALID_AMOUNT":
+      return ErrorType.INVALID_CREDIT_AMOUNT;
+    case "PAYMENT_SETUP_REQUIRED":
+    case "SETUP_REQUIRED":
+      return ErrorType.PAYMENT_SETUP_REQUIRED;
+    case "CREDIT_LIMIT_EXCEEDED":
+    case "LIMIT_EXCEEDED":
+      return ErrorType.CREDIT_LIMIT_EXCEEDED;
     case "SERIALIZATION_ERROR":
     case "SERIALIZATION":
       return ErrorType.INTERNAL_ERROR;
@@ -871,11 +901,9 @@ export function mapRustErrorCodeToErrorType(code: string): ErrorType {
       return ErrorType.API_ERROR;
     // Handle generic billing error
     case "BILLING":
-    case "BILLING_ERROR":
       return ErrorType.PAYMENT_ERROR;
     // Map additional server error variants to appropriate frontend types
     case "AUTH":
-    case "AUTH_ERROR":
       return ErrorType.PERMISSION_ERROR;
     case "UNAUTHORIZED":
       return ErrorType.PERMISSION_ERROR;
@@ -952,6 +980,18 @@ export function createUserFriendlyErrorMessage(
     
     case ErrorType.PAYMENT_ERROR:
       return "Payment processing error. Please try again or contact support.";
+    
+    case ErrorType.AUTO_TOP_OFF_FAILED:
+      return "Automatic top-off failed. Please check your payment method and try again, or disable auto top-off in your settings.";
+    
+    case ErrorType.INVALID_CREDIT_AMOUNT:
+      return "Invalid credit amount specified. Please enter a valid amount between the minimum and maximum allowed values.";
+    
+    case ErrorType.PAYMENT_SETUP_REQUIRED:
+      return "Payment setup is required to continue. Please add a valid payment method to your account.";
+    
+    case ErrorType.CREDIT_LIMIT_EXCEEDED:
+      return "Credit purchase limit exceeded. Please contact support to increase your credit limit or try a smaller amount.";
     
     case ErrorType.TOKEN_LIMIT_ERROR:
       return "The prompt is too long for the selected model. Please reduce the number of selected files, shorten the task description, or choose a model with a larger context window.";

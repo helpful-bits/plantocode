@@ -39,6 +39,7 @@ export function SimpleFileBrowser() {
     canRedo,
     triggerFind,
     findingFiles,
+    findingFilesError,
     selectFiltered,
     deselectFiltered,
   } = useSimpleFileSelection(projectDirectory);
@@ -161,25 +162,37 @@ export function SimpleFileBrowser() {
       {/* AI Find Button - Full width like original */}
       <div className="flex">
         <Button
-          variant="default"
+          variant={findingFilesError ? "destructive" : "default"}
           size="sm"
           onClick={triggerFind}
           disabled={!currentSession?.taskDescription?.trim() || findingFiles}
-          className="w-full"
+          className={`w-full ${
+            findingFilesError
+              ? "bg-destructive/90 hover:bg-destructive border-destructive"
+              : ""
+          }`}
           title={
             !currentSession?.taskDescription?.trim()
               ? "Enter a task description first"
               : findingFiles
               ? "Finding files..."
+              : findingFilesError
+              ? `Error: ${findingFilesError} - Click to retry`
               : "Find relevant files using AI analysis"
           }
         >
           {findingFiles ? (
             <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+          ) : findingFilesError ? (
+            <RefreshCw className="h-4 w-4 mr-2" />
           ) : (
             <Sparkles className="h-4 w-4 mr-2" />
           )}
-          {findingFiles ? "Finding Files..." : "Find Relevant Files with AI"}
+          {findingFiles
+            ? "Finding Files..."
+            : findingFilesError
+            ? "Retry File Search"
+            : "Find Relevant Files with AI"}
         </Button>
       </div>
 

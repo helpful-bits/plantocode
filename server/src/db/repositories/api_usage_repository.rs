@@ -37,7 +37,6 @@ pub struct DetailedUsageRecord {
     pub service_name: String,
     pub model_display_name: String,
     pub provider_code: String,
-    pub model_type: String,
     pub total_cost: f64,
     pub total_requests: i64,
     pub total_input_tokens: i64,
@@ -216,22 +215,31 @@ impl ApiUsageRepository {
     ) -> Result<Vec<DetailedUsageRecord>, AppError> {
         let rows = sqlx::query!(
             r#"
-            SELECT 
-                au.service_name,
-                COALESCE(m.name, 'Unknown Model') as model_display_name,
-                COALESCE(p.code, 'Unknown Provider') as provider_code,
-                COALESCE(m.model_type, 'Unknown Type') as model_type,
-                COALESCE(SUM(au.cost::numeric), 0.0)::float8 as total_cost,
-                COUNT(*)::bigint as total_requests,
-                COALESCE(SUM(au.tokens_input), 0)::bigint as total_input_tokens,
-                COALESCE(SUM(au.tokens_output), 0)::bigint as total_output_tokens,
-                COALESCE(SUM(au.processing_ms), 0)::bigint as total_duration_ms
-            FROM api_usage au
-            LEFT JOIN models m ON au.service_name = m.id
+            WITH usage_with_model_id AS (
+                SELECT
+                    id, cost, tokens_input, tokens_output, processing_ms, request_id,
+                    CASE
+                        WHEN service_name LIKE '%/%' THEN service_name
+                        WHEN metadata->>'modelId' IS NOT NULL THEN metadata->>'modelId'
+                        WHEN metadata->>'model_id' IS NOT NULL THEN metadata->>'model_id'
+                        ELSE service_name
+                    END as effective_model_id
+                FROM api_usage
+                WHERE user_id = $1 AND timestamp BETWEEN $2 AND $3
+            )
+            SELECT
+                u.effective_model_id as service_name,
+                COALESCE(m.name, u.effective_model_id) as model_display_name,
+                COALESCE(p.code, 'unknown') as provider_code,
+                COALESCE(SUM(u.cost::numeric), 0.0)::float8 as total_cost,
+                COUNT(DISTINCT COALESCE(u.request_id, u.id::text))::bigint as total_requests,
+                COALESCE(SUM(u.tokens_input), 0)::bigint as total_input_tokens,
+                COALESCE(SUM(u.tokens_output), 0)::bigint as total_output_tokens,
+                COALESCE(SUM(u.processing_ms), 0)::bigint as total_duration_ms
+            FROM usage_with_model_id u
+            LEFT JOIN models m ON u.effective_model_id = m.id
             LEFT JOIN providers p ON m.provider_id = p.id
-            WHERE au.user_id = $1 
-              AND au.timestamp BETWEEN $2 AND $3
-            GROUP BY au.service_name, m.name, p.code, m.model_type
+            GROUP BY u.effective_model_id, m.name, p.code
             ORDER BY total_cost DESC
             "#,
             user_id,
@@ -241,12 +249,11 @@ impl ApiUsageRepository {
         .fetch_all(&mut **executor)
         .await
         .map_err(|e| AppError::Database(format!("Failed to get detailed usage: {}", e)))?;
-
+        
         let results = rows.into_iter().map(|row| DetailedUsageRecord {
-            service_name: row.service_name,
-            model_display_name: row.model_display_name.unwrap_or_else(|| "Unknown Model".to_string()),
-            provider_code: row.provider_code.unwrap_or_else(|| "Unknown Provider".to_string()),
-            model_type: row.model_type.unwrap_or_else(|| "Unknown Type".to_string()),
+            service_name: row.service_name.unwrap_or_default(),
+            model_display_name: row.model_display_name.unwrap_or_default(),
+            provider_code: row.provider_code.unwrap_or_default(),
             total_cost: row.total_cost.unwrap_or(0.0),
             total_requests: row.total_requests.unwrap_or(0),
             total_input_tokens: row.total_input_tokens.unwrap_or(0),

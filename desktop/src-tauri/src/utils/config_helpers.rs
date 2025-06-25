@@ -236,7 +236,14 @@ pub async fn get_model_info(model_id: &str, app_handle: &AppHandle) -> AppResult
 
 /// Helper function to get RuntimeAIConfig from cache
 pub async fn get_runtime_ai_config_from_cache(app_handle: &AppHandle) -> AppResult<RuntimeAIConfig> {
-    let config_cache = app_handle.state::<ConfigCache>();
+    let config_cache = match app_handle.try_state::<ConfigCache>() {
+        Some(cache) => cache,
+        None => {
+            return Err(AppError::InitializationError(
+                "Config cache not yet initialized. Please wait for app initialization to complete.".to_string()
+            ));
+        }
+    };
     
     match config_cache.lock() {
         Ok(cache_guard) => {

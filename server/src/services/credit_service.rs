@@ -1,10 +1,13 @@
 use crate::error::AppError;
 use crate::db::repositories::{
-    UserCreditRepository, CreditTransactionRepository, CreditPackRepository,
-    UserCredit, CreditTransaction, CreditPack, CreditTransactionStats, ModelRepository
+    UserCreditRepository, CreditTransactionRepository,
+    UserCredit, CreditTransaction, CreditTransactionStats, ModelRepository, ApiUsageRepository
 };
+use crate::db::repositories::api_usage_repository::{ApiUsageEntryDto, ApiUsageRecord};
 use crate::models::model_pricing::ModelPricing;
+use crate::services::audit_service::{AuditService, AuditContext};
 use bigdecimal::{BigDecimal, FromPrimitive};
+use std::str::FromStr;
 use uuid::Uuid;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
@@ -17,8 +20,9 @@ use log::{info, warn, error};
 pub struct CreditService {
     user_credit_repository: Arc<UserCreditRepository>,
     credit_transaction_repository: Arc<CreditTransactionRepository>,
-    credit_pack_repository: Arc<CreditPackRepository>,
     model_repository: Arc<ModelRepository>,
+    api_usage_repository: Arc<ApiUsageRepository>,
+    audit_service: Arc<AuditService>,
 }
 
 impl CreditService {
@@ -26,8 +30,9 @@ impl CreditService {
         Self {
             user_credit_repository: Arc::new(UserCreditRepository::new(db_pools.user_pool.clone())),
             credit_transaction_repository: Arc::new(CreditTransactionRepository::new(db_pools.user_pool.clone())),
-            credit_pack_repository: Arc::new(CreditPackRepository::new(db_pools.system_pool.clone())),
-            model_repository: Arc::new(ModelRepository::new(Arc::new(db_pools.system_pool))),
+            model_repository: Arc::new(ModelRepository::new(Arc::new(db_pools.system_pool.clone()))),
+            api_usage_repository: Arc::new(ApiUsageRepository::new(db_pools.user_pool.clone())),
+            audit_service: Arc::new(AuditService::new(db_pools.clone())),
         }
     }
 
@@ -117,26 +122,36 @@ impl CreditService {
             related_api_usage_id: api_usage_id,
             metadata,
             created_at: Some(Utc::now()),
+            balance_after: updated_balance.balance.clone(),
         };
 
         let _created_transaction = self.credit_transaction_repository
-            .create_transaction_with_executor(&transaction, &mut tx)
+            .create_transaction_with_executor(&transaction, &updated_balance.balance, &mut tx)
             .await?;
 
-        // Commit the transaction
+        // Store balance for auto top-off check
+        let final_balance_for_check = updated_balance.balance.clone();
+
+        // Commit the transaction first
         tx.commit().await.map_err(AppError::from)?;
+
+        // Check auto top-off after successful credit consumption (outside transaction)
+        // Spawn background task to handle auto top-off to avoid blocking the current operation
+        let user_id_for_task = *user_id;
+        tokio::spawn(async move {
+            // Auto top-off check will be triggered via BillingService when integrated
+            // For now, we'll just log when balance gets low
+            if final_balance_for_check <= BigDecimal::from(1) {
+                info!("User {} has low balance ({}), auto top-off check should be triggered", 
+                      user_id_for_task, final_balance_for_check);
+            }
+        });
 
         info!("Atomically consumed {} credits for user {} (pure prepaid model)", amount, user_id);
         Ok(updated_balance)
     }
 
 
-    /// Get available credit packs
-    pub async fn get_available_credit_packs(&self) -> Result<Vec<CreditPack>, AppError> {
-        self.credit_pack_repository
-            .get_available_credit_packs()
-            .await
-    }
 
     /// Get credit transaction history for a user
     pub async fn get_transaction_history(
@@ -267,10 +282,11 @@ impl CreditService {
             related_api_usage_id: None,
             metadata,
             created_at: Some(Utc::now()),
+            balance_after: updated_balance.balance.clone(),
         };
 
         let _created_transaction = self.credit_transaction_repository
-            .create_transaction_with_executor(&transaction, &mut tx)
+            .create_transaction_with_executor(&transaction, &updated_balance.balance, &mut tx)
             .await?;
 
         // Commit the transaction
@@ -280,7 +296,6 @@ impl CreditService {
         Ok(updated_balance)
     }
 
-    /// Admin function to adjust credits with external transaction
     pub async fn adjust_credits_with_executor(
         &self,
         user_id: &Uuid,
@@ -289,24 +304,31 @@ impl CreditService {
         admin_metadata: Option<serde_json::Value>,
         executor: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     ) -> Result<UserCredit, AppError> {
-        // Set user context for RLS policies
         sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
             .bind(user_id.to_string())
             .execute(&mut **executor)
             .await
             .map_err(|e| AppError::Database(format!("Failed to set user context: {}", e)))?;
 
-        // Ensure user has a credit record within the transaction
-        let _ = self.user_credit_repository
+        let current_balance = self.user_credit_repository
             .ensure_balance_record_exists_with_executor(user_id, executor)
             .await?;
 
-        // Adjust the credits (can be positive or negative) within the transaction
         let updated_balance = self.user_credit_repository
             .increment_balance_with_executor(user_id, amount, executor)
             .await?;
 
-        // Record the adjustment transaction within the same transaction
+        let mut metadata = admin_metadata.unwrap_or_default();
+        if let Some(obj) = metadata.as_object_mut() {
+            obj.insert("balance_before".to_string(), serde_json::json!(current_balance.balance));
+            obj.insert("balance_after".to_string(), serde_json::json!(updated_balance.balance));
+        } else {
+            metadata = serde_json::json!({
+                "balance_before": current_balance.balance,
+                "balance_after": updated_balance.balance
+            });
+        }
+
         let transaction = CreditTransaction {
             id: Uuid::new_v4(),
             user_id: *user_id,
@@ -316,15 +338,16 @@ impl CreditService {
             description: Some(description),
             stripe_charge_id: None,
             related_api_usage_id: None,
-            metadata: admin_metadata,
+            metadata: Some(metadata),
             created_at: Some(Utc::now()),
+            balance_after: updated_balance.balance.clone(),
         };
 
         let _created_transaction = self.credit_transaction_repository
-            .create_transaction_with_executor(&transaction, executor)
+            .create_transaction_with_executor(&transaction, &updated_balance.balance, executor)
             .await?;
 
-        info!("Atomically adjusted {} credits for user {} (admin action)", amount, user_id);
+        info!("Atomically adjusted {} credits for user {} (balance: {} -> {})", amount, user_id, current_balance.balance, updated_balance.balance);
         Ok(updated_balance)
     }
 
@@ -354,84 +377,130 @@ impl CreditService {
         Ok(updated_balance)
     }
 
-    /// Process credit top-up purchase from payment intent
-    /// This handles one-time credit purchases that supplement metered billing
     pub async fn process_credit_purchase_from_payment_intent(
         &self,
         user_id: &Uuid,
         amount: &BigDecimal,
         currency: &str,
         payment_intent: &stripe::PaymentIntent,
+        audit_context: &AuditContext,
     ) -> Result<UserCredit, AppError> {
-        // Validate that the currency is USD
+        // Strict validation for required metadata fields
+        let metadata = &payment_intent.metadata;
+        
+        // Validate user_id exists and matches
+        let metadata_user_id = metadata.get("user_id")
+            .ok_or_else(|| AppError::InvalidArgument("Missing required 'user_id' in payment intent metadata".to_string()))?;
+        
+        let parsed_user_id = Uuid::parse_str(metadata_user_id)
+            .map_err(|e| AppError::InvalidArgument(format!("Invalid user_id format in payment intent metadata: {}", e)))?;
+        
+        if &parsed_user_id != user_id {
+            return Err(AppError::InvalidArgument(format!(
+                "User ID mismatch: expected {}, got {} in payment intent metadata", 
+                user_id, parsed_user_id
+            )));
+        }
+        
+        // Validate amount exists in metadata and matches
+        let metadata_amount = metadata.get("amount")
+            .ok_or_else(|| AppError::InvalidArgument("Missing required 'amount' in payment intent metadata".to_string()))?;
+        
+        let parsed_amount = BigDecimal::from_str(metadata_amount)
+            .map_err(|e| AppError::InvalidArgument(format!("Invalid amount format in payment intent metadata: {}", e)))?;
+        
+        if &parsed_amount != amount {
+            return Err(AppError::InvalidArgument(format!(
+                "Amount mismatch: expected {}, got {} in payment intent metadata", 
+                amount, parsed_amount
+            )));
+        }
+        
+        // Validate currency exists in metadata and matches
+        let metadata_currency = metadata.get("currency")
+            .ok_or_else(|| AppError::InvalidArgument("Missing required 'currency' in payment intent metadata".to_string()))?;
+        
+        if metadata_currency.to_uppercase() != currency.to_uppercase() {
+            return Err(AppError::InvalidArgument(format!(
+                "Currency mismatch: expected {}, got {} in payment intent metadata", 
+                currency, metadata_currency
+            )));
+        }
+        
         if currency.to_uppercase() != "USD" {
             return Err(AppError::InvalidArgument(
                 format!("Only USD currency is supported, got: {}", currency)
             ));
         }
         
-        info!("Processing credit top-up purchase for user {}: {} {}", user_id, amount, currency);
+        info!("Processing credit purchase for user {}: {} {} (all metadata validation passed)", user_id, amount, currency);
         
-        // Start a database transaction to ensure atomicity
         let pool = self.user_credit_repository.get_pool();
         let mut tx = pool.begin().await.map_err(AppError::from)?;
 
-        // Set user context for RLS policies
         sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
             .bind(user_id.to_string())
             .execute(&mut *tx)
             .await
             .map_err(|e| AppError::Database(format!("Failed to set user context: {}", e)))?;
 
-        // Ensure user has a credit record within the transaction
-        let _ = self.user_credit_repository
+        let current_balance = self.user_credit_repository
             .ensure_balance_record_exists_with_executor(user_id, &mut tx)
             .await?;
 
-        // Add the credits to user balance within the transaction
         let updated_balance = self.user_credit_repository
             .increment_balance_with_executor(user_id, amount, &mut tx)
             .await?;
 
-        // Record the top-up purchase transaction within the same transaction
+        let description = format!("Credit purchase via PaymentIntent {}", payment_intent.id);
+
         let transaction = CreditTransaction {
             id: Uuid::new_v4(),
             user_id: *user_id,
             transaction_type: "purchase".to_string(),
             amount: amount.clone(),
             currency: currency.to_string(),
-            description: Some(format!("Credit top-up purchase via Stripe PaymentIntent {} (supplements metered billing)", payment_intent.id)),
+            description: Some(description),
             stripe_charge_id: Some(payment_intent.id.to_string()),
             related_api_usage_id: None,
-            metadata: Some(serde_json::to_value(&payment_intent.metadata).unwrap_or_default()),
+            metadata: Some(serde_json::json!({
+                "payment_intent_id": payment_intent.id.to_string(),
+                "balance_before": current_balance.balance,
+                "balance_after": updated_balance.balance
+            })),
             created_at: Some(Utc::now()),
+            balance_after: updated_balance.balance.clone(),
         };
 
         let _created_transaction = self.credit_transaction_repository
-            .create_transaction_with_executor(&transaction, &mut tx)
+            .create_transaction_with_executor(&transaction, &updated_balance.balance, &mut tx)
             .await?;
 
-        // Commit the transaction
         tx.commit().await.map_err(AppError::from)?;
 
-        info!("Successfully processed credit top-up purchase for user {} via PaymentIntent {}: {} {} added to balance (new system: credits supplement metered billing)", 
-              user_id, payment_intent.id, amount, currency);
+        // Log audit event after successful transaction commit
+        let audit_metadata = serde_json::json!({
+            "payment_intent_id": payment_intent.id.to_string(),
+            "balance_before": current_balance.balance,
+            "balance_after": updated_balance.balance,
+            "user_id": user_id.to_string()
+        });
+
+        if let Err(audit_error) = self.audit_service.log_credit_purchase_succeeded(
+            audit_context,
+            &payment_intent.id.to_string(),
+            amount,
+            currency,
+            audit_metadata,
+        ).await {
+            warn!("Failed to log audit event for credit purchase: {}", audit_error);
+        }
+
+        info!("Successfully processed credit purchase for user {} via PaymentIntent {}: {} {} added (balance: {} -> {})", 
+              user_id, payment_intent.id, amount, currency, current_balance.balance, updated_balance.balance);
         Ok(updated_balance)
     }
 
-    /// Check if a credit pack is valid and get its details
-    pub async fn get_credit_pack_by_id(&self, pack_id: &str) -> Result<Option<CreditPack>, AppError> {
-        self.credit_pack_repository
-            .get_pack_by_id(pack_id)
-            .await
-    }
-
-    /// Validate if a Stripe price ID corresponds to a configured credit pack
-    pub async fn get_credit_pack_by_stripe_price_id(&self, stripe_price_id: &str) -> Result<Option<CreditPack>, AppError> {
-        self.credit_pack_repository
-            .get_credit_pack_by_stripe_price_id(stripe_price_id)
-            .await
-    }
 
     /// Get transaction count for pagination
     pub async fn get_transaction_count(&self, user_id: &Uuid) -> Result<i64, AppError> {
@@ -483,57 +552,78 @@ impl CreditService {
         Ok(cost)
     }
 
-    /// Consume credits for a given cost
-    pub async fn consume_credits(
-        &self,
-        user_id: &Uuid,
-        cost: &BigDecimal,
-    ) -> Result<UserCredit, AppError> {
-        let usage_description = format!("AI service usage - cost: {}", cost);
-        self.consume_credits_for_usage_in_tx(
-            user_id,
-            cost,
-            usage_description,
-            None, // No specific API usage ID
-            None, // No additional metadata
-        ).await
-    }
-
-    /// Calculate cost and consume credits atomically
-    pub async fn calculate_and_consume_credits(
-        &self,
-        user_id: &Uuid,
-        model_id: &str,
-        input_tokens: i32,
-        output_tokens: i32,
-        duration_ms: Option<i64>,
-        metadata: Option<serde_json::Value>,
-    ) -> Result<BigDecimal, AppError> {
-        // Get model with provider information
+    /// Atomically record usage and bill credits in a single transaction
+    pub async fn record_and_bill_api_usage(&self, mut entry: ApiUsageEntryDto) -> Result<(BigDecimal, ApiUsageRecord), AppError> {
+        // Start transaction
+        let pool = self.user_credit_repository.get_pool();
+        let mut tx = pool.begin().await.map_err(AppError::from)?;
+        
+        // Set user context for RLS policies
+        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
+            .bind(entry.user_id.to_string())
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| AppError::Database(format!("Failed to set user context: {}", e)))?;
+        
+        // Get model details and calculate cost
         let model_with_provider = self.model_repository
-            .find_by_id_with_provider(model_id)
+            .find_by_id_with_provider(&entry.service_name)
             .await?
-            .ok_or_else(|| AppError::NotFound(format!("Model '{}' not found", model_id)))?;
+            .ok_or_else(|| AppError::NotFound(format!("Model '{}' not found", entry.service_name)))?;
+        
+        let cost = model_with_provider.calculate_token_cost(entry.tokens_input as i64, entry.tokens_output as i64);
+        entry.cost = cost.clone();
+        
+        // Record API usage first
+        let api_usage_record = self.api_usage_repository
+            .record_usage_with_executor(entry, &mut tx)
+            .await?;
+        
+        // Consume credits with reference to the API usage record (inline to use existing transaction)
+        let usage_description = format!("{} - {} tokens in, {} tokens out", 
+            api_usage_record.service_name, api_usage_record.tokens_input, api_usage_record.tokens_output);
+        
+        // Ensure user has a credit record within the transaction
+        let current_balance = self.user_credit_repository
+            .ensure_balance_record_exists_with_executor(&api_usage_record.user_id, &mut tx)
+            .await?;
 
-        // Calculate cost using ModelPricing trait
-        let cost = if let Some(duration) = duration_ms {
-            model_with_provider.calculate_total_cost(input_tokens as i64, output_tokens as i64, Some(duration))
-                .map_err(|e| AppError::InvalidArgument(format!("Cost calculation failed: {}", e)))?
-        } else {
-            model_with_provider.calculate_token_cost(input_tokens as i64, output_tokens as i64)
+        // Check if user has sufficient credits
+        if current_balance.balance < cost {
+            return Err(AppError::CreditInsufficient(
+                format!("Insufficient credits. Required: {}, Available: {}", cost, current_balance.balance)
+            ));
+        }
+
+        // Deduct the credits within the transaction
+        let negative_amount = -&cost;
+        let updated_balance = self.user_credit_repository
+            .increment_balance_with_executor(&api_usage_record.user_id, &negative_amount, &mut tx)
+            .await?;
+
+        // Record the consumption transaction within the same transaction
+        let transaction = CreditTransaction {
+            id: Uuid::new_v4(),
+            user_id: api_usage_record.user_id,
+            transaction_type: "consumption".to_string(),
+            amount: negative_amount,
+            currency: "USD".to_string(),
+            description: Some(usage_description),
+            stripe_charge_id: None,
+            related_api_usage_id: api_usage_record.id,
+            metadata: api_usage_record.metadata.clone(),
+            created_at: Some(Utc::now()),
+            balance_after: updated_balance.balance.clone(),
         };
 
-        // Consume credits atomically
-        let usage_description = format!("{} - {} tokens in, {} tokens out", model_id, input_tokens, output_tokens);
-        self.consume_credits_for_usage_in_tx(
-            user_id,
-            &cost,
-            usage_description,
-            None, // No specific API usage ID
-            metadata,
-        ).await?;
-
-        Ok(cost)
+        let _created_transaction = self.credit_transaction_repository
+            .create_transaction_with_executor(&transaction, &updated_balance.balance, &mut tx)
+            .await?;
+        
+        // Commit transaction
+        tx.commit().await.map_err(AppError::from)?;
+        
+        Ok((cost, api_usage_record))
     }
 }
 

@@ -81,45 +81,49 @@ pub async fn get_credit_transaction_history(
     let limit = query.limit.unwrap_or(20);
     let offset = query.offset.unwrap_or(0);
     
-    let transactions = credit_service
-        .get_transaction_history(&user_id.0, Some(limit), Some(offset))
+    let credit_details = credit_service
+        .get_credit_details(&user_id.0, Some(limit), Some(offset))
         .await?;
-    
-    // Get total count for pagination
-    let total_count = credit_service.get_transaction_count(&user_id.0).await?;
-    
-    // Get current balance for enhanced response
-    let balance = credit_service.get_user_balance(&user_id.0).await?;
     
     #[derive(Debug, Serialize)]
     #[serde(rename_all = "camelCase")]
+    pub struct CreditTransactionEntry {
+        pub id: String,
+        pub amount: f64,
+        pub currency: String,
+        pub transaction_type: String,
+        pub description: String,
+        pub created_at: String,
+        pub balance_after: f64,
+    }
+
+    #[derive(Debug, Serialize)]
+    #[serde(rename_all = "camelCase")]
     pub struct CreditHistoryResponse {
-        pub transactions: Vec<serde_json::Value>,
+        pub transactions: Vec<CreditTransactionEntry>,
         pub total_count: i64,
         pub has_more: bool,
-        pub current_balance: BigDecimal,
     }
     
-    let json_transactions = transactions.iter().map(|t| {
-        serde_json::json!({
-            "id": t.id,
-            "userId": t.user_id,
-            "transactionType": t.transaction_type,
-            "amount": t.amount,
-            "currency": t.currency,
-            "description": t.description,
-            "stripeChargeId": t.stripe_charge_id,
-            "relatedApiUsageId": t.related_api_usage_id,
-            "metadata": t.metadata,
-            "createdAt": t.created_at
+    let transactions: Vec<CreditTransactionEntry> = credit_details.transactions
+        .into_iter()
+        .map(|transaction| CreditTransactionEntry {
+            id: transaction.id.to_string(),
+            amount: transaction.amount.to_f64().unwrap_or(0.0),
+            currency: transaction.currency,
+            transaction_type: transaction.transaction_type,
+            description: transaction.description.unwrap_or_default(),
+            created_at: transaction.created_at
+                .map(|dt| dt.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string())
+                .unwrap_or_default(),
+            balance_after: transaction.balance_after.to_f64().unwrap_or(0.0),
         })
-    }).collect::<Vec<_>>();
+        .collect();
     
     let response = CreditHistoryResponse {
-        transactions: json_transactions,
-        total_count,
-        has_more: total_count > (limit + offset),
-        current_balance: balance.balance,
+        transactions,
+        total_count: credit_details.total_transaction_count,
+        has_more: credit_details.has_more,
     };
     
     Ok(HttpResponse::Ok().json(response))
@@ -206,50 +210,4 @@ pub async fn admin_adjust_credits(
     })))
 }
 
-/// Get available credit packs
-#[get("/packs")]
-pub async fn get_available_credit_packs(
-    credit_service: web::Data<CreditService>,
-) -> Result<HttpResponse, AppError> {
-    debug!("Getting available credit packs");
-    
-    let credit_packs = credit_service.get_available_credit_packs().await?;
-    
-    #[derive(Debug, Serialize)]
-    #[serde(rename_all = "camelCase")]
-    pub struct ClientCreditPack {
-        pub id: String,
-        pub name: String,
-        pub value_credits: f64,
-        pub price_amount: f64,
-        pub currency: String,
-        pub description: Option<String>,
-        pub recommended: bool,
-        pub bonus_percentage: Option<f64>,
-        pub is_popular: Option<bool>,
-        pub is_active: bool,
-        pub display_order: i32,
-        pub stripe_price_id: String,
-    }
-
-    let client_credit_packs: Vec<ClientCreditPack> = credit_packs.into_iter().map(|pack| {
-        ClientCreditPack {
-            id: pack.id,
-            name: pack.name,
-            value_credits: pack.value_credits.to_f64().unwrap_or(0.0),
-            price_amount: pack.price_amount.to_f64().unwrap_or(0.0),
-            currency: pack.currency,
-            description: pack.description,
-            recommended: pack.recommended,
-            bonus_percentage: pack.bonus_percentage.and_then(|bp| bp.to_f64()),
-            is_popular: pack.is_popular,
-            is_active: pack.is_active,
-            display_order: pack.display_order,
-            stripe_price_id: pack.stripe_price_id,
-        }
-    }).collect();
-    
-    info!("Successfully retrieved {} credit packs", client_credit_packs.len());
-    Ok(HttpResponse::Ok().json(client_credit_packs))
-}
 

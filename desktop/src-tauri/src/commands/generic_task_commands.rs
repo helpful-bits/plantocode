@@ -96,6 +96,7 @@ pub async fn generic_llm_stream_command(
     let model_settings = crate::utils::config_resolver::resolve_model_settings(
         &app_handle,
         TaskType::GenericLlmStream,
+        &project_dir,
         args.model.clone(),
         args.temperature,
         args.max_output_tokens,
@@ -177,10 +178,17 @@ pub async fn refine_task_description_command(
         return Err(AppError::ValidationError("Project directory is required".to_string()));
     }
     
+    // Get session to access project directory
+    let background_job_repo = app_handle.state::<Arc<BackgroundJobRepository>>().inner().clone();
+    let session_repo = SessionRepository::new(background_job_repo.get_pool());
+    let session = session_repo.get_session_by_id(&session_id).await?
+        .ok_or_else(|| AppError::JobError(format!("Session {} not found", session_id)))?;
+    
     // Get model configuration for this task using centralized resolver
     let model_settings = crate::utils::config_resolver::resolve_model_settings(
         &app_handle,
         TaskType::TaskRefinement,
+        &session.project_directory,
         None,
         None,
         None,
