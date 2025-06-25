@@ -227,6 +227,29 @@ impl SettingsRepository {
         Ok(settings)
     }
 
+    /// Get all project task settings for a specific project
+    pub async fn get_all_project_task_settings(&self, project_hash: &str) -> AppResult<std::collections::HashMap<String, String>> {
+        let prefix = format!("project_task_settings:{}:", project_hash);
+        let rows = sqlx::query("SELECT key, value FROM key_value_store WHERE key LIKE $1")
+            .bind(format!("{}%", prefix))
+            .fetch_all(&*self.pool)
+            .await
+            .map_err(|e| AppError::DatabaseError(format!("Failed to fetch project task settings: {}", e)))?;
+
+        let mut settings = std::collections::HashMap::new();
+        for row in rows {
+            let full_key: String = row.try_get("key")?;
+            let value: String = row.try_get("value")?;
+            
+            // Extract the setting key by removing the prefix
+            if let Some(setting_key) = full_key.strip_prefix(&prefix) {
+                settings.insert(setting_key.to_string(), value);
+            }
+        }
+
+        Ok(settings)
+    }
+
     /// Get system prompt for a specific project and task type
     pub async fn get_project_system_prompt(&self, project_hash: &str, task_type: &str) -> AppResult<Option<ProjectSystemPrompt>> {
         let row = sqlx::query("SELECT * FROM project_system_prompts WHERE project_hash = $1 AND task_type = $2")

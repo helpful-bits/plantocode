@@ -197,6 +197,83 @@ impl CreditTransactionRepository {
         Ok(result)
     }
 
+    /// Get credit transaction history for a user (standalone method for system pool)
+    pub async fn get_history(
+        &self,
+        user_id: &Uuid,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<CreditTransaction>, AppError> {
+        let results = sqlx::query_as!(
+            CreditTransaction,
+            r#"
+            SELECT id, user_id, transaction_type, amount, currency, 
+                   description, stripe_charge_id, related_api_usage_id, 
+                   metadata, created_at
+            FROM credit_transactions 
+            WHERE user_id = $1
+            ORDER BY created_at DESC
+            LIMIT $2 OFFSET $3
+            "#,
+            user_id,
+            limit,
+            offset
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| AppError::Database(format!("Failed to get credit transaction history: {}", e)))?;
+
+        Ok(results)
+    }
+
+    /// Get credit transaction statistics for a user (standalone method for system pool)
+    pub async fn get_transaction_stats(
+        &self,
+        user_id: &Uuid,
+    ) -> Result<CreditTransactionStats, AppError> {
+        let result = sqlx::query!(
+            r#"
+            SELECT 
+                COALESCE(SUM(CASE WHEN transaction_type = 'purchase' THEN amount ELSE 0 END), 0) as total_purchased,
+                COALESCE(SUM(CASE WHEN transaction_type = 'consumption' THEN amount ELSE 0 END), 0) as total_consumed,
+                COALESCE(SUM(CASE WHEN transaction_type = 'refund' THEN amount ELSE 0 END), 0) as total_refunded,
+                COALESCE(SUM(amount), 0) as net_balance,
+                COUNT(*) as transaction_count
+            FROM credit_transactions 
+            WHERE user_id = $1
+            "#,
+            user_id
+        )
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| AppError::Database(format!("Failed to get credit transaction stats: {}", e)))?;
+
+        Ok(CreditTransactionStats {
+            total_purchased: result.total_purchased.unwrap_or_else(|| BigDecimal::from(0)),
+            total_consumed: result.total_consumed.unwrap_or_else(|| BigDecimal::from(0)),
+            total_refunded: result.total_refunded.unwrap_or_else(|| BigDecimal::from(0)),
+            net_balance: result.net_balance.unwrap_or_else(|| BigDecimal::from(0)),
+            transaction_count: result.transaction_count.unwrap_or(0),
+        })
+    }
+
+    /// Get transaction count for pagination (standalone method for system pool)
+    pub async fn get_transaction_count(&self, user_id: &Uuid) -> Result<i64, AppError> {
+        let result = sqlx::query!(
+            r#"
+            SELECT COUNT(*) as count
+            FROM credit_transactions 
+            WHERE user_id = $1
+            "#,
+            user_id
+        )
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| AppError::Database(format!("Failed to count credit transactions: {}", e)))?;
+
+        Ok(result.count.unwrap_or(0))
+    }
+
     /// Get transactions by Stripe charge ID
     pub async fn get_transactions_by_stripe_charge(&self, stripe_charge_id: &str) -> Result<Vec<CreditTransaction>, AppError> {
         let results = sqlx::query_as!(

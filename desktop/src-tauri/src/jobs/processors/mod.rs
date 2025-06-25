@@ -1,7 +1,6 @@
 pub mod utils;
 pub mod base_processor;
 pub mod abstract_llm_processor;
-pub mod path_finder_processor;
 pub mod path_finder_types;
 pub mod implementation_plan_processor;
 pub mod path_correction_processor;
@@ -15,8 +14,6 @@ pub mod file_relevance_assessment_processor;
 
 pub use base_processor::BaseProcessor;
 pub use abstract_llm_processor::{LlmTaskRunner, LlmTaskConfig, LlmTaskConfigBuilder, LlmTaskResult, LlmPromptContext};
-pub use path_finder_processor::PathFinderProcessor;
-pub use path_finder_types::{PathFinderResult, PathFinderOptions};
 pub use implementation_plan_processor::ImplementationPlanProcessor;
 pub use path_correction_processor::PathCorrectionProcessor;
 pub use task_refinement_processor::TaskRefinementProcessor;

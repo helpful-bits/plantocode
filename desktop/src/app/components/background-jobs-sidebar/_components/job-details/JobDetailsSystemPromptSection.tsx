@@ -54,9 +54,9 @@ export function JobDetailsSystemPromptSection() {
               <div className="mb-4">
                 <div className="text-xs text-muted-foreground mb-2">Template Placeholders:</div>
                 <div className="flex flex-wrap gap-2">
-                  {placeholders.map((placeholder, index) => (
+                  {placeholders.map((placeholder) => (
                     <Badge 
-                      key={index} 
+                      key={placeholder} 
                       variant="secondary" 
                       className="text-xs bg-primary/10 text-primary border-primary/20"
                     >

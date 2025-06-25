@@ -168,7 +168,6 @@ impl ToString for ApiType {
 #[serde(rename_all = "snake_case")]
 pub enum TaskType {
     ImplementationPlan,
-    PathFinder,
     VoiceTranscription,
     TextImprovement,
     PathCorrection,
@@ -187,7 +186,6 @@ impl ToString for TaskType {
     fn to_string(&self) -> String {
         match self {
             TaskType::ImplementationPlan => "implementation_plan".to_string(),
-            TaskType::PathFinder => "path_finder".to_string(),
             TaskType::VoiceTranscription => "voice_transcription".to_string(),
             TaskType::TextImprovement => "text_improvement".to_string(),
             TaskType::PathCorrection => "path_correction".to_string(),
@@ -209,7 +207,6 @@ impl std::str::FromStr for TaskType {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "implementation_plan" => Ok(TaskType::ImplementationPlan),
-            "path_finder" => Ok(TaskType::PathFinder),
             "voice_transcription" => Ok(TaskType::VoiceTranscription),
             "text_improvement" => Ok(TaskType::TextImprovement),
             "path_correction" => Ok(TaskType::PathCorrection),
@@ -220,7 +217,8 @@ impl std::str::FromStr for TaskType {
             "file_relevance_assessment" => Ok(TaskType::FileRelevanceAssessment),
             "extended_path_finder" => Ok(TaskType::ExtendedPathFinder),
             "streaming" => Ok(TaskType::Streaming),
-            _ => Ok(TaskType::Unknown),
+            "unknown" => Ok(TaskType::Unknown),
+            _ => Err(format!("Invalid task type: {}", s)),
         }
     }
 }
@@ -236,7 +234,6 @@ impl TaskType {
             TaskType::FileRelevanceAssessment
             | TaskType::ExtendedPathFinder
             | TaskType::ImplementationPlan
-            | TaskType::PathFinder
             | TaskType::TextImprovement
             | TaskType::PathCorrection
             | TaskType::TaskRefinement
@@ -728,9 +725,9 @@ pub struct SubscriptionPlan {
     pub id: String,
     pub name: String,
     pub description: String,
-    pub weekly_price: f64,
-    pub monthly_price: f64,
-    pub yearly_price: f64,
+    pub weekly_price: String,
+    pub monthly_price: String,
+    pub yearly_price: String,
     pub currency: String,
     pub trial_days: i32,
     pub features: Vec<String>,

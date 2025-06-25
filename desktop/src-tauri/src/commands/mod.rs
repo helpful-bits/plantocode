@@ -13,7 +13,6 @@ pub mod session_commands;
 // New modular task command modules
 pub mod text_commands;
 pub mod implementation_plan_commands;
-pub mod path_finding_commands;
 pub mod file_finder_workflow_commands;
 pub mod voice_commands;
 pub mod generic_task_commands;
@@ -61,13 +60,6 @@ pub use implementation_plan_commands::{
     read_implementation_plan_command,
     get_prompt_command,
     estimate_prompt_tokens_command,
-};
-
-// Re-exports from path finding commands module
-pub use path_finding_commands::{
-    find_relevant_files_command,
-    generate_directory_tree_command,
-    create_path_correction_job_command,
 };
 
 // Re-exports from file finder workflow commands module  
@@ -143,8 +135,9 @@ pub use settings_commands::{
     fetch_default_system_prompts_from_server,
     fetch_default_system_prompt_from_server,
     initialize_system_prompts_from_server,
-    get_all_task_model_settings_for_project_command,
-    set_project_task_model_settings_command,
+    get_project_task_model_settings_command,
+    set_project_task_setting_command,
+    reset_project_task_setting_command,
 };
 
 // Re-exports from session commands module

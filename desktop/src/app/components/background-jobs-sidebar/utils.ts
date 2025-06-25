@@ -214,19 +214,11 @@ export function truncateText(text: string, maxLength = 50): string {
  */
 export function getStreamingProgressValue(
   metadataInput: JobMetadata | string | null | undefined,
-  startTime?: number | null
+  startTime?: number | null,
+  taskType?: string
 ): number | undefined {
   // Parse metadata to ensure consistent structure
   const parsedMetadata = getParsedMetadata(metadataInput);
-  
-  // DEBUG: Log metadata structure to understand what fields are available
-  if (parsedMetadata && process.env.NODE_ENV === 'development') {
-    console.log('Progress metadata:', {
-      taskData: parsedMetadata.taskData,
-      topLevel: Object.keys(parsedMetadata),
-      hasWorkflowId: !!parsedMetadata.workflowId
-    });
-  }
   
   // Check both taskData and top-level metadata for progress fields
   const taskData = parsedMetadata?.taskData;
@@ -302,36 +294,57 @@ export function getStreamingProgressValue(
     }
   }
 
-  // Priority 5: Enhanced time-based fallback with better progression
-  return getTimeBasedFallbackProgress(startTime);
+  // Priority 5: Enhanced time-based fallback with task-specific timing
+  return getTimeBasedFallbackProgress(startTime, taskType);
 }
 
 /**
  * Helper function for time-based progress fallback
- * Extracted for reusability and cleaner code
+ * Uses task-specific timing estimates for more realistic progress
  */
-function getTimeBasedFallbackProgress(startTime?: number | null): number | undefined {
+function getTimeBasedFallbackProgress(startTime?: number | null, taskType?: string): number | undefined {
   if (typeof startTime === "number" && startTime > 0 && !isNaN(startTime)) {
     const elapsedMs = Date.now() - startTime;
-    // Show more responsive progress to indicate activity
     if (elapsedMs > 0) {
       const elapsedSeconds = elapsedMs / 1000;
       
-      // More dynamic progression:
-      // 0-10s: 0-20%
-      // 10-30s: 20-50% 
-      // 30s+: 50-80%
-      if (elapsedSeconds <= 10) {
-        return Math.min((elapsedSeconds / 10) * 20, 20);
-      } else if (elapsedSeconds <= 30) {
-        return Math.min(20 + ((elapsedSeconds - 10) / 20) * 30, 50);
+      // Task-specific estimated durations (in seconds)
+      const taskDurations: Record<string, number> = {
+        "file_relevance_assessment": 15,    // 15 seconds for AI file relevance
+        "regex_file_filter": 10,           // 10 seconds for regex generation
+        "extended_path_finder": 20,        // 20 seconds for extended path finding
+        "path_correction": 12,             // 12 seconds for path correction
+        "task_refinement": 8,              // 8 seconds for task refinement
+        "implementation_plan": 60,         // 60 seconds for implementation plans (increased from 25)
+        "text_improvement": 12,            // 12 seconds for text improvement
+        "voice_transcription": 30,         // 30 seconds for voice processing
+      };
+      
+      const estimatedDuration = taskDurations[taskType || ""] || 15; // Default 15 seconds
+      
+      // Calculate progress with realistic curve - ensure continuous progression
+      const progressRatio = elapsedSeconds / estimatedDuration;
+      
+      if (progressRatio <= 0.05) {
+        // First 5% of time: 5-15% progress (quick start)
+        return Math.min(5 + (progressRatio / 0.05) * 10, 15);
+      } else if (progressRatio <= 0.3) {
+        // Next 25% of time: 15-40% progress (early work)
+        return Math.min(15 + ((progressRatio - 0.05) / 0.25) * 25, 40);
+      } else if (progressRatio <= 0.7) {
+        // Next 40% of time: 40-75% progress (main work)
+        return Math.min(40 + ((progressRatio - 0.3) / 0.4) * 35, 75);
+      } else if (progressRatio <= 1.0) {
+        // Last 30% of time: 75-90% progress (finishing up)
+        return Math.min(75 + ((progressRatio - 0.7) / 0.3) * 15, 90);
       } else {
-        return Math.min(50 + ((elapsedSeconds - 30) / 60) * 30, 80);
+        // Overtime: slowly approach 95% but never 100% until completion
+        const overtime = Math.min(progressRatio - 1.0, 1.0); // Cap overtime at 1.0
+        return Math.min(90 + (overtime * 5), 95);
       }
     }
   }
   
-  // No valid progress data available - return undefined to let components handle fallback
   return undefined;
 }
 

@@ -17,7 +17,7 @@ import { useGeneratePromptTaskState } from "../_hooks/use-generate-prompt-task-s
 import { useGeneratePromptPlanState } from "../_hooks/use-generate-prompt-plan-state";
 import { generateDirectoryTreeAction } from "@/actions/file-system/directory-tree.actions";
 import { estimatePromptTokensAction } from "@/actions/ai/prompt.actions";
-import { type TokenEstimateResponse as TokenEstimate } from "@/actions/ai/path-finder.actions";
+import { type PromptTokenEstimateResponse as TokenEstimate } from "@/types/tauri-commands";
 
 // Import the granular context providers
 import { type CorePromptContextValue } from "./_types/generate-prompt-core-types";

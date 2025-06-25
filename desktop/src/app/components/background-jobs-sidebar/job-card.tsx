@@ -5,10 +5,9 @@ import {
   XCircle,
   Loader2,
   X,
-  FileCode,
   Trash2,
 } from "lucide-react";
-import React from "react";
+import React, { useState, useEffect } from "react";
 
 import {
   type BackgroundJob,
@@ -28,7 +27,6 @@ import {
   getStreamingProgressValue,
   getParsedMetadata,
 } from "./utils";
-import { WorkflowUtils } from "@/utils/workflow-utils";
 
 export interface JobCardProps {
   job: BackgroundJob;
@@ -39,97 +37,43 @@ export interface JobCardProps {
   onSelect: (job: BackgroundJob) => void;
 }
 
+/**
+ * Custom hook for live progress updates
+ * Updates progress every second for running jobs
+ */
+const useLiveProgress = (
+  metadata: any,
+  startTime: number | null | undefined,
+  taskType: string | undefined,
+  isRunning: boolean
+): number | undefined => {
+  const [progress, setProgress] = useState<number | undefined>(() => 
+    isRunning ? getStreamingProgressValue(metadata, startTime, taskType) : undefined
+  );
 
-
-// Helper functions for previews
-const getResponsePreview = (job: BackgroundJob) => {
-  // Primary source of displayable response is job.response
-  if (!job.response) {
-    return "";
-  }
-
-  // PRIMARY PATH: Task type specific previews (consolidated logic based on job.taskType)
-  switch (job.taskType) {
-    case "implementation_plan":
-      return "Implementation plan generated.";
-
-    case "regex_file_filter":
-      try {
-        const parsed = JSON.parse(job.response);
-        if (parsed && parsed.primaryPattern) {
-          return `Generated regex pattern: /${parsed.primaryPattern.pattern || 'pattern'}/`;
-        } else if (parsed && Array.isArray(parsed)) {
-          return `Generated ${parsed.length} regex patterns.`;
-        }
-      } catch {
-        // Fall through to generic message
-      }
-      return "Regex patterns generated.";
-
-    case "path_finder":
-    case "extended_path_finder":
-      try {
-        const parsed = JSON.parse(job.response);
-        if (parsed && typeof parsed === 'object') {
-          // First priority: summary field from processors
-          if (typeof parsed.summary === 'string' && parsed.summary.trim()) {
-            return parsed.summary;
-          }
-          
-          // Second priority: verifiedPaths and unverifiedPaths structure
-          if (Array.isArray(parsed.verifiedPaths) || Array.isArray(parsed.unverifiedPaths)) {
-            const verifiedCount = Array.isArray(parsed.verifiedPaths) ? parsed.verifiedPaths.length : 0;
-            const unverifiedCount = Array.isArray(parsed.unverifiedPaths) ? parsed.unverifiedPaths.length : 0;
-            
-            return `Found ${verifiedCount} verified, ${unverifiedCount} unverified files`;
-          }
-          
-          // Third priority: count field fallback
-          if (typeof parsed.count === 'number' && parsed.count >= 0) {
-            return `Found ${parsed.count} files`;
-          }
-        }
-      } catch {
-        // Fall through to generic fallback messages
-      }
-      
-      return job.taskType === "extended_path_finder" ? "Extended path finding completed" : "Path finder completed";
-
-    case "file_finder_workflow":
-      try {
-        const parsed = JSON.parse(job.response);
-        // Handle Vec<String> format (array of strings)
-        if (Array.isArray(parsed)) {
-          const count = parsed.length;
-          return count > 0 ? `Found ${count} file${count !== 1 ? "s" : ""}` : "Path finder completed";
-        }
-      } catch {
-        // Fall through to generic message
-      }
-      return "Path finder completed";
-
-    default:
-      // For tasks without specific handling, continue to secondary logic
-      break;
-  }
-
-  // SECONDARY PATH: Generic workflow stage messages (fallback for unknown task types)
-  const parsedMeta = getParsedMetadata(job.metadata);
-  if (parsedMeta?.workflowId && parsedMeta?.workflowStage) {
-    const stageName = WorkflowUtils.getStageName(String(parsedMeta.workflowStage));
-    if (JOB_STATUSES.COMPLETED.includes(job.status as JobStatus)) {
-      return `Stage ${stageName} completed`;
-    } else if (job.status === "running" || job.status === "processingStream") {
-      return `Running stage: ${stageName}`;
+  useEffect(() => {
+    if (!isRunning) {
+      setProgress(undefined);
+      return;
     }
-  }
 
-  // FALLBACK: Show truncated job.response for all other cases
-  const maxLength = 150;
-  return job.response.length > maxLength
-    ? `${job.response.substring(0, maxLength)}...`
-    : job.response;
+    const updateProgress = () => {
+      const newProgress = getStreamingProgressValue(metadata, startTime, taskType);
+      setProgress(newProgress);
+    };
+
+    // Update immediately
+    updateProgress();
+
+    // Set up interval to update every second
+    const interval = setInterval(updateProgress, 1000);
+
+    return () => clearInterval(interval);
+  }, [metadata, startTime, taskType, isRunning]);
+
+  return progress;
 };
+
 
 const getErrorPreview = (errorMessage?: string) => {
   if (!errorMessage) return "";
@@ -141,6 +85,12 @@ const getErrorPreview = (errorMessage?: string) => {
 
 export const JobCard = React.memo(
   ({ job, handleCancel, handleDelete, isCancelling, isDeleting, onSelect }: JobCardProps) => {
+    
+    // Determine if job is running for live progress updates  
+    const isJobRunning = ["running", "processingStream", "generatingStream", "preparing", "preparing_input"].includes(job.status);
+    
+    // Use live progress hook for running jobs
+    const liveProgress = useLiveProgress(job.metadata, job.startTime, job.taskType, isJobRunning);
 
     // Choose best timestamp for display
     // Priority: startTime > updatedAt > createdAt
@@ -269,28 +219,23 @@ export const JobCard = React.memo(
 
         <div className="text-muted-foreground text-[10px] mt-2">{timeAgo}</div>
 
-        {/* Progress bar for running jobs */}
-        {(job.status === "running" || job.status === "processingStream") && (
+        {/* Progress bar for active jobs */}
+        {isJobRunning && (
           <div className="mt-2 mb-1">
             {(() => {
-              // Use the centralized progress calculation for consistency
-              const progressValue = getStreamingProgressValue(
-                job.metadata,
-                job.startTime
-              );
+              // Use live progress for real-time updates
+              const displayProgress = liveProgress !== undefined ? liveProgress : 10;
               
               return (
                 <>
                   <Progress
-                    value={progressValue}
-                    className="h-0.5"
+                    value={displayProgress}
+                    className="h-1"
                   />
                   <div className="flex justify-between items-center min-w-0 overflow-hidden">
-                    {progressValue !== undefined && (
-                      <p className="text-[9px] text-muted-foreground mt-0.5 text-right">
-                        {Math.floor(progressValue)}%
-                      </p>
-                    )}
+                    <p className="text-[9px] text-muted-foreground mt-0.5 text-right">
+                      {Math.round(displayProgress)}%
+                    </p>
                   </div>
                 </>
               );
@@ -373,22 +318,21 @@ export const JobCard = React.memo(
                   {(() => {
                     const parsedMeta = getParsedMetadata(job.metadata);
                     
-                    // Handle all tasks that can produce file results
-                    const fileProducingTasks = [
-                      "path_finder", 
+                    // Handle all file-finding tasks that should show file counts
+                    const fileFindingTasks = [
                       "extended_path_finder", 
                       "file_finder_workflow",
                       "regex_file_filter",
                       "file_relevance_assessment"
                     ];
                     
-                    if (fileProducingTasks.includes(job.taskType)) {
+                    if (fileFindingTasks.includes(job.taskType)) {
                       if (job.response) {
                         try {
                           const parsed = JSON.parse(job.response);
                           
-                          // Handle path_finder specific format with verified/unverified paths
-                          if (job.taskType === "path_finder" && parsed && typeof parsed === 'object' && 'paths' in parsed && 'unverified_paths' in parsed) {
+                          // Handle path finder specific format with verified/unverified paths
+                          if (parsed && typeof parsed === 'object' && 'paths' in parsed && 'unverified_paths' in parsed) {
                             const verifiedCount = Array.isArray(parsed.paths) ? parsed.paths.length : 0;
                             const unverifiedCount = Array.isArray(parsed.unverified_paths) ? parsed.unverified_paths.length : 0;
                             const totalCount = verifiedCount + unverifiedCount;
@@ -414,14 +358,31 @@ export const JobCard = React.memo(
                           }
                           // Handle object responses with file arrays
                           else if (parsed && typeof parsed === 'object') {
-                            // Check for common patterns in workflow responses
-                            const filePaths = parsed.filePaths || parsed.paths || parsed.files;
-                            if (Array.isArray(filePaths)) {
-                              const count = filePaths.length;
+                            // Check for all possible field names used by different task types
+                            const filePaths = parsed.filePaths || parsed.paths || parsed.files || 
+                                             parsed.filteredFiles || parsed.relevantFiles;
+                            
+                            // For file_relevance_assessment, use the count field if available
+                            if (job.taskType === "file_relevance_assessment" && typeof parsed.count === 'number') {
+                              const count = parsed.count;
                               if (count > 0) {
                                 return (
                                   <span className="font-medium text-foreground">
-                                    {count} file{count !== 1 ? "s" : ""} found
+                                    {count} relevant file{count !== 1 ? "s" : ""} found
+                                  </span>
+                                );
+                              }
+                            }
+                            
+                            if (Array.isArray(filePaths)) {
+                              const count = filePaths.length;
+                              if (count > 0) {
+                                // Show task-specific messaging
+                                const actionWord = job.taskType === "regex_file_filter" ? "filtered" :
+                                                 job.taskType === "file_relevance_assessment" ? "relevant" : "found";
+                                return (
+                                  <span className="font-medium text-foreground">
+                                    {count} {actionWord} file{count !== 1 ? "s" : ""}
                                   </span>
                                 );
                               }
@@ -440,11 +401,39 @@ export const JobCard = React.memo(
                         }
                       }
                       
-                      return null; // Don't show generic completion message for file tasks
+                      // Show "No files found" for all file finding tasks
+                      return (
+                        <span className="text-muted-foreground">
+                          No files found
+                        </span>
+                      );
                     }
                     
-                    // For implementation plans and other tasks, don't show redundant info
-                    return null;
+                    // Handle implementation plans
+                    if (job.taskType === "implementation_plan") {
+                      const sessionName = parsedMeta?.taskData?.sessionName;
+                      return (
+                        <span className="font-medium text-foreground">
+                          {sessionName ? `Plan: ${sessionName}` : "Plan generated"}
+                        </span>
+                      );
+                    }
+                    
+                    // Handle workflow context
+                    if (parsedMeta?.workflowId) {
+                      return (
+                        <span className="font-medium text-primary">
+                          Workflow completed
+                        </span>
+                      );
+                    }
+                    
+                    // For other tasks, show generic completion
+                    return (
+                      <span className="text-muted-foreground">
+                        Task completed
+                      </span>
+                    );
                   })()}
                 </div>
                 

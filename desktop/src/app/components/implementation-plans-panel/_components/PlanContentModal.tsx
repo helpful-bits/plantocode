@@ -1,7 +1,7 @@
 "use client";
 
 import { Loader2, Copy, Save } from "lucide-react";
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useNotification } from "@/contexts/notification-context";
 
@@ -28,6 +28,43 @@ interface PlanContentModalProps {
   onCopyButtonClick?: (buttonConfig: CopyButtonConfig) => void;
 }
 
+/**
+ * Custom hook for live progress updates in Plan Content Modal
+ * Updates progress every second for running jobs
+ */
+const useLiveProgress = (
+  metadata: any,
+  startTime: number | null | undefined,
+  taskType: string | undefined,
+  isRunning: boolean
+): number | undefined => {
+  const [progress, setProgress] = useState<number | undefined>(() => 
+    isRunning ? getStreamingProgressValue(metadata, startTime, taskType) : undefined
+  );
+
+  useEffect(() => {
+    if (!isRunning) {
+      setProgress(undefined);
+      return;
+    }
+
+    const updateProgress = () => {
+      const newProgress = getStreamingProgressValue(metadata, startTime, taskType);
+      setProgress(newProgress);
+    };
+
+    // Update immediately
+    updateProgress();
+
+    // Set up interval to update every second
+    const interval = setInterval(updateProgress, 1000);
+
+    return () => clearInterval(interval);
+  }, [metadata, startTime, taskType, isRunning]);
+
+  return progress;
+};
+
 const PlanContentModal: React.FC<PlanContentModalProps> = ({
   plan,
   open,
@@ -46,9 +83,13 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
 
   const isStreaming = JOB_STATUSES.ACTIVE.includes(plan.status) &&
                      (plan.status === "running" || plan.status === "processingStream" || plan.status === "generatingStream");
-  const progress = getStreamingProgressValue(
+  
+  // Use live progress hook for consistent and real-time updates
+  const progress = useLiveProgress(
     plan.metadata,
-    plan.startTime
+    plan.startTime,
+    plan.taskType, // Now includes taskType for proper calculation
+    isStreaming
   );
 
   let displayContent = "No content available yet.";
@@ -220,11 +261,20 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
         {/* Progress bar for streaming jobs */}
         {isStreaming && (
           <div className="mb-2 flex-shrink-0">
-            <Progress value={progress ?? 0} className="h-2" />
-            <div className="flex justify-between mt-1 text-xs text-muted-foreground">
-              <span>Generating implementation plan...</span>
-              <span>{Math.round(progress ?? 0)}%</span>
-            </div>
+            {(() => {
+              // Ensure we always show some progress for active jobs, consistent with other components
+              const displayProgress = progress !== undefined ? progress : 10;
+              
+              return (
+                <>
+                  <Progress value={displayProgress} className="h-2" />
+                  <div className="flex justify-between mt-1 text-xs text-muted-foreground">
+                    <span>Generating implementation plan...</span>
+                    <span>{Math.round(displayProgress)}%</span>
+                  </div>
+                </>
+              );
+            })()}
           </div>
         )}
 

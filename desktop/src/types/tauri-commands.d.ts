@@ -607,7 +607,6 @@ export type TauriInvoke = {
   "cancel_session_jobs_command": (args: CancelSessionJobsCommandArgs) => Promise<void>;
   "find_relevant_files_command": (args: FindRelevantFilesCommandArgs) => Promise<JobResult>;
   "generate_directory_tree_command": (args: GenerateDirectoryTreeCommandArgs) => Promise<string>;
-  "estimate_path_finder_tokens_command": (args: EstimatePathFinderTokensCommandArgs) => Promise<import("@/actions/ai/path-finder.actions").TokenEstimateResponse>;
   "generate_regex_command": (args: GenerateRegexCommandArgs) => Promise<JobResult>;
   "improve_text_command": (args: ImproveTextCommandArgs) => Promise<JobResult>;
   "generate_simple_text_command": (args: GenerateSimpleTextCommandArgs) => Promise<{ text: string; duration_ms?: number }>;
@@ -671,6 +670,7 @@ export type TauriInvoke = {
   // Payment method management commands
   "set_default_payment_method_command": (args: { paymentMethodId: string }) => Promise<any>;
   "detach_payment_method_command": (args: { paymentMethodId: string }) => Promise<any>;
+  "get_detailed_usage_command": (args: { startDate: string; endDate: string }) => Promise<DetailedUsage[]>;
   
   // File Finder Workflow commands
   "start_file_finder_workflow": (args: StartFileFinderWorkflowCommandArgs) => Promise<import("@/types/workflow-types").WorkflowCommandResponse>;
@@ -686,6 +686,17 @@ export type TauriInvoke = {
 };
 
 // Billing-related types
+export interface DetailedUsage {
+  serviceName: string;
+  modelDisplayName: string;
+  providerCode: string;
+  modelType: string;
+  totalCost: number;
+  totalRequests: number;
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  totalDurationMs: number;
+}
 export interface SubscriptionDetails {
   plan: string;
   planName?: string;
@@ -708,9 +719,9 @@ export interface SubscriptionPlan {
   id: string;
   name: string;
   description: string;
-  weeklyPrice: number;
-  monthlyPrice: number;
-  yearlyPrice: number;
+  weeklyPrice: string;
+  monthlyPrice: string;
+  yearlyPrice: string;
   currency: string;
   features: string[];
   recommended: boolean;
@@ -731,10 +742,6 @@ export interface CurrentPlanResponse {
 }
 
 export interface UsageInfo {
-  currentSpending: number;
-  includedAllowance: number;
-  usagePercentage: number;
-  servicesBlocked: boolean;
   currency: string;
 }
 
@@ -878,21 +885,10 @@ export interface CompletePendingPaymentResponse {
 // Advanced billing types for new commands
 
 
-export interface SpendingStatusInfo {
-  currentSpending: number;
-  spendingLimit: number;
-  remainingBudget: number;
-  usagePercentage: number;
-  daysRemaining: number;
-  isNearLimit: boolean;
-  isOverLimit: boolean;
-  currency: string;
-}
 
 export interface SpendingAnalyticsResponse {
   userId: string;
   periodMonths: number;
-  currentStatus: SpendingStatusInfo;
   summary: SpendingSummary;
   trends: SpendingTrend[];
   monthlyAverage: number;
@@ -1007,27 +1003,11 @@ export interface BillingDashboardPlanDetails {
   billingInterval: string;
 }
 
-export interface BillingDashboardSpendingDetails {
-  currentSpendingUsd: number;
-  spendingLimitUsd: number;
-  periodStart: string;
-  periodEnd: string;
-}
-
-export interface BillingDashboardAllowanceDetails {
-  usedAmountUsd: number;
-  totalAllowanceUsd: number;
-  periodEnd: string;
-}
-
 export interface BillingDashboardData {
   planDetails: BillingDashboardPlanDetails;
-  spendingDetails: BillingDashboardSpendingDetails;
-  allowanceDetails: BillingDashboardAllowanceDetails;
   creditBalanceUsd: number;
   subscriptionStatus: string;
   trialEndsAt?: string;
-  servicesBlocked: boolean;
 }
 
 // Strongly typed invoke function

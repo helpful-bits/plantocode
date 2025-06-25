@@ -139,6 +139,32 @@ pub enum AppError {
     
     #[error("Checkout error: {0}")]
     CheckoutError(String),
+    
+    // Additional billing error variants to match server
+    #[error("Payment required: {0}")]
+    PaymentRequired(String),
+    
+    #[error("Payment error: {0}")]
+    PaymentError(String),
+    
+    // Additional error variants to match server AppError for complete synchronization
+    #[error("Unauthorized: {0}")]
+    Unauthorized(String),
+    
+    #[error("Forbidden: {0}")]
+    Forbidden(String),
+    
+    #[error("Bad request: {0}")]
+    BadRequest(String),
+    
+    #[error("Too many requests: {0}")]
+    TooManyRequests(String),
+    
+    #[error("Not implemented: {0}")]
+    NotImplemented(String),
+    
+    #[error("Lock poisoned: {0}")]
+    LockPoisoned(String),
 }
 
 impl From<std::io::Error> for AppError {
@@ -249,6 +275,14 @@ impl From<AppError> for SerializableError {
             AppError::InvoiceError(_) => "INVOICE_ERROR",
             AppError::StripeError(_) => "STRIPE_ERROR",
             AppError::CheckoutError(_) => "CHECKOUT_ERROR",
+            AppError::PaymentRequired(_) => "PAYMENT_REQUIRED",
+            AppError::PaymentError(_) => "PAYMENT_ERROR",
+            AppError::Unauthorized(_) => "UNAUTHORIZED",
+            AppError::Forbidden(_) => "FORBIDDEN",
+            AppError::BadRequest(_) => "BAD_REQUEST",
+            AppError::TooManyRequests(_) => "TOO_MANY_REQUESTS",
+            AppError::NotImplemented(_) => "NOT_IMPLEMENTED",
+            AppError::LockPoisoned(_) => "LOCK_POISONED",
         }.to_string();
         
         SerializableError {

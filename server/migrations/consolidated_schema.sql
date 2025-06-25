@@ -94,10 +94,6 @@ CREATE TABLE IF NOT EXISTS subscription_plans (
     base_price_weekly DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
     base_price_monthly DECIMAL(10, 2) NOT NULL,
     base_price_yearly DECIMAL(10, 2) NOT NULL,
-    included_spending_weekly DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
-    included_spending_monthly DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
-    overage_rate DECIMAL(5, 4) NOT NULL DEFAULT 1.0000,
-    hard_limit_multiplier DECIMAL(3, 2) NOT NULL DEFAULT 2.00,
     currency VARCHAR(3) NOT NULL DEFAULT 'USD',
     stripe_price_id_weekly VARCHAR(100),
     stripe_price_id_monthly VARCHAR(100),
@@ -252,52 +248,39 @@ CREATE INDEX IF NOT EXISTS idx_application_configurations_config_key ON applicat
 INSERT INTO subscription_plans (
     id, name, description, 
     base_price_weekly, base_price_monthly, base_price_yearly,
-    included_spending_weekly, included_spending_monthly, overage_rate, hard_limit_multiplier,
     currency, stripe_price_id_weekly, stripe_price_id_monthly, stripe_price_id_yearly, plan_tier, features
 ) VALUES 
 ('free', 'Free', 'Perfect for trying out AI features', 
- 0.00, 0.00, 0.00, 1.25, 5.00, 1.0000, 2.00, 'USD',
+ 0.00, 0.00, 0.00, 'USD',
  NULL, NULL, NULL, 0,
  '{
    "coreFeatures": ["Basic AI models", "Community support", "Usage analytics"],
    "allowedModels": ["anthropic/claude-4-sonnet", "openai/gpt-4.1-mini"],
    "supportLevel": "Community",
    "apiAccess": false,
-   "analyticsLevel": "Basic",
-   "spendingDetails": {
-     "overagePolicy": "none",
-     "hardCutoff": true
-   }
+   "analyticsLevel": "Basic"
  }'::jsonb),
  
 ('pro', 'Pro', 'For power users and small teams', 
- 5.00, 20.00, 200.00, 12.50, 50.00, 1.0000, 3.00, 'USD',
+ 5.00, 20.00, 200.00, 'USD',
  NULL, NULL, NULL, 1,
  '{
    "coreFeatures": ["All AI models", "Priority support", "Advanced analytics", "API access"],
    "allowedModels": ["all"],
    "supportLevel": "Priority",
    "apiAccess": true,
-   "analyticsLevel": "Advanced",
-   "spendingDetails": {
-     "overagePolicy": "standard_rate",
-     "hardCutoff": true
-   }
+   "analyticsLevel": "Advanced"
  }'::jsonb),
  
 ('enterprise', 'Enterprise', 'For organizations with high AI usage', 
- 25.00, 100.00, 1000.00, 50.00, 200.00, 0.9000, 5.00, 'USD',
+ 25.00, 100.00, 1000.00, 'USD',
  NULL, NULL, NULL, 2,
  '{
    "coreFeatures": ["All AI models", "Dedicated support", "Custom integrations", "Advanced analytics", "Team management", "SLA guarantee"],
    "allowedModels": ["all"],
    "supportLevel": "Dedicated",
    "apiAccess": true,
-   "analyticsLevel": "Enterprise",
-   "spendingDetails": {
-     "overagePolicy": "negotiated_rate",
-     "hardCutoff": false
-   }
+   "analyticsLevel": "Enterprise"
  }'::jsonb)
 ON CONFLICT (id) DO NOTHING;
 
@@ -650,30 +633,6 @@ ON CONFLICT (config_key) DO UPDATE SET
   description = EXCLUDED.description,
   updated_at = CURRENT_TIMESTAMP;
 
--- User spending limits table for granular billing period tracking
-CREATE TABLE IF NOT EXISTS user_spending_limits (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    plan_id VARCHAR(50) NOT NULL REFERENCES subscription_plans(id) ON DELETE CASCADE,
-    billing_period_start TIMESTAMPTZ NOT NULL,
-    billing_period_end TIMESTAMPTZ NOT NULL,
-    included_allowance DECIMAL(12, 4) NOT NULL DEFAULT 0.0000,
-    current_spending DECIMAL(12, 4) NOT NULL DEFAULT 0.0000,
-    hard_limit DECIMAL(12, 4),
-    services_blocked BOOLEAN NOT NULL DEFAULT FALSE,
-    currency VARCHAR(3) NOT NULL DEFAULT 'USD',
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT fk_user_spending_limits_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    CONSTRAINT fk_user_spending_limits_plan FOREIGN KEY (plan_id) REFERENCES subscription_plans(id) ON DELETE CASCADE,
-    CONSTRAINT unique_user_billing_period UNIQUE (user_id, billing_period_start)
-);
-
--- Indexes for user_spending_limits table
-CREATE INDEX IF NOT EXISTS idx_user_spending_limits_user_id ON user_spending_limits(user_id);
-CREATE INDEX IF NOT EXISTS idx_user_spending_limits_billing_period_start ON user_spending_limits(billing_period_start);
-CREATE INDEX IF NOT EXISTS idx_user_spending_limits_services_blocked ON user_spending_limits(services_blocked) WHERE services_blocked = TRUE;
-CREATE INDEX IF NOT EXISTS idx_user_spending_limits_plan_id ON user_spending_limits(plan_id);
 
 -- Enhanced billing tables for 100% implementation
 
@@ -896,29 +855,6 @@ USING (true);
 
 
 
--- RLS for user_spending_limits table
-ALTER TABLE user_spending_limits ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Users can select their own spending limits"
-ON user_spending_limits FOR SELECT
-TO authenticated
-USING (user_id = get_current_user_id());
-
-CREATE POLICY "Users can insert their own spending limits"
-ON user_spending_limits FOR INSERT
-TO authenticated
-WITH CHECK (user_id = get_current_user_id());
-
-CREATE POLICY "Users can update their own spending limits"
-ON user_spending_limits FOR UPDATE
-TO authenticated
-USING (user_id = get_current_user_id())
-WITH CHECK (user_id = get_current_user_id());
-
-CREATE POLICY "App can manage user spending limits"
-ON user_spending_limits FOR ALL
-TO vibe_manager_app
-USING (true);
 
 -- RLS for providers table
 ALTER TABLE providers ENABLE ROW LEVEL SECURITY;
@@ -1302,10 +1238,8 @@ GRANT SELECT, INSERT, UPDATE ON api_quotas TO authenticated;
 GRANT SELECT, INSERT, UPDATE ON user_credits TO authenticated;
 GRANT SELECT, INSERT ON credit_transactions TO authenticated;
 GRANT SELECT ON audit_logs TO authenticated;
-GRANT SELECT, INSERT, UPDATE ON user_spending_limits TO authenticated;
 GRANT SELECT, INSERT, UPDATE ON webhook_idempotency TO vibe_manager_app;
 GRANT SELECT, INSERT, UPDATE ON audit_logs TO vibe_manager_app;
-GRANT SELECT, INSERT, UPDATE ON user_spending_limits TO vibe_manager_app;
 
 -- User billing details table for invoice customization
 

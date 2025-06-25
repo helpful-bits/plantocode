@@ -5,7 +5,6 @@ export interface TaskModelSettings extends BaseTaskModelSettings {
 }
 
 export interface TaskSettings {
-  pathFinder: TaskModelSettings;
   voiceTranscription: TaskModelSettings;
   regexFileFilter: TaskModelSettings;
   pathCorrection: TaskModelSettings;
@@ -16,8 +15,6 @@ export interface TaskSettings {
   fileFinderWorkflow: TaskModelSettings;
   streaming: TaskModelSettings;
   unknown: TaskModelSettings;
-  // New individual workflow stage types
-  localFileFiltering: TaskModelSettings;
   fileRelevanceAssessment: TaskModelSettings;
   extendedPathFinder: TaskModelSettings;
 }

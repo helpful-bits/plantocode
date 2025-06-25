@@ -9,7 +9,6 @@
 // Base TaskType string union (synced with Rust TaskType enum)
 export type TaskType =
   | "implementation_plan"
-  | "path_finder" 
   | "voice_transcription"
   | "text_improvement"
   | "path_correction"
@@ -26,7 +25,6 @@ export type TaskType =
 
 // Task types that support system prompts (LLM tasks only)
 export type TaskTypeSupportingSystemPrompts =
-  | "path_finder"
   | "voice_transcription"
   | "text_improvement"
   | "implementation_plan"
@@ -40,7 +38,6 @@ export type TaskTypeSupportingSystemPrompts =
 // Runtime array of all task types (synced with Rust TaskType enum)
 export const ALL_TASK_TYPES: readonly TaskType[] = [
   "implementation_plan",
-  "path_finder",
   "voice_transcription",
   "text_improvement",
   "path_correction",
@@ -57,7 +54,6 @@ export const ALL_TASK_TYPES: readonly TaskType[] = [
 
 // Runtime array of system prompt supporting task types (LLM tasks only)
 export const SYSTEM_PROMPT_TASK_TYPES: readonly TaskTypeSupportingSystemPrompts[] = [
-  "path_finder",
   "voice_transcription",
   "text_improvement",
   "implementation_plan",
@@ -101,13 +97,6 @@ export const TaskTypeDetails: Record<TaskType, {
     displayName: "Implementation Plans", 
     category: "Development",
     description: "Create detailed implementation plans for features",
-    defaultProvider: "google"
-  },
-  path_finder: { 
-    requiresLlm: true, 
-    displayName: "File Finder", 
-    category: "Code Analysis",
-    description: "AI model used to find relevant files in your project",
     defaultProvider: "google"
   },
   voice_transcription: { 

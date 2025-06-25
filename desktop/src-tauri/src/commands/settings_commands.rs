@@ -8,10 +8,11 @@ use serde::{Serialize, Deserialize};
 use log;
 use heck::ToLowerCamelCase;
 use crate::api_clients::ServerProxyClient;
-use crate::models::{DefaultSystemPrompt, ProjectSystemPrompt};
+use crate::models::{DefaultSystemPrompt, ProjectSystemPrompt, TaskType};
 use crate::services::config_cache_service::ConfigCache;
 use crate::models::RuntimeAIConfig;
 use std::collections::HashMap;
+use std::str::FromStr;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ConfigurationHealthReport {
@@ -156,19 +157,29 @@ pub async fn get_server_default_task_model_settings_command(app_handle: AppHandl
     // Convert server tasks to frontend format
     let mut server_frontend_map = Map::new();
     for (snake_case_key, task_config) in &runtime_ai_config.tasks {
-        let camel_case_key = snake_case_key.to_lower_camel_case();
-        let frontend_config = FrontendReadyTaskModelConfig {
-            model: task_config.model.clone().unwrap_or_default(),
-            max_tokens: task_config.max_tokens.unwrap_or(0),
-            temperature: task_config.temperature.unwrap_or(0.0),
-            system_prompt: task_config.system_prompt.clone(),
-            copy_buttons: task_config.copy_buttons.clone(),
-        };
-        server_frontend_map.insert(
-            camel_case_key, 
-            serde_json::to_value(frontend_config)
-                .map_err(|e| AppError::SerializationError(format!("Failed to serialize task config for {}: {}", snake_case_key, e)))?
-        );
+        // Validate task type before processing
+        match TaskType::from_str(&snake_case_key) {
+            Ok(_) => {
+                // Task type is valid, proceed with processing
+                let camel_case_key = snake_case_key.to_lower_camel_case();
+                let frontend_config = FrontendReadyTaskModelConfig {
+                    model: task_config.model.clone().unwrap_or_default(),
+                    max_tokens: task_config.max_tokens.unwrap_or(0),
+                    temperature: task_config.temperature.unwrap_or(0.0),
+                    system_prompt: task_config.system_prompt.clone(),
+                    copy_buttons: task_config.copy_buttons.clone(),
+                };
+                server_frontend_map.insert(
+                    camel_case_key, 
+                    serde_json::to_value(frontend_config)
+                        .map_err(|e| AppError::SerializationError(format!("Failed to serialize task config for {}: {}", snake_case_key, e)))?
+                );
+            }
+            Err(_) => {
+                // Task type is invalid or deprecated, filter it out
+                log::warn!("Filtering out unknown task type from server config: {}", snake_case_key);
+            }
+        }
     }
     
     log::info!("Returning server default task model settings only");
@@ -246,37 +257,62 @@ async fn get_runtime_ai_config_from_cache(app_handle: &AppHandle) -> AppResult<R
 }
 
 #[tauri::command]
-pub async fn get_all_task_model_settings_for_project_command(app_handle: AppHandle, project_directory: String) -> AppResult<serde_json::Value> {
-    // Get runtime config to know which task types exist
+pub async fn get_project_task_model_settings_command(app_handle: AppHandle, project_directory: String) -> AppResult<String> {
+    let project_hash = hash_string(&project_directory);
+    let settings_repo = app_handle.state::<Arc<SettingsRepository>>().inner().clone();
+    
+    // Get server defaults
     let runtime_ai_config = get_runtime_ai_config_from_cache(&app_handle).await?;
     
-    // Initialize result object
+    // Get project overrides
+    let project_overrides = settings_repo.get_all_project_task_settings(&project_hash).await?;
+    
+    // Initialize result object with server defaults
     let mut result = serde_json::Map::new();
     
-    // Return only server defaults as AI configuration now comes from server-side exclusively
     for (snake_case_key, server_task_config) in &runtime_ai_config.tasks {
         let camel_case_key = snake_case_key.to_lower_camel_case();
         
-        // Use server defaults only
+        // Start with server defaults
         let mut task_config = serde_json::Map::new();
         task_config.insert("model".to_string(), json!(server_task_config.model.clone().unwrap_or_default()));
         task_config.insert("maxTokens".to_string(), json!(server_task_config.max_tokens.unwrap_or(0)));
         if let Some(temp) = server_task_config.temperature {
             task_config.insert("temperature".to_string(), json!(temp));
         }
+        
+        // Apply project-specific overrides
+        for (override_key, override_value) in &project_overrides {
+            if let Some(task_and_setting) = override_key.strip_prefix(&format!("{}:", snake_case_key)) {
+                // Parse the JSON value and apply it
+                if let Ok(parsed_value) = serde_json::from_str::<serde_json::Value>(override_value) {
+                    task_config.insert(task_and_setting.to_string(), parsed_value);
+                }
+            }
+        }
+        
         result.insert(camel_case_key, serde_json::Value::Object(task_config));
     }
     
-    Ok(serde_json::Value::Object(result))
+    Ok(serde_json::Value::Object(result).to_string())
 }
 
 #[tauri::command]
-pub async fn set_project_task_model_settings_command(app_handle: AppHandle, project_directory: String, settings_json: String) -> AppResult<()> {
-    // Project-specific task settings are no longer supported
-    // All AI configuration now comes from server-side exclusively
-    Err(AppError::ConfigError(
-        "Project-specific task model settings are no longer supported. All AI configuration is now managed server-side. Please use server configuration overrides if needed.".to_string()
-    ))
+pub async fn set_project_task_setting_command(app_handle: AppHandle, project_directory: String, task_key: String, setting_key: String, value_json: String) -> AppResult<()> {
+    let project_hash = hash_string(&project_directory);
+    let settings_repo = app_handle.state::<Arc<SettingsRepository>>().inner().clone();
+    
+    let key = format!("project_task_settings:{}:{}:{}", project_hash, task_key, setting_key);
+    settings_repo.set_value(&key, &value_json).await
+}
+
+#[tauri::command]
+pub async fn reset_project_task_setting_command(app_handle: AppHandle, project_directory: String, task_key: String, setting_key: String) -> AppResult<()> {
+    let project_hash = hash_string(&project_directory);
+    let settings_repo = app_handle.state::<Arc<SettingsRepository>>().inner().clone();
+    
+    let key = format!("project_task_settings:{}:{}:{}", project_hash, task_key, setting_key);
+    settings_repo.delete_value(&key).await
 }
 
 #[tauri::command]

@@ -222,13 +222,7 @@ fn main() {
             commands::implementation_plan_commands::update_implementation_plan_content_command,
             commands::implementation_plan_commands::get_prompt_command,
             commands::implementation_plan_commands::estimate_prompt_tokens_command,
-            
-            // Path finding commands
-            commands::path_finding_commands::find_relevant_files_command,
-            commands::path_finding_commands::generate_directory_tree_command,
-            commands::path_finding_commands::create_path_correction_job_command,
-            commands::path_finding_commands::estimate_path_finder_tokens_command,
-            
+
             // File finder workflow commands (new stage-based approach)
             commands::file_finder_workflow_commands::start_file_finder_workflow,
             commands::file_finder_workflow_commands::get_file_finder_workflow_status,
@@ -277,6 +271,9 @@ fn main() {
             commands::settings_commands::reset_project_system_prompt_command,
             commands::settings_commands::is_project_system_prompt_customized_command,
             commands::settings_commands::get_server_default_system_prompts_command,
+            commands::settings_commands::get_project_task_model_settings_command,
+            commands::settings_commands::set_project_task_setting_command,
+            commands::settings_commands::reset_project_task_setting_command,
             
             
             // Session commands

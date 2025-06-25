@@ -206,7 +206,7 @@ export function areJobsEqual(
 
   // Task-specific checks
   // For path finder jobs, check pathCount in metadata
-  if (jobA.taskType === "path_finder" && jobA.status === "completed") {
+  if (jobA.taskType === "extended_path_finder" && jobA.status === "completed") {
     // Compare metadata using parsed objects
     if (metaA?.taskData?.pathCount !== metaB?.taskData?.pathCount) {
       logger.debug(`Path count changed for job ${jobA.id}`);
@@ -298,7 +298,7 @@ export function hasMetadataChanged(
   }
 
   // For pathfinder jobs, check pathData and pathCount first
-  if (jobA.taskType === "path_finder") {
+  if (jobA.taskType === "extended_path_finder") {
     // For completed path finder jobs, check pathCount
     if (jobA.status === "completed") {
       if (metaA?.taskData?.pathCount !== metaB?.taskData?.pathCount) {

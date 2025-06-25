@@ -757,9 +757,17 @@ pub async fn list_invoices_command(
     offset: Option<i32>,
     billing_client: State<'_, Arc<BillingClient>>,
 ) -> Result<ListInvoicesResponse, AppError> {
-    billing_client
+    debug!("List invoices command called with limit: {:?}, offset: {:?}", limit, offset);
+    
+    // Security validation
+    check_rate_limit("list_invoices")?;
+    
+    let response = billing_client
         .list_invoices(limit, offset)
-        .await
+        .await?;
+    
+    info!("Successfully retrieved {} invoices via command", response.invoices.len());
+    Ok(response)
 }
 
 /// Get detailed usage for a specific date range

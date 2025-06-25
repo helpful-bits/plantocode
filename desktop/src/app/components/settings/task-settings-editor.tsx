@@ -1,7 +1,7 @@
 "use client";
 
 import { type TaskSettings } from "@/types";
-import { type TaskType, TaskTypeDetails } from "@/types/task-type-defs";
+import { TaskTypeDetails } from "@/types/task-type-defs";
 import { type ProviderWithModels, type CopyButtonConfig } from "@/types/config-types";
 import {
   Label,
@@ -22,13 +22,9 @@ import { SystemPromptEditor } from "./system-prompt-editor";
 import { ModelSelector } from "./model-selector";
 import TaskSettingsCard from "./task-settings-card";
 import { CopyButtonListEditor } from "./copy-button-list-editor";
+import { ValidationResult, taskSettingsKeyToTaskType, TRANSCRIPTION_LANGUAGES } from "./shared/task-settings-types";
 import type React from "react";
 
-interface ValidationResult {
-  isValid: boolean;
-  errors: string[];
-  warnings: string[];
-}
 
 interface TaskSettingsEditorProps {
   taskKey: keyof TaskSettings;
@@ -50,37 +46,7 @@ interface TaskSettingsEditorProps {
   readOnly?: boolean; // New flag for read-only mode
 }
 
-const taskSettingsKeyToTaskType: Record<keyof TaskSettings, TaskType> = {
-  pathFinder: "path_finder",
-  voiceTranscription: "voice_transcription",
-  pathCorrection: "path_correction",
-  textImprovement: "text_improvement",
-  implementationPlan: "implementation_plan",
-  fileFinderWorkflow: "file_finder_workflow",
-  localFileFiltering: "local_file_filtering",
-  extendedPathFinder: "extended_path_finder",
-  fileRelevanceAssessment: "file_relevance_assessment",
-  taskRefinement: "task_refinement",
-  genericLlmStream: "generic_llm_stream",
-  regexFileFilter: "regex_file_filter",
-  streaming: "streaming",
-  unknown: "unknown",
-};
 
-export const TRANSCRIPTION_LANGUAGES = [
-  { code: 'en', name: 'English', nativeName: 'English' },
-  { code: 'es', name: 'Spanish', nativeName: 'Español' },
-  { code: 'fr', name: 'French', nativeName: 'Français' },
-  { code: 'de', name: 'German', nativeName: 'Deutsch' },
-  { code: 'it', name: 'Italian', nativeName: 'Italiano' },
-  { code: 'pt', name: 'Portuguese', nativeName: 'Português' },
-  { code: 'ru', name: 'Russian', nativeName: 'Русский' },
-  { code: 'ja', name: 'Japanese', nativeName: '日本語' },
-  { code: 'ko', name: 'Korean', nativeName: '한국어' },
-  { code: 'zh', name: 'Chinese', nativeName: '中文' },
-  { code: 'ar', name: 'Arabic', nativeName: 'العربية' },
-  { code: 'hi', name: 'Hindi', nativeName: 'हिन्दी' },
-] as const;
 
 export function TaskSettingsEditor({
   taskKey,
@@ -99,7 +65,7 @@ export function TaskSettingsEditor({
   isDifferentFromDefault,
   getSliderValue,
   providersWithModels,
-  readOnly = true, // AI model parameters are server-managed, only system prompts are customizable
+  readOnly = false, // Enable editing of AI model parameters
 }: TaskSettingsEditorProps) {
   const taskType = taskSettingsKeyToTaskType[taskKey];
   const taskDetails = TaskTypeDetails[taskType];
@@ -253,7 +219,7 @@ export function TaskSettingsEditor({
             />
           </div>
           <p className="text-xs text-muted-foreground text-balance">
-            {taskKey === "pathCorrection" || taskKey === "pathFinder"
+            {taskKey === "pathCorrection" || taskKey === "extendedPathFinder"
               ? "Lower values produce more accurate path suggestions"
               : taskKey === "textImprovement"
               ? "Lower values for accuracy, higher for more creative corrections"

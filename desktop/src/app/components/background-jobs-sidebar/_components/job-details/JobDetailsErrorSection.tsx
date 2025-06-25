@@ -1,16 +1,13 @@
-import { useState } from "react";
-import { AlertCircle, CreditCard, Settings, Key, Wifi, Clock, Database, RotateCcw, ChevronDown, ChevronUp } from "lucide-react";
+import { AlertCircle, CreditCard, Settings, Key, Wifi, Clock, Database, RotateCcw } from "lucide-react";
 
 import { Button } from "@/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/ui/collapsible";
 import { extractErrorInfo, createUserFriendlyErrorMessage, ErrorType } from "@/utils/error-handling";
 import { WorkflowUtils } from "@/utils/workflow-utils";
 import { useJobDetailsContext } from "../../_contexts/job-details-context";
 
 export function JobDetailsErrorSection() {
   const { job, parsedMetadata } = useJobDetailsContext();
-  const [isTechnicalDetailsOpen, setIsTechnicalDetailsOpen] = useState(false);
   
   if (!job.errorMessage) {
     return null;
@@ -37,7 +34,6 @@ export function JobDetailsErrorSection() {
     errorInfo.type === ErrorType.PLAN_UPGRADE_REQUIRED || 
     errorInfo.type === ErrorType.CREDIT_INSUFFICIENT ||
     errorInfo.type === ErrorType.SUBSCRIPTION_EXPIRED ||
-    errorInfo.type === ErrorType.SPENDING_LIMIT_EXCEEDED ||
     isMetadataBillingError || 
     isStringMatchBillingError;
   
@@ -56,7 +52,6 @@ export function JobDetailsErrorSection() {
   
   // Get user-friendly error message using the enhanced utility
   const userFriendlyMessage = createUserFriendlyErrorMessage(errorInfo, "background job");
-  const displayMessage = job.errorMessage || "An unknown error occurred";
   
   // Helper function to get error icon based on type
   const getErrorIcon = () => {
@@ -153,32 +148,6 @@ export function JobDetailsErrorSection() {
             <div>{userFriendlyMessage}</div>
           </div>
           
-          {/* Technical error details */}
-          <Card>
-            <Collapsible open={isTechnicalDetailsOpen} onOpenChange={setIsTechnicalDetailsOpen}>
-              <CollapsibleTrigger asChild>
-                <CardHeader className="py-4 cursor-pointer hover:bg-accent/50 transition-colors">
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <CardTitle className="text-sm">Technical Details</CardTitle>
-                      <CardDescription className="text-xs">
-                        Raw error information for debugging
-                      </CardDescription>
-                    </div>
-                    {isTechnicalDetailsOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                  </div>
-                </CardHeader>
-              </CollapsibleTrigger>
-              <CollapsibleContent>
-                <CardContent className="pt-0">
-                  <pre className="whitespace-pre-wrap text-balance text-xs text-destructive w-full p-2 bg-destructive/5 rounded border border-border/60">
-                    {displayMessage}
-                  </pre>
-                </CardContent>
-              </CollapsibleContent>
-            </Collapsible>
-          </Card>
-          
           {isBillingError && (
             <div className="mt-4 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20 border-2 border-blue-200 dark:border-blue-800 rounded-lg">
               <div className="flex items-start gap-3">
@@ -192,9 +161,6 @@ export function JobDetailsErrorSection() {
                         : 'Billing Action Required'
                     }
                   </p>
-                  <p className="text-sm text-blue-800 dark:text-blue-200 mb-4">
-                    {userFriendlyMessage}
-                  </p>
                   <div className="flex flex-col sm:flex-row gap-2">
                     <Button 
                       variant="default"
@@ -204,15 +170,6 @@ export function JobDetailsErrorSection() {
                     >
                       <CreditCard className="h-4 w-4 mr-2" />
                       Manage Billing
-                    </Button>
-                    <Button 
-                      variant="outline"
-                      size="sm" 
-                      onClick={() => window.location.pathname = '/settings'}
-                      className="border-blue-300 dark:border-blue-600 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/20"
-                    >
-                      <Settings className="h-4 w-4 mr-2" />
-                      Account Settings
                     </Button>
                   </div>
                 </div>

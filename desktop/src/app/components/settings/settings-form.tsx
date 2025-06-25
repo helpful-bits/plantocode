@@ -5,6 +5,7 @@ import { invoke } from "@tauri-apps/api/core";
 
 import {
   getServerDefaultTaskModelSettings,
+  getProjectTaskModelSettings,
 } from "@/actions/project-settings.actions";
 import { getProvidersWithModels } from "@/actions/config.actions";
 import { type ProviderWithModels } from "@/types/config-types";
@@ -42,14 +43,21 @@ export default function SettingsForm({}: SettingsFormProps) {
       // First refresh runtime config to ensure we have latest task configurations
       await invoke("fetch_runtime_ai_config");
       
-      const [serverDefaultsResult, modelsResult] = await Promise.all([
+      const [serverDefaultsResult, projectSettingsResult, modelsResult] = await Promise.all([
         getServerDefaultTaskModelSettings(),
+        getProjectTaskModelSettings(projectDirectory),
         getProvidersWithModels(),
       ]);
       
       if (serverDefaultsResult.isSuccess && serverDefaultsResult.data) {
-        setTaskSettings(serverDefaultsResult.data);
         setServerDefaults(serverDefaultsResult.data);
+        
+        // Use project settings if available, otherwise fall back to server defaults
+        if (projectSettingsResult.isSuccess && projectSettingsResult.data) {
+          setTaskSettings(projectSettingsResult.data);
+        } else {
+          setTaskSettings(serverDefaultsResult.data);
+        }
       } else {
         setError(serverDefaultsResult.message || "Failed to load server default settings");
         setTaskSettings(null);

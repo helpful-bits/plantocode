@@ -13,6 +13,11 @@ import { extractErrorInfo, createUserFriendlyErrorMessage } from "@/utils/error-
 // Import TaskDescriptionHandle type directly
 import type { TaskDescriptionHandle } from "../_components/task-description";
 
+const parseRefinedTask = (xmlContent: string): string => {
+  const refinedMatch = xmlContent.match(/<refined_task>([\s\S]*?)<\/refined_task>/);
+  return refinedMatch ? refinedMatch[1].trim() : xmlContent;
+};
+
 interface UseTaskDescriptionStateProps {
   activeSessionId: string | null;
   taskDescriptionRef: React.RefObject<TaskDescriptionHandle | null>;
@@ -119,7 +124,7 @@ export function useTaskDescriptionState({
 
     const handleJobCompletion = async () => {
       if (job.status === "completed" && job.response && job.sessionId === activeSessionId) {
-        const refinedTask = String(job.response).trim();
+        const refinedTask = parseRefinedTask(String(job.response).trim());
         if (refinedTask) {
           console.log('[TaskDescriptionState] Task refinement completed, saving to history');
           // Save to history first, then replace entire task description

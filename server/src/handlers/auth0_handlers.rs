@@ -114,7 +114,7 @@ pub async fn handle_auth0_callback(
         },
     );
     
-    let mut context = tera::Context::new();
+    let context = tera::Context::new();
     let rendered = tera.render("auth0_callback.html", &context)
         .map_err(|e| {
             error!("Template rendering error: {}", e);

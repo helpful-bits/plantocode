@@ -57,7 +57,7 @@ pub async fn create_path_finder_job_service(
     let model = if let Some(override_model) = args.model.clone() {
         override_model
     } else {
-        match crate::utils::config_helpers::get_model_for_task(TaskType::PathFinder, app_handle).await {
+        match crate::utils::config_helpers::get_model_for_task(TaskType::RegexFileFilter, app_handle).await {
             Ok(model) => model,
             Err(e) => {
                 return Err(AppError::ConfigError(format!("Failed to get model for path finder: {}", e)));
@@ -69,7 +69,7 @@ pub async fn create_path_finder_job_service(
     let temperature = if let Some(override_temp) = args.temperature {
         override_temp
     } else {
-        match crate::utils::config_helpers::get_default_temperature_for_task(Some(TaskType::PathFinder), app_handle).await {
+        match crate::utils::config_helpers::get_default_temperature_for_task(Some(TaskType::RegexFileFilter), app_handle).await {
             Ok(temp) => temp,
             Err(e) => {
                 return Err(AppError::ConfigError(format!("Failed to get temperature for path finder: {}", e)));
@@ -81,7 +81,7 @@ pub async fn create_path_finder_job_service(
     let max_tokens = if let Some(override_tokens) = args.max_tokens {
         override_tokens
     } else {
-        match crate::utils::config_helpers::get_default_max_tokens_for_task(Some(TaskType::PathFinder), app_handle).await {
+        match crate::utils::config_helpers::get_default_max_tokens_for_task(Some(TaskType::RegexFileFilter), app_handle).await {
             Ok(tokens) => tokens,
             Err(e) => {
                 return Err(AppError::ConfigError(format!("Failed to get max tokens for path finder: {}", e)));
@@ -116,7 +116,7 @@ pub async fn create_path_finder_job_service(
         &args.session_id,
         &project_directory,
         "openrouter",
-        TaskType::PathFinder,
+        TaskType::RegexFileFilter,
         "PATH_FINDER",
         &format!("Find relevant files for task: {}", args.task_description),
         Some((model, temperature, max_tokens)),

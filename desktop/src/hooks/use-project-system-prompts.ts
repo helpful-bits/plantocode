@@ -56,9 +56,9 @@ export function useProjectSystemPrompt({
         setIsCustom(true);
       } else {
         // Load default system prompt from server
-        const serverSystemPrompts = await invoke<string>('get_server_default_system_prompts_command');
-        const systemPromptsMap = JSON.parse(serverSystemPrompts);
-        const defaultPrompt = systemPromptsMap[taskType];
+        const defaultPrompt = await invoke<{ systemPrompt: string }>('fetch_default_system_prompt_from_server', {
+          taskType
+        });
         setPrompt(defaultPrompt?.systemPrompt || '');
         setIsCustom(false);
       }

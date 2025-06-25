@@ -27,11 +27,6 @@ pub(super) async fn create_abstract_stage_payload(
             );
             Ok(JobPayload::RegexFileFilter(payload))
         }
-        TaskType::PathFinder => {
-            // NOTE: This task type is superseded by ExtendedPathFinder for the main FileFinderWorkflow
-            // Keeping for backward compatibility with older workflows
-            return Err(AppError::JobError("PathFinder task type is superseded by ExtendedPathFinder in FileFinderWorkflow".to_string()));
-        }
         TaskType::PathCorrection => {
             // Retrieve extended_unverified_paths from workflow_state.intermediate_data with robust fallback
             let unverified_paths = workflow_state.intermediate_data.extended_unverified_paths

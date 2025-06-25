@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react";
 import { 
-  CreditCard, 
   Zap,
   AlertTriangle,
   RefreshCw,
@@ -32,16 +31,6 @@ interface BillingOverviewCardProps {
   };
   subscriptionStatus?: string;
   trialEndsAt?: string;
-  spendingDetails?: {
-    currentSpendingUsd: number;
-    spendingLimitUsd: number;
-    periodEnd: string;
-  };
-  allowanceDetails?: {
-    usedAmountUsd: number;
-    totalAllowanceUsd: number;
-    periodEnd: string;
-  };
   creditBalanceUsd?: number;
   onManageSubscription: () => void;
   onBuyCredits: () => void;
@@ -51,8 +40,6 @@ function BillingOverviewCard({
   planDetails,
   subscriptionStatus,
   trialEndsAt,
-  spendingDetails,
-  allowanceDetails,
   creditBalanceUsd,
   onManageSubscription,
   onBuyCredits
@@ -113,13 +100,9 @@ function BillingOverviewCard({
               </div>
             )}
             
-            {planDetails && spendingDetails && (
+            {planDetails && subscriptionStatus === 'trialing' && trialEndsAt && (
               <div className="text-sm text-muted-foreground">
-                {subscriptionStatus === 'trialing' && trialEndsAt ? (
-                  `Trial ends ${new Date(trialEndsAt).toLocaleDateString()}`
-                ) : (
-                  `Period ends: ${new Date(spendingDetails.periodEnd).toLocaleDateString()}`
-                )}
+                Trial ends {new Date(trialEndsAt).toLocaleDateString()}
               </div>
             )}
             
@@ -133,36 +116,24 @@ function BillingOverviewCard({
             </Button>
           </div>
 
-          {/* Monthly Usage Allowance */}
+          {/* Credit Balance */}
           <div className="space-y-4">
             <div>
               <h4 className="text-sm font-medium text-muted-foreground flex items-center gap-2 mb-3">
                 <DollarSign className="h-4 w-4" />
-                Monthly Usage Allowance
+                Credit Balance
               </h4>
-              <div className="text-2xl font-bold mb-2">
-                {allowanceDetails ? (
-                  <span>
-                    {formatUsdCurrency(allowanceDetails.usedAmountUsd)} / {formatUsdCurrency(allowanceDetails.totalAllowanceUsd)} used
-                  </span>
+              <div className="text-3xl font-bold mb-4 text-primary">
+                {creditBalanceUsd !== undefined ? (
+                  formatUsdCurrency(creditBalanceUsd)
                 ) : (
                   <span className="text-muted-foreground">Loading...</span>
                 )}
               </div>
-              {allowanceDetails && (
-                <div className="text-sm text-muted-foreground mb-4">
-                  Resets: {new Date(allowanceDetails.periodEnd).toLocaleDateString()}
-                </div>
-              )}
-              {creditBalanceUsd !== undefined && creditBalanceUsd > 0 && (
-                <div className="text-sm text-muted-foreground mb-4">
-                  Top-up Credits: {formatUsdCurrency(creditBalanceUsd)}
-                </div>
-              )}
               <Button 
-                size="sm" 
+                size="lg" 
                 onClick={onBuyCredits}
-                className="w-full"
+                className="w-full bg-primary hover:bg-primary/90"
               >
                 <Plus className="h-4 w-4 mr-2" />
                 Buy Top-up Credits
@@ -181,7 +152,6 @@ export function BillingDashboard({}: BillingDashboardProps = {}) {
 
   const { 
     dashboardData,
-    spendingStatus,
     isLoading,
     error,
     refreshBillingData
@@ -277,34 +247,6 @@ export function BillingDashboard({}: BillingDashboardProps = {}) {
         </Alert>
       )}
 
-      {spendingStatus?.servicesBlocked && (
-        <Alert variant="destructive">
-          <AlertTriangle className="h-4 w-4" />
-          <AlertTitle>AI Services Blocked</AlertTitle>
-          <AlertDescription className="mt-2">
-            <p className="mb-4">
-              Your AI services have been blocked because you've exceeded your monthly allowance and don't have sufficient top-up credits.
-            </p>
-            <div className="flex gap-3">
-              <Button 
-                size="sm" 
-                onClick={() => setIsCreditManagerOpen(true)}
-              >
-                <CreditCard className="h-4 w-4 mr-2" />
-                Buy Top-up Credits
-              </Button>
-              <Button 
-                size="sm" 
-                variant="outline" 
-                onClick={() => setIsSubscriptionModalOpen(true)}
-              >
-                <Zap className="h-4 w-4 mr-2" />
-                Upgrade Plan
-              </Button>
-            </div>
-          </AlertDescription>
-        </Alert>
-      )}
 
       {/* New three-section layout */}
       <div className="space-y-6">
@@ -313,8 +255,6 @@ export function BillingDashboard({}: BillingDashboardProps = {}) {
           planDetails={dashboardData?.planDetails}
           subscriptionStatus={dashboardData?.subscriptionStatus}
           trialEndsAt={dashboardData?.trialEndsAt}
-          spendingDetails={dashboardData?.spendingDetails}
-          allowanceDetails={dashboardData?.allowanceDetails}
           creditBalanceUsd={dashboardData?.creditBalanceUsd}
           onManageSubscription={() => setIsSubscriptionModalOpen(true)}
           onBuyCredits={() => setIsCreditManagerOpen(true)}

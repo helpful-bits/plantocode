@@ -537,24 +537,24 @@ impl BillingClient {
         limit: Option<i32>,
         offset: Option<i32>,
     ) -> Result<ListInvoicesResponse, AppError> {
+        debug!("Listing invoices with limit: {:?}, offset: {:?}", limit, offset);
+        
+        // Validate pagination parameters
+        let limit = limit.map(|l| l.clamp(1, 100)).unwrap_or(50);
+        let offset = offset.map(|o| o.max(0)).unwrap_or(0);
+        
         let mut query_params = Vec::new();
-        if let Some(limit) = limit {
-            query_params.push(format!("limit={}", limit));
-        }
-        if let Some(offset) = offset {
-            query_params.push(format!("offset={}", offset));
-        }
+        query_params.push(format!("limit={}", limit));
+        query_params.push(format!("offset={}", offset));
         
-        let query_string = if query_params.is_empty() {
-            String::new()
-        } else {
-            format!("?{}", query_params.join("&"))
-        };
-        
+        let query_string = format!("?{}", query_params.join("&"));
         let endpoint = format!("/api/billing/invoices{}", query_string);
         
-        self.make_authenticated_request::<ListInvoicesResponse>("GET", &endpoint, None)
-            .await
+        let response = self.make_authenticated_request::<ListInvoicesResponse>("GET", &endpoint, None)
+            .await?;
+        
+        info!("Successfully retrieved {} invoices", response.invoices.len());
+        Ok(response)
     }
 
 }

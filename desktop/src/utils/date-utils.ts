@@ -282,25 +282,25 @@ function formatDurationMs(ms: number, isRunning: boolean = false): string {
   }
 
   if (seconds < 60) {
-    return `${seconds.toString()}s${isRunning ? " (running)" : ""}`;
+    return `${seconds.toString()}s`;
   }
 
   const minutes = Math.floor(seconds / 60);
   const remainingSeconds = seconds % 60;
 
   if (minutes < 60) {
-    return `${minutes.toString()}m ${remainingSeconds.toString()}s${isRunning ? " (running)" : ""}`;
+    return `${minutes.toString()}m ${remainingSeconds.toString()}s`;
   }
 
   const hours = Math.floor(minutes / 60);
   const remainingMinutes = minutes % 60;
 
   if (hours < 24) {
-    return `${hours.toString()}h ${remainingMinutes.toString()}m${isRunning ? " (running)" : ""}`;
+    return `${hours.toString()}h ${remainingMinutes.toString()}m`;
   }
 
   const days = Math.floor(hours / 24);
   const remainingHours = hours % 24;
 
-  return `${days.toString()}d ${remainingHours.toString()}h${isRunning ? " (running)" : ""}`;
+  return `${days.toString()}d ${remainingHours.toString()}h`;
 }

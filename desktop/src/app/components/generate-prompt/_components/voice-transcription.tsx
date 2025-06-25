@@ -27,7 +27,7 @@ import { TaskModelSettings } from "@/types";
 import { transcribeAudioBlobAction } from "@/actions/voice-transcription";
 import { useCorePromptContext } from "../_contexts/core-prompt-context";
 import { type TaskDescriptionHandle } from "./task-description";
-import { TRANSCRIPTION_LANGUAGES } from "@/app/components/settings/task-settings-editor";
+import { TRANSCRIPTION_LANGUAGES } from "@/app/components/settings/shared/task-settings-types";
 
 interface VoiceTranscriptionProps {
   onTranscribed: (text: string) => void;

@@ -1,5 +1,6 @@
 use actix_web::{get, web, HttpResponse, Result};
 use serde::{Deserialize, Serialize};
+use log::{debug, info};
 
 use crate::error::AppError;
 use crate::middleware::secure_auth::UserId;
@@ -18,12 +19,16 @@ pub async fn list_invoices(
     billing_service: web::Data<BillingService>,
     query: web::Query<InvoiceQueryParams>,
 ) -> Result<HttpResponse, AppError> {
-    let limit = query.limit.unwrap_or(50);
-    let offset = query.offset.unwrap_or(0);
+    // Validate and sanitize pagination parameters
+    let limit = query.limit.unwrap_or(50).clamp(1, 100); // Limit between 1 and 100
+    let offset = query.offset.unwrap_or(0).max(0); // Ensure non-negative offset
+    
+    debug!("Listing invoices for user {} with limit: {}, offset: {}", user_id.0, limit, offset);
     
     let response = billing_service
         .list_invoices_for_user(user_id.0, limit, offset)
         .await?;
     
+    info!("Successfully retrieved {} invoices for user {}", response.invoices.len(), user_id.0);
     Ok(HttpResponse::Ok().json(response))
 }

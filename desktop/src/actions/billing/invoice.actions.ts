@@ -2,12 +2,12 @@ import { invoke } from '@tauri-apps/api/core';
 
 export interface Invoice {
   id: string;
+  created: number;
+  dueDate?: number;
   amountDue: number;
   amountPaid: number;
   currency: string;
   status: string;
-  created: number;
-  dueDate: number;
   invoicePdfUrl?: string;
 }
 

@@ -1,3 +1,42 @@
+// STRIPE API IDEMPOTENCY REQUIREMENTS:
+//
+// All mutating Stripe API operations (POST requests) MUST include an `Idempotency-Key` header
+// to ensure safe retry behavior and prevent duplicate operations in case of network failures
+// or application restarts.
+//
+// IDEMPOTENCY KEY REQUIREMENTS:
+// 1. Each distinct operation MUST have a unique idempotency key
+// 2. Keys should be UUIDs or similar unique identifiers
+// 3. Keys MUST be reused for retries of the same logical operation
+// 4. Keys should NOT be reused across different operations
+// 5. Idempotency keys expire after 24 hours in Stripe's system
+//
+// CURRENT IMPLEMENTATION STATUS:
+// - This service does NOT yet implement idempotency key handling
+// - TODO: Add idempotency key parameter to all mutating methods
+// - TODO: Generate unique keys for each operation (e.g., using user_id + operation_type + timestamp)
+// - TODO: Store and reuse keys for retry scenarios
+//
+// RECOMMENDED IMPLEMENTATION:
+// ```rust
+// pub async fn create_customer_with_idempotency(
+//     &self,
+//     idempotency_key: &str,  // Add this parameter
+//     user_id: &Uuid,
+//     email: &str,
+//     name: Option<&str>
+// ) -> Result<Customer, StripeServiceError> {
+//     // Set idempotency key in request headers
+//     // self.client.set_idempotency_key(idempotency_key);
+//     // ... rest of implementation
+// }
+// ```
+//
+// CRITICAL FOR BILLING OPERATIONS:
+// - Payment processing operations MUST be idempotent to prevent double charges
+// - Subscription creation/modification MUST be idempotent to prevent duplicate subscriptions
+// - Usage record reporting MUST be idempotent to prevent double billing
+//
 use stripe::{
     Client, CreateCustomer, CreatePaymentIntent, CreateSetupIntent, CreateSubscription,
     CreateBillingPortalSession, PaymentIntent, SetupIntent, 
@@ -9,7 +48,6 @@ use stripe::{
     ApiVersion,
     CreateInvoice, InvoiceStatus, ListInvoices,
     CheckoutSession, CreateCheckoutSession, CheckoutSessionMode,
-    UsageRecord, CreateUsageRecord,
 };
 use chrono::{DateTime, Utc};
 use hmac::{Hmac, Mac};
@@ -44,6 +82,16 @@ type HmacSha256 = Hmac<Sha256>;
 // 5. Set return URL to app billing page
 // 6. Configure business branding
 
+/// Stripe service for handling payment processing and subscription management
+/// 
+/// IMPORTANT: This service currently does NOT implement Stripe's idempotency requirements.
+/// All mutating operations should include idempotency keys to prevent:
+/// - Duplicate payments
+/// - Duplicate subscriptions  
+/// - Duplicate usage records
+/// - Data inconsistencies during retries
+/// 
+/// TODO: Implement idempotency key handling for all mutating operations
 #[derive(Clone)]
 pub struct StripeService {
     client: Client,
@@ -174,6 +222,12 @@ impl StripeService {
         Ok(customer)
     }
 
+    /// Create a payment intent for processing payments
+    /// 
+    /// CRITICAL: This method does NOT implement idempotency key handling.
+    /// Payment operations MUST be idempotent to prevent double charging customers.
+    /// 
+    /// TODO: Add idempotency_key parameter to prevent duplicate payments
     pub async fn create_payment_intent(
         &self,
         customer_id: &str,
@@ -206,6 +260,11 @@ impl StripeService {
 
     /// Create a subscription with trial period (simple version only)
     /// Complex subscription management should be done via Customer Portal
+    /// 
+    /// CRITICAL: This method does NOT implement idempotency key handling.
+    /// Subscription creation MUST be idempotent to prevent duplicate subscriptions.
+    /// 
+    /// TODO: Add idempotency_key parameter to prevent duplicate subscriptions
     pub async fn create_subscription_with_trial(
         &self,
         customer_id: &str,
@@ -462,34 +521,6 @@ impl StripeService {
         Ok(session)
     }
 
-    /// Report usage to a Stripe subscription item for billing purposes
-    pub async fn report_usage_record(
-        &self,
-        subscription_item_id: &str,
-        quantity: i64,
-        timestamp: Option<i64>,
-    ) -> Result<UsageRecord, StripeServiceError> {
-        let parsed_subscription_item_id = subscription_item_id.parse()
-            .map_err(|_| StripeServiceError::Configuration("Invalid Stripe subscription item ID format".to_string()))?;
-        
-        let create_usage_record = CreateUsageRecord {
-            quantity: quantity as u64, // Convert i64 to u64 for Stripe API
-            timestamp,
-            ..Default::default()
-        };
-        
-        let usage_record = UsageRecord::create(&self.client, &parsed_subscription_item_id, create_usage_record).await
-            .map_err(|e| {
-                error!("Failed to report usage record to Stripe: subscription_item={}, quantity={}, error={}", 
-                       subscription_item_id, quantity, e);
-                StripeServiceError::StripeApi(e)
-            })?;
-        
-        info!("Successfully reported usage record to Stripe: subscription_item={}, quantity={}, record_id={}", 
-              subscription_item_id, quantity, usage_record.id);
-        
-        Ok(usage_record)
-    }
 
 }
 

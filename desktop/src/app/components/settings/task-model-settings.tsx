@@ -1,7 +1,7 @@
 "use client";
 
 import { type TaskSettings } from "@/types";
-import { type TaskType, TaskTypeDetails } from "@/types/task-type-defs";
+import { TaskTypeDetails } from "@/types/task-type-defs";
 import { type ProviderWithModels, type CopyButtonConfig } from "@/types/config-types";
 import {
   Card,
@@ -10,6 +10,8 @@ import {
 } from "@/ui";
 import { useState, useCallback, useEffect, useMemo } from "react";
 import { TaskSettingsEditor } from "./task-settings-editor";
+import { ValidationResult, taskSettingsKeyToTaskType } from "./shared/task-settings-types";
+import { setProjectTaskSetting, resetProjectTaskSetting } from "@/actions/project-settings.actions";
 
 
 interface TaskModelSettingsProps {
@@ -20,29 +22,6 @@ interface TaskModelSettingsProps {
   onRefresh?: () => void;
 }
 
-interface ValidationResult {
-  isValid: boolean;
-  errors: string[];
-  warnings: string[];
-}
-
-
-const taskSettingsKeyToTaskType: Record<keyof TaskSettings, TaskType> = {
-  pathFinder: "path_finder",
-  voiceTranscription: "voice_transcription",
-  pathCorrection: "path_correction",
-  textImprovement: "text_improvement",
-  implementationPlan: "implementation_plan",
-  fileFinderWorkflow: "file_finder_workflow",
-  localFileFiltering: "local_file_filtering",
-  extendedPathFinder: "extended_path_finder",
-  fileRelevanceAssessment: "file_relevance_assessment",
-  taskRefinement: "task_refinement",
-  genericLlmStream: "generic_llm_stream",
-  regexFileFilter: "regex_file_filter",
-  streaming: "streaming",
-  unknown: "unknown",
-};
 
 const FILE_FINDING_WORKFLOW_STAGES = [
   { 
@@ -83,8 +62,8 @@ export default function TaskModelSettings({
   serverDefaults,
   providersWithModels,
   projectDirectory,
+  onRefresh,
 }: TaskModelSettingsProps) {
-  // Read-only mode - no saving functionality
   const [sliderValues, setSliderValues] = useState<Record<string, number>>({});
   
   const validateTaskSettings = useCallback((settings: TaskSettings, taskKey: keyof TaskSettings): ValidationResult => {
@@ -126,9 +105,6 @@ export default function TaskModelSettings({
     };
   }, []);
   
-  // Read-only mode - no save functionality needed
-
-
   // Initialize slider values from taskSettings
   useEffect(() => {
     const newSliderValues: Record<string, number> = {};
@@ -149,11 +125,14 @@ export default function TaskModelSettings({
     return taskSettings[camelCaseKey];
   };
 
-  // Read-only mode - no model changes allowed
-  const handleModelChange = (_camelCaseKey: keyof TaskSettings, _model: string) => {
-    // Settings are read-only from server defaults
-    console.log('Model changes not allowed in read-only mode');
-  };
+  const handleModelChange = useCallback(async (camelCaseKey: keyof TaskSettings, model: string) => {
+    if (!projectDirectory) return;
+    
+    const result = await setProjectTaskSetting(projectDirectory, camelCaseKey, 'model', model);
+    if (result.isSuccess && onRefresh) {
+      onRefresh();
+    }
+  }, [projectDirectory, onRefresh]);
 
 
   // Generic function to check if a setting is different from default
@@ -200,10 +179,14 @@ export default function TaskModelSettings({
     }));
   };
 
-  // Read-only mode - no reset functionality
-  const handleResetToDefault = useCallback(async (_taskKey: keyof TaskSettings, _settingName: 'model' | 'maxTokens' | 'temperature' | 'languageCode' | 'copyButtons') => {
-    console.log('Reset functionality not available in read-only mode');
-  }, []);
+  const handleResetToDefault = useCallback(async (taskKey: keyof TaskSettings, settingName: 'model' | 'maxTokens' | 'temperature' | 'languageCode' | 'copyButtons') => {
+    if (!projectDirectory) return;
+    
+    const result = await resetProjectTaskSetting(projectDirectory, taskKey, settingName);
+    if (result.isSuccess && onRefresh) {
+      onRefresh();
+    }
+  }, [projectDirectory, onRefresh]);
 
 
   const handleMaxTokensChange = (camelCaseKey: keyof TaskSettings, value: number[]) => {
@@ -211,31 +194,47 @@ export default function TaskModelSettings({
     setSliderValue(camelCaseKey, 'maxTokens', value[0]);
   };
 
-  const handleMaxTokensCommit = (_camelCaseKey: keyof TaskSettings, _value: number[]) => {
-    // Read-only mode - no changes allowed
-    console.log('Max tokens changes not allowed in read-only mode');
-  };
+  const handleMaxTokensCommit = useCallback(async (camelCaseKey: keyof TaskSettings, value: number[]) => {
+    if (!projectDirectory) return;
+    
+    const result = await setProjectTaskSetting(projectDirectory, camelCaseKey, 'maxTokens', value[0]);
+    if (result.isSuccess && onRefresh) {
+      onRefresh();
+    }
+  }, [projectDirectory, onRefresh]);
 
   const handleTemperatureChange = (camelCaseKey: keyof TaskSettings, value: number[]) => {
     // Just update local slider state - no saving
     setSliderValue(camelCaseKey, 'temperature', value[0]);
   };
 
-  const handleTemperatureCommit = (_camelCaseKey: keyof TaskSettings, _value: number[]) => {
-    // Read-only mode - no changes allowed
-    console.log('Temperature changes not allowed in read-only mode');
-  };
+  const handleTemperatureCommit = useCallback(async (camelCaseKey: keyof TaskSettings, value: number[]) => {
+    if (!projectDirectory) return;
+    
+    const result = await setProjectTaskSetting(projectDirectory, camelCaseKey, 'temperature', value[0]);
+    if (result.isSuccess && onRefresh) {
+      onRefresh();
+    }
+  }, [projectDirectory, onRefresh]);
 
 
-  // Read-only mode - no transcription language changes
-  const handleTranscriptionLanguageChange = (_camelCaseKey: keyof TaskSettings, _languageCode: string) => {
-    console.log('Language changes not allowed in read-only mode');
-  };
+  const handleTranscriptionLanguageChange = useCallback(async (camelCaseKey: keyof TaskSettings, languageCode: string) => {
+    if (!projectDirectory) return;
+    
+    const result = await setProjectTaskSetting(projectDirectory, camelCaseKey, 'languageCode', languageCode);
+    if (result.isSuccess && onRefresh) {
+      onRefresh();
+    }
+  }, [projectDirectory, onRefresh]);
 
-  // Read-only mode - no copy button changes
-  const handleCopyButtonsChange = (_camelCaseKey: keyof TaskSettings, _copyButtons: CopyButtonConfig[]) => {
-    console.log('Copy button changes not allowed in read-only mode');
-  };
+  const handleCopyButtonsChange = useCallback(async (camelCaseKey: keyof TaskSettings, copyButtons: CopyButtonConfig[]) => {
+    if (!projectDirectory) return;
+    
+    const result = await setProjectTaskSetting(projectDirectory, camelCaseKey, 'copyButtons', copyButtons);
+    if (result.isSuccess && onRefresh) {
+      onRefresh();
+    }
+  }, [projectDirectory, onRefresh]);
 
 
   const { workflowStages, standaloneFeatures } = useMemo(() => {
@@ -490,8 +489,8 @@ export default function TaskModelSettings({
                 
                 <div className="p-4 bg-muted/30 rounded-lg border border-dashed border-muted">
                   <p className="text-sm text-muted-foreground text-center">
-                    Settings Enhancement Engine is disabled in read-only mode.<br/>
-                    All settings are now managed by the server.
+                    Settings Enhancement Engine is coming soon.<br/>
+                    Configure individual settings below for now.
                   </p>
                 </div>
               </div>
