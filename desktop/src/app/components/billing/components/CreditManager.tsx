@@ -151,7 +151,7 @@ export const CreditManager = ({ isOpen, onClose }: CreditManagerProps) => {
           <div className="space-y-6">
             <div>
               <h2 className="text-2xl font-bold mb-2">Purchase Top-up Credits</h2>
-              <p className="text-muted-foreground">Add supplementary credits that are applied after your monthly subscription allowance has been exhausted. These are for one-time use.</p>
+              <p className="text-muted-foreground">Purchase additional credits to continue using AI features. These credits are consumed as you use the service.</p>
             </div>
 
             <Card>

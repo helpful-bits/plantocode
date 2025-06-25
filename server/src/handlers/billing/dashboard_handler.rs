@@ -16,20 +16,11 @@ pub struct BillingDashboardPlanDetails {
     pub billing_interval: String,
 }
 
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct BillingDashboardSpendingDetails {
-    pub current_spending_usd: f64,
-    pub spending_limit_usd: f64,
-    pub period_start: String,
-    pub period_end: String,
-}
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BillingDashboardData {
     pub plan_details: BillingDashboardPlanDetails,
-    pub spending_details: BillingDashboardSpendingDetails,
     pub credit_balance_usd: f64,
     pub subscription_status: String,
     pub trial_ends_at: Option<String>,

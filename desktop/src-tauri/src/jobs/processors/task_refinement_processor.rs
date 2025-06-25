@@ -120,7 +120,11 @@ impl JobProcessor for TaskRefinementProcessor {
         info!("System prompt ID: {}", llm_result.system_prompt_id);
         
         // Clone the response to avoid borrow checker issues
-        let refined_description = llm_result.response.clone();
+        let refined_description = format!(
+            "<original_task>\n{}\n</original_task>\n\n<refined_task>\n{}\n</refined_task>",
+            payload.task_description,
+            llm_result.response.trim()
+        );
         
         // Extract usage before moving it
         let usage_for_result = llm_result.usage.clone();

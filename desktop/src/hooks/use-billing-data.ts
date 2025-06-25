@@ -5,21 +5,12 @@ import { type BillingDashboardData } from '@/types/tauri-commands';
 import { useNotification } from '@/contexts/notification-context';
 import { getErrorMessage } from '@/utils/error-handling';
 
-export interface SpendingStatus {
-  currentSpending: number;
-  includedAllowance: number;
-  effectiveAllowance: number;
-  creditBalance: number;
-  usagePercentage: number;
-  servicesBlocked: boolean;
-  currency: string;
-}
 
 export interface UseBillingDataReturn {
   dashboardData: BillingDashboardData | null;
-  spendingStatus: SpendingStatus | null;
   planDetails: BillingDashboardData['planDetails'] | null;
   creditBalance: number;
+  creditBalanceUsd: number;
   trialDaysLeft: number | null;
   isLoading: boolean;
   error: string | null;
@@ -43,10 +34,10 @@ export function useBillingData(): UseBillingDataReturn {
       const errorMessage = getErrorMessage(err);
       setError(errorMessage);
       
-      if (errorMessage.includes('spending_limit_exceeded') || errorMessage.includes('services_blocked')) {
+      if (errorMessage.includes('insufficient_credits') || errorMessage.includes('credit_insufficient')) {
         showNotification({
-          title: 'Service Access Limited',
-          message: 'AI services are currently blocked due to exceeded monthly allowance. Please visit your billing page to upgrade or purchase top-up credits.',
+          title: 'Insufficient Credits',
+          message: 'You need to purchase additional credits to continue using AI features. Please visit your billing page to buy credits.',
           type: 'error',
         });
       } else {
@@ -102,25 +93,6 @@ export function useBillingData(): UseBillingDataReturn {
     };
   }, [refreshBillingData]);
 
-  const spendingStatus = useMemo((): SpendingStatus | null => {
-    if (!dashboardData) {
-      return null;
-    }
-
-    const { currentSpendingUsd, spendingLimitUsd } = dashboardData.spendingDetails;
-    const creditBalance = dashboardData.creditBalanceUsd;
-    const effectiveAllowance = spendingLimitUsd + creditBalance;
-    
-    return {
-      currentSpending: currentSpendingUsd,
-      includedAllowance: spendingLimitUsd,
-      effectiveAllowance: effectiveAllowance,
-      creditBalance: creditBalance,
-      usagePercentage: effectiveAllowance > 0 ? (currentSpendingUsd / effectiveAllowance) * 100 : 0,
-      servicesBlocked: dashboardData.servicesBlocked,
-      currency: 'USD'
-    };
-  }, [dashboardData]);
 
   const planDetails = useMemo(() => {
     return dashboardData?.planDetails || null;
@@ -145,16 +117,15 @@ export function useBillingData(): UseBillingDataReturn {
 
   return useMemo(() => ({
     dashboardData,
-    spendingStatus,
     planDetails,
     creditBalance,
+    creditBalanceUsd: creditBalance,
     trialDaysLeft,
     isLoading,
     error,
     refreshBillingData,
   }), [
     dashboardData,
-    spendingStatus,
     planDetails,
     creditBalance,
     trialDaysLeft,

@@ -271,8 +271,6 @@ async fn main() -> std::io::Result<()> {
         
         // Initialize services with dual pools
         let billing_service = BillingService::new(db_pools.clone(), app_settings.clone());
-        let cost_based_billing_service = billing_service.get_cost_based_billing_service().clone();
-        let credit_service = CreditService::new(db_pools.clone());
         let api_usage_repository = std::sync::Arc::new(api_usage_repository);
         
         // Configure CORS using actix-cors
@@ -353,11 +351,8 @@ async fn main() -> std::io::Result<()> {
             .wrap(cors)
             .app_data(payload_config)
             .app_data(json_config)
-            .app_data(web::Data::new(db_pools.clone())) // Provide both pools
             .app_data(auth0_oauth_service)
             .app_data(web::Data::new(billing_service.clone()))
-            .app_data(web::Data::new((*cost_based_billing_service).clone()))
-            .app_data(web::Data::new(credit_service))
             .app_data(app_state.clone())
             .app_data(tera.clone())
             .app_data(polling_store.clone())
@@ -368,6 +363,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(web::Data::new(system_prompts_repository.clone()))
             .app_data(web::Data::new(credit_pack_repository.clone()))
             .app_data(web::Data::new(app_settings.clone()))
+            .app_data(web::Data::new(db_pools.clone()))
             
             // Register health check endpoint with IP-based rate limiting
             .service(

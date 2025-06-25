@@ -191,21 +191,6 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
           variant: "default" as const
         };
       
-      case ErrorType.SPENDING_LIMIT_EXCEEDED:
-        return {
-          label: "Manage Limits",
-          onClick: () => {
-            // Try to open subscription modal if on account page for limit management
-            if (window.location.pathname === '/account') {
-              const event = new CustomEvent('open-subscription-modal');
-              window.dispatchEvent(event);
-            } else {
-              // Navigate to account page with limits parameter
-              window.location.href = '/account?limits=true';
-            }
-          },
-          variant: "default" as const
-        };
       
       case ErrorType.SUBSCRIPTION_CONFLICT:
       case ErrorType.INVOICE_ERROR:
@@ -222,6 +207,24 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
           label: "Retry",
           onClick: () => {
             window.location.reload();
+          },
+          variant: "default" as const
+        };
+      
+      case ErrorType.PAYMENT_REQUIRED:
+        return {
+          label: "Complete Payment",
+          onClick: () => {
+            window.location.pathname = '/settings';
+          },
+          variant: "default" as const
+        };
+      
+      case ErrorType.PAYMENT_ERROR:
+        return {
+          label: "Retry Payment",
+          onClick: () => {
+            window.location.pathname = '/settings';
           },
           variant: "default" as const
         };
@@ -343,14 +346,16 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         return "Insufficient Credits";
       case ErrorType.PLAN_UPGRADE_REQUIRED:
         return "Upgrade Required";
-      case ErrorType.SPENDING_LIMIT_EXCEEDED:
-        return "Spending Limit Exceeded";
       case ErrorType.SUBSCRIPTION_CONFLICT:
         return "Subscription Conflict";
       case ErrorType.INVOICE_ERROR:
         return "Invoice Error";
       case ErrorType.CHECKOUT_ERROR:
         return "Checkout Error";
+      case ErrorType.PAYMENT_REQUIRED:
+        return "Payment Required";
+      case ErrorType.PAYMENT_ERROR:
+        return "Payment Error";
       case ErrorType.PERMISSION_ERROR:
         return "Access Denied";
       case ErrorType.CONFIGURATION_ERROR:
@@ -385,7 +390,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         ErrorType.PAYMENT_FAILED, ErrorType.PAYMENT_DECLINED, ErrorType.SUBSCRIPTION_EXPIRED,
         ErrorType.SUBSCRIPTION_CANCELLED, ErrorType.CREDIT_INSUFFICIENT, ErrorType.PLAN_UPGRADE_REQUIRED,
         ErrorType.PAYMENT_METHOD_REQUIRED, ErrorType.BILLING_ADDRESS_REQUIRED, ErrorType.PAYMENT_AUTHENTICATION_REQUIRED,
-        ErrorType.SPENDING_LIMIT_EXCEEDED, ErrorType.SUBSCRIPTION_CONFLICT, ErrorType.INVOICE_ERROR,
+        ErrorType.SUBSCRIPTION_CONFLICT, ErrorType.INVOICE_ERROR,
         ErrorType.ACTION_REQUIRED, ErrorType.CONFIGURATION_ERROR, ErrorType.DATABASE_ERROR, ErrorType.INTERNAL_ERROR
       ];
       
@@ -429,7 +434,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       {children}
       
       {/* Render active notifications */}
-      <div className="fixed top-0 right-0 z-[100] max-w-[420px] w-full p-4 space-y-3 pointer-events-none">
+      <div className="fixed top-0 right-0 z-[300] max-w-[420px] w-full p-4 space-y-3 pointer-events-none">
         {notifications.map(notification => (
           <div key={notification.id} className="pointer-events-auto">
             <NotificationBanner

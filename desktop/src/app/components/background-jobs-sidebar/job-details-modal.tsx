@@ -406,8 +406,7 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
     const hasStructuredResponse = (taskType: string): boolean => {
       const structuredTaskTypes = [
         // Path-related tasks
-        "path_finder", "initial_path_finding", "extended_path_finding", "extended_path_finder",
-        "local_file_filtering", "path_correction", "initial_path_correction",
+        "path_finder", "initial_path_finding", "extended_path_finding", "extended_path_finder", "path_correction", "initial_path_correction",
         "file_finder_workflow",
         // Other structured JSON tasks
         "regex_file_filter", "regex_summary_generation",

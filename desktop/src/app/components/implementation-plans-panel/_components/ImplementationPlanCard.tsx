@@ -2,7 +2,7 @@
 
 import { formatDistanceToNow } from "date-fns";
 import { Info, Eye, Trash2, Loader2, Copy } from "lucide-react";
-
+import React, { useState, useEffect } from "react";
 
 import { type BackgroundJob, JOB_STATUSES } from "@/types/session-types";
 import { type CopyButtonConfig } from "@/types/config-types";
@@ -19,8 +19,6 @@ import { Progress } from "@/ui/progress";
 import { getStreamingProgressValue, getParsedMetadata } from "../../background-jobs-sidebar/utils";
 import { getJobDisplaySessionName } from "../../background-jobs-sidebar/_utils/job-display-utils";
 
-import React from "react";
-
 interface ImplementationPlanCardProps {
   plan: BackgroundJob;
   onViewContent: (plan: BackgroundJob) => void;
@@ -30,6 +28,43 @@ interface ImplementationPlanCardProps {
   copyButtons?: CopyButtonConfig[];
   onCopyButtonClick?: (buttonConfig: CopyButtonConfig, plan: BackgroundJob) => void;
 }
+
+/**
+ * Custom hook for live progress updates in Implementation Plan cards
+ * Updates progress every second for running jobs
+ */
+const useLiveProgress = (
+  metadata: any,
+  startTime: number | null | undefined,
+  taskType: string | undefined,
+  isRunning: boolean
+): number | undefined => {
+  const [progress, setProgress] = useState<number | undefined>(() => 
+    isRunning ? getStreamingProgressValue(metadata, startTime, taskType) : undefined
+  );
+
+  useEffect(() => {
+    if (!isRunning) {
+      setProgress(undefined);
+      return;
+    }
+
+    const updateProgress = () => {
+      const newProgress = getStreamingProgressValue(metadata, startTime, taskType);
+      setProgress(newProgress);
+    };
+
+    // Update immediately
+    updateProgress();
+
+    // Set up interval to update every second
+    const interval = setInterval(updateProgress, 1000);
+
+    return () => clearInterval(interval);
+  }, [metadata, startTime, taskType, isRunning]);
+
+  return progress;
+};
 
 const ImplementationPlanCard = React.memo<ImplementationPlanCardProps>(({
   plan,
@@ -43,9 +78,13 @@ const ImplementationPlanCard = React.memo<ImplementationPlanCardProps>(({
   const parsedMeta = getParsedMetadata(plan.metadata);
   const isStreaming = JOB_STATUSES.ACTIVE.includes(plan.status) &&
                      ["running", "processing_stream", "generating_stream"].includes(plan.status);
-  const progress = getStreamingProgressValue(
+  
+  // Use live progress hook for consistent and real-time updates
+  const progress = useLiveProgress(
     plan.metadata,
-    plan.startTime
+    plan.startTime,
+    plan.taskType, // Now includes taskType for proper calculation
+    isStreaming
   );
 
   // Parse the model information from plan metadata with priority order
@@ -119,11 +158,20 @@ const ImplementationPlanCard = React.memo<ImplementationPlanCardProps>(({
         {/* Progress indicator for streaming jobs */}
         {isStreaming && (
           <div className="mb-3">
-            <Progress value={progress ?? 0} className="h-1.5" />
-            <div className="flex justify-between mt-1 text-xs text-muted-foreground">
-              <span>Generating implementation plan...</span>
-              <span>{Math.round(progress ?? 0)}%</span>
-            </div>
+            {(() => {
+              // Ensure we always show some progress for active jobs, consistent with sidebar
+              const displayProgress = progress !== undefined ? progress : 10;
+              
+              return (
+                <>
+                  <Progress value={displayProgress} className="h-1.5" />
+                  <div className="flex justify-between mt-1 text-xs text-muted-foreground">
+                    <span>Generating implementation plan...</span>
+                    <span>{Math.round(displayProgress)}%</span>
+                  </div>
+                </>
+              );
+            })()}
           </div>
         )}
 

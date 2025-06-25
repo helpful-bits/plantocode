@@ -58,23 +58,6 @@ pub(super) async fn extract_and_store_stage_data_internal(
                 // Return just the array of file paths as a serde_json::Value
                 serde_json::Value::Array(filtered_files.clone())
             }
-            TaskType::PathFinder => {
-                let initial_paths = StageDataExtractor::extract_initial_paths(job_id, &repo).await
-                    .map_err(|e| AppError::JobError(format!("Failed to extract initial paths from job {}: {}", job_id, e)))?;
-                
-                debug!("Extracted {} initial paths from job {}", initial_paths.len(), job_id);
-                
-                // For PathFinder, we need to separate verified and unverified paths
-                let job_response = job.response.as_ref()
-                    .ok_or_else(|| AppError::JobError(format!("No response found for PathFinder job {}", job_id)))?;
-                let (verified_paths, unverified_paths) = parse_path_finder_response_internal(job_response, initial_paths)
-                    .map_err(|e| AppError::JobError(format!("Failed to parse PathFinder response for job {}: {}", job_id, e)))?;
-                
-                serde_json::json!({ 
-                    "verifiedPaths": verified_paths,
-                    "unverifiedPaths": unverified_paths 
-                })
-            }
             TaskType::PathCorrection => {
                 let corrected_paths = StageDataExtractor::extract_final_paths(job_id, &repo).await
                     .map_err(|e| AppError::JobError(format!("Failed to extract corrected paths from job {}: {}", job_id, e)))?;

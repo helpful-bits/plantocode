@@ -1,8 +1,9 @@
 use crate::error::AppError;
 use crate::db::repositories::{
     UserCreditRepository, CreditTransactionRepository, CreditPackRepository,
-    UserCredit, CreditTransaction, CreditPack, CreditTransactionStats
+    UserCredit, CreditTransaction, CreditPack, CreditTransactionStats, ModelRepository
 };
+use crate::models::model_pricing::ModelPricing;
 use bigdecimal::{BigDecimal, FromPrimitive};
 use uuid::Uuid;
 use chrono::Utc;
@@ -17,37 +18,117 @@ pub struct CreditService {
     user_credit_repository: Arc<UserCreditRepository>,
     credit_transaction_repository: Arc<CreditTransactionRepository>,
     credit_pack_repository: Arc<CreditPackRepository>,
+    model_repository: Arc<ModelRepository>,
 }
 
 impl CreditService {
     pub fn new(db_pools: DatabasePools) -> Self {
         Self {
             user_credit_repository: Arc::new(UserCreditRepository::new(db_pools.user_pool.clone())),
-            credit_transaction_repository: Arc::new(CreditTransactionRepository::new(db_pools.system_pool.clone())),
-            credit_pack_repository: Arc::new(CreditPackRepository::new(db_pools.system_pool)),
+            credit_transaction_repository: Arc::new(CreditTransactionRepository::new(db_pools.user_pool.clone())),
+            credit_pack_repository: Arc::new(CreditPackRepository::new(db_pools.system_pool.clone())),
+            model_repository: Arc::new(ModelRepository::new(Arc::new(db_pools.system_pool))),
         }
     }
 
-    /// Get user's current credit balance
-    pub async fn get_user_balance(&self, user_id: &Uuid) -> Result<UserCredit, AppError> {
-        // Ensure a credit record exists for the user
+    /// Get user's current credit balance with external transaction
+    pub async fn get_user_balance_with_executor(
+        &self,
+        user_id: &Uuid,
+        executor: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    ) -> Result<UserCredit, AppError> {
+        // Set user context for RLS policies
+        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
+            .bind(user_id.to_string())
+            .execute(&mut **executor)
+            .await
+            .map_err(|e| AppError::Database(format!("Failed to set user context: {}", e)))?;
+        
+        // Ensure a credit record exists for the user with proper user context
         let balance = self.user_credit_repository
-            .ensure_balance_record_exists(user_id)
+            .ensure_balance_record_exists_with_executor(user_id, executor)
             .await?;
         
         Ok(balance)
     }
 
-    /// Check if user has sufficient credits for a given amount
-    pub async fn has_sufficient_credits(&self, user_id: &Uuid, required_amount: &BigDecimal) -> Result<bool, AppError> {
-        self.user_credit_repository
-            .has_sufficient_credits(user_id, required_amount)
-            .await
+    /// Get user's current credit balance
+    pub async fn get_user_balance(&self, user_id: &Uuid) -> Result<UserCredit, AppError> {
+        let pool = self.user_credit_repository.get_pool();
+        let mut tx = pool.begin().await
+            .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
+        
+        let balance = self.get_user_balance_with_executor(user_id, &mut tx).await?;
+        
+        tx.commit().await
+            .map_err(|e| AppError::Database(format!("Failed to commit transaction: {}", e)))?;
+        
+        Ok(balance)
     }
 
-    // Note: consume_credits method has been removed as part of billing system refactor
-    // Credit consumption is now handled via Stripe's metered billing system
-    // Usage reporting is handled by CostBasedBillingService.calculate_and_report_usage
+
+    /// Atomically check balance and consume credits for usage in a transaction
+    pub async fn consume_credits_for_usage_in_tx(
+        &self,
+        user_id: &Uuid,
+        amount: &BigDecimal,
+        usage_description: String,
+        api_usage_id: Option<Uuid>,
+        metadata: Option<serde_json::Value>,
+    ) -> Result<UserCredit, AppError> {
+        // Start a database transaction to ensure atomicity
+        let pool = self.user_credit_repository.get_pool();
+        let mut tx = pool.begin().await.map_err(AppError::from)?;
+
+        // Set user context for RLS policies
+        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
+            .bind(user_id.to_string())
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| AppError::Database(format!("Failed to set user context: {}", e)))?;
+
+        // Ensure user has a credit record within the transaction
+        let current_balance = self.user_credit_repository
+            .ensure_balance_record_exists_with_executor(user_id, &mut tx)
+            .await?;
+
+        // Check if user has sufficient credits
+        if current_balance.balance < *amount {
+            return Err(AppError::CreditInsufficient(
+                format!("Insufficient credits. Required: {}, Available: {}", amount, current_balance.balance)
+            ));
+        }
+
+        // Deduct the credits within the transaction
+        let negative_amount = -amount;
+        let updated_balance = self.user_credit_repository
+            .increment_balance_with_executor(user_id, &negative_amount, &mut tx)
+            .await?;
+
+        // Record the consumption transaction within the same transaction
+        let transaction = CreditTransaction {
+            id: Uuid::new_v4(),
+            user_id: *user_id,
+            transaction_type: "consumption".to_string(),
+            amount: negative_amount,
+            currency: "USD".to_string(),
+            description: Some(usage_description),
+            stripe_charge_id: None,
+            related_api_usage_id: api_usage_id,
+            metadata,
+            created_at: Some(Utc::now()),
+        };
+
+        let _created_transaction = self.credit_transaction_repository
+            .create_transaction_with_executor(&transaction, &mut tx)
+            .await?;
+
+        // Commit the transaction
+        tx.commit().await.map_err(AppError::from)?;
+
+        info!("Atomically consumed {} credits for user {} (pure prepaid model)", amount, user_id);
+        Ok(updated_balance)
+    }
 
 
     /// Get available credit packs
@@ -71,11 +152,12 @@ impl CreditService {
         let mut tx = pool.begin().await
             .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
         
+        // Set user context for RLS policies
         sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
             .bind(user_id.to_string())
             .execute(&mut *tx)
             .await
-            .map_err(|e| AppError::Database(format!("Failed to set user context in transaction: {}", e)))?;
+            .map_err(|e| AppError::Database(format!("Failed to set user context: {}", e)))?;
         
         let result = self.credit_transaction_repository
             .get_history_with_executor(user_id, limit, offset, &mut tx)
@@ -95,11 +177,12 @@ impl CreditService {
         let mut tx = pool.begin().await
             .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
         
+        // Set user context for RLS policies
         sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
             .bind(user_id.to_string())
             .execute(&mut *tx)
             .await
-            .map_err(|e| AppError::Database(format!("Failed to set user context in transaction: {}", e)))?;
+            .map_err(|e| AppError::Database(format!("Failed to set user context: {}", e)))?;
         
         let transaction_stats = self.credit_transaction_repository
             .get_transaction_stats_with_executor(user_id, &mut tx)
@@ -155,6 +238,13 @@ impl CreditService {
         let pool = self.user_credit_repository.get_pool();
         let mut tx = pool.begin().await.map_err(AppError::from)?;
 
+        // Set user context for RLS policies
+        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
+            .bind(user_id.to_string())
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| AppError::Database(format!("Failed to set user context: {}", e)))?;
+
         // Ensure user has a credit record within the transaction
         let _ = self.user_credit_repository
             .ensure_balance_record_exists_with_executor(user_id, &mut tx)
@@ -190,26 +280,30 @@ impl CreditService {
         Ok(updated_balance)
     }
 
-    /// Admin function to adjust credits (for manual adjustments) - atomic operation
-    pub async fn adjust_credits(
+    /// Admin function to adjust credits with external transaction
+    pub async fn adjust_credits_with_executor(
         &self,
         user_id: &Uuid,
         amount: &BigDecimal,
         description: String,
         admin_metadata: Option<serde_json::Value>,
+        executor: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     ) -> Result<UserCredit, AppError> {
-        // Start a database transaction to ensure atomicity
-        let pool = self.user_credit_repository.get_pool();
-        let mut tx = pool.begin().await.map_err(AppError::from)?;
+        // Set user context for RLS policies
+        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
+            .bind(user_id.to_string())
+            .execute(&mut **executor)
+            .await
+            .map_err(|e| AppError::Database(format!("Failed to set user context: {}", e)))?;
 
         // Ensure user has a credit record within the transaction
         let _ = self.user_credit_repository
-            .ensure_balance_record_exists_with_executor(user_id, &mut tx)
+            .ensure_balance_record_exists_with_executor(user_id, executor)
             .await?;
 
         // Adjust the credits (can be positive or negative) within the transaction
         let updated_balance = self.user_credit_repository
-            .increment_balance_with_executor(user_id, amount, &mut tx)
+            .increment_balance_with_executor(user_id, amount, executor)
             .await?;
 
         // Record the adjustment transaction within the same transaction
@@ -227,13 +321,36 @@ impl CreditService {
         };
 
         let _created_transaction = self.credit_transaction_repository
-            .create_transaction_with_executor(&transaction, &mut tx)
+            .create_transaction_with_executor(&transaction, executor)
             .await?;
+
+        info!("Atomically adjusted {} credits for user {} (admin action)", amount, user_id);
+        Ok(updated_balance)
+    }
+
+    /// Admin function to adjust credits (for manual adjustments) - atomic operation
+    pub async fn adjust_credits(
+        &self,
+        user_id: &Uuid,
+        amount: &BigDecimal,
+        description: String,
+        admin_metadata: Option<serde_json::Value>,
+    ) -> Result<UserCredit, AppError> {
+        // Start a database transaction to ensure atomicity
+        let pool = self.user_credit_repository.get_pool();
+        let mut tx = pool.begin().await.map_err(AppError::from)?;
+
+        let updated_balance = self.adjust_credits_with_executor(
+            user_id,
+            amount,
+            description,
+            admin_metadata,
+            &mut tx,
+        ).await?;
 
         // Commit the transaction
         tx.commit().await.map_err(AppError::from)?;
 
-        info!("Atomically adjusted {} credits for user {} (admin action)", amount, user_id);
         Ok(updated_balance)
     }
 
@@ -258,6 +375,13 @@ impl CreditService {
         // Start a database transaction to ensure atomicity
         let pool = self.user_credit_repository.get_pool();
         let mut tx = pool.begin().await.map_err(AppError::from)?;
+
+        // Set user context for RLS policies
+        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
+            .bind(user_id.to_string())
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| AppError::Database(format!("Failed to set user context: {}", e)))?;
 
         // Ensure user has a credit record within the transaction
         let _ = self.user_credit_repository
@@ -315,11 +439,12 @@ impl CreditService {
         let mut tx = pool.begin().await
             .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
         
+        // Set user context for RLS policies
         sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
             .bind(user_id.to_string())
             .execute(&mut *tx)
             .await
-            .map_err(|e| AppError::Database(format!("Failed to set user context in transaction: {}", e)))?;
+            .map_err(|e| AppError::Database(format!("Failed to set user context: {}", e)))?;
 
         let result = sqlx::query!(
             r#"
@@ -337,6 +462,78 @@ impl CreditService {
             .map_err(|e| AppError::Database(format!("Failed to commit transaction: {}", e)))?;
 
         Ok(result.count.unwrap_or(0))
+    }
+
+    /// Calculate cost for a given model and token usage
+    pub async fn calculate_cost(
+        &self,
+        model_id: &str,
+        input_tokens: i32,
+        output_tokens: i32,
+    ) -> Result<BigDecimal, AppError> {
+        // Get model with provider information
+        let model_with_provider = self.model_repository
+            .find_by_id_with_provider(model_id)
+            .await?
+            .ok_or_else(|| AppError::NotFound(format!("Model '{}' not found", model_id)))?;
+
+        // Calculate cost using ModelPricing trait
+        let cost = model_with_provider.calculate_token_cost(input_tokens as i64, output_tokens as i64);
+        
+        Ok(cost)
+    }
+
+    /// Consume credits for a given cost
+    pub async fn consume_credits(
+        &self,
+        user_id: &Uuid,
+        cost: &BigDecimal,
+    ) -> Result<UserCredit, AppError> {
+        let usage_description = format!("AI service usage - cost: {}", cost);
+        self.consume_credits_for_usage_in_tx(
+            user_id,
+            cost,
+            usage_description,
+            None, // No specific API usage ID
+            None, // No additional metadata
+        ).await
+    }
+
+    /// Calculate cost and consume credits atomically
+    pub async fn calculate_and_consume_credits(
+        &self,
+        user_id: &Uuid,
+        model_id: &str,
+        input_tokens: i32,
+        output_tokens: i32,
+        duration_ms: Option<i64>,
+        metadata: Option<serde_json::Value>,
+    ) -> Result<BigDecimal, AppError> {
+        // Get model with provider information
+        let model_with_provider = self.model_repository
+            .find_by_id_with_provider(model_id)
+            .await?
+            .ok_or_else(|| AppError::NotFound(format!("Model '{}' not found", model_id)))?;
+
+        // Calculate cost using ModelPricing trait
+        let cost = if let Some(duration) = duration_ms {
+            model_with_provider.calculate_total_cost(input_tokens as i64, output_tokens as i64, Some(duration))
+                .map_err(|e| AppError::InvalidArgument(format!("Cost calculation failed: {}", e)))?
+        } else {
+            model_with_provider.calculate_token_cost(input_tokens as i64, output_tokens as i64)
+        };
+
+        // Consume credits atomically
+        let usage_description = format!("{} - {} tokens in, {} tokens out", model_id, input_tokens, output_tokens);
+        self.consume_credits_for_usage_in_tx(
+            user_id,
+            &cost,
+            usage_description,
+            None, // No specific API usage ID
+            metadata,
+        ).await?;
+
+        Ok(cost)
     }
 }
 
