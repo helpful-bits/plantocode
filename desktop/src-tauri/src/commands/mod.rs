@@ -14,7 +14,6 @@ pub mod session_commands;
 pub mod text_commands;
 pub mod implementation_plan_commands;
 pub mod file_finder_workflow_commands;
-pub mod voice_commands;
 pub mod generic_task_commands;
 pub mod setup_commands;
 pub mod database_maintenance_commands;
@@ -25,7 +24,7 @@ pub mod backup_commands;
 pub use regex_commands::{generate_regex_command, generate_regex_patterns_command};
 pub use file_system_commands::{
     get_home_directory_command,
-    list_files_command,
+    list_project_files_command,
     create_directory_command,
     read_file_content_command,
     write_file_content_command,
@@ -76,10 +75,6 @@ pub use file_finder_workflow_commands::{
     cancel_workflow_stage_command,
 };
 
-// Re-exports from voice commands module
-pub use voice_commands::{
-    transcribe_audio_batch_command,
-};
 
 // Re-exports from generic task commands module
 pub use generic_task_commands::{
@@ -174,25 +169,26 @@ pub use config_cache_commands::{
 // Re-exports from billing commands module
 pub use billing_commands::{
     get_billing_dashboard_data_command,
-    get_subscription_plans_command,
-    get_current_plan_command,
     get_spending_history_command,
     check_service_access_command,
     get_credit_history_command,
     get_credit_balance_command,
     get_credit_stats_command,
+    get_credit_details_command,
     get_spending_analytics_command,
     get_spending_forecast_command,
     get_payment_methods_command,
     // Stripe Checkout commands
-    create_credit_checkout_session_command,
-    create_subscription_checkout_session_command,
+    create_credit_purchase_checkout_session_command,
     create_setup_checkout_session_command,
     get_checkout_session_status_command,
-    // Subscription lifecycle management now handled via Stripe Portal
+    // Customer billing lifecycle management now handled via Stripe Portal
     get_usage_summary_command,
     create_billing_portal_session_command,
     list_invoices_command,
+    get_detailed_usage_command,
+    get_auto_top_off_settings_command,
+    update_auto_top_off_settings_command,
 };
 
 

@@ -36,47 +36,32 @@ pub async fn is_directory(path: impl AsRef<Path>) -> AppResult<bool> {
 
 /// Read a file to string (async version)
 pub async fn read_file_to_string(path: impl AsRef<Path>) -> AppResult<String> {
-    let path = path.as_ref();
-    
-    // Acquire a read lock
-    let lock_manager = get_global_file_lock_manager().await?;
-    let _guard = lock_manager.acquire(path, LockMode::Read).await?;
-    
-    // Read the file
-    fs::read_to_string(path).await.map_err(|e| {
+    fs::read_to_string(path.as_ref()).await.map_err(|e| {
         AppError::FileSystemError(format!(
             "Failed to read file {}: {}",
-            path.display(),
+            path.as_ref().display(),
             e
         ))
     })
-    // The lock is automatically released when _guard goes out of scope
 }
 
 /// Read a file to bytes (async version)
 pub async fn read_file_to_bytes(path: impl AsRef<Path>) -> AppResult<Vec<u8>> {
-    let path = path.as_ref();
-    
-    // Acquire a read lock
-    let lock_manager = get_global_file_lock_manager().await?;
-    let _guard = lock_manager.acquire(path, LockMode::Read).await?;
-    
-    // Read the file
-    fs::read(path).await.map_err(|e| {
+    fs::read(path.as_ref()).await.map_err(|e| {
         AppError::FileSystemError(format!(
             "Failed to read file {}: {}",
-            path.display(),
+            path.as_ref().display(),
             e
         ))
     })
-    // The lock is automatically released when _guard goes out of scope
 }
 
 /// Write a string to a file (async version)
+/// Uses file lock manager to coordinate write operations
 pub async fn write_string_to_file(path: impl AsRef<Path>, content: &str) -> AppResult<()> {
     let path = path.as_ref();
     
-    // Acquire a write lock
+    // Acquire a write lock - essential for write coordination
     let lock_manager = get_global_file_lock_manager().await?;
     let _guard = lock_manager.acquire(path, LockMode::Write).await?;
     
@@ -103,10 +88,11 @@ pub async fn write_string_to_file(path: impl AsRef<Path>, content: &str) -> AppR
 }
 
 /// Write bytes to a file (async version)
+/// Uses file lock manager to coordinate write operations
 pub async fn write_bytes_to_file(path: impl AsRef<Path>, content: &[u8]) -> AppResult<()> {
     let path = path.as_ref();
     
-    // Acquire a write lock
+    // Acquire a write lock - essential for write coordination
     let lock_manager = get_global_file_lock_manager().await?;
     let _guard = lock_manager.acquire(path, LockMode::Write).await?;
     
@@ -166,10 +152,6 @@ pub async fn list_directory(path: impl AsRef<Path>) -> AppResult<Vec<FileInfo>> 
         )));
     }
     
-    // Acquire a read lock on the directory
-    let lock_manager = get_global_file_lock_manager().await?;
-    let _guard = lock_manager.acquire(path, LockMode::Read).await?;
-    
     // Read the directory
     let mut entries = fs::read_dir(path).await.map_err(|e| {
         AppError::FileSystemError(format!(
@@ -216,7 +198,6 @@ pub async fn list_directory(path: impl AsRef<Path>) -> AppResult<Vec<FileInfo>> 
     }
     
     Ok(files)
-    // The lock is automatically released when _guard goes out of scope
 }
 
 /// Fast binary file check based on extension only (non-blocking)
@@ -243,38 +224,31 @@ pub async fn is_binary_file(path: impl AsRef<Path>) -> bool {
         return true;
     }
     
-    // For content check, we need to read the file, so let's lock it
-    if let Ok(lock_manager) = get_global_file_lock_manager().await {
-        // Attempt to get a read lock, but don't fail if we can't
-        if let Ok(_guard) = lock_manager.acquire(path, LockMode::Read).await {
-            // Check for binary content (read a small chunk and check for null bytes)
-            if let Ok(mut file) = fs::File::open(path).await {
-                let mut buffer = [0u8; 1024];
-                if let Ok(n) = file.read(&mut buffer).await {
-                    // First check for null bytes (strong indicator of binary)
-                    for i in 0..n {
-                        if buffer[i] == 0 {
-                            return true;
-                        }
-                    }
-                    
-                    // If no null bytes found, check for high ratio of non-printable characters
-                    let mut non_printable_count = 0;
-                    for i in 0..n {
-                        let byte = buffer[i];
-                        // Non-printable characters excluding tab (9), LF (10), CR (13)
-                        if (byte < 32 && byte != 9 && byte != 10 && byte != 13) || byte >= 127 {
-                            non_printable_count += 1;
-                        }
-                    }
-                    
-                    // If more than 10% are non-printable, consider it binary
-                    if n > 0 && (non_printable_count as f64 / n as f64) > 0.1 {
-                        return true;
-                    }
+    // Check for binary content (read a small chunk and check for null bytes)
+    if let Ok(mut file) = fs::File::open(path).await {
+        let mut buffer = [0u8; 1024];
+        if let Ok(n) = file.read(&mut buffer).await {
+            // First check for null bytes (strong indicator of binary)
+            for i in 0..n {
+                if buffer[i] == 0 {
+                    return true;
                 }
             }
-            // The lock is automatically released when _guard goes out of scope
+            
+            // If no null bytes found, check for high ratio of non-printable characters
+            let mut non_printable_count = 0;
+            for i in 0..n {
+                let byte = buffer[i];
+                // Non-printable characters excluding tab (9), LF (10), CR (13)
+                if (byte < 32 && byte != 9 && byte != 10 && byte != 13) || byte >= 127 {
+                    non_printable_count += 1;
+                }
+            }
+            
+            // If more than 10% are non-printable, consider it binary
+            if n > 0 && (non_printable_count as f64 / n as f64) > 0.1 {
+                return true;
+            }
         }
     }
     
@@ -283,26 +257,19 @@ pub async fn is_binary_file(path: impl AsRef<Path>) -> bool {
 
 /// Get the file size (async version)
 pub async fn get_file_size(path: impl AsRef<Path>) -> AppResult<u64> {
-    let path = path.as_ref();
-    
-    // Acquire a read lock
-    let lock_manager = get_global_file_lock_manager().await?;
-    let _guard = lock_manager.acquire(path, LockMode::Read).await?;
-    
-    // Get the metadata
-    let metadata = fs::metadata(path).await.map_err(|e| {
+    let metadata = fs::metadata(path.as_ref()).await.map_err(|e| {
         AppError::FileSystemError(format!(
             "Failed to read metadata for {}: {}",
-            path.display(),
+            path.as_ref().display(),
             e
         ))
     })?;
     
     Ok(metadata.len())
-    // The lock is automatically released when _guard goes out of scope
 }
 
 /// Remove a file from the filesystem with proper locking
+/// Uses file lock manager to coordinate with other write operations
 pub async fn remove_file(path: impl AsRef<Path>) -> AppResult<()> {
     let path = path.as_ref();
     
@@ -326,7 +293,7 @@ pub async fn remove_file(path: impl AsRef<Path>) -> AppResult<()> {
         )));
     }
     
-    // Acquire a write lock
+    // Acquire a write lock - essential for write coordination
     let lock_manager = get_global_file_lock_manager().await?;
     let _guard = lock_manager.acquire(path, LockMode::Write).await?;
     
@@ -341,6 +308,7 @@ pub async fn remove_file(path: impl AsRef<Path>) -> AppResult<()> {
 
 /// Move a file or directory from source to destination.
 /// This function will handle file locking, overwrite handling, and directory creation.
+/// Uses file lock manager to coordinate with other write operations
 pub async fn move_item(source_path: &Path, dest_path: &Path, overwrite: bool, project_dir: &Path) -> AppResult<()> {
     // Check if source_path exists
     if !path_exists(source_path).await? {
@@ -354,7 +322,7 @@ pub async fn move_item(source_path: &Path, dest_path: &Path, overwrite: bool, pr
     ensure_path_within_project(project_dir, source_path)?;
     ensure_path_within_project(project_dir, dest_path)?;
     
-    // Acquire a write lock on the source path
+    // Acquire a write lock on the source path - essential for write coordination
     let lock_manager = get_global_file_lock_manager().await?;
     let _source_guard = FileLockManager::acquire(lock_manager.clone(), source_path, LockMode::Write).await?;
     
@@ -366,8 +334,7 @@ pub async fn move_item(source_path: &Path, dest_path: &Path, overwrite: bool, pr
             .to_path_buf()
     };
     
-    // Acquire a write lock on the destination path or its parent - clone lock_manager again
-    // because we need to use it after this call
+    // Acquire a write lock on the destination path or its parent - essential for write coordination
     let _dest_guard = FileLockManager::acquire(lock_manager.clone(), &dest_lock_path, LockMode::Write).await?;
     
     // Check if destination exists and handle according to overwrite flag
@@ -436,7 +403,7 @@ pub async fn move_item(source_path: &Path, dest_path: &Path, overwrite: bool, pr
 pub fn get_home_directory() -> AppResult<String> {
     match dirs::home_dir() {
         Some(path) => {
-            let normalized_path = path_utils::normalize_path(&path);
+            let normalized_path = path_utils::normalize_path(&path)?;
             Ok(normalized_path.to_string_lossy().to_string())
         },
         None => Err(AppError::FileSystemError("Could not determine home directory".to_string()))

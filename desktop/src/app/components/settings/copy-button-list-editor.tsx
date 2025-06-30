@@ -5,6 +5,8 @@ import { Button } from "@/ui";
 import { Plus } from "lucide-react";
 import { CopyButtonEditor } from "./copy-button-editor";
 import { useCallback, memo } from "react";
+import { DndContext, PointerSensor, useSensor, useSensors, DragEndEvent } from "@dnd-kit/core";
+import { SortableContext, verticalListSortingStrategy, arrayMove } from "@dnd-kit/sortable";
 
 interface CopyButtonListEditorProps {
   copyButtons: CopyButtonConfig[];
@@ -15,6 +17,28 @@ interface CopyButtonListEditorProps {
 }
 
 function CopyButtonListEditorComponent({ copyButtons, onChange, readOnly, showCustomizeButton, onCustomize }: CopyButtonListEditorProps) {
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    })
+  );
+
+  const handleDragEnd = useCallback((event: DragEndEvent) => {
+    const { active, over } = event;
+
+    if (over && active.id !== over.id) {
+      const oldIndex = copyButtons.findIndex(button => button.id === active.id);
+      const newIndex = copyButtons.findIndex(button => button.id === over.id);
+
+      if (oldIndex !== -1 && newIndex !== -1) {
+        const reorderedButtons = arrayMove(copyButtons, oldIndex, newIndex);
+        onChange(reorderedButtons);
+      }
+    }
+  }, [copyButtons, onChange]);
+
   const handleButtonChange = useCallback((index: number, updatedButton: CopyButtonConfig) => {
     const newButtons = [...copyButtons];
     newButtons[index] = updatedButton;
@@ -78,17 +102,22 @@ function CopyButtonListEditorComponent({ copyButtons, onChange, readOnly, showCu
           </p>
         </div>
       ) : (
-        <div className="space-y-3">
-          {copyButtons.map((button, index) => (
-            <CopyButtonEditor
-              key={button.id}
-              button={button}
-              onChange={(updatedButton) => handleButtonChange(index, updatedButton)}
-              onDelete={() => handleButtonDelete(index)}
-              readOnly={readOnly || showCustomizeButton}
-            />
-          ))}
-        </div>
+        <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+          <SortableContext items={copyButtons.map(b => b.id)} strategy={verticalListSortingStrategy}>
+            <div className="space-y-3">
+              {copyButtons.map((button, index) => (
+                <CopyButtonEditor
+                  key={button.id}
+                  fieldId={button.id}
+                  button={button}
+                  onChange={(updatedButton) => handleButtonChange(index, updatedButton)}
+                  onDelete={() => handleButtonDelete(index)}
+                  readOnly={readOnly || showCustomizeButton}
+                />
+              ))}
+            </div>
+          </SortableContext>
+        </DndContext>
       )}
     </div>
   );

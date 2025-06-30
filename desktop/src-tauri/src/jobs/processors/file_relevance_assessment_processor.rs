@@ -4,6 +4,7 @@ use serde_json::json;
 use tauri::AppHandle;
 use futures::future;
 use chrono;
+use tokio::fs;
 
 
 use crate::error::{AppError, AppResult};
@@ -65,7 +66,7 @@ impl FileRelevanceAssessmentProcessor {
         for file_path in files {
             // Get content-based token estimation using standard utilities
             let full_path = std::path::Path::new(project_directory).join(file_path);
-            let file_tokens = match tokio::fs::read_to_string(&full_path).await {
+            let file_tokens = match fs::read_to_string(&full_path).await {
                 Ok(content) => {
                     let extension = std::path::Path::new(file_path)
                         .extension()
@@ -161,7 +162,7 @@ impl FileRelevanceAssessmentProcessor {
         let mut file_contents = std::collections::HashMap::new();
         for relative_path_str in chunk {
             let full_path = std::path::Path::new(project_directory).join(relative_path_str);
-            match crate::utils::fs_utils::read_file_to_string(&*full_path.to_string_lossy()).await {
+            match fs::read_to_string(&full_path).await {
                 Ok(content) => {
                     file_contents.insert(relative_path_str.clone(), content);
                 }
@@ -499,7 +500,7 @@ impl JobProcessor for FileRelevanceAssessmentProcessor {
             let mut total_tokens = 0u32;
             for f in chunk {
                 let full_path = std::path::Path::new(project_directory).join(f);
-                if let Ok(content) = tokio::fs::read_to_string(&full_path).await {
+                if let Ok(content) = fs::read_to_string(&full_path).await {
                     let extension = std::path::Path::new(f)
                         .extension()
                         .and_then(|ext| ext.to_str())

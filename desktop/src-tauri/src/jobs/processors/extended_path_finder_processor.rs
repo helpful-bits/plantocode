@@ -2,6 +2,7 @@ use std::path::Path;
 use log::{debug, info, error, warn};
 use serde_json::json;
 use tauri::AppHandle;
+use tokio::fs;
 
 
 use crate::error::{AppError, AppResult};
@@ -149,7 +150,7 @@ impl JobProcessor for ExtendedPathFinderProcessor {
         let mut file_contents = std::collections::HashMap::new();
         for path in &payload.initial_paths {
             let absolute_path = Path::new(project_directory).join(path);
-            match tokio::fs::read_to_string(&absolute_path).await {
+            match fs::read_to_string(&absolute_path).await {
                 Ok(content) => {
                     info!("Read file content for AI context: {} ({} bytes)", path, content.len());
                     file_contents.insert(path.clone(), content);
@@ -239,7 +240,7 @@ impl JobProcessor for ExtendedPathFinderProcessor {
         
         for relative_path in &extended_paths {
             let absolute_path = std::path::Path::new(project_directory).join(relative_path);
-            match tokio::fs::metadata(&absolute_path).await {
+            match fs::metadata(&absolute_path).await {
                 Ok(metadata) if metadata.is_file() => {
                     validated_extended_paths.push(relative_path.clone());
                 },

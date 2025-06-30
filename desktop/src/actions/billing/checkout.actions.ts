@@ -5,10 +5,10 @@ export interface CheckoutSessionResponse {
   sessionId: string;
 }
 
-export async function createCreditCheckoutSession(
+export async function createCreditPurchaseCheckoutSession(
   amount: number
 ): Promise<CheckoutSessionResponse> {
-  return await invoke<CheckoutSessionResponse>('create_credit_checkout_session_command', {
+  return await invoke<CheckoutSessionResponse>('create_credit_purchase_checkout_session_command', {
     amount,
   });
 }

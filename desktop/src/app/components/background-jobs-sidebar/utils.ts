@@ -413,3 +413,49 @@ export function getEstimatedRemainingTime(metadataInput: JobMetadata | string | 
   
   return undefined;
 }
+
+/**
+ * Extract original text from text improvement task metadata
+ * Used for displaying transcribed text in text improvement job cards
+ */
+export function getTextImprovementOriginalText(metadataInput: JobMetadata | string | null | undefined): string | null {
+  const parsedMetadata = getParsedMetadata(metadataInput);
+  
+  if (!parsedMetadata) return null;
+  
+  try {
+    // Navigate to jobPayloadForWorker
+    const jobPayloadForWorker = parsedMetadata.jobPayloadForWorker;
+    if (!jobPayloadForWorker || typeof jobPayloadForWorker !== 'object') {
+      return null;
+    }
+
+    // Check for TextImprovement (exact case)
+    let textImprovement = jobPayloadForWorker.TextImprovement;
+    
+    // If not found, check for textImprovement (camelCase variant)
+    if (!textImprovement) {
+      textImprovement = jobPayloadForWorker.textImprovement;
+    }
+
+    if (!textImprovement || typeof textImprovement !== 'object') {
+      return null;
+    }
+
+    // Extract text_to_improve
+    const textToImprove = textImprovement.text_to_improve;
+    
+    // Validate that the text is a string and not empty
+    if (typeof textToImprove !== 'string') {
+      return null;
+    }
+
+    // Return trimmed text or null if empty/whitespace
+    const trimmedText = textToImprove.trim();
+    return trimmedText.length > 0 ? trimmedText : null;
+  } catch (error) {
+    // Handle any unexpected errors gracefully
+    console.warn('Error extracting text improvement original text:', error);
+    return null;
+  }
+}

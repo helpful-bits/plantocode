@@ -46,7 +46,6 @@ export const ALL_TASK_TYPES: readonly TaskType[] = [
   "regex_file_filter",
   "file_finder_workflow",
   "streaming",
-  "local_file_filtering",
   "file_relevance_assessment",
   "extended_path_finder",
   "unknown",

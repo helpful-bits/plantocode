@@ -325,8 +325,8 @@ impl UserRepository {
             r#"
             SELECT u.id, u.email, u.password_hash, u.full_name, u.auth0_user_id, u.role, u.created_at, u.updated_at, u.auth0_refresh_token
             FROM users u
-            JOIN subscriptions s ON u.id = s.user_id
-            WHERE s.stripe_customer_id = $1
+            JOIN customer_billing cb ON u.id = cb.user_id
+            WHERE cb.stripe_customer_id = $1
             "#,
             stripe_customer_id
         )
@@ -348,8 +348,8 @@ impl UserRepository {
             r#"
             SELECT u.id, u.email, u.password_hash, u.full_name, u.auth0_user_id, u.role, u.created_at, u.updated_at, u.auth0_refresh_token
             FROM users u
-            JOIN subscriptions s ON u.id = s.user_id
-            WHERE s.stripe_customer_id = $1
+            JOIN customer_billing cb ON u.id = cb.user_id
+            WHERE cb.stripe_customer_id = $1
             "#,
             stripe_customer_id
         )

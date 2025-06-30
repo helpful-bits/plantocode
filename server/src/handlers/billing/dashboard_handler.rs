@@ -9,21 +9,8 @@ use log::{debug, info, error};
 // Public structs for the billing dashboard data
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct BillingDashboardPlanDetails {
-    pub plan_id: String,
-    pub name: String,
-    pub price_usd: f64,
-    pub billing_interval: String,
-}
-
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct BillingDashboardData {
-    pub plan_details: BillingDashboardPlanDetails,
     pub credit_balance_usd: f64,
-    pub subscription_status: String,
-    pub trial_ends_at: Option<String>,
     pub services_blocked: bool,
 }
 

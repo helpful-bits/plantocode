@@ -143,6 +143,7 @@ struct FrontendReadyTaskModelConfig {
     temperature: f32,
     system_prompt: Option<String>,
     copy_buttons: Option<Vec<serde_json::Value>>,
+    allowed_models: Option<Vec<String>>,
 }
 
 
@@ -163,11 +164,12 @@ pub async fn get_server_default_task_model_settings_command(app_handle: AppHandl
                 // Task type is valid, proceed with processing
                 let camel_case_key = snake_case_key.to_lower_camel_case();
                 let frontend_config = FrontendReadyTaskModelConfig {
-                    model: task_config.model.clone().unwrap_or_default(),
-                    max_tokens: task_config.max_tokens.unwrap_or(0),
-                    temperature: task_config.temperature.unwrap_or(0.0),
+                    model: task_config.model.clone(),
+                    max_tokens: task_config.max_tokens,
+                    temperature: task_config.temperature,
                     system_prompt: task_config.system_prompt.clone(),
                     copy_buttons: task_config.copy_buttons.clone(),
+                    allowed_models: task_config.allowed_models.clone(),
                 };
                 server_frontend_map.insert(
                     camel_case_key, 
@@ -203,7 +205,8 @@ pub async fn fetch_default_system_prompts_from_server(app_handle: AppHandle) -> 
 #[tauri::command]
 pub async fn fetch_default_system_prompt_from_server(app_handle: AppHandle, task_type: String) -> AppResult<Option<serde_json::Value>> {
     let server_client = app_handle.state::<Arc<ServerProxyClient>>().inner().clone();
-    server_client.get_default_system_prompt(&task_type).await
+    let result = server_client.get_default_system_prompt(&task_type).await?;
+    Ok(result.map(|prompt| serde_json::to_value(prompt).unwrap_or_default()))
 }
 
 #[tauri::command]
@@ -275,11 +278,9 @@ pub async fn get_project_task_model_settings_command(app_handle: AppHandle, proj
         
         // Start with server defaults
         let mut task_config = serde_json::Map::new();
-        task_config.insert("model".to_string(), json!(server_task_config.model.clone().unwrap_or_default()));
-        task_config.insert("maxTokens".to_string(), json!(server_task_config.max_tokens.unwrap_or(0)));
-        if let Some(temp) = server_task_config.temperature {
-            task_config.insert("temperature".to_string(), json!(temp));
-        }
+        task_config.insert("model".to_string(), json!(server_task_config.model.clone()));
+        task_config.insert("maxTokens".to_string(), json!(server_task_config.max_tokens));
+        task_config.insert("temperature".to_string(), json!(server_task_config.temperature));
         if let Some(copy_buttons) = &server_task_config.copy_buttons {
             task_config.insert("copyButtons".to_string(), json!(copy_buttons));
         }

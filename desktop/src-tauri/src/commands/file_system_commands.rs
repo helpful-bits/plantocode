@@ -1,10 +1,9 @@
-use tauri::{command, AppHandle, Manager};
+use tauri::{command, AppHandle};
 use log::info;
 use serde::{Serialize, Deserialize};
 use crate::error::{AppError, AppResult};
-use crate::utils::fs_utils;
+use crate::utils::{fs_utils, git_utils};
 use crate::utils::path_utils;
-use std::path::{Path, PathBuf};
 
 #[command]
 pub fn get_home_directory_command() -> Result<String, String> {
@@ -16,38 +15,69 @@ pub fn get_home_directory_command() -> Result<String, String> {
 }
 
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ListFilesRequestArgs {
-    pub directory: String,
-    pub pattern: Option<String>,
-    pub include_stats: Option<bool>,
-    pub exclude: Option<Vec<String>>,
-}
-
 #[command]
-pub async fn list_files_command(directory: String, pattern: Option<String>, include_stats: Option<bool>, exclude: Option<Vec<String>>, app_handle: AppHandle) -> Result<Vec<crate::models::NativeFileInfoRs>, String> {
-    info!("Listing files in directory: {}", directory);
+pub async fn list_project_files_command(project_directory: String, app_handle: AppHandle) -> Result<Vec<crate::models::ProjectFileInfo>, String> {
+    info!("Listing git-based project files in directory: {}", project_directory);
     
-    // Validate directory parameter
-    let directory_path = std::path::Path::new(&directory);
-    if !directory_path.is_absolute() {
-        return Err(format!("Directory path must be absolute: {}", directory));
+    // Validate project_directory parameter
+    let project_path = std::path::Path::new(&project_directory);
+    if !project_path.is_absolute() {
+        return Err(format!("Project directory path must be absolute: {}", project_directory));
     }
     
-    // Convert parameters to file_service::ListFilesArgs
-    let service_args = crate::services::file_service::ListFilesArgs {
-        directory,
-        pattern,
-        include_stats,
-        exclude,
-    };
-
-    // Call the service function and extract just the files
-    crate::services::file_service::list_files_with_options(service_args)
-        .await
-        .map(|response| response.files)
-        .map_err(|e| e.to_string())
+    if !project_path.exists() {
+        return Err(format!("Project directory does not exist: {}", project_directory));
+    }
+    
+    // Use git_utils to get all non-ignored files
+    let (relative_paths, is_git_repo) = git_utils::get_all_non_ignored_files(&project_directory)
+        .map_err(|e| e.to_string())?;
+    
+    if !is_git_repo {
+        return Err(format!("Directory is not a git repository: {}", project_directory));
+    }
+    
+    let mut files = Vec::new();
+    
+    for relative_path in relative_paths {
+        // Convert relative path to full path for metadata reading
+        let full_path = project_path.join(&relative_path);
+        
+        // Get file name
+        let name = relative_path.file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
+        
+        // Get file metadata
+        let (size, modified_at) = match tokio::fs::metadata(&full_path).await {
+            Ok(metadata) => {
+                let size = if metadata.is_file() { Some(metadata.len()) } else { None };
+                let modified_at = metadata.modified()
+                    .ok()
+                    .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+                    .map(|duration| duration.as_millis() as i64);
+                (size, modified_at)
+            }
+            Err(_) => (None, None), // File might not exist or be accessible
+        };
+        
+        // Check if file is binary using fast extension-based check
+        let is_binary = fs_utils::is_binary_file_fast(&full_path);
+        
+        let project_file_info = crate::models::ProjectFileInfo {
+            path: relative_path.to_string_lossy().to_string(),
+            name,
+            size,
+            modified_at,
+            is_binary,
+        };
+        
+        files.push(project_file_info);
+    }
+    
+    info!("Found {} git-based project files", files.len());
+    Ok(files)
 }
 
 #[derive(Debug, Deserialize)]
@@ -319,7 +349,7 @@ pub fn sanitize_filename_command(name: String) -> AppResult<String> {
 #[command]
 pub fn normalize_path_command(path: String, add_trailing_slash: Option<bool>) -> AppResult<String> {
     let path = std::path::Path::new(&path);
-    let normalized = path_utils::normalize_path(path);
+    let normalized = path_utils::normalize_path(path)?;
     
     let mut result = normalized.to_string_lossy().to_string();
     

@@ -3,6 +3,7 @@ use log::info;
 use serde::{Serialize, Deserialize};
 use uuid::Uuid;
 use std::sync::Arc;
+use futures::future::join_all;
 use crate::models::BackgroundJob;
 use crate::models::JobStatus;
 use crate::utils::get_timestamp;
@@ -179,25 +180,27 @@ pub async fn estimate_prompt_tokens_command(
         .ok_or_else(|| AppError::JobError(format!("Session {} not found", session_id)))?;
     let actual_project_directory = &session.project_directory;
     
-    // Read file contents for relevant files
-    let mut file_contents_map: std::collections::HashMap<String, String> = std::collections::HashMap::new();
-    
-    for relative_path_str in &relevant_files {
-        // Construct full path
+    // Read file contents for relevant files - using parallel direct file reading to avoid lock contention
+    let file_futures: Vec<_> = relevant_files.iter().map(|relative_path_str| {
         let full_path = std::path::Path::new(actual_project_directory).join(relative_path_str);
-        
-        // Read file content
-        match crate::utils::fs_utils::read_file_to_string(&*full_path.to_string_lossy()).await {
-            Ok(content) => {
-                // Add to map with relative path as key
-                file_contents_map.insert(relative_path_str.clone(), content);
-            },
-            Err(e) => {
-                // Log warning but continue with other files
-                log::warn!("Failed to read file {}: {}", full_path.display(), e);
+        let relative_path_clone = relative_path_str.clone();
+        async move {
+            let content_result = tokio::fs::read_to_string(&full_path).await;
+            match content_result {
+                Ok(content) => Some((relative_path_clone, content)),
+                Err(e) => {
+                    log::warn!("Failed to read file {}: {}", full_path.display(), e);
+                    None
+                }
             }
         }
-    }
+    }).collect();
+    
+    let results = join_all(file_futures).await;
+    let file_contents_map: std::collections::HashMap<String, String> = results
+        .into_iter()
+        .filter_map(|result| result)
+        .collect();
     
     // Get settings repository for UnifiedPromptProcessor
     let settings_repo = app_handle.state::<Arc<SettingsRepository>>().inner().clone();
@@ -263,25 +266,27 @@ pub async fn get_prompt_command(
     let parsed_task_type = task_type.parse::<TaskType>()
         .map_err(|_| AppError::ValidationError(format!("Unsupported task type: {}", task_type)))?;
     
-    // Read file contents for relevant files
-    let mut file_contents_map: std::collections::HashMap<String, String> = std::collections::HashMap::new();
-    
-    for relative_path_str in &relevant_files {
-        // Construct full path
+    // Read file contents for relevant files - using parallel direct file reading to avoid lock contention
+    let file_futures: Vec<_> = relevant_files.iter().map(|relative_path_str| {
         let full_path = std::path::Path::new(actual_project_directory).join(relative_path_str);
-        
-        // Read file content
-        match crate::utils::fs_utils::read_file_to_string(&*full_path.to_string_lossy()).await {
-            Ok(content) => {
-                // Add to map with relative path as key
-                file_contents_map.insert(relative_path_str.clone(), content);
-            },
-            Err(e) => {
-                // Log warning but continue with other files
-                log::warn!("Failed to read file {}: {}", full_path.display(), e);
+        let relative_path_clone = relative_path_str.clone();
+        async move {
+            let content_result = tokio::fs::read_to_string(&full_path).await;
+            match content_result {
+                Ok(content) => Some((relative_path_clone, content)),
+                Err(e) => {
+                    log::warn!("Failed to read file {}: {}", full_path.display(), e);
+                    None
+                }
             }
         }
-    }
+    }).collect();
+    
+    let results = join_all(file_futures).await;
+    let file_contents_map: std::collections::HashMap<String, String> = results
+        .into_iter()
+        .filter_map(|result| result)
+        .collect();
     
     // Get settings repository for UnifiedPromptProcessor
     let settings_repo = app_handle.state::<Arc<SettingsRepository>>().inner().clone();

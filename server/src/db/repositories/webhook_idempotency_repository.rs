@@ -84,30 +84,38 @@ impl WebhookIdempotencyRepository {
                 )
                 ON CONFLICT (webhook_event_id) DO UPDATE SET
                     locked_at = CASE 
+                        WHEN webhook_idempotency.status = 'completed' 
+                        THEN webhook_idempotency.locked_at
                         WHEN webhook_idempotency.locked_at IS NULL 
                              OR webhook_idempotency.lock_expires_at < NOW() 
-                             OR webhook_idempotency.status IN ('completed', 'failed') 
+                             OR webhook_idempotency.status = 'failed' 
                         THEN NOW()
                         ELSE webhook_idempotency.locked_at
                     END,
                     locked_by = CASE 
+                        WHEN webhook_idempotency.status = 'completed' 
+                        THEN webhook_idempotency.locked_by
                         WHEN webhook_idempotency.locked_at IS NULL 
                              OR webhook_idempotency.lock_expires_at < NOW() 
-                             OR webhook_idempotency.status IN ('completed', 'failed') 
+                             OR webhook_idempotency.status = 'failed' 
                         THEN $5
                         ELSE webhook_idempotency.locked_by
                     END,
                     lock_expires_at = CASE 
+                        WHEN webhook_idempotency.status = 'completed' 
+                        THEN webhook_idempotency.lock_expires_at
                         WHEN webhook_idempotency.locked_at IS NULL 
                              OR webhook_idempotency.lock_expires_at < NOW() 
-                             OR webhook_idempotency.status IN ('completed', 'failed') 
+                             OR webhook_idempotency.status = 'failed' 
                         THEN $6
                         ELSE webhook_idempotency.lock_expires_at
                     END,
                     status = CASE 
+                        WHEN webhook_idempotency.status = 'completed' 
+                        THEN webhook_idempotency.status
                         WHEN webhook_idempotency.locked_at IS NULL 
                              OR webhook_idempotency.lock_expires_at < NOW() 
-                             OR webhook_idempotency.status IN ('completed', 'failed') 
+                             OR webhook_idempotency.status = 'failed' 
                         THEN 'processing'
                         ELSE webhook_idempotency.status
                     END,
@@ -136,6 +144,13 @@ impl WebhookIdempotencyRepository {
         .fetch_one(&self.pool)
         .await
         .map_err(|e| AppError::Database(format!("Failed to acquire webhook lock: {}", e)))?;
+
+        // Check if the webhook event has already been completed
+        if result.status == "completed" {
+            return Err(AppError::Database(format!(
+                "Webhook event has already been completed"
+            )));
+        }
 
         // Check if we successfully acquired the lock
         if result.locked_by.as_ref() == Some(&locked_by.to_string()) && 

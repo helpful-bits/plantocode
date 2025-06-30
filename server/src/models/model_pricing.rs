@@ -22,8 +22,13 @@ use std::str::FromStr;
 pub trait ModelPricing {
     fn get_input_cost_per_million_tokens(&self) -> Option<BigDecimal>;
     fn get_output_cost_per_million_tokens(&self) -> Option<BigDecimal>;
+    fn get_cache_write_cost_per_million_tokens(&self) -> Option<BigDecimal>;
+    fn get_cache_read_cost_per_million_tokens(&self) -> Option<BigDecimal>;
     fn get_duration_cost_per_minute(&self) -> Option<BigDecimal>;
     fn get_minimum_billable_duration_ms(&self) -> Option<i32>;
+    fn get_input_long_context_cost_per_million_tokens(&self) -> Option<BigDecimal>;
+    fn get_output_long_context_cost_per_million_tokens(&self) -> Option<BigDecimal>;
+    fn get_long_context_threshold(&self) -> Option<i32>;
     
     fn is_duration_based(&self) -> bool {
         self.get_duration_cost_per_minute().is_some()
@@ -43,6 +48,54 @@ pub trait ModelPricing {
         Ok(&cost_per_minute * &duration_minutes)
     }
     
+    /// Calculate input token cost with cached token pricing support
+    /// This method handles uncached input tokens, cache write tokens, and cache read tokens
+    fn calculate_input_cost(&self, uncached_tokens: i64, cache_write_tokens: i64, cache_read_tokens: i64) -> BigDecimal {
+        let million = BigDecimal::from(1_000_000);
+        
+        // Calculate uncached input cost
+        let uncached_cost = self.get_input_cost_per_million_tokens()
+            .map(|rate| {
+                let uncached_tokens_bd = BigDecimal::from(uncached_tokens);
+                (&rate * &uncached_tokens_bd) / &million
+            })
+            .unwrap_or_else(|| BigDecimal::from(0));
+        
+        // Calculate cache write cost (only if provider supports cache pricing)
+        let cache_write_cost = self.get_cache_write_cost_per_million_tokens()
+            .map(|rate| {
+                let cache_write_tokens_bd = BigDecimal::from(cache_write_tokens);
+                (&rate * &cache_write_tokens_bd) / &million
+            })
+            .unwrap_or_else(|| {
+                // If no cache write pricing, treat as regular input tokens
+                self.get_input_cost_per_million_tokens()
+                    .map(|rate| {
+                        let cache_write_tokens_bd = BigDecimal::from(cache_write_tokens);
+                        (&rate * &cache_write_tokens_bd) / &million
+                    })
+                    .unwrap_or_else(|| BigDecimal::from(0))
+            });
+        
+        // Calculate cache read cost (only if provider supports cache pricing)
+        let cache_read_cost = self.get_cache_read_cost_per_million_tokens()
+            .map(|rate| {
+                let cache_read_tokens_bd = BigDecimal::from(cache_read_tokens);
+                (&rate * &cache_read_tokens_bd) / &million
+            })
+            .unwrap_or_else(|| {
+                // If no cache read pricing, treat as regular input tokens
+                self.get_input_cost_per_million_tokens()
+                    .map(|rate| {
+                        let cache_read_tokens_bd = BigDecimal::from(cache_read_tokens);
+                        (&rate * &cache_read_tokens_bd) / &million
+                    })
+                    .unwrap_or_else(|| BigDecimal::from(0))
+            });
+        
+        uncached_cost + cache_write_cost + cache_read_cost
+    }
+
     /// Calculate token-based cost with precise BigDecimal arithmetic
     /// This is the core cost calculation method for token-based models
     fn calculate_token_cost(&self, input_tokens: i64, output_tokens: i64) -> BigDecimal {
@@ -72,7 +125,19 @@ pub trait ModelPricing {
     /// Calculate total cost including both tokens and duration if applicable
     /// This method combines token and duration costs for hybrid models
     fn calculate_total_cost(&self, input_tokens: i64, output_tokens: i64, duration_ms: Option<i64>) -> Result<BigDecimal, String> {
-        let token_cost = self.calculate_token_cost(input_tokens, output_tokens);
+        // Use new cache-aware method for input cost (treating all as uncached for backwards compatibility)
+        let input_cost = self.calculate_input_cost(input_tokens, 0, 0);
+        
+        // Calculate output cost separately
+        let million = BigDecimal::from(1_000_000);
+        let output_cost = self.get_output_cost_per_million_tokens()
+            .map(|rate| {
+                let output_tokens_bd = BigDecimal::from(output_tokens);
+                (&rate * &output_tokens_bd) / &million
+            })
+            .unwrap_or_else(|| BigDecimal::from(0));
+            
+        let token_cost = input_cost + output_cost;
         
         if let Some(duration) = duration_ms {
             let duration_cost = self.calculate_duration_cost(duration)?;

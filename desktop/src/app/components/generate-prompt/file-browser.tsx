@@ -1,19 +1,24 @@
 "use client";
 
 import { RefreshCw, X, AlertCircle, Loader2, Search, Undo, Redo, CheckSquare, Square, Sparkles, ChevronUp, ChevronDown } from "lucide-react";
+import React from "react";
 import { useProject } from "@/contexts/project-context";
 import { useSessionStateContext } from "@/contexts/session";
 import { Button } from "@/ui/button";
 import { FilterModeToggle } from "@/ui/filter-mode-toggle";
-import { useSimpleFileSelection } from "./_hooks/use-simple-file-selection";
-import { SimpleFileItem } from "./_components/simple-file-item";
+import { useFileSelection } from "./_hooks/use-file-selection";
+import { FileItem } from "./_components/file-item";
+
+export interface FileBrowserHandle {
+  handleApplyFilesFromJob: (paths: string[], source: string) => void;
+}
 
 /**
  * EXTREMELY SIMPLE file browser
  * No complex state management, no caching, no multiple contexts
  * Just a list of files with checkboxes
  */
-export function SimpleFileBrowser() {
+export const FileBrowser = React.forwardRef<FileBrowserHandle, {}>((_, ref) => {
   const { projectDirectory } = useProject();
   const { currentSession } = useSessionStateContext();
   const {
@@ -42,7 +47,17 @@ export function SimpleFileBrowser() {
     findingFilesError,
     selectFiltered,
     deselectFiltered,
-  } = useSimpleFileSelection(projectDirectory);
+    applyWorkflowResultsToSession,
+    cancelFind,
+  } = useFileSelection(projectDirectory);
+
+  const handleApplyFilesFromJob = React.useCallback((paths: string[], source: string) => {
+    applyWorkflowResultsToSession(paths, source);
+  }, [applyWorkflowResultsToSession]);
+
+  React.useImperativeHandle(ref, () => ({
+    handleApplyFilesFromJob,
+  }), [handleApplyFilesFromJob]);
 
   if (!projectDirectory) {
     return (
@@ -160,7 +175,7 @@ export function SimpleFileBrowser() {
       </div>
 
       {/* AI Find Button - Full width like original */}
-      <div className="flex">
+      <div className="flex items-center gap-2">
         <Button
           variant={findingFilesError ? "destructive" : "default"}
           size="sm"
@@ -194,6 +209,15 @@ export function SimpleFileBrowser() {
             ? "Retry File Search"
             : "Find Relevant Files with AI"}
         </Button>
+        {findingFiles && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={cancelFind}
+          >
+            Cancel
+          </Button>
+        )}
       </div>
 
 
@@ -301,7 +325,7 @@ export function SimpleFileBrowser() {
           ) : (
             <div className="p-2">
               {files.map((file) => (
-                <SimpleFileItem
+                <FileItem
                   key={file.path}
                   file={file}
                   onToggleSelection={toggleFileSelection}
@@ -314,4 +338,6 @@ export function SimpleFileBrowser() {
       </div>
     </div>
   );
-}
+});
+
+FileBrowser.displayName = "FileBrowser";

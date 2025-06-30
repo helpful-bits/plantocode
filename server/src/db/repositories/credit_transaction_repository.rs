@@ -88,8 +88,10 @@ impl CreditTransactionRepository {
         user_id: &Uuid,
         limit: i64,
         offset: i64,
+        search: Option<&str>,
         executor: &mut sqlx::Transaction<'_, sqlx::Postgres>
     ) -> Result<Vec<CreditTransaction>, AppError> {
+        let search_param = search.map(|s| format!("%{}%", s));
         let results = sqlx::query_as!(
             CreditTransaction,
             r#"
@@ -97,13 +99,14 @@ impl CreditTransactionRepository {
                    description, stripe_charge_id, related_api_usage_id, 
                    metadata, created_at, balance_after
             FROM credit_transactions 
-            WHERE user_id = $1
+            WHERE user_id = $1 AND ($4::TEXT IS NULL OR description ILIKE $4)
             ORDER BY created_at DESC
             LIMIT $2 OFFSET $3
             "#,
             user_id,
             limit,
-            offset
+            offset,
+            search_param
         )
         .fetch_all(&mut **executor)
         .await

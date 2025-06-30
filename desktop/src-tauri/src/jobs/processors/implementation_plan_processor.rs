@@ -3,13 +3,14 @@ use std::str::FromStr;
 use log::{debug, info, warn, error};
 use serde_json::json;
 use tauri::AppHandle;
+use tokio::fs;
 
 
 use crate::error::{AppError, AppResult};
 use crate::jobs::processor_trait::JobProcessor;
 use crate::jobs::types::{Job, JobPayload, JobProcessResult, StructuredImplementationPlan, StructuredImplementationPlanStep};
 use crate::models::{JobStatus, TaskType, OpenRouterRequestMessage, OpenRouterContent};
-use crate::utils::{get_timestamp, fs_utils, path_utils};
+use crate::utils::{get_timestamp, path_utils};
 use crate::utils::xml_utils::extract_xml_from_markdown;
 use crate::utils::job_metadata_builder::JobMetadataBuilder;
 use crate::jobs::job_processor_utils;
@@ -207,7 +208,7 @@ impl JobProcessor for ImplementationPlanProcessor {
         let mut file_contents_map = std::collections::HashMap::new();
         for relative_path_str in &payload.relevant_files {
             let full_path = std::path::Path::new(project_directory).join(relative_path_str);
-            match crate::utils::fs_utils::read_file_to_string(&*full_path.to_string_lossy()).await {
+            match fs::read_to_string(&full_path).await {
                 Ok(content) => {
                     file_contents_map.insert(relative_path_str.clone(), content);
                 }
@@ -305,7 +306,7 @@ impl JobProcessor for ImplementationPlanProcessor {
         let mut file_contents_map = std::collections::HashMap::new();
         for relative_path_str in &payload.relevant_files {
             let full_path = std::path::Path::new(project_directory).join(relative_path_str);
-            match crate::utils::fs_utils::read_file_to_string(&*full_path.to_string_lossy()).await {
+            match fs::read_to_string(&full_path).await {
                 Ok(content) => {
                     file_contents_map.insert(relative_path_str.clone(), content);
                 }
@@ -428,6 +429,7 @@ impl JobProcessor for ImplementationPlanProcessor {
             "isStructured": true,
             "sessionName": session_name
         });
+        
         
         // Ensure streaming flags are cleared for completed jobs
         if let Some(obj) = impl_plan_additional_params.as_object_mut() {

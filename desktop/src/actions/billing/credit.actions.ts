@@ -14,11 +14,13 @@ export async function getCreditDetails(): Promise<CreditDetailsResponse> {
 
 export async function getCreditHistory(
   limit: number = 10,
-  offset: number = 0
+  offset: number = 0,
+  search?: string
 ): Promise<CreditHistoryResponse> {
   return await invoke<CreditHistoryResponse>('get_credit_history_command', {
     limit,
     offset,
+    search,
   });
 }
 

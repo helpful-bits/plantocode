@@ -1,35 +1,130 @@
-import { useState } from "react";
-import { Loader2, ChevronDown, ChevronUp, Copy, Eye } from "lucide-react";
+import { useState, useMemo, useContext } from "react";
+import { Loader2, ChevronDown, ChevronUp, Copy, Eye, Check } from "lucide-react";
 import { useNotification } from "@/contexts/notification-context";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/ui/collapsible";
 import { Progress } from "@/ui/progress";
-import { VirtualizedCodeViewer } from "@/ui/virtualized-code-viewer";
 import { useJobDetailsContext } from "../../_contexts/job-details-context";
 import { parsePlanResponseContent } from "../../../implementation-plans-panel/_utils/plan-content-parser";
 import { Button } from "@/ui/button";
 import { replacePlaceholders } from "@/utils/placeholder-utils";
 import { type CopyButtonConfig } from "@/types/config-types";
 import PlanContentModal from "../../../implementation-plans-panel/_components/PlanContentModal";
+import { BackgroundJobsContext } from "@/contexts/background-jobs";
 
 import { getStreamingProgressValue } from "../../utils";
+
+// Simple copy button component for non-implementation plan content
+function SimpleCopyButton({ content }: { content: string }) {
+  const [isCopied, setIsCopied] = useState(false);
+  const { showNotification } = useNotification();
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(content);
+      setIsCopied(true);
+      setTimeout(() => setIsCopied(false), 2000);
+      
+      showNotification({
+        title: "Copied to clipboard",
+        message: "Response content copied successfully",
+        type: "success",
+        duration: 2000,
+      });
+    } catch (err) {
+      console.error("Failed to copy to clipboard:", err);
+      showNotification({
+        title: "Copy failed", 
+        message: "Failed to copy to clipboard",
+        type: "error",
+        duration: 3000,
+      });
+    }
+  };
+
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      className="text-xs h-7 px-2 py-1"
+      onClick={handleCopy}
+      title="Copy response content"
+    >
+      {isCopied ? (
+        <>
+          <Check className="mr-1 h-3 w-3" />
+          Copied
+        </>
+      ) : (
+        <>
+          <Copy className="mr-1 h-3 w-3" />
+          Copy
+        </>
+      )}
+    </Button>
+  );
+}
+
+// Simple content display component for non-implementation plan content
+function SimpleContentDisplay({ content, isLoading, placeholder }: { 
+  content: string; 
+  isLoading?: boolean; 
+  placeholder?: string;
+}) {
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-40 border border-border/60 bg-muted/20 rounded-md">
+        <div className="flex items-center gap-2">
+          <Loader2 className="h-4 w-4 animate-spin text-info" />
+          <span className="text-sm text-info">Streaming response...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (!content && placeholder) {
+    return (
+      <div className="flex items-center justify-center h-40 border border-border/60 bg-muted/20 rounded-md">
+        <span className="text-sm text-muted-foreground">{placeholder}</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative">
+      <div className="absolute top-2 right-2 z-10">
+        <SimpleCopyButton content={content} />
+      </div>
+      <pre className="whitespace-pre-wrap font-mono text-xs text-balance w-full p-4 pr-20 bg-muted/20 rounded-md border border-border/60 text-foreground overflow-auto max-h-[70vh]">
+        {content}
+      </pre>
+    </div>
+  );
+}
 
 export function JobDetailsResponseSection() {
   const { job, responseContent, parsedMetadata, copyButtons = [] } = useJobDetailsContext();
   const [isResponseOpen, setIsResponseOpen] = useState(false);
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [openedJobId, setOpenedJobId] = useState<string | null>(null);
   const { showNotification } = useNotification();
+  
+  // Get live jobs from context
+  const { jobs } = useContext(BackgroundJobsContext);
+  
+  // Derive the live job from the context using the jobId
+  const liveJobForModal = useMemo(() => {
+    if (!openedJobId) return null;
+    return jobs.find(j => j.id === openedJobId) || null;
+  }, [openedJobId, jobs]);
 
   const isImplementationPlan = job.taskType === "implementation_plan";
 
   let displayContentForViewer = responseContent || "";
-  let viewerLanguage = "markdown"; // Default for most jobs
 
   const isJobStreaming = (job.status === "running" || job.status === "processingStream") && Boolean(parsedMetadata?.taskData?.isStreaming);
 
   if (job.taskType === "implementation_plan") {
-    viewerLanguage = "xml"; // Implementation plans are expected to be XML
     if (!isJobStreaming && job.status === "completed") {
       displayContentForViewer = parsePlanResponseContent(responseContent);
     }
@@ -37,10 +132,19 @@ export function JobDetailsResponseSection() {
   }
 
 
-  // Copy handler for modal - simplified since PlanContentModal handles the logic
+  // Copy handler for modal - gets current content dynamically to avoid stale content during streaming
   const handleCopy = async (button: CopyButtonConfig) => {
     try {
-      const data = { IMPLEMENTATION_PLAN: displayContentForViewer, STEP_CONTENT: '' };
+      // Get the current content dynamically instead of using potentially stale displayContentForViewer
+      let currentContent = responseContent || "";
+      if (job.taskType === "implementation_plan") {
+        if (!isJobStreaming && job.status === "completed") {
+          currentContent = parsePlanResponseContent(responseContent);
+        }
+        // For streaming or other states, use responseContent directly
+      }
+      
+      const data = { IMPLEMENTATION_PLAN: currentContent, STEP_CONTENT: '' };
       const processedContent = replacePlaceholders(button.content, data);
       await navigator.clipboard.writeText(processedContent);
       
@@ -108,7 +212,7 @@ export function JobDetailsResponseSection() {
                 variant="outline"
                 size="sm"
                 className="text-xs h-7 px-2 py-1"
-                onClick={() => setIsModalOpen(true)}
+                onClick={() => setOpenedJobId(job.id)}
               >
                 <Eye className="mr-1 h-3.5 w-3.5" />
                 View Content
@@ -171,28 +275,10 @@ export function JobDetailsResponseSection() {
                 </div>
               ) : null}
 
-              <VirtualizedCodeViewer
+              <SimpleContentDisplay
                 content={displayContentForViewer}
-                language={viewerLanguage}
-                height="70vh"
-                showCopy={true}
-                copyText="Copy response"
-                showContentSize={true}
                 isLoading={isJobStreaming}
                 placeholder="No response content available"
-                className={
-                  job.taskType === "extended_path_finder" || job.taskType === "regex_file_filter"
-                    ? "border-border/60 bg-slate-50/50 dark:bg-slate-900/50"
-                    : undefined
-                }
-                loadingIndicator={
-                  <div className="flex items-center justify-center h-full">
-                    <div className="flex items-center gap-2">
-                      <Loader2 className="h-4 w-4 animate-spin text-info" />
-                      <span className="text-sm text-info">Streaming response...</span>
-                    </div>
-                  </div>
-                }
               />
             </CardContent>
           </CollapsibleContent>
@@ -200,16 +286,22 @@ export function JobDetailsResponseSection() {
       )}
 
       {/* Content View Modal */}
-      <PlanContentModal
-        plan={job}
-        open={isModalOpen}
-        onOpenChange={setIsModalOpen}
-        onRefreshContent={async () => {
-          // No refresh needed in this context as job data comes from context
-        }}
-        copyButtons={copyButtons}
-        onCopyButtonClick={(buttonConfig) => handleCopy(buttonConfig)}
-      />
+      {liveJobForModal && (
+        <PlanContentModal
+          plan={liveJobForModal}
+          open={openedJobId !== null}
+          onOpenChange={(open: boolean) => {
+            if (!open) {
+              setOpenedJobId(null);
+            }
+          }}
+          onRefreshContent={async () => {
+            // No refresh needed in this context as job data comes from context
+          }}
+          copyButtons={copyButtons}
+          onCopyButtonClick={(buttonConfig) => handleCopy(buttonConfig)}
+        />
+      )}
     </Card>
   );
 }
