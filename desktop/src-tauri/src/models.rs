@@ -228,10 +228,10 @@ impl TaskType {
     pub fn requires_llm(&self) -> bool {
         match self {
             // Local/filesystem tasks that don't use LLMs
-            TaskType::FileFinderWorkflow
-            | TaskType::VoiceTranscription => false,
+            TaskType::FileFinderWorkflow => false,
             // LLM tasks that require configuration
-            TaskType::FileRelevanceAssessment
+            TaskType::VoiceTranscription
+            | TaskType::FileRelevanceAssessment
             | TaskType::ExtendedPathFinder
             | TaskType::ImplementationPlan
             | TaskType::TextImprovement
@@ -275,6 +275,7 @@ pub struct BackgroundJob {
     pub tokens_received: Option<i32>,
     pub model_used: Option<String>,
     pub actual_cost: Option<f64>,
+    pub duration_ms: Option<i64>,
     pub metadata: Option<String>,
     pub system_prompt_template: Option<String>,
     pub created_at: i64,
@@ -472,34 +473,19 @@ pub struct DirectoryInfo {
 }
 
 
-// Native file information that matches TypeScript NativeFileInfo
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct NativeFileInfoRs {
-    pub path: String,        // Relative path to the queried directory
-    pub name: String,        // Base name of the file/directory
-    pub is_dir: bool,        // Whether this is a directory
-    pub is_file: bool,       // Whether this is a regular file
-    pub is_symlink: bool,    // Whether this is a symbolic link
-    pub size: Option<u64>,   // File size in bytes (None for directories)
-    pub created_at: Option<i64>,   // Creation timestamp in milliseconds
-    pub modified_at: Option<i64>,  // Modification timestamp in milliseconds
-    pub accessed_at: Option<i64>,  // Access timestamp in milliseconds
-    pub is_hidden: Option<bool>,   // Whether the file is hidden
-    pub is_readable: Option<bool>, // Whether the file is readable
-    pub is_writable: Option<bool>, // Whether the file is writable
-}
 
 
-// Response for list_files_command
-// Note: All file paths in this struct are expected to be relative to the queried directory
+// Git-based project file information with metadata
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ListFilesResponse {
-    pub files: Vec<NativeFileInfoRs>,  // List of file information objects
-    pub warning: Option<String>,
-    pub total_found_before_filtering: Option<usize>,
+pub struct ProjectFileInfo {
+    pub path: String,           // RELATIVE from project root
+    pub name: String,           // File name only
+    pub size: Option<u64>,      // File size
+    pub modified_at: Option<i64>, // Timestamp 
+    pub is_binary: bool,        // Binary detection
 }
+
 
 // Request arguments for create_path_finder_job command
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -539,11 +525,12 @@ pub struct ReadImplementationPlanResponse {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TaskSpecificModelConfig {
-    pub model: Option<String>,
-    pub max_tokens: Option<u32>,
-    pub temperature: Option<f32>,
+    pub model: String,
+    pub max_tokens: u32,
+    pub temperature: f32,
     pub system_prompt: Option<String>,
     pub copy_buttons: Option<Vec<serde_json::Value>>,
+    pub allowed_models: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -558,6 +545,8 @@ pub struct ModelInfo {
     pub context_window: Option<u32>,
     pub price_input_per_million: String,
     pub price_output_per_million: String,
+    pub price_cache_read: Option<String>,
+    pub price_cache_write: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -577,9 +566,6 @@ pub struct ProviderWithModels {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RuntimeAIConfig {
-    pub default_llm_model_id: String,
-    pub default_voice_model_id: String,
-    pub default_transcription_model_id: String,
     pub tasks: HashMap<String, TaskSpecificModelConfig>,
     pub providers: Vec<ProviderWithModels>,
     
@@ -597,11 +583,6 @@ pub struct RuntimeAIConfig {
     // Job system configuration
     #[serde(default)]
     pub job_settings: Option<JobSettings>,
-    
-    // General defaults for when task-specific configs are missing
-    // These provide server-level control over fallbacks instead of hardcoded values
-    pub default_temperature: Option<f32>,
-    pub default_max_tokens: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -718,7 +699,7 @@ pub struct DatabaseHealthData {
     pub last_modified: Option<String>, // ISO 8601 string
 }
 
-/// Subscription plan model that matches server response and frontend expectations
+/// Customer billing plan model that matches server response and frontend expectations
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SubscriptionPlan {

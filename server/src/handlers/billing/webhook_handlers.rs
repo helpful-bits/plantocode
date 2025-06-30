@@ -9,7 +9,7 @@ use uuid::Uuid;
 use log::{error, info, warn};
 use chrono::Utc;
 use bigdecimal::{BigDecimal, ToPrimitive, FromPrimitive};
-use stripe::{Event, EventObject, Webhook, PaymentIntent};
+use crate::stripe_types::*;
 
 
 /// Handle Stripe webhook events (simplified for Customer Portal integration)
@@ -30,10 +30,14 @@ pub async fn stripe_webhook(
     let body_str = std::str::from_utf8(&body)
         .map_err(|_| AppError::InvalidArgument("Invalid UTF-8 in webhook body".to_string()))?;
 
-    let event = stripe::Webhook::construct_event(body_str, stripe_signature, webhook_secret)
+    // Verify webhook signature and parse event using StripeService
+    let stripe_service = billing_service.get_stripe_service()
+        .map_err(|e| AppError::Configuration(format!("Failed to get stripe service: {}", e)))?;
+    
+    let event = stripe_service.construct_event(body_str, stripe_signature)
         .map_err(|e| {
-            error!("Stripe webhook signature verification failed: {}", e);
-            AppError::Auth(format!("Invalid Stripe webhook signature: {}", e))
+            error!("Stripe webhook signature verification or event parsing failed: {}", e);
+            AppError::Auth(format!("Invalid Stripe webhook signature or event format: {}", e))
         })?;
 
     // Validate event timestamp to prevent replay attacks - reject events outside 5-minute window
@@ -50,13 +54,13 @@ pub async fn stripe_webhook(
         )));
     }
 
-    let webhook_repo = WebhookIdempotencyRepository::new(billing_service.get_db_pool().clone());
+    let webhook_repo = WebhookIdempotencyRepository::new(billing_service.get_system_db_pool());
     let worker_id = format!("webhook-handler-{}", uuid::Uuid::new_v4().to_string()[..8].to_string());
     
     let _webhook_record = match webhook_repo.acquire_webhook_lock(
         &event.id,
         "stripe",
-        &event.type_.to_string(),
+        &event.type_,
         &worker_id,
         5,
         Some(serde_json::json!({
@@ -73,6 +77,10 @@ pub async fn stripe_webhook(
         }
         Err(AppError::Database(msg)) if msg.contains("already locked") => {
             info!("Webhook event {} already being processed, skipping", event.id);
+            return Ok(HttpResponse::Ok().finish());
+        }
+        Err(AppError::Database(msg)) if msg.contains("Webhook event has already been completed") => {
+            info!("Webhook event {} is a duplicate and is being skipped", event.id);
             return Ok(HttpResponse::Ok().finish());
         }
         Err(e) => {
@@ -104,7 +112,7 @@ pub async fn stripe_webhook(
             crate::utils::admin_alerting::send_stripe_webhook_failure_alert(
                 &event.id,
                 &error_message,
-                &event.type_.to_string(),
+                &event.type_,
             ).await;
             
             let should_retry = !is_permanent_error(&e);
@@ -148,7 +156,7 @@ pub async fn stripe_webhook(
 }
 
 async fn process_stripe_webhook_event(
-    event: &stripe::Event,
+    event: &Event,
     billing_service: &BillingService,
     _app_state: &crate::models::runtime_config::AppState,
 ) -> Result<HttpResponse, AppError> {
@@ -160,113 +168,25 @@ async fn process_stripe_webhook_event(
     let _credit_service = billing_service.get_credit_service();
     info!("Processing Stripe webhook event {} of type {}", event.id, event.type_);
 
-    match event.type_.to_string().as_str() {
-        "customer.subscription.updated" => {
-            info!("Processing subscription updated: {}", event.id);
-            if let stripe::EventObject::Subscription(subscription) = &event.data.object {
-                billing_service.sync_subscription_from_webhook(subscription).await?;
-                
-                let customer_id = subscription.customer.id().to_string();
-                let user_repo = crate::db::repositories::user_repository::UserRepository::new(billing_service.get_db_pool().clone());
-                if let Ok(user) = user_repo.get_by_stripe_customer_id(&customer_id).await {
-                    let new_plan_id = subscription.items.data.first()
-                        .and_then(|item| item.price.as_ref())
-                        .map(|price| price.id.to_string())
-                        .unwrap_or_else(|| "unknown".to_string());
-                    
-                    let new_plan_name = subscription.items.data.first()
-                        .and_then(|item| item.price.as_ref())
-                        .and_then(|price| price.nickname.as_ref())
-                        .map(|name| name.clone())
-                        .unwrap_or_else(|| new_plan_id.clone());
-                    
-                    // Log audit event for subscription update
-                    let audit_context = crate::services::audit_service::AuditContext::new(user.id);
-                    if let Err(e) = audit_service.log_event(
-                        &audit_context,
-                        crate::services::audit_service::AuditEvent::new(
-                            "subscription_updated",
-                            "subscription"
-                        )
-                        .with_entity_id(subscription.id.to_string())
-                        .with_metadata(serde_json::json!({
-                            "new_plan_id": new_plan_id,
-                            "new_plan_name": new_plan_name,
-                            "status": format!("{:?}", subscription.status),
-                            "customer_id": customer_id,
-                            "event_id": event.id
-                        }))
-                    ).await {
-                        warn!("Failed to log subscription update audit for user {}: {}", user.id, e);
-                    }
-                    
-                    if let Err(e) = email_service.send_plan_change_notification(
-                        &user.id,
-                        &user.email,
-                        "previous_plan",
-                        &new_plan_id,
-                        &new_plan_name,
-                    ).await {
-                        error!("Failed to send plan change notification for user {}: {}", user.id, e);
-                    }
-                }
-            }
-        },
-        "customer.subscription.deleted" => {
-            info!("Processing subscription deleted: {}", event.id);
-            if let stripe::EventObject::Subscription(subscription) = &event.data.object {
-                billing_service.sync_subscription_from_webhook(subscription).await?;
-                
-                let customer_id = subscription.customer.id().to_string();
-                let user_repo = crate::db::repositories::user_repository::UserRepository::new(billing_service.get_db_pool().clone());
-                if let Ok(user) = user_repo.get_by_stripe_customer_id(&customer_id).await {
-                    // Log audit event for subscription deletion
-                    let audit_context = crate::services::audit_service::AuditContext::new(user.id);
-                    if let Err(e) = audit_service.log_event(
-                        &audit_context,
-                        crate::services::audit_service::AuditEvent::new(
-                            "subscription_deleted",
-                            "subscription"
-                        )
-                        .with_entity_id(subscription.id.to_string())
-                        .with_metadata(serde_json::json!({
-                            "deleted_plan_id": subscription.items.data.first()
-                                .and_then(|item| item.price.as_ref())
-                                .map(|price| price.id.to_string())
-                                .unwrap_or_else(|| "unknown".to_string()),
-                            "customer_id": customer_id,
-                            "cancellation_reason": "customer_portal",
-                            "event_id": event.id
-                        }))
-                    ).await {
-                        warn!("Failed to log subscription deletion audit for user {}: {}", user.id, e);
-                    }
-                    
-                    if let Err(e) = email_service.send_subscription_cancellation_notification(
-                        &user.id,
-                        &user.email,
-                        false,
-                        None,
-                        None,
-                    ).await {
-                        error!("Failed to send subscription cancellation notification for user {}: {}", user.id, e);
-                    }
-                }
-            }
-        },
+    match event.type_.as_str() {
         "payment_intent.succeeded" => {
             info!("Processing payment intent succeeded: {}", event.id);
-            if let stripe::EventObject::PaymentIntent(payment_intent) = &event.data.object {
-                // Determine payment type from metadata to differentiate subscription vs top-up
-                let payment_type = payment_intent.metadata.get("type")
-                    .map(|t| t.as_str())
-                    .unwrap_or("unknown");
-                
-                info!("Payment intent {} type: {} - processing", payment_intent.id, payment_type);
-                
-                // Log audit event for successful payment (excluding credit purchases, which have their own specific audit logging)
-                if payment_type != "credit_purchase" {
-                    if let Some(user_id_str) = payment_intent.metadata.get("user_id") {
+            // Parse payment intent from event data
+            let payment_intent: PaymentIntent = serde_json::from_value(event.data["object"].clone())
+                .map_err(|e| AppError::InvalidArgument(format!("Failed to parse payment intent: {}", e)))?;
+            
+            // Determine payment type from metadata to differentiate subscription vs top-up
+            let payment_type = payment_intent.metadata.as_ref()
+                .and_then(|metadata| metadata.get("type"))
+                .map(|t| t.as_str())
+                .unwrap_or("unknown");
+            
+            info!("Payment intent {} type: {} - processing", payment_intent.id, payment_type);
+            
+            // Log audit event for successful payment (excluding credit purchases, which have their own specific audit logging)
+            if payment_type != "credit_purchase" {
+                if let Some(metadata) = &payment_intent.metadata {
+                    if let Some(user_id_str) = metadata.get("user_id") {
                         if let Ok(user_id) = Uuid::parse_str(user_id_str) {
                             let audit_context = crate::services::audit_service::AuditContext::new(user_id);
                             if let Err(e) = audit_service.log_event(
@@ -275,7 +195,7 @@ async fn process_stripe_webhook_event(
                                     "payment_succeeded",
                                     "payment"
                                 )
-                                .with_entity_id(payment_intent.id.to_string())
+                                .with_entity_id(payment_intent.id.clone())
                                 .with_metadata(serde_json::json!({
                                     "amount": payment_intent.amount,
                                     "currency": payment_intent.currency,
@@ -289,108 +209,77 @@ async fn process_stripe_webhook_event(
                         }
                     }
                 }
-                
-                match payment_type {
-                    "credit_purchase" => {
-                        let user_id_str = payment_intent.metadata.get("user_id").map(|v| v.as_str()).unwrap_or("unknown");
-                        let amount = payment_intent.metadata.get("amount")
-                            .or_else(|| payment_intent.metadata.get("credit_amount"))
-                            .map(|v| v.as_str()).unwrap_or("unknown");
-                        
-                        info!("Processing credit purchase for payment intent {} - user_id: {}, amount: {}", 
-                              payment_intent.id, user_id_str, amount);
-                        
-                        match process_credit_purchase(payment_intent, billing_service, &email_service).await {
-                            Ok(_) => {
-                                info!("Successfully processed credit purchase for payment intent {} - user_id: {}, amount: {}", 
-                                      payment_intent.id, user_id_str, amount);
-                            },
-                            Err(e) => {
-                                error!("Failed to process credit purchase for payment intent {} - user_id: {}, amount: {} - Error: {}", 
-                                       payment_intent.id, user_id_str, amount, e);
-                                crate::utils::admin_alerting::send_payment_processing_error_alert(
-                                    &payment_intent.id.to_string(),
-                                    &payment_intent.customer.as_ref()
-                                        .map(|c| c.id().to_string())
-                                        .unwrap_or_else(|| "unknown".to_string()),
-                                    &format!("{}", e),
-                                ).await;
-                                return Err(e);
-                            }
+            }
+            
+            match payment_type {
+                "credit_purchase" => {
+                    let user_id_str = payment_intent.metadata.as_ref()
+                        .and_then(|metadata| metadata.get("user_id"))
+                        .map(|v| v.as_str()).unwrap_or("unknown");
+                    let amount = payment_intent.metadata.as_ref()
+                        .and_then(|metadata| metadata.get("amount")
+                            .or_else(|| metadata.get("credit_amount")))
+                        .map(|v| v.as_str()).unwrap_or("unknown");
+                    
+                    info!("Processing credit purchase for payment intent {} - user_id: {}, amount: {}", 
+                          payment_intent.id, user_id_str, amount);
+                    
+                    match process_credit_purchase(&payment_intent, billing_service, &email_service).await {
+                        Ok(_) => {
+                            info!("Successfully processed credit purchase for payment intent {} - user_id: {}, amount: {}", 
+                                  payment_intent.id, user_id_str, amount);
+                        },
+                        Err(e) => {
+                            error!("Failed to process credit purchase for payment intent {} - user_id: {}, amount: {} - Error: {}", 
+                                   payment_intent.id, user_id_str, amount, e);
+                            crate::utils::admin_alerting::send_payment_processing_error_alert(
+                                &payment_intent.id,
+                                &payment_intent.customer.clone().unwrap_or_else(|| "unknown".to_string()),
+                                &format!("{}", e),
+                            ).await;
+                            return Err(e);
                         }
-                    },
-                    _ => {
-                        warn!("Unknown payment type '{}' for payment intent {} - attempting credit purchase processing", payment_type, payment_intent.id);
-                        match process_credit_purchase(payment_intent, billing_service, &email_service).await {
-                            Ok(_) => {
-                                info!("Successfully processed unknown payment type as credit purchase for payment intent {}", payment_intent.id);
-                            },
-                            Err(e) => {
-                                warn!("Failed to process unknown payment type for payment intent {}: {} - continuing webhook processing", payment_intent.id, e);
-                            }
+                    }
+                },
+                _ => {
+                    warn!("Unknown payment type '{}' for payment intent {} - attempting credit purchase processing", payment_type, payment_intent.id);
+                    match process_credit_purchase(&payment_intent, billing_service, &email_service).await {
+                        Ok(_) => {
+                            info!("Successfully processed unknown payment type as credit purchase for payment intent {}", payment_intent.id);
+                        },
+                        Err(e) => {
+                            warn!("Failed to process unknown payment type for payment intent {}: {} - continuing webhook processing", payment_intent.id, e);
                         }
                     }
                 }
             }
         },
         "invoice.payment_succeeded" => {
-            info!("Processing invoice payment succeeded: {}", event.id);
-            if let stripe::EventObject::Invoice(invoice) = &event.data.object {
-                if let Some(subscription_id) = &invoice.subscription {
-                    let stripe_service = billing_service.get_stripe_service()?;
-                    let subscription = stripe_service.get_subscription(&subscription_id.id().to_string()).await
-                        .map_err(|e| AppError::External(format!("Failed to retrieve subscription: {}", e)))?;
-                    
-                    let customer_id = subscription.customer.id().to_string();
-                    let user_repo = crate::db::repositories::user_repository::UserRepository::new(billing_service.get_db_pool().clone());
-                    
-                    if let Ok(user) = user_repo.get_by_stripe_customer_id(&customer_id).await {
-                        let monthly_credits = BigDecimal::from_f64(10.0).unwrap_or_else(|| BigDecimal::from(10));
-                        match billing_service.get_credit_service().adjust_credits(
-                            &user.id,
-                            &monthly_credits,
-                            "Monthly subscription credits".to_string(),
-                            Some(serde_json::json!({
-                                "type": "subscription_grant",
-                                "subscription_id": subscription_id.id().to_string(),
-                                "invoice_id": invoice.id.to_string()
-                            }))
-                        ).await {
-                            Ok(_) => {
-                                info!("Granted monthly credits to user {} for subscription {}", user.id, subscription_id.id());
-                            },
-                            Err(e) => {
-                                error!("Failed to grant monthly credits to user {} for subscription {}: {}", user.id, subscription_id.id(), e);
-                            }
-                        }
-                    }
-                }
-                info!("Invoice payment succeeded for {} - webhook processing complete", invoice.id);
-            }
+            info!("Processing invoice.payment_succeeded for event {}. Acknowledged.", event.id);
         },
         "payment_method.attached" => {
             info!("Processing payment method attached: {}", event.id);
-            if let stripe::EventObject::PaymentMethod(payment_method) = &event.data.object {
-                handle_payment_method_attached(payment_method, billing_service).await?;
-            }
+            let payment_method: PaymentMethod = serde_json::from_value(event.data["object"].clone())
+                .map_err(|e| AppError::InvalidArgument(format!("Failed to parse payment method: {}", e)))?;
+            handle_payment_method_attached(&payment_method, billing_service).await?;
         },
         "payment_method.detached" => {
             info!("Processing payment method detached: {}", event.id);
-            if let stripe::EventObject::PaymentMethod(payment_method) = &event.data.object {
-                handle_payment_method_detached(payment_method, billing_service).await?;
-            }
+            let payment_method: PaymentMethod = serde_json::from_value(event.data["object"].clone())
+                .map_err(|e| AppError::InvalidArgument(format!("Failed to parse payment method: {}", e)))?;
+            handle_payment_method_detached(&payment_method, billing_service).await?;
         },
         "customer.default_source_updated" => {
             info!("Processing customer default source updated: {}", event.id);
-            if let stripe::EventObject::Customer(customer) = &event.data.object {
-                handle_customer_default_source_updated(customer, billing_service).await?;
-            }
+            let customer: Customer = serde_json::from_value(event.data["object"].clone())
+                .map_err(|e| AppError::InvalidArgument(format!("Failed to parse customer: {}", e)))?;
+            handle_customer_default_source_updated(&customer, billing_service).await?;
         },
         "checkout.session.completed" => {
             info!("Processing checkout session completed: {}", event.id);
-            if let stripe::EventObject::CheckoutSession(session) = &event.data.object {
-                handle_checkout_session_completed(session, billing_service, &email_service).await?;
-            }
+            let session: CheckoutSession = serde_json::from_value(event.data["object"].clone())
+                .map_err(|e| AppError::InvalidArgument(format!("Failed to parse checkout session: {}", e)))?;
+            handle_checkout_session_completed(&session, billing_service, &email_service).await?;
         },
         _ => {
             info!("Ignoring Stripe event type: {} - handled by Customer Portal", event.type_);
@@ -408,18 +297,21 @@ async fn process_stripe_webhook_event(
 /// Process credit purchase from successful payment intent (one-time top-up)
 /// This handles individual credit purchases separate from subscription billing
 async fn process_credit_purchase(
-    payment_intent: &stripe::PaymentIntent,
+    payment_intent: &PaymentIntent,
     billing_service: &BillingService,
     email_service: &crate::services::email_notification_service::EmailNotificationService,
 ) -> Result<(), AppError> {
     info!("Processing credit purchase for PaymentIntent: {}", payment_intent.id);
     
     // Check if this is a credit purchase by examining metadata
-    let metadata = &payment_intent.metadata;
-    let payment_type = metadata.get("type").map(|t| t.as_str()).unwrap_or("unknown");
+    let metadata = payment_intent.metadata.as_ref();
+    let payment_type = metadata
+        .and_then(|m| m.get("type"))
+        .map(|t| t.as_str())
+        .unwrap_or("unknown");
     
     if payment_type != "credit_purchase" {
-        if metadata.get("credit_amount").is_none() && metadata.get("amount").is_none() {
+        if metadata.map_or(true, |m| m.get("credit_amount").is_none() && m.get("amount").is_none()) {
             info!("PaymentIntent {} is not a credit purchase (type: {}), skipping credit processing", payment_intent.id, payment_type);
             return Ok(());
         }
@@ -427,6 +319,11 @@ async fn process_credit_purchase(
     }
     
     info!("PaymentIntent {} confirmed as credit purchase, processing", payment_intent.id);
+    
+    let metadata = metadata.ok_or_else(|| {
+        error!("Missing metadata in PaymentIntent {}", payment_intent.id);
+        AppError::InvalidArgument("Missing metadata in credit purchase payment intent".to_string())
+    })?;
     
     info!("Validating metadata for PaymentIntent {}: available keys: {:?}", 
           payment_intent.id, metadata.keys().collect::<Vec<_>>());
@@ -526,7 +423,7 @@ async fn process_credit_purchase(
         return Err(AppError::Payment("Payment amount mismatch".to_string()));
     }
     
-    if payment_intent.currency.to_string().to_uppercase() != currency.to_uppercase() {
+    if payment_intent.currency.to_uppercase() != currency.to_uppercase() {
         error!("Currency mismatch in PaymentIntent {}: expected {}, got {}", 
                payment_intent.id, currency, payment_intent.currency);
         return Err(AppError::Payment("Currency mismatch".to_string()));
@@ -535,12 +432,17 @@ async fn process_credit_purchase(
     // Create audit context for the credit purchase
     let audit_context = AuditContext::new(user_uuid);
     
+    // Serialize payment intent metadata
+    let metadata_json = serde_json::to_value(&payment_intent.metadata)
+        .map_err(|e| AppError::InvalidArgument(format!("Failed to serialize payment intent metadata: {}", e)))?;
+    
     // Process the credit purchase using the credit service
-    let updated_balance = match credit_service.process_credit_purchase_from_payment_intent(
+    let updated_balance = match credit_service.record_credit_purchase(
         &user_uuid,
         &amount,
         currency,
-        payment_intent,
+        &payment_intent.id,
+        metadata_json,
         &audit_context,
     ).await {
         Ok(balance) => balance,
@@ -554,16 +456,13 @@ async fn process_credit_purchase(
           payment_intent.id, user_uuid, updated_balance.balance);
     
     // Send success email notification
-    let user_repo = crate::db::repositories::user_repository::UserRepository::new(billing_service.get_db_pool().clone());
+    let user_repo = crate::db::repositories::user_repository::UserRepository::new(billing_service.get_system_db_pool());
     if let Ok(user) = user_repo.get_by_id(&user_uuid).await {
-        // Get credit value from payment intent metadata for email
-        let credit_value = amount.clone();
-        
         email_service.send_credit_purchase_notification(
             &user_uuid,
             &user.email,
-            &credit_value,
-            &payment_intent.currency.to_string(),
+            &amount,
+            &payment_intent.currency,
         ).await.map_err(|e| {
             error!("Failed to send credit purchase notification for PaymentIntent {}: {}", payment_intent.id, e);
             e
@@ -583,20 +482,20 @@ async fn process_credit_purchase(
 
 /// Handle payment method attached event
 async fn handle_payment_method_attached(
-    payment_method: &stripe::PaymentMethod,
+    payment_method: &PaymentMethod,
     billing_service: &BillingService,
 ) -> Result<(), AppError> {
     info!("Handling payment method attached: {}", payment_method.id);
     
     let customer_id = match &payment_method.customer {
-        Some(customer) => customer.id().to_string(),
+        Some(customer_id) => customer_id.clone(),
         None => {
             warn!("Payment method {} has no associated customer, skipping audit", payment_method.id);
             return Ok(());
         }
     };
     
-    let user_repo = crate::db::repositories::user_repository::UserRepository::new(billing_service.get_db_pool().clone());
+    let user_repo = crate::db::repositories::user_repository::UserRepository::new(billing_service.get_system_db_pool());
     let user = match user_repo.get_by_stripe_customer_id(&customer_id).await {
         Ok(user) => user,
         Err(_) => {
@@ -611,7 +510,7 @@ async fn handle_payment_method_attached(
     let audit_context = crate::services::audit_service::AuditContext::new(user.id);
     
     let audit_event = crate::services::audit_service::AuditEvent::new("payment_method_attached", "payment_method")
-        .with_entity_id(payment_method.id.to_string())
+        .with_entity_id(payment_method.id.clone())
         .with_metadata(serde_json::json!({
             "payment_method_type": format!("{:?}", payment_method.type_),
             "customer_id": customer_id,
@@ -633,20 +532,20 @@ async fn handle_payment_method_attached(
 
 /// Handle payment method detached event
 async fn handle_payment_method_detached(
-    payment_method: &stripe::PaymentMethod,
+    payment_method: &PaymentMethod,
     billing_service: &BillingService,
 ) -> Result<(), AppError> {
     info!("Handling payment method detached: {}", payment_method.id);
     
     let customer_id = match &payment_method.customer {
-        Some(customer) => customer.id().to_string(),
+        Some(customer_id) => customer_id.clone(),
         None => {
             warn!("Payment method {} has no associated customer, skipping audit", payment_method.id);
             return Ok(());
         }
     };
     
-    let user_repo = crate::db::repositories::user_repository::UserRepository::new(billing_service.get_db_pool().clone());
+    let user_repo = crate::db::repositories::user_repository::UserRepository::new(billing_service.get_system_db_pool());
     let user = match user_repo.get_by_stripe_customer_id(&customer_id).await {
         Ok(user) => user,
         Err(_) => {
@@ -661,7 +560,7 @@ async fn handle_payment_method_detached(
     let audit_context = crate::services::audit_service::AuditContext::new(user.id);
     
     let audit_event = crate::services::audit_service::AuditEvent::new("payment_method_detached", "payment_method")
-        .with_entity_id(payment_method.id.to_string())
+        .with_entity_id(payment_method.id.clone())
         .with_metadata(serde_json::json!({
             "payment_method_type": format!("{:?}", payment_method.type_),
             "customer_id": customer_id,
@@ -683,13 +582,13 @@ async fn handle_payment_method_detached(
 
 /// Handle customer default source updated event
 async fn handle_customer_default_source_updated(
-    customer: &stripe::Customer,
+    customer: &Customer,
     billing_service: &BillingService,
 ) -> Result<(), AppError> {
     info!("Handling customer default source updated: {}", customer.id);
     
-    let user_repo = crate::db::repositories::user_repository::UserRepository::new(billing_service.get_db_pool().clone());
-    let user = match user_repo.get_by_stripe_customer_id(&customer.id.to_string()).await {
+    let user_repo = crate::db::repositories::user_repository::UserRepository::new(billing_service.get_system_db_pool());
+    let user = match user_repo.get_by_stripe_customer_id(&customer.id).await {
         Ok(user) => user,
         Err(_) => {
             warn!("Could not find user for customer {} with updated default source", customer.id);
@@ -700,10 +599,7 @@ async fn handle_customer_default_source_updated(
     let default_payment_method_id = customer.invoice_settings
         .as_ref()
         .and_then(|settings| settings.default_payment_method.as_ref())
-        .map(|pm| match pm {
-            stripe::Expandable::Id(id) => id.to_string(),
-            stripe::Expandable::Object(pm_obj) => pm_obj.id.to_string(),
-        });
+        .map(|pm_id| pm_id.clone());
     
     let audit_service = billing_service.get_audit_service();
     let audit_context = crate::services::audit_service::AuditContext::new(user.id);
@@ -713,7 +609,7 @@ async fn handle_customer_default_source_updated(
             info!("Customer {} (user {}) default payment method changed to {}", customer.id, user.id, pm_id);
             
             let audit_event = crate::services::audit_service::AuditEvent::new("default_payment_method_updated", "customer")
-                .with_entity_id(customer.id.to_string())
+                .with_entity_id(customer.id.clone())
                 .with_metadata(serde_json::json!({
                     "new_default_payment_method_id": pm_id,
                     "source": "stripe_customer_portal"
@@ -730,7 +626,7 @@ async fn handle_customer_default_source_updated(
             info!("Customer {} (user {}) default payment method was removed", customer.id, user.id);
             
             let audit_event = crate::services::audit_service::AuditEvent::new("default_payment_method_removed", "customer")
-                .with_entity_id(customer.id.to_string())
+                .with_entity_id(customer.id.clone())
                 .with_metadata(serde_json::json!({
                     "source": "stripe_customer_portal"
                 }));
@@ -749,41 +645,30 @@ async fn handle_customer_default_source_updated(
 
 /// Handle checkout session completed event
 async fn handle_checkout_session_completed(
-    session: &stripe::CheckoutSession,
+    session: &CheckoutSession,
     billing_service: &BillingService,
     email_service: &crate::services::email_notification_service::EmailNotificationService,
 ) -> Result<(), AppError> {
     info!("Handling checkout session completed: {}", session.id);
     
     match session.mode {
-        stripe::CheckoutSessionMode::Payment => {
+        CheckoutSessionMode::Payment => {
             info!("Processing payment mode checkout session: {}", session.id);
             
             if let Some(payment_intent_id) = session.payment_intent.as_ref() {
                 let stripe_service = billing_service.get_stripe_service()?;
-                let payment_intent = stripe_service.get_payment_intent(&payment_intent_id.id().to_string()).await
+                let payment_intent = stripe_service.get_payment_intent(payment_intent_id).await
                     .map_err(|e| AppError::External(format!("Failed to retrieve payment intent: {}", e)))?;
                 
-                process_credit_purchase(&payment_intent, billing_service, email_service).await?;
+                process_credit_purchase(&payment_intent, billing_service, &email_service).await?;
             }
         },
-        stripe::CheckoutSessionMode::Subscription => {
-            info!("Processing subscription mode checkout session: {}", session.id);
-            
-            if let Some(subscription_id) = session.subscription.as_ref() {
-                let stripe_service = billing_service.get_stripe_service()?;
-                let subscription = stripe_service.get_subscription(&subscription_id.id().to_string()).await
-                    .map_err(|e| AppError::External(format!("Failed to retrieve subscription: {}", e)))?;
-                
-                billing_service.sync_subscription_from_webhook(&subscription).await?;
-            }
+        CheckoutSessionMode::Subscription => {
+            info!("Subscription mode checkout session: {} - subscription processing removed", session.id);
         },
-        stripe::CheckoutSessionMode::Setup => {
+        CheckoutSessionMode::Setup => {
             info!("Setup mode checkout session completed successfully: {}", session.id);
         },
-        _ => {
-            info!("Ignoring checkout session mode: {:?}", session.mode);
-        }
     }
     
     Ok(())
@@ -814,4 +699,3 @@ fn is_permanent_error(error: &AppError) -> bool {
         _ => false,
     }
 }
-

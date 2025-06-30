@@ -1,6 +1,6 @@
 use std::sync::Arc;
 use futures::StreamExt;
-use log::{debug, info, error};
+use log::{debug, info, error, warn};
 
 use crate::error::{AppError, AppResult};
 use crate::models::{OpenRouterUsage, OpenRouterStreamChunk};
@@ -61,6 +61,7 @@ impl StreamedResponseHandler {
     {
         debug!("Starting stream processing for job {}", self.job_id);
         
+        let mut current_metadata_str = self.initial_db_job_metadata.clone();
         let mut accumulated_response = String::new();
         let mut tokens_received: u32 = 0;
         let mut final_usage: Option<OpenRouterUsage> = None;
@@ -93,7 +94,7 @@ impl StreamedResponseHandler {
                         tokens_received += chunk_tokens as u32;
                         
                         // Update job stream progress
-                        self.repo.update_job_stream_progress(
+                        let new_metadata = self.repo.update_job_stream_progress(
                             &self.job_id,
                             &chunk_content,
                             chunk_tokens as i32,
@@ -101,6 +102,7 @@ impl StreamedResponseHandler {
                             self.initial_db_job_metadata.as_deref(),
                             self.app_handle.as_ref(),
                         ).await?;
+                        current_metadata_str = Some(new_metadata);
                     }
                     
                     // Check for final usage information including server-calculated cost
@@ -111,8 +113,21 @@ impl StreamedResponseHandler {
                         // If we have cost information, update the metadata immediately
                         if let Some(ref usage) = final_usage {
                             if let Some(cost) = usage.cost {
+                                // Emit job status change event with cost information immediately
+                                if let Some(ref app_handle) = self.app_handle {
+                                    if let Err(e) = job_processor_utils::emit_job_status_change(
+                                        app_handle,
+                                        &self.job_id,
+                                        "running",
+                                        Some("Received cost information."),
+                                        Some(cost),
+                                    ) {
+                                        warn!("Failed to emit cost update event: {}", e);
+                                    }
+                                }
+                                
                                 // Parse existing metadata and add actual cost
-                                let updated_metadata = if let Some(metadata_str) = self.initial_db_job_metadata.as_deref() {
+                                let updated_metadata = if let Some(metadata_str) = current_metadata_str.as_deref() {
                                     if let Ok(mut ui_metadata) = serde_json::from_str::<crate::jobs::types::JobUIMetadata>(metadata_str) {
                                         // Add actualCost to task_data
                                         if let serde_json::Value::Object(ref mut task_map) = ui_metadata.task_data {
@@ -152,14 +167,15 @@ impl StreamedResponseHandler {
                                 
                                 // Update job with the cost information (empty chunk, just metadata update)
                                 if let Some(metadata_str) = updated_metadata {
-                                    let _ = self.repo.update_job_stream_progress(
+                                    let new_metadata = self.repo.update_job_stream_progress(
                                         &self.job_id,
                                         "", // Empty chunk - just updating metadata
                                         0,  // No new tokens
                                         accumulated_response.len() as i32,
                                         Some(&metadata_str),
                                         self.app_handle.as_ref(),
-                                    ).await;
+                                    ).await?;
+                                    current_metadata_str = Some(new_metadata);
                                 }
                             }
                         }
@@ -172,7 +188,6 @@ impl StreamedResponseHandler {
                     if is_finished {
                         debug!("Stream finished with reason: {:?}", 
                             chunk.choices.iter().filter_map(|c| c.finish_reason.clone()).collect::<Vec<String>>());
-                        break;
                     }
                 }
                 Err(e) => {

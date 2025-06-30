@@ -14,9 +14,9 @@ export async function getTaskDescriptionHistoryAction(sessionId: string): Promis
   }
 }
 
-export async function addTaskDescriptionHistoryEntryAction(sessionId: string, description: string): Promise<ActionState<void>> {
+export async function syncTaskDescriptionHistoryAction(sessionId: string, history: string[]): Promise<ActionState<void>> {
   try {
-    await invoke("add_task_description_history_entry_command", { sessionId, description });
+    await invoke("sync_task_description_history_command", { sessionId, history });
     return {
       isSuccess: true,
       data: undefined,

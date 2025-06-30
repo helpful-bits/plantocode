@@ -16,13 +16,14 @@ mod models;
 mod routes;
 mod config;
 mod security;
+mod stripe_types;
 mod utils;
 
 use crate::auth_stores::{PollingStore, Auth0StateStore};
 use crate::auth_stores::store_utils;
 use crate::config::AppSettings;
 use crate::db::connection::{create_dual_pools, verify_connection, DatabasePools};
-use crate::db::{ApiUsageRepository, SubscriptionRepository, UserRepository, SettingsRepository, ModelRepository, SubscriptionPlanRepository, SystemPromptsRepository};
+use crate::db::{ApiUsageRepository, CustomerBillingRepository, UserRepository, SettingsRepository, ModelRepository, SystemPromptsRepository};
 use crate::middleware::{
     SecureAuthentication, 
     create_rate_limit_storage,
@@ -54,23 +55,16 @@ async fn validate_ai_model_configurations(
     let model_map: std::collections::HashMap<String, &crate::db::repositories::model_repository::ModelWithProvider> = 
         available_models.iter().map(|m| (m.id.clone(), m)).collect();
     
-    // Validate default models
-    validate_default_model(&ai_settings.default_llm_model_id, &model_map, "token_based", "default LLM")?;
-    validate_default_model(&ai_settings.default_voice_model_id, &model_map, "token_based", "default voice")?;
-    validate_default_model(&ai_settings.default_transcription_model_id, &model_map, "duration_based", "default transcription")?;
-    
-    // Validate task-specific models
-    for (task_name, task_config) in &ai_settings.task_specific_configs {
+    // Validate task models
+    for (task_name, task_config) in &ai_settings.tasks {
         let model_id = &task_config.model;
         
-        // Check if model exists
         let model = model_map.get(model_id)
             .ok_or_else(|| format!("Task '{}' references non-existent model: {}", task_name, model_id))?;
         
-        // Validate pricing type based on task type
         let expected_pricing_type = match task_name.as_str() {
             "voice_transcription" => "duration_based",
-            _ => "token_based", // Most tasks use token-based pricing
+            _ => "token_based",
         };
         
         if model.pricing_type != expected_pricing_type {
@@ -81,27 +75,17 @@ async fn validate_ai_model_configurations(
         }
     }
     
-    Ok(())
-}
-
-fn validate_default_model(
-    model_id: &str,
-    model_map: &std::collections::HashMap<String, &crate::db::repositories::model_repository::ModelWithProvider>,
-    expected_pricing_type: &str,
-    model_description: &str,
-) -> Result<(), String> {
-    let model = model_map.get(model_id)
-        .ok_or_else(|| format!("{} model '{}' does not exist in active models", model_description, model_id))?;
-    
-    if model.pricing_type != expected_pricing_type {
-        return Err(format!(
-            "{} model '{}' has pricing type '{}' but expected '{}'",
-            model_description, model_id, model.pricing_type, expected_pricing_type
-        ));
+    // Ensure critical tasks are configured
+    let required_tasks = ["implementation_plan", "voice_transcription"];
+    for required_task in &required_tasks {
+        if !ai_settings.tasks.contains_key(*required_task) {
+            return Err(format!("Required task '{}' is not configured", required_task));
+        }
     }
     
     Ok(())
 }
+
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -299,19 +283,17 @@ async fn main() -> std::io::Result<()> {
         // System operations - use system pool
         let model_repository = std::sync::Arc::new(ModelRepository::new(std::sync::Arc::new(db_pools.system_pool.clone())));
         let settings_repository = std::sync::Arc::new(SettingsRepository::new(db_pools.system_pool.clone()));
-        let subscription_plan_repository = std::sync::Arc::new(SubscriptionPlanRepository::new(db_pools.system_pool.clone()));
         let system_prompts_repository = std::sync::Arc::new(SystemPromptsRepository::new(db_pools.system_pool.clone()));
         
         // User-specific operations - use user pool  
-        let subscription_repository = std::sync::Arc::new(SubscriptionRepository::new(db_pools.user_pool.clone()));
+        let customer_billing_repository = std::sync::Arc::new(CustomerBillingRepository::new(db_pools.user_pool.clone()));
         
         // Create application state
         let app_state = web::Data::new(AppState {
             settings: std::sync::Arc::new(app_settings.clone()),
             api_usage_repository: api_usage_repository.clone(),
             model_repository,
-            subscription_repository,
-            subscription_plan_repository,
+            customer_billing_repository,
             user_repository: user_repository.clone(),
             settings_repository,
         });

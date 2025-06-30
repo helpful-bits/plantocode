@@ -9,7 +9,7 @@ use chrono::{DateTime, Utc};
 use bigdecimal::{BigDecimal, FromPrimitive};
 
 // ========================================
-// SUBSCRIPTION MANAGEMENT HANDLERS
+// CUSTOMER BILLING MANAGEMENT HANDLERS
 // ========================================
 
 /// Get API usage summary
@@ -28,21 +28,10 @@ pub async fn get_usage_summary(
 }
 
 // ========================================
-// SUBSCRIPTION PLAN HANDLERS
+// CUSTOMER BILLING HANDLERS
 // ========================================
 
 
-/// Get available subscription plans - using subscription_plan_repository and returning Vec<SubscriptionPlan>
-#[get("/subscription-plans")]
-pub async fn get_available_plans(
-    app_state: web::Data<AppState>,
-) -> Result<HttpResponse, AppError> {
-    debug!("Getting available subscription plans");
-    
-    let plans = app_state.subscription_plan_repository.get_all_plans().await?;
-    
-    Ok(HttpResponse::Ok().json(plans))
-}
 
 #[derive(Debug, Deserialize)]
 pub struct DetailedUsageQuery {
@@ -69,43 +58,6 @@ pub async fn get_detailed_usage(
     Ok(HttpResponse::Ok().json(usage_records))
 }
 
-/// Get current user's subscription plan with cost markup information
-#[get("/current-plan")]
-pub async fn get_current_plan(
-    user_id: UserId,
-    app_state: web::Data<AppState>,
-) -> Result<HttpResponse, AppError> {
-    debug!("Getting current plan for user: {}", user_id.0);
-    
-    // Get user's current subscription
-    let subscription = app_state.subscription_repository
-        .get_by_user_id(&user_id.0)
-        .await?
-        .ok_or_else(|| AppError::NotFound("No active subscription found".to_string()))?;
-    
-    // Get the plan details
-    let plan = app_state.subscription_plan_repository
-        .get_plan_by_id(&subscription.plan_id)
-        .await?;
-    
-    #[derive(Debug, Serialize)]
-    #[serde(rename_all = "camelCase")]
-    pub struct CurrentPlanResponse {
-        pub plan_id: String,
-        pub plan_name: String,
-        pub monthly_price: f64,
-        pub status: String,
-    }
-    
-    let response = CurrentPlanResponse {
-        plan_id: plan.id.clone(),
-        plan_name: plan.name.clone(),
-        monthly_price: plan.get_monthly_price_float(),
-        status: subscription.status.clone(),
-    };
-    
-    Ok(HttpResponse::Ok().json(response))
-}
 
 // ========================================
 // AUTO TOP-OFF HANDLERS

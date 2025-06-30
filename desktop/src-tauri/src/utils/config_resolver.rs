@@ -39,7 +39,7 @@ pub async fn resolve_model_settings(
     let model = if let Some(model) = model_override {
         model
     } else {
-        let project_key = format!("project_task_settings:{}:{}_{}", project_hash, task_type_snake, "model");
+        let project_key = format!("project_task_settings:{}:{}:{}", project_hash, task_type_snake, "model");
         match settings_repo.get_value(&project_key).await? {
             Some(value) => {
                 serde_json::from_str::<String>(&value)
@@ -56,7 +56,7 @@ pub async fn resolve_model_settings(
     let temperature = if let Some(temp) = temperature_override {
         temp
     } else {
-        let project_key = format!("project_task_settings:{}:{}_{}", project_hash, task_type_snake, "temperature");
+        let project_key = format!("project_task_settings:{}:{}:{}", project_hash, task_type_snake, "temperature");
         match settings_repo.get_value(&project_key).await? {
             Some(value) => {
                 serde_json::from_str::<f32>(&value)
@@ -73,7 +73,7 @@ pub async fn resolve_model_settings(
     let max_tokens = if let Some(tokens) = max_tokens_override {
         tokens
     } else {
-        let project_key = format!("project_task_settings:{}:{}_{}", project_hash, task_type_snake, "max_tokens");
+        let project_key = format!("project_task_settings:{}:{}:{}", project_hash, task_type_snake, "maxTokens");
         match settings_repo.get_value(&project_key).await? {
             Some(value) => {
                 serde_json::from_str::<u32>(&value)

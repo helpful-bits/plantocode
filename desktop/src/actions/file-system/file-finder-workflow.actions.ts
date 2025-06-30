@@ -87,4 +87,30 @@ export async function startFileFinderWorkflowAction(
   }
 }
 
+export async function cancelFileFinderWorkflowAction(
+  workflowId: string
+): Promise<ActionState<void>> {
+  try {
+    // Validate required input
+    if (!workflowId || typeof workflowId !== "string" || !workflowId.trim()) {
+      return {
+        isSuccess: false,
+        message: "Invalid or missing workflow ID",
+      };
+    }
+
+    // Invoke the cancel workflow command
+    await invoke<void>("cancel_file_finder_workflow", {
+      workflowId: workflowId,
+    });
+
+    return {
+      isSuccess: true,
+      message: `Workflow ${workflowId} canceled successfully`,
+    };
+  } catch (error) {
+    return handleActionError(error) as ActionState<void>;
+  }
+}
+
 

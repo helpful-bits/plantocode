@@ -266,9 +266,7 @@ impl WorkflowErrorHandler {
         }
 
         // Use the workflow orchestrator to retry this specific stage
-        let stage = WorkflowStage::from_task_type(&stage_job.task_type)
-            .ok_or_else(|| AppError::JobError(format!("Cannot determine workflow stage from task type: {:?}", stage_job.task_type)))?;
-        orchestrator.retry_workflow_stage(workflow_id, stage, failed_stage_job_id).await
+        orchestrator.retry_workflow_stage(workflow_id, failed_stage_job_id).await
     }
 
     /// Handle specific stage retry strategy
@@ -287,7 +285,7 @@ impl WorkflowErrorHandler {
         let orchestrator = get_workflow_orchestrator().await?;
         
         // Use the workflow orchestrator's retry functionality
-        match orchestrator.retry_workflow_stage(workflow_id, stage.clone(), failed_job_id).await {
+        match orchestrator.retry_workflow_stage(workflow_id, failed_job_id).await {
             Ok(new_job_id) => {
                 Ok(WorkflowErrorResponse {
                     error_handled: true,

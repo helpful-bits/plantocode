@@ -3,6 +3,7 @@ use tauri::AppHandle;
 use log::{debug, info, warn};
 use serde_json::Value;
 use chrono;
+use tokio::fs;
 
 use crate::error::{AppError, AppResult};
 use crate::models::OpenRouterUsage;
@@ -113,6 +114,9 @@ impl LlmTaskRunner {
             api_options,
         ).await?;
         
+        // Log server-authoritative usage data for billing audit trail
+        debug!("Server-authoritative usage data from non-streaming LLM response: {:?}", response.usage);
+        
         let response_text = response.choices
             .first()
             .map(|choice| choice.message.content.clone())
@@ -190,6 +194,9 @@ impl LlmTaskRunner {
         let stream_result = streaming_handler
             .process_stream_from_client_with_messages(&llm_client, messages, api_options)
             .await?;
+        
+        // Log server-authoritative usage data for billing audit trail
+        debug!("Server-authoritative usage data from streaming LLM response: {:?}", stream_result.final_usage);
         
         // Ensure we capture server-calculated cost from the streaming response
         debug!("Streaming LLM response usage: {:?}", stream_result.final_usage);
@@ -277,7 +284,7 @@ impl LlmTaskRunner {
         let base_dir = std::path::Path::new("/path/to/project/tmp");
         let task_type_dir = base_dir.join("llm_logs").join(format!("{:?}", self.job.job_type));
         
-        if let Err(_) = tokio::fs::create_dir_all(&task_type_dir).await {
+        if let Err(_) = fs::create_dir_all(&task_type_dir).await {
             // Silently fail if can't create directory
             return;
         }
@@ -291,7 +298,7 @@ impl LlmTaskRunner {
             self.job.id, self.job.job_type, self.config.model, self.config.temperature, prompt_type, system_prompt, user_prompt
         );
         
-        let _ = tokio::fs::write(&filepath, full_prompt).await;
+        let _ = fs::write(&filepath, full_prompt).await;
     }
     
     /// Log complete LLM interaction (prompt + response) to temporary file for debugging
@@ -299,7 +306,7 @@ impl LlmTaskRunner {
         let base_dir = std::path::Path::new("/path/to/project/tmp");
         let task_type_dir = base_dir.join("llm_interactions").join(format!("{:?}", self.job.job_type));
         
-        if let Err(_) = tokio::fs::create_dir_all(&task_type_dir).await {
+        if let Err(_) = fs::create_dir_all(&task_type_dir).await {
             // Silently fail if can't create directory
             return;
         }
@@ -326,7 +333,7 @@ impl LlmTaskRunner {
             self.job.id, self.job.job_type, self.config.model, self.config.temperature, prompt_type, usage_info, system_prompt, user_prompt, response
         );
         
-        let _ = tokio::fs::write(&filepath, full_interaction).await;
+        let _ = fs::write(&filepath, full_interaction).await;
     }
 }
 

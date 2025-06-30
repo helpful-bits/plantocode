@@ -2,7 +2,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use uuid::Uuid;
-use ipnetwork::IpNetwork;
+use sqlx::types::ipnetwork::IpNetwork;
 use std::sync::Arc;
 use log::{debug, error, info, warn};
 use sha2::{Sha256, Digest};
@@ -853,6 +853,51 @@ impl AuditService {
             }))
             .with_metadata(enhanced_metadata)
             .with_performed_by("stripe_webhook");
+
+        self.log_event(context, event).await
+    }
+
+    /// Log credit consumption with cached token data for monitoring/audit
+    pub async fn log_credit_consumption(
+        &self,
+        context: &AuditContext,
+        user_id: &uuid::Uuid,
+        model_id: &str,
+        cost: &bigdecimal::BigDecimal,
+        tokens_input: i32,
+        tokens_output: i32,
+        cached_input_tokens: i32,
+        cache_write_tokens: i32,
+        cache_read_tokens: i32,
+        balance_before: &bigdecimal::BigDecimal,
+        balance_after: &bigdecimal::BigDecimal,
+        api_usage_id: Option<uuid::Uuid>,
+    ) -> Result<AuditLog, AppError> {
+        let metadata = serde_json::json!({
+            "model_id": model_id,
+            "cost": cost.to_string(),
+            "tokens_input": tokens_input,
+            "tokens_output": tokens_output,
+            "cached_input_tokens": cached_input_tokens,
+            "cache_write_tokens": cache_write_tokens,
+            "cache_read_tokens": cache_read_tokens,
+            "balance_before": balance_before.to_string(),
+            "balance_after": balance_after.to_string(),
+            "api_usage_id": api_usage_id.map(|id| id.to_string()),
+            "action_timestamp": Utc::now().to_rfc3339()
+        });
+
+        let event = AuditEvent::new("credit_consumption", "credit_transaction")
+            .with_entity_id(&user_id.to_string())
+            .with_old_values(serde_json::json!({
+                "balance": balance_before.to_string()
+            }))
+            .with_new_values(serde_json::json!({
+                "balance": balance_after.to_string(),
+                "cost": cost.to_string()
+            }))
+            .with_metadata(metadata)
+            .with_performed_by("billing_system");
 
         self.log_event(context, event).await
     }

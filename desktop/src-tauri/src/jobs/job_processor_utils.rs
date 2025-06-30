@@ -16,8 +16,8 @@
 //! This ensures consistency across the application and prevents billing discrepancies.
 
 use std::sync::Arc;
-use tauri::{AppHandle, Manager};
-use log::{info, warn, error};
+use tauri::{AppHandle, Manager, Emitter};
+use log::{info, warn, error, debug};
 use serde_json::Value;
 use std::str::FromStr;
 
@@ -28,6 +28,7 @@ use crate::models::BackgroundJob;
 use crate::api_clients::client_factory;
 use crate::jobs::types::JobUIMetadata;
 use crate::utils::job_metadata_builder::JobMetadataBuilder;
+use crate::jobs::types::JobStatusChangeEvent;
 
 /// Setup repositories from app state and fetch the job, marking it as running
 /// Returns (background_job_repo, session_repo, settings_repo, background_job)
@@ -114,6 +115,8 @@ pub async fn check_job_canceled(
 /// Extracts the `actual_cost` from the `llm_usage.cost` field, which is the definitive, 
 /// server-calculated cost. This cost is saved to the `background_jobs` table and should 
 /// be treated as the single source of truth for billing and user-facing cost display.
+/// The `llm_usage.cost` field is the definitive, server-calculated cost and should be treated
+/// as the single source of truth for billing and display purposes.
 /// 
 /// ## Other Parameters
 /// - Ensures all token counts (tokens_sent, tokens_received, total_tokens) are correctly updated from OpenRouterUsage
@@ -131,7 +134,6 @@ pub async fn finalize_job_success(
     metadata: Option<Value>,
     app_handle: &AppHandle,
 ) -> AppResult<()> {
-    // Extract token counts from server response - cost is server-authoritative and stored in background_jobs table
     let (tokens_sent, tokens_received) = if let Some(usage) = &llm_usage {
         (Some(usage.prompt_tokens), Some(usage.completion_tokens))
     } else {
@@ -140,11 +142,19 @@ pub async fn finalize_job_success(
     
     let db_job = repo.get_job_by_id(job_id).await?.ok_or_else(|| AppError::NotFoundError(format!("Job {} not found for finalization", job_id)))?;
     
-    // Simple approach: Always try to parse as JobUIMetadata, create new if fails
-    let final_metadata_str_for_repo = if let Some(metadata_str) = db_job.metadata.as_deref() {
-        // Try to parse existing metadata as JobUIMetadata
+    let actual_cost = llm_usage.as_ref().and_then(|usage| usage.cost)
+        .or_else(|| {
+            db_job.metadata.as_deref()
+                .and_then(|metadata_str| serde_json::from_str::<Value>(metadata_str).ok())
+                .and_then(|metadata_value| {
+                    metadata_value.get("task_data")
+                        .and_then(|task_data| task_data.get("actual_cost"))
+                        .and_then(|v| v.as_f64())
+                })
+        });
+    
+    let final_metadata = if let Some(metadata_str) = db_job.metadata.as_deref() {
         if let Ok(mut ui_meta) = serde_json::from_str::<JobUIMetadata>(metadata_str) {
-            // Update existing JobUIMetadata with new data
             if let Some(new_data) = metadata {
                 if let Value::Object(new_map) = new_data {
                     if let Value::Object(ref mut task_map) = ui_meta.task_data {
@@ -157,50 +167,69 @@ pub async fn finalize_job_success(
                 }
             }
             
-            Some(serde_json::to_string(&ui_meta)
-                .map_err(|e| AppError::SerializationError(format!("Failed to serialize JobUIMetadata for job {}: {}", job_id, e)))?)
-        } else {
-            // Existing metadata isn't JobUIMetadata - create new JobUIMetadata
-            info!("Job {} has legacy metadata format, creating new JobUIMetadata", job_id);
+            if let Value::Object(ref mut task_map) = ui_meta.task_data {
+                if let Some(cost) = actual_cost {
+                    task_map.insert("actual_cost".to_string(), serde_json::json!(cost));
+                }
+            }
             
+            ui_meta
+        } else {
             let default_payload = crate::jobs::types::JobPayload::GenericLlmStream(
                 crate::jobs::types::GenericLlmStreamPayload {
-                    prompt_text: "Legacy job finalization".to_string(),
+                    prompt_text: "Job finalization".to_string(),
                     system_prompt: None,
                     metadata: None,
                 }
             );
-            let new_ui_meta = crate::utils::job_ui_metadata_builder::JobUIMetadataBuilder::new(default_payload)
-                .task_data(metadata.unwrap_or_else(|| serde_json::json!({})))
-                .build();
             
-            Some(serde_json::to_string(&new_ui_meta)
-                .map_err(|e| AppError::SerializationError(format!("Failed to serialize new JobUIMetadata for job {}: {}", job_id, e)))?)
+            let mut task_data = metadata.unwrap_or_else(|| serde_json::json!({}));
+            if let Value::Object(ref mut task_map) = task_data {
+                if let Some(cost) = actual_cost {
+                    task_map.insert("actual_cost".to_string(), serde_json::json!(cost));
+                }
+            } else if actual_cost.is_some() {
+                task_data = serde_json::json!({
+                    "actual_cost": actual_cost
+                });
+            }
+            
+            crate::utils::job_ui_metadata_builder::JobUIMetadataBuilder::new(default_payload)
+                .task_data(task_data)
+                .build()
         }
     } else {
-        // No existing metadata - create new JobUIMetadata
         let default_payload = crate::jobs::types::JobPayload::GenericLlmStream(
             crate::jobs::types::GenericLlmStreamPayload {
-                prompt_text: "New job finalization".to_string(),
+                prompt_text: "Job finalization".to_string(),
                 system_prompt: None,
                 metadata: None,
             }
         );
-        let new_ui_meta = crate::utils::job_ui_metadata_builder::JobUIMetadataBuilder::new(default_payload)
-            .task_data(metadata.unwrap_or_else(|| serde_json::json!({})))
-            .build();
         
-        Some(serde_json::to_string(&new_ui_meta)
-            .map_err(|e| AppError::SerializationError(format!("Failed to serialize new JobUIMetadata for job {}: {}", job_id, e)))?)
+        let mut task_data = metadata.unwrap_or_else(|| serde_json::json!({}));
+        if let Value::Object(ref mut task_map) = task_data {
+            if let Some(cost) = actual_cost {
+                task_map.insert("actual_cost".to_string(), serde_json::json!(cost));
+            }
+        } else if actual_cost.is_some() {
+            task_data = serde_json::json!({
+                "actual_cost": actual_cost
+            });
+        }
+        
+        crate::utils::job_ui_metadata_builder::JobUIMetadataBuilder::new(default_payload)
+            .task_data(task_data)
+            .build()
     };
     
-    // Extract actual cost from LLM usage
-    let actual_cost = llm_usage.as_ref().and_then(|usage| usage.cost);
+    let final_metadata_str = serde_json::to_string(&final_metadata)
+        .map_err(|e| AppError::SerializationError(format!("Failed to serialize JobUIMetadata for job {}: {}", job_id, e)))?;
     
     repo.mark_job_completed(
         job_id,
         response_content,
-        final_metadata_str_for_repo.as_deref(),
+        Some(&final_metadata_str),
         tokens_sent,
         tokens_received,
         Some(model_used),
@@ -209,6 +238,16 @@ pub async fn finalize_job_success(
     ).await?;
     
     info!("Job {} completed successfully", job_id);
+    
+    // Emit final job status to frontend
+    emit_job_status_change(
+        app_handle,
+        job_id,
+        "completed",
+        Some("Job completed successfully"),
+        actual_cost,
+    )?;
+    
     Ok(())
 }
 
@@ -222,6 +261,8 @@ pub async fn finalize_job_success(
 /// 
 /// The `llm_usage` parameter contains server-authoritative cost information (if available) and
 /// should be treated as the ground truth for any costs incurred during the failed job execution.
+/// The `llm_usage.cost` field is the definitive, server-calculated cost and should be treated
+/// as the single source of truth for billing and display purposes.
 pub async fn finalize_job_failure(
     job_id: &str,
     repo: &BackgroundJobRepository,
@@ -293,6 +334,16 @@ pub async fn finalize_job_failure(
     ).await?;
     
     error!("Job {} failed: {}", job_id, error_message);
+    
+    // Emit final job status to frontend
+    emit_job_status_change(
+        app_handle,
+        job_id,
+        "failed",
+        Some(error_message),
+        actual_cost,
+    )?;
+    
     Ok(())
 }
 
@@ -317,4 +368,30 @@ pub async fn get_llm_task_config(
         Some((model, temperature, max_tokens)) => Ok((model, temperature, max_tokens)),
         None => Err(AppError::ConfigError(format!("Task {:?} does not require LLM configuration", task_type))),
     }
+}
+
+/// Emit a job status change event
+pub fn emit_job_status_change(
+    app_handle: &AppHandle,
+    job_id: &str,
+    status: &str,
+    message: Option<&str>,
+    actual_cost: Option<f64>,
+) -> AppResult<()> {
+    let event = JobStatusChangeEvent {
+        job_id: job_id.to_string(),
+        status: status.to_string(),
+        message: message.map(|s| s.to_string()),
+        actual_cost,
+    };
+    
+    if let Err(e) = app_handle.emit("job_status_change", event) {
+        error!("Failed to emit job status change event for job {}: {}", job_id, e);
+        return Err(AppError::TauriError(format!("Failed to emit job status change event: {}", e)));
+    }
+    
+    debug!("Emitted job status change event for job {}: status={}, message={:?}", 
+        job_id, status, message);
+        
+    Ok(())
 }

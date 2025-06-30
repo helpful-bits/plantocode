@@ -101,31 +101,16 @@ pub async fn initialize_api_clients(app_handle: &AppHandle) -> AppResult<()> {
     Ok(())
 }
 
-/// Initialize default system prompts from server with 5-minute cache TTL
-/// This function sets up the cache service and populates the local cache
-/// It should be called after authentication is complete
+/// Initialize system prompts cache service with 5-minute cache TTL
+/// This function sets up the on-demand cache service without initial population
+/// Cache will be populated on first request
 pub async fn initialize_system_prompts(app_handle: &AppHandle) -> AppResult<()> {
-    info!("Initializing default system prompts with 5-minute cache TTL...");
+    info!("Setting up system prompts cache service with 5-minute TTL...");
     
-    // Initialize the 5-minute cache service first
+    // Initialize the 5-minute cache service
     initialize_cache_service(app_handle).await?;
     
-    // Get the cache service for initial population
-    let cache_service = app_handle.state::<Arc<crate::services::SystemPromptCacheService>>().inner().clone();
-    
-    // Perform initial cache refresh
-    match cache_service.force_refresh().await {
-        Ok(_) => {
-            info!("System prompts cache initialized successfully with 5-minute TTL");
-            Ok(())
-        }
-        Err(e) => {
-            // Log the error but don't fail initialization completely
-            // The app can still function with local prompts or user-defined ones
-            warn!("System prompts cache initialization failed: {}. App will continue with local fallbacks.", e);
-            Ok(()) // Return Ok to allow app to continue
-        }
-    }
+    Ok(())
 }
 
 /// Initialize the backup service with automatic scheduling

@@ -2,12 +2,25 @@
 
 import { useState, useEffect, useCallback } from "react";
 
+const STORAGE_KEY = 'vibe-manager-audio-device';
+
 export function useAudioInputDevices() {
   const [availableAudioInputs, setAvailableAudioInputs] = useState<
     MediaDeviceInfo[]
   >([]);
-  const [selectedAudioInputId, setSelectedAudioInputId] =
-    useState<string>("default");
+  
+  // Initialize selected device from localStorage or default
+  const [selectedAudioInputId, setSelectedAudioInputId] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        return localStorage.getItem(STORAGE_KEY) || "default";
+      } catch (error) {
+        console.warn('[AudioDevices] Failed to read from localStorage:', error);
+        return "default";
+      }
+    }
+    return "default";
+  });
 
   // Enumerate available audio input devices
   useEffect(() => {
@@ -40,6 +53,15 @@ export function useAudioInputDevices() {
     // eslint-disable-next-line no-console
     console.log(`[AudioDevices] Selecting audio input device: ${deviceId}`);
     setSelectedAudioInputId(deviceId);
+    
+    // Save to localStorage
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem(STORAGE_KEY, deviceId);
+      } catch (error) {
+        console.warn('[AudioDevices] Failed to save to localStorage:', error);
+      }
+    }
   }, []);
 
   // Re-enumerate devices to ensure labels are populated after permissions
@@ -62,6 +84,24 @@ export function useAudioInputDevices() {
           );
         });
 
+        // Check if the selected device is still available
+        const isSelectedDeviceAvailable = audioInputs.some(
+          (device) => device.deviceId === selectedAudioInputId
+        );
+
+        if (!isSelectedDeviceAvailable && selectedAudioInputId !== "default") {
+          // Device is no longer available, fall back to default
+          setSelectedAudioInputId("default");
+          // Update localStorage to reflect the fallback
+          if (typeof window !== 'undefined') {
+            try {
+              localStorage.setItem(STORAGE_KEY, "default");
+            } catch (error) {
+              console.warn('[AudioDevices] Failed to update localStorage:', error);
+            }
+          }
+        }
+
         setAvailableAudioInputs(audioInputs);
         return audioInputs;
       } catch (error) {
@@ -76,7 +116,46 @@ export function useAudioInputDevices() {
       setAvailableAudioInputs([]);
       return [];
     }
-  }, []);
+  }, [selectedAudioInputId]);
+
+  useEffect(() => {
+    if (navigator.mediaDevices) {
+      const handleDeviceChange = () => {
+        refreshDeviceList();
+      };
+
+      navigator.mediaDevices.addEventListener('devicechange', handleDeviceChange);
+
+      return () => {
+        navigator.mediaDevices.removeEventListener('devicechange', handleDeviceChange);
+      };
+    }
+    return undefined;
+  }, [refreshDeviceList]);
+
+  // Validate saved device when devices are first loaded
+  useEffect(() => {
+    if (availableAudioInputs.length > 0 && selectedAudioInputId !== "default") {
+      const isSelectedDeviceAvailable = availableAudioInputs.some(
+        (device) => device.deviceId === selectedAudioInputId
+      );
+
+      if (!isSelectedDeviceAvailable) {
+        // Saved device is no longer available, fall back to default
+        console.log(`[AudioDevices] Saved device ${selectedAudioInputId} no longer available, falling back to default`);
+        setSelectedAudioInputId("default");
+        if (typeof window !== 'undefined') {
+          try {
+            localStorage.setItem(STORAGE_KEY, "default");
+          } catch (error) {
+            console.warn('[AudioDevices] Failed to update localStorage:', error);
+          }
+        }
+      } else {
+        console.log(`[AudioDevices] Restored saved device: ${selectedAudioInputId}`);
+      }
+    }
+  }, [availableAudioInputs, selectedAudioInputId]);
 
   // Function to request microphone permission and populate device labels early
   const requestPermissionAndRefreshDevices = useCallback(async () => {

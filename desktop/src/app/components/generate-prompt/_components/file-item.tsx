@@ -6,32 +6,24 @@ import { Button } from "@/ui/button";
 import { cn } from "@/utils/utils";
 import { humanFileSize } from "@/utils/file-size";
 import { formatTimeAgo } from "@/utils/date-utils";
+import type { ProjectFileInfo } from "@/types/tauri-commands";
 
-interface SimpleFileInfo {
-  path: string;
-  size?: number;
-  modifiedAt?: number;
-  createdAt?: number;
+interface FileInfo extends ProjectFileInfo {
   included: boolean;
   excluded: boolean;
 }
 
-interface SimpleFileItemProps {
-  file: SimpleFileInfo;
+interface FileItemProps {
+  file: FileInfo;
   onToggleSelection: (path: string) => void;
   onToggleExclusion: (path: string) => void;
 }
 
-/**
- * EXTREMELY SIMPLE file item component
- * Just displays file info and handles clicks
- * Memoized to prevent unnecessary re-renders
- */
-export const SimpleFileItem = React.memo(function SimpleFileItem({
+export const FileItem = React.memo(function SimpleFileItem({
   file,
   onToggleSelection,
   onToggleExclusion,
-}: SimpleFileItemProps) {
+}: FileItemProps) {
   const pathParts = file.path.split("/");
   const fileName = pathParts.pop() || "";
   const dirPath = pathParts.join("/");

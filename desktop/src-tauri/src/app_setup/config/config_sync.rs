@@ -86,11 +86,10 @@ impl ConfigSyncManager {
             .collect();
 
         for (task_name, task_config) in &runtime_config.tasks {
-            if let Some(model_id) = &task_config.model {
-                if !available_model_ids.contains(model_id) {
-                    warn!("Task '{}' references unavailable model: {}", task_name, model_id);
-                    return Ok(false);
-                }
+            let model_id = &task_config.model;
+            if !available_model_ids.contains(model_id) {
+                warn!("Task '{}' references unavailable model: {}", task_name, model_id);
+                return Ok(false);
             }
         }
 
@@ -123,11 +122,8 @@ impl ConfigSyncManager {
         // Remove any hardcoded AI settings from local cache
         // These should always come fresh from the server
         let stale_keys = [
-            "ai_settings_default_llm_model_id",
-            "ai_settings_default_voice_model_id", 
-            "ai_settings_default_transcription_model_id",
             "ai_settings_available_models",
-            "ai_settings_task_specific_configs",
+            "ai_settings_task_configs",
         ];
         
         for key in &stale_keys {

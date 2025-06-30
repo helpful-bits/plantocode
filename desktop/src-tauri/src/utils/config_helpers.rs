@@ -54,15 +54,7 @@ pub async fn get_default_max_tokens_for_task(task_type: Option<TaskType>, app_ha
         
         // First try task-specific configuration
         if let Some(task_config) = runtime_config.tasks.get(&task_key) {
-            if let Some(max_tokens) = task_config.max_tokens {
-                return Ok(max_tokens);
-            }
-        }
-        
-        // Fall back to server general default if available
-        if let Some(server_default) = runtime_config.default_max_tokens {
-            warn!("No max_tokens configuration found for task {:?}, using server default: {}", task, server_default);
-            return Ok(server_default);
+            return Ok(task_config.max_tokens);
         }
         
         // No hardcoded fallbacks - fail gracefully
@@ -93,21 +85,11 @@ pub async fn get_default_temperature_for_task(task_type: Option<TaskType>, app_h
         
         // First try task-specific configuration
         if let Some(task_config) = runtime_config.tasks.get(&task_key) {
-            if let Some(temperature) = task_config.temperature {
-                if temperature < 0.0 || temperature > 2.0 {
-                    return Err(AppError::ConfigError(format!("Invalid temperature {} for task {:?}. Must be between 0.0 and 2.0.", temperature, task)));
-                }
-                return Ok(temperature);
+            let temperature = task_config.temperature;
+            if temperature < 0.0 || temperature > 2.0 {
+                return Err(AppError::ConfigError(format!("Invalid temperature {} for task {:?}. Must be between 0.0 and 2.0.", temperature, task)));
             }
-        }
-        
-        // Fall back to server general default if available
-        if let Some(server_default) = runtime_config.default_temperature {
-            if server_default < 0.0 || server_default > 2.0 {
-                return Err(AppError::ConfigError(format!("Invalid server default temperature {} for task {:?}. Must be between 0.0 and 2.0.", server_default, task)));
-            }
-            warn!("No temperature configuration found for task {:?}, using server default: {}", task, server_default);
-            return Ok(server_default);
+            return Ok(temperature);
         }
         
         // No hardcoded fallbacks - fail gracefully
@@ -132,30 +114,24 @@ pub async fn get_model_for_task(task_type: TaskType, app_handle: &AppHandle) -> 
     let task_key = task_type.to_string();
     
     if let Some(task_config) = runtime_config.tasks.get(&task_key) {
-        if let Some(model) = &task_config.model {
-            if model.is_empty() {
-                return Err(AppError::ConfigError(format!("Model configuration for task {} is empty", task_key)));
-            }
-            return Ok(model.clone());
+        let model = &task_config.model;
+        if model.is_empty() {
+            return Err(AppError::ConfigError(format!("Model configuration for task {} is empty", task_key)));
         }
+        return Ok(model.clone());
     }
     
-    // If task-specific config not found, use default LLM model
-    if runtime_config.default_llm_model_id.is_empty() {
-        return Err(AppError::ConfigError(format!("Server default model ID is empty for task {:?}. Please check server configuration.", task_type)));
-    }
-    
-    Ok(runtime_config.default_llm_model_id.clone())
+    // Task-specific config not found - this is required for all tasks
+    Err(AppError::ConfigError(format!(
+        "No model configuration found for task {:?}. Please check server configuration.", 
+        task_type
+    )))
 }
 
 /// Get the default transcription model ID (async version)
 pub async fn get_default_transcription_model_id(app_handle: &AppHandle) -> AppResult<String> {
-    let runtime_config = get_runtime_ai_config_from_cache(app_handle).await?;
-    
-    if runtime_config.default_transcription_model_id.is_empty() {
-        return Err(AppError::ConfigError("Default transcription model ID not available from server config".to_string()));
-    }
-    Ok(runtime_config.default_transcription_model_id.clone())
+    // Use the voice_transcription task to get the transcription model
+    get_model_for_task(TaskType::VoiceTranscription, app_handle).await
 }
 
 /// Get the maximum number of concurrent jobs (async version)

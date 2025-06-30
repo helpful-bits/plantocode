@@ -23,7 +23,7 @@ impl BackgroundJobRepository {
     }
     
     /// Cancel a specific job by ID\n    /// \n    /// This is the canonical method for cancelling individual jobs. For workflow jobs,\n    /// consider using WorkflowOrchestrator::update_job_status() to allow proper \n    /// workflow state management and cancellation handling.
-    pub async fn cancel_job(&self, job_id: &str) -> AppResult<()> {
+    pub async fn cancel_job(&self, job_id: &str, reason: &str) -> AppResult<()> {
         // Fetch the job to check its current status
         let job = self.get_job_by_id(job_id).await?
             .ok_or_else(|| AppError::NotFoundError(format!("Job with ID {} not found", job_id)))?;
@@ -51,7 +51,7 @@ impl BackgroundJobRepository {
         }
         
         // Check if this is a workflow job and log a warning\n        if let Some(metadata_str) = &job.metadata {\n            if let Ok(metadata_json) = serde_json::from_str::<serde_json::Value>(metadata_str) {\n                if metadata_json.get(\"workflowId\").is_some() {\n                    warn!(\"Job {} belonging to a workflow is being cancelled directly - workflow state may not be properly updated\", job_id);\n                }\n            }\n        }\n        \n        // Use the new consolidated method
-        self.mark_job_canceled(job_id, "Canceled by user").await
+        self.mark_job_canceled(job_id, reason).await
     }
     
     /// Update job streaming progress by appending response chunk and updating metadata.
@@ -63,7 +63,7 @@ impl BackgroundJobRepository {
     /// * `new_tokens_received` - The number of tokens in this chunk
     /// * `current_total_response_length` - The current length of the accumulated response (characters)
     /// * `current_metadata_str` - The current metadata string from BackgroundJob.metadata
-    pub async fn update_job_stream_progress(&self, job_id: &str, chunk: &str, new_tokens_received: i32, current_total_response_length: i32, current_metadata_str: Option<&str>, app_handle: Option<&tauri::AppHandle>) -> AppResult<()> {
+    pub async fn update_job_stream_progress(&self, job_id: &str, chunk: &str, new_tokens_received: i32, current_total_response_length: i32, current_metadata_str: Option<&str>, app_handle: Option<&tauri::AppHandle>) -> AppResult<String> {
         // First check if the job exists and is in running status
         let job = self.get_job_by_id(job_id).await?
             .ok_or_else(|| AppError::DatabaseError(format!("Job not found: {}", job_id)))?;
@@ -190,7 +190,7 @@ impl BackgroundJobRepository {
             }
         }
             
-        Ok(())
+        Ok(metadata_str)
     }
     
     
@@ -446,12 +446,22 @@ impl BackgroundJobRepository {
     pub async fn update_job_status(&self, job_id: &str, status: &JobStatus, message: Option<&str>) -> AppResult<()> {
         let now = get_timestamp();
         
-        let result = sqlx::query("UPDATE background_jobs SET status = $1, updated_at = $2 WHERE id = $3")
-            .bind(status.to_string())
-            .bind(now)
-            .bind(job_id)
-            .execute(&*self.pool)
-            .await;
+        let result = if let Some(msg) = message {
+            sqlx::query("UPDATE background_jobs SET status = $1, updated_at = $2, error_message = $3 WHERE id = $4")
+                .bind(status.to_string())
+                .bind(now)
+                .bind(msg)
+                .bind(job_id)
+                .execute(&*self.pool)
+                .await
+        } else {
+            sqlx::query("UPDATE background_jobs SET status = $1, updated_at = $2 WHERE id = $3")
+                .bind(status.to_string())
+                .bind(now)
+                .bind(job_id)
+                .execute(&*self.pool)
+                .await
+        };
         
         result.map_err(|e| AppError::DatabaseError(format!("Failed to update job status: {}", e)))?;
             
@@ -487,7 +497,7 @@ impl BackgroundJobRepository {
         let now = get_timestamp();
         
         sqlx::query(
-            "UPDATE background_jobs SET status = $1, updated_at = $2, start_time = $3 WHERE id = $4"
+            "UPDATE background_jobs SET status = $1, updated_at = $2, start_time = $3, error_message = NULL WHERE id = $4"
         )
         .bind(JobStatus::Running.to_string())
         .bind(now)
@@ -946,6 +956,7 @@ impl BackgroundJobRepository {
             tokens_received,
             model_used,
             actual_cost: row.try_get::<'_, Option<f64>, _>("actual_cost").unwrap_or(None),
+            duration_ms: row.try_get::<'_, Option<i64>, _>("duration_ms").unwrap_or(None),
             metadata,
             system_prompt_template,
             created_at,

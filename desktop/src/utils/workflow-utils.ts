@@ -132,12 +132,17 @@ export class WorkflowTracker {
       throw new Error('WorkflowTracker has been destroyed');
     }
 
+    console.log(`Initiating cancellation for workflow: ${this.workflowId}`);
+    
     try {
-      // Use the cancel command that delegates to WorkflowOrchestrator::cancel_workflow
-      await invoke<void>("cancel_file_finder_workflow", {
-        workflowId: this.workflowId,
-      });
+      const { cancelFileFinderWorkflowAction } = await import("@/actions/file-system/file-finder-workflow.actions");
+      const result = await cancelFileFinderWorkflowAction(this.workflowId);
+      
+      if (!result.isSuccess) {
+        throw new Error(result.message || 'Failed to cancel workflow');
+      }
     } catch (error) {
+      console.error(`Failed to cancel workflow ${this.workflowId}:`, error);
       const workflowError = new WorkflowError(
         `Failed to cancel workflow: ${error instanceof Error ? error.message : 'Unknown error'}`,
         this.workflowId,
@@ -224,6 +229,23 @@ export class WorkflowTracker {
    */
   getSessionId(): string {
     return this.sessionId;
+  }
+
+  /**
+   * Refresh the workflow state and notify progress callbacks
+   */
+  async refreshState(): Promise<void> {
+    if (this.isDestroyed) {
+      throw new Error('WorkflowTracker has been destroyed');
+    }
+
+    try {
+      const currentState = await this.getStatus();
+      this.notifyProgress(currentState);
+    } catch (error) {
+      console.error('Error refreshing workflow state:', error);
+      throw error;
+    }
   }
 
   // Private methods

@@ -27,13 +27,10 @@ export interface ProviderWithModels {
  * Must match the Rust backend RuntimeAIConfig struct
  */
 export interface RuntimeAIConfig {
-  defaultLlmModelId: string;
-  defaultVoiceModelId: string;
-  defaultTranscriptionModelId: string;
   tasks: Record<string, TaskModelSettings>; // Backend uses string keys, not TaskType enum
   providers: ProviderWithModels[];
   pathFinderSettings: PathFinderSettings;
-  limits: TokenLimits; // Remove optional since backend uses #[serde(default)]
+  limits?: TokenLimits; // Optional since backend may not include this
   maxConcurrentJobs?: number;
   transcriptionConfig?: TranscriptionConfig;
 }
@@ -50,6 +47,8 @@ export interface ModelInfo {
   contextWindow?: number;
   priceInputPerMillion: string;
   priceOutputPerMillion: string;
+  priceCacheRead?: string;
+  priceCacheWrite?: string;
 }
 
 /**
@@ -66,10 +65,11 @@ export interface CopyButtonConfig {
  * Must match the Rust backend TaskSpecificModelConfig struct
  */
 export interface TaskModelSettings {
-  model?: string;
-  maxTokens?: number;
-  temperature?: number;
+  model: string;
+  maxTokens: number;
+  temperature: number;
   copyButtons?: CopyButtonConfig[];
+  allowedModels?: string[];
 }
 
 /**

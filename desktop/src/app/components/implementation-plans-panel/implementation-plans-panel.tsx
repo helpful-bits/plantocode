@@ -297,7 +297,7 @@ export function ImplementationPlansPanel({
                   </div>
                     {estimatedTokens && runtimeConfig && (() => {
                       // Get the model config for implementation plan task
-                      const implementationPlanModel = runtimeConfig.tasks?.implementationPlan?.model || runtimeConfig.defaultLlmModelId;
+                      const implementationPlanModel = runtimeConfig.tasks?.implementationPlan?.model;
                       const modelInfo = runtimeConfig.providers?.flatMap(p => p.models).find(m => m.id === implementationPlanModel);
                       const contextWindow = modelInfo?.contextWindow;
                       
@@ -350,7 +350,7 @@ export function ImplementationPlansPanel({
                 disabled={!canCreatePlan || (() => {
                   // Disable if tokens exceed context window
                   if (!estimatedTokens || !runtimeConfig) return false;
-                  const implementationPlanModel = runtimeConfig.tasks?.implementationPlan?.model || runtimeConfig.defaultLlmModelId;
+                  const implementationPlanModel = runtimeConfig.tasks?.implementationPlan?.model;
                   const modelInfo = runtimeConfig.providers?.flatMap(p => p.models).find(m => m.id === implementationPlanModel);
                   const contextWindow = modelInfo?.contextWindow;
                   return contextWindow ? estimatedTokens > contextWindow : false;

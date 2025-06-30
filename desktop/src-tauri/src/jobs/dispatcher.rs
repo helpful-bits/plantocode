@@ -13,6 +13,7 @@ use crate::db_utils::background_job_repository::BackgroundJobRepository;
 use crate::models::{JobStatus, BackgroundJob, TaskType};
 use crate::jobs::processor_trait;
 use crate::jobs::{job_payload_utils, retry_utils};
+use crate::jobs::job_processor_utils;
 use crate::jobs::workflow_orchestrator::get_workflow_orchestrator;
 use std::str::FromStr;
 
@@ -58,7 +59,7 @@ pub async fn process_next_job(app_handle: AppHandle) -> AppResult<Option<JobProc
     let task_type = job.task_type_str();
     info!("Processing job {} with task type {}", job_id, task_type);
     
-    // Update job status to running
+    // Get background job repository
     let background_job_repo = match app_handle.try_state::<Arc<BackgroundJobRepository>>() {
         Some(repo) => repo,
         None => {
@@ -67,13 +68,16 @@ pub async fn process_next_job(app_handle: AppHandle) -> AppResult<Option<JobProc
             ));
         }
     };
-    background_job_repo.mark_job_running(&job_id).await?;
     
-    // Emit job status change event
-    emit_job_status_change(
+    // Update job status to preparing
+    background_job_repo.update_job_status(&job_id, &JobStatus::Preparing, Some("Finding available processor...")).await?;
+    
+    // Emit job status change event for Preparing status
+    job_processor_utils::emit_job_status_change(
         &app_handle,
         &job_id,
-        &JobStatus::Running.to_string(),
+        &JobStatus::Preparing.to_string(),
+        Some("Finding available processor..."),
         None,
     )?;
     
@@ -97,6 +101,18 @@ pub async fn process_next_job(app_handle: AppHandle) -> AppResult<Option<JobProc
             return Ok(Some(JobProcessResult::failure(job_id, error_message)));
         }
     };
+    
+    // Mark job as running now that we have a processor
+    background_job_repo.mark_job_running(&job_id).await?;
+    
+    // Emit job status change event for Running status
+    job_processor_utils::emit_job_status_change(
+        &app_handle,
+        &job_id,
+        &JobStatus::Running.to_string(),
+        None,
+        None,
+    )?;
     
     // Process the job with timeout
     let job_result = execute_job_with_processor(
@@ -219,12 +235,17 @@ async fn handle_job_success(
                 ).await?;
             }
             
-            // Emit job status change event
-            emit_job_status_change(
+            // Get the completed job from database to extract actual cost
+            let completed_job = background_job_repo.get_job_by_id(job_id).await?
+                .ok_or_else(|| AppError::NotFoundError(format!("Job {} not found after completion", job_id)))?;
+            
+            // Emit job status change event with actual cost
+            job_processor_utils::emit_job_status_change(
                 app_handle,
                 job_id,
                 &JobStatus::Completed.to_string(),
                 None,
+                completed_job.actual_cost,
             )?;
 
             // Check if this job is part of a workflow and handle orchestration
@@ -241,11 +262,12 @@ async fn handle_job_success(
             background_job_repo.mark_job_failed(job_id, &error_message, None, None, None, None, None).await?;
             
             // Emit job status change event
-            emit_job_status_change(
+            job_processor_utils::emit_job_status_change(
                 app_handle,
                 job_id,
                 &JobStatus::Failed.to_string(),
                 Some(&error_message),
+                None,
             )?;
         },
         JobStatus::Canceled => {
@@ -254,11 +276,12 @@ async fn handle_job_success(
             background_job_repo.mark_job_canceled(job_id, cancel_reason).await?;
             
             // Emit job status change event
-            emit_job_status_change(
+            job_processor_utils::emit_job_status_change(
                 app_handle,
                 job_id,
                 &JobStatus::Canceled.to_string(),
                 result.error.as_deref(),
+                None,
             )?;
             
             // Handle workflow job completion for canceled jobs
@@ -298,11 +321,12 @@ async fn handle_job_failure(
                     let msg = format!("Job {} not found in DB for retry logic. Failing permanently.", job_id);
                     error!("{}", msg);
                     // Emit job status change event for failure
-                    emit_job_status_change(
+                    job_processor_utils::emit_job_status_change(
                         app_handle,
                         job_id,
                         &JobStatus::Failed.to_string(),
                         Some("Job data not found for retry processing."),
+                        None,
                     )?;
                     return Ok(JobFailureHandlingResult::PermanentFailure(
                         "Job data not found for retry processing.".to_string()
@@ -312,11 +336,12 @@ async fn handle_job_failure(
                     let msg = format!("Failed to fetch job {} from DB for retry logic: {}. Failing permanently.", job_id, e);
                     error!("{}", msg);
                     // Emit job status change event for failure
-                    emit_job_status_change(
+                    job_processor_utils::emit_job_status_change(
                         app_handle,
                         job_id,
                         &JobStatus::Failed.to_string(),
                         Some("Database error during retry processing."),
+                        None,
                     )?;
                     return Ok(JobFailureHandlingResult::PermanentFailure(
                         "Database error during retry processing.".to_string()
@@ -386,11 +411,12 @@ async fn handle_job_failure_or_retry_internal(
             error!("Critical error: Failed to update workflow job {} status to failed in database: {}", job_id, e);
         }
         
-        emit_job_status_change(
+        job_processor_utils::emit_job_status_change(
             app_handle,
             job_id,
             &JobStatus::Failed.to_string(),
-            Some(&user_facing_error)
+            Some(&user_facing_error),
+            None,
         )?;
         
         if let Err(e) = handle_workflow_job_completion(&job_id, &JobProcessResult::failure(job_id.to_string(), error.to_string()), app_handle).await {
@@ -438,11 +464,12 @@ async fn handle_job_failure_or_retry_internal(
                 }
                 
                 // Emit job status change event with user-friendly message
-                if let Err(e) = emit_job_status_change(
+                if let Err(e) = job_processor_utils::emit_job_status_change(
                     app_handle,
                     job_id,
                     &JobStatus::Failed.to_string(),
-                    Some(&user_facing_error)
+                    Some(&user_facing_error),
+                    None,
                 ) {
                     error!("Failed to emit job status change event for permanently failed job {}: {}. UI may not reflect current state.", job_id, e);
                 }
@@ -473,11 +500,12 @@ async fn handle_job_failure_or_retry_internal(
         }
         
         // Emit job status change event
-        emit_job_status_change(
+        job_processor_utils::emit_job_status_change(
             app_handle,
             job_id,
             &JobStatus::Queued.to_string(),
-            Some(&retry_message)
+            Some(&retry_message),
+            None,
         )?;
         
         // Re-queue the job with delay instead of sleeping
@@ -555,11 +583,12 @@ async fn handle_job_failure_or_retry_internal(
         }
         
         // Emit job status change event with user-friendly message
-        if let Err(e) = emit_job_status_change(
+        if let Err(e) = job_processor_utils::emit_job_status_change(
             app_handle,
             job_id,
             &JobStatus::Failed.to_string(),
-            Some(&user_facing_error)
+            Some(&user_facing_error),
+            None,
         ) {
             error!("Failed to emit job status change event for permanently failed job {}: {}. UI may not reflect current state.", job_id, e);
         }
@@ -676,29 +705,6 @@ fn extract_http_status_code(error_msg: &str) -> Option<u16> {
     None
 }
 
-/// Emit a job status change event
-fn emit_job_status_change(
-    app_handle: &AppHandle,
-    job_id: &str,
-    status: &str,
-    message: Option<&str>,
-) -> AppResult<()> {
-    let event = JobStatusChangeEvent {
-        job_id: job_id.to_string(),
-        status: status.to_string(),
-        message: message.map(|s| s.to_string()),
-    };
-    
-    if let Err(e) = app_handle.emit("job_status_change", event) {
-        error!("Failed to emit job status change event for job {}: {}", job_id, e);
-        return Err(AppError::TauriError(format!("Failed to emit job status change event: {}", e)));
-    }
-    
-    debug!("Emitted job status change event for job {}: status={}, message={:?}", 
-        job_id, status, message);
-        
-    Ok(())
-}
 
 /// Re-queue a job with a delay for retry processing
 async fn re_queue_job_with_delay(

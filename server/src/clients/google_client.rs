@@ -1,3 +1,6 @@
+// Step 3: Cached Token Pricing Implementation
+// This file implements cached token counting for Google API.
+// Token extraction functions return: (uncached_input, cache_write, cache_read, output)
 use crate::error::AppError;
 use actix_web::{web, HttpResponse};
 use futures_util::{Stream, StreamExt, TryStreamExt};
@@ -118,6 +121,8 @@ pub struct GoogleUsageMetadata {
     pub prompt_token_count: i32,
     pub candidates_token_count: i32,
     pub total_token_count: i32,
+    #[serde(rename = "cachedContentTokenCount")]
+    pub cached_content_token_count: Option<i32>,
 }
 
 // Google Streaming Structs
@@ -184,7 +189,7 @@ impl GoogleClient {
 
     // Chat Completions
     #[instrument(skip(self, request, model_id), fields(model = %model_id))]
-    pub async fn chat_completion(&self, request: GoogleChatRequest, model_id: &str, user_id: &str) -> Result<(GoogleChatResponse, HeaderMap), AppError> {
+    pub async fn chat_completion(&self, request: GoogleChatRequest, model_id: &str, user_id: &str) -> Result<(GoogleChatResponse, HeaderMap, i32, i32, i32, i32), AppError> {
         let request_id = self.get_next_request_id().await;
         
         // Clean up model name - remove any provider prefix if present
@@ -228,8 +233,15 @@ impl GoogleClient {
         
         info!("Google API request successful for model: {}", clean_model_id);
         debug!("Response candidates count: {}", result.candidates.len());
+        
+        let (input_tokens, cache_write_tokens, cache_read_tokens, output_tokens) = if let Some(usage) = &result.usage_metadata {
+            let cached = usage.cached_content_token_count.unwrap_or(0);
+            (usage.prompt_token_count, 0, cached, usage.candidates_token_count)
+        } else {
+            (0, 0, 0, 0)
+        };
             
-        Ok((result, headers))
+        Ok((result, headers, input_tokens, cache_write_tokens, cache_read_tokens, output_tokens))
     }
 
     // Streaming Chat Completions for actix-web compatibility
@@ -303,22 +315,29 @@ impl GoogleClient {
     }
     
     // Helper method to parse usage from a stream
-    pub fn extract_usage_from_stream_chunk(chunk_str: &str) -> Option<GoogleUsageMetadata> {
+    // Returns (input_tokens, cache_write_tokens, cache_read_tokens, output_tokens)
+    pub fn extract_usage_from_stream_chunk(chunk_str: &str) -> Option<(i32, i32, i32, i32)> {
         if chunk_str.trim().is_empty() {
             return None;
         }
         
         match serde_json::from_str::<GoogleStreamChunk>(chunk_str.trim()) {
-            Ok(parsed) => parsed.usage_metadata,
+            Ok(parsed) => {
+                if let Some(usage) = parsed.usage_metadata {
+                    let cached = usage.cached_content_token_count.unwrap_or(0);
+                    Some((usage.prompt_token_count, 0, cached, usage.candidates_token_count))
+                } else {
+                    None
+                }
+            },
             Err(_) => None,
         }
     }
     
     // Helper method to extract tokens from a stream chunk
-    pub fn extract_tokens_from_stream_chunk(chunk_str: &str) -> Option<(i32, i32)> {
-        Self::extract_usage_from_stream_chunk(chunk_str).map(|usage| 
-            (usage.prompt_token_count, usage.candidates_token_count)
-        )
+    // Returns (input_tokens, cache_write_tokens, cache_read_tokens, output_tokens)
+    pub fn extract_tokens_from_stream_chunk(chunk_str: &str) -> Option<(i32, i32, i32, i32)> {
+        Self::extract_usage_from_stream_chunk(chunk_str)
     }
     
     // Convert a generic JSON Value into a GoogleChatRequest
@@ -529,11 +548,13 @@ impl GoogleClient {
     }
     
     // Helper functions for token and usage tracking
-    pub fn extract_tokens_from_response(&self, response: &GoogleChatResponse) -> (i32, i32) {
+    // Returns (input_tokens, cache_write_tokens, cache_read_tokens, output_tokens)
+    pub fn extract_tokens_from_response(&self, response: &GoogleChatResponse) -> (i32, i32, i32, i32) {
         if let Some(usage) = &response.usage_metadata {
-            (usage.prompt_token_count, usage.candidates_token_count)
+            let cached = usage.cached_content_token_count.unwrap_or(0);
+            (usage.prompt_token_count, 0, cached, usage.candidates_token_count)
         } else {
-            (0, 0)
+            (0, 0, 0, 0)
         }
     }
 }

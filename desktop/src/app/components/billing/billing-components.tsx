@@ -9,11 +9,6 @@ export const CreditManagerAsync = lazy(() =>
   }))
 );
 
-export const SubscriptionModalAsync = lazy(() => 
-  import('./components/subscription-modal').then(module => ({ 
-    default: module.SubscriptionModal 
-  }))
-);
 
 export const InvoicesListAsync = lazy(() => 
   import('./components/InvoicesList').then(module => ({ 
@@ -27,17 +22,9 @@ export const PaymentMethodsListAsync = lazy(() =>
   }))
 );
 
-export const CreditTransactionHistoryAsync = lazy(() => 
-  import('./components/CreditTransactionHistory').then(module => ({ 
-    default: module.CreditTransactionHistory 
-  }))
-);
+export const BillingHistoryAsync = lazy(() => import('./components/BillingHistory').then(module => ({ default: module.BillingHistory })));
 
-export const UsageDetailsModalAsync = lazy(() => 
-  import('./components/UsageDetailsModal').then(module => ({ 
-    default: module.UsageDetailsModal 
-  }))
-);
+export const BillingHistoryModalAsync = lazy(() => import('./components/BillingHistoryModal').then(module => ({ default: module.BillingHistoryModal })));
 
 export const AddPaymentMethodModalAsync = lazy(() => 
   import('./components/AddPaymentMethodModal').then(module => ({ 
@@ -69,11 +56,10 @@ export function withBillingSuspense<T extends object>(
 }
 
 export const CreditManager = withBillingSuspense(CreditManagerAsync);
-export const SubscriptionModal = withBillingSuspense(SubscriptionModalAsync);
 export const InvoicesList = withBillingSuspense(InvoicesListAsync);
 export const PaymentMethodsList = withBillingSuspense(PaymentMethodsListAsync);
-export const CreditTransactionHistory = withBillingSuspense(CreditTransactionHistoryAsync);
-export const UsageDetailsModal = withBillingSuspense(UsageDetailsModalAsync);
+export const BillingHistory = withBillingSuspense(BillingHistoryAsync);
+export const BillingHistoryModal = withBillingSuspense(BillingHistoryModalAsync);
 export const AddPaymentMethodModal = withBillingSuspense(AddPaymentMethodModalAsync);
 
 export function preloadBillingComponents(): void {
@@ -81,9 +67,9 @@ export function preloadBillingComponents(): void {
     import('./components/CreditManager');
     import('./components/InvoicesList');
     import('./components/PaymentMethodsList');
-    import('./components/CreditTransactionHistory');
     import('./components/AddPaymentMethodModal');
-    import('./components/UsageDetailsModal');
+    import('./components/BillingHistory');
+    import('./components/BillingHistoryModal');
   }, 500);
 }
 export { LoadingSkeleton, ErrorState, NoSubscriptionState, ProcessingState } from './components/loading-and-error-states';

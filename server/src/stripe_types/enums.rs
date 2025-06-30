@@ -1,0 +1,37 @@
+// Stripe enum constants for type safety and consistency
+// These constants replace magic strings throughout the codebase
+
+// Payment Intent Statuses
+pub const PAYMENT_INTENT_STATUS_SUCCEEDED: &str = "succeeded";
+pub const PAYMENT_INTENT_STATUS_REQUIRES_PAYMENT_METHOD: &str = "requires_payment_method";
+pub const PAYMENT_INTENT_STATUS_REQUIRES_CONFIRMATION: &str = "requires_confirmation";
+pub const PAYMENT_INTENT_STATUS_REQUIRES_ACTION: &str = "requires_action";
+pub const PAYMENT_INTENT_STATUS_PROCESSING: &str = "processing";
+pub const PAYMENT_INTENT_STATUS_REQUIRES_CAPTURE: &str = "requires_capture";
+pub const PAYMENT_INTENT_STATUS_CANCELED: &str = "canceled";
+
+// Checkout Session Statuses  
+pub const CHECKOUT_SESSION_STATUS_COMPLETE: &str = "complete";
+pub const CHECKOUT_SESSION_STATUS_EXPIRED: &str = "expired";
+pub const CHECKOUT_SESSION_STATUS_OPEN: &str = "open";
+
+// Checkout Session Modes
+pub const CHECKOUT_SESSION_MODE_PAYMENT: &str = "payment";
+pub const CHECKOUT_SESSION_MODE_SETUP: &str = "setup";
+pub const CHECKOUT_SESSION_MODE_SUBSCRIPTION: &str = "subscription";
+
+// Invoice Statuses
+pub const INVOICE_STATUS_DRAFT: &str = "draft";
+pub const INVOICE_STATUS_OPEN: &str = "open";
+pub const INVOICE_STATUS_PAID: &str = "paid";
+pub const INVOICE_STATUS_UNCOLLECTIBLE: &str = "uncollectible";
+pub const INVOICE_STATUS_VOID: &str = "void";
+
+// Subscription Statuses
+pub const SUBSCRIPTION_STATUS_ACTIVE: &str = "active";
+pub const SUBSCRIPTION_STATUS_CANCELED: &str = "canceled";
+pub const SUBSCRIPTION_STATUS_INCOMPLETE: &str = "incomplete";
+pub const SUBSCRIPTION_STATUS_INCOMPLETE_EXPIRED: &str = "incomplete_expired";
+pub const SUBSCRIPTION_STATUS_PAST_DUE: &str = "past_due";
+pub const SUBSCRIPTION_STATUS_TRIALING: &str = "trialing";
+pub const SUBSCRIPTION_STATUS_UNPAID: &str = "unpaid";

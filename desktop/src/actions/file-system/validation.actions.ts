@@ -22,60 +22,32 @@ export async function validateDirectoryAction(
   try {
     const resolvedPath = await tauriFs.normalizePath(directoryPath);
 
-    // First check if the directory exists by listing files
+    // Try git-based validation first
     try {
-      // Get directory contents
-      const files = await tauriFs.listFiles(resolvedPath, undefined, true);
+      // Try to list project files to validate directory and git repository
+      const files = await tauriFs.listProjectFiles(resolvedPath);
 
-      // Check for .git directory to identify a Git repository
-      let isGitRepo = false;
-      try {
-        const gitPath = await tauriFs.pathJoin(resolvedPath, ".git");
-        // Check if .git exists by trying to list it
-        await tauriFs.listFiles(gitPath);
-        isGitRepo = true;
-      } catch (_gitError) {
-        // Not a git repository, which is fine if not required
-      }
-
+      // If listProjectFiles succeeds, it means it's a valid git repository
+      const isGitRepo = true;
+      
       if (files.length === 0) {
         const emptyDirResult = {
-          isSuccess: validateGitRepo ? false : true, // Only success if Git is not required
+          isSuccess: validateGitRepo ? false : true,
           message: validateGitRepo
-            ? "Directory is empty. Please select a valid git repository."
-            : "Directory is empty",
+            ? "Git repository is empty. Please select a git repository with files."
+            : "Git repository is empty",
           data: validateGitRepo ? undefined : resolvedPath,
         };
 
         return emptyDirResult;
       }
 
-      // Count files and directories
-      let fileCount = 0;
-      let dirCount = 0;
-
-      // Process the listing results to count files and directories
-      for (const file of files) {
-        if (file.isDir) {
-          dirCount++;
-        } else {
-          fileCount++;
-        }
-      }
-
-      // If we require it to be a Git repo, fail if it isn't
-      if (validateGitRepo && !isGitRepo) {
-        return {
-          isSuccess: false,
-          message:
-            "Directory is not a git repository. Please select a valid git repository.",
-          data: undefined,
-        };
-      }
+      // Count files (all items are files in the new system)
+      const fileCount = files.length;
 
       const successMessage = isGitRepo
         ? "Git repository detected"
-        : `Directory contains ${fileCount} files and ${dirCount} folders`;
+        : `Directory contains ${fileCount} files`;
 
       return {
         isSuccess: true,
@@ -83,7 +55,19 @@ export async function validateDirectoryAction(
         data: resolvedPath,
       };
     } catch (error) {
-      // Process specific error types
+      // If git-based validation fails but git is not required, 
+      // we can still accept the directory if it exists
+      if (!validateGitRepo) {
+        // For non-git validation, we assume the directory is valid
+        // since the normalizePath succeeded above
+        return {
+          isSuccess: true,
+          message: "Directory validated (not a git repository)",
+          data: resolvedPath,
+        };
+      }
+
+      // Process specific error types for git validation failures
       if (error instanceof Error) {
         const errorMessage = error.message;
 
@@ -109,8 +93,12 @@ export async function validateDirectoryAction(
         }
       }
 
-      // Rethrow unknown errors to be caught by outer catch
-      throw error;
+      // If git validation was required but failed, return appropriate message
+      return {
+        isSuccess: false,
+        message: "Directory is not a git repository. Please select a valid git repository.",
+        data: undefined,
+      };
     }
   } catch (error: unknown) {
     console.error(`Error validating directory ${directoryPath}:`, error);

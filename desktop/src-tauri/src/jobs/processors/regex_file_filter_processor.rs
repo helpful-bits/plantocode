@@ -1,21 +1,31 @@
-use log::{debug, info, warn, error};
+use log::{debug, info, error};
 use serde_json::json;
+use serde::{Deserialize, Serialize};
 use tauri::AppHandle;
 use std::path::Path;
 use std::fs;
+use std::collections::HashSet;
 use regex::Regex;
 use futures::{stream, StreamExt};
-
+use tokio::time::{sleep, Duration};
+use tokio::task;
+use tokio::fs as tokio_fs;
 
 use crate::error::{AppError, AppResult};
 use crate::jobs::processor_trait::JobProcessor;
-use crate::jobs::types::{Job, JobPayload, JobProcessResult};
-use crate::models::TaskType;
+use crate::jobs::types::{Job, JobPayload, JobProcessResult, PatternGroup};
 use crate::jobs::job_processor_utils;
-use crate::jobs::processors::utils::{prompt_utils, llm_api_utils};
-use crate::jobs::processors::{LlmTaskRunner, LlmTaskConfigBuilder, LlmPromptContext, LlmTaskResult};
+use crate::jobs::processors::{LlmTaskRunner, LlmTaskConfigBuilder, LlmPromptContext};
 use crate::utils::directory_tree::get_directory_tree_with_defaults;
-use crate::utils::{path_utils, git_utils};
+use crate::utils::git_utils;
+
+#[derive(Debug)]
+struct CompiledPatternGroup {
+    title: String,
+    path_regex: Option<Regex>,
+    content_regex: Option<Regex>,
+    negative_path_regex: Option<Regex>,
+}
 
 pub struct RegexFileFilterProcessor;
 
@@ -24,7 +34,6 @@ impl RegexFileFilterProcessor {
         Self {}
     }
 
-    
     /// Compile regex pattern with validation
     fn compile_regex(&self, pattern: &str) -> AppResult<Regex> {
         match Regex::new(pattern) {
@@ -38,28 +47,144 @@ impl RegexFileFilterProcessor {
             }
         }
     }
+
+    /// Compile a pattern group into a CompiledPatternGroup - fail fast on any error
+    fn compile_pattern_group(&self, group: &PatternGroup) -> AppResult<CompiledPatternGroup> {
+        let path_regex = if let Some(ref pattern) = group.path_pattern {
+            Some(self.compile_regex(pattern)?)
+        } else {
+            None
+        };
+
+        let content_regex = if let Some(ref pattern) = group.content_pattern {
+            Some(self.compile_regex(pattern)?)
+        } else {
+            None
+        };
+
+        let negative_path_regex = if let Some(ref pattern) = group.negative_path_pattern {
+            Some(self.compile_regex(pattern)?)
+        } else {
+            None
+        };
+
+        Ok(CompiledPatternGroup {
+            title: group.title.clone(),
+            path_regex,
+            content_regex,
+            negative_path_regex,
+        })
+    }
     
     /// Static version of file content matching for use in async closures
     async fn file_content_matches_pattern_static(file_path: &str, content_regex: &Regex, project_directory: &str) -> bool {
         let full_path = std::path::Path::new(project_directory).join(file_path);
-        match crate::utils::fs_utils::read_file_to_bytes(&full_path).await {
+        match tokio_fs::read(&full_path).await {
             Ok(bytes) => {
-                // Check for binary files by looking for null bytes in first 1024 bytes
-                let check_size = std::cmp::min(bytes.len(), 1024);
+                // If file is >50MB, treat as binary automatically
+                if bytes.len() > 50 * 1024 * 1024 {
+                    debug!("Skipping large file (>50MB) for pattern matching: {}", file_path);
+                    return false;
+                }
+                
+                // Check for binary files by looking for null bytes in first 8192 bytes
+                let check_size = std::cmp::min(bytes.len(), 8192);
                 if bytes[..check_size].contains(&0) {
                     debug!("Skipping binary file for pattern matching: {}", file_path);
                     return false;
                 }
                 
-                // Convert bytes to string using lossy conversion
-                let content = String::from_utf8_lossy(&bytes);
-                content_regex.is_match(&content)
+                // Additional check for UTF-8 validity
+                match std::str::from_utf8(&bytes[..check_size]) {
+                    Ok(_) => {
+                        // Valid UTF-8, proceed with pattern matching
+                        let content = String::from_utf8_lossy(&bytes);
+                        content_regex.is_match(&content)
+                    },
+                    Err(_) => {
+                        debug!("Skipping non-UTF-8 file for pattern matching: {}", file_path);
+                        false
+                    }
+                }
             },
             Err(_) => {
                 debug!("Could not read file content for pattern matching: {}", file_path);
                 false
             }
         }
+    }
+
+    /// Process a single pattern group and return matching files
+    async fn process_pattern_group(&self, compiled_group: &CompiledPatternGroup, all_files: &[String], project_directory: &str) -> Vec<String> {
+        info!("Processing pattern group: '{}'", compiled_group.title);
+        
+        // If neither path nor content pattern is available, skip this group
+        if compiled_group.path_regex.is_none() && compiled_group.content_regex.is_none() {
+            info!("Pattern group '{}' has no positive patterns. Skipping.", compiled_group.title);
+            return Vec::new();
+        }
+
+        // Clone the regex patterns to avoid lifetime issues in async closures
+        let path_regex = compiled_group.path_regex.clone();
+        let content_regex = compiled_group.content_regex.clone();
+        let project_dir = project_directory.to_string();
+
+        // Apply positive filtering (BOTH path AND content must match if both are specified)
+        let file_check_futures = all_files.iter().cloned().map(|file_path| {
+            let path_regex = path_regex.clone();
+            let content_regex = content_regex.clone();
+            let project_dir = project_dir.clone();
+            async move {
+                // Add rate limiting to prevent filesystem overload
+                sleep(Duration::from_millis(1)).await;
+                
+                let mut path_matches = true;
+                let mut content_matches = true;
+                
+                // Check path pattern (if specified)
+                if let Some(ref path_regex) = path_regex {
+                    path_matches = path_regex.is_match(&file_path);
+                }
+                
+                // Check content pattern (if specified)
+                if let Some(ref content_regex) = content_regex {
+                    content_matches = Self::file_content_matches_pattern_static(&file_path, content_regex, &project_dir).await;
+                }
+                
+                // Both conditions must be true (AND logic within group)
+                if path_matches && content_matches {
+                    Some(file_path)
+                } else {
+                    None
+                }
+            }
+        });
+        
+        let positive_results: Vec<Option<String>> = stream::iter(file_check_futures)
+            .buffer_unordered(3)
+            .collect()
+            .await;
+        
+        let positive_matches: Vec<String> = positive_results.into_iter().filter_map(|x| x).collect();
+        
+        info!("Pattern group '{}' found {} files matching positive patterns", compiled_group.title, positive_matches.len());
+        
+        // Apply negative path filtering
+        let negative_filtered = if let Some(ref neg_path_regex) = compiled_group.negative_path_regex {
+            let excluded_count = positive_matches.iter().filter(|file_path| neg_path_regex.is_match(file_path)).count();
+            let filtered: Vec<String> = positive_matches.into_iter()
+                .filter(|file_path| !neg_path_regex.is_match(file_path))
+                .collect();
+            if excluded_count > 0 {
+                info!("Pattern group '{}' excluded {} files due to negative path pattern", compiled_group.title, excluded_count);
+            }
+            filtered
+        } else {
+            positive_matches
+        };
+        
+        info!("Pattern group '{}' final result: {} files", compiled_group.title, negative_filtered.len());
+        negative_filtered
     }
 }
 
@@ -96,8 +221,8 @@ impl JobProcessor for RegexFileFilterProcessor {
                 Some(tree)
             }
             Err(e) => {
-                warn!("Failed to generate directory tree using session-based utility: {}. Continuing without directory context.", e);
-                None
+                error!("Failed to generate directory tree using session-based utility: {}", e);
+                return Err(AppError::JobError(format!("Failed to generate directory tree: {}", e)));
             }
         };
         
@@ -106,23 +231,6 @@ impl JobProcessor for RegexFileFilterProcessor {
         let (model_used, temperature, max_output_tokens) = model_settings;
         
         job_processor_utils::log_job_start(&job.id, "regex pattern generation");
-        
-        // Build unified prompt using standardized helper
-        let composed_prompt = prompt_utils::build_unified_prompt(
-            &job,
-            &app_handle,
-            task_description_for_prompt.clone(),
-            None,
-            directory_tree_for_prompt.clone(),
-            &model_used,
-        ).await?;
-
-        info!("Enhanced Regex Pattern Generation prompt composition for job {}", job.id);
-        info!("System prompt ID: {}", composed_prompt.system_prompt_id);
-        info!("Context sections: {:?}", composed_prompt.context_sections);
-        if let Some(tokens) = composed_prompt.estimated_total_tokens {
-            info!("Estimated tokens: {}", tokens);
-        }
 
         // Setup LLM task configuration
         let llm_config = LlmTaskConfigBuilder::new()
@@ -138,49 +246,22 @@ impl JobProcessor for RegexFileFilterProcessor {
         info!("Generating regex patterns for task: {}", &task_description_for_prompt);
         info!("Calling LLM for regex pattern generation with model {}", &model_used);
         
-        // Extract system and user prompts from the already built composed_prompt
-        let system_prompt = composed_prompt.system_prompt.clone();
-        let user_prompt = composed_prompt.user_prompt.clone();
-        let system_prompt_id = composed_prompt.system_prompt_id.clone();
-        let system_prompt_template = composed_prompt.system_prompt_template.clone();
+        // Create LLM prompt context for task runner
+        let llm_context = LlmPromptContext {
+            task_description: task_description_for_prompt.clone(),
+            file_contents: None,
+            directory_tree: directory_tree_for_prompt.clone(),
+        };
         
-        // Create messages using llm_api_utils
-        let messages = llm_api_utils::create_openrouter_messages(&system_prompt, &user_prompt);
-        
-        // Create API options using llm_api_utils
-        let api_options = llm_api_utils::create_api_client_options(
-            model_used.clone(),
-            temperature,
-            max_output_tokens,
-            false,
-        )?;
-        
-        // Execute LLM call directly using llm_api_utils
-        let response = match llm_api_utils::execute_llm_chat_completion(
-            &app_handle,
-            messages,
-            api_options,
-        ).await {
-            Ok(response) => response,
+        // Execute LLM call using task runner to avoid lifetime issues
+        let llm_result = match task_runner.execute_llm_task(llm_context, &settings_repo).await {
+            Ok(result) => result,
             Err(e) => {
                 error!("Regex Pattern Generation LLM task execution failed: {}", e);
                 let error_msg = format!("LLM task execution failed: {}", e);
                 task_runner.finalize_failure(&repo, &job.id, &error_msg, Some(&e), None).await?;
                 return Ok(JobProcessResult::failure(job.id.clone(), error_msg));
             }
-        };
-        
-        let response_text = response.choices
-            .first()
-            .map(|choice| choice.message.content.clone())
-            .unwrap_or_default();
-        
-        // Create LlmTaskResult for compatibility with existing code
-        let llm_result = LlmTaskResult {
-            response: response_text,
-            usage: response.usage,
-            system_prompt_id,
-            system_prompt_template,
         };
         
         info!("Regex Pattern Generation LLM task completed successfully for job {}", job.id);
@@ -197,191 +278,76 @@ impl JobProcessor for RegexFileFilterProcessor {
                 (true, Some(parsed_json))
             },
             Err(e) => {
-                warn!("Failed to parse LLM response as JSON: {}. Storing raw content.", e);
-                (false, None)
+                error!("Failed to parse LLM response as JSON: {}", e);
+                return Err(AppError::JobError(format!("Failed to parse LLM response as JSON: {}", e)));
             }
         };
         
-        // Parse regex patterns and apply file filtering directly
+        // Parse pattern groups and apply file filtering
         let filtered_files = if let Some(ref parsed_json) = json_validation_result.1 {
-            info!("Applying generated regex patterns to filter files");
+            info!("Applying generated pattern groups to filter files");
             
-            // Extract patterns from JSON
-            let path_pattern = parsed_json.get("pathPattern").and_then(|v| v.as_str());
-            let content_pattern = parsed_json.get("contentPattern").and_then(|v| v.as_str());
-            let negative_path_pattern = parsed_json.get("negativePathPattern").and_then(|v| v.as_str());
-            let negative_content_pattern = parsed_json.get("negativeContentPattern").and_then(|v| v.as_str());
-            
-            // Validate that at least one positive pattern is provided
-            if path_pattern.is_none() && content_pattern.is_none() {
-                warn!("No positive patterns found in generated response. Continuing with empty file list.");
-                Vec::new()
+            // Extract pattern groups from JSON
+            let pattern_groups: Vec<PatternGroup> = if let Some(groups_array) = parsed_json.get("patternGroups").and_then(|v| v.as_array()) {
+                groups_array.iter().filter_map(|group_json| {
+                    serde_json::from_value::<PatternGroup>(group_json.clone()).ok()
+                }).collect()
             } else {
-                // Compile regex patterns
-                let compiled_path_regex = if let Some(pattern) = path_pattern {
-                    match self.compile_regex(pattern) {
-                        Ok(regex) => Some(regex),
-                        Err(e) => {
-                            warn!("Failed to compile path regex pattern '{}': {}. Skipping path filtering.", pattern, e);
-                            None
-                        }
-                    }
-                } else {
-                    None
-                };
+                return Err(AppError::JobError("No patternGroups array found in generated response".to_string()));
+            };
+            
+            if pattern_groups.is_empty() {
+                return Err(AppError::JobError("No valid pattern groups found in generated response".to_string()));
+            } else {
+                info!("Found {} pattern groups to process", pattern_groups.len());
                 
-                let compiled_content_regex = if let Some(pattern) = content_pattern {
-                    match self.compile_regex(pattern) {
-                        Ok(regex) => Some(regex),
-                        Err(e) => {
-                            warn!("Failed to compile content regex pattern '{}': {}. Skipping content filtering.", pattern, e);
-                            None
-                        }
-                    }
-                } else {
-                    None
-                };
+                // Compile all pattern groups - fail fast on any error
+                let compiled_groups: Vec<CompiledPatternGroup> = pattern_groups.iter()
+                    .map(|group| self.compile_pattern_group(group))
+                    .collect::<AppResult<Vec<_>>>()?;
                 
-                let compiled_negative_path_regex = if let Some(pattern) = negative_path_pattern {
-                    match self.compile_regex(pattern) {
-                        Ok(regex) => Some(regex),
-                        Err(e) => {
-                            warn!("Failed to compile negative path regex pattern '{}': {}. Skipping negative path filtering.", pattern, e);
-                            None
-                        }
-                    }
-                } else {
-                    None
-                };
                 
-                let compiled_negative_content_regex = if let Some(pattern) = negative_content_pattern {
-                    match self.compile_regex(pattern) {
-                        Ok(regex) => Some(regex),
-                        Err(e) => {
-                            warn!("Failed to compile negative content regex pattern '{}': {}. Skipping negative content filtering.", pattern, e);
-                            None
-                        }
-                    }
-                } else {
-                    None
-                };
-                
-                // Get excluded paths from workflow settings
-                let excluded_paths = vec![
-                    ".git".to_string(),
-                    "node_modules".to_string(), 
-                    "target".to_string(),
-                    "dist".to_string(),
-                    "build".to_string()
-                ];
-                
-                // Normalize the project directory path
+                // Normalize the project directory path - fail if canonicalization fails
                 let project_path = Path::new(&session.project_directory);
-                let normalized_project_dir = match fs::canonicalize(project_path) {
-                    Ok(path) => path,
-                    Err(e) => {
-                        warn!("Failed to canonicalize project directory {}: {}. Using original path.", session.project_directory, e);
-                        project_path.to_path_buf()
-                    }
-                };
+                let normalized_project_dir = fs::canonicalize(project_path)
+                    .map_err(|e| AppError::JobError(format!("Failed to canonicalize project directory {}: {}", session.project_directory, e)))?;
                 
-                // Discover all files
-                match path_utils::discover_files(&normalized_project_dir.to_string_lossy().to_string(), &excluded_paths) {
-                    Ok(all_files) => {
-                        info!("Discovered {} files, applying regex filters", all_files.len());
-                        
-                        // Apply positive filtering (path_pattern OR content_pattern)
-                        let file_check_futures = all_files.into_iter().map(|file_path| {
-                            let path_regex = compiled_path_regex.clone();
-                            let content_regex = compiled_content_regex.clone();
-                            let project_dir = session.project_directory.clone();
-                            async move {
-                                let mut matches_positive = false;
-                                
-                                // Check path pattern
-                                if let Some(ref path_regex) = path_regex {
-                                    if path_regex.is_match(&file_path) {
-                                        matches_positive = true;
-                                    }
-                                }
-                                
-                                // Check content pattern (if no path match yet)
-                                if !matches_positive {
-                                    if let Some(ref content_regex) = content_regex {
-                                        if Self::file_content_matches_pattern_static(&file_path, content_regex, &project_dir).await {
-                                            matches_positive = true;
-                                        }
-                                    }
-                                }
-                                
-                                if matches_positive {
-                                    Some(file_path)
-                                } else {
-                                    None
-                                }
-                            }
-                        });
-                        
-                        let positive_results: Vec<Option<String>> = stream::iter(file_check_futures)
-                            .buffer_unordered(10)
-                            .collect()
-                            .await;
-                        
-                        let positive_matches: Vec<String> = positive_results.into_iter().filter_map(|x| x).collect();
-                        
-                        info!("Found {} files matching positive patterns", positive_matches.len());
-                        
-                        // Apply negative filtering
-                        let negative_check_futures = positive_matches.into_iter().map(|file_path| {
-                            let neg_path_regex = compiled_negative_path_regex.clone();
-                            let neg_content_regex = compiled_negative_content_regex.clone();
-                            let project_dir = session.project_directory.clone();
-                            async move {
-                                let mut excluded_by_negative = false;
-                                
-                                // Check negative path pattern
-                                if let Some(ref neg_path_regex) = neg_path_regex {
-                                    if neg_path_regex.is_match(&file_path) {
-                                        excluded_by_negative = true;
-                                    }
-                                }
-                                
-                                // Check negative content pattern
-                                if !excluded_by_negative {
-                                    if let Some(ref neg_content_regex) = neg_content_regex {
-                                        if Self::file_content_matches_pattern_static(&file_path, neg_content_regex, &project_dir).await {
-                                            excluded_by_negative = true;
-                                        }
-                                    }
-                                }
-                                
-                                if !excluded_by_negative {
-                                    Some(file_path)
-                                } else {
-                                    None
-                                }
-                            }
-                        });
-                        
-                        let negative_results: Vec<Option<String>> = stream::iter(negative_check_futures)
-                            .buffer_unordered(10)
-                            .collect()
-                            .await;
-                        
-                        let final_matches: Vec<String> = negative_results.into_iter().filter_map(|x| x).collect();
-                        
-                        info!("Final filtered result: {} files after applying negative patterns", final_matches.len());
-                        final_matches
-                    },
-                    Err(e) => {
-                        warn!("Failed to discover files for filtering: {}. Continuing with empty file list.", e);
-                        Vec::new()
+                // Use proven git utilities for file discovery (same as directory_tree.rs)
+                let normalized_project_dir_clone = normalized_project_dir.clone();
+                let git_files = task::spawn_blocking(move || {
+                    git_utils::get_all_non_ignored_files(&normalized_project_dir_clone)
+                }).await
+                .map_err(|e| AppError::JobError(format!("Failed to spawn blocking task for git: {}", e)))?
+                .map_err(|e| AppError::JobError(format!("Failed to get git files: {}", e)))?;
+
+                let all_files: Vec<String> = git_files.0.iter()
+                    .map(|path| path.to_string_lossy().to_string())
+                    .collect();
+                
+                info!("Discovered {} files, processing with {} pattern groups", all_files.len(), compiled_groups.len());
+                
+                // Convert normalized directory to string for pattern matching
+                let normalized_project_dir_str = normalized_project_dir.to_string_lossy().to_string();
+                
+                // Use HashSet to collect unique files across all groups (OR logic between groups)
+                let mut all_matching_files = HashSet::new();
+                
+                // Process each pattern group for all files (git handles efficiency)
+                for compiled_group in &compiled_groups {
+                    let group_matches = self.process_pattern_group(&compiled_group, &all_files, &normalized_project_dir_str).await;
+                    
+                    // Add all matches from this group to the overall set
+                    for file in group_matches {
+                        all_matching_files.insert(file);
                     }
                 }
+                
+                let final_matches: Vec<String> = all_matching_files.into_iter().collect();
+                info!("Total unique files found across all pattern groups: {}", final_matches.len());
+                final_matches
             }
         } else {
-            warn!("Cannot apply file filtering - JSON parsing failed. Continuing with empty file list.");
-            Vec::new()
+            return Err(AppError::JobError("Cannot apply file filtering - JSON parsing failed".to_string()));
         };
         
         // Create minimal metadata

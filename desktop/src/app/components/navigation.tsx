@@ -8,7 +8,7 @@ import { useUILayout } from "@/contexts/ui-layout-context";
 import { ThemeToggle } from "@/ui";
 import { Button } from "@/ui/button";
 import { CostUsageIndicator } from "@/ui/cost-usage-indicator";
-import { UsageDetailsModal } from "@/app/components/billing/billing-components";
+import { BillingHistoryModal } from "@/app/components/billing/billing-components";
 
 export function Navigation() {
   // Track current pathname and update on route changes
@@ -20,7 +20,7 @@ export function Navigation() {
     return '/';
   });
 
-  const [isUsageModalOpen, setIsUsageModalOpen] = useState(false);
+  const [isBillingHistoryModalOpen, setIsBillingHistoryModalOpen] = useState(false);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -105,7 +105,7 @@ export function Navigation() {
             <CostUsageIndicator 
               compact={true} 
               showRefreshButton={false} 
-              onClick={() => setIsUsageModalOpen(true)}
+              onClick={() => setIsBillingHistoryModalOpen(true)}
             />
             <ThemeToggle />
             <Button 
@@ -120,9 +120,9 @@ export function Navigation() {
           </div>
         </div>
         
-        <UsageDetailsModal
-          open={isUsageModalOpen}
-          onOpenChange={(open) => setIsUsageModalOpen(open)}
+        <BillingHistoryModal
+          open={isBillingHistoryModalOpen}
+          onOpenChange={setIsBillingHistoryModalOpen}
         />
       </nav>
   );

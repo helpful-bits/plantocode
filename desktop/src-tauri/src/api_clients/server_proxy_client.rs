@@ -132,14 +132,14 @@ impl ServerProxyClient {
     
     
     /// Get a specific default system prompt by task type from server
-    pub async fn get_default_system_prompt(&self, task_type: &str) -> AppResult<Option<serde_json::Value>> {
+    pub async fn get_default_system_prompt(&self, task_type: &str) -> AppResult<Option<crate::models::DefaultSystemPrompt>> {
         info!("Fetching default system prompt for task type '{}' from server", task_type);
         
         self.try_fetch_default_system_prompt_from_server(task_type).await
     }
     
     /// Try to fetch a specific default system prompt from server (can fail)
-    async fn try_fetch_default_system_prompt_from_server(&self, task_type: &str) -> AppResult<Option<serde_json::Value>> {
+    async fn try_fetch_default_system_prompt_from_server(&self, task_type: &str) -> AppResult<Option<crate::models::DefaultSystemPrompt>> {
         
         // Create the specific prompt endpoint URL - this is a public endpoint, no auth required
         let prompt_url = format!("{}/system-prompts/defaults/{}", self.server_url, task_type);
@@ -164,8 +164,8 @@ impl ServerProxyClient {
             return Err(map_server_proxy_error(status.as_u16(), &error_text));
         }
         
-        // Parse the response
-        let prompt: serde_json::Value = response.json().await
+        // Parse the response directly into DefaultSystemPrompt
+        let prompt: crate::models::DefaultSystemPrompt = response.json().await
             .map_err(|e| AppError::ServerProxyError(format!("Failed to parse default system prompt response: {}", e)))?;
             
         info!("Successfully fetched default system prompt for task type '{}'", task_type);
@@ -303,7 +303,12 @@ impl ServerProxyClient {
                 match content {
                     OpenRouterContent::Text { text, .. } => {
                         let preview = if text.len() > 500 {
-                            format!("{}... ({} total chars)", &text[..500], text.len())
+                            // Safe UTF-8 truncation - find the last valid char boundary at or before 500 bytes
+                            let mut end = 500;
+                            while end > 0 && !text.is_char_boundary(end) {
+                                end -= 1;
+                            }
+                            format!("{}... ({} total chars)", &text[..end], text.len())
                         } else {
                             text.clone()
                         };
@@ -559,8 +564,16 @@ impl ServerProxyClient {
                         continue;
                     },
                     Some(Err(e)) => {
-                        error!("EventSource error: {}", e);
-                        return Some((Err(AppError::NetworkError(format!("EventSource error: {}", e))), (event_source, start_time, stream_ended)));
+                        match e {
+                            reqwest_eventsource::Error::StreamEnded => {
+                                debug!("EventSource stream ended gracefully");
+                                return None;
+                            },
+                            _ => {
+                                error!("EventSource error: {}", e);
+                                return Some((Err(AppError::NetworkError(format!("EventSource error: {}", e))), (event_source, start_time, stream_ended)));
+                            }
+                        }
                     },
                     None => {
                         if !stream_ended {

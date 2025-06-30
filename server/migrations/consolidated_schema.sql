@@ -23,32 +23,16 @@ CREATE TABLE IF NOT EXISTS refresh_tokens (
 );
 
 
--- Subscriptions for users
-CREATE TABLE IF NOT EXISTS subscriptions (
+-- Customer billing for users
+CREATE TABLE IF NOT EXISTS customer_billing (
     id UUID PRIMARY KEY,
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     stripe_customer_id VARCHAR(255),
-    stripe_subscription_id VARCHAR(255),
-    plan_id VARCHAR(50) NOT NULL,
-    status VARCHAR(50) NOT NULL, -- 'trialing', 'active', 'canceled', 'past_due'
-    pending_plan_id VARCHAR(255),
-    cancel_at_period_end BOOLEAN NOT NULL DEFAULT false,
-    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-    -- Enhanced subscription fields for better Stripe synchronization
-    stripe_plan_id VARCHAR(255),
-    current_period_start TIMESTAMP WITH TIME ZONE NOT NULL,
-    current_period_end TIMESTAMP WITH TIME ZONE NOT NULL,
-    trial_start TIMESTAMP WITH TIME ZONE,
-    trial_end TIMESTAMP WITH TIME ZONE,
-    -- New subscription management fields
-    version INTEGER NOT NULL DEFAULT 1,
-    management_state VARCHAR(50) DEFAULT 'active',
-    pending_payment_intent_secret VARCHAR(255),
-    -- Auto top-off feature fields
     auto_top_off_enabled BOOLEAN NOT NULL DEFAULT false,
     auto_top_off_threshold DECIMAL(12, 4),
     auto_top_off_amount DECIMAL(12, 4),
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
     CONSTRAINT fk_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
@@ -66,6 +50,10 @@ CREATE TABLE IF NOT EXISTS api_usage (
     metadata JSONB,
     processing_ms INTEGER NULL,
     input_duration_ms BIGINT NULL,
+    -- Cached token columns for tracking cache usage
+    cached_input_tokens INTEGER DEFAULT 0,
+    cache_write_tokens INTEGER DEFAULT 0,
+    cache_read_tokens INTEGER DEFAULT 0,
     CONSTRAINT fk_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
@@ -76,7 +64,6 @@ CREATE INDEX IF NOT EXISTS idx_api_usage_service_name ON api_usage(service_name)
 CREATE TABLE IF NOT EXISTS api_quotas (
     id SERIAL PRIMARY KEY,
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    plan_id VARCHAR(50) NOT NULL,
     service_name VARCHAR(50) NOT NULL,
     monthly_tokens_limit INTEGER,
     daily_requests_limit INTEGER,
@@ -90,37 +77,14 @@ CREATE INDEX IF NOT EXISTS idx_api_quotas_user_id ON api_quotas(user_id);
 CREATE INDEX IF NOT EXISTS idx_api_quotas_service_name ON api_quotas(service_name);
 
 
--- Subscription plans
-CREATE TABLE IF NOT EXISTS subscription_plans (
-    id VARCHAR(50) PRIMARY KEY,
-    name VARCHAR(100) NOT NULL,
-    description TEXT,
-    base_price_weekly DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
-    base_price_monthly DECIMAL(10, 2) NOT NULL,
-    base_price_yearly DECIMAL(10, 2) NOT NULL,
-    currency VARCHAR(3) NOT NULL DEFAULT 'USD',
-    stripe_price_id_weekly VARCHAR(100),
-    stripe_price_id_monthly VARCHAR(100),
-    stripe_price_id_yearly VARCHAR(100),
-    plan_tier INTEGER NOT NULL DEFAULT 0,
-    features JSONB NOT NULL DEFAULT '{}',
-    active BOOLEAN NOT NULL DEFAULT true,
-    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
-);
-
-
 
 
 -- Create indexes for better performance
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 CREATE INDEX IF NOT EXISTS idx_users_auth0_user_id ON users(auth0_user_id);
 CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user_id ON refresh_tokens(user_id);
-CREATE INDEX IF NOT EXISTS idx_subscriptions_user_id ON subscriptions(user_id);
-CREATE INDEX IF NOT EXISTS idx_subscriptions_status ON subscriptions(status);
-CREATE INDEX IF NOT EXISTS idx_subscriptions_stripe_plan_id ON subscriptions(stripe_plan_id);
-CREATE INDEX IF NOT EXISTS idx_subscriptions_current_period_end ON subscriptions(current_period_end);
-CREATE INDEX IF NOT EXISTS idx_subscriptions_trial_end ON subscriptions(trial_end);
+CREATE INDEX IF NOT EXISTS idx_customer_billing_user_id ON customer_billing(user_id);
+CREATE INDEX IF NOT EXISTS idx_customer_billing_stripe_customer_id ON customer_billing(stripe_customer_id);
 
 -- Create providers table for AI providers
 CREATE TABLE IF NOT EXISTS providers (
@@ -141,13 +105,8 @@ CREATE INDEX IF NOT EXISTS idx_providers_code ON providers(code);
 CREATE INDEX IF NOT EXISTS idx_providers_status ON providers(status);
 
 -- Insert known providers
-INSERT INTO providers (code, name, description, website_url, api_base_url, capabilities, status) VALUES
-('anthropic', 'Anthropic', 'AI safety focused company providing Claude models', 'https://anthropic.com', 'https://api.anthropic.com', '{"text": true, "chat": true, "reasoning": true}', 'active'),
-('openai', 'OpenAI', 'Leading AI research company providing GPT models', 'https://openai.com', 'https://api.openai.com', '{"text": true, "chat": true, "image": true, "code": true}', 'active'),
-('google', 'Google', 'Google AI providing Gemini models', 'https://ai.google.dev', 'https://generativelanguage.googleapis.com', '{"text": true, "chat": true, "multimodal": true, "code": true}', 'active'),
-('deepseek', 'DeepSeek', 'DeepSeek AI providing reasoning models', 'https://deepseek.com', 'https://api.deepseek.com', '{"reasoning": true, "code": true}', 'active'),
-('openai_transcription', 'Transcription', 'Dedicated transcription services', 'https://openai.com', 'https://api.openai.com', '{"transcription": true, "audio_processing": true}', 'active')
-ON CONFLICT (code) DO NOTHING;
+-- Load provider data from separate file
+\i data_providers.sql
 
 -- Create models table with proper provider relationships
 -- Note: price_input and price_output are per 1,000,000 tokens for token-based models
@@ -170,7 +129,10 @@ CREATE TABLE IF NOT EXISTS models (
     -- Tiered pricing support for models like Gemini 2.5 Pro
     price_input_long_context DECIMAL(10,6) DEFAULT NULL, -- Long context price per 1,000,000 input tokens
     price_output_long_context DECIMAL(10,6) DEFAULT NULL, -- Long context price per 1,000,000 output tokens
-    long_context_threshold INTEGER DEFAULT NULL -- Token threshold for long context pricing
+    long_context_threshold INTEGER DEFAULT NULL, -- Token threshold for long context pricing
+    -- Cached token pricing columns
+    price_cache_write DECIMAL(10,6) DEFAULT NULL, -- Price per 1,000,000 cached write tokens
+    price_cache_read DECIMAL(10,6) DEFAULT NULL -- Price per 1,000,000 cached read tokens
 );
 
 -- Add indexes for models
@@ -192,50 +154,8 @@ END $$;
 
 
 -- AI model pricing data - Updated with provider relationships and per-million pricing
-INSERT INTO models (id, name, context_window, price_input, price_output, pricing_type, price_per_hour, minimum_billable_seconds, billing_unit, provider_id, model_type, capabilities, status, description, price_input_long_context, price_output_long_context, long_context_threshold)
-VALUES
--- Anthropic models (prices per 1M tokens) - Updated with correct API model names
-('anthropic/claude-opus-4-20250514',   'Claude 4 Opus',       200000, 15.000000, 75.000000, 'token_based', 0.000000, 0, 'tokens', (SELECT id FROM providers WHERE code = 'anthropic'), 'text', '{"text": true, "chat": true, "reasoning": true}', 'active', 'Advanced language model with strong reasoning capabilities', NULL, NULL, NULL),
-('anthropic/claude-sonnet-4-20250514', 'Claude 4 Sonnet',     200000, 3.000000, 15.000000, 'token_based', 0.000000, 0, 'tokens', (SELECT id FROM providers WHERE code = 'anthropic'), 'text', '{"text": true, "chat": true, "reasoning": true}', 'active', 'Balanced language model with strong reasoning capabilities', NULL, NULL, NULL),
-('anthropic/claude-4-opus-20250522', 'Claude Opus 4 (2025-05-22)', 200000, 15.000000, 75.000000, 'token_based', 0.000000, 0, 'tokens', (SELECT id FROM providers WHERE code = 'anthropic'), 'text', '{"text": true, "chat": true, "reasoning": true, "vision": true}', 'active', 'Claude Opus 4 with 2025-05-22 training cutoff', NULL, NULL, NULL),
-('anthropic/claude-3-7-sonnet-20250219', 'Claude 3.7 Sonnet (2025-02-19)', 200000, 3.000000, 15.000000, 'token_based', 0.000000, 0, 'tokens', (SELECT id FROM providers WHERE code = 'anthropic'), 'text', '{"text": true, "chat": true, "reasoning": true, "vision": true}', 'active', 'Claude 3.7 Sonnet with 2025-02-19 training cutoff', NULL, NULL, NULL),
-
--- OpenAI models (prices per 1M tokens)
-('openai/gpt-4.1',                 'GPT-4.1',            1000000, 2.000000, 8.000000, 'token_based', 0.000000, 0, 'tokens', (SELECT id FROM providers WHERE code = 'openai'), 'text', '{"text": true, "chat": true, "code": true}', 'active', 'Advanced GPT model with broad capabilities', NULL, NULL, NULL),
-('openai/gpt-4.1-mini',            'GPT-4.1 Mini',       1000000, 0.400000, 1.600000, 'token_based', 0.000000, 0, 'tokens', (SELECT id FROM providers WHERE code = 'openai'), 'text', '{"text": true, "chat": true, "code": true}', 'active', 'Efficient GPT model for cost-sensitive applications', NULL, NULL, NULL),
-
--- Google models (prices per 1M tokens)
-('google/gemini-2.5-pro',          'Gemini 2.5 Pro',     1000000, 1.250000, 10.000000, 'token_based', 0.000000, 0, 'tokens', (SELECT id FROM providers WHERE code = 'google'), 'text', '{"text": true, "chat": true, "multimodal": true, "code": true}', 'active', 'Multimodal AI model with advanced reasoning', 2.500000, 15.000000, 200000),
-('google/gemini-2.5-flash',        'Gemini 2.5 Flash',   1000000, 0.300000, 2.500000, 'token_based', 0.000000, 0, 'tokens', (SELECT id FROM providers WHERE code = 'google'), 'text', '{"text": true, "chat": true, "code": true, "reasoning": true}', 'active', 'Google Gemini 2.5 Flash - Fast and efficient text generation model', NULL, NULL, NULL),
-('google/gemini-2.5-flash:thinking', 'Gemini 2.5 Flash Thinking', 1000000, 0.300000, 2.500000, 'token_based', 0.000000, 0, 'tokens', (SELECT id FROM providers WHERE code = 'google'), 'text', '{"text": true, "chat": true, "code": true, "reasoning": true, "thinking": true}', 'active', 'Google Gemini 2.5 Flash with thinking capabilities', NULL, NULL, NULL),
-
--- DeepSeek models (prices per 1M tokens) 
-('deepseek/deepseek-r1',           'DeepSeek R1',         65536, 0.550000, 2.190000, 'token_based', 0.000000, 0, 'tokens', (SELECT id FROM providers WHERE code = 'deepseek'), 'text', '{"text": true, "chat": true, "code": true, "reasoning": true, "thinking": true}', 'active', 'DeepSeek R1 - Advanced reasoning model', NULL, NULL, NULL),
-('deepseek/deepseek-r1-distill-qwen-32b', 'DeepSeek R1 Distill Qwen 32B', 32768, 0.140000, 0.280000, 'token_based', 0.000000, 0, 'tokens', (SELECT id FROM providers WHERE code = 'deepseek'), 'text', '{"text": true, "chat": true, "code": true, "reasoning": true}', 'active', 'DeepSeek R1 Distilled Qwen 32B - Efficient reasoning model', NULL, NULL, NULL),
-('deepseek/deepseek-r1-distill-qwen-14b', 'DeepSeek R1 Distill Qwen 14B', 32768, 0.070000, 0.140000, 'token_based', 0.000000, 0, 'tokens', (SELECT id FROM providers WHERE code = 'deepseek'), 'text', '{"text": true, "chat": true, "code": true, "reasoning": true}', 'active', 'DeepSeek R1 Distilled Qwen 14B - Compact reasoning model', NULL, NULL, NULL),
-
--- Transcription models (duration-based pricing)
-('openai/gpt-4o-transcribe',       'GPT-4o Transcribe', 0, 0.000000, 0.000000, 'duration_based', 0.050000, 10, 'seconds', (SELECT id FROM providers WHERE code = 'openai'), 'transcription', '{"transcription": true, "audio_processing": true, "multi_language": true}', 'active', 'OpenAI GPT-4o based transcription model', NULL, NULL, NULL),
-('openai/gpt-4o-mini-transcribe',  'GPT-4o Mini Transcribe', 0, 0.000000, 0.000000, 'duration_based', 0.025000, 10, 'seconds', (SELECT id FROM providers WHERE code = 'openai'), 'transcription', '{"transcription": true, "audio_processing": true, "multi_language": true}', 'active', 'OpenAI GPT-4o Mini based transcription model for cost-effective transcription', NULL, NULL, NULL)
-
-ON CONFLICT (id) DO UPDATE SET
-name                       = EXCLUDED.name,
-context_window            = EXCLUDED.context_window,
-price_input               = EXCLUDED.price_input,
-price_output              = EXCLUDED.price_output,
-pricing_type              = EXCLUDED.pricing_type,
-price_per_hour            = EXCLUDED.price_per_hour,
-minimum_billable_seconds  = EXCLUDED.minimum_billable_seconds,
-billing_unit              = EXCLUDED.billing_unit,
-provider_id               = EXCLUDED.provider_id,
-model_type                = EXCLUDED.model_type,
-capabilities              = EXCLUDED.capabilities,
-status                    = EXCLUDED.status,
-description               = EXCLUDED.description,
-price_input_long_context  = EXCLUDED.price_input_long_context,
-price_output_long_context = EXCLUDED.price_output_long_context,
-long_context_threshold    = EXCLUDED.long_context_threshold;
-
+-- Load model data from separate file
+\i data_models.sql
 
 
 -- Store application-wide configurations, especially those managed dynamically
@@ -248,45 +168,6 @@ updated_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
 
 CREATE INDEX IF NOT EXISTS idx_application_configurations_config_key ON application_configurations(config_key);
 
--- Insert subscription plans
-INSERT INTO subscription_plans (
-    id, name, description, 
-    base_price_weekly, base_price_monthly, base_price_yearly,
-    currency, stripe_price_id_weekly, stripe_price_id_monthly, stripe_price_id_yearly, plan_tier, features
-) VALUES 
-('free', 'Free', 'Perfect for trying out AI features', 
- 0.00, 0.00, 0.00, 'USD',
- NULL, NULL, NULL, 0,
- '{
-   "coreFeatures": ["Basic AI models", "Community support", "Usage analytics"],
-   "allowedModels": ["anthropic/claude-4-sonnet", "openai/gpt-4.1-mini"],
-   "supportLevel": "Community",
-   "apiAccess": false,
-   "analyticsLevel": "Basic"
- }'::jsonb),
- 
-('pro', 'Pro', 'For power users and small teams', 
- 5.00, 20.00, 200.00, 'USD',
- NULL, 'price_pro_monthly', 'price_pro_yearly', 1,
- '{
-   "coreFeatures": ["All AI models", "Priority support", "Advanced analytics", "API access"],
-   "allowedModels": ["all"],
-   "supportLevel": "Priority",
-   "apiAccess": true,
-   "analyticsLevel": "Advanced"
- }'::jsonb),
- 
-('enterprise', 'Enterprise', 'For organizations with high AI usage', 
- 25.00, 100.00, 1000.00, 'USD',
- NULL, 'price_enterprise_monthly', 'price_enterprise_yearly', 2,
- '{
-   "coreFeatures": ["All AI models", "Dedicated support", "Custom integrations", "Advanced analytics", "Team management", "SLA guarantee"],
-   "allowedModels": ["all"],
-   "supportLevel": "Dedicated",
-   "apiAccess": true,
-   "analyticsLevel": "Enterprise"
- }'::jsonb)
-ON CONFLICT (id) DO NOTHING;
 
 
 -- Default system prompts table for centralized prompt management
@@ -303,349 +184,22 @@ CREATE TABLE IF NOT EXISTS default_system_prompts (
 CREATE INDEX IF NOT EXISTS idx_default_system_prompts_task_type ON default_system_prompts(task_type);
 
 -- Insert all default system prompts - server as source of truth
-INSERT INTO default_system_prompts (id, task_type, system_prompt, description, version) VALUES
-('default_path_finder', 'path_finder', 'You are a code path finder. Your task is to identify the most relevant files for implementing or fixing a specific task in a codebase.
-
-{{DIRECTORY_TREE}}
-
-{{FILE_CONTENTS}}
-
-Return ONLY file paths and no other commentary, with one file path per line.
-
-For example:
-src/components/Button.tsx
-src/hooks/useAPI.ts
-src/styles/theme.css
-
-DO NOT include ANY text, explanations, or commentary. The response must consist ONLY of file paths, one per line.
-
-All returned file paths must be relative to the project root.
-
-Guidance on file selection:
-- Focus on truly relevant files - be selective and prioritize quality over quantity
-- Prioritize files that will need direct modification (typically 3-10 files)
-- Include both implementation files and test files when appropriate
-- Consider configuration files only if they are directly relevant to the task
-- If uncertain about exact paths, make educated guesses based on typical project structures
-- Order files by relevance, with most important files first
-
-To control inference cost, you **MUST** keep the resulting list as concise as possible **while still providing enough information** for the downstream model to succeed.
-
-• Start with the highest-impact files (entry points, shared data models, core logic).
-• Add further paths only when omitting them would risk an incorrect or incomplete implementation.
-• Each extra file increases context size and cost, so favor brevity while safeguarding completeness.
-
-Return the final list using the same formatting rules described above.', 'Enhanced system prompt for finding relevant files in a codebase', '2.0'),
-
-('default_text_improvement', 'text_improvement', 'Please improve the following text to make it clearer and grammatically correct while EXACTLY preserving its formatting style, including:
-- All line breaks
-- All indentation  
-- All bullet points and numbering
-- All blank lines
-- All special characters and symbols
-
-Do not change the formatting structure at all.
-
-IMPORTANT: Keep the original language of the text.
-
-Return only the improved text without any additional commentary or XML formatting.', 'Simple system prompt for text improvement with formatting preservation', '2.0'),
-
-
-
-('default_implementation_plan', 'implementation_plan', '<identity>
-You are a BOLD EXPERT software architect tasked with providing a detailed implementation plan based on codebase analysis.
-</identity>
-
-<role>
-1. Review the codebase to understand its architecture and data flow
-2. Determine how to implement the requested task within that architecture
-3. Consider the complete project structure when planning your implementation
-4. Produce a clear, step-by-step implementation plan with explicit file operations
-</role>
-
-<implementation_plan_requirements>
-- Specific files that need to be created, modified, moved, or deleted
-- Exact changes needed for each file (functions/components to add/modify/remove)
-- Any code sections or functionality that should be removed or replaced
-- Clear, logical ordering of steps
-- Rationale for each architectural decision made
-- Follow existing naming conventions and folder structure; improve them only when a clearly superior, consistent alternative exists
-- Prefer simple, maintainable solutions over complex ones
-- Identify and eliminate duplicate code
-- Critically evaluate the current architecture and boldly propose superior approaches when they provide clear benefits
-- Refactor large files into smaller, focused modules when appropriate
-- Look at the complete project structure to understand the codebase organization
-- Identify the appropriate locations for new files based on existing structure
-- Avoid adding unnecessary comments; include only comments that provide essential clarity
-- Do not introduce backward compatibility approaches; leverage fully modern, forward-looking features exclusively
-</implementation_plan_requirements>
-
-<bash_commands_guidelines>
-- Include commands only when they meaningfully aid implementation or understanding
-- Keep exploration commands highly targeted (exact patterns, limited context)
-- Prefer directory-specific searches over broad ones
-- Append `| cat` to interactive commands to avoid paging
-</bash_commands_guidelines>
-
-<response_format>
-Your response MUST strictly follow this XML template:
-
-<implementation_plan>
-  <agent_instructions>
-    Read the following plan CAREFULLY, COMPREHEND IT, and IMPLEMENT it COMPLETELY. THINK HARD!
-    DO NOT add unnecessary comments.
-    DO NOT introduce backward compatibility approaches; leverage fully modern, forward-looking features exclusively.
-  </agent_instructions>
-  <steps>
-    <step number="1">
-      <title>Descriptive title of step</title>
-      <description>Detailed explanation of what needs to be done</description>
-      <file_operations>
-        <operation type="create|modify|delete|move">
-          <path>Exact file path</path>
-          <changes>Description of exact changes needed</changes>
-        </operation>
-        <!-- Multiple operations can be listed -->
-      </file_operations>
-      <!-- Optional elements -->
-      <bash_commands>mkdir -p path/to/dir && mv old/file.js new/location.js</bash_commands>
-      <exploration_commands>grep -n "exactFunctionName" --include="*.js" src/specific-directory/ -A 2 -B 2</exploration_commands>
-    </step>
-    <!-- Additional steps as needed -->
-  </steps>
-</implementation_plan>
-
-Guidelines:
-- Be specific about file paths, component names, and function names
-- Prioritize maintainability; avoid overengineering
-- Critically assess the architecture and propose better alternatives when beneficial
-- DO NOT include actual code implementations
-- DO NOT mention git commands, version control, or tests
-- Output exactly ONE implementation plan.
-</response_format>
-
-{{PROJECT_CONTEXT}}
-
-{{FILE_CONTENTS}}
-
-{{DIRECTORY_TREE}}', 'BOLD EXPERT system prompt with clean prompt separation (no TASK section)', '4.1'),
-
-('default_path_correction', 'path_correction', 'You are a path correction assistant that validates and corrects file paths against the actual filesystem structure.
-
-{{DIRECTORY_TREE}}
-
-Your task is to:
-- Take provided file paths that may contain errors or be invalid
-- Validate them against the actual project directory structure
-- Correct any invalid paths to their most likely intended paths
-- Return ONLY the corrected, valid file paths
-- Focus purely on path correction, not finding additional files
-
-Return ONLY file paths, one per line, with no additional commentary.
-
-For example:
-src/components/Button.tsx
-src/hooks/useAPI.ts
-src/styles/theme.css
-
-DO NOT include ANY text, explanations, or commentary. The response must consist ONLY of corrected file paths, one per line.
-
-All returned file paths must be relative to the project root and must exist in the filesystem.', 'Enhanced system prompt for correcting file paths', '3.0'),
-
-('default_task_refinement', 'task_refinement', 'You are a senior software architect providing high-level technical guidance. Your role is not to create a detailed plan, but to analyze a codebase in relation to a task and offer strategic direction and insights.
-
-{{FILE_CONTENTS}}
-
-Based on the provided task description and relevant file context, your analysis should:
-
-1.  **Synthesize Findings:** Briefly summarize the most relevant architectural patterns, data flows, and key components from the provided code.
-2.  **Identify High-Impact Areas:** Point to the primary modules, services, or components that are central to the task.
-3.  **Suggest a Strategic Direction:** Propose a general, high-level approach. Focus on the "what" and "where," but avoid overly specific, step-by-step implementation details. The goal is to provide a compass, not a map.
-4.  **Maintain a Guiding Tone:** Frame your insights as observations and suggestions to help the developer think through the problem.
-
-Your output should be a concise technical brief in Markdown. Do not produce a refined, actionable task description. The tone should be advisory and strategic.
-
-Return only the technical brief, without any introductory or concluding remarks.', 'System prompt for generating high-level, strategic guidance for a task', '2.0'),
-
-('default_regex_file_filter', 'regex_file_filter', 'You are a dual-layer file filtering assistant that creates precise regular expressions for filtering files by BOTH their paths AND content.
-
-{{DIRECTORY_TREE}}
-
-Your task is to analyze the user''s task description and generate filtering patterns that work together:
-
-## **DUAL FILTERING STRATEGY:**
-1. **PATH PATTERNS**: Match file paths/names for rapid initial filtering
-2. **CONTENT PATTERNS**: Match file content for semantic precision
-3. **NEGATIVE PATTERNS**: Exclude irrelevant files from both layers
-
-## **PATTERN CATEGORIES:**
-
-### **Path Filtering (Fast Initial Filter)**
-- Target file names, extensions, directory structures
-- Keywords: "auth", "user", "service", "config", "component", etc.
-- Extensions: \.js$, \.ts$, \.go$, \.py$, \.rs$, etc.
-- Directories: /auth/, /components/, /services/, /utils/, etc.
-
-### **Content Filtering (Semantic Precision)**
-- Target code keywords, function names, class names, imports
-- API calls, database queries, specific algorithms
-- Comments and documentation keywords
-- Variable names and constants
-
-### **Negative Filtering (Exclusion)**
-- Exclude tests, specs, mocks, generated files
-- Skip deprecated, TODO, or incomplete code
-- Avoid unrelated functionality
-
-## **PRECISION GUIDELINES:**
-**GOOD Path**: `auth.*\.(js|ts)$` (targets auth files)
-**GOOD Content**: `(login|signin|authenticate|JWT|token)` (targets auth functionality)
-**BAD Path**: `.*\.js$` (too broad - all JS files)
-**BAD Content**: `function` (too broad - all functions)
-
-## **EXAMPLES BY TASK TYPE:**
-
-**"User authentication system":**
-- Path: `(auth|login|signin|user).*\.(js|ts|go|py)$`
-- Content: `(authenticate|login|signin|JWT|token|password|session)`
-- Negative Content: `(test|mock|deprecated|TODO)`
-
-**"React form components":**
-- Path: `.*/(forms?|components?)/.*\.(tsx?|jsx?)$`
-- Content: `(useState|useForm|onSubmit|validation|input|field)`
-- Negative Path: `(test|spec|story|mock)`
-
-**"Database migrations":**
-- Path: `.*migration.*\.(sql|js|ts)$`
-- Content: `(CREATE TABLE|ALTER TABLE|DROP|INSERT|UPDATE)`
-- Negative Content: `(rollback|down|undo)`
-
-CRITICAL: Your entire response must be ONLY the raw JSON object. Do NOT include any surrounding text, explanations, or markdown code fences. The response must start with ''{'' and end with ''}''.
-
-Required output format:
-{
-  "pathPattern": "single regex for file paths/names (required)",
-  "contentPattern": "single regex for file content (optional but recommended)",
-  "negativePathPattern": "single regex to exclude paths (optional)",
-  "negativeContentPattern": "single regex to exclude content (optional)"
-}
-
-Generate patterns that work together to precisely identify files containing the requested functionality while excluding irrelevant matches.', 'Enhanced dual-layer filtering system prompt for path and content regex patterns', '4.0'),
-
-
-('default_generic_llm_stream', 'generic_llm_stream', 'You are a helpful AI assistant that provides responses based on user requests.
-
-## Project Context:
-{{PROJECT_CONTEXT}}
-
-## Additional Instructions:
-{{CUSTOM_INSTRUCTIONS}}
-
-Your role is to:
-- Understand and respond to the user''s request
-- Provide helpful, accurate, and relevant information
-- Consider any provided context or instructions
-- Give clear and actionable responses
-- Be concise yet comprehensive in your answers
-
-Respond directly to the user''s request with helpful and accurate information.', 'Enhanced system prompt for generic LLM streaming tasks', '2.0'),
-
-('default_local_file_filtering', 'local_file_filtering', 'You are a local file filtering assistant that identifies and filters relevant files based on specified criteria.
-
-{{FILE_CONTENTS}}
-
-{{DIRECTORY_TREE}}
-
-Your role is to:
-- Analyze file paths and contents to determine relevance
-- Apply filtering criteria to include/exclude files appropriately  
-- Focus on files that are directly related to the task requirements
-- Consider file types, naming patterns, and content relevance
-- Provide a focused list of files that will be most useful
-
-Filter files effectively to reduce noise and focus on task-relevant content.', 'System prompt for local file filtering workflow stage', '1.0'),
-
-('default_extended_path_finder', 'extended_path_finder', 'You are an enhanced path finder that identifies comprehensive file paths for complex implementation tasks.
-
-{{DIRECTORY_TREE}}
-
-{{FILE_CONTENTS}}
-
-Your role is to:
-- Identify a broader set of relevant files for complex tasks
-- Consider dependencies, imports, and interconnected components
-- Include supporting files like utilities, types, and configurations
-- Balance thoroughness with relevance to avoid information overload
-- Provide file paths ordered by implementation priority
-
-Return ONLY file paths, one per line, with no additional commentary.', 'System prompt for extended path finder workflow stage', '1.0'),
-
-
-('default_file_relevance_assessment', 'file_relevance_assessment', 'You are an AI assistant helping to refine a list of files for a software development task.
-Given the task description and the content of several potentially relevant files, identify which of these files are *actually* relevant and necessary for completing the task.
-Return ONLY the file paths of the relevant files, one path per line. Do not include any other text, explanations, or commentary.
-Be very selective. Prioritize files that will require direct modification or are core to understanding the task.
-
-{{FILE_CONTENTS}}
-
-Respond ONLY with the list of relevant file paths from the provided list, one per line. If no files are relevant, return an empty response.', 'System prompt for AI-powered file relevance assessment', '1.0'),
-
-('default_voice_transcription', 'voice_transcription', '', 'Complete XML-structured system prompt with all instructions for voice transcription', '1.0')
-
-ON CONFLICT (id) DO UPDATE SET
-  task_type = EXCLUDED.task_type,
-  system_prompt = EXCLUDED.system_prompt,
-  description = EXCLUDED.description,
-  version = EXCLUDED.version,
-  updated_at = NOW();
-
--- Store consolidated AI configurations as single JSONB object
-INSERT INTO application_configurations (config_key, config_value, description)
-VALUES 
-('ai_settings', '{
-  "default_llm_model_id": "google/gemini-2.5-pro",
-  "default_voice_model_id": "anthropic/claude-sonnet-4-20250514", 
-  "default_transcription_model_id": "openai/gpt-4o-transcribe",
-  "default_temperature": 0.7,
-  "default_max_tokens": 4096,
-  "task_specific_configs": {
-    "implementation_plan": {"model": "google/gemini-2.5-pro", "max_tokens": 65536, "temperature": 0.7, "copyButtons": [{"label": "Parallel Claude Coding Agents", "content": "{{IMPLEMENTATION_PLAN}}\nNOW, think deeply! Read the files mentioned, understand them and launch parallel Claude coding agents that run AT THE SAME TIME TO SAVE TIME and implement EVERY SINGLE aspect of the perfect plan precisely and systematically, and instruct the agents EXACTLY about what they are supposed to do in great detail. Think even more deeply to give REALLY clear instructions for the agents! Instruct each of the agents NOT to run any git, cargo, or TypeScript check commands. I do not need deprecated comments or annotations; the deprecated or fallback features must be COMPLETELY REMOVED!"}, {"label": "Investigate Results", "content": "Investigate the results of the work of each of the agents, and be sure that we've implemented the plan CORRECTLY!"}]},
-    "text_improvement": {"model": "anthropic/claude-sonnet-4-20250514", "max_tokens": 4096, "temperature": 0.7, "copyButtons": [{"label": "Copy Improved Text", "content": "{{FULL_RESPONSE}}"}, {"label": "Copy Changes Only", "content": "{{CHANGES_SUMMARY}}"}]},
-    "voice_transcription": {"model": "openai/gpt-4o-transcribe", "max_tokens": 4096, "temperature": 0.0, "copyButtons": [{"label": "Copy Transcription", "content": "{{FULL_RESPONSE}}"}, {"label": "Copy Plain Text", "content": "{{TEXT_ONLY}}"}]},
-    "path_correction": {"model": "google/gemini-2.5-flash", "max_tokens": 4096, "temperature": 0.3, "copyButtons": [{"label": "Copy Corrected Paths", "content": "{{FULL_RESPONSE}}"}, {"label": "Copy Path List", "content": "{{PATH_LIST}}"}]},
-    "regex_file_filter": {"model": "anthropic/claude-sonnet-4-20250514", "max_tokens": 1000, "temperature": 0.2, "copyButtons": [{"label": "Copy Regex Pattern", "content": "{{REGEX_PATTERN}}"}, {"label": "Copy Full Response", "content": "{{FULL_RESPONSE}}"}]},
-    "task_refinement": {"model": "google/gemini-2.5-flash", "max_tokens": 16384, "temperature": 0.3},
-    "extended_path_finder": {"model": "google/gemini-2.5-flash", "max_tokens": 8192, "temperature": 0.3, "copyButtons": [{"label": "Copy Results", "content": "{{FULL_RESPONSE}}"}, {"label": "Copy Paths", "content": "{{PATH_RESULTS}}"}]},
-    "file_relevance_assessment": {"model": "google/gemini-2.5-flash", "max_tokens": 24000, "temperature": 0.15, "copyButtons": [{"label": "Copy Assessment", "content": "{{FULL_RESPONSE}}"}, {"label": "Copy Relevant Files", "content": "{{RELEVANT_FILES}}"}]},
-    "file_finder_workflow": {"model": "google/gemini-2.5-flash", "max_tokens": 2048, "temperature": 0.3, "copyButtons": [{"label": "Copy Results", "content": "{{FULL_RESPONSE}}"}, {"label": "Copy File List", "content": "{{FILE_LIST}}"}]},
-    "generic_llm_stream": {"model": "google/gemini-2.5-pro", "max_tokens": 16384, "temperature": 0.7, "copyButtons": [{"label": "Copy Response", "content": "{{FULL_RESPONSE}}"}, {"label": "Copy Summary", "content": "{{RESPONSE_SUMMARY}}"}]},
-    "streaming": {"model": "google/gemini-2.5-pro", "max_tokens": 16384, "temperature": 0.7, "copyButtons": [{"label": "Copy Stream Output", "content": "{{FULL_RESPONSE}}"}, {"label": "Copy Final Result", "content": "{{FINAL_RESULT}}"}]},
-    "unknown": {"model": "google/gemini-2.5-pro", "max_tokens": 4096, "temperature": 0.7, "copyButtons": [{"label": "Copy Response", "content": "{{FULL_RESPONSE}}"}, {"label": "Copy Text Only", "content": "{{TEXT_CONTENT}}"}]}
-  },
-  "path_finder_settings": {
-    "max_files_with_content": 10,
-    "include_file_contents": true,
-    "max_content_size_per_file": 5000,
-    "max_file_count": 50,
-    "file_content_truncation_chars": 2000,
-    "token_limit_buffer": 1000
-  }
-}'::jsonb, 'Consolidated AI settings including default models, temperature, tokens, task-specific configs, and path finder settings')
-ON CONFLICT (config_key) DO UPDATE SET
-  config_value = EXCLUDED.config_value,
-  description = EXCLUDED.description,
-  updated_at = CURRENT_TIMESTAMP;
+-- Load system prompts data from separate file
+\i data_system_prompts.sql
+
+-- Load application configurations from separate file
+\i data_app_configs.sql
 
 
 -- Enhanced billing tables for 100% implementation
 
--- Audit logs table for tracking subscription management operations
+-- Audit logs table for tracking billing and credit management operations
 CREATE TABLE IF NOT EXISTS audit_logs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    action_type VARCHAR(100) NOT NULL, -- 'subscription_created', 'plan_changed', 'subscription_canceled', etc.
-    entity_type VARCHAR(50) NOT NULL, -- 'subscription', 'payment_method', 'invoice', etc.
-    entity_id VARCHAR(255), -- ID of the entity being acted upon (subscription ID, payment method ID, etc.)
+    action_type VARCHAR(100) NOT NULL, -- 'credit_purchase', 'auto_topoff_enabled', 'payment_method_added', etc.
+    entity_type VARCHAR(50) NOT NULL, -- 'customer_billing', 'payment_method', 'invoice', 'credit_transaction', etc.
+    entity_id VARCHAR(255), -- ID of the entity being acted upon (customer billing ID, payment method ID, etc.)
     old_values JSONB, -- Previous state before the action
     new_values JSONB, -- New state after the action
     metadata JSONB, -- Additional context like Stripe IDs, reason for change, etc.
@@ -674,7 +228,6 @@ CREATE TABLE IF NOT EXISTS invoices (
     id VARCHAR(255) PRIMARY KEY, -- Stripe invoice ID
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     stripe_customer_id VARCHAR(255) NOT NULL,
-    stripe_subscription_id VARCHAR(255),
     amount_due DECIMAL(12, 4) NOT NULL,
     status VARCHAR(50) NOT NULL, -- draft, open, paid, void, uncollectible
     invoice_pdf_url TEXT,
@@ -793,39 +346,39 @@ WITH CHECK (user_id = get_current_user_id());
 -- Index idx_refresh_tokens_user_id already exists.
 
 
--- RLS for subscriptions table
-ALTER TABLE subscriptions ENABLE ROW LEVEL SECURITY;
+-- RLS for customer_billing table
+ALTER TABLE customer_billing ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Users can select their own subscription"
-ON subscriptions FOR SELECT
+CREATE POLICY "Users can select their own customer billing"
+ON customer_billing FOR SELECT
 TO authenticated
 USING (user_id = get_current_user_id());
 
-CREATE POLICY "Users can insert their own subscription"
-ON subscriptions FOR INSERT
+CREATE POLICY "Users can insert their own customer billing"
+ON customer_billing FOR INSERT
 TO authenticated
 WITH CHECK (user_id = get_current_user_id());
 
-CREATE POLICY "Users can update their own subscription"
-ON subscriptions FOR UPDATE
+CREATE POLICY "Users can update their own customer billing"
+ON customer_billing FOR UPDATE
 TO authenticated
 USING (user_id = get_current_user_id())
 WITH CHECK (user_id = get_current_user_id());
 
 -- App service policies for system operations
-CREATE POLICY "App can select all subscriptions"
-ON subscriptions FOR SELECT
+CREATE POLICY "App can select all customer billing"
+ON customer_billing FOR SELECT
 TO vibe_manager_app
 USING (true);
 
-CREATE POLICY "App can update subscriptions"
-ON subscriptions FOR UPDATE
+CREATE POLICY "App can update customer billing"
+ON customer_billing FOR UPDATE
 TO vibe_manager_app
 USING (true)
 WITH CHECK (true);
 
 -- DELETE typically handled by backend/service roles.
--- Index idx_subscriptions_user_id already exists.
+-- Index idx_customer_billing_user_id already exists.
 
 -- RLS for api_usage table
 ALTER TABLE api_usage ENABLE ROW LEVEL SECURITY;
@@ -842,17 +395,6 @@ WITH CHECK (user_id = get_current_user_id());
 
 -- UPDATE, DELETE typically handled by backend/service roles.
 -- Index idx_api_usage_user_id_timestamp already exists.
-
--- RLS for subscription_plans table
-ALTER TABLE subscription_plans ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "App users can select subscription plans"
-ON subscription_plans FOR SELECT
-TO vibe_manager_app, authenticated
-USING (true);
-
--- Could also be TO anon, authenticated if plans are shown to non-logged-in users.
--- INSERT, UPDATE, DELETE typically handled by backend/service roles.
 
 
 
@@ -966,7 +508,6 @@ USING (true); -- System-level table managed by application for auditing purposes
 GRANT SELECT ON providers TO vibe_manager_app;
 GRANT SELECT ON models TO vibe_manager_app; 
 GRANT SELECT ON application_configurations TO vibe_manager_app;
-GRANT SELECT ON subscription_plans TO vibe_manager_app;
 GRANT SELECT ON default_system_prompts TO vibe_manager_app;
 
 -- Grant permissions needed for authentication flow
@@ -978,6 +519,10 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON refresh_tokens TO vibe_manager_app;
 GRANT SELECT, INSERT, UPDATE ON user_credits TO vibe_manager_app;
 GRANT SELECT, INSERT ON credit_transactions TO vibe_manager_app;
 
+-- Grant permissions needed for system operations
+GRANT SELECT, INSERT, UPDATE ON webhook_idempotency TO vibe_manager_app;
+GRANT SELECT, INSERT, UPDATE ON audit_logs TO vibe_manager_app;
+
 
 -- User credits balance tracking
 CREATE TABLE IF NOT EXISTS user_credits (
@@ -986,8 +531,7 @@ CREATE TABLE IF NOT EXISTS user_credits (
     currency VARCHAR(3) NOT NULL DEFAULT 'USD',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT fk_user_credits_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    CONSTRAINT check_balance_non_negative CHECK (balance >= 0)
+    CONSTRAINT fk_user_credits_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 -- Credit transaction history for audit trail
@@ -1142,16 +686,28 @@ USING (true); -- App service can read/write all webhook records
 -- Grant necessary table permissions to authenticated role for user operations
 GRANT SELECT, INSERT, UPDATE ON users TO authenticated;
 GRANT SELECT, INSERT, UPDATE ON api_usage TO authenticated;
-GRANT SELECT, INSERT, UPDATE ON subscriptions TO authenticated;
-GRANT SELECT, UPDATE ON subscription_plans TO authenticated;
+GRANT SELECT, INSERT, UPDATE ON customer_billing TO authenticated;
 GRANT SELECT, INSERT, UPDATE ON invoices TO authenticated;
 GRANT SELECT, INSERT, UPDATE ON payment_methods TO authenticated;
 GRANT SELECT, INSERT, UPDATE ON api_quotas TO authenticated;
 GRANT SELECT, INSERT, UPDATE ON user_credits TO authenticated;
 GRANT SELECT, INSERT ON credit_transactions TO authenticated;
 GRANT SELECT ON audit_logs TO authenticated;
-GRANT SELECT, INSERT, UPDATE ON webhook_idempotency TO vibe_manager_app;
-GRANT SELECT, INSERT, UPDATE ON audit_logs TO vibe_manager_app;
 
 -- User billing details table for invoice customization
+CREATE TABLE IF NOT EXISTS user_billing_details (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    business_name VARCHAR(255),
+    tax_id VARCHAR(100),
+    address_line1 VARCHAR(255),
+    address_line2 VARCHAR(255),
+    city VARCHAR(100),
+    state VARCHAR(100),
+    postal_code VARCHAR(20),
+    country VARCHAR(2) DEFAULT 'US',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT fk_user_billing_details_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
 

@@ -32,19 +32,38 @@ pub(super) async fn handle_stage_completion_internal(
     };
 
     // Extract and store stage data from the completed job
-    // This now includes graceful fallbacks for missing data within the extraction methods
+    // If data extraction fails, try to complete workflow anyway if possible
     if let Err(e) = data_extraction::extract_and_store_stage_data_internal(
         &orchestrator.app_handle,
         job_id,
         &workflow_state_for_dependency_check,
         store_stage_data_fn
     ).await {
-        warn!("Failed to extract stage data from completed job {}: {} - workflow will continue but may have partial data", job_id, e);
-        // Log but continue workflow execution - missing data is handled gracefully by subsequent stages
-        // The StageDataExtractor methods now return Ok with empty values instead of Err for recoverable scenarios
-    } else {
-        debug!("Successfully extracted and stored stage data from job {}", job_id);
+        warn!("Stage data extraction failed for job {}: {} - checking if workflow can complete anyway", job_id, e);
+        
+        // Re-fetch workflow state and check if workflow can complete despite extraction failure
+        let current_workflow_state = {
+            let workflows_guard = workflows.lock().await;
+            workflows_guard.get(workflow_id)
+                .ok_or_else(|| AppError::JobError(format!("Workflow not found: {}", workflow_id)))?
+                .clone()
+        };
+        
+        // Check if workflow is complete even without the extracted data
+        if super::workflow_utils::is_workflow_complete(&current_workflow_state, &workflow_definition) {
+            info!("Workflow {} can complete despite data extraction failure - marking as completed", workflow_id);
+            orchestrator.mark_workflow_completed(workflow_id).await?;
+            return Ok(());
+        } else {
+            // Data extraction failure is critical for workflow progression
+            return Err(AppError::JobError(format!("Stage data extraction failed for stage {}: {}", job_id, e)));
+        }
     }
+    
+    debug!("Successfully extracted and stored stage data from job {}", job_id);
+
+    // Log current workflow state for debugging
+    debug!("Checking workflow completion for workflow {} after stage completion", workflow_id);
 
     // Re-fetch workflow state after data extraction to get updated intermediate_data
     let workflow_state_for_payload_building = {
@@ -93,11 +112,20 @@ pub(super) async fn handle_stage_completion_internal(
                 orchestrator.mark_workflow_failed(workflow_id, "Workflow stopped due to stage failure").await?;
                 info!("Workflow {} stopped due to failure", workflow_id);
             }
-        } else if super::workflow_utils::is_workflow_complete(&workflow_state_for_payload_building, &workflow_definition) {
-            orchestrator.mark_workflow_completed(workflow_id).await?;
-            info!("Workflow {} completed successfully", workflow_id);
         } else {
-            debug!("No stages ready to execute for workflow: {}", workflow_id);
+            // Check if workflow is complete
+            let is_complete = super::workflow_utils::is_workflow_complete(&workflow_state_for_payload_building, &workflow_definition);
+            debug!("Workflow {} completion check: {}", workflow_id, is_complete);
+            
+            if is_complete {
+                orchestrator.mark_workflow_completed(workflow_id).await?;
+                info!("Workflow {} completed successfully", workflow_id);
+            } else {
+                debug!("Workflow {} not complete - checking individual stage status", workflow_id);
+                for stage_job in &workflow_state_for_payload_building.stage_jobs {
+                    debug!("Stage {:?} ({}): status={:?}", stage_job.task_type, stage_job.job_id, stage_job.status);
+                }
+            }
         }
     } else {
         // Check concurrency limits before starting new stages

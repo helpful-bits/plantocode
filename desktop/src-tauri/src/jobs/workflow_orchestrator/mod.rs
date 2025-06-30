@@ -829,8 +829,8 @@ impl WorkflowOrchestrator {
         payload_builder::create_abstract_stage_payload(&self.app_handle, workflow_state, stage_definition, workflow_definition).await
     }
 
-    /// Retry a specific workflow stage
-    pub async fn retry_workflow_stage(
+    /// Retry a specific workflow stage (internal method with WorkflowStage enum)
+    pub async fn retry_workflow_stage_internal(
         &self,
         workflow_id: &str,
         stage_to_retry: WorkflowStage,
@@ -878,6 +878,48 @@ impl WorkflowOrchestrator {
         };
 
         retry_handler::reset_subsequent_stages_internal(&self.workflows, workflow_state, retry_stage, &workflow_definition).await
+    }
+
+    /// Retry a workflow stage by finding it from the original failed job ID
+    pub async fn retry_workflow_stage(&self, workflow_id: &str, original_failed_job_id: &str) -> AppResult<String> {
+        // Find the workflow state
+        let workflow_state = {
+            let workflows = self.workflows.lock().await;
+            workflows.get(workflow_id).cloned()
+        };
+
+        let workflow_state = match workflow_state {
+            Some(state) => state,
+            None => return Err(AppError::JobError(format!("Workflow not found: {}", workflow_id))),
+        };
+
+        // Find the stage job by the original failed job ID
+        let stage_job = workflow_state.stage_jobs.iter()
+            .find(|job| job.job_id == original_failed_job_id);
+
+        let stage_job = match stage_job {
+            Some(job) => job,
+            None => return Err(AppError::JobError(format!("Job not found in workflow: {}", original_failed_job_id))),
+        };
+
+        // Convert the stage name to WorkflowStage
+        let workflow_stage = match stage_job.stage_name.as_str() {
+            "RegexFileFilter" | "Regex File Filter" => WorkflowStage::RegexFileFilter,
+            "FileRelevanceAssessment" | "File Relevance Assessment" => WorkflowStage::FileRelevanceAssessment,
+            "ExtendedPathFinder" | "Extended Path Finder" => WorkflowStage::ExtendedPathFinder,
+            "PathCorrection" | "Path Correction" => WorkflowStage::PathCorrection,
+            _ => return Err(AppError::JobError(format!("Unknown stage name: {}", stage_job.stage_name))),
+        };
+
+        // Call the internal retry handler
+        retry_handler::retry_workflow_stage_internal(
+            &self.workflows,
+            &self.workflow_definitions,
+            &self.app_handle,
+            workflow_id,
+            workflow_stage,
+            original_failed_job_id,
+        ).await
     }
 
 }

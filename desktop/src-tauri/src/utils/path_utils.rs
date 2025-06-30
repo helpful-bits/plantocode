@@ -1,8 +1,6 @@
 use std::path::{Path, PathBuf};
-use std::collections::HashSet;
 use std::fs;
-use log::{debug, info};
-use dirs::config_dir;
+use log::{info, warn};
 use chrono::Local;
 use uuid::Uuid;
 use tauri::Manager;
@@ -12,115 +10,36 @@ use crate::utils::{fs_utils, git_utils};
 
 /// Normalize a path (sync version)
 /// 
-/// This function attempts to canonicalize the path to resolve symlinks and
-/// get the absolute path. If canonicalization fails (e.g., path doesn't exist),
-/// it performs basic path normalization using clean() equivalent logic.
-pub fn normalize_path(path: impl AsRef<Path>) -> PathBuf {
+/// This function canonicalizes the path to resolve symlinks and get the absolute path.
+/// If canonicalization fails, returns an error instead of falling back to unsafe normalization.
+pub fn normalize_path(path: impl AsRef<Path>) -> AppResult<PathBuf> {
     let path = path.as_ref();
     
-    // First try to canonicalize if the path exists
-    if let Ok(absolute) = fs::canonicalize(path) {
-        return absolute;
-    }
-    
-    // If canonicalization fails, perform basic normalization
-    // This is similar to path.Clean() in Go or path.resolve() in Node.js
-    let mut components = Vec::new();
-    let mut has_leading_parent_dirs = 0usize; // Track leading .. components
-    
-    for component in path.components() {
-        match component {
-            std::path::Component::Prefix(_) => {
-                components.push(component);
-                has_leading_parent_dirs = 0; // Reset counter after prefix
-            },
-            std::path::Component::RootDir => {
-                components.push(component);
-                has_leading_parent_dirs = 0; // Reset counter after root
-            },
-            std::path::Component::CurDir => {
-                // Skip "." components unless it's the only component
-                if components.is_empty() {
-                    components.push(component);
-                }
-            },
-            std::path::Component::ParentDir => {
-                // Handle ".." by popping the last normal component
-                if let Some(last) = components.last() {
-                    match last {
-                        std::path::Component::Normal(_) => {
-                            components.pop();
-                        },
-                        std::path::Component::ParentDir => {
-                            // Multiple consecutive .. components
-                            components.push(component);
-                            has_leading_parent_dirs += 1;
-                        },
-                        _ => components.push(component),
-                    }
-                } else {
-                    // Track leading parent directory references
-                    components.push(component);
-                    has_leading_parent_dirs += 1;
-                }
-                
-                // Security check: prevent excessive parent directory traversal
-                // This helps catch potential path traversal attacks
-                if has_leading_parent_dirs > 5 {
-                    debug!("Excessive parent directory traversal detected in path: {}", path.display());
-                    // Return a safe fallback instead of the potentially malicious path
-                    return PathBuf::from(".");
-                }
-            },
-            std::path::Component::Normal(_) => {
-                components.push(component);
-                has_leading_parent_dirs = 0; // Reset counter after normal component
-            },
-        }
-    }
-    
-    // Additional security check: if the path starts with many .. components relative to a root,
-    // this could be an attempt to escape a sandbox
-    if !path.is_absolute() && has_leading_parent_dirs > 0 {
-        let normal_components = components.iter()
-            .filter(|c| matches!(c, std::path::Component::Normal(_)))
-            .count();
-        
-        // If we have more parent dir references than normal components, this is suspicious
-        if has_leading_parent_dirs > normal_components && has_leading_parent_dirs > 2 {
-            debug!("Suspicious path pattern detected: {} parent dirs vs {} normal components in {}", 
-                   has_leading_parent_dirs, normal_components, path.display());
-            return PathBuf::from(".");
-        }
-    }
-    
-    // Rebuild the path from components
-    let mut normalized = PathBuf::new();
-    for component in components {
-        normalized.push(component);
-    }
-    
-    // If the path is empty after normalization, return current directory
-    if normalized.as_os_str().is_empty() {
-        normalized.push(".");
-    }
-    
-    normalized
+    // Canonicalize the path - fail fast if this doesn't work
+    fs::canonicalize(path).map_err(|e| {
+        AppError::FileSystemError(format!(
+            "Failed to canonicalize path {}: {}", 
+            path.display(), 
+            e
+        ))
+    })
 }
 
 /// Normalize a path (async version)
+/// 
+/// This function canonicalizes the path asynchronously.
+/// If canonicalization fails, returns an error instead of falling back.
 pub async fn normalize_path_async(path: impl AsRef<Path>) -> AppResult<PathBuf> {
     let path = path.as_ref();
     
-    // Convert to absolute path if possible
-    match tokio::fs::canonicalize(path).await {
-        Ok(absolute) => Ok(absolute),
-        Err(e) => {
-            debug!("Failed to canonicalize path {}: {}", path.display(), e);
-            // If canonicalization fails, just return the path as is
-            Ok(path.to_path_buf())
-        }
-    }
+    // Canonicalize the path - fail fast if this doesn't work
+    tokio::fs::canonicalize(path).await.map_err(|e| {
+        AppError::FileSystemError(format!(
+            "Failed to canonicalize path {}: {}", 
+            path.display(), 
+            e
+        ))
+    })
 }
 
 /// Check if a path is absolute
@@ -150,18 +69,15 @@ pub fn join_paths(base: impl AsRef<Path>, path: impl AsRef<Path>) -> PathBuf {
 
 /// Make a path relative to a base path
 /// 
-/// This function handles various edge cases:
-/// - Normalizes both paths before comparison
-/// - Handles case-insensitive filesystems by using normalized paths
-/// - Provides clear error messages when paths are not descendants
-/// - Accounts for different casing on case-insensitive filesystems
+/// This function normalizes both paths and makes one relative to the other.
+/// No graceful fallbacks - either it works or it fails.
 pub fn make_relative_to(path: impl AsRef<Path>, base: impl AsRef<Path>) -> AppResult<PathBuf> {
     let path = path.as_ref();
     let base = base.as_ref();
     
     // Normalize paths to handle case sensitivity and resolve symlinks
-    let path_norm = normalize_path(path);
-    let base_norm = normalize_path(base);
+    let path_norm = normalize_path(path)?;
+    let base_norm = normalize_path(base)?;
     
     // Handle exact match case
     if path_norm == base_norm {
@@ -467,7 +383,7 @@ async fn ensure_unique_filepath(base_dir: &Path, base_filename: &str, extension:
         
         // If we still have a conflict after 10 tries, append the full timestamp
         if fs_utils::path_exists(&output_path).await? {
-            let full_timestamp = Local::now().timestamp_nanos();
+            let full_timestamp = Local::now().timestamp_nanos_opt().unwrap_or(0);
             let filename_with_timestamp = format!("{}_{}.{}", base_filename, full_timestamp, extension);
             output_path = base_dir.join(filename_with_timestamp);
         }
@@ -555,7 +471,7 @@ pub fn validate_llm_path(llm_path: &str, project_dir: &Path) -> AppResult<PathBu
     
     // Convert to PathBuf and normalize
     let path = Path::new(&cleaned_path);
-    let normalized_path = normalize_path(path);
+    let normalized_path = normalize_path(path)?;
     
     // Ensure the path is within the project directory
     crate::utils::fs_utils::ensure_path_within_project(project_dir, &normalized_path)?;
@@ -583,41 +499,8 @@ pub fn validate_llm_paths(llm_paths: &[String], project_dir: &Path) -> AppResult
     Ok(validated_paths)
 }
 
-/// Discover files in a directory, respecting git ignore patterns if it's a git repository
-pub fn discover_files(project_directory: &str, excluded_paths: &[String]) -> AppResult<Vec<String>> {
-    let project_path = Path::new(project_directory);
-    
-    // Check if this is a git repository
-    if git_utils::is_git_repository(project_path) {
-        // Use git to get all non-ignored files
-        match git_utils::get_all_non_ignored_files(project_path) {
-            Ok((files, _is_git_repo)) => {
-                let mut discovered_files = Vec::new();
-                
-                for file_path in files {
-                    // Keep paths relative to project root
-                    let file_path_string = file_path.to_string_lossy().to_string();
-                    
-                    // Check if file should be excluded based on excluded_paths patterns
-                    let should_exclude = excluded_paths.iter().any(|pattern| {
-                        matches_pattern(&file_path_string, pattern)
-                    });
-                    
-                    if !should_exclude {
-                        discovered_files.push(file_path_string);
-                    }
-                }
-                
-                Ok(discovered_files)
-            }
-            Err(e) => Err(e),
-        }
-    } else {
-        Err(AppError::FileSystemError(
-            "Directory is not a git repository. Only git repositories are supported for file discovery.".to_string()
-        ))
-    }
-}
+
+
 
 /// Creates a unique file path for an output file, similar to TypeScript's createUniqueFilePath
 /// 

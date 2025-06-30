@@ -141,30 +141,28 @@ impl UnifiedPromptProcessor {
         // Get project hash from directory
         let project_hash = generate_project_hash(project_directory);
         
-        // Check for custom project system prompt
-        if let Ok(Some(custom_prompt)) = settings_repo.get_project_system_prompt(&project_hash, task_type).await {
-            return Ok((custom_prompt.system_prompt.clone(), custom_prompt.system_prompt, "custom".to_string()));
-        }
-        
-        // Second: Fall back to server default system prompt
-        let server_client = app_handle.state::<Arc<ServerProxyClient>>().inner().clone();
-        if let Some(default_prompt) = server_client.get_default_system_prompt(task_type).await? {
-            // Try both field name formats (server might use either)
-            let prompt_str = default_prompt.get("system_prompt")
-                .or_else(|| default_prompt.get("systemPrompt"))
-                .and_then(|p| p.as_str());
-            
-            if let Some(prompt_str) = prompt_str {
-                // Store original template BEFORE any placeholder replacement
-                let original_template = prompt_str.to_string();
-                // At this stage, resolved_prompt is same as original - placeholder replacement happens in process_template
-                let resolved_prompt = prompt_str.to_string();
-                return Ok((resolved_prompt, original_template, "default".to_string()));
+        let (resolved_prompt, original_template, prompt_id) = 
+            // Check for custom project system prompt
+            if let Ok(Some(custom_prompt)) = settings_repo.get_project_system_prompt(&project_hash, task_type).await {
+                (custom_prompt.system_prompt.clone(), custom_prompt.system_prompt, "custom".to_string())
             }
-        }
+            // Fall back to server default system prompt
+            else if let Some(default_prompt) = app_handle.state::<Arc<ServerProxyClient>>().inner().clone()
+                .get_default_system_prompt(task_type).await? {
+                // Use the system_prompt field directly from the struct
+                let prompt_str = &default_prompt.system_prompt;
+                
+                // Store original template BEFORE any placeholder replacement
+                let original_template = prompt_str.clone();
+                // At this stage, resolved_prompt is same as original - placeholder replacement happens in process_template
+                (prompt_str.clone(), original_template, "default".to_string())
+            }
+            // Ultimate fallback: empty system prompt
+            else {
+                ("".to_string(), "".to_string(), "fallback".to_string())
+            };
 
-        // Ultimate fallback: empty system prompt
-        Ok(("".to_string(), "".to_string(), "fallback".to_string()))
+        Ok((resolved_prompt, original_template, prompt_id))
     }
 
     /// Main composition method that combines database templates with context
@@ -305,8 +303,10 @@ impl UnifiedPromptProcessor {
         
         let task_type_str = context.task_type.to_string();
         substitutions.insert("{{TASK_TYPE}}", &task_type_str);
-        substitutions.insert("{{TASK_DESCRIPTION}}", &context.task_description);
-        substitutions.insert("{{PROJECT_DIRECTORY}}", &context.project_directory);
+        
+        if !context.project_directory.trim().is_empty() {
+            substitutions.insert("{{PROJECT_DIRECTORY}}", &context.project_directory);
+        }
         
         if let Some(ref language) = context.language {
             substitutions.insert("{{LANGUAGE}}", language.as_str());
@@ -327,7 +327,7 @@ impl UnifiedPromptProcessor {
         }
         
         // Clean up any remaining {{LANGUAGE}} placeholders if no language was provided
-        result = result.replace("{{LANGUAGE}}", "English");
+        result = result.replace("{{LANGUAGE}}", "");
         
         Ok(result)
     }
@@ -476,21 +476,6 @@ pub fn substitute_placeholders(template: &str, placeholders: &PromptPlaceholders
         result = result.replace(placeholder, value);
     }
     
-    // Add default substitutions for common empty placeholders
-    result = result.replace("{{PROJECT_CONTEXT}}", "");
-    result = result.replace("{{project_context}}", "");
-    result = result.replace("{{CUSTOM_INSTRUCTIONS}}", "");
-    result = result.replace("{{custom_instructions}}", "");
-    result = result.replace("{{FILE_CONTENTS}}", "");
-    result = result.replace("{{file_contents}}", "");
-    result = result.replace("{{DIRECTORY_TREE}}", "");
-    result = result.replace("{{directory_tree}}", "");
-    result = result.replace("{{MODEL_NAME}}", "");
-    result = result.replace("{{model_name}}", "");
-    result = result.replace("{{SESSION_NAME}}", "");
-    result = result.replace("{{session_name}}", "");
-    result = result.replace("{{TASK_TYPE}}", "");
-    result = result.replace("{{task_type}}", "");
     
     // Clean up excessive blank lines
     result = clean_excessive_whitespace(&result);

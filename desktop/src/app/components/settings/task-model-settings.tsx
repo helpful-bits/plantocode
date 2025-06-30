@@ -144,11 +144,17 @@ export default function TaskModelSettings({
       return false;
     }
     
+    // Only check languageCode for voiceTranscription
+    if (settingName === 'languageCode' && taskKey !== 'voiceTranscription') {
+      return false;
+    }
+    
     const currentSettings = getTaskSettings(taskKey);
     const defaultSettings = serverDefaults[taskKey];
     
-    const currentValue = currentSettings[settingName];
-    const defaultValue = defaultSettings?.[settingName];
+    // Type-safe property access
+    const currentValue = (currentSettings as any)?.[settingName];
+    const defaultValue = (defaultSettings as any)?.[settingName];
     
     // For copyButtons, perform deep comparison
     if (settingName === 'copyButtons') {
@@ -278,14 +284,28 @@ export default function TaskModelSettings({
   const filteredProvidersWithModels = useMemo(() => {
     if (!providersWithModels) return null;
     
-    const taskType = taskSettingsKeyToTaskType[selectedTask as keyof TaskSettings];
+    // Filter out openrouter provider
+    let filtered = providersWithModels.filter(providerWithModels => 
+      providerWithModels.provider.code !== 'openrouter'
+    );
     
-    if (taskType === 'voice_transcription') {
-      return providersWithModels.filter(providerWithModels => providerWithModels.provider.code === 'openai_transcription');
-    } else {
-      return providersWithModels.filter(providerWithModels => providerWithModels.provider.code !== 'openai_transcription');
+    // Get settings for the currently selected task
+    const settings = taskSettings[selectedTask as keyof TaskSettings];
+    
+    // If allowedModels is configured and non-empty, apply filtering
+    if (settings?.allowedModels && settings.allowedModels.length > 0) {
+      const allowedModelsSet = new Set(settings.allowedModels);
+      
+      filtered = filtered
+        .map(providerWithModels => ({
+          ...providerWithModels,
+          models: providerWithModels.models.filter(model => allowedModelsSet.has(model.id))
+        }))
+        .filter(providerWithModels => providerWithModels.models.length > 0);
     }
-  }, [providersWithModels, selectedTask]);
+    
+    return filtered;
+  }, [providersWithModels, selectedTask, taskSettings]);
   
   useEffect(() => {
     // Only set default task if current selection doesn't exist in taskSettings

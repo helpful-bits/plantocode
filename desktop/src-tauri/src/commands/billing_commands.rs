@@ -1,6 +1,6 @@
 use crate::error::AppError;
 use crate::api_clients::billing_client::BillingClient;
-use crate::models::{SubscriptionPlan, ListInvoicesResponse};
+use crate::models::ListInvoicesResponse;
 use serde::{Deserialize, Serialize};
 use tauri::State;
 use std::sync::Arc;
@@ -26,6 +26,14 @@ use once_cell::sync::Lazy;
 pub struct CheckoutSessionResponse {
     pub url: String,
     pub session_id: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CheckoutSessionStatusResponse {
+    pub status: String,
+    pub payment_status: String,
+    pub customer_email: Option<String>,
 }
 
 
@@ -230,47 +238,14 @@ fn check_rate_limit(operation: &str) -> Result<(), AppError> {
     Ok(())
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SubscriptionDetails {
-    pub plan: String,
-    pub plan_name: Option<String>,
-    pub status: String,
-    pub trial_ends_at: Option<String>,
-    pub current_period_ends_at: Option<String>,
-    pub monthly_spending_allowance: Option<f64>,
-    pub hard_spending_limit: Option<f64>,
-    pub is_trialing: bool,
-    pub has_cancelled: bool,
-    pub next_invoice_amount: Option<f64>,
-    pub currency: String,
-    pub usage: UsageInfo,
-    pub credit_balance: f64,
-    pub pending_plan_id: Option<String>,
-    pub cancel_at_period_end: bool,
-    pub management_state: String,
-    pub subscription_id: Option<String>,
-    pub customer_id: Option<String>,
-}
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BillingDashboardData {
-    pub plan_details: BillingDashboardPlanDetails,
     pub credit_balance_usd: f64,
-    pub subscription_status: String,
-    pub trial_ends_at: Option<String>,
     pub services_blocked: bool,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct BillingDashboardPlanDetails {
-    pub plan_id: String,
-    pub name: String,
-    pub price_usd: f64,
-    pub billing_interval: String,
-}
 
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -326,9 +301,7 @@ pub struct CreditHistoryResponse {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreditDetailsResponse {
-    pub balance: f64,
-    pub currency: String,
-    pub last_updated: Option<String>,
+    pub stats: CreditStats,
     pub transactions: Vec<CreditTransactionEntry>,
     pub total_transaction_count: i64,
     pub has_more: bool,
@@ -342,6 +315,7 @@ pub struct CreditStats {
     pub total_purchased: f64,
     pub total_consumed: f64,
     pub total_refunded: f64,
+    pub net_balance: f64,
     pub transaction_count: i64,
     pub currency: String,
 }
@@ -361,18 +335,6 @@ pub async fn get_billing_dashboard_data_command(
     Ok(dashboard_data)
 }
 
-/// Get available subscription plans
-#[tauri::command]
-pub async fn get_subscription_plans_command(
-    billing_client: State<'_, Arc<BillingClient>>,
-) -> Result<Vec<SubscriptionPlan>, AppError> {
-    debug!("Getting subscription plans via Tauri command");
-    
-    let subscription_plans = billing_client.get_subscription_plans().await?;
-    
-    info!("Successfully retrieved subscription plans");
-    Ok(subscription_plans)
-}
 
 
 
@@ -440,10 +402,11 @@ pub async fn get_credit_history_command(
     billing_client: State<'_, Arc<BillingClient>>,
     limit: Option<i32>,
     offset: Option<i32>,
+    search: Option<String>,
 ) -> Result<CreditHistoryResponse, AppError> {
     debug!("Getting credit history via Tauri command");
     
-    let credit_history = billing_client.get_credit_history(limit, offset).await?;
+    let credit_history = billing_client.get_credit_history(limit, offset, search).await?;
     
     info!("Successfully retrieved credit history");
     Ok(credit_history)
@@ -483,18 +446,7 @@ pub async fn get_credit_details_command(
 ) -> Result<CreditDetailsResponse, AppError> {
     debug!("Getting credit details via Tauri command");
     
-    // Get balance and history separately and combine them
-    let balance_response = billing_client.get_credit_balance().await?;
-    let history_response = billing_client.get_credit_history(Some(20), Some(0)).await?;
-    
-    let credit_details = CreditDetailsResponse {
-        balance: balance_response.balance,
-        currency: balance_response.currency,
-        last_updated: balance_response.last_updated,
-        transactions: history_response.transactions,
-        total_transaction_count: history_response.total_count,
-        has_more: history_response.has_more,
-    };
+    let credit_details = billing_client.get_credit_details(Some(20), Some(0)).await?;
     
     info!("Successfully retrieved credit details");
     Ok(credit_details)
@@ -508,17 +460,17 @@ pub async fn get_credit_details_command(
 
 /// Create a checkout session for credit purchase
 #[tauri::command]
-pub async fn create_credit_checkout_session_command(
+pub async fn create_credit_purchase_checkout_session_command(
     billing_client: State<'_, Arc<BillingClient>>,
     amount: f64,
 ) -> Result<CheckoutSessionResponse, AppError> {
     debug!("Creating checkout session for credit amount: {}", amount);
     
     // Security validation
-    check_rate_limit("create_credit_checkout_session")?;
+    check_rate_limit("create_credit_purchase_checkout_session")?;
     validate_payment_amount(amount, "amount")?;
     
-    let checkout_response = billing_client.create_credit_checkout_session(amount).await?;
+    let checkout_response = billing_client.create_credit_purchase_checkout_session(amount).await?;
     
     info!("Successfully created checkout session for credit purchase");
     Ok(CheckoutSessionResponse {
@@ -527,25 +479,6 @@ pub async fn create_credit_checkout_session_command(
     })
 }
 
-/// Create a checkout session for subscription
-#[tauri::command]
-pub async fn create_subscription_checkout_session_command(
-    billing_client: State<'_, Arc<BillingClient>>,
-    plan_id: String,
-) -> Result<CheckoutSessionResponse, AppError> {
-    debug!("Creating subscription checkout session for plan: {}", plan_id);
-    
-    let checkout_response = billing_client.create_subscription_checkout_session(
-        &plan_id,
-        None
-    ).await?;
-    
-    info!("Successfully created subscription checkout session");
-    Ok(CheckoutSessionResponse {
-        url: checkout_response.url,
-        session_id: checkout_response.session_id,
-    })
-}
 
 /// Create a checkout session for payment method setup
 #[tauri::command]
@@ -568,18 +501,18 @@ pub async fn create_setup_checkout_session_command(
 pub async fn get_checkout_session_status_command(
     session_id: String,
     billing_client: State<'_, Arc<BillingClient>>,
-) -> Result<serde_json::Value, AppError> {
+) -> Result<CheckoutSessionStatusResponse, AppError> {
     debug!("Getting checkout session status for session: {}", session_id);
     
-    let status = billing_client.confirm_checkout_session(&session_id).await?;
+    let status_json = billing_client.confirm_checkout_session(&session_id).await?;
+    
+    let status: CheckoutSessionStatusResponse = serde_json::from_value(status_json)
+        .map_err(|e| AppError::SerializationError(format!("Failed to deserialize checkout session status: {}", e)))?;
     
     info!("Successfully retrieved checkout session status");
     Ok(status)
 }
 
-// ========================================
-// SUBSCRIPTION LIFECYCLE MANAGEMENT
-// ========================================
 
 
 /// Get usage summary
@@ -723,27 +656,7 @@ pub async fn get_detailed_usage_command(
     Ok(detailed_usage)
 }
 
-/// Get current subscription plan with cost markup information
-#[tauri::command]
-pub async fn get_current_plan_command(
-    billing_client: State<'_, Arc<BillingClient>>,
-) -> Result<CurrentPlanResponse, AppError> {
-    debug!("Getting current plan with cost markup information");
-    
-    let current_plan = billing_client.get_current_plan().await?;
-    
-    info!("Successfully retrieved current plan information");
-    Ok(current_plan)
-}
 
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CurrentPlanResponse {
-    pub plan_id: String,
-    pub plan_name: String,
-    pub cost_markup_percentage: f64,
-    pub status: String,
-}
 
 /// Response structure for credit details (alias for CreditDetailsResponse)
 pub type CreditDetails = CreditDetailsResponse;

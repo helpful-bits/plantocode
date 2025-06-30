@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, Row, FromRow};
 use uuid::Uuid;
 use std::collections::HashMap;
-use ipnetwork::IpNetwork;
+use sqlx::types::ipnetwork::IpNetwork;
 
 use crate::error::AppError;
 
@@ -18,7 +18,7 @@ pub struct AuditLog {
     pub new_values: Option<serde_json::Value>,
     pub metadata: Option<serde_json::Value>,
     pub performed_by: String,
-    pub ip_address: Option<IpNetwork>,
+    pub ip_address: Option<sqlx::types::ipnetwork::IpNetwork>,
     pub user_agent: Option<String>,
     pub session_id: Option<String>,
     pub request_id: Option<String>,
@@ -37,7 +37,7 @@ pub struct CreateAuditLogRequest {
     pub new_values: Option<serde_json::Value>,
     pub metadata: Option<serde_json::Value>,
     pub performed_by: String,
-    pub ip_address: Option<IpNetwork>,
+    pub ip_address: Option<sqlx::types::ipnetwork::IpNetwork>,
     pub user_agent: Option<String>,
     pub session_id: Option<String>,
     pub request_id: Option<String>,

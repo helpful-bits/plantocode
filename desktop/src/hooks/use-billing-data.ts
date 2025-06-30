@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { listen } from '@tauri-apps/api/event';
-import { getBillingOverviewData } from '@/actions/billing/plan.actions';
+import { invoke } from '@tauri-apps/api/core';
 import { type BillingDashboardData } from '@/types/tauri-commands';
 import { useNotification } from '@/contexts/notification-context';
 import { getErrorMessage } from '@/utils/error-handling';
@@ -8,10 +8,8 @@ import { getErrorMessage } from '@/utils/error-handling';
 
 export interface UseBillingDataReturn {
   dashboardData: BillingDashboardData | null;
-  planDetails: BillingDashboardData['planDetails'] | null;
   creditBalance: number;
   creditBalanceUsd: number;
-  trialDaysLeft: number | null;
   isLoading: boolean;
   error: string | null;
   refreshBillingData: () => Promise<void>;
@@ -28,7 +26,7 @@ export function useBillingData(): UseBillingDataReturn {
       setIsLoading(true);
       setError(null);
       
-      const data = await getBillingOverviewData();
+      const data = await invoke<BillingDashboardData>('get_billing_dashboard_data_command');
       setDashboardData(data);
     } catch (err) {
       const errorMessage = getErrorMessage(err);
@@ -94,41 +92,24 @@ export function useBillingData(): UseBillingDataReturn {
   }, [refreshBillingData]);
 
 
-  const planDetails = useMemo(() => {
-    return dashboardData?.planDetails || null;
-  }, [dashboardData]);
 
   const creditBalance = useMemo(() => {
-    return dashboardData?.creditBalanceUsd || 0;
+    const balance = dashboardData?.creditBalanceUsd || 0;
+    // Apply display rounding safety to avoid BigDecimal string issues
+    return Number(Number(balance).toFixed(6));
   }, [dashboardData]);
 
-  const trialDaysLeft = useMemo(() => {
-    if (!dashboardData || dashboardData.subscriptionStatus !== 'trialing' || !dashboardData.trialEndsAt) {
-      return null;
-    }
-
-    const trialEndDate = new Date(dashboardData.trialEndsAt);
-    const today = new Date();
-    const timeDiff = trialEndDate.getTime() - today.getTime();
-    const daysLeft = Math.max(0, Math.ceil(timeDiff / (1000 * 3600 * 24)));
-    
-    return daysLeft;
-  }, [dashboardData]);
 
   return useMemo(() => ({
     dashboardData,
-    planDetails,
     creditBalance,
     creditBalanceUsd: creditBalance,
-    trialDaysLeft,
     isLoading,
     error,
     refreshBillingData,
   }), [
     dashboardData,
-    planDetails,
     creditBalance,
-    trialDaysLeft,
     isLoading,
     error,
     refreshBillingData,

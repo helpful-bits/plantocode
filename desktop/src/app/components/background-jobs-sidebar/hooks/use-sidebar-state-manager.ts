@@ -4,8 +4,10 @@ import { useState, useRef, useEffect, useCallback, useContext } from "react";
 
 import { BackgroundJobsContext } from "@/contexts/background-jobs";
 import { useUILayout } from "@/contexts/ui-layout-context";
+import { useNotification } from "@/contexts/notification-context";
 import { type BackgroundJob } from "@/types/session-types";
 import { setSidebarWidth } from "@/utils/ui-utils";
+import { retryWorkflowStageAction } from "@/actions/file-system/workflow-stage.actions";
 
 export interface SidebarState {
   selectedJob: BackgroundJob | null;
@@ -15,6 +17,7 @@ export interface SidebarState {
   isCancelling: Record<string, boolean>;
   isDeleting: Record<string, boolean>;
   isRefreshing: boolean;
+  isRetrying: Record<string, boolean>;
 }
 
 export interface SidebarManager extends SidebarState {
@@ -26,6 +29,7 @@ export interface SidebarManager extends SidebarState {
   handleSelectJob: (job: BackgroundJob) => void;
   handleCollapseChange: (open: boolean) => void;
   setSelectedJob: (job: BackgroundJob | null) => void;
+  handleRetry: (workflowId: string, jobId: string) => Promise<void>;
 }
 
 /**
@@ -38,6 +42,9 @@ export function useSidebarStateManager(): SidebarManager {
   // Use the UI layout context
   const { setIsSidebarCollapsed } = useUILayout();
 
+  // Use the notification context
+  const { showNotification } = useNotification();
+
   // State as a combined object
   const [state, setState] = useState<SidebarState>({
     selectedJob: null,
@@ -47,6 +54,7 @@ export function useSidebarStateManager(): SidebarManager {
     isCancelling: {},
     isDeleting: {},
     isRefreshing: false,
+    isRetrying: {},
   });
 
   // Track previous sidebar state before auto-collapsing for settings
@@ -275,6 +283,36 @@ export function useSidebarStateManager(): SidebarManager {
     setState((prev: SidebarState) => ({ ...prev, selectedJob: job }));
   }, []);
 
+  // Handle job retry
+  const handleRetry = useCallback(
+    async (workflowId: string, jobId: string) => {
+      setState((prev: SidebarState) => ({
+        ...prev,
+        isRetrying: { ...prev.isRetrying, [jobId]: true },
+      }));
+
+      try {
+        const result = await retryWorkflowStageAction(workflowId, jobId);
+        
+        if (result.isSuccess) {
+          showNotification({ title: "Job retry initiated successfully", type: "success" });
+          await refreshJobs();
+        } else {
+          showNotification({ title: (result.error instanceof Error ? result.error.message : result.error) || "Failed to retry job", type: "error" });
+        }
+      } catch (error) {
+        showNotification({ title: "An unexpected error occurred while retrying the job", type: "error" });
+        console.error("[SidebarStateManager] Error retrying job:", error);
+      } finally {
+        setState((prev: SidebarState) => ({
+          ...prev,
+          isRetrying: { ...prev.isRetrying, [jobId]: false },
+        }));
+      }
+    },
+    [showNotification, refreshJobs]
+  );
+
   return {
     ...state,
     refreshClickedRef,
@@ -285,5 +323,6 @@ export function useSidebarStateManager(): SidebarManager {
     handleSelectJob,
     handleCollapseChange,
     setSelectedJob,
+    handleRetry,
   };
 }

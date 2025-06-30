@@ -15,6 +15,7 @@ import { useTextareaResize } from "@/hooks/use-textarea-resize";
 import { Button } from "@/ui/button";
 import { Textarea } from "@/ui/textarea";
 import { cn } from "@/utils/utils";
+import VoiceTranscription from "./voice-transcription";
 
 export interface TaskDescriptionHandle {
   insertTextAtCursorPosition: (text: string) => void;
@@ -216,7 +217,7 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
       const effectiveIsEmpty = !internalValue?.trim();
 
       return (
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-1.5">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <label
@@ -257,17 +258,25 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
                 </Button>
               </div>
             </div>
+            
+            <VoiceTranscription
+              onTranscribed={(text) => {
+                if (ref && typeof ref === 'object' && ref.current) {
+                  ref.current.appendText(text);
+                }
+              }}
+              onInteraction={onInteraction}
+              textareaRef={ref as React.RefObject<TaskDescriptionHandle | null>}
+              disabled={disabled}
+            />
           </div>
-          
-          
-          <div
-            className={`relative ${effectiveIsEmpty ? "border-2 border-destructive/20 rounded-xl" : ""}`}
-          >
+
+          <div className="relative">
             <Textarea
               ref={internalTextareaRef}
               id="taskDescArea"
               data-field="taskDescription"
-              className={`border border-border/60 rounded-xl bg-background backdrop-blur-sm text-foreground p-4 w-full resize-y font-normal shadow-soft ${effectiveIsEmpty ? "border-destructive/20 bg-destructive/5" : ""}`}
+              className={`border rounded-xl bg-background backdrop-blur-sm text-foreground p-4 w-full resize-y font-normal shadow-soft ${effectiveIsEmpty ? "border-destructive/20 bg-destructive/5" : "border-border/60"}`}
               value={internalValue}
               onChange={handleChange}
               onBlur={(_e) => {
@@ -316,14 +325,11 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
               }
             />
 
-            <div
-              className={cn(
-                "text-xs text-destructive mt-1 pl-1",
-                !effectiveIsEmpty && "invisible"
-              )}
-            >
-              Please enter a task description to proceed
-            </div>
+            {effectiveIsEmpty && (
+              <div className="text-xs text-destructive mt-1 pl-1">
+                Please enter a task description to proceed
+              </div>
+            )}
           </div>
         </div>
       );

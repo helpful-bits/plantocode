@@ -124,14 +124,14 @@ pub fn format_user_error(error: &AppError) -> String {
         AppError::PaymentFailed(_) => "Payment could not be processed. Please check your payment method and try again.".to_string(),
         AppError::PaymentDeclined(_) => "Your payment was declined. Please check your payment method or contact your bank.".to_string(),
         AppError::PaymentAuthenticationRequired(_) => "Payment authentication required. Please complete the payment verification process.".to_string(),
-        AppError::SubscriptionExpired(_) => "Your subscription has expired. Please renew to continue using services.".to_string(),
-        AppError::SubscriptionCancelled(_) => "Your subscription has been cancelled. Reactivate to restore full access.".to_string(),
+        AppError::BillingExpired(_) => "Your billing has expired. Please add credits to continue using services.".to_string(),
+        AppError::BillingCancelled(_) => "Your billing has been cancelled. Please reactivate to restore full access.".to_string(),
         AppError::CreditInsufficient(_) => "Insufficient credits. Please purchase more credits to continue.".to_string(),
-        AppError::PlanUpgradeRequired(_) => "Plan upgrade required. Your current plan doesn't support this feature.".to_string(),
+        AppError::CreditPurchaseRequired(_) => "Credit purchase required. Please purchase credits to use this feature.".to_string(),
         AppError::PaymentMethodRequired(_) => "Payment method required. Please add a valid payment method to continue.".to_string(),
         AppError::BillingAddressRequired(_) => "Billing address required. Please complete your billing information.".to_string(),
         AppError::StripeError(_) => "Payment service error. Please try again or contact support if the issue persists.".to_string(),
-        AppError::SubscriptionConflict(_) => "Subscription conflict detected. Please contact support for assistance.".to_string(),
+        AppError::BillingConflict(_) => "Billing conflict detected. Please contact support for assistance.".to_string(),
         AppError::SpendingLimitExceeded(_) => "You've reached your spending limit. Services will be restricted until your next billing period.".to_string(),
         AppError::InvoiceError(_) => "Invoice processing error. Please contact support for assistance.".to_string(),
         AppError::CheckoutError(_) => "Checkout error. Please try again or use a different payment method.".to_string(),
@@ -144,9 +144,9 @@ pub fn format_user_error(error: &AppError) -> String {
             } else if msg.contains("payment") {
                 "Payment issue detected. Please check your billing information.".to_string()
             } else if msg.contains("expired") {
-                "Your subscription has expired. Please renew to continue using services.".to_string()
+                "Your billing has expired. Please add credits to continue using services.".to_string()
             } else if msg.contains("cancelled") {
-                "Your subscription has been cancelled. Reactivate to restore full access.".to_string()
+                "Your billing has been cancelled. Reactivate to restore full access.".to_string()
             } else {
                 "Billing service issue. Please try again or contact support for assistance.".to_string()
             }

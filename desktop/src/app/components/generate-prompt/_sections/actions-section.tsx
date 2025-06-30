@@ -21,6 +21,7 @@ interface ActionsSectionProps {
   canRedo: boolean;
   undoSelection: () => void;
   redoSelection: () => void;
+  cancelFind: () => void;
   disabled?: boolean;
   onInteraction?: () => void;
 }
@@ -36,6 +37,7 @@ const ActionsSection = React.memo(function ActionsSection({
   canRedo,
   undoSelection,
   redoSelection,
+  cancelFind,
 }: ActionsSectionProps) {
   // Get states and actions from the granular contexts
   const { currentSession } = useSessionStateContext();
@@ -92,24 +94,35 @@ const ActionsSection = React.memo(function ActionsSection({
           </div>
 
 
-          <Button
-            variant="default"
-            size="sm"
-            onClick={executeFindRelevantFiles}
-            disabled={
-              lifecycleStatus !== 'READY' ||
-              isFindingFiles ||
-              !taskDescription.trim()
-            }
-            isLoading={isFindingFiles}
-            loadingText="AI is working..."
-            className="w-full"
-          >
-            <>
-              <Sparkles className="h-4 w-4 mr-2" />
-              Find Relevant Files with AI
-            </>
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="default"
+              size="sm"
+              onClick={executeFindRelevantFiles}
+              disabled={
+                lifecycleStatus !== 'READY' ||
+                isFindingFiles ||
+                !taskDescription.trim()
+              }
+              isLoading={isFindingFiles}
+              loadingText="AI is working..."
+              className="flex-grow"
+            >
+              <>
+                <Sparkles className="h-4 w-4 mr-2" />
+                Find Relevant Files with AI
+              </>
+            </Button>
+            {isFindingFiles && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={cancelFind}
+              >
+                Cancel
+              </Button>
+            )}
+          </div>
         </div>
       </div>
     </div>

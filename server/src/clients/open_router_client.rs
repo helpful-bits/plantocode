@@ -1,3 +1,7 @@
+// Step 3: Cached Token Pricing Implementation
+// This file implements cached token counting for OpenRouter API.
+// Token extraction functions return: (uncached_input, cache_write, cache_read, output)
+// For OpenRouter: no caching support, cache tokens always 0
 use crate::error::AppError;
 use bytes::Bytes;
 use actix_web::{web, HttpResponse};
@@ -174,7 +178,7 @@ impl OpenRouterClient {
 
     // Chat Completions
     #[instrument(skip(self, request), fields(model = %request.model))]
-    pub async fn chat_completion(&self, request: OpenRouterChatRequest, user_id: &str) -> Result<(OpenRouterChatResponse, HeaderMap), AppError> {
+    pub async fn chat_completion(&self, request: OpenRouterChatRequest, user_id: &str) -> Result<(OpenRouterChatResponse, HeaderMap, i32, i32, i32, i32), AppError> {
         let request_id = self.get_next_request_id().await;
         let url = format!("{}/chat/completions", self.base_url);
         
@@ -207,9 +211,15 @@ impl OpenRouterClient {
         
         let result = response.json::<OpenRouterChatResponse>().await
             .map_err(|e| AppError::Internal(format!("OpenRouter deserialization failed: {}", e.to_string())))?;
-            
         
-        Ok((result, headers))
+        let (input_tokens, cache_write_tokens, cache_read_tokens, output_tokens) = if let Some(usage) = &result.usage {
+            // OpenRouter doesn't support caching, so cache tokens are always 0
+            (usage.prompt_tokens, 0, 0, usage.completion_tokens)
+        } else {
+            (0, 0, 0, 0)
+        };
+        
+        Ok((result, headers, input_tokens, cache_write_tokens, cache_read_tokens, output_tokens))
     }
 
     // Streaming Chat Completions for actix-web compatibility
@@ -280,27 +290,35 @@ impl OpenRouterClient {
     }
     
     // Helper method to parse usage from a stream
-    pub fn extract_usage_from_stream_chunk(chunk_str: &str) -> Option<OpenRouterUsage> {
+    // Returns (input_tokens, cache_write_tokens, cache_read_tokens, output_tokens)
+    pub fn extract_usage_from_stream_chunk(chunk_str: &str) -> Option<(i32, i32, i32, i32)> {
         if chunk_str.trim().is_empty() || chunk_str.trim() == "[DONE]" {
             return None;
         }
         
         match serde_json::from_str::<OpenRouterStreamChunk>(chunk_str.trim()) {
-            Ok(parsed) => parsed.usage,
+            Ok(parsed) => {
+                if let Some(usage) = parsed.usage {
+                    // OpenRouter doesn't support caching, so cache tokens are always 0
+                    Some((usage.prompt_tokens, 0, 0, usage.completion_tokens))
+                } else {
+                    None
+                }
+            },
             Err(_) => None,
         }
     }
     
     // Helper method to extract tokens from a stream chunk
-    pub fn extract_tokens_from_stream_chunk(chunk_str: &str) -> Option<(i32, i32)> {
-        Self::extract_usage_from_stream_chunk(chunk_str).map(|usage| 
-            (usage.prompt_tokens, usage.completion_tokens)
-        )
+    // Returns (input_tokens, cache_write_tokens, cache_read_tokens, output_tokens)
+    pub fn extract_tokens_from_stream_chunk(chunk_str: &str) -> Option<(i32, i32, i32, i32)> {
+        Self::extract_usage_from_stream_chunk(chunk_str)
     }
     
     // Helper method to extract cost from a stream chunk
     pub fn extract_cost_from_stream_chunk(chunk_str: &str) -> Option<f64> {
-        Self::extract_usage_from_stream_chunk(chunk_str).and_then(|usage| usage.cost)
+        // OpenRouter doesn't provide cost in stream chunks, return None
+        None
     }
 
     
@@ -311,11 +329,13 @@ impl OpenRouterClient {
     }
     
     // Helper functions for token and usage tracking
-    pub fn extract_tokens_from_response(&self, response: &OpenRouterChatResponse) -> (i32, i32) {
+    // Returns (input_tokens, cache_write_tokens, cache_read_tokens, output_tokens)
+    pub fn extract_tokens_from_response(&self, response: &OpenRouterChatResponse) -> (i32, i32, i32, i32) {
         if let Some(usage) = &response.usage {
-            (usage.prompt_tokens, usage.completion_tokens)
+            // OpenRouter doesn't support caching, so cache tokens are always 0
+            (usage.prompt_tokens, 0, 0, usage.completion_tokens)
         } else {
-            (0, 0)
+            (0, 0, 0, 0)
         }
     }
     

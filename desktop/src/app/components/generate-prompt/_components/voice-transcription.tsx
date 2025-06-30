@@ -1,14 +1,7 @@
 "use client";
 
-import { Mic, MicOff, Loader2 } from "lucide-react";
-import {
-  useState,
-  useCallback,
-  useEffect,
-  useRef,
-} from "react";
-
-import { useVoiceMediaState, useAudioInputDevices } from "@/hooks/use-voice-recording";
+import { Mic, MicOff, Settings, Clock } from "lucide-react";
+import { useCallback, useState, useEffect } from "react";
 import {
   Button,
   Select,
@@ -16,18 +9,12 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-  Label,
 } from "@/ui";
-import { useNotification } from "@/contexts/notification-context";
-import { getErrorMessage } from "@/utils/error-handling";
-import { getServerDefaultTaskModelSettings } from "@/actions/project-settings.actions";
-import { getSessionAction } from "@/actions/session/crud.actions";
-import { TaskModelSettings } from "@/types";
 
-import { transcribeAudioBlobAction } from "@/actions/voice-transcription";
-import { useCorePromptContext } from "../_contexts/core-prompt-context";
+import { useVoiceTranscription } from "@/hooks/use-voice-recording";
 import { type TaskDescriptionHandle } from "./task-description";
 import { TRANSCRIPTION_LANGUAGES } from "@/app/components/settings/shared/task-settings-types";
+import { AudioLevelMeter } from "./audio-level-meter";
 
 interface VoiceTranscriptionProps {
   onTranscribed: (text: string) => void;
@@ -36,260 +23,76 @@ interface VoiceTranscriptionProps {
   disabled?: boolean;
 }
 
-
 const VoiceTranscription = function VoiceTranscription({
   onTranscribed,
   onInteraction,
   textareaRef,
   disabled = false,
 }: VoiceTranscriptionProps) {
-  const [languageCode, setLanguageCode] = useState<string>("en");
-  const [isRecording, setIsRecording] = useState(false);
-  const [isTranscribing, setIsTranscribing] = useState(false);
-  const [recordingError, setRecordingError] = useState<string | null>(null);
-  const [recordingDuration, setRecordingDuration] = useState(0);
-  const [transcriptionSettings, setTranscriptionSettings] = useState<TaskModelSettings | null>(null);
-  
-
-  // Refs for cleanup and tracking
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const recordingStartTimeRef = useRef<number>(0);
-  const durationIntervalRef = useRef<NodeJS.Timeout | null>(null);
-
-  // Get core context
   const {
-    state: { activeSessionId },
-  } = useCorePromptContext();
-  
-  
-  const { showNotification } = useNotification();
-
-  // Audio input devices management
-  const {
+    // State
+    status,
+    statusMessage,
+    isRecording,
+    isProcessing,
+    duration: recordingDuration,
+    languageCode,
+    activeSessionId,
+    
+    // Audio
+    audioLevel,
     availableAudioInputs,
     selectedAudioInputId,
+    
+    // Actions
+    startRecording,
+    stopRecording,
+    setLanguageCode,
     selectAudioInput,
-    requestPermissionAndRefreshDevices,
-  } = useAudioInputDevices();
-
-  // Fetch transcription settings when activeSessionId changes
-  useEffect(() => {
-    const fetchTranscriptionSettings = async () => {
-      if (!activeSessionId) {
-        setTranscriptionSettings(null);
-        return;
-      }
-
-      try {
-        const sessionResult = await getSessionAction(activeSessionId);
-        if (sessionResult.isSuccess && sessionResult.data?.projectDirectory) {
-          const settingsResult = await getServerDefaultTaskModelSettings();
-          if (settingsResult.isSuccess && settingsResult.data?.voiceTranscription) {
-            setTranscriptionSettings(settingsResult.data.voiceTranscription);
-            if (settingsResult.data.voiceTranscription.languageCode) {
-              setLanguageCode(settingsResult.data.voiceTranscription.languageCode);
-            }
-          }
-        }
-      } catch (error) {
-        console.warn('[VoiceTranscription] Failed to fetch transcription settings:', error);
-      }
-    };
-
-    fetchTranscriptionSettings();
-  }, [activeSessionId]);
-
-  // Request audio permissions and enumerate devices on component mount
-  useEffect(() => {
-    // Check and request permissions immediately when component loads
-    const initializeAudioDevices = async () => {
-      try {
-        await requestPermissionAndRefreshDevices();
-      } catch (error) {
-        console.warn('[VoiceTranscription] Failed to initialize audio devices:', error);
-      }
-    };
-
-    initializeAudioDevices();
-  }, [requestPermissionAndRefreshDevices]);
-
-  // Handle errors
-  const handleError = useCallback((error: string) => {
-    setRecordingError(error);
-    showNotification({
-      title: "Voice Transcription Error",
-      message: error,
-      type: "error",
-    });
-  }, [showNotification]);
-
-  // Voice media state hook (5-second chunking)
-  const {
-    startMediaRecording,
-    stopMediaRecording,
-    activeAudioInputLabel,
-  } = useVoiceMediaState({
-    onError: handleError,
-    selectedAudioInputId,
+  } = useVoiceTranscription({
+    onTranscribed,
+    onInteraction,
+    textareaRef,
+    disabled,
   });
 
-  // Handle transcription of completed audio blob
-  const handleTranscription = useCallback(async (audioBlob: Blob) => {
-    if (!activeSessionId) {
-      handleError("No active session for transcription");
-      return;
-    }
-
-    setIsTranscribing(true);
-    
-    try {
-      const result = await transcribeAudioBlobAction(
-        audioBlob,
-        activeSessionId,
-        languageCode,
-        undefined,
-        transcriptionSettings?.temperature ?? 0.0,
-        transcriptionSettings?.model
-      );
-
-      if (result.isSuccess && result.data?.text) {
-        const transcribedText = result.data.text.trim();
-        
-        if (textareaRef?.current && transcribedText) {
-          try {
-            textareaRef.current.insertTextAtCursorPosition(transcribedText);
-            onInteraction?.();
-          } catch (error) {
-            onTranscribed(transcribedText);
-            onInteraction?.();
-          }
-        } else {
-          onTranscribed(transcribedText);
-          onInteraction?.();
-        }
-
-        showNotification({
-          title: "Transcription Complete",
-          message: `Successfully transcribed ${Math.round(recordingDuration)}s of audio`,
-          type: "success",
-        });
-      } else {
-        handleError(result.message || "Transcription failed");
-      }
-    } catch (error) {
-      handleError(getErrorMessage(error, "transcription"));
-    } finally {
-      setIsTranscribing(false);
-    }
-  }, [activeSessionId, languageCode, transcriptionSettings, textareaRef, onTranscribed, onInteraction, recordingDuration, showNotification, handleError]);
-
-
-  // Duration tracking
-  useEffect(() => {
-    if (isRecording) {
-      recordingStartTimeRef.current = Date.now();
-      setRecordingDuration(0);
-      
-      durationIntervalRef.current = setInterval(() => {
-        setRecordingDuration((Date.now() - recordingStartTimeRef.current) / 1000);
-      }, 1000);
-    } else {
-      if (durationIntervalRef.current) {
-        clearInterval(durationIntervalRef.current);
-        durationIntervalRef.current = null;
-      }
-    }
-
-    return () => {
-      if (durationIntervalRef.current) {
-        clearInterval(durationIntervalRef.current);
-      }
-    };
-  }, [isRecording]);
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      // Stop any active recording
-      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
-        try {
-          mediaRecorderRef.current.stop();
-        } catch (e) {}
-      }
-      
-      // Stop media streams
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach(track => track.stop());
-      }
-
-      // Clear duration interval
-      if (durationIntervalRef.current) {
-        clearInterval(durationIntervalRef.current);
-      }
-    };
-  }, []);
-
-  // Handle recording start
-  const startRecording = useCallback(async () => {
-    if (!activeSessionId || disabled || isRecording || isTranscribing) {
-      return;
-    }
-
-    try {
-      setRecordingError(null);
-
-      const media = await startMediaRecording((audioBlob: Blob) => {
-        // This callback is called when recording stops
-        handleTranscription(audioBlob);
-      });
-
-      if (media) {
-        mediaRecorderRef.current = media.recorder;
-        streamRef.current = media.stream;
-        setIsRecording(true);
-      }
-    } catch (error) {
-      const errorMessage = getErrorMessage(error, "transcription");
-      handleError(errorMessage);
-    }
-  }, [activeSessionId, disabled, isRecording, isTranscribing, startMediaRecording, handleTranscription, handleError]);
-
-  // Handle recording stop
-  const stopRecording = useCallback(async () => {
-    if (!isRecording) {
-      return;
-    }
-
-    try {
-      await stopMediaRecording();
-      setIsRecording(false);
-      // Note: handleTranscription will be called automatically via the onComplete callback
-    } catch (error) {
-      const errorMessage = getErrorMessage(error, "transcription");
-      handleError(errorMessage);
-    }
-  }, [isRecording, stopMediaRecording, handleError]);
-
-  // Toggle recording
+  // Helper to toggle recording
   const handleToggleRecording = useCallback(async () => {
-    if (disabled || !activeSessionId || isTranscribing) {
-      if (!activeSessionId) {
-        showNotification({
-          title: "Session Error",
-          message: "Cannot record - no active session.",
-          type: "error",
-        });
-      }
-      return;
-    }
-
     if (isRecording) {
       await stopRecording();
     } else {
       await startRecording();
     }
-  }, [disabled, activeSessionId, isRecording, isTranscribing, stopRecording, startRecording, showNotification]);
+  }, [isRecording, startRecording, stopRecording]);
+
+  // Computed values
+  const canRecord = !disabled && !!activeSessionId;
+
+  // UI states for recording transition
+  const [showRecordingUI, setShowRecordingUI] = useState(false);
+  const [showStartingUI, setShowStartingUI] = useState(false);
+
+  // Handle recording UI transitions
+  useEffect(() => {
+    if (isRecording) {
+      // Immediately show "Starting..." UI
+      setShowStartingUI(true);
+      setShowRecordingUI(false);
+      
+      // After 1 second, switch to full recording UI
+      const timer = setTimeout(() => {
+        setShowStartingUI(false);
+        setShowRecordingUI(true);
+      }, 1000);
+      
+      return () => clearTimeout(timer);
+    } else {
+      // Immediately hide all recording states when stopped
+      setShowStartingUI(false);
+      setShowRecordingUI(false);
+    }
+    return undefined;
+  }, [isRecording]);
 
   // Format duration for display
   const formatDuration = (seconds: number): string => {
@@ -298,152 +101,143 @@ const VoiceTranscription = function VoiceTranscription({
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  return (
-    <div className="inline-flex flex-col gap-3 border border-border/60 rounded-xl p-6 bg-card/95 backdrop-blur-sm shadow-soft max-w-fit">
-      <div className="flex items-center justify-between">
-        <div className="font-semibold text-foreground mr-2">
-          Record Description
-        </div>
-        <Button
-          type="button"
-          onClick={handleToggleRecording}
-          disabled={!activeSessionId || disabled || isTranscribing}
-          variant={isRecording ? "destructive" : "secondary"}
-          size="sm"
-          className="min-w-[140px]"
-          title={
-            disabled
-              ? "Feature disabled during session switching"
-              : !activeSessionId
-                ? "Please select or create a session to enable voice recording"
-                : isTranscribing
-                  ? "Please wait for transcription to complete"
-                : undefined
-          }
-        >
-          {isRecording ? (
-            <>
-              <MicOff className="h-4 w-4 mr-2" />
-              <span>Stop Recording</span>
-            </>
-          ) : isTranscribing ? (
-            <>
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              <span>Transcribing...</span>
-            </>
-          ) : (
-            <>
-              <Mic className="h-4 w-4 mr-2" />
-              <span>Record Audio</span>
-            </>
-          )}
-        </Button>
-      </div>
+  const getStatusDot = () => {
+    if (status === 'ERROR') return 'bg-red-500';
+    if (isRecording && showRecordingUI) return 'bg-red-500 animate-pulse';
+    if (isRecording && showStartingUI) return 'bg-amber-500 animate-bounce';
+    if (isProcessing) return 'bg-blue-500 animate-pulse';
+    return 'bg-gray-300'; // Neutral gray when ready/idle
+  };
 
-      <div className="space-y-2">
-        <p className="text-xs text-muted-foreground text-balance">
-          Record your task description using your microphone. Click stop when finished, and AI will transcribe 
-          your complete recording. Maximum recording time: 10 minutes.
-        </p>
-        
-      </div>
-      {(isRecording || isTranscribing) && (
-        <div className="text-xs text-muted-foreground bg-muted/50 rounded-md p-2">
-          <div className="flex gap-4 items-center">
-            {isRecording && (
-              <>
-                <span className="text-primary">● Recording</span>
-                <span>Duration: {formatDuration(recordingDuration)}</span>
-                <span>Max: 10:00</span>
-              </>
-            )}
-            {isTranscribing && (
-              <span className="text-primary">🎵 Transcribing audio...</span>
-            )}
+  return (
+    <div className="inline-flex items-center gap-2">
+      {(isRecording || isProcessing || status === 'ERROR') && (
+        <div 
+          className={`w-2 h-2 rounded-full ${getStatusDot()} transition-all duration-200`}
+          title={status === 'ERROR' ? 'Error' : isRecording && showRecordingUI ? 'Recording' : isRecording && showStartingUI ? 'Starting recording...' : isProcessing ? 'Processing' : 'Ready'}
+        />
+      )}
+      
+      <Button
+        type="button"
+        onClick={handleToggleRecording}
+        disabled={!canRecord}
+        variant="ghost"
+        size="icon"
+        className={`relative h-6 w-6 ${
+          isRecording && showRecordingUI
+            ? "bg-red-500 hover:bg-red-600 text-white animate-pulse" 
+            : isRecording && showStartingUI
+              ? "bg-amber-500 hover:bg-amber-600 text-white animate-bounce"
+            : canRecord 
+              ? "hover:bg-green-50 text-green-700" 
+              : "opacity-60"
+        } transition-all duration-200`}
+        title={
+          disabled
+            ? "Feature disabled during session switching"
+            : !canRecord
+              ? "Please select or create a session to enable voice recording"
+              : isProcessing
+                ? "Please wait for transcription to complete"
+                : isRecording 
+                  ? "Click to stop recording"
+                  : "Click to start recording"
+        }
+      >
+        {isRecording && showRecordingUI ? (
+          <MicOff className="h-4 w-4" />
+        ) : isRecording && showStartingUI ? (
+          <Mic className="h-4 w-4 animate-spin" />
+        ) : (
+          <Mic className="h-4 w-4" />
+        )}
+      </Button>
+
+      {isRecording && showStartingUI && (
+        <div className="flex items-center gap-2 text-base animate-in fade-in duration-300">
+          <div className="relative">
+            <div className="w-4 h-4 bg-amber-500 rounded-full animate-pulse" />
+            <div className="absolute inset-0 w-4 h-4 bg-amber-400 rounded-full animate-ping opacity-75" />
+          </div>
+          <span className="text-amber-600 font-medium bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200 animate-in slide-in-from-right-2 duration-300">
+            Starting recording...
+          </span>
+        </div>
+      )}
+
+      {isRecording && showRecordingUI && (
+        <div className="flex items-center gap-2 text-base animate-in fade-in slide-in-from-left-3 duration-500">
+          <Clock className="h-5 w-5 text-muted-foreground animate-in zoom-in duration-300 delay-100" />
+          <span className="text-foreground font-mono min-w-[45px] animate-in slide-in-from-bottom-2 duration-300 delay-200">
+            {formatDuration(recordingDuration)}
+          </span>
+          <div className="w-16 animate-in scale-in duration-300 delay-300">
+            <AudioLevelMeter
+              currentLevel={audioLevel?.currentLevel || 0}
+              isActive={isRecording && showRecordingUI}
+              className="h-1"
+            />
           </div>
         </div>
       )}
 
-      <div className="flex flex-row gap-4 items-start mt-2">
-        <div className="flex flex-col">
-          <Label htmlFor="language-select" className="text-xs mb-1 text-foreground">
-            Language
-          </Label>
-          <div className="h-9">
-            <div className="w-[130px]">
-              <Select
-                value={languageCode}
-                onValueChange={setLanguageCode}
-                disabled={isRecording || isTranscribing || !activeSessionId || disabled}
-              >
-                <SelectTrigger id="language-select" className="w-full h-9">
-                  <SelectValue placeholder="Select language" />
-                </SelectTrigger>
-                <SelectContent>
-                  {TRANSCRIPTION_LANGUAGES.map((lang) => (
-                    <SelectItem key={lang.code} value={lang.code}>
-                      <div className="flex items-center gap-2">
-                        <span>{lang.nativeName}</span>
-                        <span className="text-xs text-muted-foreground">({lang.name})</span>
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <p className="text-xs text-muted-foreground mt-1 text-balance">
-            Language for transcription
-          </p>
+      {isProcessing && (
+        <div className="flex items-center gap-2 text-base animate-fade-in">
+          <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+          <span className="text-blue-600 font-medium">Processing...</span>
         </div>
+      )}
 
-        <div className="flex flex-col">
-          <Label htmlFor="microphone-select" className="text-xs mb-1 text-foreground">
-            Microphone
-          </Label>
-          <div className="h-9">
-            <div className="w-[280px]">
-              <Select
-                value={selectedAudioInputId}
-                onValueChange={selectAudioInput}
-                disabled={
-                  isRecording ||
-                  isTranscribing ||
-                  !activeSessionId ||
-                  disabled ||
-                  availableAudioInputs.length === 0
-                }
-              >
-                <SelectTrigger id="microphone-select" className="w-full h-9">
-                  <SelectValue placeholder="Select microphone" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="default">System Default</SelectItem>
-                  {availableAudioInputs.map((device, index) => (
-                    <SelectItem key={device.deviceId} value={device.deviceId || `device-${index}`}>
-                      {device.label || `Microphone ${index + 1}`}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <p className="text-xs text-muted-foreground mt-1 text-balance">
-            {activeAudioInputLabel 
-              ? `Using: ${activeAudioInputLabel}`
-              : availableAudioInputs.length > 0 
-                ? "Devices available - select one to use"
-                : "No microphone found. Check system settings."
+      {!isRecording && !isProcessing && (
+        <div className="flex items-center gap-1.5">
+          <Select
+            value={languageCode}
+            onValueChange={setLanguageCode}
+            disabled={isRecording || isProcessing || disabled}
+          >
+            <SelectTrigger className="h-6 w-[100px] text-sm border-0 bg-muted/50 hover:bg-muted focus:ring-1 focus:ring-ring transition-colors cursor-pointer">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {TRANSCRIPTION_LANGUAGES.map((lang) => (
+                <SelectItem key={lang.code} value={lang.code}>
+                  <span>{lang.nativeName}</span>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select
+            value={selectedAudioInputId}
+            onValueChange={selectAudioInput}
+            disabled={
+              isRecording ||
+              isProcessing ||
+              !canRecord ||
+              availableAudioInputs.length === 0
             }
-          </p>
+          >
+            <SelectTrigger className="h-6 text-sm border-0 bg-muted/50 hover:bg-muted focus:ring-1 focus:ring-ring transition-colors cursor-pointer">
+              <Settings className="h-4 w-4 mr-2 flex-shrink-0" />
+              <SelectValue placeholder="Mic" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="default">Default</SelectItem>
+              {availableAudioInputs.map((device, index) => (
+                <SelectItem key={device.deviceId} value={device.deviceId || `device-${index}`}>
+                  {device.label || `Mic ${index + 1}`}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
-      </div>
+      )}
 
-      {/* Show error message */}
-      {recordingError && (
-        <div className="mt-2">
-          <div className="text-sm text-destructive">
-            {recordingError}
+      {status === 'ERROR' && statusMessage && (
+        <div className="bg-red-50 border border-red-200 rounded px-2 py-1 animate-fade-in">
+          <div className="text-xs text-red-700 font-medium max-w-[200px] truncate" title={statusMessage}>
+            {statusMessage}
           </div>
         </div>
       )}

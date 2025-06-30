@@ -4,39 +4,34 @@
  * Actions for managing individual workflow stages, including retry functionality
  */
 
-import { ActionState } from '@/types/action-types';
-import { invoke } from '@tauri-apps/api/core';
+import { type ActionState } from "@/types/action-types";
+import { invoke } from "@/utils/tauri-fs";
+import { handleActionError } from "@/utils/action-utils";
 
 /**
  * Retry a failed workflow stage
  * 
  * @param workflowId - The ID of the parent workflow
  * @param failedStageJobId - The job ID of the failed stage to retry
- * @returns Promise<ActionState<void>>
+ * @returns Promise<ActionState<string>> - Returns the new job ID
  */
 export async function retryWorkflowStageAction(
   workflowId: string,
   failedStageJobId: string
-): Promise<ActionState<void>> {
+): Promise<ActionState<string>> {
   try {
-    await invoke('retry_workflow_stage_command', {
+    const result = await invoke<string>('retry_workflow_stage_command', {
       workflowId,
       failedStageJobId,
     });
 
     return {
       isSuccess: true,
-      data: undefined,
+      data: result,
       message: 'Workflow stage retry initiated successfully',
     };
   } catch (error) {
-    console.error('Failed to retry workflow stage:', error);
-    
-    return {
-      isSuccess: false,
-      error: error instanceof Error ? error : new Error('Unknown error occurred while retrying workflow stage'),
-      message: 'Failed to retry workflow stage',
-    };
+    return handleActionError(error) as ActionState<string>;
   }
 }
 
@@ -52,7 +47,7 @@ export async function cancelWorkflowStageAction(
   stageJobId: string
 ): Promise<ActionState<void>> {
   try {
-    await invoke('cancel_workflow_stage_command', {
+    await invoke<void>('cancel_workflow_stage_command', {
       workflowId,
       stageJobId,
     });
@@ -63,12 +58,6 @@ export async function cancelWorkflowStageAction(
       message: 'Workflow stage cancellation initiated successfully',
     };
   } catch (error) {
-    console.error('Failed to cancel workflow stage:', error);
-    
-    return {
-      isSuccess: false,
-      error: error instanceof Error ? error : new Error('Unknown error occurred while canceling workflow stage'),
-      message: 'Failed to cancel workflow stage',
-    };
+    return handleActionError(error) as ActionState<void>;
   }
 }

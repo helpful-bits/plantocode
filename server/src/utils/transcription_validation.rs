@@ -622,6 +622,21 @@ pub fn validate_timeout_config(timeout_seconds: Option<u32>) -> ValidationResult
     }
 }
 
+/// Maps audio MIME types to their corresponding file extensions
+pub fn mime_type_to_extension(mime_type: &str) -> &'static str {
+    match mime_type {
+        "audio/webm" => "webm",
+        "audio/mp4" => "mp4", 
+        "audio/mpeg" => "mp3",
+        "audio/wav" => "wav",
+        "audio/x-wav" => "wav",
+        "audio/ogg" => "ogg",
+        "audio/flac" => "flac",
+        "audio/aac" => "aac",
+        _ => "webm", // Default to webm for unknown types
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

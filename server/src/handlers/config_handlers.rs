@@ -25,21 +25,8 @@ pub struct ProviderWithModels {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DesktopRuntimeAIConfig {
-    /// Default LLM model ID
-    pub default_llm_model_id: String,
-    /// Default voice model ID  
-    pub default_voice_model_id: String,
-    /// Default transcription model ID
-    pub default_transcription_model_id: String,
-    /// Default temperature setting
-    pub default_temperature: f32,
-    /// Default max tokens setting
-    pub default_max_tokens: u32,
-    /// Task-specific configurations - LOADED DIRECTLY FROM DATABASE
     pub tasks: std::collections::HashMap<String, TaskSpecificModelConfig>,
-    /// List of providers with their models - LOADED DIRECTLY FROM DATABASE
     pub providers: Vec<ProviderWithModels>,
-    /// Path finder settings
     pub path_finder_settings: PathFinderSettings,
 }
 
@@ -62,6 +49,10 @@ pub struct DesktopModelInfo {
     pub price_input_per_million: String,
     /// Price output per million tokens in USD
     pub price_output_per_million: String,
+    /// Price cache read per million tokens in USD
+    pub price_cache_read: Option<String>,
+    /// Price cache write per million tokens in USD
+    pub price_cache_write: Option<String>,
 }
 
 /// Handler for GET /api/config/desktop-runtime-config endpoint for desktop app
@@ -98,6 +89,8 @@ pub async fn get_desktop_runtime_ai_config(
             context_window: Some(model.context_window as u32),
             price_input_per_million: model.price_input.to_string(),
             price_output_per_million: model.price_output.to_string(),
+            price_cache_read: model.price_cache_read.as_ref().map(|v| v.to_string()),
+            price_cache_write: model.price_cache_write.as_ref().map(|v| v.to_string())
         };
         
         provider_models.entry(model.provider_name.clone())
@@ -127,6 +120,8 @@ pub async fn get_desktop_runtime_ai_config(
                 context_window: Some(model.context_window as u32),
                 price_input_per_million: model.price_input.to_string(),
                 price_output_per_million: model.price_output.to_string(),
+                price_cache_read: model.price_cache_read.as_ref().map(|v| v.to_string()),
+                price_cache_write: model.price_cache_write.as_ref().map(|v| v.to_string())
             };
             
             transcription_provider_models.push(desktop_model);
@@ -148,7 +143,7 @@ pub async fn get_desktop_runtime_ai_config(
         .map_err(|e| AppError::Internal(format!("Failed to get AI settings from database: {}", e)))?;
     
     // Convert database types to response types
-    let mut tasks: std::collections::HashMap<String, TaskSpecificModelConfig> = task_configs.task_specific_configs
+    let mut tasks: std::collections::HashMap<String, TaskSpecificModelConfig> = task_configs.tasks
         .into_iter()
         .map(|(key, db_config)| {
             (key, TaskSpecificModelConfig {
@@ -156,6 +151,7 @@ pub async fn get_desktop_runtime_ai_config(
                 max_tokens: db_config.max_tokens,
                 temperature: db_config.temperature,
                 copy_buttons: db_config.copy_buttons,
+                allowed_models: db_config.allowed_models,
             })
         })
         .collect();
@@ -170,13 +166,7 @@ pub async fn get_desktop_runtime_ai_config(
         token_limit_buffer: task_configs.path_finder_settings.token_limit_buffer,
     };
 
-    // Create the response with data DIRECTLY from database
     let response = DesktopRuntimeAIConfig {
-        default_llm_model_id: task_configs.default_llm_model_id,
-        default_voice_model_id: task_configs.default_voice_model_id,
-        default_transcription_model_id: task_configs.default_transcription_model_id,
-        default_temperature: task_configs.default_temperature,
-        default_max_tokens: task_configs.default_max_tokens,
         tasks,
         providers,
         path_finder_settings,

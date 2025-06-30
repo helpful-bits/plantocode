@@ -40,6 +40,7 @@ fn default_offset() -> i32 { 0 }
 pub struct ExtendedPaginationQuery {
     pub limit: Option<i64>,
     pub offset: Option<i64>,
+    pub search: Option<String>,
 }
 
 
@@ -80,9 +81,10 @@ pub async fn get_credit_transaction_history(
 ) -> Result<HttpResponse, AppError> {
     let limit = query.limit.unwrap_or(20);
     let offset = query.offset.unwrap_or(0);
+    let search = query.search.clone();
     
     let credit_details = credit_service
-        .get_credit_details(&user_id.0, Some(limit), Some(offset))
+        .get_credit_details(&user_id.0, Some(limit), Some(offset), search.as_deref())
         .await?;
     
     #[derive(Debug, Serialize)]
@@ -163,7 +165,7 @@ pub async fn get_credit_details(
     let offset = query.offset.unwrap_or(0);
     
     let credit_details = credit_service
-        .get_credit_details(&user_id.0, Some(limit), Some(offset))
+        .get_credit_details(&user_id.0, Some(limit), Some(offset), None)
         .await?;
     
     Ok(HttpResponse::Ok().json(credit_details))

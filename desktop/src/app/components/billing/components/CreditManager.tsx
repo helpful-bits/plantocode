@@ -8,8 +8,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/ui/card";
 import { Alert, AlertDescription } from "@/ui/alert";
 import { Input } from "@/ui/input";
 import { Loader2, CreditCard, AlertCircle, DollarSign } from "lucide-react";
-import { getCreditDetails } from "@/actions/billing/credit.actions";
-import { createCreditCheckoutSession } from "@/actions/billing/checkout.actions";
+import { invoke } from '@tauri-apps/api/core';
+import { type BillingDashboardData } from '@/types/tauri-commands';
+import { createCreditPurchaseCheckoutSession } from "@/actions/billing/checkout.actions";
 import { useNotification } from "@/contexts/notification-context";
 import { getErrorMessage } from "@/utils/error-handling";
 import { open } from "@/utils/shell-utils";
@@ -40,8 +41,8 @@ export const CreditManager = ({ isOpen, onClose }: CreditManagerProps) => {
   const loadCreditDetails = async () => {
     try {
       setError(null);
-      const creditDetails = await getCreditDetails();
-      setBalance(creditDetails.stats.currentBalance);
+      const billingData = await invoke<BillingDashboardData>('get_billing_dashboard_data_command');
+      setBalance(billingData.creditBalanceUsd);
     } catch (err) {
       const errorMessage = getErrorMessage(err);
       setError(errorMessage);
@@ -61,7 +62,7 @@ export const CreditManager = ({ isOpen, onClose }: CreditManagerProps) => {
       setIsLoading(true);
       setError(null);
 
-      const response = await createCreditCheckoutSession(amount);
+      const response = await createCreditPurchaseCheckoutSession(amount);
       
       setSessionId(response.sessionId);
       await open(response.url);

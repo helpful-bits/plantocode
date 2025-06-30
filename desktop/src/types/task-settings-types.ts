@@ -1,11 +1,15 @@
 import { TaskModelSettings as BaseTaskModelSettings } from './config-types';
 
 export interface TaskModelSettings extends BaseTaskModelSettings {
+}
+
+export interface VoiceTranscriptionSettings extends TaskModelSettings {
   languageCode?: string;
+  prompt?: string;
 }
 
 export interface TaskSettings {
-  voiceTranscription: TaskModelSettings;
+  voiceTranscription: VoiceTranscriptionSettings;
   regexFileFilter: TaskModelSettings;
   pathCorrection: TaskModelSettings;
   textImprovement: TaskModelSettings;

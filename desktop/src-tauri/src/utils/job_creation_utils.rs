@@ -129,6 +129,7 @@ pub async fn create_and_queue_background_job(
         tokens_received: None,
         model_used,
         actual_cost: None,
+        duration_ms: None,
         metadata: Some(metadata_str),
         system_prompt_template: None,
         created_at: timestamp,

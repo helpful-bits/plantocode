@@ -122,11 +122,12 @@ export interface DbTableExistsArgs {
 
 
 // Commands from file_system_commands
-export interface ListFilesCommandArgs {
-  directory: string;
-  pattern?: string | null;
-  includeStats?: boolean | null;
-  exclude?: Array<string> | null;
+export interface ProjectFileInfo {
+  path: string;        // RELATIVE from project root
+  name: string;
+  size?: number;
+  modifiedAt?: number;
+  isBinary: boolean;
 }
 
 export interface CreateDirectoryCommandArgs {
@@ -356,31 +357,6 @@ export interface GenerateSimpleTextCommandArgs {
 }
 
 
-// Commands from voice_commands
-export interface CreateTranscriptionJobCommandArgs {
-  projectHash: string;
-  audioData: Uint8Array;
-  filename?: string | null;
-  projectDirectory?: string | null;
-  durationMs: number;
-}
-
-export interface TranscribeAudioBatchCommandArgs {
-  projectHash: string;
-  audioBase64: string;
-  chunkIndex: number;
-  durationMs: number;
-  language?: string | null;
-  prompt?: string | null;
-  temperature?: number | null;
-}
-
-export interface TranscribeAudioDirectCommandArgs {
-  audioData: Uint8Array;
-  filename: string;
-  model: string;
-  durationMs: number;
-}
 
 
 // Commands from settings_commands - system prompt related
@@ -575,7 +551,7 @@ export type TauriInvoke = {
   "db_select_query": (args: DbSelectQueryArgs) => Promise<Record<string, unknown>[]>;
   "db_execute_transaction": (args: DbExecuteTransactionArgs) => Promise<void>;
   "db_table_exists": (args: DbTableExistsArgs) => Promise<boolean>;
-  "list_files_command": (args: ListFilesCommandArgs) => Promise<import("@/types").FileInfo[]>;
+  "list_project_files_command": (args: { projectDirectory: string }) => Promise<ProjectFileInfo[]>;
   "create_directory_command": (args: CreateDirectoryCommandArgs) => Promise<void>;
   "read_file_content_command": (args: ReadFileContentCommandArgs) => Promise<string>;
   "write_file_content_command": (args: WriteFileContentCommandArgs) => Promise<void>;
@@ -610,9 +586,6 @@ export type TauriInvoke = {
   "generate_regex_command": (args: GenerateRegexCommandArgs) => Promise<JobResult>;
   "improve_text_command": (args: ImproveTextCommandArgs) => Promise<JobResult>;
   "generate_simple_text_command": (args: GenerateSimpleTextCommandArgs) => Promise<{ text: string; duration_ms?: number }>;
-  "create_transcription_job_command": (args: CreateTranscriptionJobCommandArgs) => Promise<JobResult>;
-  "transcribe_audio_batch_command": (args: TranscribeAudioBatchCommandArgs) => Promise<BatchTranscriptionResponse>;
-  "transcribe_audio_direct_command": (args: TranscribeAudioDirectCommandArgs) => Promise<{ text: string; duration_ms?: number }>;
   "get_key_value_command": (args: GetKeyValueCommandArgs) => Promise<string | null>;
   "set_key_value_command": (args: SetKeyValueCommandArgs) => Promise<void>;
   "get_workflow_setting_command": (args: GetWorkflowSettingCommandArgs) => Promise<string | null>;
@@ -636,8 +609,6 @@ export type TauriInvoke = {
   
   // Billing commands
   "get_billing_dashboard_data_command": () => Promise<BillingDashboardData>;
-  "get_subscription_plans_command": () => Promise<SubscriptionPlan[]>;
-  "get_current_plan_command": () => Promise<CurrentPlanResponse>;
   "get_spending_history_command": () => Promise<SpendingHistoryResponse>;
   "check_service_access_command": () => Promise<ServiceAccessResponse>;
   "get_spending_analytics_command": (args?: { periodMonths?: number }) => Promise<SpendingAnalyticsResponse>;
@@ -645,7 +616,7 @@ export type TauriInvoke = {
   "get_payment_methods_command": () => Promise<PaymentMethodsResponse>;
   
   // Credit system commands
-  "get_credit_history_command": (args: { limit?: number; offset?: number }) => Promise<CreditHistoryResponse>;
+  "get_credit_history_command": (args: { limit?: number; offset?: number; search?: string }) => Promise<CreditHistoryResponse>;
   "get_credit_balance_command": () => Promise<CreditBalanceResponse>;
   "get_credit_details_command": () => Promise<CreditDetailsResponse>;
   "get_credit_stats_command": () => Promise<CreditStats>;
@@ -692,49 +663,6 @@ export interface DetailedUsage {
   totalInputTokens: number;
   totalOutputTokens: number;
   totalDurationMs: number;
-}
-export interface SubscriptionDetails {
-  plan: string;
-  planName?: string;
-  status: string;
-  trialEndsAt?: string;
-  currentPeriodEndsAt?: string;
-  monthlySpendingAllowance?: number;
-  hardSpendingLimit?: number;
-  isTrialing: boolean;
-  hasCancelled: boolean;
-  nextInvoiceAmount?: number;
-  currency: string;
-  usage: UsageInfo;
-  creditBalance: number;
-  pendingPlanId?: string | null;
-  cancelAtPeriodEnd?: boolean;
-}
-
-export interface SubscriptionPlan {
-  id: string;
-  name: string;
-  description: string;
-  weeklyPrice: number;
-  monthlyPrice: number;
-  yearlyPrice: number;
-  currency: string;
-  features: string[];
-  recommended: boolean;
-  trialDays: number;
-  stripeWeeklyPriceId?: string;
-  stripeMonthlyPriceId?: string;
-  stripeYearlyPriceId?: string;
-  active: boolean;
-  createdAt?: string;
-  updatedAt?: string;
-}
-
-export interface CurrentPlanResponse {
-  planId: string;
-  planName: string;
-  costMarkupPercentage: number;
-  status: string;
 }
 
 export interface UsageInfo {
@@ -835,6 +763,7 @@ export interface CreditStats {
   totalPurchased: number;
   totalConsumed: number;
   totalRefunded: number;
+  netBalance: number;
   transactionCount: number;
   currency: string;
 }
@@ -983,10 +912,7 @@ export interface BillingDashboardPlanDetails {
 }
 
 export interface BillingDashboardData {
-  planDetails: BillingDashboardPlanDetails;
   creditBalanceUsd: number;
-  subscriptionStatus: string;
-  trialEndsAt?: string;
   servicesBlocked: boolean;
 }
 

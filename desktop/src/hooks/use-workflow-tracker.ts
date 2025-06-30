@@ -345,6 +345,10 @@ export function useExistingWorkflowTracker(
     if (!trackerRef.current) return;
     
     try {
+      // Use the WorkflowTracker's refreshState method which calls getStatus and notifies progress callbacks
+      await trackerRef.current.refreshState();
+      
+      // Get the current state for local state updates
       const currentState = await trackerRef.current.getStatus();
       setWorkflowState(currentState);
       performanceMonitor.updateFromState(currentState);

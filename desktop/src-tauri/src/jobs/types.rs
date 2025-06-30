@@ -24,6 +24,7 @@ pub struct JobStatusChangeEvent {
     pub job_id: String,
     pub status: String,
     pub message: Option<String>,
+    pub actual_cost: Option<f64>,
 }
 
 // Event emitted when a job response is updated
@@ -165,6 +166,28 @@ pub struct FileRelevanceAssessmentResponse {
     pub token_count: usize,
     pub processing: FileRelevanceAssessmentProcessingDetails,
     pub quality: FileRelevanceAssessmentQualityDetails,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PatternGroup {
+    pub title: String,
+    pub path_pattern: Option<String>,
+    pub content_pattern: Option<String>,
+    pub negative_path_pattern: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GroupResult {
+    pub title: String,
+    pub matched_files: Vec<String>,
+    pub files_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RegexFilterResult {
+    pub filtered_files: Vec<String>,
+    pub group_results: Option<Vec<GroupResult>>,
 }
 
 

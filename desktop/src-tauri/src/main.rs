@@ -147,8 +147,6 @@ fn main() {
             
             // Billing commands
             commands::billing_commands::get_billing_dashboard_data_command,
-            commands::billing_commands::get_subscription_plans_command,
-            commands::billing_commands::get_current_plan_command,
             commands::billing_commands::get_spending_history_command,
             commands::billing_commands::check_service_access_command,
             commands::billing_commands::get_spending_analytics_command,
@@ -166,13 +164,12 @@ fn main() {
             commands::billing_commands::get_credit_stats_command,
             
             // Stripe Checkout commands
-            commands::billing_commands::create_credit_checkout_session_command,
-            commands::billing_commands::create_subscription_checkout_session_command,
+            commands::billing_commands::create_credit_purchase_checkout_session_command,
             commands::billing_commands::create_setup_checkout_session_command,
             commands::billing_commands::get_checkout_session_status_command,
             
             
-            // Subscription lifecycle management
+            // Customer billing lifecycle management
             commands::billing_commands::get_usage_summary_command,
             commands::billing_commands::get_detailed_usage_command,
             commands::billing_commands::create_billing_portal_session_command,
@@ -195,7 +192,7 @@ fn main() {
             
             // File system commands
             commands::file_system_commands::get_home_directory_command,
-            commands::file_system_commands::list_files_command,
+            commands::file_system_commands::list_project_files_command,
             commands::file_system_commands::create_directory_command,
             commands::file_system_commands::read_file_content_command,
             commands::file_system_commands::write_file_content_command,
@@ -235,8 +232,6 @@ fn main() {
             commands::file_finder_workflow_commands::get_workflow_details_command,
             commands::file_finder_workflow_commands::retry_workflow_stage_command,
             
-            // Voice commands
-            commands::voice_commands::transcribe_audio_batch_command,
             
             // Generic task commands
             commands::generic_task_commands::generic_llm_stream_command,
@@ -288,7 +283,7 @@ fn main() {
             commands::session_commands::clear_all_project_sessions_command,
             commands::session_commands::update_session_fields_command,
             commands::session_commands::get_task_description_history_command,
-            commands::session_commands::add_task_description_history_entry_command,
+            commands::session_commands::sync_task_description_history_command,
             
             // Setup commands
             commands::setup_commands::trigger_initial_keychain_access,
