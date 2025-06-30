@@ -141,7 +141,11 @@
       "Bash(PGPASSWORD='' psql -h localhost -p 5432 -U kirylkazlovich -d vibe_manager -c \"SELECT system_prompt FROM default_system_prompts WHERE task_type = 'regex_pattern_generation';\" -t)",
       "Bash(SQLX_OFFLINE=true cargo check --quiet 2 >& 1)",
       "WebFetch(domain:stripe.com)",
-      "WebFetch(domain:docs.anthropic.com)"
+      "WebFetch(domain:docs.anthropic.com)",
+      "WebFetch(domain:www.npmjs.com)",
+      "WebFetch(domain:platform.openai.com)",
+      "WebFetch(domain:help.openai.com)",
+      "Bash(dig:*)"
     ],
     "deny": []
   },

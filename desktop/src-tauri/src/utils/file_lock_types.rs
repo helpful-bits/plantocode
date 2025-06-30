@@ -1,5 +1,4 @@
 use std::path::PathBuf;
-use std::time::Instant;
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
@@ -42,7 +41,6 @@ pub struct FileLockInfo {
     pub id: FileLockId,
     pub mode: LockMode,
     pub path: PathBuf,
-    pub acquired_at: Instant,
 }
 
 /// A guard that automatically releases the lock when dropped

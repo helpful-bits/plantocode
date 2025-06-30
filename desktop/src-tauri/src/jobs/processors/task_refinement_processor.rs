@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use log::{info, error, debug, warn};
 use tauri::AppHandle;
+use tokio::fs;
 
 use crate::utils::config_resolver;
 
@@ -72,7 +73,7 @@ impl JobProcessor for TaskRefinementProcessor {
         let mut file_contents = std::collections::HashMap::new();
         for relative_path_str in &payload.relevant_files {
             let full_path = std::path::Path::new(project_directory).join(relative_path_str);
-            match crate::utils::fs_utils::read_file_to_string(&*full_path.to_string_lossy()).await {
+            match fs::read_to_string(&full_path).await {
                 Ok(content) => {
                     file_contents.insert(relative_path_str.clone(), content);
                 }
@@ -116,12 +117,7 @@ impl JobProcessor for TaskRefinementProcessor {
         info!("Task Refinement LLM task completed successfully for job {}", job_id);
         info!("System prompt ID: {}", llm_result.system_prompt_id);
         
-        // Clone the response to avoid borrow checker issues
-        let refined_description = format!(
-            "<original_task>\n{}\n</original_task>\n\n<refined_task>\n{}\n</refined_task>",
-            payload.task_description,
-            llm_result.response.trim()
-        );
+        let refined_description = llm_result.response.trim().to_string();
         
         // Extract usage before moving it
         let usage_for_result = llm_result.usage.clone();

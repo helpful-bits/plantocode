@@ -89,13 +89,6 @@ pub async fn build_unified_prompt(
 async fn refresh_system_prompts_if_needed(app_handle: &AppHandle) {
     use tauri::Manager;
     
-    // Try to get the cache service from app state
-    if let Some(cache_service) = app_handle.try_state::<Arc<crate::services::SystemPromptCacheService>>() {
-        // Perform cache refresh check in background - don't block prompt generation
-        if let Err(e) = cache_service.refresh_if_expired().await {
-            log::debug!("Background system prompt cache refresh failed: {}", e);
-        }
-    } else {
-        log::debug!("System prompt cache service not available - using direct database access");
-    }
+    // Note: System prompt cache service now operates on-demand
+    // No background refresh needed as prompts are fetched when requested
 }

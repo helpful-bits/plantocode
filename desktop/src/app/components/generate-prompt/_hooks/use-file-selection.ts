@@ -5,25 +5,28 @@ import { useSessionStateContext, useSessionActionsContext } from "@/contexts/ses
 import { listProjectFilesAction } from "@/actions/file-system/list-project-files.action";
 import { WorkflowTracker } from "@/utils/workflow-utils";
 
-interface SimpleFileInfo {
-  path: string;
+// Extended interface for UI state - includes selection state
+interface ExtendedFileInfo {
+  path: string;        // RELATIVE from project root
+  name: string;
   size?: number;
   modifiedAt?: number;
-  createdAt?: number;
+  isBinary: boolean;
   included: boolean;
   excluded: boolean;
 }
+
 
 /**
  * EXTREMELY SIMPLE file selection hook
  * No caching, no complex state management, no transformations
  * Just files, selection state, and direct database saves
  */
-export function useSimpleFileSelection(projectDirectory?: string) {
+export function useFileSelection(projectDirectory?: string) {
   const { currentSession, activeSessionId } = useSessionStateContext();
   const { updateCurrentSessionFields } = useSessionActionsContext();
   
-  const [files, setFiles] = useState<SimpleFileInfo[]>([]);
+  const [files, setFiles] = useState<ExtendedFileInfo[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
@@ -53,19 +56,14 @@ export function useSimpleFileSelection(projectDirectory?: string) {
     setError(null);
     
     try {
-      const result = await listProjectFilesAction({
-        directory: projectDirectory,
-        pattern: "**/*",
-        includeStats: true,
-        exclude: [],
-      });
+      const result = await listProjectFilesAction({ projectDirectory });
 
       if (!result.isSuccess || !result.data) {
         throw new Error(result.message || "Failed to load files");
       }
 
       // Create file list with or without current session state
-      let fileList: SimpleFileInfo[];
+      let fileList: ExtendedFileInfo[];
       
       if (preserveSelections) {
         // Get current session data at call time to avoid dependency issues
@@ -75,22 +73,16 @@ export function useSimpleFileSelection(projectDirectory?: string) {
         const excludedSet = new Set(currentExcluded);
 
         fileList = result.data.map(file => ({
-          path: file.path,
-          size: file.size,
-          modifiedAt: file.modifiedAt,
-          createdAt: file.createdAt,
+          ...file,
           included: includedSet.has(file.path),
           excluded: excludedSet.has(file.path),
-        }));
+        } as ExtendedFileInfo));
       } else {
         fileList = result.data.map(file => ({
-          path: file.path,
-          size: file.size,
-          modifiedAt: file.modifiedAt,
-          createdAt: file.createdAt,
+          ...file,
           included: false,
           excluded: false,
-        }));
+        } as ExtendedFileInfo));
       }
 
       setFiles(fileList);
@@ -214,7 +206,7 @@ export function useSimpleFileSelection(projectDirectory?: string) {
   }, [history, historyIndex, updateCurrentSessionFields]);
 
   // Sort function
-  const sortFiles = useCallback((filesToSort: SimpleFileInfo[]) => {
+  const sortFiles = useCallback((filesToSort: ExtendedFileInfo[]) => {
     return [...filesToSort].sort((a, b) => {
       let comparison = 0;
       
@@ -457,6 +449,22 @@ export function useSimpleFileSelection(projectDirectory?: string) {
     updateCurrentSessionFields({ includedFiles: newIncluded });
   }, [saveToHistory, updateCurrentSessionFields, filteredAndSortedFiles, files]);
 
+  // Cancel find function - cancels active workflow and resets state
+  const cancelFind = useCallback(() => {
+    try {
+      if (activeWorkflowTracker.current) {
+        activeWorkflowTracker.current.cancel();
+        activeWorkflowTracker.current = null;
+      }
+      setFindingFiles(false);
+      setFindingFilesError(null);
+    } catch (error) {
+      console.error("Error canceling workflow:", error);
+      setFindingFiles(false);
+      activeWorkflowTracker.current = null;
+    }
+  }, []);
+
   return {
     files: filteredAndSortedFiles,
     loading,
@@ -479,10 +487,12 @@ export function useSimpleFileSelection(projectDirectory?: string) {
     canUndo: historyIndex > 0,
     canRedo: historyIndex < history.length - 1,
     triggerFind,
+    cancelFind,
     findingFiles,
     findingFilesError,
     selectFiltered,
     deselectFiltered,
     hasUnsavedChanges,
+    applyWorkflowResultsToSession,
   };
 }

@@ -1,208 +1,88 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
-use tokio::sync::{Mutex, Notify};
-use tokio::time::timeout;
+use tokio::sync::Mutex;
 use uuid::Uuid;
-use log::{debug, warn, error};
+use log::debug;
 
 use crate::error::{AppError, AppResult};
 use super::file_lock_types::{FileLockId, FileLockInfo, FileLockGuard, LockMode};
 use super::path_utils::normalize_path;
 
-/// A manager for file locks that prevents concurrent access to files
+/// A simple file lock manager for coordinating write operations only
+/// This is a minimal mutex-style system focused on preventing concurrent writes
 #[derive(Debug)]
 pub struct FileLockManager {
-    /// Maps file paths to active locks
-    active_locks: Mutex<HashMap<PathBuf, Vec<FileLockInfo>>>,
-    
-    /// Maps file paths to notification objects for waiting tasks
-    lock_waiters: Mutex<HashMap<PathBuf, Arc<Notify>>>,
-    
-    /// Timeout duration for locks
-    lock_timeout: Duration,
+    /// Maps file paths to active write locks
+    active_locks: Mutex<HashMap<PathBuf, FileLockInfo>>,
 }
 
 impl FileLockManager {
     /// Create a new FileLockManager
-    pub fn new(timeout: Duration) -> Self {
+    pub fn new() -> Self {
         FileLockManager {
             active_locks: Mutex::new(HashMap::new()),
-            lock_waiters: Mutex::new(HashMap::new()),
-            lock_timeout: timeout,
         }
     }
     
-    /// Acquire a lock on a file
+    /// Acquire a write lock on a file (simplified for write operations only)
     pub async fn acquire(self: Arc<Self>, path: &Path, mode: LockMode) -> AppResult<FileLockGuard> {
-        let path_normalized = PathBuf::from(normalize_path(path));
-        let timeout_duration = self.lock_timeout;
-        
-        // Try to acquire lock with timeout
-        match timeout(timeout_duration, self.acquire_internal(&path_normalized, mode, self.clone())).await {
-            Ok(result) => result,
-            Err(_) => Err(AppError::FileLockError(format!(
-                "Timeout waiting for lock on {}",
-                path_normalized.display()
-            ))),
+        // Only allow write locks - this manager is for write coordination only
+        if mode != LockMode::Write {
+            return Err(AppError::FileLockError(
+                "FileLockManager only supports write locks".to_string()
+            ));
         }
-    }
-    
-    /// Internal implementation of lock acquisition
-    async fn acquire_internal(
-        &self,
-        path: &Path,
-        mode: LockMode,
-        self_arc: Arc<Self>,
-    ) -> AppResult<FileLockGuard> {
-        let path_normalized = path.to_path_buf();
-        let path_normalized_clone = path_normalized.clone();
         
-        // Loop until we acquire the lock or timeout
+        let path_normalized = normalize_path(path)?;
+        
+        // Simple mutex-style lock - wait until we can acquire
         loop {
-            // Lock the active_locks collection
             let mut locks = self.active_locks.lock().await;
             
-            // Get current locks for this path
-            let path_locks = locks.entry(path_normalized.clone()).or_insert_with(Vec::new);
-            
-            // Check if we can acquire the lock
-            if Self::can_acquire_lock(path_locks, mode) {
-                // Create a new lock ID
+            // Check if path is already locked
+            if !locks.contains_key(&path_normalized) {
+                // Create a new lock
                 let lock_id = FileLockId(Uuid::new_v4().to_string());
                 
-                // Add lock to active_locks
                 let lock_info = FileLockInfo {
                     id: lock_id.clone(),
                     mode,
                     path: path_normalized.clone(),
-                    acquired_at: Instant::now(),
                 };
                 
-                path_locks.push(lock_info);
-
-                // Create and return the lock guard
-                let guard = FileLockGuard {
+                locks.insert(path_normalized.clone(), lock_info);
+                
+                debug!("Acquired write lock on {}", path_normalized.display());
+                
+                return Ok(FileLockGuard {
                     id: lock_id,
-                    path: path_normalized.clone(),
-                    lock_manager: self_arc.clone(),
-                };
-                
-                // Spawn a task that will auto-expire the lock if it's held too long
-                let lock_id_clone = guard.id.clone();
-                let path_clone = path_normalized.clone();
-                let self_clone = self_arc.clone();
-                let timeout_duration = self.lock_timeout;
-                
-                tokio::spawn(async move {
-                    tokio::time::sleep(timeout_duration).await;
-                    
-                    // Check if lock still exists (it may have been released already)
-                    let locks = self_clone.active_locks.lock().await;
-                    if let Some(path_locks) = locks.get(&path_clone) {
-                        if path_locks.iter().any(|lock| lock.id == lock_id_clone) {
-                            // Lock is still held, force release it
-                            warn!("Auto-releasing expired lock on {}", path_clone.display());
-                            drop(locks); // Release the mutex before calling release
-                            
-                            let _ = self_clone.release_internal(&lock_id_clone, &path_clone).await;
-                        }
-                    }
+                    path: path_normalized,
+                    lock_manager: self.clone(),
                 });
-                
-                return Ok(guard);
             }
             
-            // If we can't acquire the lock, we need to wait
-            // Get or create a Notify for this path
-            let path_clone = path_normalized.clone();
-            
-            // Acquire the lock_waiters mutex BEFORE dropping active_locks
-            // to prevent race conditions where the Notify object might be
-            // removed or changed by another thread
-            let mut waiters = self.lock_waiters.lock().await;
-            let notify = waiters
-                .entry(path_clone.clone())
-                .or_insert_with(|| Arc::new(Notify::new()))
-                .clone();
-            
-            // Now drop both mutexes before waiting
+            // Release the mutex and wait a bit before retrying
             drop(locks);
-            drop(waiters);
-            
-            debug!("Waiting for lock on {}", path_clone.display());
-            
-            // Wait for notification
-            notify.notified().await;
-            
-            debug!("Received notification for {}, retrying", path_clone.display());
-            
-            // Loop will restart and try to acquire the lock again
+            tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
         }
     }
     
     /// Release a lock by ID and path
     pub(super) async fn release_internal(&self, lock_id: &FileLockId, path: &Path) -> AppResult<()> {
-        let path_normalized = PathBuf::from(normalize_path(path));
+        let path_normalized = normalize_path(path)?;
         
-        // Lock the active_locks collection
         let mut locks = self.active_locks.lock().await;
         
-        // Find and remove the lock
-        if let Some(path_locks) = locks.get_mut(&path_normalized) {
-            let initial_len = path_locks.len();
-            path_locks.retain(|lock| lock.id != *lock_id);
-            
-            // If we removed a lock, log it
-            if path_locks.len() < initial_len {
-
-                // If no more locks, remove the entry
-                if path_locks.is_empty() {
-                    locks.remove(&path_normalized);
-                }
-                
-                // Notify any waiters that a lock was released
-                let path_clone = path_normalized.clone();
-                drop(locks); // Release the mutex before notifying
-                self.notify_waiters(&path_clone).await;
-                
-                return Ok(());
+        // Remove the lock if it matches
+        if let Some(lock_info) = locks.get(&path_normalized) {
+            if lock_info.id == *lock_id {
+                locks.remove(&path_normalized);
+                debug!("Released write lock on {}", path_normalized.display());
             }
         }
         
-        // If we didn't find the lock, it might have already been released
-        warn!("Attempted to release non-existent lock on {}", path_normalized.display());
         Ok(())
-    }
-    
-    /// Notify any tasks waiting for a lock on a given path
-    async fn notify_waiters(&self, path: &Path) {
-        let mut waiters = self.lock_waiters.lock().await;
-        
-        if let Some(notify) = waiters.get(path) {
-            debug!("Notifying waiters for {}", path.display());
-            notify.notify_waiters();
-        }
-    }
-    
-    /// Check if a lock can be acquired
-    fn can_acquire_lock(existing_locks: &Vec<FileLockInfo>, requested_mode: LockMode) -> bool {
-        if existing_locks.is_empty() {
-            // No locks, can acquire any mode
-            return true;
-        }
-        
-        match requested_mode {
-            LockMode::Read => {
-                // Can acquire read lock if all existing locks are read locks
-                existing_locks.iter().all(|lock| lock.mode == LockMode::Read)
-            }
-            LockMode::Write => {
-                // Can acquire write lock only if no existing locks
-                false
-            }
-        }
     }
 }
 

@@ -107,17 +107,17 @@ pub enum AppError {
     #[error("Payment authentication required: {0}")]
     PaymentAuthenticationRequired(String),
     
-    #[error("Subscription expired: {0}")]
-    SubscriptionExpired(String),
+    #[error("Customer billing expired: {0}")]
+    BillingExpired(String),
     
-    #[error("Subscription cancelled: {0}")]
-    SubscriptionCancelled(String),
+    #[error("Customer billing cancelled: {0}")]
+    BillingCancelled(String),
     
     #[error("Insufficient credits: {0}")]
     CreditInsufficient(String),
     
-    #[error("Plan upgrade required: {0}")]
-    PlanUpgradeRequired(String),
+    #[error("Credit purchase required: {0}")]
+    CreditPurchaseRequired(String),
     
     #[error("Payment method required: {0}")]
     PaymentMethodRequired(String),
@@ -125,8 +125,8 @@ pub enum AppError {
     #[error("Billing address required: {0}")]
     BillingAddressRequired(String),
     
-    #[error("Subscription conflict: {0}")]
-    SubscriptionConflict(String),
+    #[error("Customer billing conflict: {0}")]
+    BillingConflict(String),
     
     #[error("Spending limit exceeded: {0}")]
     SpendingLimitExceeded(String),
@@ -264,13 +264,13 @@ impl From<AppError> for SerializableError {
             AppError::PaymentFailed(_) => "PAYMENT_FAILED",
             AppError::PaymentDeclined(_) => "PAYMENT_DECLINED",
             AppError::PaymentAuthenticationRequired(_) => "PAYMENT_AUTHENTICATION_REQUIRED",
-            AppError::SubscriptionExpired(_) => "SUBSCRIPTION_EXPIRED",
-            AppError::SubscriptionCancelled(_) => "SUBSCRIPTION_CANCELLED",
+            AppError::BillingExpired(_) => "CUSTOMER_BILLING_EXPIRED",
+            AppError::BillingCancelled(_) => "CUSTOMER_BILLING_CANCELLED",
             AppError::CreditInsufficient(_) => "CREDIT_INSUFFICIENT",
-            AppError::PlanUpgradeRequired(_) => "PLAN_UPGRADE_REQUIRED",
+            AppError::CreditPurchaseRequired(_) => "CREDIT_PURCHASE_REQUIRED",
             AppError::PaymentMethodRequired(_) => "PAYMENT_METHOD_REQUIRED",
             AppError::BillingAddressRequired(_) => "BILLING_ADDRESS_REQUIRED",
-            AppError::SubscriptionConflict(_) => "SUBSCRIPTION_CONFLICT",
+            AppError::BillingConflict(_) => "CUSTOMER_BILLING_CONFLICT",
             AppError::SpendingLimitExceeded(_) => "SPENDING_LIMIT_EXCEEDED",
             AppError::InvoiceError(_) => "INVOICE_ERROR",
             AppError::StripeError(_) => "STRIPE_ERROR",

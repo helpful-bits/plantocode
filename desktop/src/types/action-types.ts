@@ -13,12 +13,13 @@ export type ActionState<TData = unknown> = {
   clipboardFeedback?: boolean; // Indicates that clipboard feedback should be shown in the UI
 };
 
-// File info type
+// File info type - compatible with new git-based file discovery
 export type FileInfo = {
-  path: string;
+  path: string;        // Relative path from project root
+  name: string;        // File name
   size?: number;
+  modifiedAt?: number;
+  isBinary: boolean;
   included: boolean;
-  forceExcluded: boolean;
-  comparablePath: string; // Required to match the project-file-list.ts definition
-  isDir?: boolean; // Whether this is a directory
+  excluded: boolean;
 };

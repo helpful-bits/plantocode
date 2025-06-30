@@ -5,24 +5,20 @@ use std::collections::HashMap;
 use serde::{Serialize, Deserialize};
 use tracing::{info, instrument};
 
-/// Database-driven AI model settings (no JSON storage dependencies)
+/// Database-driven AI model settings (pure task-driven configuration)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DatabaseAIModelSettings {
-    pub default_llm_model_id: String,
-    pub default_voice_model_id: String,
-    pub default_transcription_model_id: String,
-    pub default_temperature: f32,
-    pub default_max_tokens: u32,
-    pub task_specific_configs: HashMap<String, DatabaseTaskConfig>,
+    pub tasks: HashMap<String, TaskConfig>,
     pub path_finder_settings: DatabasePathFinderSettings,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DatabaseTaskConfig {
+pub struct TaskConfig {
     pub model: String,
-    pub max_tokens: u32,
     pub temperature: f32,
+    pub max_tokens: u32,
     pub copy_buttons: Option<Vec<serde_json::Value>>,
+    pub allowed_models: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -33,6 +29,17 @@ pub struct DatabasePathFinderSettings {
     pub max_file_count: Option<u32>,
     pub file_content_truncation_chars: Option<u32>,
     pub token_limit_buffer: Option<u32>,
+}
+
+impl DatabaseAIModelSettings {
+    pub fn get_model_for_task(&self, task_name: &str) -> Result<&str, AppError> {
+        self.tasks.get(task_name)
+            .map(|config| config.model.as_str())
+            .ok_or_else(|| AppError::Configuration(
+                format!("No model configured for task: {}", task_name)
+            ))
+    }
+    
 }
 
 pub struct SettingsRepository {
@@ -93,7 +100,7 @@ impl SettingsRepository {
 
     pub async fn update_ai_model_settings(&self, settings: &DatabaseAIModelSettings) -> Result<(), AppError> {
         self.set_config_value("ai_settings", settings, 
-            Some("Consolidated AI model settings including defaults, task configs, and PathFinder settings")).await?;
+            Some("Consolidated AI model settings including task configurations and PathFinder settings")).await?;
         
         info!("AI model settings updated in database");
         

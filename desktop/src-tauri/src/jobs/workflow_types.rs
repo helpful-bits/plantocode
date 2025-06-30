@@ -355,7 +355,7 @@ impl WorkflowState {
 }
 
 /// Intermediate data collected during workflow execution
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkflowIntermediateData {
     pub directory_tree_content: Option<String>,
@@ -368,7 +368,26 @@ pub struct WorkflowIntermediateData {
     pub extended_corrected_paths: Vec<String>,
 }
 
+impl Default for WorkflowIntermediateData {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl WorkflowIntermediateData {
+    pub fn new() -> Self {
+        Self {
+            directory_tree_content: None,
+            raw_regex_patterns: None,
+            locally_filtered_files: Vec::new(),
+            ai_filtered_files: Vec::new(),
+            ai_filtered_files_token_count: None,
+            extended_verified_paths: Vec::new(),
+            extended_unverified_paths: Vec::new(),
+            extended_corrected_paths: Vec::new(),
+        }
+    }
+
     /// Get all final selected files from the workflow
     pub fn get_final_selected_files(&self) -> Vec<String> {
         // The method should combine files from the final relevant stages.

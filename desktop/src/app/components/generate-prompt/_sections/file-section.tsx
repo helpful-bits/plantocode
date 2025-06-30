@@ -2,13 +2,13 @@
 
 import React from "react";
 
-import { SimpleFileBrowser } from "../simple-file-browser";
+import { FileBrowser } from "../file-browser";
 
 const FileSection = React.memo(function FileSection() {
 
   return (
     <>
-      <SimpleFileBrowser />
+      <FileBrowser />
     </>
   );
 });

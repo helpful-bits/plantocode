@@ -199,10 +199,6 @@ impl SessionRepository {
         // Commit transaction
         tx.commit().await
             .map_err(|e| AppError::DatabaseError(format!("Failed to commit transaction: {}", e)))?;
-
-        if let Some(ref task_description) = session.task_description {
-            self.add_task_description_history_entry(&session.id, task_description).await?;
-        }
         
         Ok(())
     }
@@ -377,37 +373,35 @@ impl SessionRepository {
         Ok(())
     }
 
-    pub async fn add_task_description_history_entry(&self, session_id: &str, description: &str) -> AppResult<()> {
-        let now = date_utils::get_timestamp();
+    pub async fn sync_task_description_history(&self, session_id: &str, history: &[String]) -> AppResult<()> {
+        let mut tx = self.pool.begin().await
+            .map_err(|e| AppError::DatabaseError(format!("Failed to begin transaction: {}", e)))?;
         
-        sqlx::query("INSERT INTO task_description_history (session_id, description, created_at) VALUES ($1, $2, $3)")
+        sqlx::query("DELETE FROM task_description_history WHERE session_id = $1")
             .bind(session_id)
-            .bind(description)
-            .bind(now)
-            .execute(&*self.pool)
+            .execute(&mut *tx)
             .await
-            .map_err(|e| AppError::DatabaseError(format!("Failed to insert task description history: {}", e)))?;
+            .map_err(|e| AppError::DatabaseError(format!("Failed to delete existing task description history: {}", e)))?;
         
-        sqlx::query(
-            "DELETE FROM task_description_history 
-             WHERE session_id = $1 
-             AND id NOT IN (
-                 SELECT id FROM task_description_history 
-                 WHERE session_id = $1 
-                 ORDER BY created_at DESC 
-                 LIMIT 5
-             )"
-        )
-        .bind(session_id)
-        .execute(&*self.pool)
-        .await
-        .map_err(|e| AppError::DatabaseError(format!("Failed to prune task description history: {}", e)))?;
+        let now = date_utils::get_timestamp();
+        for description in history {
+            sqlx::query("INSERT INTO task_description_history (session_id, description, created_at) VALUES ($1, $2, $3)")
+                .bind(session_id)
+                .bind(description)
+                .bind(now)
+                .execute(&mut *tx)
+                .await
+                .map_err(|e| AppError::DatabaseError(format!("Failed to insert task description history: {}", e)))?;
+        }
+        
+        tx.commit().await
+            .map_err(|e| AppError::DatabaseError(format!("Failed to commit transaction: {}", e)))?;
         
         Ok(())
     }
 
     pub async fn get_task_description_history(&self, session_id: &str) -> AppResult<Vec<(String, i64)>> {
-        let rows = sqlx::query("SELECT description, created_at FROM task_description_history WHERE session_id = $1 ORDER BY created_at DESC")
+        let rows = sqlx::query("SELECT description, created_at FROM task_description_history WHERE session_id = $1 ORDER BY created_at ASC")
             .bind(session_id)
             .fetch_all(&*self.pool)
             .await

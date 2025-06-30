@@ -11,7 +11,7 @@ pub struct AppSettings {
     pub api_keys: ApiKeysConfig,
     pub auth: AuthConfig,
     pub rate_limit: RateLimitConfig,
-    pub subscription: SubscriptionConfig,
+    pub billing: BillingConfig,
     pub stripe: StripeConfig,
     pub auth_stores: AuthStoreConfig,
 }
@@ -66,8 +66,8 @@ pub struct RateLimitConfig {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct SubscriptionConfig {
-    pub default_trial_days: u32,
+pub struct BillingConfig {
+    pub default_signup_credits: f64,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -170,11 +170,11 @@ impl AppSettings {
             .ok()
             .and_then(|s| s.parse().ok());
         
-        // Subscription defaults
-        let default_trial_days = env::var("DEFAULT_TRIAL_DAYS")
-            .unwrap_or_else(|_| "1".to_string())
-            .parse::<u32>()
-            .map_err(|_| AppError::Configuration("DEFAULT_TRIAL_DAYS must be a valid number".to_string()))?;
+        // Billing defaults
+        let default_signup_credits = env::var("DEFAULT_SIGNUP_CREDITS")
+            .unwrap_or_else(|_| "5.0".to_string())
+            .parse::<f64>()
+            .map_err(|_| AppError::Configuration("DEFAULT_SIGNUP_CREDITS must be a valid number".to_string()))?;
 
         // Stripe configuration
         let stripe_secret_key = env::var("STRIPE_SECRET_KEY")
@@ -250,8 +250,8 @@ impl AppSettings {
                 redis_key_prefix: rate_limit_redis_key_prefix,
                 cleanup_interval_secs: rate_limit_cleanup_interval_secs,
             },
-            subscription: SubscriptionConfig {
-                default_trial_days,
+            billing: BillingConfig {
+                default_signup_credits,
             },
             stripe: StripeConfig {
                 secret_key: stripe_secret_key,

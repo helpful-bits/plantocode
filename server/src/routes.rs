@@ -20,9 +20,7 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig, strict_rate_limiter: RateL
         web::scope("/billing")
             // Dashboard route
             .route("/dashboard", web::get().to(handlers::billing::dashboard_handler::get_billing_dashboard_data_handler))
-            // Subscription management routes
-            .service(handlers::billing::subscription_handlers::get_available_plans)
-            .service(handlers::billing::subscription_handlers::get_current_plan)
+            // Customer billing management routes
             .service(handlers::billing::subscription_handlers::get_usage_summary)
             .service(handlers::billing::subscription_handlers::get_detailed_usage)
             // Auto top-off settings routes
@@ -38,7 +36,6 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig, strict_rate_limiter: RateL
             .service(
                 web::scope("/checkout")
                     .service(handlers::billing::checkout_handlers::create_custom_credit_checkout_session_handler)
-                    .service(handlers::billing::checkout_handlers::create_subscription_checkout_session_handler)
                     .service(handlers::billing::checkout_handlers::create_setup_checkout_session_handler)
                     .service(handlers::billing::checkout_handlers::get_checkout_session_status_handler)
             )
@@ -50,8 +47,8 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig, strict_rate_limiter: RateL
                     .route("/transaction-history", web::get().to(handlers::billing::credit_handlers::get_credit_transaction_history))
                     .route("/admin/adjust", web::post().to(handlers::billing::credit_handlers::admin_adjust_credits))
             )
-            // Subscription lifecycle actions (cancel, resume, update) are handled by the billing portal
-            // This prevents future additions of direct subscription modification endpoints
+            // Customer billing lifecycle actions (cancel, resume, update) are handled by the billing portal
+            // This prevents future additions of direct billing modification endpoints
     );
     
     
@@ -90,7 +87,6 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig, strict_rate_limiter: RateL
     cfg.service(
         web::scope("/audio")
             .route("/transcriptions", web::post().to(handlers::proxy_handlers::transcription_handler))
-            .route("/transcriptions/batch", web::post().to(handlers::proxy_handlers::batch_transcription_handler))
     );
 }
 

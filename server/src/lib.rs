@@ -14,6 +14,7 @@ pub mod models;
 pub mod routes;
 pub mod security;
 pub mod services;
+pub mod stripe_types;
 pub mod utils;
 
 // Re-export commonly used types for convenience

@@ -1,3 +1,7 @@
+// Step 3: Cached Token Pricing Implementation
+// This file implements cached token counting for Anthropic API.
+// Token extraction functions return: (uncached_input, cache_write, cache_read, output)
+// For Anthropic: separate fields for cache_creation_input_tokens and cache_read_input_tokens
 use crate::error::AppError;
 use actix_web::{web, HttpResponse};
 use futures_util::{Stream, StreamExt, TryStreamExt};
@@ -89,6 +93,8 @@ pub struct AnthropicResponseContent {
 pub struct AnthropicUsage {
     pub input_tokens: i32,
     pub output_tokens: i32,
+    pub cache_creation_input_tokens: Option<i32>,
+    pub cache_read_input_tokens: Option<i32>,
 }
 
 // Anthropic Streaming Structs
@@ -168,7 +174,7 @@ impl AnthropicClient {
 
     // Chat Completions
     #[instrument(skip(self, request), fields(model = %request.model))]
-    pub async fn chat_completion(&self, request: AnthropicChatRequest, user_id: &str) -> Result<(AnthropicChatResponse, HeaderMap), AppError> {
+    pub async fn chat_completion(&self, request: AnthropicChatRequest, user_id: &str) -> Result<(AnthropicChatResponse, HeaderMap, i32, i32, i32, i32), AppError> {
         let request_id = self.get_next_request_id().await;
         let url = format!("{}/messages", self.base_url);
         
@@ -197,8 +203,13 @@ impl AnthropicClient {
         
         let result = response.json::<AnthropicChatResponse>().await
             .map_err(|e| AppError::Internal(format!("Anthropic deserialization failed: {}", e.to_string())))?;
+        
+        let input_tokens = result.usage.input_tokens;
+        let cache_write_tokens = result.usage.cache_creation_input_tokens.unwrap_or(0);
+        let cache_read_tokens = result.usage.cache_read_input_tokens.unwrap_or(0);
+        let output_tokens = result.usage.output_tokens;
             
-        Ok((result, headers))
+        Ok((result, headers, input_tokens, cache_write_tokens, cache_read_tokens, output_tokens))
     }
 
     // Streaming Chat Completions for actix-web compatibility
@@ -267,22 +278,35 @@ impl AnthropicClient {
     }
     
     // Helper method to parse usage from a stream
-    pub fn extract_usage_from_stream_chunk(chunk_str: &str) -> Option<AnthropicUsage> {
+    // Returns (input_tokens, cache_write_tokens, cache_read_tokens, output_tokens)
+    // 
+    // Example Anthropic usage JSON with cache tokens:
+    // {"usage": {"input_tokens": 100, "output_tokens": 50, 
+    //  "cache_creation_input_tokens": 10, "cache_read_input_tokens": 5}}
+    pub fn extract_usage_from_stream_chunk(chunk_str: &str) -> Option<(i32, i32, i32, i32)> {
         if chunk_str.trim().is_empty() {
             return None;
         }
         
         match serde_json::from_str::<AnthropicStreamChunk>(chunk_str.trim()) {
-            Ok(parsed) => parsed.usage,
+            Ok(parsed) => {
+                if let Some(usage) = parsed.usage {
+                    let cache_write_tokens = usage.cache_creation_input_tokens.unwrap_or(0);
+                    let cache_read_tokens = usage.cache_read_input_tokens.unwrap_or(0);
+                    Some((usage.input_tokens, cache_write_tokens, cache_read_tokens, usage.output_tokens))
+                } else {
+                    None
+                }
+            },
             Err(_) => None,
         }
     }
     
     // Helper method to extract tokens from a stream chunk
-    pub fn extract_tokens_from_stream_chunk(chunk_str: &str) -> Option<(i32, i32)> {
-        Self::extract_usage_from_stream_chunk(chunk_str).map(|usage| 
-            (usage.input_tokens, usage.output_tokens)
-        )
+    // Returns (input_tokens, cache_write_tokens, cache_read_tokens, output_tokens)
+    // Note: For Anthropic, separate fields for cache creation (writes) and cache reads.
+    pub fn extract_tokens_from_stream_chunk(chunk_str: &str) -> Option<(i32, i32, i32, i32)> {
+        Self::extract_usage_from_stream_chunk(chunk_str)
     }
     
     // Convert a generic JSON Value into an AnthropicChatRequest
@@ -355,8 +379,11 @@ impl AnthropicClient {
     }
     
     // Helper functions for token and usage tracking
-    pub fn extract_tokens_from_response(&self, response: &AnthropicChatResponse) -> (i32, i32) {
-        (response.usage.input_tokens, response.usage.output_tokens)
+    // Returns (input_tokens, cache_write_tokens, cache_read_tokens, output_tokens)
+    pub fn extract_tokens_from_response(&self, response: &AnthropicChatResponse) -> (i32, i32, i32, i32) {
+        let cache_write_tokens = response.usage.cache_creation_input_tokens.unwrap_or(0);
+        let cache_read_tokens = response.usage.cache_read_input_tokens.unwrap_or(0);
+        (response.usage.input_tokens, cache_write_tokens, cache_read_tokens, response.usage.output_tokens)
     }
 }
 

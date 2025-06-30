@@ -1,171 +1,101 @@
 import { invoke } from "@tauri-apps/api/core";
-import { type ActionState } from "@/types";
-import { getErrorMessage, logError } from "@/utils/error-handling";
-import { convertFileToBase64 } from "@/utils/file-binary-utils";
+import { AppError, ErrorType, mapStatusToErrorType, getErrorMessage, logError } from "@/utils/error-handling";
+
 export async function transcribeAudioChunk(
   audioChunk: Blob,
-  chunkIndex: number,
-  sessionId: string,
-  language?: string,
-  prompt?: string,
-  temperature?: number,
-  model?: string
-): Promise<{ text: string; chunkIndex: number; processingTimeMs?: number }> {
-  try {
-    if (!audioChunk) {
-      const errorMsg = "No audio chunk was provided";
-      await logError(new Error(errorMsg), "Voice Transcription - Missing Audio Chunk");
-      throw new Error(errorMsg);
-    }
-
-    if (!sessionId) {
-      throw new Error("Session ID is required for transcription");
-    }
-
-    // Validate transcription parameters
-    if (temperature !== undefined && (temperature < 0 || temperature > 1)) {
-      throw new Error("Temperature must be between 0 and 1");
-    }
-
-    if (prompt !== undefined && prompt.trim().length > 1000) {
-      throw new Error("Prompt must be 1000 characters or less");
-    }
-
-    // Convert audio chunk to base64
-    const audioBase64 = await convertFileToBase64(audioChunk);
-
-    // Use the batch transcription command
-    const result = await invoke<{
-      chunkIndex: number;
-      text: string;
-      processingTimeMs?: number;
-    }>("transcribe_audio_batch_command", {
-      sessionId,
-      audioBase64,
-      chunkIndex,
-      durationMs: 5000,
-      language: language,
-      prompt: prompt || null,
-      temperature: temperature !== undefined ? temperature : null,
-      model: model || null,
-    });
-
-    return {
-      text: result.text || "",
-      chunkIndex: result.chunkIndex,
-      processingTimeMs: result.processingTimeMs,
-    };
-  } catch (error) {
-    await logError(error, "transcribeAudioChunk", { chunkIndex, sessionId, hasPrompt: !!prompt, temperature });
-    
-    // Provide more specific error messages based on error type
-    if (error instanceof Error) {
-      if (error.message.includes("NetworkError") || error.message.includes("Failed to send")) {
-        throw new Error("Network error: Unable to connect to transcription service. Please check your internet connection and try again.");
-      }
-      if (error.message.includes("ServerProxyError")) {
-        throw new Error("Server error: The transcription service is currently unavailable. Please try again in a few moments.");
-      }
-      if (error.message.includes("ValidationError")) {
-        throw new Error(`Input validation error: ${error.message}`);
-      }
-      if (error.message.includes("AuthError")) {
-        throw new Error("Authentication error: Please log in again to continue using transcription.");
-      }
-      if (error.message.includes("SerializationError")) {
-        throw new Error("Data processing error: Unable to process the transcription response. Please try again.");
-      }
-    }
-    
-    throw new Error(getErrorMessage(error, 'transcription'));
-  }
-}
-
-export async function transcribeAudioBlobViaBatch(
-  audioBlob: Blob,
-  sessionId: string,
+  durationMs: number,
+  mimeType: string,
   language?: string,
   prompt?: string,
   temperature?: number,
   model?: string
 ): Promise<{ text: string }> {
   try {
-    if (!audioBlob) {
-      const errorMsg = "No audio data was provided";
-      await logError(new Error(errorMsg), "Voice Transcription - Missing Audio Blob");
-      throw new Error(errorMsg);
+    if (!audioChunk) {
+      const errorMsg = "No audio chunk was provided";
+      await logError(new AppError(errorMsg, ErrorType.VALIDATION_ERROR), "Voice Transcription - Missing Audio Chunk");
+      throw new AppError(errorMsg, ErrorType.VALIDATION_ERROR);
     }
 
-    if (!sessionId) {
-      throw new Error("Session ID is required for transcription");
+    // Add validation for audio chunk size
+    if (audioChunk.size < 1024) {
+      const errorMsg = `Audio chunk too small: ${audioChunk.size} bytes (minimum 1024 bytes required)`;
+      await logError(new AppError(errorMsg, ErrorType.VALIDATION_ERROR), "Voice Transcription - Audio Chunk Too Small");
+      throw new AppError(errorMsg, ErrorType.VALIDATION_ERROR);
     }
 
-    const result = await transcribeAudioChunk(audioBlob, 0, sessionId, language, prompt, temperature, model);
+    if (temperature !== undefined && (temperature < 0 || temperature > 1)) {
+      throw new AppError("Temperature must be between 0 and 1", ErrorType.VALIDATION_ERROR);
+    }
+
+    if (prompt !== undefined && prompt.trim().length > 1000) {
+      throw new AppError("Prompt must be 1000 characters or less", ErrorType.VALIDATION_ERROR);
+    }
+
+    const serverUrl = await invoke<string>('get_server_url');
+    const jwt = await invoke<string>('get_app_jwt');
+
+    const formData = new FormData();
     
-    return { text: result.text };
-  } catch (error) {
-    await logError(error, "transcribeAudioBlobViaBatch", { 
-      sessionId, 
-      audioSize: audioBlob?.size,
-      hasPrompt: !!prompt,
-      temperature
+    const fileExtension = (mimeType.split('/')[1] || 'webm').split(';')[0];
+    const filename = `audio.${fileExtension}`;
+    formData.append('file', audioChunk, filename);
+    
+    if (model) formData.append('model', model);
+    if (language) formData.append('language', language);
+    if (prompt) formData.append('prompt', prompt);
+    if (temperature !== undefined) formData.append('temperature', temperature.toString());
+    formData.append('duration_ms', durationMs.toString());
+
+    const response = await fetch(`${serverUrl}/api/audio/transcriptions`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${jwt}`
+      },
+      body: formData
     });
+
+    if (!response.ok) {
+      const errorType = mapStatusToErrorType(response.status);
+      let errorMessage = `HTTP error! status: ${response.status}`;
+      
+      try {
+        // Parse JSON from response body to get server-provided error message
+        const errorData = await response.json();
+        const serverMessage = errorData.error?.message || errorData.message;
+        if (serverMessage) {
+          errorMessage = serverMessage;
+        }
+      } catch (parseError) {
+        // If parsing fails, fallback to HTTP status message
+        console.warn('Failed to parse error response:', parseError);
+      }
+      
+      throw new AppError(errorMessage, errorType, { statusCode: response.status });
+    }
+
+    const result = await response.json();
     
-    // Enhanced error handling for batch transcription
-    if (error instanceof Error) {
-      if (error.message.includes("No audio data")) {
-        throw new Error("No audio data provided: Please record some audio before transcribing.");
-      }
-      if (error.message.includes("Session ID is required")) {
-        throw new Error("Session required: Please start a new session to use transcription.");
-      }
-      if (error.message.includes("Temperature must be")) {
-        throw new Error("Invalid temperature setting: Please choose a value between 0 and 1.");
-      }
-      if (error.message.includes("Prompt must be")) {
-        throw new Error("Transcription prompt too long: Please use 1000 characters or fewer.");
-      }
+    return {
+      text: result.text || ""
+    };
+  } catch (error) {
+    await logError(error, "transcribeAudioChunk", { hasPrompt: !!prompt, temperature });
+    
+    // If it's already an AppError, re-throw it
+    if (error instanceof AppError) {
+      throw error;
     }
     
-    throw new Error(getErrorMessage(error, 'transcription'));
+    // Handle network errors
+    if (error instanceof Error && (error.message.includes("NetworkError") || error.message.includes("fetch") || error.name === "TypeError")) {
+      throw new AppError("Network error: Unable to connect to transcription service. Please check your internet connection and try again.", ErrorType.NETWORK_ERROR, { cause: error });
+    }
+    
+    // Handle other errors by converting to AppError
+    const errorMessage = getErrorMessage(error, 'transcription');
+    throw new AppError(errorMessage, ErrorType.API_ERROR, { cause: error instanceof Error ? error : undefined });
   }
 }
 
-export async function transcribeAudioBlobAction(
-  audioBlob: Blob,
-  sessionId: string,
-  language?: string,
-  prompt?: string,
-  temperature?: number,
-  model?: string
-): Promise<ActionState<{ text: string }>> {
-  try {
-    const result = await transcribeAudioBlobViaBatch(audioBlob, sessionId, language, prompt, temperature, model);
-    
-    return {
-      isSuccess: true,
-      message: "Transcription completed successfully",
-      data: { text: result.text },
-    };
-  } catch (error) {
-    await logError(error, "transcribeAudioBlobAction", { 
-      sessionId, 
-      audioSize: audioBlob?.size 
-    });
-    
-    return {
-      isSuccess: false,
-      message: getErrorMessage(error, 'transcription'),
-      error: error instanceof Error ? error : new Error(getErrorMessage(error, 'transcription'))
-    };
-  }
-}
-
-// Transcription Settings Type (re-exported from settings.ts)
-export interface TranscriptionSettings {
-  defaultLanguage?: string | null;
-  defaultPrompt?: string | null;
-  defaultTemperature?: number | null;
-  model?: string | null;
-}
 

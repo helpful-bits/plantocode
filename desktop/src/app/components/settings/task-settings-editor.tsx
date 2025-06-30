@@ -65,7 +65,7 @@ export function TaskSettingsEditor({
   isDifferentFromDefault,
   getSliderValue,
   providersWithModels,
-  readOnly = false, // Enable editing of AI model parameters
+  readOnly = false, // Disable editing of AI model parameters
 }: TaskSettingsEditorProps) {
   const taskType = taskSettingsKeyToTaskType[taskKey];
   const taskDetails = TaskTypeDetails[taskType];
@@ -73,11 +73,6 @@ export function TaskSettingsEditor({
   const isVoiceTranscription = taskKey === 'voiceTranscription';
   const currentLanguage = settings.languageCode || 'en';
 
-  const filteredProviders = providersWithModels ? 
-    (isVoiceTranscription 
-      ? providersWithModels.filter(p => p.provider.code === 'openai_transcription')
-      : providersWithModels.filter(p => p.provider.code !== 'openai_transcription')
-    ) : [];
 
   return (
     <div className="w-full space-y-6">
@@ -132,7 +127,7 @@ export function TaskSettingsEditor({
             )}
           </div>
 <ModelSelector
-            providers={filteredProviders}
+            providers={providersWithModels || []}
             selectedModelId={settings.model || (serverDefaults?.[taskKey]?.model || "")}
             onSelect={onModelChange}
             disableTooltips={isVoiceTranscription}

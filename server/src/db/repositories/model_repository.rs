@@ -29,6 +29,9 @@ pub struct Model {
     pub price_input_long_context: Option<BigDecimal>,
     pub price_output_long_context: Option<BigDecimal>,
     pub long_context_threshold: Option<i32>,
+    // Cached token pricing support
+    pub price_cache_write: Option<BigDecimal>,
+    pub price_cache_read: Option<BigDecimal>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -52,6 +55,9 @@ pub struct ModelWithProvider {
     pub price_input_long_context: Option<BigDecimal>,
     pub price_output_long_context: Option<BigDecimal>,
     pub long_context_threshold: Option<i32>,
+    // Cached token pricing support
+    pub price_cache_write: Option<BigDecimal>,
+    pub price_cache_read: Option<BigDecimal>,
     // Provider information
     pub provider_id: i32,
     pub provider_code: String,
@@ -72,12 +78,32 @@ impl ModelPricing for ModelWithProvider {
         Some(self.price_output.clone())
     }
     
+    fn get_cache_write_cost_per_million_tokens(&self) -> Option<BigDecimal> {
+        self.price_cache_write.clone()
+    }
+    
+    fn get_cache_read_cost_per_million_tokens(&self) -> Option<BigDecimal> {
+        self.price_cache_read.clone()
+    }
+    
     fn get_duration_cost_per_minute(&self) -> Option<BigDecimal> {
         self.price_per_hour.as_ref().map(|price| price / BigDecimal::from(60))
     }
     
     fn get_minimum_billable_duration_ms(&self) -> Option<i32> {
         self.minimum_billable_seconds.map(|secs| secs * 1000)
+    }
+
+    fn get_input_long_context_cost_per_million_tokens(&self) -> Option<BigDecimal> {
+        self.price_input_long_context.clone()
+    }
+
+    fn get_output_long_context_cost_per_million_tokens(&self) -> Option<BigDecimal> {
+        self.price_output_long_context.clone()
+    }
+
+    fn get_long_context_threshold(&self) -> Option<i32> {
+        self.long_context_threshold
     }
 }
 
@@ -90,12 +116,32 @@ impl ModelPricing for Model {
         Some(self.price_output.clone())
     }
     
+    fn get_cache_write_cost_per_million_tokens(&self) -> Option<BigDecimal> {
+        self.price_cache_write.clone()
+    }
+    
+    fn get_cache_read_cost_per_million_tokens(&self) -> Option<BigDecimal> {
+        self.price_cache_read.clone()
+    }
+    
     fn get_duration_cost_per_minute(&self) -> Option<BigDecimal> {
         self.price_per_hour.as_ref().map(|price| price / BigDecimal::from(60))
     }
     
     fn get_minimum_billable_duration_ms(&self) -> Option<i32> {
         self.minimum_billable_seconds.map(|secs| secs * 1000)
+    }
+
+    fn get_input_long_context_cost_per_million_tokens(&self) -> Option<BigDecimal> {
+        self.price_input_long_context.clone()
+    }
+
+    fn get_output_long_context_cost_per_million_tokens(&self) -> Option<BigDecimal> {
+        self.price_output_long_context.clone()
+    }
+
+    fn get_long_context_threshold(&self) -> Option<i32> {
+        self.long_context_threshold
     }
 }
 
@@ -109,6 +155,17 @@ impl ModelRepository {
     /// Create a new model repository
     pub fn new(pool: Arc<Pool<Postgres>>) -> Self {
         Self { pool }
+    }
+
+    /// Extract and clean the API model ID from a full model ID
+    /// For :web models, strips the :web suffix for API calls
+    fn extract_api_model_id(model_id: &str) -> String {
+        let model_name = model_id.split('/').last().unwrap_or(model_id);
+        if model_name.contains(":web") {
+            model_name.replace(":web", "")
+        } else {
+            model_name.to_string()
+        }
     }
 
     /// Get a reference to the database pool
@@ -128,6 +185,7 @@ impl ModelRepository {
                    m.billing_unit, m.model_type, m.capabilities, m.status,
                    m.description, m.created_at,
                    m.price_input_long_context, m.price_output_long_context, m.long_context_threshold,
+                   m.price_cache_write, m.price_cache_read,
                    p.id as provider_id, p.code as provider_code, p.name as provider_name,
                    p.description as provider_description, p.website_url as provider_website,
                    p.api_base_url as provider_api_base, p.capabilities as provider_capabilities,
@@ -143,7 +201,7 @@ impl ModelRepository {
         .map_err(|e| AppError::Database(format!("Failed to fetch models with providers: {}", e)))?;
 
         let result: Vec<ModelWithProvider> = models.into_iter().map(|row| ModelWithProvider {
-            api_model_id: row.id.split('/').last().unwrap_or(&row.id).to_string(),
+            api_model_id: Self::extract_api_model_id(&row.id),
             id: row.id,
             name: row.name,
             context_window: row.context_window,
@@ -161,6 +219,8 @@ impl ModelRepository {
             price_input_long_context: row.price_input_long_context,
             price_output_long_context: row.price_output_long_context,
             long_context_threshold: row.long_context_threshold,
+            price_cache_write: row.price_cache_write,
+            price_cache_read: row.price_cache_read,
             provider_id: row.provider_id,
             provider_code: row.provider_code,
             provider_name: row.provider_name,
@@ -192,6 +252,7 @@ impl ModelRepository {
                    m.status,
                    m.description, m.created_at,
                    m.price_input_long_context, m.price_output_long_context, m.long_context_threshold,
+                   m.price_cache_write, m.price_cache_read,
                    p.id as provider_id, p.code as provider_code, p.name as provider_name,
                    p.description as provider_description, p.website_url as provider_website,
                    p.api_base_url as provider_api_base, p.capabilities as provider_capabilities,
@@ -209,7 +270,7 @@ impl ModelRepository {
         .map_err(|e| AppError::Database(format!("Failed to fetch model by ID {}: {}", id, e)))?;
 
         let result = model.map(|row| ModelWithProvider {
-            api_model_id: row.id.split('/').last().unwrap_or(&row.id).to_string(),
+            api_model_id: Self::extract_api_model_id(&row.id),
             id: row.id,
             name: row.name,
             context_window: row.context_window,
@@ -227,6 +288,8 @@ impl ModelRepository {
             price_input_long_context: row.price_input_long_context,
             price_output_long_context: row.price_output_long_context,
             long_context_threshold: row.long_context_threshold,
+            price_cache_write: row.price_cache_write,
+            price_cache_read: row.price_cache_read,
             provider_id: row.provider_id,
             provider_code: row.provider_code,
             provider_name: row.provider_name,
@@ -249,7 +312,7 @@ impl ModelRepository {
     #[instrument(skip(self))]
     pub async fn find_by_id(&self, id: &str) -> AppResult<Option<Model>> {
         let model = query_as::<_, Model>(
-            "SELECT id, name, context_window, price_input, price_output, pricing_type, price_per_hour, minimum_billable_seconds, billing_unit, provider_id, model_type, capabilities, status, description, created_at, price_input_long_context, price_output_long_context, long_context_threshold FROM models WHERE id = $1 AND status = 'active'"
+            "SELECT id, name, context_window, price_input, price_output, pricing_type, price_per_hour, minimum_billable_seconds, billing_unit, provider_id, model_type, capabilities, status, description, created_at, price_input_long_context, price_output_long_context, long_context_threshold, price_cache_write, price_cache_read FROM models WHERE id = $1 AND status = 'active'"
         )
             .bind(id)
             .fetch_optional(&*self.pool)
@@ -274,6 +337,7 @@ impl ModelRepository {
                    m.status,
                    m.description, m.created_at,
                    m.price_input_long_context, m.price_output_long_context, m.long_context_threshold,
+                   m.price_cache_write, m.price_cache_read,
                    p.id as provider_id, p.code as provider_code, p.name as provider_name,
                    p.description as provider_description, p.website_url as provider_website,
                    p.api_base_url as provider_api_base, p.capabilities as provider_capabilities,
@@ -292,7 +356,7 @@ impl ModelRepository {
         .map_err(|e| AppError::Database(format!("Failed to fetch models for provider {}: {}", provider_code, e)))?;
 
         let result: Vec<ModelWithProvider> = models.into_iter().map(|row| ModelWithProvider {
-            api_model_id: row.id.split('/').last().unwrap_or(&row.id).to_string(),
+            api_model_id: Self::extract_api_model_id(&row.id),
             id: row.id,
             name: row.name,
             context_window: row.context_window,
@@ -310,6 +374,8 @@ impl ModelRepository {
             price_input_long_context: row.price_input_long_context,
             price_output_long_context: row.price_output_long_context,
             long_context_threshold: row.long_context_threshold,
+            price_cache_write: row.price_cache_write,
+            price_cache_read: row.price_cache_read,
             provider_id: row.provider_id,
             provider_code: row.provider_code,
             provider_name: row.provider_name,
@@ -340,6 +406,7 @@ impl ModelRepository {
                    m.status,
                    m.description, m.created_at,
                    m.price_input_long_context, m.price_output_long_context, m.long_context_threshold,
+                   m.price_cache_write, m.price_cache_read,
                    p.id as provider_id, p.code as provider_code, p.name as provider_name,
                    p.description as provider_description, p.website_url as provider_website,
                    p.api_base_url as provider_api_base, p.capabilities as provider_capabilities,
@@ -358,7 +425,7 @@ impl ModelRepository {
         .map_err(|e| AppError::Database(format!("Failed to fetch models of type {}: {}", model_type, e)))?;
 
         let result: Vec<ModelWithProvider> = models.into_iter().map(|row| ModelWithProvider {
-            api_model_id: row.id.split('/').last().unwrap_or(&row.id).to_string(),
+            api_model_id: Self::extract_api_model_id(&row.id),
             id: row.id,
             name: row.name,
             context_window: row.context_window,
@@ -376,6 +443,8 @@ impl ModelRepository {
             price_input_long_context: row.price_input_long_context,
             price_output_long_context: row.price_output_long_context,
             long_context_threshold: row.long_context_threshold,
+            price_cache_write: row.price_cache_write,
+            price_cache_read: row.price_cache_read,
             provider_id: row.provider_id,
             provider_code: row.provider_code,
             provider_name: row.provider_name,

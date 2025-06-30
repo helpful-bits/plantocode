@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use crate::error::AppError;
 use crate::services::billing_service::BillingService;
 use crate::middleware::secure_auth::UserId;
+use crate::stripe_types::*;
 use log::{debug, info};
 
 // ========================================
@@ -15,11 +16,6 @@ pub struct CreateCustomCreditCheckoutRequest {
     pub amount: f64,
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CreateSubscriptionCheckoutRequest {
-    pub plan_id: String,
-}
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -46,7 +42,7 @@ pub async fn create_custom_credit_checkout_session_handler(
     info!("Creating custom credit checkout session for user: {} with amount: {}", 
           user_id.0, request.amount);
     
-    let session = billing_service.create_custom_credit_checkout_session(
+    let session = billing_service.create_credit_purchase_checkout_session(
         &user_id.0,
         request.amount,
     ).await?;
@@ -60,28 +56,6 @@ pub async fn create_custom_credit_checkout_session_handler(
     Ok(HttpResponse::Ok().json(response))
 }
 
-/// Create a checkout session for subscription
-#[post("/subscription-session")]
-pub async fn create_subscription_checkout_session_handler(
-    user_id: UserId,
-    billing_service: web::Data<BillingService>,
-    request: web::Json<CreateSubscriptionCheckoutRequest>,
-) -> Result<HttpResponse, AppError> {
-    info!("Creating subscription checkout session for user: {}", user_id.0);
-    
-    let session = billing_service.create_subscription_checkout_session(
-        &user_id.0,
-        &request.plan_id,
-    ).await?;
-    
-    let response = CheckoutSessionResponse {
-        session_id: session.id.to_string(),
-        url: session.url.unwrap_or_default(),
-    };
-    
-    info!("Successfully created subscription checkout session for user: {}", user_id.0);
-    Ok(HttpResponse::Ok().json(response))
-}
 
 /// Create a setup checkout session for payment method addition
 #[post("/setup-session")]
@@ -116,17 +90,12 @@ pub async fn get_checkout_session_status_handler(
     
     let session = billing_service.get_checkout_session_status(&session_id).await?;
     
+    let session_status = session.status.as_deref().unwrap_or(CHECKOUT_SESSION_STATUS_OPEN);
+    let payment_status = session.payment_status.as_deref().unwrap_or("unpaid");
+    
     let response = CheckoutSessionStatusResponse {
-        status: match session.status.unwrap_or(stripe::CheckoutSessionStatus::Open) {
-            stripe::CheckoutSessionStatus::Open => "open".to_string(),
-            stripe::CheckoutSessionStatus::Complete => "complete".to_string(),
-            stripe::CheckoutSessionStatus::Expired => "expired".to_string(),
-        },
-        payment_status: match session.payment_status {
-            stripe::CheckoutSessionPaymentStatus::Paid => "paid".to_string(),
-            stripe::CheckoutSessionPaymentStatus::Unpaid => "unpaid".to_string(),
-            stripe::CheckoutSessionPaymentStatus::NoPaymentRequired => "no_payment_required".to_string(),
-        },
+        status: session_status.to_string(),
+        payment_status: payment_status.to_string(),
         customer_email: session.customer_email,
     };
     

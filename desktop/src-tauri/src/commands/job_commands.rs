@@ -77,7 +77,7 @@ pub async fn cancel_background_job_command(job_id: String, app_handle: AppHandle
         .inner()
         .clone();
 
-    repo.cancel_job(&job_id)
+    repo.cancel_job(&job_id, "Canceled by user")
         .await
         .map_err(|e| AppError::JobError(format!("Failed to cancel job: {}", e)))?;
 
@@ -162,7 +162,7 @@ pub async fn cancel_session_jobs_command(session_id: String, app_handle: AppHand
                     ).await {
                         log::warn!("Failed to cancel workflow job {} via orchestrator: {}. Falling back to direct cancellation.", job.id, e);
                         // Fallback to direct cancellation
-                        if let Err(e2) = repo.cancel_job(&job.id).await {
+                        if let Err(e2) = repo.cancel_job(&job.id, "Canceled by session action").await {
                             log::warn!("Failed to cancel job {} directly: {}", job.id, e2);
                         } else {
                             cancelled_count += 1;
@@ -175,7 +175,7 @@ pub async fn cancel_session_jobs_command(session_id: String, app_handle: AppHand
                 Err(e) => {
                     log::warn!("Could not get workflow orchestrator to cancel workflow job {}: {}. Using direct cancellation.", job.id, e);
                     // Fallback to direct cancellation
-                    if let Err(e2) = repo.cancel_job(&job.id).await {
+                    if let Err(e2) = repo.cancel_job(&job.id, "Canceled by session action").await {
                         log::warn!("Failed to cancel job {} directly: {}", job.id, e2);
                     } else {
                         cancelled_count += 1;
@@ -184,7 +184,7 @@ pub async fn cancel_session_jobs_command(session_id: String, app_handle: AppHand
             }
         } else {
             // For non-workflow jobs, use direct cancellation via repository
-            if let Err(e) = repo.cancel_job(&job.id).await {
+            if let Err(e) = repo.cancel_job(&job.id, "Canceled by session action").await {
                 log::warn!("Failed to cancel job {}: {}", job.id, e);
             } else {
                 cancelled_count += 1;

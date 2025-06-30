@@ -47,10 +47,8 @@ pub async fn init_job_system() -> AppResult<()> {
     // Initialize the job registry
     let _registry = registry::init_job_registry().await?;
     
-    // Initialize the job queue with default concurrency limit
-    // TODO: Make this configurable once runtime config is loaded
-    let max_concurrent_jobs = 4; // Default concurrent jobs
-    let _queue = queue::init_job_queue(max_concurrent_jobs).await?;
+    // Initialize the job queue with hardcoded concurrency limit
+    let _queue = queue::init_job_queue().await?;
     
     info!("Job system core components initialized");
     Ok(())
@@ -189,32 +187,41 @@ pub async fn start_job_system(app_handle: AppHandle) -> AppResult<()> {
     Ok(())
 }
 
-/// Start the background job worker that continuously processes jobs from the queue
+/// Start multiple background job workers that continuously process jobs from the queue concurrently
 async fn start_job_worker(app_handle: AppHandle) -> AppResult<()> {
-    let app_handle_clone = app_handle.clone();
+    // Get the concurrency limit from the job queue
+    let queue = queue::get_job_queue().await?;
+    let max_concurrent_jobs = queue.get_concurrency_limit().await;
     
-    tokio::spawn(async move {
-        info!("Background job worker started");
+    info!("Starting {} concurrent job workers", max_concurrent_jobs);
+    
+    // Spawn multiple worker tasks for concurrent job processing
+    for worker_id in 0..max_concurrent_jobs {
+        let app_handle_clone = app_handle.clone();
         
-        loop {
-            match dispatcher::process_next_job(app_handle_clone.clone()).await {
-                Ok(Some(result)) => {
-                    debug!("Job worker processed job: {} with status: {:?}", 
-                        result.job_id, result.status);
-                    // Continue processing without delay when jobs are available
-                },
-                Ok(None) => {
-                    // No jobs available, wait a short time before checking again
-                    sleep(Duration::from_millis(100)).await;
-                },
-                Err(e) => {
-                    error!("Job worker encountered error: {}", e);
-                    // Wait a bit longer on error to avoid tight error loops
-                    sleep(Duration::from_secs(1)).await;
+        tokio::spawn(async move {
+            info!("Background job worker {} started", worker_id);
+            
+            loop {
+                match dispatcher::process_next_job(app_handle_clone.clone()).await {
+                    Ok(Some(result)) => {
+                        debug!("Job worker {} processed job: {} with status: {:?}", 
+                            worker_id, result.job_id, result.status);
+                        // Continue processing without delay when jobs are available
+                    },
+                    Ok(None) => {
+                        // No jobs available, wait a short time before checking again
+                        sleep(Duration::from_millis(100)).await;
+                    },
+                    Err(e) => {
+                        error!("Job worker {} encountered error: {}", worker_id, e);
+                        // Wait a bit longer on error to avoid tight error loops
+                        sleep(Duration::from_secs(1)).await;
+                    }
                 }
             }
-        }
-    });
+        });
+    }
     
     Ok(())
 }

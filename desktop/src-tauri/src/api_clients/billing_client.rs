@@ -1,8 +1,7 @@
 use crate::error::AppError;
 use crate::auth::token_manager::TokenManager;
-use crate::models::SubscriptionPlan;
 use crate::commands::billing_commands::{
-    SubscriptionDetails, BillingPortalResponse,
+    BillingPortalResponse,
     CreditBalanceResponse, CreditHistoryResponse,
     CreditStats,
     PaymentMethodsResponse, PaymentMethod, PaymentMethodCard,
@@ -130,33 +129,7 @@ impl BillingClient {
         Ok(dashboard_data)
     }
 
-    /// Get available subscription plans
-    pub async fn get_subscription_plans(&self) -> Result<Vec<SubscriptionPlan>, AppError> {
-        debug!("Getting subscription plans via BillingClient");
-        
-        let subscription_plans: Vec<SubscriptionPlan> = self.make_authenticated_request(
-            "GET",
-            "/api/billing/subscription-plans",
-            None,
-        ).await?;
-        
-        info!("Successfully retrieved subscription plans");
-        Ok(subscription_plans)
-    }
 
-    /// Get current subscription plan with cost markup information
-    pub async fn get_current_plan(&self) -> Result<crate::commands::billing_commands::CurrentPlanResponse, AppError> {
-        debug!("Getting current plan with cost markup information");
-        
-        let current_plan = self.make_authenticated_request(
-            "GET",
-            "/api/billing/current-plan",
-            None,
-        ).await?;
-        
-        info!("Successfully retrieved current plan information");
-        Ok(current_plan)
-    }
 
 
     /// Create a billing portal session
@@ -291,6 +264,7 @@ impl BillingClient {
         &self,
         limit: Option<i32>,
         offset: Option<i32>,
+        search: Option<String>,
     ) -> Result<CreditHistoryResponse, AppError> {
         debug!("Getting credit history via BillingClient");
         
@@ -300,6 +274,9 @@ impl BillingClient {
         }
         if let Some(offset) = offset {
             query_params.push(format!("offset={}", offset));
+        }
+        if let Some(search) = search {
+            query_params.push(format!("search={}", urlencoding::encode(&search)));
         }
         
         let query_string = if query_params.is_empty() {
@@ -335,12 +312,46 @@ impl BillingClient {
         Ok(credit_stats)
     }
 
+    /// Get comprehensive credit details (stats, transactions, and pagination info)
+    pub async fn get_credit_details(
+        &self,
+        limit: Option<i32>,
+        offset: Option<i32>,
+    ) -> Result<crate::commands::billing_commands::CreditDetailsResponse, AppError> {
+        debug!("Getting credit details via BillingClient");
+        
+        let mut query_params = Vec::new();
+        if let Some(limit) = limit {
+            query_params.push(format!("limit={}", limit));
+        }
+        if let Some(offset) = offset {
+            query_params.push(format!("offset={}", offset));
+        }
+        
+        let query_string = if query_params.is_empty() {
+            String::new()
+        } else {
+            format!("?{}", query_params.join("&"))
+        };
+        
+        let endpoint = format!("/api/billing/credits/details{}", query_string);
+        
+        let credit_details = self.make_authenticated_request(
+            "GET",
+            &endpoint,
+            None,
+        ).await?;
+        
+        info!("Successfully retrieved credit details");
+        Ok(credit_details)
+    }
+
     // ========================================
     // STRIPE CHECKOUT SESSION METHODS
     // ========================================
 
     /// Create a checkout session for credit purchase
-    pub async fn create_credit_checkout_session(
+    pub async fn create_credit_purchase_checkout_session(
         &self,
         amount: f64,
     ) -> Result<CheckoutSessionResponse, AppError> {
@@ -352,7 +363,7 @@ impl BillingClient {
         
         let response: CheckoutSessionResponse = self.make_authenticated_request(
             "POST",
-            "/api/billing/checkout/credit-session",
+            "/api/billing/checkout/custom-credit-session",
             Some(request_body),
         ).await?;
         
@@ -360,28 +371,6 @@ impl BillingClient {
         Ok(response)
     }
 
-    /// Create a checkout session for subscription
-    pub async fn create_subscription_checkout_session(
-        &self,
-        plan_id: &str,
-        trial_days: Option<u32>,
-    ) -> Result<CheckoutSessionResponse, AppError> {
-        debug!("Creating subscription checkout session for plan: {}", plan_id);
-        
-        let request_body = serde_json::json!({
-            "planId": plan_id,
-            "trialDays": trial_days
-        });
-        
-        let response: CheckoutSessionResponse = self.make_authenticated_request(
-            "POST",
-            "/api/billing/checkout/subscription-session",
-            Some(request_body),
-        ).await?;
-        
-        info!("Successfully created subscription checkout session");
-        Ok(response)
-    }
 
     /// Create a checkout session for payment method setup
     pub async fn create_setup_checkout_session(&self) -> Result<CheckoutSessionResponse, AppError> {

@@ -2,7 +2,10 @@ use chrono::Utc;
 use log::{error, warn, info};
 use serde_json::json;
 use std::collections::HashMap;
+use std::env;
 use uuid::Uuid;
+use reqwest;
+use crate::services::email_notification_service::MailgunConfig;
 
 /// Severity levels for admin alerts
 #[derive(Debug, Clone)]
@@ -109,13 +112,36 @@ impl AdminAlert {
 
 /// Admin alerting service
 pub struct AdminAlertingService {
-    // In a real implementation, this would connect to external alerting services
-    // like PagerDuty, Slack, email, etc.
+    mailgun_config: Option<MailgunConfig>,
+    http_client: reqwest::Client,
+    admin_recipient: Option<String>,
 }
 
 impl AdminAlertingService {
     pub fn new() -> Self {
-        Self {}
+        let mailgun_config = match MailgunConfig::from_env() {
+            Ok(config) => Some(config),
+            Err(_) => {
+                warn!("Mailgun configuration not found, admin email alerts will be disabled");
+                None
+            }
+        };
+
+        let http_client = reqwest::Client::new();
+
+        let admin_recipient = match env::var("ADMIN_EMAIL_RECIPIENT") {
+            Ok(email) => Some(email),
+            Err(_) => {
+                warn!("ADMIN_EMAIL_RECIPIENT not set, admin email alerts will be disabled");
+                None
+            }
+        };
+
+        Self {
+            mailgun_config,
+            http_client,
+            admin_recipient,
+        }
     }
 
     /// Send an admin alert through multiple channels
@@ -165,15 +191,9 @@ impl AdminAlertingService {
 
     /// Send critical alert (requires immediate attention)
     async fn send_critical_alert(&self, alert: &AdminAlert) {
-        // In production, this would:
-        // 1. Send to PagerDuty for on-call engineers
-        // 2. Send urgent Slack message to #critical-alerts channel
-        // 3. Send SMS/phone alerts to engineering leads
-        // 4. Create high-priority ticket in incident management system
-        
         info!("🚨 CRITICAL ALERT sent to on-call engineers: {} - {}", alert.title, alert.description);
         
-        // Simulate external alerting services
+        self.send_email_notification(alert).await;
         self.simulate_pagerduty_alert(alert).await;
         self.simulate_slack_critical_alert(alert).await;
         self.simulate_incident_management_ticket(alert).await;
@@ -181,15 +201,10 @@ impl AdminAlertingService {
 
     /// Send high priority alert
     async fn send_high_priority_alert(&self, alert: &AdminAlert) {
-        // In production, this would:
-        // 1. Send to Slack #alerts channel
-        // 2. Create ticket in support system
-        // 3. Send email to engineering team
-        
         info!("⚠️ HIGH PRIORITY ALERT sent to engineering team: {} - {}", alert.title, alert.description);
         
+        self.send_email_notification(alert).await;
         self.simulate_slack_alert(alert).await;
-        self.simulate_email_alert(alert).await;
     }
 
     /// Send standard alert
@@ -220,9 +235,26 @@ impl AdminAlertingService {
               alert.severity.as_str(), alert.title, alert.alert_id);
     }
 
-    async fn simulate_email_alert(&self, alert: &AdminAlert) {
-        info!("📧 Email Alert Sent to engineering team: [{}] {} (Alert ID: {})", 
-              alert.severity.as_str(), alert.title, alert.alert_id);
+    async fn send_email_notification(&self, alert: &AdminAlert) {
+        if let (Some(config), Some(recipient)) = (
+            &self.mailgun_config,
+            &self.admin_recipient,
+        ) {
+            let subject = format!("[{}] Admin Alert: {}", alert.severity.as_str(), alert.title);
+            let body = self.create_alert_email_body(alert);
+
+            match self.send_via_mailgun(&subject, &body, recipient, config).await {
+                Ok(_) => {
+                    info!("📧 Admin alert email sent successfully to {}: [{}] {} (Alert ID: {})", 
+                          recipient, alert.severity.as_str(), alert.title, alert.alert_id);
+                }
+                Err(e) => {
+                    error!("Failed to send admin alert email: {}", e);
+                }
+            }
+        } else {
+            warn!("Admin email configuration not available, skipping email notification for alert: {}", alert.alert_id);
+        }
     }
 
     async fn simulate_incident_management_ticket(&self, alert: &AdminAlert) {
@@ -234,6 +266,85 @@ impl AdminAlertingService {
         info!("📊 Monitoring Log Entry: [{}] {} (Alert ID: {})", 
               alert.severity.as_str(), alert.title, alert.alert_id);
     }
+
+    fn create_alert_email_body(&self, alert: &AdminAlert) -> String {
+        let mut body = format!(
+            "Admin Alert Notification\n\n\
+            Alert ID: {}\n\
+            Timestamp: {}\n\
+            Severity: {}\n\
+            Alert Type: {}\n\
+            Title: {}\n\n\
+            Description:\n{}\n\n",
+            alert.alert_id,
+            alert.timestamp.to_rfc3339(),
+            alert.severity.as_str(),
+            alert.alert_type.as_str(),
+            alert.title,
+            alert.description
+        );
+
+        if !alert.metadata.is_empty() {
+            body.push_str("Additional Information:\n");
+            for (key, value) in &alert.metadata {
+                body.push_str(&format!("  {}: {}\n", key, value));
+            }
+            body.push_str("\n");
+        }
+
+        if alert.requires_immediate_attention {
+            body.push_str("⚠️ This alert requires immediate attention!\n\n");
+        }
+
+        body.push_str("This is an automated notification from Vibe Manager admin alerting system.");
+        
+        body
+    }
+
+    async fn send_via_mailgun(
+        &self,
+        subject: &str,
+        body: &str,
+        recipient: &str,
+        config: &MailgunConfig,
+    ) -> Result<(), String> {
+        let base_url = config.base_url.as_deref().unwrap_or("https://api.mailgun.net");
+        let url = format!("{}/v3/{}/messages", base_url, config.domain);
+
+        let from_email = format!("{} <{}>", config.from_name, config.from_email);
+
+        let mut form = std::collections::HashMap::new();
+        form.insert("from", from_email.as_str());
+        form.insert("to", recipient);
+        form.insert("subject", subject);
+        form.insert("text", body);
+
+        match self.http_client
+            .post(&url)
+            .basic_auth("api", Some(&config.api_key))
+            .form(&form)
+            .send()
+            .await
+        {
+            Ok(response) => {
+                let status = response.status();
+                if status.is_success() {
+                    let response_text = response.text().await.unwrap_or_else(|_| "no response body".to_string());
+                    info!("Admin alert email sent via Mailgun to {}: {}", recipient, response_text);
+                    Ok(())
+                } else {
+                    let error_text = response.text().await.unwrap_or_else(|_| "no error details".to_string());
+                    error!("Mailgun API error ({}): {}", status, error_text);
+                    Err(format!("Mailgun API error: {} - {}", status, error_text))
+                }
+            }
+            Err(e) => {
+                error!("Failed to send admin alert email via Mailgun: {}", e);
+                Err(format!("Mailgun request error: {}", e))
+            }
+        }
+    }
+
 }
 
 /// Convenience function to send critical data integrity alert

@@ -56,7 +56,7 @@ export async function setupMedia({
       return null;
     }
 
-    // Define MIME type options in order of preference for GPT-4o-transcribe compatibility
+    // Define MIME type options in order of preference for transcription-friendly formats
     // Remove codec parameters as they can break decoding in GPT-4o models
     const mimeTypePreference = [
       "audio/webm",
@@ -69,9 +69,14 @@ export async function setupMedia({
     ];
 
     // Find the first supported MIME type
-    const mimeType = mimeTypePreference.find((type) => {
+    let mimeType = mimeTypePreference.find((type) => {
       return type === "" || MediaRecorder.isTypeSupported(type);
     });
+
+    // Clean up MIME type by removing codec parameters if present
+    if (mimeType && mimeType.includes(';')) {
+      mimeType = mimeType.split(';')[0].trim();
+    }
 
     // Handle case where no supported MIME type is found
     if (mimeType === undefined) {
@@ -98,6 +103,14 @@ export async function setupMedia({
 
     const recorder = new MediaRecorder(stream, recorderOptions);
 
+    // Clean up recorder MIME type by removing codec parameters if present
+    let finalMimeType = mimeType || "";
+    if (recorder.mimeType && recorder.mimeType.includes(';')) {
+      finalMimeType = recorder.mimeType.split(';')[0].trim();
+    } else if (recorder.mimeType) {
+      finalMimeType = recorder.mimeType;
+    }
+
     // Get active audio track details
     let activeDeviceId: string | null = null;
     let activeDeviceLabel: string | null = null;
@@ -119,49 +132,45 @@ export async function setupMedia({
       );
     }
 
-    // Simplified event handler - MediaRecorder handles timing internally
+    // Enhanced event handler with concise logging
     recorder.onstart = () => {
       // eslint-disable-next-line no-console
-      console.log("[MediaHandler] Recording started successfully");
-      
-      // No need for artificial timeout - MediaRecorder's timeslice handles this
-      // The ondataavailable event will fire naturally based on the timeslice parameter
+      console.log(`[MediaHandler] Recording started - State: ${recorder.state}, MIME: ${finalMimeType}, Tracks: ${stream.getAudioTracks().length}`);
     };
 
-    // Handle data chunks as they become available
+    // Handle data chunks with concise logging
     recorder.ondataavailable = (event) => {
       if (event.data.size > 0) {
         // eslint-disable-next-line no-console
-        console.log(
-          `[MediaHandler] Received audio chunk size: ${event.data.size} bytes, type: ${event.data.type}`
-        );
+        console.log(`[MediaHandler] Audio chunk: ${event.data.size} bytes, Type: ${event.data.type}`);
+        
+        // Log warning for unusually small chunks
+        if (event.data.size < 100) {
+          console.warn(`[MediaHandler] Small chunk: ${event.data.size} bytes`);
+        }
+        
         onDataAvailable(event.data);
       } else {
-        console.warn("[MediaHandler] Received empty audio chunk");
+        console.warn(`[MediaHandler] Empty chunk received`);
       }
     };
 
     // Simplified error handling
     recorder.onerror = (event) => {
-      const errorDetails = event.error
-        ? `${(event.error && typeof event.error === 'object' && 'name' in event.error && typeof event.error.name === 'string') ? event.error.name : 'Error'}: ${(event.error && typeof event.error === 'object' && 'message' in event.error && typeof event.error.message === 'string') ? event.error.message : 'Unknown error'}`
-        : "Unknown MediaRecorder error";
+      const errorMessage = event.error?.message || event.error?.name || "Unknown error";
 
-      console.error(
-        `[MediaHandler] MediaRecorder error: ${errorDetails}`,
-        event
-      );
-      onError(`Error during recording: ${errorDetails}. Please try again.`);
+      console.error(`[MediaHandler] Recording error: ${errorMessage}`);
+      onError(`Recording error: ${errorMessage}. Please try again.`);
     };
 
-    // Simplified stop handler
+    // Stop handler with concise logging
     recorder.onstop = () => {
       // eslint-disable-next-line no-console
-      console.log("[MediaHandler] Recording stopped");
+      console.log(`[MediaHandler] Recording stopped - State: ${recorder.state}, Stream active: ${stream.active}`);
       onStop();
     };
 
-    return { stream, recorder, activeDeviceId, activeDeviceLabel, mimeType: mimeType || "audio/webm" };
+    return { stream, recorder, activeDeviceId, activeDeviceLabel, mimeType: finalMimeType || "audio/webm" };
   } catch (error) {
     console.error("Media setup error:", error);
 

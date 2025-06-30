@@ -6,6 +6,8 @@ use tokio::sync::{mpsc, oneshot, Semaphore, OnceCell};
 use crate::error::{AppError, AppResult};
 use crate::jobs::types::Job;
 
+const DEFAULT_CONCURRENT_JOBS: usize = 20;
+
 /// Priority levels for jobs
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum JobPriority {
@@ -62,10 +64,12 @@ pub struct JobQueue {
 
 impl JobQueue {
     /// Create a new job queue
-    pub fn new(max_concurrent_jobs: usize) -> Self {
+    pub fn new() -> Self {
         let (tx, rx) = mpsc::channel(100);
-        let job_permits = Arc::new(Semaphore::new(max_concurrent_jobs));
+        let job_permits = Arc::new(Semaphore::new(DEFAULT_CONCURRENT_JOBS));
         let retry_counts = Arc::new(Mutex::new(HashMap::new()));
+        
+        log::info!("Job queue initialized with {} concurrent job slots", DEFAULT_CONCURRENT_JOBS);
         
         // Spawn a task to process queue messages
         let queue_processor = JobQueueProcessor::new(rx);
@@ -75,7 +79,7 @@ impl JobQueue {
             tx,
             job_permits,
             retry_counts,
-            max_concurrent_jobs,
+            max_concurrent_jobs: DEFAULT_CONCURRENT_JOBS,
         }
     }
     
@@ -386,8 +390,8 @@ impl JobQueueProcessor {
 pub static JOB_QUEUE: OnceCell<Arc<JobQueue>> = OnceCell::const_new();
 
 /// Initialize the job queue
-pub async fn init_job_queue(max_concurrent_jobs: usize) -> AppResult<Arc<JobQueue>> {
-    let queue = Arc::new(JobQueue::new(max_concurrent_jobs));
+pub async fn init_job_queue() -> AppResult<Arc<JobQueue>> {
+    let queue = Arc::new(JobQueue::new());
     
     // Store the queue in the global static
     if let Err(_) = JOB_QUEUE.set(queue.clone()) {

@@ -333,14 +333,8 @@ pub async fn retry_workflow_stage_command(
     let orchestrator = get_workflow_orchestrator().await
         .map_err(|e| format!("Failed to get workflow orchestrator: {}", e))?;
     
-    // Get the workflow error handler
-    let error_handler = crate::jobs::workflow_error_handler::WorkflowErrorHandler::new(
-        app_handle.state::<Arc<BackgroundJobRepository>>().inner().clone(),
-        app_handle.clone()
-    );
-    
-    // Call the retry_failed_stage method
-    let new_job_id = error_handler.retry_failed_stage(&workflow_id, &failed_stage_job_id).await
+    // Call the retry_workflow_stage method on the orchestrator
+    let new_job_id = orchestrator.retry_workflow_stage(&workflow_id, &failed_stage_job_id).await
         .map_err(|e| format!("Failed to retry workflow stage: {}", e))?;
     
     info!("Successfully started retry for workflow {} with new job {}", workflow_id, new_job_id);

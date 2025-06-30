@@ -23,6 +23,9 @@ pub struct ApiUsageRecord {
     pub service_name: String,
     pub tokens_input: i32,
     pub tokens_output: i32,
+    pub cached_input_tokens: i32,
+    pub cache_write_tokens: i32,
+    pub cache_read_tokens: i32,
     pub cost: BigDecimal,
     pub request_id: Option<String>,
     pub metadata: Option<serde_json::Value>,
@@ -41,6 +44,9 @@ pub struct DetailedUsageRecord {
     pub total_requests: i64,
     pub total_input_tokens: i64,
     pub total_output_tokens: i64,
+    pub total_cached_input_tokens: i64,
+    pub total_cache_write_tokens: i64,
+    pub total_cache_read_tokens: i64,
     pub total_duration_ms: i64,
 }
 
@@ -50,7 +56,9 @@ pub struct ApiUsageEntryDto {
     pub service_name: String,
     pub tokens_input: i32,
     pub tokens_output: i32,
-    pub cost: BigDecimal,
+    pub cached_input_tokens: i32,
+    pub cache_write_tokens: i32,
+    pub cache_read_tokens: i32,
     pub request_id: Option<String>,
     pub metadata: Option<serde_json::Value>,
     pub processing_ms: Option<i32>,
@@ -71,7 +79,7 @@ impl ApiUsageRepository {
     // They are no longer needed as pricing is obtained directly from model repository
 
     /// Records API usage for billing purposes with executor
-    pub async fn record_usage_with_executor(&self, entry: ApiUsageEntryDto, executor: &mut sqlx::Transaction<'_, sqlx::Postgres>) -> Result<ApiUsageRecord, AppError> {
+    pub async fn record_usage_with_executor(&self, entry: ApiUsageEntryDto, cost: BigDecimal, executor: &mut sqlx::Transaction<'_, sqlx::Postgres>) -> Result<ApiUsageRecord, AppError> {
         let metadata_to_store = match entry.metadata {
             Some(serde_json::Value::Object(ref map)) if map.is_empty() => None,
             other => other,
@@ -79,15 +87,18 @@ impl ApiUsageRepository {
 
         let result = query!(
             r#"
-            INSERT INTO api_usage (user_id, service_name, tokens_input, tokens_output, cost, request_id, metadata, processing_ms, input_duration_ms)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-            RETURNING id, user_id, service_name, tokens_input, tokens_output, cost, request_id, metadata, processing_ms, input_duration_ms, timestamp
+            INSERT INTO api_usage (user_id, service_name, tokens_input, tokens_output, cached_input_tokens, cache_write_tokens, cache_read_tokens, cost, request_id, metadata, processing_ms, input_duration_ms)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+            RETURNING id, user_id, service_name, tokens_input, tokens_output, cached_input_tokens, cache_write_tokens, cache_read_tokens, cost, request_id, metadata, processing_ms, input_duration_ms, timestamp
             "#,
             entry.user_id,
             entry.service_name,
             entry.tokens_input,
             entry.tokens_output,
-            entry.cost,
+            entry.cached_input_tokens,
+            entry.cache_write_tokens,
+            entry.cache_read_tokens,
+            cost,
             entry.request_id,
             metadata_to_store,
             entry.processing_ms,
@@ -103,6 +114,9 @@ impl ApiUsageRepository {
             service_name: result.service_name,
             tokens_input: result.tokens_input,
             tokens_output: result.tokens_output,
+            cached_input_tokens: result.cached_input_tokens.unwrap_or(0),
+            cache_write_tokens: result.cache_write_tokens.unwrap_or(0),
+            cache_read_tokens: result.cache_read_tokens.unwrap_or(0),
             cost: result.cost,
             request_id: result.request_id,
             metadata: result.metadata,
@@ -112,10 +126,10 @@ impl ApiUsageRepository {
         })
     }
 
-    /// Records API usage for billing purposes
-    pub async fn record_usage(&self, entry: ApiUsageEntryDto) -> Result<ApiUsageRecord, AppError> {
+    /// Records API usage for billing purposes (private - use record_usage_with_executor in transactions)
+    async fn _record_usage(&self, entry: ApiUsageEntryDto, cost: BigDecimal) -> Result<ApiUsageRecord, AppError> {
         let mut tx = self.db_pool.begin().await.map_err(AppError::from)?;
-        let record = self.record_usage_with_executor(entry, &mut tx).await?;
+        let record = self.record_usage_with_executor(entry, cost, &mut tx).await?;
         tx.commit().await.map_err(AppError::from)?;
         Ok(record)
     }
@@ -134,6 +148,9 @@ impl ApiUsageRepository {
             SELECT 
                 COALESCE(SUM(tokens_input), 0) as total_input,
                 COALESCE(SUM(tokens_output), 0) as total_output, 
+                COALESCE(SUM(cached_input_tokens), 0) as total_cached_input,
+                COALESCE(SUM(cache_write_tokens), 0) as total_cache_write,
+                COALESCE(SUM(cache_read_tokens), 0) as total_cache_read,
                 COALESCE(SUM(cost), 0) as total_cost
             FROM api_usage
             WHERE user_id = $1 AND timestamp BETWEEN $2 AND $3
@@ -169,6 +186,9 @@ impl ApiUsageRepository {
             SELECT 
                 COALESCE(SUM(tokens_input), 0) as tokens_input,
                 COALESCE(SUM(tokens_output), 0) as tokens_output,
+                COALESCE(SUM(cached_input_tokens), 0) as cached_input_tokens,
+                COALESCE(SUM(cache_write_tokens), 0) as cache_write_tokens,
+                COALESCE(SUM(cache_read_tokens), 0) as cache_read_tokens,
                 COALESCE(SUM(cost), 0) as total_cost
             FROM api_usage
             WHERE user_id = $1
@@ -217,7 +237,7 @@ impl ApiUsageRepository {
             r#"
             WITH usage_with_model_id AS (
                 SELECT
-                    id, cost, tokens_input, tokens_output, processing_ms, request_id,
+                    id, cost, tokens_input, tokens_output, cached_input_tokens, cache_write_tokens, cache_read_tokens, processing_ms, input_duration_ms, request_id,
                     CASE
                         WHEN service_name LIKE '%/%' THEN service_name
                         WHEN metadata->>'modelId' IS NOT NULL THEN metadata->>'modelId'
@@ -235,7 +255,10 @@ impl ApiUsageRepository {
                 COUNT(DISTINCT COALESCE(u.request_id, u.id::text))::bigint as total_requests,
                 COALESCE(SUM(u.tokens_input), 0)::bigint as total_input_tokens,
                 COALESCE(SUM(u.tokens_output), 0)::bigint as total_output_tokens,
-                COALESCE(SUM(u.processing_ms), 0)::bigint as total_duration_ms
+                COALESCE(SUM(u.cached_input_tokens), 0)::bigint as total_cached_input_tokens,
+                COALESCE(SUM(u.cache_write_tokens), 0)::bigint as total_cache_write_tokens,
+                COALESCE(SUM(u.cache_read_tokens), 0)::bigint as total_cache_read_tokens,
+                COALESCE(SUM(u.input_duration_ms), 0)::bigint as total_duration_ms
             FROM usage_with_model_id u
             LEFT JOIN models m ON u.effective_model_id = m.id
             LEFT JOIN providers p ON m.provider_id = p.id
@@ -258,6 +281,9 @@ impl ApiUsageRepository {
             total_requests: row.total_requests.unwrap_or(0),
             total_input_tokens: row.total_input_tokens.unwrap_or(0),
             total_output_tokens: row.total_output_tokens.unwrap_or(0),
+            total_cached_input_tokens: row.total_cached_input_tokens.unwrap_or(0),
+            total_cache_write_tokens: row.total_cache_write_tokens.unwrap_or(0),
+            total_cache_read_tokens: row.total_cache_read_tokens.unwrap_or(0),
             total_duration_ms: row.total_duration_ms.unwrap_or(0),
         }).collect();
 

@@ -3,7 +3,6 @@
 import React, { useCallback } from "react";
 import { Sparkles } from "lucide-react";
 
-import VoiceTranscription from "../_components/voice-transcription";
 import TaskDescriptionArea from "../_components/task-description";
 import { useCorePromptContext } from "../_contexts/core-prompt-context";
 import { useTaskContext } from "../_contexts/task-context";
@@ -56,16 +55,11 @@ const TaskSection = React.memo(function TaskSection({
   }, [sessionActions, coreActions]);
 
 
-  // Handler for transcribed text from voice input
-  const handleTranscribedText = (text: string) => {
-    handleTaskChange(text);
-  };
-
   // Calculate if refine task should be shown based on estimated tokens
   const shouldShowRefineTask = (tokenEstimate?.totalTokens ?? 0) > 100000;
 
   return (
-    <div className="border border-border/60 rounded-lg p-5 bg-card shadow-sm w-full min-h-[300px]">
+    <div className="border border-border/60 rounded-lg p-5 bg-card shadow-sm w-full">
       <TaskDescriptionArea
         ref={taskDescriptionRef}
         value={sessionState.currentSession?.taskDescription || ""}
@@ -117,14 +111,6 @@ const TaskSection = React.memo(function TaskSection({
         </div>
       )}
 
-      <div className="flex justify-end items-start mt-2">
-        <VoiceTranscription
-          onTranscribed={handleTranscribedText}
-          onInteraction={coreActions.handleInteraction}
-          textareaRef={taskDescriptionRef || undefined}
-          disabled={disabled}
-        />
-      </div>
     </div>
   );
 });

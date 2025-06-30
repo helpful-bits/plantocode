@@ -2,8 +2,8 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use crate::db::repositories::{
-    ApiUsageRepository, ModelRepository, SubscriptionRepository, 
-    SubscriptionPlanRepository, UserRepository, SettingsRepository
+    ApiUsageRepository, ModelRepository, CustomerBillingRepository, 
+    UserRepository, SettingsRepository
 };
 use crate::config::AppSettings;
 
@@ -14,6 +14,7 @@ pub struct TaskSpecificModelConfig {
     pub max_tokens: u32,
     pub temperature: f32,
     pub copy_buttons: Option<Vec<serde_json::Value>>,
+    pub allowed_models: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -33,8 +34,7 @@ pub struct AppState {
     pub settings: Arc<AppSettings>,
     pub api_usage_repository: Arc<ApiUsageRepository>,
     pub model_repository: Arc<ModelRepository>,
-    pub subscription_repository: Arc<SubscriptionRepository>,
-    pub subscription_plan_repository: Arc<SubscriptionPlanRepository>,
+    pub customer_billing_repository: Arc<CustomerBillingRepository>,
     pub user_repository: Arc<UserRepository>,
     pub settings_repository: Arc<SettingsRepository>,
 }

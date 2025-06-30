@@ -301,10 +301,10 @@ pub async fn get_task_description_history_command(app_handle: AppHandle, session
 }
 
 #[tauri::command]
-pub async fn add_task_description_history_entry_command(app_handle: AppHandle, session_id: String, description: String) -> AppResult<()> {
+pub async fn sync_task_description_history_command(app_handle: AppHandle, session_id: String, history: Vec<String>) -> AppResult<()> {
     let repo = app_handle.state::<Arc<crate::db_utils::session_repository::SessionRepository>>()
         .inner()
         .clone();
 
-    repo.add_task_description_history_entry(&session_id, &description).await
+    repo.sync_task_description_history(&session_id, &history).await
 }

@@ -74,7 +74,12 @@ fn is_stage_skippable(stage_def: &WorkflowStageDefinition, workflow_state: &Work
     match stage_def.task_type {
         TaskType::PathCorrection => {
             // PathCorrection can be skipped if there are no unverified paths to correct
-            workflow_state.intermediate_data.extended_unverified_paths.is_empty()
+            // Note: extended_unverified_paths should always be initialized, but be defensive
+            let unverified_paths = &workflow_state.intermediate_data.extended_unverified_paths;
+            let can_skip = unverified_paths.is_empty();
+            log::debug!("PathCorrection stage can be skipped: {} (unverified paths: {})", 
+                   can_skip, unverified_paths.len());
+            can_skip
         }
         _ => false,
     }
@@ -82,20 +87,29 @@ fn is_stage_skippable(stage_def: &WorkflowStageDefinition, workflow_state: &Work
 
 /// Check if a workflow is complete based on its definition
 pub(super) fn is_workflow_complete(workflow_state: &WorkflowState, workflow_definition: &WorkflowDefinition) -> bool {
+    log::debug!("Checking workflow completion for {} stages", workflow_definition.stages.len());
+    
     // Check if all stages in the definition are either completed or validly skippable
     for stage_def in &workflow_definition.stages {
         let stage_completed = workflow_state.stage_jobs.iter().any(|stage_job| {
             // Match stage by task type directly
             stage_def.task_type == stage_job.task_type && stage_job.status == crate::models::JobStatus::Completed
         });
+        
+        log::debug!("Stage {:?}: completed={}", stage_def.task_type, stage_completed);
 
         if !stage_completed {
             // If stage is not completed, check if it can be validly skipped
-            if !is_stage_skippable(stage_def, workflow_state, workflow_definition) {
+            let can_skip = is_stage_skippable(stage_def, workflow_state, workflow_definition);
+            log::debug!("Stage {:?}: can_skip={}", stage_def.task_type, can_skip);
+            
+            if !can_skip {
+                log::debug!("Workflow incomplete: stage {:?} not completed and cannot be skipped", stage_def.task_type);
                 return false;
             }
         }
     }
 
+    log::debug!("All workflow stages completed or validly skipped");
     true
 }

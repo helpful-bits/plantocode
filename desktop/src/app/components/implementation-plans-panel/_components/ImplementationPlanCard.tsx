@@ -163,13 +163,13 @@ const ImplementationPlanCard = React.memo<ImplementationPlanCardProps>(({
               const displayProgress = progress !== undefined ? progress : 10;
               
               return (
-                <>
+                <React.Fragment key="progress-fragment">
                   <Progress value={displayProgress} className="h-1.5" />
                   <div className="flex justify-between mt-1 text-xs text-muted-foreground">
                     <span>Generating implementation plan...</span>
                     <span>{Math.round(displayProgress)}%</span>
                   </div>
-                </>
+                </React.Fragment>
               );
             })()}
           </div>
@@ -179,6 +179,7 @@ const ImplementationPlanCard = React.memo<ImplementationPlanCardProps>(({
         <div className="flex justify-between mt-2">
           <div className="space-x-1 flex flex-wrap">
             <Button
+              key="view-content"
               variant="outline"
               size="sm"
               className="text-xs h-7 px-2 py-1"
@@ -209,6 +210,7 @@ const ImplementationPlanCard = React.memo<ImplementationPlanCardProps>(({
 
           <div className="space-x-1">
             <Button
+              key="details"
               variant="outline"
               size="sm"
               className="text-xs h-7 px-2 py-1"
@@ -219,6 +221,7 @@ const ImplementationPlanCard = React.memo<ImplementationPlanCardProps>(({
             </Button>
 
             <Button
+              key="delete"
               variant="outline"
               size="sm"
               className="text-xs h-7 px-2 py-1 text-destructive hover:text-destructive hover:bg-destructive/10"

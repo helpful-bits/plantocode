@@ -27,6 +27,18 @@ interface ModelSelectorProps {
 export function ModelSelector({ providers, selectedModelId, onSelect, disableTooltips = false, disabled = false }: ModelSelectorProps) {
   const [overriddenProviderId, setOverriddenProviderId] = useState<string | null>(null);
 
+  if (!providers || providers.length === 0) {
+    return (
+      <Button
+        variant="outline"
+        className="w-full justify-between"
+        disabled={true}
+      >
+        No models available
+      </Button>
+    );
+  }
+
   const selectedModel = providers.flatMap(p => p.models).find(m => m.id === selectedModelId);
 
   const activeProviderId = overriddenProviderId ?? selectedModel?.provider ?? providers[0]?.provider?.code ?? "";
@@ -184,6 +196,18 @@ export function ModelSelector({ providers, selectedModelId, onSelect, disableToo
                                   <span>Output Price (per 1M):</span>
                                   <span>{formatPrice(model.priceOutputPerMillion)}</span>
                                 </div>
+                                {model.priceCacheRead && (
+                                  <div className="flex justify-between">
+                                    <span>Cache Read (per 1M):</span>
+                                    <span>{formatPrice(model.priceCacheRead)}</span>
+                                  </div>
+                                )}
+                                {model.priceCacheWrite && (
+                                  <div className="flex justify-between">
+                                    <span>Cache Write (per 1M):</span>
+                                    <span>{formatPrice(model.priceCacheWrite)}</span>
+                                  </div>
+                                )}
                               </div>
                             </div>
                           </TooltipContent>
