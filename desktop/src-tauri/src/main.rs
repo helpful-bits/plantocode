@@ -20,7 +20,7 @@ pub mod auth;
 use std::sync::{Arc, Mutex};
 use std::collections::HashMap;
 use tauri::Manager;
-use log::{info, error, warn};
+use log::{info, error, warn, debug};
 use tokio::sync::OnceCell;
 use dotenv::dotenv;
 use crate::db_utils::{
@@ -29,7 +29,7 @@ use crate::db_utils::{
 use crate::error::AppError;
 use crate::utils::FileLockManager;
 use crate::auth::TokenManager;
-use crate::auth::auth0_state::Auth0StateStore;
+use crate::auth::auth0_state::{Auth0StateStore, cleanup_old_attempts};
 use crate::services::config_cache_service::ConfigCache;
 use serde::{Deserialize, Serialize};
 
@@ -117,6 +117,23 @@ fn main() {
                     error!("Async initialization failed: {}", e);
                 }
             });
+
+            // Spawn background task for Auth0 state cleanup
+            let auth0_store = app.state::<AppState>().auth0_state_store.clone();
+            tauri::async_runtime::spawn(async move {
+                use tokio::time::{interval, Duration};
+                
+                let mut cleanup_interval = interval(Duration::from_secs(300)); // 5 minutes
+                loop {
+                    cleanup_interval.tick().await;
+                    if let Err(e) = cleanup_old_attempts(&auth0_store) {
+                        warn!("Failed to cleanup old auth attempts: {}", e);
+                    } else {
+                        debug!("Successfully cleaned up old auth attempts");
+                    }
+                }
+            });
+
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -147,6 +164,7 @@ fn main() {
             
             // Billing commands
             commands::billing_commands::get_billing_dashboard_data_command,
+            commands::billing_commands::get_customer_billing_info_command,
             commands::billing_commands::get_spending_history_command,
             commands::billing_commands::check_service_access_command,
             commands::billing_commands::get_spending_analytics_command,
@@ -171,9 +189,11 @@ fn main() {
             
             // Customer billing lifecycle management
             commands::billing_commands::get_usage_summary_command,
-            commands::billing_commands::get_detailed_usage_command,
+            commands::billing_commands::get_detailed_usage_with_summary_command,
             commands::billing_commands::create_billing_portal_session_command,
             commands::billing_commands::list_invoices_command,
+            commands::billing_commands::download_invoice_pdf_command,
+            commands::billing_commands::reveal_file_in_explorer_command,
             
             // Config commands
             commands::config_commands::get_providers_with_models,

@@ -6,6 +6,10 @@ use crate::db::repositories::{
 use crate::db::repositories::api_usage_repository::{ApiUsageEntryDto, ApiUsageRecord};
 use crate::models::model_pricing::ModelPricing;
 use crate::services::audit_service::{AuditService, AuditContext};
+use crate::utils::financial_validation::{
+    validate_credit_purchase_amount, validate_credit_refund_amount, 
+    validate_credit_adjustment_amount, validate_balance_adjustment, normalized
+};
 use bigdecimal::{BigDecimal, FromPrimitive};
 use std::str::FromStr;
 use uuid::Uuid;
@@ -175,6 +179,12 @@ impl CreditService {
         description: Option<String>,
         metadata: Option<serde_json::Value>,
     ) -> Result<UserCredit, AppError> {
+        // Normalize amount at entry point
+        let amount = normalized(amount);
+        
+        // Validate refund amount using financial validation utility
+        validate_credit_refund_amount(&amount)?;
+        
         // Start a database transaction to ensure atomicity
         let pool = self.user_credit_repository.get_pool();
         let mut tx = pool.begin().await.map_err(AppError::from)?;
@@ -187,13 +197,16 @@ impl CreditService {
             .map_err(|e| AppError::Database(format!("Failed to set user context: {}", e)))?;
 
         // Ensure user has a credit record within the transaction
-        let _ = self.user_credit_repository
+        let current_balance = self.user_credit_repository
             .ensure_balance_record_exists_with_executor(user_id, &mut tx)
             .await?;
 
+        // Validate that the refund won't result in a negative balance
+        validate_balance_adjustment(&current_balance.balance, &amount, "Credit refund")?;
+
         // Add the refunded credits to user balance within the transaction
         let updated_balance = self.user_credit_repository
-            .increment_balance_with_executor(user_id, amount, &mut tx)
+            .increment_balance_with_executor(user_id, &amount, &mut tx)
             .await?;
 
         // Record the refund transaction within the same transaction
@@ -230,6 +243,12 @@ impl CreditService {
         admin_metadata: Option<serde_json::Value>,
         executor: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     ) -> Result<UserCredit, AppError> {
+        // Normalize amount at entry point
+        let amount = normalized(amount);
+        
+        // Validate adjustment amount using financial validation utility
+        validate_credit_adjustment_amount(&amount)?;
+        
         sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
             .bind(user_id.to_string())
             .execute(&mut **executor)
@@ -240,8 +259,11 @@ impl CreditService {
             .ensure_balance_record_exists_with_executor(user_id, executor)
             .await?;
 
+        // Validate that the adjustment won't result in a negative balance
+        validate_balance_adjustment(&current_balance.balance, &amount, "Credit adjustment")?;
+
         let updated_balance = self.user_credit_repository
-            .increment_balance_with_executor(user_id, amount, executor)
+            .increment_balance_with_executor(user_id, &amount, executor)
             .await?;
 
         let mut metadata = admin_metadata.unwrap_or_default();
@@ -312,18 +334,11 @@ impl CreditService {
         payment_metadata: serde_json::Value,
         audit_context: &AuditContext,
     ) -> Result<UserCredit, AppError> {
-        let existing_transactions = self.credit_transaction_repository
-            .get_transactions_by_stripe_charge(stripe_charge_id)
-            .await?;
+        // Normalize amount at entry point
+        let amount = normalized(amount);
         
-        let has_existing_purchase = existing_transactions.iter().any(|t| t.transaction_type == "purchase");
-        
-        if has_existing_purchase {
-            info!("Credit purchase for stripe charge {} was already recorded", stripe_charge_id);
-            return Ok(self.get_user_balance(user_id).await?);
-        }
-        
-        info!("No existing purchase transaction found for stripe charge {}, proceeding with credit purchase processing", stripe_charge_id);
+        // Validate purchase amount using financial validation utility
+        validate_credit_purchase_amount(&amount)?;
         
         if currency.to_uppercase() != "USD" {
             return Err(AppError::InvalidArgument(
@@ -346,8 +361,11 @@ impl CreditService {
             .ensure_balance_record_exists_with_executor(user_id, &mut tx)
             .await?;
 
+        // Validate that the purchase won't result in a negative balance (safety check)
+        validate_balance_adjustment(&current_balance.balance, &amount, "Credit purchase")?;
+
         let updated_balance = self.user_credit_repository
-            .increment_balance_with_executor(user_id, amount, &mut tx)
+            .increment_balance_with_executor(user_id, &amount, &mut tx)
             .await?;
 
         let description = format!("Credit purchase via Stripe charge {}", stripe_charge_id);
@@ -370,7 +388,20 @@ impl CreditService {
             .create_transaction_with_executor(&transaction, &updated_balance.balance, &mut tx)
             .await?;
 
-        tx.commit().await.map_err(AppError::from)?;
+        // Commit transaction and handle database constraint violations for duplicate prevention
+        match tx.commit().await {
+            Ok(()) => {},
+            Err(e) => {
+                // Check if this is a database constraint violation (duplicate key)
+                if let sqlx::Error::Database(db_error) = &e {
+                    if db_error.code().as_deref() == Some("23505") { // PostgreSQL unique constraint violation
+                        info!("Credit purchase for stripe charge {} was already recorded (constraint violation)", stripe_charge_id);
+                        return Ok(self.get_user_balance(user_id).await?);
+                    }
+                }
+                return Err(AppError::from(e));
+            }
+        }
 
         // Log audit event after successful transaction commit
         let audit_metadata = serde_json::json!({
@@ -383,7 +414,7 @@ impl CreditService {
         if let Err(audit_error) = self.audit_service.log_credit_purchase_succeeded(
             audit_context,
             stripe_charge_id,
-            amount,
+            &amount,
             currency,
             audit_metadata,
         ).await {
@@ -430,6 +461,28 @@ impl CreditService {
         Ok(result.count.unwrap_or(0))
     }
 
+    pub async fn has_user_made_purchase(&self, user_id: &Uuid) -> Result<bool, AppError> {
+        let pool = self.credit_transaction_repository.get_pool().clone();
+        let mut tx = pool.begin().await
+            .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
+        
+        // Set user context for RLS policies
+        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
+            .bind(user_id.to_string())
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| AppError::Database(format!("Failed to set user context: {}", e)))?;
+        
+        let has_purchase = self.credit_transaction_repository
+            .has_purchase_transaction_with_executor(user_id, &mut tx)
+            .await?;
+        
+        tx.commit().await
+            .map_err(|e| AppError::Database(format!("Failed to commit transaction: {}", e)))?;
+        
+        Ok(has_purchase)
+    }
+
 
     /// Record API usage and bill credits atomically in a single transaction
     pub async fn record_and_bill_usage(&self, entry: ApiUsageEntryDto) -> Result<(ApiUsageRecord, UserCredit), AppError> {
@@ -465,37 +518,72 @@ impl CreditService {
             .ok_or_else(|| AppError::NotFound(format!("Model '{}' not found", entry.service_name)))?;
         
         // Extract cache token counts before moving entry
-        let tokens_input = entry.tokens_input as i64;
-        let cache_write_tokens = entry.cache_write_tokens as i64;
-        let cache_read_tokens = entry.cache_read_tokens as i64;
-        let tokens_output = entry.tokens_output as i64;
-        let input_duration_ms = entry.input_duration_ms;
+        let tokens_input = entry.tokens_input;
+        let cache_write_tokens = entry.cache_write_tokens;
+        let cache_read_tokens = entry.cache_read_tokens;
+        let tokens_output = entry.tokens_output;
         
-        // Calculate cost using cached token pricing
+        // Calculate cost using secure cached token pricing with overflow protection
         let input_cost = model_with_provider.calculate_input_cost(
             tokens_input,
             cache_write_tokens, 
             cache_read_tokens
-        );
+        ).map_err(|e| AppError::InvalidArgument(format!("Input cost calculation failed: {}", e)))?;
         
-        // Calculate output cost separately
-        let output_cost = model_with_provider.get_output_cost_per_million_tokens()
-            .map(|rate| {
-                let million = BigDecimal::from(1_000_000);
-                let output_tokens_bd = BigDecimal::from(tokens_output);
-                (&rate * &output_tokens_bd) / &million
-            })
-            .unwrap_or_else(|| BigDecimal::from(0));
-        
-        // Add duration cost if applicable
-        let duration_cost = if let Some(duration_ms) = input_duration_ms {
-            model_with_provider.calculate_duration_cost(duration_ms)
-                .unwrap_or_else(|_| BigDecimal::from(0))
+        // Calculate output cost separately with validation
+        let output_cost = if let Some(rate) = model_with_provider.get_output_cost_per_million_tokens() {
+            // Validate output token count
+            if tokens_output < 0 || tokens_output > 1_000_000_000 {
+                return Err(AppError::InvalidArgument(
+                    format!("Invalid output token count: {}. Must be between 0 and 1,000,000,000", tokens_output)
+                ));
+            }
+            
+            // Validate pricing bounds
+            let min_price = BigDecimal::from_str("0.000001")
+                .map_err(|e| AppError::InvalidArgument(format!("Failed to parse minimum price: {}", e)))?;
+            let max_price = BigDecimal::from(1000);
+            
+            if rate < min_price || rate > max_price {
+                return Err(AppError::InvalidArgument(
+                    format!("Output pricing rate {} is outside allowed bounds ({} - {})", rate, min_price, max_price)
+                ));
+            }
+            
+            let million = BigDecimal::from(1_000_000);
+            let output_tokens_bd = BigDecimal::from(tokens_output);
+            
+            // Check for potential overflow before multiplication
+            let product = &rate * &output_tokens_bd;
+            if product > (max_price.clone() * million.clone()) {
+                return Err(AppError::InvalidArgument(
+                    "Output cost calculation would overflow maximum allowed cost".to_string()
+                ));
+            }
+            
+            product / &million
         } else {
             BigDecimal::from(0)
         };
         
-        let cost = input_cost + output_cost + duration_cost;
+        // Validate total cost with overflow protection
+        let cost = &input_cost + &output_cost;
+        let max_cost = BigDecimal::from(1000);
+        if cost > max_cost {
+            return Err(AppError::InvalidArgument(
+                "Combined token cost would exceed maximum allowed cost".to_string()
+            ));
+        }
+        
+        // Ensure cost is positive
+        if cost < BigDecimal::from(0) {
+            return Err(AppError::InvalidArgument(
+                "Calculated cost cannot be negative".to_string()
+            ));
+        }
+        
+        // Normalize cost at usage entry point
+        let cost = normalized(&cost);
         
         // Record API usage first
         let api_usage_record = self.api_usage_repository
@@ -503,13 +591,8 @@ impl CreditService {
             .await?;
         
         // Consume credits with reference to the API usage record
-        let usage_description = if api_usage_record.input_duration_ms.is_some() && api_usage_record.input_duration_ms.unwrap() > 0 {
-            let duration_seconds = api_usage_record.input_duration_ms.unwrap() as f64 / 1000.0;
-            format!("{} - {:.2}s duration", api_usage_record.service_name, duration_seconds)
-        } else {
-            format!("{} - {} tokens in, {} tokens out", 
-                api_usage_record.service_name, api_usage_record.tokens_input, api_usage_record.tokens_output)
-        };
+        let usage_description = format!("{} - {} tokens in, {} tokens out", 
+            api_usage_record.service_name, api_usage_record.tokens_input, api_usage_record.tokens_output);
         
         // Ensure user has a credit record within the transaction
         let current_balance = self.user_credit_repository
@@ -568,6 +651,16 @@ impl CreditService {
         }
         
         Ok((api_usage_record, updated_balance))
+    }
+    
+    /// Get access to the credit transaction repository
+    pub fn get_credit_transaction_repository(&self) -> &Arc<CreditTransactionRepository> {
+        &self.credit_transaction_repository
+    }
+    
+    /// Get access to the user credit repository
+    pub fn get_user_credit_repository(&self) -> &Arc<UserCreditRepository> {
+        &self.user_credit_repository
     }
 }
 

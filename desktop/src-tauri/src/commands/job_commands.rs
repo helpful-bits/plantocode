@@ -161,7 +161,6 @@ pub async fn cancel_session_jobs_command(session_id: String, app_handle: AppHand
                         Some("Canceled by session action".to_string())
                     ).await {
                         log::warn!("Failed to cancel workflow job {} via orchestrator: {}. Falling back to direct cancellation.", job.id, e);
-                        // Fallback to direct cancellation
                         if let Err(e2) = repo.cancel_job(&job.id, "Canceled by session action").await {
                             log::warn!("Failed to cancel job {} directly: {}", job.id, e2);
                         } else {
@@ -169,12 +168,10 @@ pub async fn cancel_session_jobs_command(session_id: String, app_handle: AppHand
                         }
                     } else {
                         cancelled_count += 1;
-                        log::warn!("Job {} belonging to a workflow was cancelled by cancel_session_jobs", job.id);
                     }
                 },
                 Err(e) => {
                     log::warn!("Could not get workflow orchestrator to cancel workflow job {}: {}. Using direct cancellation.", job.id, e);
-                    // Fallback to direct cancellation
                     if let Err(e2) = repo.cancel_job(&job.id, "Canceled by session action").await {
                         log::warn!("Failed to cancel job {} directly: {}", job.id, e2);
                     } else {

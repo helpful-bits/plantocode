@@ -1,12 +1,12 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Calendar, Download, ChevronLeft, ChevronRight } from "lucide-react";
+import { Calendar, Download, ChevronLeft, ChevronRight, FolderOpen } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/ui/card";
 import { Button } from "@/ui/button";
 import { Badge } from "@/ui/badge";
 import { LoadingSkeleton, ErrorState } from "./loading-and-error-states";
-import { listInvoices, type Invoice, type ListInvoicesResponse } from "@/actions/billing/invoice.actions";
+import { listInvoices, downloadInvoicePdf, revealFileInExplorer, type Invoice, type ListInvoicesResponse } from "@/actions/billing/invoice.actions";
 import { getErrorMessage } from "@/utils/error-handling";
 import { formatUsdCurrency } from "@/utils/currency-utils";
 
@@ -24,7 +24,7 @@ function formatInvoiceDate(timestamp: number): string {
   });
 }
 
-function getStatusVariant(status: string): "default" | "secondary" | "destructive" | "outline" {
+function getStatusVariant(status: string): "default" | "secondary" | "destructive" | "outline" | "success" {
   switch (status.toLowerCase()) {
     case 'paid':
       return 'default';
@@ -38,25 +38,14 @@ function getStatusVariant(status: string): "default" | "secondary" | "destructiv
   }
 }
 
-function getStatusColor(status: string): string {
-  switch (status.toLowerCase()) {
-    case 'paid':
-      return 'text-green-600';
-    case 'open':
-      return 'text-yellow-600';
-    case 'void':
-    case 'uncollectible':
-      return 'text-red-600';
-    default:
-      return 'text-gray-600';
-  }
-}
 
 export function InvoicesList({ className }: InvoicesListProps) {
   const [invoicesData, setInvoicesData] = useState<ListInvoicesResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
+  const [downloadingInvoice, setDownloadingInvoice] = useState<string | null>(null);
+  const [downloadedFiles, setDownloadedFiles] = useState<Record<string, string>>({});
 
   const loadInvoices = useCallback(async (page: number = 1) => {
     try {
@@ -71,28 +60,17 @@ export function InvoicesList({ className }: InvoicesListProps) {
     } catch (err) {
       const errorMessage = getErrorMessage(err);
       
-      // Check if error is 404/Not Found or similar - treat as empty state for billing history
-      if (errorMessage.includes('404') || 
-          errorMessage.toLowerCase().includes('not found') ||
-          errorMessage.toLowerCase().includes('no invoices') ||
-          errorMessage.toLowerCase().includes('no customer') ||
-          errorMessage.toLowerCase().includes('no billing history') ||
-          errorMessage.toLowerCase().includes('customer not found')) {
-        setInvoicesData({ invoices: [], totalInvoices: 0, hasMore: false });
-        setError(null);
-      } else {
-        // Provide more user-friendly error messages
-        let friendlyError = errorMessage;
-        if (errorMessage.toLowerCase().includes('network') || errorMessage.toLowerCase().includes('fetch')) {
-          friendlyError = 'Unable to load billing history. Please check your internet connection and try again.';
-        } else if (errorMessage.toLowerCase().includes('timeout')) {
-          friendlyError = 'Request timed out while loading billing history. Please try again.';
-        } else if (errorMessage.toLowerCase().includes('unauthorized') || errorMessage.toLowerCase().includes('forbidden')) {
-          friendlyError = 'Unable to access billing history. Please refresh the page or contact support.';
-        }
-        setError(friendlyError);
+      // Provide user-friendly error messages for legitimate errors
+      let friendlyError = errorMessage;
+      if (errorMessage.toLowerCase().includes('network') || errorMessage.toLowerCase().includes('fetch')) {
+        friendlyError = 'Unable to load billing history. Please check your internet connection and try again.';
+      } else if (errorMessage.toLowerCase().includes('timeout')) {
+        friendlyError = 'Request timed out while loading billing history. Please try again.';
+      } else if (errorMessage.toLowerCase().includes('unauthorized') || errorMessage.toLowerCase().includes('forbidden')) {
+        friendlyError = 'Unable to access billing history. Please refresh the page or contact support.';
       }
       
+      setError(friendlyError);
       console.error('Failed to load invoices:', err);
     } finally {
       setIsLoading(false);
@@ -111,9 +89,29 @@ export function InvoicesList({ className }: InvoicesListProps) {
     loadInvoices(newPage);
   };
 
-  const handleDownloadInvoice = (invoice: Invoice) => {
-    if (invoice.invoicePdfUrl) {
-      window.open(invoice.invoicePdfUrl, '_blank');
+  const handleDownloadInvoice = async (invoice: Invoice) => {
+    if (!invoice.invoicePdfUrl) return;
+
+    try {
+      setDownloadingInvoice(invoice.id);
+      const filePath = await downloadInvoicePdf(invoice.id, invoice.invoicePdfUrl);
+      setDownloadedFiles(prev => ({
+        ...prev,
+        [invoice.id]: filePath
+      }));
+    } catch (error) {
+      console.error('Failed to download PDF:', error);
+    } finally {
+      setDownloadingInvoice(null);
+    }
+  };
+
+
+  const handleRevealInFolder = async (filePath: string) => {
+    try {
+      await revealFileInExplorer(filePath);
+    } catch (error) {
+      console.error('Failed to reveal file in folder:', error);
     }
   };
 
@@ -131,7 +129,7 @@ export function InvoicesList({ className }: InvoicesListProps) {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Calendar className="h-5 w-5" />
-            Billing History
+            Invoices
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -153,14 +151,11 @@ export function InvoicesList({ className }: InvoicesListProps) {
   return (
     <Card className={className}>
       <CardHeader>
-        <CardTitle className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Calendar className="h-5 w-5" />
-            Billing History
+        <CardTitle className="flex items-center gap-3 text-xl font-bold">
+          <div className="h-10 w-10 bg-primary/10 rounded-full flex items-center justify-center">
+            <Calendar className="h-5 w-5 text-primary" />
           </div>
-          <Badge variant="secondary">
-            {invoicesData.totalInvoices} total
-          </Badge>
+          Invoices
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -169,27 +164,32 @@ export function InvoicesList({ className }: InvoicesListProps) {
           {invoicesData.invoices.map((invoice) => (
             <div
               key={invoice.id}
-              className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors"
+              className="flex items-center justify-between p-4 border border-border/50 rounded-lg hover:bg-muted/50 transition-colors"
             >
-              <div className="flex-1 space-y-1">
-                <div className="flex items-center gap-3">
+              <div className="flex-1">
+                <div className="flex items-center gap-6 flex-wrap">
                   <span className="font-medium">
                     {formatUsdCurrency(invoice.amountDue / 100)}
                   </span>
                   <Badge variant={getStatusVariant(invoice.status)}>
-                    <span className={getStatusColor(invoice.status)}>
-                      {invoice.status.charAt(0).toUpperCase() + invoice.status.slice(1)}
-                    </span>
+                    {invoice.status.charAt(0).toUpperCase() + invoice.status.slice(1)}
                   </Badge>
-                </div>
-                <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                  <span>
+                  <span className="text-sm text-muted-foreground">
                     {formatInvoiceDate(invoice.created)}
                   </span>
-                  {invoice.dueDate && (
-                    <span>
+                  {invoice.dueDate && invoice.status.toLowerCase() !== 'paid' && (
+                    <span className="text-sm text-muted-foreground">
                       Due: {formatInvoiceDate(invoice.dueDate)}
                     </span>
+                  )}
+                  {downloadedFiles[invoice.id] && (
+                    <button
+                      onClick={() => handleRevealInFolder(downloadedFiles[invoice.id])}
+                      className="text-sm text-success hover:underline cursor-pointer flex items-center gap-1"
+                    >
+                      <FolderOpen className="h-3 w-3" />
+                      Show in Folder
+                    </button>
                   )}
                 </div>
               </div>
@@ -200,10 +200,11 @@ export function InvoicesList({ className }: InvoicesListProps) {
                     variant="outline"
                     size="sm"
                     onClick={() => handleDownloadInvoice(invoice)}
+                    disabled={downloadingInvoice === invoice.id}
                     className="flex items-center gap-2"
                   >
                     <Download className="h-4 w-4" />
-                    View PDF
+                    {downloadingInvoice === invoice.id ? 'Downloading...' : 'Download PDF'}
                   </Button>
                 )}
               </div>

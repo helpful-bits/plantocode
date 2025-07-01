@@ -20,12 +20,13 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig, strict_rate_limiter: RateL
         web::scope("/billing")
             // Dashboard route
             .route("/dashboard", web::get().to(handlers::billing::dashboard_handler::get_billing_dashboard_data_handler))
-            // Customer billing management routes
-            .service(handlers::billing::subscription_handlers::get_usage_summary)
-            .service(handlers::billing::subscription_handlers::get_detailed_usage)
+            // Customer billing info route
+            .route("/customer-info", web::get().to(handlers::billing::dashboard_handler::get_customer_billing_info_handler))
+            // Usage summary route with pre-calculated totals
+            .route("/usage-summary", web::get().to(handlers::billing::dashboard_handler::get_detailed_usage_with_summary_handler))
             // Auto top-off settings routes
-            .service(handlers::billing::subscription_handlers::get_auto_top_off_settings_handler)
-            .service(handlers::billing::subscription_handlers::update_auto_top_off_settings_handler)
+            .service(handlers::billing::auto_top_off_handlers::get_auto_top_off_settings_handler)
+            .service(handlers::billing::auto_top_off_handlers::update_auto_top_off_settings_handler)
             // Payment and billing portal routes
             .service(handlers::billing::payment_handlers::create_billing_portal_session)
             .service(handlers::billing::payment_handlers::get_payment_methods)
@@ -44,9 +45,12 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig, strict_rate_limiter: RateL
                 web::scope("/credits")
                     .service(handlers::billing::credit_handlers::get_credit_balance)
                     .route("/details", web::get().to(handlers::billing::credit_handlers::get_credit_details))
-                    .route("/transaction-history", web::get().to(handlers::billing::credit_handlers::get_credit_transaction_history))
+                    .route("/transaction-history", web::get().to(handlers::billing::credit_handlers::get_credit_history))
                     .route("/admin/adjust", web::post().to(handlers::billing::credit_handlers::admin_adjust_credits))
             )
+            // Streaming cost and cancelled job cost reporting endpoints  
+            .route("/streaming-cost", web::post().to(handlers::billing::webhook_handlers::streaming_cost_update_authenticated))
+            .route("/cancelled-job-cost", web::post().to(handlers::billing::webhook_handlers::cancelled_job_cost_authenticated))
             // Customer billing lifecycle actions (cancel, resume, update) are handled by the billing portal
             // This prevents future additions of direct billing modification endpoints
     );
@@ -75,6 +79,8 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig, strict_rate_limiter: RateL
             .route("/{id}", web::get().to(handlers::model_handlers::get_model_by_id))
             .route("/by-provider/{provider_code}", web::get().to(handlers::model_handlers::get_models_by_provider))
             .route("/by-type/{model_type}", web::get().to(handlers::model_handlers::get_models_by_type))
+            .route("/estimate-cost", web::post().to(handlers::model_handlers::estimate_cost))
+            .route("/estimate-batch-cost", web::post().to(handlers::model_handlers::estimate_batch_cost))
     );
 
     // LLM proxy routes (/api/llm/*)

@@ -21,16 +21,14 @@ pub struct ApiUsageRecord {
     pub id: Option<Uuid>,
     pub user_id: Uuid,
     pub service_name: String,
-    pub tokens_input: i32,
-    pub tokens_output: i32,
-    pub cached_input_tokens: i32,
-    pub cache_write_tokens: i32,
-    pub cache_read_tokens: i32,
+    pub tokens_input: i64,
+    pub tokens_output: i64,
+    pub cached_input_tokens: i64,
+    pub cache_write_tokens: i64,
+    pub cache_read_tokens: i64,
     pub cost: BigDecimal,
     pub request_id: Option<String>,
     pub metadata: Option<serde_json::Value>,
-    pub processing_ms: Option<i32>,
-    pub input_duration_ms: Option<i64>,
     pub timestamp: DateTime<Utc>,
 }
 
@@ -50,19 +48,34 @@ pub struct DetailedUsageRecord {
     pub total_duration_ms: i64,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageSummary {
+    pub total_cost: f64,
+    pub total_requests: i64,
+    pub total_input_tokens: i64,
+    pub total_output_tokens: i64,
+    pub total_duration_ms: i64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DetailedUsageResponse {
+    pub detailed_usage: Vec<DetailedUsageRecord>,
+    pub summary: UsageSummary,
+}
+
 #[derive(Debug)]
 pub struct ApiUsageEntryDto {
     pub user_id: Uuid,
     pub service_name: String,
-    pub tokens_input: i32,
-    pub tokens_output: i32,
-    pub cached_input_tokens: i32,
-    pub cache_write_tokens: i32,
-    pub cache_read_tokens: i32,
+    pub tokens_input: i64,
+    pub tokens_output: i64,
+    pub cached_input_tokens: i64,
+    pub cache_write_tokens: i64,
+    pub cache_read_tokens: i64,
     pub request_id: Option<String>,
     pub metadata: Option<serde_json::Value>,
-    pub processing_ms: Option<i32>,
-    pub input_duration_ms: Option<i64>,
 }
 
 #[derive(Debug)]
@@ -87,22 +100,20 @@ impl ApiUsageRepository {
 
         let result = query!(
             r#"
-            INSERT INTO api_usage (user_id, service_name, tokens_input, tokens_output, cached_input_tokens, cache_write_tokens, cache_read_tokens, cost, request_id, metadata, processing_ms, input_duration_ms)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-            RETURNING id, user_id, service_name, tokens_input, tokens_output, cached_input_tokens, cache_write_tokens, cache_read_tokens, cost, request_id, metadata, processing_ms, input_duration_ms, timestamp
+            INSERT INTO api_usage (user_id, service_name, tokens_input, tokens_output, cached_input_tokens, cache_write_tokens, cache_read_tokens, cost, request_id, metadata)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            RETURNING id, user_id, service_name, tokens_input, tokens_output, cached_input_tokens, cache_write_tokens, cache_read_tokens, cost, request_id, metadata, timestamp
             "#,
             entry.user_id,
             entry.service_name,
-            entry.tokens_input,
-            entry.tokens_output,
-            entry.cached_input_tokens,
-            entry.cache_write_tokens,
-            entry.cache_read_tokens,
+            entry.tokens_input as i32,
+            entry.tokens_output as i32,
+            entry.cached_input_tokens as i32,
+            entry.cache_write_tokens as i32,
+            entry.cache_read_tokens as i32,
             cost,
             entry.request_id,
-            metadata_to_store,
-            entry.processing_ms,
-            entry.input_duration_ms
+            metadata_to_store
         )
         .fetch_one(&mut **executor)
         .await
@@ -112,16 +123,14 @@ impl ApiUsageRepository {
             id: Some(result.id),
             user_id: result.user_id,
             service_name: result.service_name,
-            tokens_input: result.tokens_input,
-            tokens_output: result.tokens_output,
-            cached_input_tokens: result.cached_input_tokens.unwrap_or(0),
-            cache_write_tokens: result.cache_write_tokens.unwrap_or(0),
-            cache_read_tokens: result.cache_read_tokens.unwrap_or(0),
+            tokens_input: result.tokens_input as i64,
+            tokens_output: result.tokens_output as i64,
+            cached_input_tokens: result.cached_input_tokens.unwrap_or(0) as i64,
+            cache_write_tokens: result.cache_write_tokens.unwrap_or(0) as i64,
+            cache_read_tokens: result.cache_read_tokens.unwrap_or(0) as i64,
             cost: result.cost,
             request_id: result.request_id,
             metadata: result.metadata,
-            processing_ms: result.processing_ms,
-            input_duration_ms: result.input_duration_ms,
             timestamp: result.timestamp,
         })
     }
@@ -225,6 +234,43 @@ impl ApiUsageRepository {
         Ok(result)
     }
 
+    /// Gets detailed usage data with pre-calculated summary totals
+    pub async fn get_detailed_usage_with_summary(
+        &self,
+        user_id: &Uuid,
+        start_date: DateTime<Utc>,
+        end_date: DateTime<Utc>,
+    ) -> Result<DetailedUsageResponse, AppError> {
+        let mut tx = self.db_pool.begin().await.map_err(AppError::from)?;
+        let detailed_usage = self.get_detailed_usage(user_id, start_date, end_date, &mut tx).await?;
+        
+        // Calculate totals from the detailed usage data
+        let summary = detailed_usage.iter().fold(
+            UsageSummary {
+                total_cost: 0.0,
+                total_requests: 0,
+                total_input_tokens: 0,
+                total_output_tokens: 0,
+                total_duration_ms: 0,
+            },
+            |mut acc, usage| {
+                acc.total_cost += usage.total_cost;
+                acc.total_requests += usage.total_requests;
+                acc.total_input_tokens += usage.total_input_tokens;
+                acc.total_output_tokens += usage.total_output_tokens;
+                acc.total_duration_ms += usage.total_duration_ms;
+                acc
+            }
+        );
+
+        tx.commit().await.map_err(AppError::from)?;
+        
+        Ok(DetailedUsageResponse {
+            detailed_usage,
+            summary,
+        })
+    }
+
     /// Gets detailed usage data with model and provider information
     pub async fn get_detailed_usage(
         &self,
@@ -237,7 +283,7 @@ impl ApiUsageRepository {
             r#"
             WITH usage_with_model_id AS (
                 SELECT
-                    id, cost, tokens_input, tokens_output, cached_input_tokens, cache_write_tokens, cache_read_tokens, processing_ms, input_duration_ms, request_id,
+                    id, cost, tokens_input, tokens_output, cached_input_tokens, cache_write_tokens, cache_read_tokens, request_id,
                     CASE
                         WHEN service_name LIKE '%/%' THEN service_name
                         WHEN metadata->>'modelId' IS NOT NULL THEN metadata->>'modelId'
@@ -258,7 +304,7 @@ impl ApiUsageRepository {
                 COALESCE(SUM(u.cached_input_tokens), 0)::bigint as total_cached_input_tokens,
                 COALESCE(SUM(u.cache_write_tokens), 0)::bigint as total_cache_write_tokens,
                 COALESCE(SUM(u.cache_read_tokens), 0)::bigint as total_cache_read_tokens,
-                COALESCE(SUM(u.input_duration_ms), 0)::bigint as total_duration_ms
+                0::bigint as total_duration_ms
             FROM usage_with_model_id u
             LEFT JOIN models m ON u.effective_model_id = m.id
             LEFT JOIN providers p ON m.provider_id = p.id

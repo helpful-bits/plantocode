@@ -38,9 +38,6 @@ export interface CreateCreditCheckoutSessionCommandArgs {
   amount: number;
 }
 
-export interface CreateSubscriptionCheckoutSessionCommandArgs {
-  planId: string;
-}
 
 export interface CreateSetupCheckoutSessionCommandArgs {
 }
@@ -621,21 +618,25 @@ export type TauriInvoke = {
   "get_credit_details_command": () => Promise<CreditDetailsResponse>;
   "get_credit_stats_command": () => Promise<CreditStats>;
   
+  // Customer billing info commands
+  "get_customer_billing_info_command": () => Promise<CustomerBillingInfo | null>;
+  
   "confirm_payment_status_command": (args: { paymentIntentId: string }) => Promise<any>;
   "get_stripe_publishable_key_command": () => Promise<string>;
   
   // Checkout commands
   "create_credit_checkout_session_command": (args: CreateCreditCheckoutSessionCommandArgs) => Promise<CheckoutSessionResponse>;
-  "create_subscription_checkout_session_command": (args: CreateSubscriptionCheckoutSessionCommandArgs) => Promise<CheckoutSessionResponse>;
   "create_setup_checkout_session_command": (args: CreateSetupCheckoutSessionCommandArgs) => Promise<CheckoutSessionResponse>;
   "get_checkout_session_status_command": (args: { sessionId: string }) => Promise<CheckoutSessionStatusResponse>;
   
-  // Subscription lifecycle management
+  // Credit lifecycle management
   "get_usage_summary_command": () => Promise<any>;
   "create_billing_portal_session_command": () => Promise<BillingPortalResponse>;
   
   // Invoice management commands
   "list_invoices_command": (args: { limit?: number; offset?: number }) => Promise<import("@/actions/billing/invoice.actions").ListInvoicesResponse>;
+  "download_invoice_pdf_command": (args: { invoiceId: string; pdfUrl: string }) => Promise<string>;
+  "reveal_file_in_explorer_command": (args: { filePath: string }) => Promise<void>;
   
   // Payment method management commands
   "get_detailed_usage_command": (args: { startDate: string; endDate: string }) => Promise<DetailedUsage[]>;
@@ -662,7 +663,6 @@ export interface DetailedUsage {
   totalRequests: number;
   totalInputTokens: number;
   totalOutputTokens: number;
-  totalDurationMs: number;
 }
 
 export interface UsageInfo {
@@ -774,7 +774,7 @@ export interface CreditStats {
 
 
 
-// Subscription lifecycle management types
+// Credit lifecycle management types
 
 export interface PendingPaymentInfo {
   hasPendingPayment: boolean;
@@ -911,9 +911,25 @@ export interface BillingDashboardPlanDetails {
   billingInterval: string;
 }
 
+export interface CustomerBillingInfo {
+  customerName?: string | null;
+  customerEmail?: string | null;
+  phone?: string | null;
+  taxExempt?: string | null;
+  addressLine1?: string | null;
+  addressLine2?: string | null;
+  addressCity?: string | null;
+  addressState?: string | null;
+  addressPostalCode?: string | null;
+  addressCountry?: string | null;
+  hasBillingInfo: boolean;
+}
+
 export interface BillingDashboardData {
   creditBalanceUsd: number;
   servicesBlocked: boolean;
+  isPaymentMethodRequired: boolean;
+  isBillingInfoRequired: boolean;
 }
 
 // Invoice interfaces

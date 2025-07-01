@@ -10,6 +10,8 @@ export interface UseBillingDataReturn {
   dashboardData: BillingDashboardData | null;
   creditBalance: number;
   creditBalanceUsd: number;
+  isPaymentMethodRequired: boolean;
+  isBillingInfoRequired: boolean;
   isLoading: boolean;
   error: string | null;
   refreshBillingData: () => Promise<void>;
@@ -91,6 +93,25 @@ export function useBillingData(): UseBillingDataReturn {
     };
   }, [refreshBillingData]);
 
+  // Listen for billing-data-updated events to refresh billing data
+  useEffect(() => {
+    const handleBillingDataUpdated = async () => {
+      try {
+        console.log('[BillingData] Received billing-data-updated event, refreshing data');
+        await refreshBillingData();
+      } catch (err) {
+        console.error('[BillingData] Error processing billing-data-updated event:', err);
+      }
+    };
+
+    window.addEventListener('billing-data-updated', handleBillingDataUpdated);
+
+    // Cleanup listener on unmount
+    return () => {
+      window.removeEventListener('billing-data-updated', handleBillingDataUpdated);
+    };
+  }, [refreshBillingData]);
+
 
 
   const creditBalance = useMemo(() => {
@@ -104,6 +125,8 @@ export function useBillingData(): UseBillingDataReturn {
     dashboardData,
     creditBalance,
     creditBalanceUsd: creditBalance,
+    isPaymentMethodRequired: dashboardData?.isPaymentMethodRequired || false,
+    isBillingInfoRequired: dashboardData?.isBillingInfoRequired || false,
     isLoading,
     error,
     refreshBillingData,

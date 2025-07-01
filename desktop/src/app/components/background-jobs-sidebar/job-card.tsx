@@ -322,11 +322,7 @@ export const JobCard = React.memo(
                     className="text-[9px] text-muted-foreground truncate max-w-full"
                     title={modelUsed}
                   >
-                    {modelUsed.includes("gemini")
-                      ? modelUsed.replace("gemini-", "Google Gemini ")
-                      : modelUsed.includes("claude")
-                        ? modelUsed.replace(/-\d{8}$/, "")
-                        : modelUsed}
+                    {modelUsed}
                   </span>
                 ) : (
                   <span className="h-3"></span>
@@ -350,7 +346,6 @@ export const JobCard = React.memo(
             // Completion info for completed jobs
             if (JOB_STATUSES.COMPLETED.includes(job.status as JobStatus)) {
               const parsedMeta = getParsedMetadata(job.metadata);
-              const cost = job.actualCost ?? parsedMeta?.taskData?.actualCost;
 
               return (
                 <div className="text-[10px] mt-2 border-t border-border/60 pt-2">
@@ -706,11 +701,11 @@ export const JobCard = React.memo(
                       })()}
                     </div>
                     
-                    {/* Cost (right side) - Only show if meaningful */}
+                    {/* Cost (right side) - Show for any job with cost */}
                     <div className="flex-shrink-0">
-                      {cost && Number(cost) > 0 ? (
+                      {job.actualCost !== null && job.actualCost !== undefined && Number(job.actualCost) > 0 ? (
                         <span className="font-mono text-[9px] text-foreground">
-                          {formatUsdCurrencyPrecise(cost)}
+                          {formatUsdCurrencyPrecise(job.actualCost)}
                         </span>
                       ) : null}
                     </div>
@@ -719,11 +714,35 @@ export const JobCard = React.memo(
               );
             }
             
-            // Status messages for non-completed jobs with errorMessage
+            // Failed/Cancelled jobs - show error and cost if any
+            if ((job.status === "failed" || job.status === "canceled") && job.errorMessage) {
+              return (
+                <div className="text-[10px] mt-2 border-t border-border/60 pt-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <div className={`${job.status === "failed" ? "text-destructive" : "text-muted-foreground"} break-words text-balance overflow-hidden`}>
+                        <div className="h-[40px] w-full overflow-y-auto overflow-x-hidden">
+                          <div className="break-words whitespace-pre-wrap overflow-wrap-anywhere">
+                            {errorPreview}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    {job.actualCost !== null && job.actualCost !== undefined && Number(job.actualCost) > 0 ? (
+                      <div className="flex-shrink-0">
+                        <span className="font-mono text-[9px] text-foreground">
+                          {formatUsdCurrencyPrecise(job.actualCost)}
+                        </span>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              );
+            }
+            
+            // Status messages for other non-completed jobs with errorMessage
             if (!JOB_STATUSES.COMPLETED.includes(job.status as JobStatus) && job.errorMessage) {
-              const textColorClass = (job.status === "failed" || job.status === "canceled") 
-                ? "text-destructive" 
-                : "text-muted-foreground";
+              const textColorClass = "text-muted-foreground";
               
               return (
                 <div className={`text-[10px] mt-2 border-t border-border/60 pt-2 ${textColorClass} break-words text-balance overflow-hidden`}>

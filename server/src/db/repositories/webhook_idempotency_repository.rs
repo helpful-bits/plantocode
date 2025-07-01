@@ -3,6 +3,7 @@ use uuid::Uuid;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use crate::error::AppError;
+use log::info;
 
 /// Enhanced webhook idempotency record with locking, retries, and detailed status tracking
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -354,6 +355,28 @@ impl WebhookIdempotencyRepository {
         .map_err(|e| AppError::Database(format!("Failed to get webhooks ready for retry: {}", e)))?;
 
         Ok(results)
+    }
+
+    /// Clean up webhook events older than 24 hours for replay cache TTL
+    /// This implements the 24-hour event replay cache requirement
+    pub async fn cleanup_expired_webhook_events(&self) -> Result<i64, AppError> {
+        let deleted_count = sqlx::query!(
+            r#"
+            DELETE FROM webhook_idempotency 
+            WHERE status = 'completed' 
+              AND processed_at < NOW() - INTERVAL '24 hours'
+            "#
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(|e| AppError::Database(format!("Failed to cleanup expired webhook events: {}", e)))?
+        .rows_affected();
+
+        if deleted_count > 0 {
+            info!("Cleaned up {} expired webhook events (24-hour TTL)", deleted_count);
+        }
+
+        Ok(deleted_count as i64)
     }
 }
 

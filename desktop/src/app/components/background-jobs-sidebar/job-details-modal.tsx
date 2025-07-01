@@ -112,7 +112,7 @@ function WorkflowStages({ job }: WorkflowStagesProps) {
 
   if (!workflowState) {
     return (
-      <div className="bg-card border border-border rounded-lg p-4">
+      <div className="bg-background border border-border rounded-lg p-4">
         <div className="flex items-center gap-2">
           <Loader2 className="h-4 w-4 animate-spin" />
           <span className="text-sm">Loading workflow details...</span>
@@ -135,7 +135,7 @@ function WorkflowStages({ job }: WorkflowStagesProps) {
             return (
               <div
                 key={stageJob.jobId || stageJob.stage}
-                className="border border-border rounded-lg p-3 bg-card"
+                className="border border-border rounded-lg p-3 bg-background"
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
@@ -147,7 +147,7 @@ function WorkflowStages({ job }: WorkflowStagesProps) {
                         : stageJob.status === 'canceled'
                         ? 'bg-orange-500'
                         : ['running', 'preparing', 'processingStream', 'acknowledgedByWorker', 'preparingInput', 'generatingStream'].includes(stageJob.status)
-                        ? 'bg-blue-500 animate-pulse'
+                        ? 'bg-info animate-pulse'
                         : ['idle', 'queued', 'created'].includes(stageJob.status)
                         ? 'bg-gray-400'
                         : 'bg-gray-300'
@@ -176,7 +176,7 @@ function WorkflowStages({ job }: WorkflowStagesProps) {
                         : stageJob.status === 'canceled'
                         ? 'bg-orange-100 text-orange-800 dark:bg-orange-900/20 dark:text-orange-200'
                         : ['running', 'preparing', 'processingStream', 'acknowledgedByWorker', 'preparingInput', 'generatingStream'].includes(stageJob.status)
-                        ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-200'
+                        ? 'bg-info/10 text-info-foreground'
                         : ['idle', 'queued', 'created'].includes(stageJob.status)
                         ? 'bg-gray-100 text-gray-600 dark:bg-gray-700/20 dark:text-gray-300'
                         : 'bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-200'
@@ -527,7 +527,7 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
 
   return (
     <Dialog open={!!job} onOpenChange={(open: boolean) => !open && onClose()}>
-      <DialogContent className="max-w-6xl h-[95vh] !flex !flex-col !gap-0 text-foreground !bg-card rounded-xl shadow-lg !backdrop-blur-none">
+      <DialogContent className="max-w-6xl h-[95vh] !flex !flex-col !gap-0 text-foreground !bg-background rounded-xl shadow-lg !backdrop-blur-none">
         <DialogHeader>
           <DialogTitle
             className={`${job.taskType === "implementation_plan" ? "text-xl" : ""} text-foreground`}

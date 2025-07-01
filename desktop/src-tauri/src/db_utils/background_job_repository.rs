@@ -50,8 +50,21 @@ impl BackgroundJobRepository {
             }
         }
         
-        // Check if this is a workflow job and log a warning\n        if let Some(metadata_str) = &job.metadata {\n            if let Ok(metadata_json) = serde_json::from_str::<serde_json::Value>(metadata_str) {\n                if metadata_json.get(\"workflowId\").is_some() {\n                    warn!(\"Job {} belonging to a workflow is being cancelled directly - workflow state may not be properly updated\", job_id);\n                }\n            }\n        }\n        \n        // Use the new consolidated method
-        self.mark_job_canceled(job_id, reason).await
+        // Check if this is a workflow job and log a warning\n        if let Some(metadata_str) = &job.metadata {\n            if let Ok(metadata_json) = serde_json::from_str::<serde_json::Value>(metadata_str) {\n                if metadata_json.get(\"workflowId\").is_some() {\n                    warn!(\"Job {} belonging to a workflow is being cancelled directly - workflow state may not be properly updated\", job_id);\n                }\n            }\n        }\n        \n        // Extract cost from current job metadata if available
+        let cost = if let Some(metadata_str) = &job.metadata {
+            if let Ok(metadata_json) = serde_json::from_str::<serde_json::Value>(metadata_str) {
+                metadata_json.get("task_data")
+                    .and_then(|task_data| task_data.get("actual_cost"))
+                    .and_then(|v| v.as_f64())
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+        
+        // Use the new consolidated method
+        self.mark_job_canceled(job_id, reason, cost).await
     }
     
     /// Update job streaming progress by appending response chunk and updating metadata.
@@ -63,7 +76,7 @@ impl BackgroundJobRepository {
     /// * `new_tokens_received` - The number of tokens in this chunk
     /// * `current_total_response_length` - The current length of the accumulated response (characters)
     /// * `current_metadata_str` - The current metadata string from BackgroundJob.metadata
-    pub async fn update_job_stream_progress(&self, job_id: &str, chunk: &str, new_tokens_received: i32, current_total_response_length: i32, current_metadata_str: Option<&str>, app_handle: Option<&tauri::AppHandle>) -> AppResult<String> {
+    pub async fn update_job_stream_progress(&self, job_id: &str, chunk: &str, new_tokens_received: i32, current_total_response_length: i32, current_metadata_str: Option<&str>, app_handle: Option<&tauri::AppHandle>, cost: Option<f64>) -> AppResult<String> {
         // First check if the job exists and is in running status
         let job = self.get_job_by_id(job_id).await?
             .ok_or_else(|| AppError::DatabaseError(format!("Job not found: {}", job_id)))?;
@@ -94,46 +107,75 @@ impl BackgroundJobRepository {
                         task_map.insert("responseLength".to_string(), serde_json::json!(current_total_response_length));
                         task_map.insert("tokensReceived".to_string(), serde_json::json!(tokens_received));
                         
+                        // Add cost if provided
+                        if let Some(cost_value) = cost {
+                            task_map.insert("actual_cost".to_string(), serde_json::json!(cost_value));
+                        }
+                        
                         // Add start time if not present
                         if !task_map.contains_key("stream_start_time") {
                             task_map.insert("stream_start_time".to_string(), serde_json::json!(now));
                         }
                     } else {
                         // If task_data is not an object, create it with flattened streaming fields
-                        ui_metadata.task_data = serde_json::json!({
+                        let mut task_data = serde_json::json!({
                             "isStreaming": true,
                             "lastStreamUpdateTime": now,
                             "responseLength": current_total_response_length,
                             "tokensReceived": tokens_received,
                             "stream_start_time": now
                         });
+                        
+                        if let Some(cost_value) = cost {
+                            if let serde_json::Value::Object(ref mut map) = task_data {
+                                map.insert("actual_cost".to_string(), serde_json::json!(cost_value));
+                            }
+                        }
+                        
+                        ui_metadata.task_data = task_data;
                     }
                     
                     serde_json::to_string(&ui_metadata)
                         .map_err(|e| AppError::SerializationError(format!("Failed to serialize JobUIMetadata: {}", e)))?
                 } else {
                     // Cannot parse as JobUIMetadata - create minimal streaming metadata with flattened structure
-                    serde_json::to_string(&serde_json::json!({
-                        "task_data": {
-                            "isStreaming": true,
-                            "lastStreamUpdateTime": now,
-                            "responseLength": current_total_response_length,
-                            "tokensReceived": tokens_received,
-                            "stream_start_time": now
-                        }
-                    })).unwrap()
-                }
-            },
-            None => {
-                // No metadata - create minimal streaming metadata with flattened structure
-                serde_json::to_string(&serde_json::json!({
-                    "task_data": {
+                    let mut task_data = serde_json::json!({
                         "isStreaming": true,
                         "lastStreamUpdateTime": now,
                         "responseLength": current_total_response_length,
                         "tokensReceived": tokens_received,
                         "stream_start_time": now
+                    });
+                    
+                    if let Some(cost_value) = cost {
+                        if let serde_json::Value::Object(ref mut map) = task_data {
+                            map.insert("actual_cost".to_string(), serde_json::json!(cost_value));
+                        }
                     }
+                    
+                    serde_json::to_string(&serde_json::json!({
+                        "task_data": task_data
+                    })).unwrap()
+                }
+            },
+            None => {
+                // No metadata - create minimal streaming metadata with flattened structure
+                let mut task_data = serde_json::json!({
+                    "isStreaming": true,
+                    "lastStreamUpdateTime": now,
+                    "responseLength": current_total_response_length,
+                    "tokensReceived": tokens_received,
+                    "stream_start_time": now
+                });
+                
+                if let Some(cost_value) = cost {
+                    if let serde_json::Value::Object(ref mut map) = task_data {
+                        map.insert("actual_cost".to_string(), serde_json::json!(cost_value));
+                    }
+                }
+                
+                serde_json::to_string(&serde_json::json!({
+                    "task_data": task_data
                 })).unwrap()
             }
         };
@@ -686,24 +728,44 @@ impl BackgroundJobRepository {
     }
     
     /// Mark a job as canceled with optional reason and cost tracking
-    pub async fn mark_job_canceled(&self, job_id: &str, reason: &str) -> AppResult<()> {
+    pub async fn mark_job_canceled(&self, job_id: &str, reason: &str, cost: Option<f64>) -> AppResult<()> {
         let now = get_timestamp();
         
-        sqlx::query(
-            r#"
-            UPDATE background_jobs 
-            SET status = $1, 
-                error_message = $2, 
-                updated_at = $3, 
-                end_time = $4
-            WHERE id = $5
-            "#)
-            .bind(JobStatus::Canceled.to_string())
-            .bind(reason)
-            .bind(now)
-            .bind(now)
-            .bind(job_id)
-            .execute(&*self.pool)
+        let query = if let Some(cost_value) = cost {
+            sqlx::query(
+                r#"
+                UPDATE background_jobs 
+                SET status = $1, 
+                    error_message = $2, 
+                    updated_at = $3, 
+                    end_time = $4,
+                    actual_cost = $5
+                WHERE id = $6
+                "#)
+                .bind(JobStatus::Canceled.to_string())
+                .bind(reason)
+                .bind(now)
+                .bind(now)
+                .bind(cost_value)
+                .bind(job_id)
+        } else {
+            sqlx::query(
+                r#"
+                UPDATE background_jobs 
+                SET status = $1, 
+                    error_message = $2, 
+                    updated_at = $3, 
+                    end_time = $4
+                WHERE id = $5
+                "#)
+                .bind(JobStatus::Canceled.to_string())
+                .bind(reason)
+                .bind(now)
+                .bind(now)
+                .bind(job_id)
+        };
+        
+        query.execute(&*self.pool)
             .await
             .map_err(|e| AppError::DatabaseError(format!("Failed to mark job as canceled: {}", e)))?;
             

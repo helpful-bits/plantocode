@@ -132,9 +132,9 @@ export function AutoTopOffSettings({ className }: AutoTopOffSettingsProps) {
     return (
       <Card className={className}>
         <CardHeader>
-          <CardTitle className="text-lg font-semibold flex items-center gap-2">
-            <div className="h-8 w-8 bg-primary/10 rounded-full flex items-center justify-center">
-              <Zap className="h-4 w-4 text-primary" />
+          <CardTitle className="text-xl font-bold flex items-center gap-3">
+            <div className="h-10 w-10 bg-primary/10 rounded-full flex items-center justify-center">
+              <Zap className="h-5 w-5 text-primary" />
             </div>
             Auto Top-Off Settings
           </CardTitle>
@@ -151,9 +151,9 @@ export function AutoTopOffSettings({ className }: AutoTopOffSettingsProps) {
   return (
     <Card className={className}>
       <CardHeader>
-        <CardTitle className="text-lg font-semibold flex items-center gap-2">
-          <div className="h-8 w-8 bg-primary/10 rounded-full flex items-center justify-center">
-            <Zap className="h-4 w-4 text-primary" />
+        <CardTitle className="text-xl font-bold flex items-center gap-3">
+          <div className="h-10 w-10 bg-primary/10 rounded-full flex items-center justify-center">
+            <Zap className="h-5 w-5 text-primary" />
           </div>
           Auto Top-Off Settings
         </CardTitle>
@@ -166,24 +166,60 @@ export function AutoTopOffSettings({ className }: AutoTopOffSettingsProps) {
         )}
 
         <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="space-y-1">
-              <Label htmlFor="auto-topoff-enabled" className="text-base font-medium">
-                Enable Auto Top-Off
-              </Label>
-              <p className="text-sm text-muted-foreground">
-                Automatically add credits when your balance falls below a threshold
-              </p>
-            </div>
-            <Switch
-              id="auto-topoff-enabled"
-              checked={enabled}
-              onCheckedChange={setEnabled}
-              disabled={isSaving}
-            />
-          </div>
-
           {enabled && (
+            <div className="flex items-center justify-between">
+              <div className="space-y-1">
+                <Label htmlFor="auto-topoff-enabled" className="text-base font-medium">
+                  Enable Auto Top-Off
+                </Label>
+                <p className="text-sm text-muted-foreground">
+                  Automatically add credits when your balance falls below a threshold
+                </p>
+              </div>
+              <Switch
+                id="auto-topoff-enabled"
+                checked={enabled}
+                onCheckedChange={async (newEnabled) => {
+                  setEnabled(newEnabled);
+                  // Save immediately when toggling off
+                  if (!newEnabled) {
+                    try {
+                      setIsSaving(true);
+                      const updateRequest: UpdateAutoTopOffRequest = {
+                        enabled: false,
+                        threshold: undefined,
+                        amount: undefined,
+                      };
+                      const updatedSettings = await updateAutoTopOffSettings(updateRequest);
+                      setSettings(updatedSettings);
+                      
+                      showNotification({
+                        type: "success",
+                        title: "Settings Updated",
+                        message: "Auto top-off has been disabled",
+                      });
+                    } catch (err) {
+                      const errorMessage = err instanceof Error ? err.message : "Failed to update auto top-off settings";
+                      setError(errorMessage);
+                      setEnabled(!newEnabled); // Revert on error
+                      
+                      showNotification({
+                        type: "error",
+                        title: "Update Failed",
+                        message: errorMessage,
+                      });
+                    } finally {
+                      setIsSaving(false);
+                    }
+                  }
+                }}
+                disabled={isSaving}
+                className="[&[data-state=unchecked]]:bg-muted [&[data-state=unchecked]]:border-border/50 [&[data-state=unchecked]:hover]:bg-muted/80"
+              />
+            </div>
+          )}
+
+          {enabled ? (
             <div className="space-y-4 p-4 bg-muted/30 rounded-lg border">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
@@ -236,8 +272,8 @@ export function AutoTopOffSettings({ className }: AutoTopOffSettingsProps) {
               </div>
 
               {enabled && threshold && amount && (
-                <div className="p-3 bg-blue-50 dark:bg-blue-950/20 rounded-md border border-blue-200 dark:border-blue-800">
-                  <p className="text-sm text-blue-800 dark:text-blue-200">
+                <div className="p-3 bg-info/10 rounded-md border border-info/20">
+                  <p className="text-sm text-info-foreground">
                     <strong>Summary:</strong> When your credit balance falls below{" "}
                     <strong>{formatUsdCurrency(parseFloat(threshold) || 0)}</strong>, we'll automatically add{" "}
                     <strong>{formatUsdCurrency(parseFloat(amount) || 0)}</strong> to your account using your default payment method.
@@ -245,27 +281,52 @@ export function AutoTopOffSettings({ className }: AutoTopOffSettingsProps) {
                 </div>
               )}
             </div>
+          ) : (
+            <div className="space-y-4 p-4 bg-muted/20 rounded-lg border border-dashed">
+              <div className="text-center space-y-4">
+                <div className="mx-auto w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center">
+                  <Zap className="h-6 w-6 text-primary" />
+                </div>
+                <div className="space-y-2">
+                  <h4 className="font-medium text-sm">Auto Top-Off Disabled</h4>
+                  <p className="text-xs text-muted-foreground max-w-xs mx-auto">
+                    Enable auto top-off to automatically add credits when your balance gets low. 
+                    Never worry about running out of credits again.
+                  </p>
+                </div>
+                <Button
+                  onClick={() => setEnabled(true)}
+                  disabled={isSaving}
+                  className="mt-4 bg-primary hover:bg-primary/90 text-primary-foreground font-medium"
+                >
+                  <Zap className="h-4 w-4 mr-2" />
+                  Enable Auto Top-Off
+                </Button>
+              </div>
+            </div>
           )}
 
-          <div className="flex justify-end pt-4">
-            <Button
-              onClick={handleSave}
-              disabled={!hasChanges() || !isFormValid() || isSaving}
-              className="min-w-[120px]"
-            >
-              {isSaving ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Saving...
-                </>
-              ) : (
-                <>
-                  <DollarSign className="h-4 w-4 mr-2" />
-                  Save Settings
-                </>
-              )}
-            </Button>
-          </div>
+          {enabled && (hasChanges() || threshold || amount) && (
+            <div className="flex justify-end pt-4">
+              <Button
+                onClick={handleSave}
+                disabled={!hasChanges() || !isFormValid() || isSaving}
+                className="min-w-[120px]"
+              >
+                {isSaving ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <DollarSign className="h-4 w-4 mr-2" />
+                    Save Settings
+                  </>
+                )}
+              </Button>
+            </div>
+          )}
         </div>
       </CardContent>
     </Card>

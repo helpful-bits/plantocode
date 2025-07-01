@@ -14,6 +14,7 @@
 //! The desktop client NEVER calculates costs locally. All cost calculations are performed
 //! server-side and returned as authoritative values in the `OpenRouterUsage.cost` field.
 //! This ensures consistency across the application and prevents billing discrepancies.
+//! All job processing components must rely exclusively on server-provided cost data.
 
 use std::sync::Arc;
 use tauri::{AppHandle, Manager, Emitter};
@@ -171,6 +172,19 @@ pub async fn finalize_job_success(
                 if let Some(cost) = actual_cost {
                     task_map.insert("actual_cost".to_string(), serde_json::json!(cost));
                 }
+                
+                // Store cache token information from server usage object
+                if let Some(usage) = &llm_usage {
+                    if let Some(cached_input) = usage.cached_input_tokens {
+                        task_map.insert("cachedInputTokens".to_string(), serde_json::json!(cached_input));
+                    }
+                    if let Some(cache_write) = usage.cache_write_tokens {
+                        task_map.insert("cacheWriteTokens".to_string(), serde_json::json!(cache_write));
+                    }
+                    if let Some(cache_read) = usage.cache_read_tokens {
+                        task_map.insert("cacheReadTokens".to_string(), serde_json::json!(cache_read));
+                    }
+                }
             }
             
             ui_meta
@@ -188,10 +202,39 @@ pub async fn finalize_job_success(
                 if let Some(cost) = actual_cost {
                     task_map.insert("actual_cost".to_string(), serde_json::json!(cost));
                 }
-            } else if actual_cost.is_some() {
-                task_data = serde_json::json!({
-                    "actual_cost": actual_cost
-                });
+                
+                // Store cache token information from server usage object
+                if let Some(usage) = &llm_usage {
+                    if let Some(cached_input) = usage.cached_input_tokens {
+                        task_map.insert("cachedInputTokens".to_string(), serde_json::json!(cached_input));
+                    }
+                    if let Some(cache_write) = usage.cache_write_tokens {
+                        task_map.insert("cacheWriteTokens".to_string(), serde_json::json!(cache_write));
+                    }
+                    if let Some(cache_read) = usage.cache_read_tokens {
+                        task_map.insert("cacheReadTokens".to_string(), serde_json::json!(cache_read));
+                    }
+                }
+            } else {
+                let mut cache_data = serde_json::Map::new();
+                if let Some(cost) = actual_cost {
+                    cache_data.insert("actual_cost".to_string(), serde_json::json!(cost));
+                }
+                
+                // Store cache token information from server usage object
+                if let Some(usage) = &llm_usage {
+                    if let Some(cached_input) = usage.cached_input_tokens {
+                        cache_data.insert("cachedInputTokens".to_string(), serde_json::json!(cached_input));
+                    }
+                    if let Some(cache_write) = usage.cache_write_tokens {
+                        cache_data.insert("cacheWriteTokens".to_string(), serde_json::json!(cache_write));
+                    }
+                    if let Some(cache_read) = usage.cache_read_tokens {
+                        cache_data.insert("cacheReadTokens".to_string(), serde_json::json!(cache_read));
+                    }
+                }
+                
+                task_data = serde_json::Value::Object(cache_data);
             }
             
             crate::utils::job_ui_metadata_builder::JobUIMetadataBuilder::new(default_payload)
@@ -212,10 +255,39 @@ pub async fn finalize_job_success(
             if let Some(cost) = actual_cost {
                 task_map.insert("actual_cost".to_string(), serde_json::json!(cost));
             }
-        } else if actual_cost.is_some() {
-            task_data = serde_json::json!({
-                "actual_cost": actual_cost
-            });
+            
+            // Store cache token information from server usage object
+            if let Some(usage) = &llm_usage {
+                if let Some(cached_input) = usage.cached_input_tokens {
+                    task_map.insert("cachedInputTokens".to_string(), serde_json::json!(cached_input));
+                }
+                if let Some(cache_write) = usage.cache_write_tokens {
+                    task_map.insert("cacheWriteTokens".to_string(), serde_json::json!(cache_write));
+                }
+                if let Some(cache_read) = usage.cache_read_tokens {
+                    task_map.insert("cacheReadTokens".to_string(), serde_json::json!(cache_read));
+                }
+            }
+        } else {
+            let mut cache_data = serde_json::Map::new();
+            if let Some(cost) = actual_cost {
+                cache_data.insert("actual_cost".to_string(), serde_json::json!(cost));
+            }
+            
+            // Store cache token information from server usage object
+            if let Some(usage) = &llm_usage {
+                if let Some(cached_input) = usage.cached_input_tokens {
+                    cache_data.insert("cachedInputTokens".to_string(), serde_json::json!(cached_input));
+                }
+                if let Some(cache_write) = usage.cache_write_tokens {
+                    cache_data.insert("cacheWriteTokens".to_string(), serde_json::json!(cache_write));
+                }
+                if let Some(cache_read) = usage.cache_read_tokens {
+                    cache_data.insert("cacheReadTokens".to_string(), serde_json::json!(cache_read));
+                }
+            }
+            
+            task_data = serde_json::Value::Object(cache_data);
         }
         
         crate::utils::job_ui_metadata_builder::JobUIMetadataBuilder::new(default_payload)
@@ -295,10 +367,37 @@ pub async fn finalize_job_failure(
             
             if let serde_json::Value::Object(ref mut task_map) = ui_meta.task_data {
                 task_map.insert("failure_info".to_string(), error_info);
+                
+                // Store cache token information from server usage object for failed jobs
+                if let Some(usage) = &llm_usage {
+                    if let Some(cached_input) = usage.cached_input_tokens {
+                        task_map.insert("cachedInputTokens".to_string(), serde_json::json!(cached_input));
+                    }
+                    if let Some(cache_write) = usage.cache_write_tokens {
+                        task_map.insert("cacheWriteTokens".to_string(), serde_json::json!(cache_write));
+                    }
+                    if let Some(cache_read) = usage.cache_read_tokens {
+                        task_map.insert("cacheReadTokens".to_string(), serde_json::json!(cache_read));
+                    }
+                }
             } else {
-                ui_meta.task_data = serde_json::json!({
-                    "failure_info": error_info
-                });
+                let mut failure_data = serde_json::Map::new();
+                failure_data.insert("failure_info".to_string(), error_info);
+                
+                // Store cache token information from server usage object for failed jobs
+                if let Some(usage) = &llm_usage {
+                    if let Some(cached_input) = usage.cached_input_tokens {
+                        failure_data.insert("cachedInputTokens".to_string(), serde_json::json!(cached_input));
+                    }
+                    if let Some(cache_write) = usage.cache_write_tokens {
+                        failure_data.insert("cacheWriteTokens".to_string(), serde_json::json!(cache_write));
+                    }
+                    if let Some(cache_read) = usage.cache_read_tokens {
+                        failure_data.insert("cacheReadTokens".to_string(), serde_json::json!(cache_read));
+                    }
+                }
+                
+                ui_meta.task_data = serde_json::Value::Object(failure_data);
             }
             
             Some(serde_json::to_string(&ui_meta)
@@ -319,8 +418,17 @@ pub async fn finalize_job_failure(
         (None, None)
     };
 
-    // Extract actual cost from LLM usage
-    let actual_cost = llm_usage.as_ref().and_then(|usage| usage.cost);
+    // Extract actual cost from LLM usage, with fallback to metadata
+    let actual_cost = llm_usage.as_ref().and_then(|usage| usage.cost)
+        .or_else(|| {
+            current_job.metadata.as_deref()
+                .and_then(|metadata_str| serde_json::from_str::<Value>(metadata_str).ok())
+                .and_then(|metadata_value| {
+                    metadata_value.get("task_data")
+                        .and_then(|task_data| task_data.get("actual_cost"))
+                        .and_then(|v| v.as_f64())
+                })
+        });
     
     // Mark the job as failed with usage tracking
     repo.mark_job_failed(

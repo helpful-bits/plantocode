@@ -9,7 +9,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/ui/tabs";
 import { Slider } from "@/ui/slider";
 import { LoadingSkeleton, ErrorState } from "./loading-and-error-states";
 import { getCreditHistory, type CreditHistoryResponse } from "@/actions/billing/credit.actions";
-import { getDetailedUsage, type DetailedUsage } from "@/actions/billing/plan.actions";
+import { getDetailedUsageWithSummary, type DetailedUsage, type UsageSummary } from "@/actions/billing/plan.actions";
 import { getProvidersWithModels } from "@/actions/config.actions";
 import { type ProviderWithModels } from "@/types/config-types";
 import { getErrorMessage } from "@/utils/error-handling";
@@ -40,6 +40,7 @@ export function BillingHistory({ className }: BillingHistoryProps) {
   const [searchTerm, setSearchTerm] = useState("");
 
   const [usageData, setUsageData] = useState<DetailedUsage[]>([]);
+  const [usageSummary, setUsageSummary] = useState<UsageSummary | null>(null);
   const [isUsageLoading, setIsUsageLoading] = useState(false);
   const [usageError, setUsageError] = useState<string | null>(null);
   const [startDate, setStartDate] = useState(() => {
@@ -61,24 +62,6 @@ export function BillingHistory({ className }: BillingHistoryProps) {
     return provider?.provider.name || providerCode;
   };
 
-  const calculateUsageTotals = (data: DetailedUsage[]) => {
-    return data.reduce(
-      (totals, usage) => ({
-        totalCost: totals.totalCost + usage.totalCost,
-        totalRequests: totals.totalRequests + usage.totalRequests,
-        totalInputTokens: totals.totalInputTokens + usage.totalInputTokens,
-        totalOutputTokens: totals.totalOutputTokens + usage.totalOutputTokens,
-        totalDurationMs: totals.totalDurationMs + usage.totalDurationMs,
-      }),
-      {
-        totalCost: 0,
-        totalRequests: 0,
-        totalInputTokens: 0,
-        totalOutputTokens: 0,
-        totalDurationMs: 0,
-      }
-    );
-  };
 
   const loadCreditHistory = useCallback(async (page: number = 1, search?: string) => {
     try {
@@ -117,8 +100,9 @@ export function BillingHistory({ className }: BillingHistoryProps) {
     try {
       const startDateISO = new Date(startDate).toISOString();
       const endDateISO = new Date(endDate + 'T23:59:59').toISOString();
-      const result = await getDetailedUsage(startDateISO, endDateISO);
-      setUsageData(result);
+      const result = await getDetailedUsageWithSummary(startDateISO, endDateISO);
+      setUsageData(result.detailedUsage);
+      setUsageSummary(result.summary);
     } catch (err) {
       setUsageError(err instanceof Error ? err.message : 'Failed to fetch usage data');
     } finally {
@@ -247,9 +231,6 @@ export function BillingHistory({ className }: BillingHistoryProps) {
         <td className="py-3 px-1 text-right">
           <span className="h-3 w-20 bg-muted/30 rounded animate-pulse inline-block ml-auto" />
         </td>
-        <td className="py-3 px-1 text-right">
-          <span className="h-3 w-16 bg-muted/30 rounded animate-pulse inline-block ml-auto" />
-        </td>
       </tr>
     ))
   );
@@ -257,7 +238,12 @@ export function BillingHistory({ className }: BillingHistoryProps) {
   return (
     <Card className={className}>
       <CardHeader>
-        <CardTitle>Billing & Usage History</CardTitle>
+        <CardTitle className="text-xl font-bold flex items-center gap-3">
+          <div className="h-10 w-10 bg-primary/10 rounded-full flex items-center justify-center">
+            <Calendar className="h-5 w-5 text-primary" />
+          </div>
+          Billing & Usage History
+        </CardTitle>
         <CardDescription>
           View your credit transactions and detailed usage reports
         </CardDescription>
@@ -526,9 +512,6 @@ export function BillingHistory({ className }: BillingHistoryProps) {
                       <th className="text-right text-xs font-medium text-muted-foreground py-3 px-1">
                         Output Tokens
                       </th>
-                      <th className="text-right text-xs font-medium text-muted-foreground py-3 px-1">
-                        Duration (ms)
-                      </th>
                     </tr>
                   </thead>
                   <tbody>
@@ -556,39 +539,30 @@ export function BillingHistory({ className }: BillingHistoryProps) {
                             <td className="py-3 px-1 text-xs text-muted-foreground text-right">
                               {usage.totalOutputTokens.toLocaleString()}
                             </td>
-                            <td className="py-3 px-1 text-xs text-muted-foreground text-right">
-                              {usage.totalDurationMs.toLocaleString()}
-                            </td>
                           </tr>
                         ))}
-                        {usageData.length > 0 && (() => {
-                          const totals = calculateUsageTotals(usageData);
-                          return (
-                            <tr className="border-t-2 border-border bg-muted/20 font-medium">
-                              <td className="py-3 px-1 text-xs font-semibold">
-                                Total
-                              </td>
-                              <td className="py-3 px-1 text-xs text-muted-foreground">
-                                {/* Empty cell for Provider column */}
-                              </td>
-                              <td className="py-3 px-1 text-xs font-semibold text-right">
-                                {formatUsdCurrency(totals.totalCost)}
-                              </td>
-                              <td className="py-3 px-1 text-xs font-semibold text-right">
-                                {totals.totalRequests.toLocaleString()}
-                              </td>
-                              <td className="py-3 px-1 text-xs font-semibold text-right">
-                                {totals.totalInputTokens.toLocaleString()}
-                              </td>
-                              <td className="py-3 px-1 text-xs font-semibold text-right">
-                                {totals.totalOutputTokens.toLocaleString()}
-                              </td>
-                              <td className="py-3 px-1 text-xs font-semibold text-right">
-                                {totals.totalDurationMs.toLocaleString()}
-                              </td>
-                            </tr>
-                          );
-                        })()}
+                        {usageData.length > 0 && usageSummary && (
+                          <tr className="border-t-2 border-border bg-muted/20 font-medium">
+                            <td className="py-3 px-1 text-xs font-semibold">
+                              Total
+                            </td>
+                            <td className="py-3 px-1 text-xs text-muted-foreground">
+                              {/* Empty cell for Provider column */}
+                            </td>
+                            <td className="py-3 px-1 text-xs font-semibold text-right">
+                              {formatUsdCurrency(usageSummary.totalCost)}
+                            </td>
+                            <td className="py-3 px-1 text-xs font-semibold text-right">
+                              {usageSummary.totalRequests.toLocaleString()}
+                            </td>
+                            <td className="py-3 px-1 text-xs font-semibold text-right">
+                              {usageSummary.totalInputTokens.toLocaleString()}
+                            </td>
+                            <td className="py-3 px-1 text-xs font-semibold text-right">
+                              {usageSummary.totalOutputTokens.toLocaleString()}
+                            </td>
+                          </tr>
+                        )}
                       </>
                     )}
                   </tbody>

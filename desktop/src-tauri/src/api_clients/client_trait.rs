@@ -52,6 +52,13 @@ pub trait ApiClient: Send + Sync {
         messages: Vec<crate::models::OpenRouterRequestMessage>,
         options: ApiClientOptions,
     ) -> AppResult<Pin<Box<dyn Stream<Item = AppResult<OpenRouterStreamChunk>> + Send>>>;
+
+    /// Extract cost from response - uses usage.cost field as source of truth
+    fn extract_cost_from_response(&self, response: &OpenRouterResponse) -> f64 {
+        response.usage.as_ref()
+            .and_then(|usage| usage.cost)
+            .unwrap_or(0.0)
+    }
 }
 
 // Transcription service trait

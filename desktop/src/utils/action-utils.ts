@@ -107,14 +107,11 @@ function mapRustErrorCodeToErrorType(rustCode: string): ErrorType {
     case "BILLING":
     case "PAYMENT_ERROR":
     case "PAYMENT_REQUIRED":
-    case "SUBSCRIPTION_ERROR":
     case "QUOTA_EXCEEDED":
     case "INSUFFICIENT_CREDITS":
       return ErrorType.CREDIT_INSUFFICIENT;
     case "PLAN_UPGRADE_REQUIRED":
-      return ErrorType.PLAN_UPGRADE_REQUIRED;
-    case "SUBSCRIPTION_EXPIRED":
-      return ErrorType.SUBSCRIPTION_EXPIRED;
+      return ErrorType.CREDIT_UPGRADE_REQUIRED;
     
     // Token limit errors
     case "TOKEN_LIMIT_EXCEEDED_ERROR":

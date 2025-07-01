@@ -18,6 +18,23 @@ pub struct DetailedUsage {
     pub total_output_tokens: i64,
     pub total_duration_ms: i64,
 }
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageSummary {
+    pub total_cost: f64,
+    pub total_requests: i64,
+    pub total_input_tokens: i64,
+    pub total_output_tokens: i64,
+    pub total_duration_ms: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DetailedUsageResponse {
+    pub detailed_usage: Vec<DetailedUsage>,
+    pub summary: UsageSummary,
+}
 use regex::Regex;
 use once_cell::sync::Lazy;
 
@@ -244,6 +261,24 @@ fn check_rate_limit(operation: &str) -> Result<(), AppError> {
 pub struct BillingDashboardData {
     pub credit_balance_usd: f64,
     pub services_blocked: bool,
+    pub is_payment_method_required: bool,
+    pub is_billing_info_required: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CustomerBillingInfo {
+    pub customer_name: Option<String>,
+    pub customer_email: Option<String>,
+    pub phone: Option<String>,
+    pub tax_exempt: Option<String>,
+    pub address_line1: Option<String>,
+    pub address_line2: Option<String>,
+    pub address_city: Option<String>,
+    pub address_state: Option<String>,
+    pub address_postal_code: Option<String>,
+    pub address_country: Option<String>,
+    pub has_billing_info: bool,
 }
 
 
@@ -333,6 +368,19 @@ pub async fn get_billing_dashboard_data_command(
     
     info!("Successfully retrieved billing dashboard data");
     Ok(dashboard_data)
+}
+
+/// Get customer billing information for read-only display
+#[tauri::command]
+pub async fn get_customer_billing_info_command(
+    billing_client: State<'_, Arc<BillingClient>>,
+) -> Result<Option<CustomerBillingInfo>, AppError> {
+    debug!("Getting customer billing info via Tauri command");
+    
+    let billing_info = billing_client.get_customer_billing_info().await?;
+    
+    info!("Successfully retrieved customer billing info");
+    Ok(billing_info)
 }
 
 
@@ -552,6 +600,114 @@ pub async fn create_billing_portal_session_command(
 
 
 
+/// Download invoice PDF and save to Downloads folder
+#[tauri::command]
+pub async fn download_invoice_pdf_command(
+    invoice_id: String,
+    pdf_url: String,
+    billing_client: State<'_, Arc<BillingClient>>,
+) -> Result<String, AppError> {
+    debug!("Downloading invoice PDF for invoice: {}", invoice_id);
+    
+    // Security validation
+    check_rate_limit("download_invoice_pdf")?;
+    validate_url(&pdf_url, "PDF URL")?;
+    
+    // Fetch PDF bytes
+    let response = billing_client.get_raw_http_client()
+        .get(&pdf_url)
+        .send()
+        .await
+        .map_err(|e| AppError::NetworkError(format!("Failed to download PDF: {}", e)))?;
+    
+    if !response.status().is_success() {
+        return Err(AppError::NetworkError(format!("Failed to download PDF: HTTP {}", response.status())));
+    }
+    
+    let pdf_bytes = response.bytes()
+        .await
+        .map_err(|e| AppError::NetworkError(format!("Failed to read PDF bytes: {}", e)))?;
+    
+    // Get Downloads directory
+    let downloads_dir = dirs::download_dir()
+        .ok_or_else(|| AppError::FileSystemError("Could not find Downloads directory".to_string()))?;
+    
+    // Create filename with timestamp to avoid conflicts
+    let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S");
+    let filename = format!("invoice_{}_{}_{}.pdf", invoice_id, timestamp, "download");
+    let file_path = downloads_dir.join(&filename);
+    
+    // Write PDF to file
+    std::fs::write(&file_path, pdf_bytes)
+        .map_err(|e| AppError::FileSystemError(format!("Failed to save PDF: {}", e)))?;
+    
+    let file_path_str = file_path.to_string_lossy().to_string();
+    info!("Successfully downloaded invoice PDF to: {}", file_path_str);
+    
+    Ok(file_path_str)
+}
+
+/// Reveal file in system file explorer (Finder on macOS, Explorer on Windows, etc.)
+#[tauri::command]
+pub async fn reveal_file_in_explorer_command(file_path: String) -> Result<(), AppError> {
+    debug!("Revealing file in explorer: {}", file_path);
+    
+    // Security validation
+    check_rate_limit("reveal_file_in_explorer")?;
+    
+    // Check if file exists
+    if !std::path::Path::new(&file_path).exists() {
+        return Err(AppError::FileSystemError("File does not exist".to_string()));
+    }
+    
+    // Platform-specific commands to reveal file in explorer
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("explorer")
+            .args(&["/select,", &format!("\"{}\"", file_path)])
+            .spawn()
+            .map_err(|e| AppError::FileSystemError(format!("Failed to reveal file in Explorer: {}", e)))?;
+    }
+    
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .args(&["-R", &file_path])
+            .spawn()
+            .map_err(|e| AppError::FileSystemError(format!("Failed to reveal file in Finder: {}", e)))?;
+    }
+    
+    #[cfg(target_os = "linux")]
+    {
+        // Try multiple Linux file managers
+        let managers = ["nautilus", "dolphin", "thunar", "pcmanfm"];
+        let mut revealed = false;
+        
+        for manager in &managers {
+            if let Ok(_) = std::process::Command::new(manager)
+                .arg(&file_path)
+                .spawn()
+            {
+                revealed = true;
+                break;
+            }
+        }
+        
+        if !revealed {
+            // Fallback: try to open parent directory
+            if let Some(parent) = std::path::Path::new(&file_path).parent() {
+                std::process::Command::new("xdg-open")
+                    .arg(parent)
+                    .spawn()
+                    .map_err(|e| AppError::FileSystemError(format!("Failed to open directory: {}", e)))?;
+            }
+        }
+    }
+    
+    info!("Successfully revealed file in explorer: {}", file_path);
+    Ok(())
+}
+
 // ========================================
 // PAYMENT METHOD MANAGEMENT STRUCTS
 // ========================================
@@ -633,27 +789,20 @@ pub async fn list_invoices_command(
     Ok(response)
 }
 
-/// Get detailed usage for a specific date range
+
+/// Get detailed usage with pre-calculated summary totals for a specific date range
 #[tauri::command]
-pub async fn get_detailed_usage_command(
+pub async fn get_detailed_usage_with_summary_command(
     start_date: String,
     end_date: String,
     billing_client: State<'_, Arc<BillingClient>>,
-) -> Result<Vec<DetailedUsage>, AppError> {
-    debug!("Getting detailed usage from {} to {}", start_date, end_date);
+) -> Result<DetailedUsageResponse, AppError> {
+    debug!("Getting detailed usage with summary from {} to {}", start_date, end_date);
     
-    let detailed_usage_json = billing_client.get_detailed_usage(&start_date, &end_date).await?;
+    let detailed_usage_response = billing_client.get_detailed_usage_with_summary(&start_date, &end_date).await?;
     
-    let detailed_usage: Vec<DetailedUsage> = if let serde_json::Value::Array(arr) = detailed_usage_json {
-        arr.into_iter().map(|v| {
-            serde_json::from_value(v).map_err(|e| AppError::SerializationError(format!("Failed to deserialize detailed usage: {}", e)))
-        }).collect::<Result<Vec<DetailedUsage>, AppError>>()?
-    } else {
-        return Err(AppError::SerializationError("Expected array for detailed usage".to_string()));
-    };
-    
-    info!("Successfully retrieved detailed usage");
-    Ok(detailed_usage)
+    info!("Successfully retrieved detailed usage with summary");
+    Ok(detailed_usage_response)
 }
 
 

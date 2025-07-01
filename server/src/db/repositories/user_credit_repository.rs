@@ -115,17 +115,20 @@ impl UserCreditRepository {
             r#"
             UPDATE user_credits 
             SET balance = balance + $2, updated_at = NOW()
-            WHERE user_id = $1
+            WHERE user_id = $1 AND balance + $2 >= 0
             RETURNING user_id, balance, currency, created_at, updated_at
             "#,
             user_id,
             amount_change
         )
-        .fetch_one(&mut **executor)
+        .fetch_optional(&mut **executor)
         .await
         .map_err(|e| AppError::Database(format!("Failed to increment user credit balance: {}", e)))?;
 
-        Ok(result)
+        match result {
+            Some(user_credit) => Ok(user_credit),
+            None => Err(AppError::CreditInsufficient("Insufficient credits for this operation".to_string())),
+        }
     }
 
     /// Ensure a balance record exists for a user, creating one if it doesn't exist

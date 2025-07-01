@@ -250,7 +250,7 @@ export function formatJobDuration(
  * @param isRunning Whether the job is still running
  * @returns Formatted duration string
  */
-function formatDurationMs(ms: number, isRunning: boolean = false): string {
+export function formatDurationMs(ms: number, isRunning: boolean = false): string {
   // Sanity check for invalid durations
   if (
     ms === null ||

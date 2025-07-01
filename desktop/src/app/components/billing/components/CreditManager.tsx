@@ -91,7 +91,9 @@ export const CreditManager = ({ isOpen, onClose }: CreditManagerProps) => {
     setSessionId(null);
     setPurchaseAmount("");
     setError(null);
-    loadCreditDetails();
+    
+    // Dispatch event to notify other components about billing data update
+    window.dispatchEvent(new CustomEvent('billing-data-updated'));
     onClose();
   };
 
@@ -151,7 +153,7 @@ export const CreditManager = ({ isOpen, onClose }: CreditManagerProps) => {
           <div className="space-y-6">
             <div>
               <h2 className="text-2xl font-bold mb-2">Purchase Top-up Credits</h2>
-              <p className="text-muted-foreground">Purchase additional top-up credits separate from your monthly subscription allowance. These credits do not expire and are consumed as you use the service.</p>
+              <p className="text-muted-foreground">Purchase additional credits for your account. These credits do not expire and are consumed as you use the service.</p>
             </div>
 
             <Card>

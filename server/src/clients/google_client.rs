@@ -339,6 +339,59 @@ impl GoogleClient {
     pub fn extract_tokens_from_stream_chunk(chunk_str: &str) -> Option<(i32, i32, i32, i32)> {
         Self::extract_usage_from_stream_chunk(chunk_str)
     }
+
+    // Extract cost from streaming chunk - prioritizes usage.cost field
+    pub fn extract_cost_from_stream_chunk(chunk_str: &str, model: &str) -> Option<f64> {
+        if chunk_str.trim().is_empty() {
+            return None;
+        }
+        
+        match serde_json::from_str::<GoogleStreamChunk>(chunk_str.trim()) {
+            Ok(parsed) => {
+                if let Some(usage) = parsed.usage_metadata {
+                    if let Ok(usage_value) = serde_json::to_value(&usage) {
+                        if let Some(cost) = usage_value.get("cost").and_then(|c| c.as_f64()) {
+                            return Some(cost);
+                        }
+                    }
+                    
+                    let cached = usage.cached_content_token_count.unwrap_or(0);
+                    let cost = Self::calculate_cost_from_tokens(
+                        usage.prompt_token_count,
+                        cached,
+                        usage.candidates_token_count,
+                        model
+                    );
+                    return Some(cost);
+                }
+            },
+            Err(_) => {}
+        }
+        None
+    }
+
+    // Calculate cost from token counts using Google pricing
+    fn calculate_cost_from_tokens(input_tokens: i32, cached_tokens: i32, output_tokens: i32, model: &str) -> f64 {
+        let (input_price_per_1k, output_price_per_1k, cache_discount) = Self::get_model_pricing(model);
+        
+        let uncached_input_tokens = input_tokens - cached_tokens;
+        let input_cost = (uncached_input_tokens as f64 / 1000.0) * input_price_per_1k;
+        let cached_cost = (cached_tokens as f64 / 1000.0) * input_price_per_1k * cache_discount;
+        let output_cost = (output_tokens as f64 / 1000.0) * output_price_per_1k;
+        
+        input_cost + cached_cost + output_cost
+    }
+
+    // Get model pricing - returns (input_per_1k, output_per_1k, cache_discount_factor)
+    fn get_model_pricing(model: &str) -> (f64, f64, f64) {
+        match model {
+            m if m.contains("gemini-1.5-pro") => (0.00125, 0.005, 0.125),
+            m if m.contains("gemini-1.5-flash") => (0.000075, 0.0003, 0.125),
+            m if m.contains("gemini-2.0-flash") => (0.000075, 0.0003, 0.125),
+            m if m.contains("gemini-pro") => (0.0005, 0.0015, 0.125),
+            _ => (0.0005, 0.0015, 0.125),
+        }
+    }
     
     // Convert a generic JSON Value into a GoogleChatRequest
     pub fn convert_to_chat_request(&self, payload: Value) -> Result<GoogleChatRequest, AppError> {
@@ -556,6 +609,26 @@ impl GoogleClient {
         } else {
             (0, 0, 0, 0)
         }
+    }
+
+    // Extract cost from response - prioritizes usage.cost field
+    pub fn extract_cost_from_response(&self, response: &GoogleChatResponse, model: &str) -> f64 {
+        if let Some(usage) = &response.usage_metadata {
+            if let Ok(usage_value) = serde_json::to_value(usage) {
+                if let Some(cost) = usage_value.get("cost").and_then(|c| c.as_f64()) {
+                    return cost;
+                }
+            }
+            
+            let cached = usage.cached_content_token_count.unwrap_or(0);
+            return Self::calculate_cost_from_tokens(
+                usage.prompt_token_count,
+                cached,
+                usage.candidates_token_count,
+                model
+            );
+        }
+        0.0
     }
 }
 

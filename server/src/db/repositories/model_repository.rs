@@ -15,10 +15,6 @@ pub struct Model {
     pub context_window: i32,
     pub price_input: BigDecimal,
     pub price_output: BigDecimal,
-    pub pricing_type: String,
-    pub price_per_hour: Option<BigDecimal>,
-    pub minimum_billable_seconds: Option<i32>,
-    pub billing_unit: String,
     pub provider_id: Option<i32>,
     pub model_type: String,
     pub capabilities: serde_json::Value,
@@ -42,10 +38,6 @@ pub struct ModelWithProvider {
     pub context_window: i32,
     pub price_input: BigDecimal,
     pub price_output: BigDecimal,
-    pub pricing_type: String,
-    pub price_per_hour: Option<BigDecimal>,
-    pub minimum_billable_seconds: Option<i32>,
-    pub billing_unit: String,
     pub model_type: String,
     pub capabilities: serde_json::Value,
     pub status: String,
@@ -85,14 +77,6 @@ impl ModelPricing for ModelWithProvider {
     fn get_cache_read_cost_per_million_tokens(&self) -> Option<BigDecimal> {
         self.price_cache_read.clone()
     }
-    
-    fn get_duration_cost_per_minute(&self) -> Option<BigDecimal> {
-        self.price_per_hour.as_ref().map(|price| price / BigDecimal::from(60))
-    }
-    
-    fn get_minimum_billable_duration_ms(&self) -> Option<i32> {
-        self.minimum_billable_seconds.map(|secs| secs * 1000)
-    }
 
     fn get_input_long_context_cost_per_million_tokens(&self) -> Option<BigDecimal> {
         self.price_input_long_context.clone()
@@ -122,14 +106,6 @@ impl ModelPricing for Model {
     
     fn get_cache_read_cost_per_million_tokens(&self) -> Option<BigDecimal> {
         self.price_cache_read.clone()
-    }
-    
-    fn get_duration_cost_per_minute(&self) -> Option<BigDecimal> {
-        self.price_per_hour.as_ref().map(|price| price / BigDecimal::from(60))
-    }
-    
-    fn get_minimum_billable_duration_ms(&self) -> Option<i32> {
-        self.minimum_billable_seconds.map(|secs| secs * 1000)
     }
 
     fn get_input_long_context_cost_per_million_tokens(&self) -> Option<BigDecimal> {
@@ -181,8 +157,7 @@ impl ModelRepository {
         let models = sqlx::query!(
             r#"
             SELECT m.id, m.name, m.context_window, m.price_input, m.price_output,
-                   m.pricing_type, m.price_per_hour, m.minimum_billable_seconds,
-                   m.billing_unit, m.model_type, m.capabilities, m.status,
+                   m.model_type, m.capabilities, m.status,
                    m.description, m.created_at,
                    m.price_input_long_context, m.price_output_long_context, m.long_context_threshold,
                    m.price_cache_write, m.price_cache_read,
@@ -207,10 +182,6 @@ impl ModelRepository {
             context_window: row.context_window,
             price_input: row.price_input,
             price_output: row.price_output,
-            pricing_type: row.pricing_type,
-            price_per_hour: row.price_per_hour,
-            minimum_billable_seconds: row.minimum_billable_seconds,
-            billing_unit: row.billing_unit,
             model_type: row.model_type,
             capabilities: row.capabilities,
             status: row.status,
@@ -244,9 +215,6 @@ impl ModelRepository {
         let model = sqlx::query!(
             r#"
             SELECT m.id, m.name, m.context_window, m.price_input, m.price_output,
-                   m.pricing_type,
-                   m.price_per_hour, m.minimum_billable_seconds,
-                   m.billing_unit,
                    m.model_type,
                    m.capabilities,
                    m.status,
@@ -276,10 +244,6 @@ impl ModelRepository {
             context_window: row.context_window,
             price_input: row.price_input,
             price_output: row.price_output,
-            pricing_type: row.pricing_type,
-            price_per_hour: row.price_per_hour,
-            minimum_billable_seconds: row.minimum_billable_seconds,
-            billing_unit: row.billing_unit,
             model_type: row.model_type,
             capabilities: row.capabilities,
             status: row.status,
@@ -312,7 +276,7 @@ impl ModelRepository {
     #[instrument(skip(self))]
     pub async fn find_by_id(&self, id: &str) -> AppResult<Option<Model>> {
         let model = query_as::<_, Model>(
-            "SELECT id, name, context_window, price_input, price_output, pricing_type, price_per_hour, minimum_billable_seconds, billing_unit, provider_id, model_type, capabilities, status, description, created_at, price_input_long_context, price_output_long_context, long_context_threshold, price_cache_write, price_cache_read FROM models WHERE id = $1 AND status = 'active'"
+            "SELECT id, name, context_window, price_input, price_output, provider_id, model_type, capabilities, status, description, created_at, price_input_long_context, price_output_long_context, long_context_threshold, price_cache_write, price_cache_read FROM models WHERE id = $1 AND status = 'active'"
         )
             .bind(id)
             .fetch_optional(&*self.pool)
@@ -329,9 +293,6 @@ impl ModelRepository {
         let models = sqlx::query!(
             r#"
             SELECT m.id, m.name, m.context_window, m.price_input, m.price_output,
-                   m.pricing_type,
-                   m.price_per_hour, m.minimum_billable_seconds,
-                   m.billing_unit,
                    m.model_type,
                    m.capabilities,
                    m.status,
@@ -362,10 +323,6 @@ impl ModelRepository {
             context_window: row.context_window,
             price_input: row.price_input,
             price_output: row.price_output,
-            pricing_type: row.pricing_type,
-            price_per_hour: row.price_per_hour,
-            minimum_billable_seconds: row.minimum_billable_seconds,
-            billing_unit: row.billing_unit,
             model_type: row.model_type,
             capabilities: row.capabilities,
             status: row.status,
@@ -398,9 +355,6 @@ impl ModelRepository {
         let models = sqlx::query!(
             r#"
             SELECT m.id, m.name, m.context_window, m.price_input, m.price_output,
-                   m.pricing_type,
-                   m.price_per_hour, m.minimum_billable_seconds,
-                   m.billing_unit,
                    m.model_type,
                    m.capabilities,
                    m.status,
@@ -431,10 +385,6 @@ impl ModelRepository {
             context_window: row.context_window,
             price_input: row.price_input,
             price_output: row.price_output,
-            pricing_type: row.pricing_type,
-            price_per_hour: row.price_per_hour,
-            minimum_billable_seconds: row.minimum_billable_seconds,
-            billing_unit: row.billing_unit,
             model_type: row.model_type,
             capabilities: row.capabilities,
             status: row.status,

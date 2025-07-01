@@ -1,12 +1,12 @@
 use crate::error::AppError;
-use crate::handlers::billing::dashboard_handler::BillingDashboardData;
-use crate::handlers::billing::subscription_handlers::AutoTopOffSettings;
+use crate::models::billing::{BillingDashboardData, AutoTopOffSettings, CustomerBillingInfo};
 use crate::db::repositories::api_usage_repository::{ApiUsageRepository, DetailedUsageRecord, ApiUsageEntryDto, ApiUsageRecord};
 use crate::db::repositories::UserCredit;
 use crate::db::repositories::customer_billing_repository::{CustomerBillingRepository, CustomerBilling};
 use crate::db::repositories::user_credit_repository::UserCreditRepository;
 use crate::db::repositories::credit_transaction_repository::CreditTransactionRepository;
 use crate::db::repositories::model_repository::ModelRepository;
+use crate::models::model_pricing::ModelPricing;
 use crate::services::credit_service::CreditService;
 use crate::services::audit_service::AuditService;
 use uuid::Uuid;
@@ -14,17 +14,15 @@ use log::{debug, info, warn};
 use std::env;
 use chrono::{DateTime, Utc, Duration};
 use std::sync::Arc;
-use std::collections::HashSet;
-use tokio::sync::Mutex;
 use sqlx::PgPool;
 use crate::db::connection::DatabasePools;
-use bigdecimal::{BigDecimal, ToPrimitive, FromPrimitive};
+use bigdecimal::{BigDecimal, ToPrimitive};
 
 // Import Stripe service
 use crate::services::stripe_service::StripeService;
 // Import custom Stripe types
 use crate::stripe_types::*;
-
+use serde::Serialize;
 
 
 
@@ -38,7 +36,6 @@ pub struct BillingService {
     stripe_service: Option<StripeService>,
     default_signup_credits: f64,
     app_settings: crate::config::settings::AppSettings,
-    top_off_in_progress: Arc<Mutex<HashSet<Uuid>>>,
 }
 
 impl BillingService {
@@ -91,7 +88,6 @@ impl BillingService {
             stripe_service,
             default_signup_credits,
             app_settings,
-            top_off_in_progress: Arc::new(Mutex::new(HashSet::new())),
         }
     }
     
@@ -102,11 +98,22 @@ impl BillingService {
     ) -> Result<bool, AppError> {
         let user_balance = self.credit_service.get_user_balance(user_id).await?;
         
-        if user_balance.balance > BigDecimal::from(0) {
-            Ok(true)
-        } else {
-            Err(AppError::CreditInsufficient("No credits available. Please purchase credits to continue using AI services.".to_string()))
+        if user_balance.balance <= BigDecimal::from(0) {
+            return Err(AppError::CreditInsufficient("No credits available. Please purchase credits to continue using AI services.".to_string()));
         }
+
+        // Check billing readiness for users who have made purchases
+        let (is_payment_method_required, is_billing_info_required) = self._check_billing_readiness(user_id).await?;
+        
+        if is_payment_method_required {
+            return Err(AppError::PaymentMethodRequired("A payment method is required to continue using services. Please add a payment method.".to_string()));
+        }
+        
+        if is_billing_info_required {
+            return Err(AppError::BillingAddressRequired("Complete billing information is required to continue using services. Please update your billing information.".to_string()));
+        }
+
+        Ok(true)
     }
     
     
@@ -135,7 +142,7 @@ impl BillingService {
         ).await?;
         
         // Grant initial credits (default $5.00)
-        let initial_credits = BigDecimal::from_f64(5.0).unwrap_or_else(|| BigDecimal::from(5));
+        let initial_credits = BigDecimal::from(5);
         self.credit_service.adjust_credits_with_executor(
             user_id,
             &initial_credits,
@@ -220,7 +227,7 @@ impl BillingService {
             None => return Err(AppError::Configuration("Stripe not configured".to_string())),
         };
 
-        // Fetch the user's subscription within the transaction
+        // Fetch the user's billing info within the transaction
         let customer_billing = self.customer_billing_repository.get_by_user_id_with_executor(user_id, tx).await?
             .ok_or_else(|| AppError::NotFound(format!("No customer billing record found for user {}", user_id)))?;
 
@@ -318,13 +325,21 @@ impl BillingService {
     pub async fn get_billing_dashboard_data(&self, user_id: &Uuid) -> Result<BillingDashboardData, AppError> {
         debug!("Fetching billing dashboard data for user: {}", user_id);
 
-        // Get credit balance from credit service
-        let credit_balance = self.credit_service.get_user_balance(user_id).await?;
+        // Get credit balance and billing readiness concurrently
+        let (credit_balance, billing_readiness) = tokio::join!(
+            self.credit_service.get_user_balance(user_id),
+            self._check_billing_readiness(user_id)
+        );
+
+        let credit_balance = credit_balance?;
+        let (is_payment_method_required, is_billing_info_required) = billing_readiness.unwrap_or((false, false));
         
-        // Build simplified response
+        // Build response with readiness flags
         let dashboard_data = BillingDashboardData {
             credit_balance_usd: credit_balance.balance.to_f64().unwrap_or(0.0),
             services_blocked: credit_balance.balance <= BigDecimal::from(0),
+            is_payment_method_required,
+            is_billing_info_required,
         };
 
         info!("Successfully assembled billing dashboard data for user: {}", user_id);
@@ -361,25 +376,25 @@ impl BillingService {
 
     /// Get or create Stripe customer for a user (public method for handlers)
     pub async fn get_or_create_stripe_customer(&self, user_id: &Uuid) -> Result<String, AppError> {
-        let mut transaction = self.db_pools.user_pool.begin().await
+        let mut tx = self.db_pools.user_pool.begin().await
             .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
         
         // Set user context for RLS within the transaction
         sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
             .bind(user_id.to_string())
-            .execute(&mut *transaction)
+            .execute(&mut *tx)
             .await
             .map_err(|e| AppError::Database(format!("Failed to set user context in transaction: {}", e)))?;
         
         // Ensure user has customer billing
-        let customer_billing = match self.customer_billing_repository.get_by_user_id_with_executor(user_id, &mut transaction).await? {
+        let customer_billing = match self.customer_billing_repository.get_by_user_id_with_executor(user_id, &mut tx).await? {
             Some(customer_billing) => customer_billing,
-            None => self.create_simple_customer_billing_in_tx(user_id, &mut transaction).await?,
+            None => self.create_simple_customer_billing_in_tx(user_id, &mut tx).await?,
         };
         
-        let customer_id = self._get_or_create_stripe_customer_with_executor(user_id, &mut transaction).await?;
+        let customer_id = self._get_or_create_stripe_customer_with_executor(user_id, &mut tx).await?;
         
-        transaction.commit().await
+        tx.commit().await
             .map_err(|e| AppError::Database(format!("Failed to commit transaction: {}", e)))?;
         
         Ok(customer_id)
@@ -405,27 +420,27 @@ impl BillingService {
         };
 
         // Start transaction for atomic customer operations
-        let mut transaction = self.db_pools.user_pool.begin().await
+        let mut tx = self.db_pools.user_pool.begin().await
             .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
 
         // Set user context for RLS within the transaction
         sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
             .bind(user_id.to_string())
-            .execute(&mut *transaction)
+            .execute(&mut *tx)
             .await
             .map_err(|e| AppError::Database(format!("Failed to set user context in transaction: {}", e)))?;
 
         // Ensure user has customer billing
-        let customer_billing = match self.customer_billing_repository.get_by_user_id_with_executor(user_id, &mut transaction).await? {
+        let customer_billing = match self.customer_billing_repository.get_by_user_id_with_executor(user_id, &mut tx).await? {
             Some(customer_billing) => customer_billing,
-            None => self.create_simple_customer_billing_in_tx(user_id, &mut transaction).await?,
+            None => self.create_simple_customer_billing_in_tx(user_id, &mut tx).await?,
         };
 
         // Get customer ID within transaction
-        let customer_id = self._get_or_create_stripe_customer_with_executor(user_id, &mut transaction).await?;
+        let customer_id = self._get_or_create_stripe_customer_with_executor(user_id, &mut tx).await?;
 
         // Commit transaction after customer operations
-        transaction.commit().await
+        tx.commit().await
             .map_err(|e| AppError::Database(format!("Failed to commit transaction: {}", e)))?;
 
         // Concurrently fetch customer details and payment methods
@@ -478,35 +493,63 @@ impl BillingService {
     ) -> Result<crate::models::ListInvoicesResponse, AppError> {
         debug!("Listing invoices for user: {}", user_id);
 
-        // Ensure user has subscription and Stripe customer
-        let customer_id = self.get_or_create_stripe_customer(&user_id).await?;
+        // Check if user has a Stripe customer ID - if not, return empty list
+        let customer_id = match self.get_customer_billing_repository().get_by_user_id(&user_id).await? {
+            Some(billing) => match billing.stripe_customer_id {
+                Some(id) => id,
+                None => {
+                    debug!("User {} has no Stripe customer ID, returning empty invoice list", user_id);
+                    return Ok(crate::models::ListInvoicesResponse {
+                        total_invoices: 0,
+                        invoices: vec![],
+                        has_more: false,
+                    });
+                }
+            },
+            None => {
+                debug!("User {} has no customer billing record, returning empty invoice list", user_id);
+                return Ok(crate::models::ListInvoicesResponse {
+                    total_invoices: 0,
+                    invoices: vec![],
+                    has_more: false,
+                });
+            }
+        };
 
         // Get the Stripe service
-        let stripe_service = self.stripe_service.as_ref()
-            .ok_or_else(|| AppError::Internal("Stripe service not configured".to_string()))?;
-
-        // Get total count from Stripe first without limit to know the actual total
-        let all_stripe_invoices = stripe_service.list_invoices_with_filter(
-            &customer_id,
-            None, // No status filter
-            None, // Get all invoices to count them
-            None, // No cursor-based pagination for now
-        ).await
-            .map_err(|e| AppError::External(format!("Failed to list invoices from Stripe: {:?}", e)))?;
-
-        let total_invoices = all_stripe_invoices.len() as i32;
+        let stripe_service = match self.stripe_service.as_ref() {
+            Some(service) => service,
+            None => {
+                debug!("Stripe service not configured, returning empty invoice list");
+                return Ok(crate::models::ListInvoicesResponse {
+                    total_invoices: 0,
+                    invoices: vec![],
+                    has_more: false,
+                });
+            }
+        };
 
         // List invoices from Stripe with pagination
-        let stripe_invoices = stripe_service.list_invoices_with_filter(
+        let invoices_list = match stripe_service.list_invoices_with_filter(
             &customer_id,
             None, // No status filter
-            Some((limit + offset) as u64), // Get more than needed to handle offset
+            Some(limit as u64),
             None, // No cursor-based pagination for now
-        ).await
-            .map_err(|e| AppError::External(format!("Failed to list invoices from Stripe: {:?}", e)))?;
+        ).await {
+            Ok(list) => list,
+            Err(e) => {
+                warn!("Failed to list invoices from Stripe for user {}: {:?}", user_id, e);
+                // Return empty list instead of error for better UX
+                return Ok(crate::models::ListInvoicesResponse {
+                    total_invoices: 0,
+                    invoices: vec![],
+                    has_more: false,
+                });
+            }
+        };
 
         // Convert Stripe invoices to our Invoice model
-        let invoices: Result<Vec<crate::models::Invoice>, AppError> = stripe_invoices
+        let invoices: Result<Vec<crate::models::Invoice>, AppError> = invoices_list.data
             .into_iter()
             .skip(offset as usize)
             .take(limit as usize)
@@ -526,12 +569,12 @@ impl BillingService {
             
         let invoices = invoices?;
 
-        // Fix has_more logic to correctly reflect if there are more invoices beyond current page
-        let has_more = total_invoices > (offset + limit);
+        // Use Stripe's native has_more flag
+        let has_more = invoices_list.has_more;
 
         Ok(crate::models::ListInvoicesResponse {
+            total_invoices: invoices.len() as i32,
             invoices,
-            total_invoices,
             has_more,
         })
     }
@@ -541,57 +584,56 @@ impl BillingService {
     pub async fn create_credit_purchase_checkout_session(
         &self,
         user_id: &Uuid,
-        amount: f64,
+        amount: &str,
     ) -> Result<CheckoutSession, AppError> {
         let stripe_service = self.get_stripe_service()?;
         let customer_id = self.get_or_create_stripe_customer(user_id).await?;
         
+        // Parse amount string to BigDecimal for validation
+        let amount_decimal = BigDecimal::parse_bytes(amount.as_bytes(), 10)
+            .ok_or_else(|| AppError::InvalidArgument("Invalid amount format".to_string()))?;
+        
         // Validate amount
-        if amount <= 0.0 || amount > 10000.0 {
+        if amount_decimal <= BigDecimal::from(0) || amount_decimal > BigDecimal::from(10000) {
             return Err(AppError::InvalidArgument("Amount must be between $0.01 and $10,000.00".to_string()));
         }
 
-        // Create one-time price/product for custom amount
-        let product_name = format!("${:.2} Credit Top-up", amount);
-        let amount_cents = (amount * 100.0) as i64;
+        // Create price_data object instead of creating Product/Price
+        let product_name = format!("${} Credit Top-up", amount_decimal);
+        let amount_cents = (amount_decimal.clone() * BigDecimal::from(100)).to_i64().unwrap_or(0);
         
-        let idempotency_key = uuid::Uuid::new_v4().to_string();
-        let (product, price) = stripe_service.create_product_and_price(
-            &format!("{}_product", idempotency_key),
-            &product_name,
-            amount_cents,
-            "usd",
-            None, // No recurring interval for one-time payment
-        ).await.map_err(|e| AppError::External(format!("Failed to create one-time price: {}", e)))?;
-
-        // Create line items
-        let line_items = vec![crate::stripe_types::checkout_session::CreateCheckoutSessionLineItems {
-            price: Some(price.id.to_string()),
-            quantity: Some(1),
-        }];
+        let price_data = serde_json::json!({
+            "currency": "usd",
+            "unit_amount": amount_cents,
+            "product_data": {
+                "name": product_name
+            }
+        });
 
         // Add metadata for webhook fulfillment
         let mut metadata = std::collections::HashMap::new();
         metadata.insert("type".to_string(), "credit_purchase".to_string());
         metadata.insert("user_id".to_string(), user_id.to_string());
-        metadata.insert("amount".to_string(), amount.to_string());
+        metadata.insert("amount".to_string(), amount_decimal.to_string());
         metadata.insert("currency".to_string(), "USD".to_string());
 
         // Use hardcoded URLs that match the frontend expectations
         let success_url = "http://localhost:1420/billing/success";
         let cancel_url = "http://localhost:1420/billing/cancel";
 
+        let idempotency_key = uuid::Uuid::new_v4().to_string();
         let session = stripe_service.create_checkout_session(
-            &format!("{}_session", idempotency_key),
+            &idempotency_key,
             &customer_id,
             CHECKOUT_SESSION_MODE_PAYMENT,
-            Some(line_items),
+            None, // No line_items when using price_data
             success_url,
             cancel_url,
             metadata,
             None, // billing_address_collection not required for credit purchases
             None, // automatic_tax not required for credit purchases
             Some(true), // invoice_creation_enabled
+            Some(price_data), // Pass price_data directly
         ).await.map_err(|e| AppError::External(format!("Failed to create checkout session: {}", e)))?;
 
         Ok(session)
@@ -664,6 +706,7 @@ impl BillingService {
             None, // billing_address_collection not applicable for setup mode
             None, // automatic_tax not applicable for setup mode
             None, // invoice_creation_enabled not applicable for setup mode
+            None, // price_data not applicable for setup mode
         ).await.map_err(|e| AppError::External(format!("Failed to create setup checkout session: {}", e)))?;
 
         Ok(session)
@@ -674,28 +717,28 @@ impl BillingService {
         debug!("Getting auto top-off settings for user: {}", user_id);
         
         // Start transaction for atomic operations
-        let mut transaction = self.db_pools.user_pool.begin().await
+        let mut tx = self.db_pools.user_pool.begin().await
             .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
 
         // Set user context for RLS within the transaction
         sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
             .bind(user_id.to_string())
-            .execute(&mut *transaction)
+            .execute(&mut *tx)
             .await
             .map_err(|e| AppError::Database(format!("Failed to set user context in transaction: {}", e)))?;
 
         // Get customer billing
-        let customer_billing = self.customer_billing_repository.get_by_user_id_with_executor(user_id, &mut transaction).await?
+        let customer_billing = self.customer_billing_repository.get_by_user_id_with_executor(user_id, &mut tx).await?
             .ok_or_else(|| AppError::NotFound("No customer billing record found for user".to_string()))?;
 
         // Commit transaction
-        transaction.commit().await
+        tx.commit().await
             .map_err(|e| AppError::Database(format!("Failed to commit transaction: {}", e)))?;
 
         let settings = AutoTopOffSettings {
             enabled: customer_billing.auto_top_off_enabled,
-            threshold: customer_billing.auto_top_off_threshold.map(|t| t.to_f64().unwrap_or(0.0)),
-            amount: customer_billing.auto_top_off_amount.map(|a| a.to_f64().unwrap_or(0.0)),
+            threshold: customer_billing.auto_top_off_threshold.map(|t| t.to_string()),
+            amount: customer_billing.auto_top_off_amount.map(|a| a.to_string()),
         };
 
         info!("Successfully retrieved auto top-off settings for user: {}", user_id);
@@ -713,13 +756,13 @@ impl BillingService {
         debug!("Updating auto top-off settings for user: {}", user_id);
         
         // Start transaction for atomic operations
-        let mut transaction = self.db_pools.user_pool.begin().await
+        let mut tx = self.db_pools.user_pool.begin().await
             .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
 
         // Set user context for RLS within the transaction
         sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
             .bind(user_id.to_string())
-            .execute(&mut *transaction)
+            .execute(&mut *tx)
             .await
             .map_err(|e| AppError::Database(format!("Failed to set user context in transaction: {}", e)))?;
 
@@ -732,13 +775,13 @@ impl BillingService {
         ).await?;
 
         // Commit transaction
-        transaction.commit().await
+        tx.commit().await
             .map_err(|e| AppError::Database(format!("Failed to commit transaction: {}", e)))?;
 
         let settings = AutoTopOffSettings {
             enabled,
-            threshold: threshold.map(|t| t.to_f64().unwrap_or(0.0)),
-            amount: amount.map(|a| a.to_f64().unwrap_or(0.0)),
+            threshold: threshold.map(|t| t.to_string()),
+            amount: amount.map(|a| a.to_string()),
         };
 
         info!("Successfully updated auto top-off settings for user: {}", user_id);
@@ -836,17 +879,6 @@ impl BillingService {
         info!("User {} balance ({}) is below threshold ({}), triggering auto top-off of {}", 
               user_id, current_balance.balance, threshold, amount);
         
-        // Check if auto top-off is already in progress for this user
-        {
-            let mut in_progress = self.top_off_in_progress.lock().await;
-            if in_progress.contains(user_id) {
-                info!("Auto top-off already in progress for user {}, skipping", user_id);
-                return Ok(());
-            }
-            // Add user to in-progress set
-            in_progress.insert(*user_id);
-        }
-        
         // Spawn async task to perform auto top-off
         let billing_service = self.clone();
         let user_id_clone = *user_id;
@@ -854,12 +886,6 @@ impl BillingService {
         
         tokio::spawn(async move {
             let result = billing_service.perform_auto_top_off(&user_id_clone, &amount_clone).await;
-            
-            // Always remove user from in-progress set when done
-            {
-                let mut in_progress = billing_service.top_off_in_progress.lock().await;
-                in_progress.remove(&user_id_clone);
-            }
             
             match result {
                 Ok(()) => {
@@ -893,7 +919,7 @@ impl BillingService {
 
         debug!("Auto top-off execution flow: step 3 - starting database transaction");
         // Start transaction for atomic operations
-        let mut transaction = self.db_pools.user_pool.begin().await
+        let mut tx = self.db_pools.user_pool.begin().await
             .map_err(|e| {
                 warn!("Auto top-off execution flow: FAILED at step 3 - database transaction failed for user {}: {}", user_id, e);
                 AppError::Database(format!("Failed to begin transaction: {}", e))
@@ -903,16 +929,31 @@ impl BillingService {
         // Set user context for RLS within the transaction
         sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
             .bind(user_id.to_string())
-            .execute(&mut *transaction)
+            .execute(&mut *tx)
             .await
             .map_err(|e| {
                 warn!("Auto top-off execution flow: FAILED at step 4 - setting user context failed for user {}: {}", user_id, e);
                 AppError::Database(format!("Failed to set user context in transaction: {}", e))
             })?;
 
+        // Acquire PostgreSQL advisory lock for this user's auto top-off
+        let lock_acquired = sqlx::query_scalar::<_, bool>(
+            "SELECT pg_try_advisory_xact_lock(hashtext($1))"
+        )
+        .bind(format!("auto_top_off_{}", user_id))
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(|e| AppError::Database(format!("Failed to acquire advisory lock: {}", e)))?;
+
+        if !lock_acquired {
+            info!("Auto top-off already in progress for user {} on another instance, skipping", user_id);
+            let _ = tx.rollback().await;
+            return Ok(());
+        }
+
         debug!("Auto top-off execution flow: step 5 - fetching customer billing record");
         // Get customer billing
-        let customer_billing = self.customer_billing_repository.get_by_user_id_with_executor(user_id, &mut transaction).await?
+        let customer_billing = self.customer_billing_repository.get_by_user_id_with_executor(user_id, &mut tx).await?
             .ok_or_else(|| {
                 warn!("Auto top-off execution flow: FAILED at step 5 - no customer billing record found for user {}", user_id);
                 AppError::NotFound("No customer billing record found for user".to_string())
@@ -930,7 +971,7 @@ impl BillingService {
 
         debug!("Auto top-off execution flow: step 7 - committing database transaction");
         // Commit transaction (no longer needed)
-        transaction.commit().await
+        tx.commit().await
             .map_err(|e| {
                 warn!("Auto top-off execution flow: FAILED at step 7 - transaction commit failed for user {}: {}", user_id, e);
                 AppError::Database(format!("Failed to commit transaction: {}", e))
@@ -939,7 +980,7 @@ impl BillingService {
 
         debug!("Auto top-off execution flow: step 8 - preparing Stripe invoice creation");
         // Create and pay invoice with Stripe for the auto top-off amount
-        let amount_cents = amount.to_f64().unwrap_or(0.0) * 100.0;
+        let amount_cents = (amount.clone() * BigDecimal::from(100)).to_i64().unwrap_or(0);
         let idempotency_key = format!("auto_topoff_{}_{}", user_id, Utc::now().timestamp());
         debug!("Auto top-off execution flow: step 8 - invoice parameters prepared: amount_cents={}, idempotency_key={}", amount_cents, idempotency_key);
         
@@ -966,7 +1007,7 @@ impl BillingService {
             Some(serde_json::json!({
                 "type": "auto_top_off",
                 "stripe_invoice_id": invoice.id.to_string(),
-                "amount": amount.to_f64().unwrap_or(0.0)
+                "amount": amount.to_string()
             })),
         ).await.map_err(|e| {
             warn!("Auto top-off execution flow: FAILED at step 10 - credit adjustment failed for user {}: {}", user_id, e);
@@ -976,6 +1017,366 @@ impl BillingService {
 
         info!("Auto top-off execution flow: COMPLETED SUCCESSFULLY - user {} topped off with amount {}", user_id, amount);
         Ok(())
+    }
+
+    /// Get customer billing information for display
+    pub async fn get_customer_billing_info(&self, user_id: &Uuid) -> Result<Option<CustomerBillingInfo>, AppError> {
+        // Check if user has made a purchase - if not, no billing info needed
+        let has_purchased = self.credit_service.has_user_made_purchase(user_id).await?;
+        if !has_purchased {
+            return Ok(None);
+        }
+
+        // Ensure Stripe is configured
+        let stripe_service = match &self.stripe_service {
+            Some(service) => service,
+            None => return Ok(None), // Return None instead of error for better UX
+        };
+
+        // Get Stripe customer ID - return None if not found instead of creating
+        let mut tx = self.db_pools.user_pool.begin().await
+            .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
+
+        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
+            .bind(user_id.to_string())
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| AppError::Database(format!("Failed to set user context: {}", e)))?;
+
+        let customer_billing = match self.customer_billing_repository.get_by_user_id_with_executor(user_id, &mut tx).await? {
+            Some(billing) => billing,
+            None => {
+                let _ = tx.rollback().await;
+                return Ok(None);
+            }
+        };
+
+        tx.commit().await
+            .map_err(|e| AppError::Database(format!("Failed to commit transaction: {}", e)))?;
+
+        let customer_id = match customer_billing.stripe_customer_id {
+            Some(id) => id,
+            None => return Ok(None),
+        };
+
+        // Fetch customer from Stripe
+        let customer = match stripe_service.get_customer(&customer_id).await {
+            Ok(customer) => customer,
+            Err(_) => return Ok(None), // Gracefully handle Stripe errors
+        };
+
+        Ok(Some(CustomerBillingInfo {
+            customer_name: customer.name.clone(),
+            customer_email: customer.email,
+            phone: customer.phone,
+            tax_exempt: customer.tax_exempt,
+            address_line1: customer.address.as_ref().and_then(|a| a.line1.clone()),
+            address_line2: customer.address.as_ref().and_then(|a| a.line2.clone()),
+            address_city: customer.address.as_ref().and_then(|a| a.city.clone()),
+            address_state: customer.address.as_ref().and_then(|a| a.state.clone()),
+            address_postal_code: customer.address.as_ref().and_then(|a| a.postal_code.clone()),
+            address_country: customer.address.as_ref().and_then(|a| a.country.clone()),
+            has_billing_info: customer.name.is_some(),
+        }))
+    }
+
+    /// Record streaming cost for partial billing entries
+    pub async fn record_streaming_cost(
+        &self,
+        user_id: &Uuid,
+        request_id: &str,
+        service_name: &str,
+        partial_cost: &BigDecimal,
+        tokens_input: i64,
+        tokens_output: i64,
+        is_cancelled: bool,
+    ) -> Result<(), AppError> {
+        let pool = self.db_pools.user_pool.clone();
+        let mut tx = pool.begin().await
+            .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
+        
+        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
+            .bind(user_id.to_string())
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| AppError::Database(format!("Failed to set user context: {}", e)))?;
+        
+        let metadata = serde_json::json!({
+            "request_id": request_id,
+            "streaming": true,
+            "cancelled": is_cancelled,
+            "partial_cost": partial_cost,
+            "recorded_at": Utc::now().to_rfc3339()
+        });
+        
+        let entry = ApiUsageEntryDto {
+            user_id: *user_id,
+            service_name: service_name.to_string(),
+            tokens_input,
+            tokens_output,
+            cached_input_tokens: 0,
+            cache_write_tokens: 0,
+            cache_read_tokens: 0,
+            request_id: Some(request_id.to_string()),
+            metadata: Some(metadata),
+        };
+        
+        let api_usage_record = self.api_usage_repository
+            .record_usage_with_executor(entry, partial_cost.clone(), &mut tx)
+            .await?;
+        
+        if *partial_cost > BigDecimal::from(0) {
+            let current_balance = self.credit_service
+                .get_user_balance_with_executor(user_id, &mut tx)
+                .await?;
+            
+            if current_balance.balance >= *partial_cost {
+                let negative_amount = -partial_cost.clone();
+                let description = if is_cancelled {
+                    format!("Cancelled streaming request {} - partial cost", request_id)
+                } else {
+                    format!("Streaming cost for {} - request {}", service_name, request_id)
+                };
+                
+                let transaction_metadata = serde_json::json!({
+                    "streaming": true,
+                    "cancelled": is_cancelled,
+                    "request_id": request_id,
+                    "service_name": service_name,
+                    "partial_billing": true
+                });
+                
+                let balance_after = &current_balance.balance + &negative_amount;
+                let transaction = crate::db::repositories::credit_transaction_repository::CreditTransaction {
+                    id: Uuid::new_v4(),
+                    user_id: *user_id,
+                    transaction_type: "usage".to_string(),
+                    amount: negative_amount.clone(),
+                    currency: "USD".to_string(),
+                    description: Some(description),
+                    stripe_charge_id: None,
+                    related_api_usage_id: Some(api_usage_record.id.unwrap()),
+                    metadata: Some(transaction_metadata),
+                    created_at: Some(Utc::now()),
+                    balance_after: balance_after.clone(),
+                };
+                
+                self.credit_service.get_credit_transaction_repository()
+                    .create_transaction_with_executor(&transaction, &transaction.balance_after, &mut tx)
+                    .await?;
+                
+                self.credit_service.get_user_credit_repository()
+                    .increment_balance_with_executor(user_id, &negative_amount, &mut tx)
+                    .await?;
+            }
+        }
+        
+        tx.commit().await
+            .map_err(|e| AppError::Database(format!("Failed to commit streaming cost transaction: {}", e)))?;
+        
+        info!("Recorded streaming cost for user {}: {} (cancelled: {}, cost: {})", 
+              user_id, request_id, is_cancelled, partial_cost);
+        
+        Ok(())
+    }
+    
+    /// Record streaming cost update during active streaming operation
+    pub async fn update_streaming_cost(
+        &self,
+        user_id: &Uuid,
+        request_id: &str,
+        service_name: &str,
+        incremental_cost: &BigDecimal,
+        total_tokens_input: i64,
+        total_tokens_output: i64,
+    ) -> Result<(), AppError> {
+        if *incremental_cost <= BigDecimal::from(0) {
+            return Ok(());
+        }
+        
+        self.record_streaming_cost(
+            user_id,
+            request_id,
+            service_name,
+            incremental_cost,
+            total_tokens_input,
+            total_tokens_output,
+            false,
+        ).await
+    }
+    
+    /// Record final cost for cancelled streaming jobs that incurred charges
+    pub async fn record_cancelled_job_cost(
+        &self,
+        user_id: &Uuid,
+        request_id: &str,
+        service_name: &str,
+        final_cost: &BigDecimal,
+        tokens_input: i64,
+        tokens_output: i64,
+    ) -> Result<(), AppError> {
+        self.record_streaming_cost(
+            user_id,
+            request_id,
+            service_name,
+            final_cost,
+            tokens_input,
+            tokens_output,
+            true,
+        ).await
+    }
+
+    /// Check billing readiness requirements for a user
+    async fn _check_billing_readiness(&self, user_id: &Uuid) -> Result<(bool, bool), AppError> {
+        // Check if user has made a purchase - if not, no billing requirements
+        let has_purchased = self.credit_service.has_user_made_purchase(user_id).await?;
+        if !has_purchased {
+            return Ok((false, false));
+        }
+
+        // Ensure Stripe is configured
+        let stripe_service = match &self.stripe_service {
+            Some(service) => service,
+            None => return Err(AppError::Configuration("Stripe not configured".to_string())),
+        };
+
+        // Get or create Stripe customer ID
+        let customer_id = self.get_or_create_stripe_customer(user_id).await?;
+
+        // Fetch customer and payment methods concurrently
+        let (customer, payment_methods) = tokio::try_join!(
+            stripe_service.get_customer(&customer_id),
+            stripe_service.list_payment_methods(&customer_id)
+        ).map_err(|e| AppError::External(format!("Failed to fetch customer data: {}", e)))?;
+
+        // Check payment method requirements
+        let has_default_payment_method = customer.invoice_settings
+            .as_ref()
+            .and_then(|settings| settings.default_payment_method.as_ref())
+            .is_some();
+        let has_any_payment_methods = !payment_methods.is_empty();
+        let is_payment_method_required = !has_default_payment_method || !has_any_payment_methods;
+
+        // Check billing information requirements
+        let is_billing_info_required = customer.name.is_none() || 
+            customer.address.is_none() || 
+            customer.address.as_ref().map_or(true, |addr| {
+                addr.line1.is_none() || 
+                addr.city.is_none() || 
+                addr.postal_code.is_none() || 
+                addr.country.is_none()
+            });
+
+        Ok((is_payment_method_required, is_billing_info_required))
+    }
+
+    /// Calculate cost for streaming tokens using server-side model pricing
+    pub async fn calculate_streaming_cost(
+        &self,
+        model_id: &str,
+        input_tokens: i64,
+        output_tokens: i64,
+        cache_write_tokens: i64,
+        cache_read_tokens: i64,
+    ) -> Result<BigDecimal, AppError> {
+        // Get model pricing information
+        let model_repository = Arc::new(crate::db::repositories::ModelRepository::new(
+            Arc::new(self.db_pools.system_pool.clone())
+        ));
+        
+        let model = model_repository
+            .find_by_id_with_provider(model_id)
+            .await?
+            .ok_or_else(|| AppError::NotFound(format!("Model '{}' not found", model_id)))?;
+        
+        // Calculate total cost using server-side pricing logic (no duration-based billing)
+        let total_cost = model.calculate_total_cost(input_tokens, output_tokens)
+            .map_err(|e| AppError::InvalidArgument(format!("Cost calculation failed: {}", e)))?;
+        
+        Ok(total_cost)
+    }
+
+    /// Record streaming cost updates for real-time billing with server-calculated costs
+    pub async fn update_streaming_cost_with_model(
+        &self,
+        user_id: &Uuid,
+        request_id: &str,
+        model_id: &str,
+        incremental_input_tokens: i64,
+        incremental_output_tokens: i64,
+        cache_write_tokens: i64,
+        cache_read_tokens: i64,
+    ) -> Result<BigDecimal, AppError> {
+        info!("Recording streaming cost update for user {} request {} model {}: {} input, {} output tokens", 
+              user_id, request_id, model_id, incremental_input_tokens, incremental_output_tokens);
+
+        // Calculate cost using server-side model pricing (no duration-based billing)
+        let incremental_cost = self.calculate_streaming_cost(
+            model_id,
+            incremental_input_tokens,
+            incremental_output_tokens,
+            cache_write_tokens,
+            cache_read_tokens,
+        ).await?;
+
+        // Validate incremental cost
+        if incremental_cost < BigDecimal::from(0) {
+            return Err(AppError::InvalidArgument("Incremental cost cannot be negative".to_string()));
+        }
+
+        // Skip recording if cost is zero
+        if incremental_cost == BigDecimal::from(0) {
+            return Ok(incremental_cost);
+        }
+
+        // Create API usage entry for streaming cost
+        let usage_entry = ApiUsageEntryDto {
+            user_id: *user_id,
+            service_name: model_id.to_string(),
+            tokens_input: incremental_input_tokens,
+            tokens_output: incremental_output_tokens,
+            cached_input_tokens: cache_write_tokens + cache_read_tokens,
+            cache_write_tokens,
+            cache_read_tokens,
+            request_id: Some(request_id.to_string()),
+            metadata: Some(serde_json::json!({
+                "streaming": true,
+                "incremental": true,
+                "request_id": request_id
+            })),
+        };
+
+        // Record the usage with the streaming cost and bill credits
+        let (_api_usage_record, user_credit) = self.charge_for_api_usage(usage_entry).await?;
+
+        info!("Streaming cost {} recorded for user {} request {}, new balance: {}", 
+              incremental_cost, user_id, request_id, user_credit.balance);
+
+        Ok(incremental_cost)
+    }
+
+    /// Get real-time cost estimation for streaming operations
+    pub async fn estimate_streaming_cost(
+        &self,
+        model_id: &str,
+        estimated_input_tokens: i64,
+        estimated_output_tokens: i64,
+        cache_write_tokens: i64,
+        cache_read_tokens: i64,
+    ) -> Result<BigDecimal, AppError> {
+        info!("Estimating streaming cost for model {} with {} input, {} output tokens", 
+              model_id, estimated_input_tokens, estimated_output_tokens);
+
+        let estimated_cost = self.calculate_streaming_cost(
+            model_id,
+            estimated_input_tokens,
+            estimated_output_tokens,
+            cache_write_tokens,
+            cache_read_tokens,
+        ).await?;
+
+        info!("Estimated streaming cost for model {}: {}", model_id, estimated_cost);
+        Ok(estimated_cost)
     }
 
 }

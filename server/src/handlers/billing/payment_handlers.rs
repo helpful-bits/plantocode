@@ -30,7 +30,7 @@ pub struct PortalResponse {
 }
 
 
-/// Create a billing portal session for managing subscription
+/// Create a billing portal session for managing payment methods and billing
 #[post("/create-portal-session")]
 pub async fn create_billing_portal_session(
     user_id: UserId,

@@ -6,7 +6,7 @@
  * - Authentication via Auth0
  * - Database access via Tauri SQLite
  * - API access via server proxying
- * - Subscription management
+ * - Credit management
  */
 
 import { useEffect, useState, useCallback } from "react";

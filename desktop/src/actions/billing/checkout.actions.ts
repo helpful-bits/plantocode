@@ -13,11 +13,6 @@ export async function createCreditPurchaseCheckoutSession(
   });
 }
 
-export async function createSubscriptionCheckoutSession(planId: string): Promise<CheckoutSessionResponse> {
-  return await invoke<CheckoutSessionResponse>('create_subscription_checkout_session_command', {
-    planId,
-  });
-}
 
 export async function createSetupCheckoutSession(): Promise<CheckoutSessionResponse> {
   return await invoke<CheckoutSessionResponse>('create_setup_checkout_session_command');

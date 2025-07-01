@@ -19,21 +19,21 @@ export function JobDetailsErrorSection() {
   // Check for billing errors in metadata
   const isMetadataBillingError = parsedMetadata?.error_type === 'BILLING_ERROR' || 
     parsedMetadata?.billingError === true ||
-    parsedMetadata?.subscription_required === true;
+    parsedMetadata?.payment_required === true;
     
   // Check for billing errors in string content
   const isStringMatchBillingError = typeof job.errorMessage === 'string' && (
-    job.errorMessage.toLowerCase().includes('subscription') ||
     job.errorMessage.toLowerCase().includes('billing') ||
+    job.errorMessage.toLowerCase().includes('credits') ||
     job.errorMessage.toLowerCase().includes('upgrade required') ||
     job.errorMessage.toLowerCase().includes('payment required')
   );
   
   // Prioritize structured error information from extractErrorInfo
   const isBillingError = errorInfo.type === ErrorType.PAYMENT_FAILED || 
-    errorInfo.type === ErrorType.PLAN_UPGRADE_REQUIRED || 
+    errorInfo.type === ErrorType.CREDIT_UPGRADE_REQUIRED || 
     errorInfo.type === ErrorType.CREDIT_INSUFFICIENT ||
-    errorInfo.type === ErrorType.SUBSCRIPTION_EXPIRED ||
+    errorInfo.type === ErrorType.CREDIT_EXPIRED ||
     isMetadataBillingError || 
     isStringMatchBillingError;
   
@@ -83,7 +83,7 @@ export function JobDetailsErrorSection() {
   
   // Helper function to get error description based on type
   const getErrorDescription = () => {
-    if (isBillingError) return "This error is related to your subscription or billing";
+    if (isBillingError) return "This error is related to your billing or credits";
     if (isPermissionError) return "Access to this resource or feature was denied";
     if (isNetworkError) return "Network connectivity issue occurred";
     if (isTimeoutError) return "The operation took too long to complete";
@@ -149,14 +149,14 @@ export function JobDetailsErrorSection() {
           </div>
           
           {isBillingError && (
-            <div className="mt-4 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20 border-2 border-blue-200 dark:border-blue-800 rounded-lg">
+            <div className="mt-4 p-4 bg-info/10 border-2 border-info/20 rounded-lg">
               <div className="flex items-start gap-3">
-                <CreditCard className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
+                <CreditCard className="h-5 w-5 text-info mt-0.5 flex-shrink-0" />
                 <div className="flex-1">
-                  <p className="text-base font-semibold text-blue-900 dark:text-blue-100 mb-2">
+                  <p className="text-base font-semibold text-info-foreground mb-2">
                     {errorInfo.type === ErrorType.CREDIT_INSUFFICIENT 
                       ? 'Insufficient Credits' 
-                      : errorInfo.type === ErrorType.PLAN_UPGRADE_REQUIRED 
+                      : errorInfo.type === ErrorType.CREDIT_UPGRADE_REQUIRED 
                         ? 'Plan Upgrade Required'
                         : 'Billing Action Required'
                     }
@@ -166,7 +166,7 @@ export function JobDetailsErrorSection() {
                       variant="default"
                       size="sm" 
                       onClick={() => window.location.pathname = '/account'}
-                      className="bg-blue-600 hover:bg-blue-700 text-white font-medium shadow-md hover:shadow-lg transition-all duration-200"
+                      className="bg-primary hover:bg-primary/90 text-primary-foreground font-medium shadow-md hover:shadow-lg transition-all duration-200"
                     >
                       <CreditCard className="h-4 w-4 mr-2" />
                       Manage Billing
@@ -279,14 +279,14 @@ export function JobDetailsErrorSection() {
           )}
           
           {isApiError && !isBillingError && (
-            <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-950/20 border border-border/60 rounded">
+            <div className="mt-4 p-3 bg-info/10 border border-border/60 rounded">
               <div className="flex items-start gap-2">
-                <AlertCircle className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
+                <AlertCircle className="h-4 w-4 text-info mt-0.5 flex-shrink-0" />
                 <div className="flex-1">
-                  <p className="text-sm font-medium text-blue-800 mb-1">
+                  <p className="text-sm font-medium text-info-foreground mb-1">
                     API Service Error
                   </p>
-                  <p className="text-sm text-blue-700 mb-3">
+                  <p className="text-sm text-info-foreground/80 mb-3">
                     {userFriendlyMessage}
                   </p>
                 </div>
@@ -311,18 +311,18 @@ export function JobDetailsErrorSection() {
           )}
           
           {isWorkflowError && !isBillingError && (
-            <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-950/20 border border-border/60 rounded">
+            <div className="mt-4 p-3 bg-info/10 border border-border/60 rounded">
               <div className="flex items-start gap-2">
-                <RotateCcw className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
+                <RotateCcw className="h-4 w-4 text-info mt-0.5 flex-shrink-0" />
                 <div className="flex-1">
-                  <p className="text-sm font-medium text-blue-800 mb-1">
+                  <p className="text-sm font-medium text-info-foreground mb-1">
                     Workflow Stage Failed
                   </p>
-                  <p className="text-sm text-blue-700 mb-3">
+                  <p className="text-sm text-info-foreground/80 mb-3">
                     {userFriendlyMessage}
                   </p>
                   {workflowContext?.retryAttempt && workflowContext.retryAttempt > 1 && (
-                    <p className="text-xs text-blue-600 mb-2">
+                    <p className="text-xs text-info/80 mb-2">
                       This stage has already been retried {workflowContext.retryAttempt - 1} time(s).
                     </p>
                   )}

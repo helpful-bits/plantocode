@@ -119,9 +119,11 @@ export function PaymentMethodsList({ className }: PaymentMethodsListProps) {
     <>
       <Card className={className}>
         <CardHeader>
-          <CardTitle className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <CreditCard className="h-5 w-5" />
+          <CardTitle className="flex items-center justify-between text-xl font-bold">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 bg-primary/10 rounded-full flex items-center justify-center">
+                <CreditCard className="h-5 w-5 text-primary" />
+              </div>
               Payment Methods
             </div>
             <Button
@@ -142,7 +144,7 @@ export function PaymentMethodsList({ className }: PaymentMethodsListProps) {
               <CreditCard className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
               <h3 className="font-semibold mb-2">No Payment Methods</h3>
               <p className="text-sm text-muted-foreground mb-4">
-                Add a payment method to manage your subscriptions and purchases.
+                Add a payment method to manage your credit purchases.
               </p>
               <Button onClick={handleAddNewCard} className="flex items-center gap-2">
                 <Plus className="h-4 w-4" />
@@ -154,7 +156,7 @@ export function PaymentMethodsList({ className }: PaymentMethodsListProps) {
               {paymentMethodsData.methods.map((method) => (
                 <div
                   key={method.id}
-                  className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors"
+                  className="flex items-center justify-between p-4 border border-border/50 rounded-lg hover:bg-muted/50 transition-colors"
                 >
                   <div className="flex items-center gap-3">
                     <div className="flex-shrink-0">

@@ -1,11 +1,13 @@
 use crate::error::AppError;
 use crate::auth::token_manager::TokenManager;
+use chrono;
 use crate::commands::billing_commands::{
     BillingPortalResponse,
     CreditBalanceResponse, CreditHistoryResponse,
     CreditStats,
     PaymentMethodsResponse, PaymentMethod, PaymentMethodCard,
-    BillingDashboardData
+    BillingDashboardData, CustomerBillingInfo,
+    DetailedUsageResponse
 };
 use crate::models::ListInvoicesResponse;
 use serde::{Deserialize, Serialize};
@@ -48,6 +50,27 @@ pub struct ServerPaymentMethodsResponse {
     pub has_default: bool,
     pub methods: Vec<ServerPaymentMethod>,
 }
+
+// Server-side credit transaction structures for robust deserialization
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServerCreditTransactionEntry {
+    pub id: String,
+    pub amount: String,
+    pub currency: String,
+    pub transaction_type: String,
+    pub description: String,
+    pub created_at: String,
+    pub balance_after: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServerCreditHistoryResponse {
+    pub transactions: Vec<ServerCreditTransactionEntry>,
+    pub total_count: i64,
+    pub has_more: bool,
+}
 use std::sync::Arc;
 use log::{debug, error, info};
 use crate::commands::billing_commands::{AutoTopOffSettings, UpdateAutoTopOffRequest};
@@ -66,6 +89,11 @@ impl BillingClient {
             http_client,
             token_manager,
         }
+    }
+
+    /// Get the raw HTTP client for direct requests (e.g., downloading files)
+    pub fn get_raw_http_client(&self) -> &Client {
+        &self.http_client
     }
 
     /// Internal helper method for making authenticated requests
@@ -127,6 +155,20 @@ impl BillingClient {
         
         info!("Successfully retrieved billing dashboard data");
         Ok(dashboard_data)
+    }
+
+    /// Get customer billing information for read-only display
+    pub async fn get_customer_billing_info(&self) -> Result<Option<CustomerBillingInfo>, AppError> {
+        debug!("Getting customer billing info via BillingClient");
+        
+        let billing_info = self.make_authenticated_request(
+            "GET",
+            "/api/billing/customer-info",
+            None,
+        ).await?;
+        
+        info!("Successfully retrieved customer billing info");
+        Ok(billing_info)
     }
 
 
@@ -259,14 +301,14 @@ impl BillingClient {
         Ok(credit_balance)
     }
 
-    /// Get credit transaction history
+    /// Get credit transaction history with robust struct-based deserialization
     pub async fn get_credit_history(
         &self,
         limit: Option<i32>,
         offset: Option<i32>,
         search: Option<String>,
     ) -> Result<CreditHistoryResponse, AppError> {
-        debug!("Getting credit history via BillingClient");
+        debug!("Getting credit history via BillingClient with struct-based deserialization");
         
         let mut query_params = Vec::new();
         if let Some(limit) = limit {
@@ -287,14 +329,57 @@ impl BillingClient {
         
         let endpoint = format!("/api/billing/credits/transaction-history{}", query_string);
         
-        let credit_history = self.make_authenticated_request(
+        // Use struct-based deserialization for robust type safety
+        let server_response: ServerCreditHistoryResponse = self.make_authenticated_request(
             "GET",
             &endpoint,
             None,
         ).await?;
         
-        info!("Successfully retrieved credit history");
-        Ok(credit_history)
+        // Transform server structs to client structs
+        let transactions: Vec<crate::commands::billing_commands::CreditTransactionEntry> = server_response.transactions
+            .into_iter()
+            .map(|server_transaction| {
+                // Parse string amounts to f64 with error handling
+                let amount = server_transaction.amount.parse::<f64>()
+                    .unwrap_or_else(|e| {
+                        error!("Failed to parse amount '{}': {}. Using default value 0.0", server_transaction.amount, e);
+                        0.0
+                    });
+                
+                let balance_after = server_transaction.balance_after.parse::<f64>()
+                    .unwrap_or_else(|e| {
+                        error!("Failed to parse balance_after '{}': {}. Using default value 0.0", server_transaction.balance_after, e);
+                        0.0
+                    });
+                
+                // Handle empty description with default
+                let description = if server_transaction.description.trim().is_empty() {
+                    "No description".to_string()
+                } else {
+                    server_transaction.description
+                };
+                
+                crate::commands::billing_commands::CreditTransactionEntry {
+                    id: server_transaction.id,
+                    amount,
+                    currency: server_transaction.currency,
+                    transaction_type: server_transaction.transaction_type,
+                    description,
+                    created_at: server_transaction.created_at,
+                    balance_after,
+                }
+            })
+            .collect();
+        
+        let credit_history_response = CreditHistoryResponse {
+            transactions,
+            total_count: server_response.total_count,
+            has_more: server_response.has_more,
+        };
+        
+        info!("Successfully retrieved credit history with struct-based deserialization");
+        Ok(credit_history_response)
     }
 
 
@@ -437,6 +522,23 @@ impl BillingClient {
         Ok(detailed_usage)
     }
 
+    /// Get detailed usage with pre-calculated summary for a specific date range
+    pub async fn get_detailed_usage_with_summary(&self, start_date: &str, end_date: &str) -> Result<DetailedUsageResponse, AppError> {
+        debug!("Getting detailed usage with summary from {} to {} via BillingClient", start_date, end_date);
+        
+        let query_params = format!("start_date={}&end_date={}", start_date, end_date);
+        let endpoint = format!("/api/billing/usage-summary?{}", query_params);
+        
+        let detailed_usage_response = self.make_authenticated_request(
+            "GET",
+            &endpoint,
+            None,
+        ).await?;
+        
+        info!("Successfully retrieved detailed usage with summary");
+        Ok(detailed_usage_response)
+    }
+
 
     // ========================================
     // PAYMENT METHOD MANAGEMENT
@@ -506,6 +608,39 @@ impl BillingClient {
         
         info!("Successfully updated auto top-off settings");
         Ok(settings)
+    }
+
+    /// Report cancelled job cost to server for billing tracking
+    /// Server will extract user_id from JWT token automatically
+    pub async fn report_cancelled_job_cost(
+        &self,
+        request_id: &str,
+        final_cost: f64,
+        token_counts: serde_json::Value,
+        service_name: Option<&str>,
+    ) -> Result<(), AppError> {
+        debug!("Reporting cancelled job cost for request {}: ${:.6}", request_id, final_cost);
+        
+        let mut request_body = serde_json::json!({
+            "request_id": request_id,
+            "final_cost": final_cost,
+            "token_counts": token_counts,
+            "cancelled_at": chrono::Utc::now().to_rfc3339()
+        });
+        
+        // Add service_name if provided
+        if let Some(service) = service_name {
+            request_body["service_name"] = serde_json::Value::String(service.to_string());
+        }
+        
+        let _response: serde_json::Value = self.make_authenticated_request(
+            "POST",
+            "/api/billing/cancelled-job-cost",
+            Some(request_body),
+        ).await?;
+        
+        info!("Successfully reported cancelled job cost for request {}", request_id);
+        Ok(())
     }
 
 }

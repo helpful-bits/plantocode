@@ -25,19 +25,19 @@ export enum ErrorType {
   // Billing-specific error types
   PAYMENT_FAILED = "PAYMENT_FAILED",
   PAYMENT_DECLINED = "PAYMENT_DECLINED",
+  PAYMENT_ERROR = "PAYMENT_ERROR",
   PAYMENT_AUTHENTICATION_REQUIRED = "PAYMENT_AUTHENTICATION_REQUIRED",
-  SUBSCRIPTION_EXPIRED = "SUBSCRIPTION_EXPIRED",
-  SUBSCRIPTION_CANCELLED = "SUBSCRIPTION_CANCELLED",
+  CREDIT_EXPIRED = "CREDIT_EXPIRED",
+  ACCOUNT_SUSPENDED = "ACCOUNT_SUSPENDED",
   CREDIT_INSUFFICIENT = "CREDIT_INSUFFICIENT",
-  PLAN_UPGRADE_REQUIRED = "PLAN_UPGRADE_REQUIRED",
+  CREDIT_UPGRADE_REQUIRED = "CREDIT_UPGRADE_REQUIRED",
   PAYMENT_METHOD_REQUIRED = "PAYMENT_METHOD_REQUIRED",
   BILLING_ADDRESS_REQUIRED = "BILLING_ADDRESS_REQUIRED",
-  SUBSCRIPTION_CONFLICT = "SUBSCRIPTION_CONFLICT",
+  BILLING_CONFLICT = "BILLING_CONFLICT",
+  PAYMENT_REQUIRED = "PAYMENT_REQUIRED",
+  // Auto top-off and credit management errors
   INVOICE_ERROR = "INVOICE_ERROR",
   CHECKOUT_ERROR = "CHECKOUT_ERROR",
-  PAYMENT_REQUIRED = "PAYMENT_REQUIRED",
-  PAYMENT_ERROR = "PAYMENT_ERROR",
-  // Auto top-off and credit management errors
   AUTO_TOP_OFF_FAILED = "AUTO_TOP_OFF_FAILED",
   INVALID_CREDIT_AMOUNT = "INVALID_CREDIT_AMOUNT",
   PAYMENT_SETUP_REQUIRED = "PAYMENT_SETUP_REQUIRED",
@@ -80,8 +80,8 @@ export function mapStatusToErrorType(status: number): ErrorType {
       return ErrorType.API_ERROR;
     case 402: // Payment Required
       return ErrorType.PAYMENT_FAILED;
-    case 409: // Conflict (subscription/billing conflicts)
-      return ErrorType.SUBSCRIPTION_CONFLICT;
+    case 409: // Conflict (billing conflicts)
+      return ErrorType.BILLING_CONFLICT;
     default:
       return ErrorType.UNKNOWN_ERROR;
   }
@@ -103,7 +103,6 @@ export interface WorkflowErrorContext {
  * Billing-specific error context for detailed error tracking
  */
 export interface BillingErrorContext {
-  subscriptionId?: string;
   paymentMethodId?: string;
   invoiceId?: string;
   planId?: string;
@@ -471,7 +470,7 @@ function applyContextSpecificTransformations(
   
   // Handle billing errors from structured Tauri errors
   if (parsedTauriError?.errorCategory === 'billing') {
-    return "This feature requires a billing upgrade. Please visit your account page to manage your subscription.";
+    return "This feature requires a billing upgrade. Please visit your account page to add credits.";
   }
   
   // Handle specific billing error types with detailed user-friendly messages
@@ -480,23 +479,20 @@ function applyContextSpecificTransformations(
       case ErrorType.PAYMENT_FAILED:
         return "Payment failed. Please check your payment method and try again.";
       
-      case ErrorType.PAYMENT_DECLINED:
-        return "Your payment was declined. Please try a different payment method or contact your bank.";
-      
       case ErrorType.PAYMENT_AUTHENTICATION_REQUIRED:
         return "Additional authentication is required for this payment. Please complete the verification process.";
       
-      case ErrorType.SUBSCRIPTION_EXPIRED:
-        return "Your subscription has expired. Please visit your billing page to reactivate your subscription and continue using premium features.";
+      case ErrorType.CREDIT_EXPIRED:
+        return "Your credits have expired. Please visit your billing page to add credits and continue using premium features.";
       
-      case ErrorType.SUBSCRIPTION_CANCELLED:
-        return "Your subscription has been cancelled. You can reactivate it anytime by visiting your billing page.";
+      case ErrorType.ACCOUNT_SUSPENDED:
+        return "Your account has been suspended. You can reactivate it anytime by visiting your billing page.";
       
       case ErrorType.CREDIT_INSUFFICIENT:
         return "Insufficient credits to complete this operation. Please purchase additional credits to continue.";
       
-      case ErrorType.PLAN_UPGRADE_REQUIRED:
-        return "This feature requires a plan upgrade. Please visit your billing page to upgrade your subscription and access this functionality.";
+      case ErrorType.CREDIT_UPGRADE_REQUIRED:
+        return "This feature requires additional credits. Please visit your billing page to add credits and access this functionality.";
       
       case ErrorType.PAYMENT_METHOD_REQUIRED:
         return "A valid payment method is required. Please visit your billing page to add a payment method to your account.";
@@ -504,21 +500,11 @@ function applyContextSpecificTransformations(
       case ErrorType.BILLING_ADDRESS_REQUIRED:
         return "A billing address is required to complete this transaction. Please visit your billing page to update your billing information.";
       
-      case ErrorType.SUBSCRIPTION_CONFLICT:
-        return "There's a conflict with your subscription status. Please refresh and try again, or contact support.";
-      
-      
-      case ErrorType.INVOICE_ERROR:
-        return "There was an error processing your invoice. Please contact support for assistance.";
-      
-      case ErrorType.CHECKOUT_ERROR:
-        return "There was an error with the checkout process. Please try again or contact support if the issue persists.";
+      case ErrorType.BILLING_CONFLICT:
+        return "There's a conflict with your billing status. Please refresh and try again, or contact support.";
       
       case ErrorType.PAYMENT_REQUIRED:
         return "Payment required. Please complete your payment to continue.";
-      
-      case ErrorType.PAYMENT_ERROR:
-        return "Payment processing error. Please try again or contact support.";
       
       case ErrorType.AUTO_TOP_OFF_FAILED:
         return "Automatic top-off failed. Please check your payment method and try again, or disable auto top-off in your settings.";
@@ -843,23 +829,24 @@ export function mapRustErrorCodeToErrorType(code: string): ErrorType {
     case "PAYMENT_FAILED":
       return ErrorType.PAYMENT_FAILED;
     case "PAYMENT_ERROR":
-      return ErrorType.PAYMENT_ERROR;
+      return ErrorType.PAYMENT_FAILED;
     case "PAYMENT_DECLINED":
     case "CARD_DECLINED":
-      return ErrorType.PAYMENT_DECLINED;
+      return ErrorType.PAYMENT_FAILED;
     case "PAYMENT_AUTHENTICATION_REQUIRED":
     case "AUTHENTICATION_REQUIRED":
       return ErrorType.PAYMENT_AUTHENTICATION_REQUIRED;
-    case "SUBSCRIPTION_EXPIRED":
-      return ErrorType.SUBSCRIPTION_EXPIRED;
-    case "SUBSCRIPTION_CANCELLED":
-      return ErrorType.SUBSCRIPTION_CANCELLED;
+    case "CREDIT_EXPIRED":
+      return ErrorType.CREDIT_EXPIRED;
+    case "ACCOUNT_SUSPENDED":
+      return ErrorType.ACCOUNT_SUSPENDED;
     case "CREDIT_INSUFFICIENT":
     case "INSUFFICIENT_CREDITS":
       return ErrorType.CREDIT_INSUFFICIENT;
     case "PLAN_UPGRADE_REQUIRED":
     case "UPGRADE_REQUIRED":
-      return ErrorType.PLAN_UPGRADE_REQUIRED;
+    case "CREDIT_UPGRADE_REQUIRED":
+      return ErrorType.CREDIT_UPGRADE_REQUIRED;
     case "PAYMENT_METHOD_REQUIRED":
       return ErrorType.PAYMENT_METHOD_REQUIRED;
     case "BILLING_ADDRESS_REQUIRED":
@@ -867,14 +854,14 @@ export function mapRustErrorCodeToErrorType(code: string): ErrorType {
     case "STRIPE_ERROR":
     case "BILLING_ERROR":
       return ErrorType.PAYMENT_FAILED;
-    case "SUBSCRIPTION_CONFLICT":
-      return ErrorType.SUBSCRIPTION_CONFLICT;
+    case "BILLING_CONFLICT":
+      return ErrorType.BILLING_CONFLICT;
     case "INVOICE_ERROR":
-      return ErrorType.INVOICE_ERROR;
+      return ErrorType.PAYMENT_FAILED;
     case "CHECKOUT_ERROR":
     case "CHECKOUT_SESSION_EXPIRED":
     case "CHECKOUT_CANCELLED":
-      return ErrorType.CHECKOUT_ERROR;
+      return ErrorType.PAYMENT_FAILED;
     // Additional billing-related error code mappings from server AppError variants
     case "PAYMENT_REQUIRED":
       return ErrorType.PAYMENT_REQUIRED;
@@ -901,7 +888,7 @@ export function mapRustErrorCodeToErrorType(code: string): ErrorType {
       return ErrorType.API_ERROR;
     // Handle generic billing error
     case "BILLING":
-      return ErrorType.PAYMENT_ERROR;
+      return ErrorType.PAYMENT_FAILED;
     // Map additional server error variants to appropriate frontend types
     case "AUTH":
       return ErrorType.PERMISSION_ERROR;
@@ -941,23 +928,20 @@ export function createUserFriendlyErrorMessage(
     case ErrorType.PAYMENT_FAILED:
       return "Payment failed. Please check your payment method and try again.";
     
-    case ErrorType.PAYMENT_DECLINED:
-      return "Your payment was declined. Please try a different payment method or contact your bank.";
-    
     case ErrorType.PAYMENT_AUTHENTICATION_REQUIRED:
       return "Additional authentication is required for this payment. Please complete the verification process.";
     
-    case ErrorType.SUBSCRIPTION_EXPIRED:
-      return "Your subscription has expired. Please visit your billing page to reactivate your subscription and continue using premium features.";
+    case ErrorType.CREDIT_EXPIRED:
+      return "Your credits have expired. Please visit your billing page to add credits and continue using premium features.";
     
-    case ErrorType.SUBSCRIPTION_CANCELLED:
-      return "Your subscription has been cancelled. You can reactivate it anytime by visiting your billing page.";
+    case ErrorType.ACCOUNT_SUSPENDED:
+      return "Your account has been suspended. You can reactivate it anytime by visiting your billing page.";
     
     case ErrorType.CREDIT_INSUFFICIENT:
       return "Insufficient credits to complete this operation. Please purchase additional credits to continue.";
     
-    case ErrorType.PLAN_UPGRADE_REQUIRED:
-      return "This feature requires a plan upgrade. Please visit your billing page to upgrade your subscription and access this functionality.";
+    case ErrorType.CREDIT_UPGRADE_REQUIRED:
+      return "This feature requires additional credits. Please visit your billing page to add credits and access this functionality.";
     
     case ErrorType.PAYMENT_METHOD_REQUIRED:
       return "A valid payment method is required. Please visit your billing page to add a payment method to your account.";
@@ -965,21 +949,11 @@ export function createUserFriendlyErrorMessage(
     case ErrorType.BILLING_ADDRESS_REQUIRED:
       return "A billing address is required to complete this transaction. Please visit your billing page to update your billing information.";
     
-    case ErrorType.SUBSCRIPTION_CONFLICT:
-      return "There's a conflict with your subscription status. Please refresh and try again, or contact support.";
-    
-    
-    case ErrorType.INVOICE_ERROR:
-      return "There was an error processing your invoice. Please contact support for assistance.";
-    
-    case ErrorType.CHECKOUT_ERROR:
-      return "There was an error with the checkout process. Please try again or contact support if the issue persists.";
+    case ErrorType.BILLING_CONFLICT:
+      return "There's a conflict with your billing status. Please refresh and try again, or contact support.";
     
     case ErrorType.PAYMENT_REQUIRED:
       return "Payment required. Please complete your payment to continue.";
-    
-    case ErrorType.PAYMENT_ERROR:
-      return "Payment processing error. Please try again or contact support.";
     
     case ErrorType.AUTO_TOP_OFF_FAILED:
       return "Automatic top-off failed. Please check your payment method and try again, or disable auto top-off in your settings.";

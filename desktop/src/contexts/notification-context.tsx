@@ -107,6 +107,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     switch (errorType) {
       case ErrorType.PAYMENT_FAILED:
       case ErrorType.PAYMENT_DECLINED:
+      case ErrorType.PAYMENT_ERROR:
         return {
           label: "Manage Billing",
           onClick: () => {
@@ -134,21 +135,21 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
           variant: "default" as const
         };
       
-      case ErrorType.SUBSCRIPTION_EXPIRED:
+      case ErrorType.CREDIT_EXPIRED:
         return {
-          label: "Upgrade Plan",
+          label: "Add Credits",
           onClick: () => {
-            const event = new CustomEvent('open-subscription-modal');
+            const event = new CustomEvent('open-credit-manager');
             window.dispatchEvent(event);
           },
           variant: "default" as const
         };
       
-      case ErrorType.SUBSCRIPTION_CANCELLED:
+      case ErrorType.ACCOUNT_SUSPENDED:
         return {
-          label: "Renew Subscription",
+          label: "Reactivate Account",
           onClick: () => {
-            window.location.pathname = '/settings';
+            window.location.pathname = '/account';
           },
           variant: "default" as const
         };
@@ -164,18 +165,18 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
           className: "bg-red-600 hover:bg-red-700 text-white"
         };
       
-      case ErrorType.PLAN_UPGRADE_REQUIRED:
+      case ErrorType.CREDIT_UPGRADE_REQUIRED:
         return {
-          label: "Upgrade Plan",
+          label: "Add Credits",
           onClick: () => {
-            const event = new CustomEvent('open-subscription-modal');
+            const event = new CustomEvent('open-credit-manager');
             window.dispatchEvent(event);
           },
           variant: "default" as const
         };
       
       
-      case ErrorType.SUBSCRIPTION_CONFLICT:
+      case ErrorType.BILLING_CONFLICT:
       case ErrorType.INVOICE_ERROR:
         return {
           label: "Contact Support",
@@ -352,30 +353,29 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     switch (errorType) {
       case ErrorType.PAYMENT_FAILED:
       case ErrorType.PAYMENT_DECLINED:
+      case ErrorType.PAYMENT_ERROR:
         return "Billing Error";
       case ErrorType.ACTION_REQUIRED:
       case ErrorType.PAYMENT_METHOD_REQUIRED:
       case ErrorType.BILLING_ADDRESS_REQUIRED:
       case ErrorType.PAYMENT_AUTHENTICATION_REQUIRED:
         return "Action Required";
-      case ErrorType.SUBSCRIPTION_EXPIRED:
-        return "Subscription Expired";
-      case ErrorType.SUBSCRIPTION_CANCELLED:
-        return "Subscription Cancelled";
+      case ErrorType.CREDIT_EXPIRED:
+        return "Credits Expired";
+      case ErrorType.ACCOUNT_SUSPENDED:
+        return "Account Suspended";
       case ErrorType.CREDIT_INSUFFICIENT:
         return "No Credits Available";
-      case ErrorType.PLAN_UPGRADE_REQUIRED:
-        return "Upgrade Required";
-      case ErrorType.SUBSCRIPTION_CONFLICT:
-        return "Subscription Conflict";
+      case ErrorType.CREDIT_UPGRADE_REQUIRED:
+        return "Credits Required";
+      case ErrorType.BILLING_CONFLICT:
+        return "Billing Conflict";
+      case ErrorType.PAYMENT_REQUIRED:
+        return "Payment Required";
       case ErrorType.INVOICE_ERROR:
         return "Invoice Error";
       case ErrorType.CHECKOUT_ERROR:
         return "Checkout Error";
-      case ErrorType.PAYMENT_REQUIRED:
-        return "Payment Required";
-      case ErrorType.PAYMENT_ERROR:
-        return "Payment Error";
       case ErrorType.AUTO_TOP_OFF_FAILED:
         return "Auto Top-off Failed";
       case ErrorType.INVALID_CREDIT_AMOUNT:
@@ -415,10 +415,10 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     
     const getDuration = () => {
       const criticalErrors = [
-        ErrorType.PAYMENT_FAILED, ErrorType.PAYMENT_DECLINED, ErrorType.SUBSCRIPTION_EXPIRED,
-        ErrorType.SUBSCRIPTION_CANCELLED, ErrorType.CREDIT_INSUFFICIENT, ErrorType.PLAN_UPGRADE_REQUIRED,
+        ErrorType.PAYMENT_FAILED, ErrorType.PAYMENT_DECLINED, ErrorType.CREDIT_EXPIRED,
+        ErrorType.ACCOUNT_SUSPENDED, ErrorType.CREDIT_INSUFFICIENT, ErrorType.CREDIT_UPGRADE_REQUIRED,
         ErrorType.PAYMENT_METHOD_REQUIRED, ErrorType.BILLING_ADDRESS_REQUIRED, ErrorType.PAYMENT_AUTHENTICATION_REQUIRED,
-        ErrorType.SUBSCRIPTION_CONFLICT, ErrorType.INVOICE_ERROR, ErrorType.AUTO_TOP_OFF_FAILED, ErrorType.PAYMENT_SETUP_REQUIRED,
+        ErrorType.BILLING_CONFLICT, ErrorType.INVOICE_ERROR, ErrorType.AUTO_TOP_OFF_FAILED, ErrorType.PAYMENT_SETUP_REQUIRED,
         ErrorType.CREDIT_LIMIT_EXCEEDED, ErrorType.ACTION_REQUIRED, ErrorType.CONFIGURATION_ERROR, ErrorType.DATABASE_ERROR, ErrorType.INTERNAL_ERROR
       ];
       

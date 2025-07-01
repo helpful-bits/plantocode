@@ -13,7 +13,7 @@ use log::{debug, info};
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateCustomCreditCheckoutRequest {
-    pub amount: f64,
+    pub amount: String,
 }
 
 
@@ -44,7 +44,7 @@ pub async fn create_custom_credit_checkout_session_handler(
     
     let session = billing_service.create_credit_purchase_checkout_session(
         &user_id.0,
-        request.amount,
+        &request.amount,
     ).await?;
     
     let response = CheckoutSessionResponse {

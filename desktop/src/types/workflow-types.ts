@@ -254,5 +254,5 @@ export type WorkflowProgressCallback = (state: WorkflowState) => void;
 export type WorkflowCompleteCallback = (results: WorkflowResultsResponse) => void;
 export type WorkflowErrorCallback = (error: WorkflowError) => void;
 
-// Subscription cleanup function
+// Cleanup function
 export type UnsubscribeFunction = () => void;

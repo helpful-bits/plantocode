@@ -1,7 +1,7 @@
 use actix_web::{web, HttpResponse, get, post, HttpRequest, HttpMessage};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use bigdecimal::{BigDecimal, ToPrimitive, FromPrimitive};
+use bigdecimal::BigDecimal;
 use crate::error::AppError;
 use crate::services::billing_service::BillingService;
 use crate::services::credit_service::CreditService;
@@ -10,6 +10,7 @@ use crate::db::repositories::credit_transaction_repository::CreditTransactionRep
 use crate::db::repositories::UserCredit;
 use crate::middleware::secure_auth::UserId;
 use crate::models::auth_jwt_claims::Claims;
+use crate::models::billing::{CreditTransactionEntry, CreditHistoryResponse};
 use log::{debug, info};
 
 // ========================================
@@ -73,8 +74,8 @@ pub async fn get_credit_balance(
     Ok(HttpResponse::Ok().json(response))
 }
 
-/// Get user's credit transaction history (replaces get_credit_history)
-pub async fn get_credit_transaction_history(
+/// Get user's credit transaction history (renamed from get_credit_transaction_history to match frontend)
+pub async fn get_credit_history(
     user_id: UserId,
     query: web::Query<ExtendedPaginationQuery>,
     credit_service: web::Data<CreditService>,
@@ -87,38 +88,19 @@ pub async fn get_credit_transaction_history(
         .get_credit_details(&user_id.0, Some(limit), Some(offset), search.as_deref())
         .await?;
     
-    #[derive(Debug, Serialize)]
-    #[serde(rename_all = "camelCase")]
-    pub struct CreditTransactionEntry {
-        pub id: String,
-        pub amount: f64,
-        pub currency: String,
-        pub transaction_type: String,
-        pub description: String,
-        pub created_at: String,
-        pub balance_after: f64,
-    }
-
-    #[derive(Debug, Serialize)]
-    #[serde(rename_all = "camelCase")]
-    pub struct CreditHistoryResponse {
-        pub transactions: Vec<CreditTransactionEntry>,
-        pub total_count: i64,
-        pub has_more: bool,
-    }
     
     let transactions: Vec<CreditTransactionEntry> = credit_details.transactions
         .into_iter()
         .map(|transaction| CreditTransactionEntry {
             id: transaction.id.to_string(),
-            amount: transaction.amount.to_f64().unwrap_or(0.0),
+            amount: transaction.amount.to_string(),
             currency: transaction.currency,
             transaction_type: transaction.transaction_type,
             description: transaction.description.unwrap_or_default(),
             created_at: transaction.created_at
                 .map(|dt| dt.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string())
                 .unwrap_or_default(),
-            balance_after: transaction.balance_after.to_f64().unwrap_or(0.0),
+            balance_after: transaction.balance_after.to_string(),
         })
         .collect();
     
@@ -138,7 +120,7 @@ pub async fn get_credit_transaction_history(
 
 #[derive(Debug, Deserialize)]
 pub struct CreatePaymentIntentRequest {
-    pub amount: f64,
+    pub amount: String,
     pub currency: String,
     pub save_payment_method: Option<bool>,
 }
@@ -207,7 +189,7 @@ pub async fn admin_adjust_credits(
             "description": request.description,
             "adjustedAt": chrono::Utc::now()
         },
-        "newBalance": updated_balance.balance,
+        "newBalance": updated_balance.balance.to_string(),
         "currency": updated_balance.currency
     })))
 }

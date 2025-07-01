@@ -1,5 +1,9 @@
 // A token estimator for approximating token count
 // This uses character counts with model-specific adjustments
+//
+// DEPRECATION WARNING: This module should NOT be used for cost calculations or billing.
+// All cost calculations are performed server-side and provided through OpenRouterUsage.cost.
+// This estimator is only for UI display purposes and rough capacity planning.
 
 // Average ratio of characters to tokens for English text
 const CHARS_PER_TOKEN: f32 = 4.0;

@@ -674,7 +674,7 @@ export function isValidCreditCardNumber(
 }
 
 /**
- * Validates a plan ID for subscription operations
+ * Validates a plan ID for billing operations (legacy function)
  */
 export function isValidPlanId(
   planId: string | null | undefined

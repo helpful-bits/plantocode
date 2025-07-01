@@ -4,6 +4,7 @@ use sqlx::{PgPool, Row, FromRow};
 use uuid::Uuid;
 use std::collections::HashMap;
 use sqlx::types::ipnetwork::IpNetwork;
+use log::warn;
 
 use crate::error::AppError;
 
@@ -25,6 +26,10 @@ pub struct AuditLog {
     pub status: String,
     pub error_message: Option<String>,
     pub created_at: DateTime<Utc>,
+    // SECURITY: Hash chaining and cryptographic signature fields for tamper-proof audit trail
+    pub previous_hash: Option<String>,
+    pub entry_hash: String,
+    pub signature: String,
 }
 
 #[derive(Debug, Clone)]
@@ -43,6 +48,10 @@ pub struct CreateAuditLogRequest {
     pub request_id: Option<String>,
     pub status: Option<String>,
     pub error_message: Option<String>,
+    // SECURITY: Hash chaining and cryptographic signature fields
+    pub previous_hash: Option<String>,
+    pub entry_hash: String,
+    pub signature: String,
 }
 
 #[derive(Debug, Clone)]
@@ -67,21 +76,34 @@ impl AuditLogRepository {
         Self { pool }
     }
 
-    /// Create a new audit log entry
-    pub async fn create(&self, request: CreateAuditLogRequest) -> Result<AuditLog, AppError> {
+    /// Create a new audit log entry (legacy method - deprecated)
+    pub async fn create(&self, mut request: CreateAuditLogRequest) -> Result<AuditLog, AppError> {
+        // For backward compatibility, set empty security fields if not provided
+        if request.entry_hash.is_empty() {
+            request.entry_hash = "legacy".to_string();
+        }
+        if request.signature.is_empty() {
+            request.signature = "legacy".to_string();
+        }
+        
+        self.create_secure(request).await
+    }
+    
+    /// Create a new secure audit log entry with hash chaining and cryptographic signatures
+    pub async fn create_secure(&self, request: CreateAuditLogRequest) -> Result<AuditLog, AppError> {
         let audit_log = sqlx::query_as!(
             AuditLog,
             r#"
             INSERT INTO audit_logs (
                 user_id, action_type, entity_type, entity_id, old_values, new_values, 
                 metadata, performed_by, ip_address, user_agent, session_id, request_id, 
-                status, error_message
+                status, error_message, previous_hash, entry_hash, signature
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
             RETURNING 
                 id, user_id, action_type, entity_type, entity_id, old_values, new_values,
                 metadata, performed_by, ip_address, user_agent, session_id, request_id,
-                status, error_message, created_at
+                status, error_message, created_at, previous_hash, entry_hash, signature
             "#,
             request.user_id,
             request.action_type,
@@ -96,17 +118,37 @@ impl AuditLogRepository {
             request.session_id,
             request.request_id,
             request.status.unwrap_or_else(|| "completed".to_string()),
-            request.error_message
+            request.error_message,
+            request.previous_hash,
+            request.entry_hash,
+            request.signature
         )
         .fetch_one(&self.pool)
         .await
-        .map_err(|e| AppError::Database(format!("Failed to create audit log: {}", e)))?;
+        .map_err(|e| AppError::Database(format!("Failed to create secure audit log: {}", e)))?;
 
         Ok(audit_log)
     }
 
-    /// Create a new audit log entry with an existing transaction
+    /// Create a new audit log entry with an existing transaction (legacy method - deprecated)
     pub async fn create_with_executor<'a>(
+        &self,
+        mut request: CreateAuditLogRequest,
+        executor: &mut sqlx::Transaction<'a, sqlx::Postgres>,
+    ) -> Result<AuditLog, AppError> {
+        // For backward compatibility, set empty security fields if not provided
+        if request.entry_hash.is_empty() {
+            request.entry_hash = "legacy".to_string();
+        }
+        if request.signature.is_empty() {
+            request.signature = "legacy".to_string();
+        }
+        
+        self.create_secure_with_executor(request, executor).await
+    }
+    
+    /// Create a new secure audit log entry with an existing transaction and tamper-proof features
+    pub async fn create_secure_with_executor<'a>(
         &self,
         request: CreateAuditLogRequest,
         executor: &mut sqlx::Transaction<'a, sqlx::Postgres>,
@@ -117,13 +159,13 @@ impl AuditLogRepository {
             INSERT INTO audit_logs (
                 user_id, action_type, entity_type, entity_id, old_values, new_values, 
                 metadata, performed_by, ip_address, user_agent, session_id, request_id, 
-                status, error_message
+                status, error_message, previous_hash, entry_hash, signature
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
             RETURNING 
                 id, user_id, action_type, entity_type, entity_id, old_values, new_values,
                 metadata, performed_by, ip_address, user_agent, session_id, request_id,
-                status, error_message, created_at
+                status, error_message, created_at, previous_hash, entry_hash, signature
             "#,
             request.user_id,
             request.action_type,
@@ -138,11 +180,14 @@ impl AuditLogRepository {
             request.session_id,
             request.request_id,
             request.status.unwrap_or_else(|| "completed".to_string()),
-            request.error_message
+            request.error_message,
+            request.previous_hash,
+            request.entry_hash,
+            request.signature
         )
         .fetch_one(&mut **executor)
         .await
-        .map_err(|e| AppError::Database(format!("Failed to create audit log: {}", e)))?;
+        .map_err(|e| AppError::Database(format!("Failed to create secure audit log: {}", e)))?;
 
         Ok(audit_log)
     }
@@ -160,7 +205,7 @@ impl AuditLogRepository {
             SELECT 
                 id, user_id, action_type, entity_type, entity_id, old_values, new_values,
                 metadata, performed_by, ip_address, user_agent, session_id, request_id,
-                status, error_message, created_at
+                status, error_message, created_at, previous_hash, entry_hash, signature
             FROM audit_logs 
             WHERE user_id = $1 
             ORDER BY created_at DESC 
@@ -184,7 +229,7 @@ impl AuditLogRepository {
         limit: i64,
         offset: i64,
     ) -> Result<Vec<AuditLog>, AppError> {
-        let mut query = "SELECT id, user_id, action_type, entity_type, entity_id, old_values, new_values, metadata, performed_by, ip_address, user_agent, session_id, request_id, status, error_message, created_at FROM audit_logs WHERE 1=1".to_string();
+        let mut query = "SELECT id, user_id, action_type, entity_type, entity_id, old_values, new_values, metadata, performed_by, ip_address, user_agent, session_id, request_id, status, error_message, created_at, previous_hash, entry_hash, signature FROM audit_logs WHERE 1=1".to_string();
         let mut conditions = Vec::new();
         let mut param_index = 1;
 
@@ -296,7 +341,7 @@ impl AuditLogRepository {
             SELECT 
                 id, user_id, action_type, entity_type, entity_id, old_values, new_values,
                 metadata, performed_by, ip_address, user_agent, session_id, request_id,
-                status, error_message, created_at
+                status, error_message, created_at, previous_hash, entry_hash, signature
             FROM audit_logs 
             WHERE entity_type = $1 AND entity_id = $2
             ORDER BY created_at DESC 
@@ -314,13 +359,18 @@ impl AuditLogRepository {
         Ok(audit_logs)
     }
 
-    /// Update audit log status (for async operations)
+    /// Update audit log status (DEPRECATED - violates write-once principle)
+    /// Use separate audit entries for status changes instead
     pub async fn update_status(
         &self,
         id: &Uuid,
         status: &str,
         error_message: Option<&str>,
     ) -> Result<(), AppError> {
+        warn!("DEPRECATED: update_status called on audit log {}. This violates write-once principle.", id);
+        warn!("Consider creating a new audit entry for status change instead.");
+        
+        // For backward compatibility, still allow the update but log a warning
         sqlx::query!(
             "UPDATE audit_logs SET status = $1, error_message = $2 WHERE id = $3",
             status,
@@ -342,6 +392,76 @@ impl AuditLogRepository {
             .map_err(|e| AppError::Database(format!("Failed to delete old audit logs: {}", e)))?;
 
         Ok(result.rows_affected())
+    }
+
+    /// Get the hash of the most recent audit log entry for chain validation
+    pub async fn get_last_entry_hash(&self) -> Result<Option<String>, AppError> {
+        let result = sqlx::query_scalar!(
+            "SELECT entry_hash FROM audit_logs ORDER BY created_at DESC LIMIT 1"
+        )
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| AppError::Database(format!("Failed to get last entry hash: {}", e)))?;
+
+        Ok(result)
+    }
+    
+    /// Get the hash of the most recent audit log entry within a transaction
+    pub async fn get_last_entry_hash_with_tx<'a>(
+        &self,
+        tx: &mut sqlx::Transaction<'a, sqlx::Postgres>,
+    ) -> Result<Option<String>, AppError> {
+        let result = sqlx::query_scalar!(
+            "SELECT entry_hash FROM audit_logs ORDER BY created_at DESC LIMIT 1"
+        )
+        .fetch_optional(&mut **tx)
+        .await
+        .map_err(|e| AppError::Database(format!("Failed to get last entry hash in transaction: {}", e)))?;
+
+        Ok(result)
+    }
+    
+    /// Get audit log by ID for integrity verification
+    pub async fn get_by_id(&self, id: &Uuid) -> Result<Option<AuditLog>, AppError> {
+        let audit_log = sqlx::query_as!(
+            AuditLog,
+            r#"
+            SELECT 
+                id, user_id, action_type, entity_type, entity_id, old_values, new_values,
+                metadata, performed_by, ip_address, user_agent, session_id, request_id,
+                status, error_message, created_at, previous_hash, entry_hash, signature
+            FROM audit_logs 
+            WHERE id = $1
+            "#,
+            id
+        )
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| AppError::Database(format!("Failed to get audit log by ID: {}", e)))?;
+
+        Ok(audit_log)
+    }
+    
+    /// Get all audit logs ordered by creation time for chain validation
+    pub async fn get_all_ordered_by_creation(&self, limit: i64) -> Result<Vec<AuditLog>, AppError> {
+        let audit_logs = sqlx::query_as!(
+            AuditLog,
+            r#"
+            SELECT 
+                id, user_id, action_type, entity_type, entity_id, old_values, new_values,
+                metadata, performed_by, ip_address, user_agent, session_id, request_id,
+                status, error_message, created_at, previous_hash, entry_hash, signature
+            FROM audit_logs 
+            ORDER BY created_at ASC 
+            LIMIT $1
+            "#,
+            limit
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| AppError::Database(format!("Failed to get ordered audit logs: {}", e)))?;
+
+        Ok(audit_logs)
     }
 
     /// Get pool reference for advanced operations
@@ -378,6 +498,9 @@ impl AuditLogRepository {
             request_id: None,
             status: Some("completed".to_string()),
             error_message: None,
+            previous_hash: None,
+            entry_hash: "legacy".to_string(),
+            signature: "legacy".to_string(),
         };
 
         self.create(request).await
@@ -426,6 +549,9 @@ impl AuditLogRepository {
             request_id: None,
             status: Some("completed".to_string()),
             error_message: None,
+            previous_hash: None,
+            entry_hash: "legacy".to_string(),
+            signature: "legacy".to_string(),
         };
 
         self.create(request).await
@@ -459,8 +585,11 @@ impl AuditLogRepository {
             request_id: None,
             status: Some("completed".to_string()),
             error_message: None,
+            previous_hash: None,
+            entry_hash: "legacy".to_string(),
+            signature: "legacy".to_string(),
         };
 
-        self.create_with_executor(request, executor).await
+        self.create_secure_with_executor(request, executor).await
     }
 }

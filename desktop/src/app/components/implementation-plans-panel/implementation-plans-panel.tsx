@@ -1,6 +1,6 @@
 "use client";
 
-import { RefreshCw, Loader2, FileCode, Eye, AlertTriangle, XCircle } from "lucide-react";
+import { Loader2, FileCode, Eye, AlertTriangle, XCircle } from "lucide-react";
 import { useCallback, useState, useEffect, useMemo } from "react";
 
 import { JobDetailsModal } from "@/app/components/background-jobs-sidebar/job-details-modal";
@@ -19,6 +19,9 @@ import {
   AlertDialogTitle,
 } from "@/ui/alert-dialog";
 import { Button } from "@/ui/button";
+import { ModelSelectorToggle } from "./_components/ModelSelectorToggle";
+import { setProjectTaskSetting } from "@/actions/project-settings.actions";
+import { type ModelInfo } from "@/types/config-types";
 import { getProjectTaskModelSettings } from "@/actions/project-settings.actions";
 import {
   Card,
@@ -106,6 +109,8 @@ export function ImplementationPlansPanel({
   // Implementation plan settings state
   const [implementationPlanSettings, setImplementationPlanSettings] = useState<CopyButtonConfig[] | null>(null);
   const [selectedStepNumber, setSelectedStepNumber] = useState<string | null>(null);
+  const [selectedModelId, setSelectedModelId] = useState<string | undefined>(undefined);
+  const [allowedModelsForPlan, setAllowedModelsForPlan] = useState<ModelInfo[]>([]);
 
   // Validation for create functionality
   const canCreatePlan = Boolean(
@@ -133,6 +138,33 @@ export function ImplementationPlansPanel({
     
     loadSettings();
   }, [projectDirectory]);
+  
+  useEffect(() => {
+    if (!projectDirectory || !runtimeConfig) return;
+    
+    const loadModelConfig = async () => {
+      try {
+        const result = await getProjectTaskModelSettings(projectDirectory);
+        if (result.isSuccess && result.data?.implementationPlan) {
+          const planConfig = result.data.implementationPlan;
+          const currentModel = planConfig.model;
+          const allowedModelIds = planConfig.allowedModels || [];
+          
+          const availableModels = runtimeConfig.providers?.flatMap(p => p.models) || [];
+          const filteredModels = availableModels.filter(model => 
+            allowedModelIds.includes(model.id)
+          );
+          
+          setSelectedModelId(currentModel);
+          setAllowedModelsForPlan(filteredModels);
+        }
+      } catch (error) {
+        console.error('Failed to load model configuration:', error);
+      }
+    };
+    
+    loadModelConfig();
+  }, [projectDirectory, runtimeConfig]);
   
   // Handle copy button click
   const handleCopyButtonClick = useCallback(async (buttonConfig: CopyButtonConfig, plan: BackgroundJob) => {
@@ -255,6 +287,28 @@ export function ImplementationPlansPanel({
     }
   }, [onCreatePlan, canCreatePlan, taskDescription, currentSession?.taskDescription, includedPaths, showNotification]);
 
+  const handleModelSelect = useCallback(async (modelId: string) => {
+    if (!projectDirectory) return;
+    
+    setSelectedModelId(modelId);
+    
+    try {
+      await setProjectTaskSetting(
+        projectDirectory,
+        'implementationPlan',
+        'model',
+        modelId
+      );
+    } catch (error) {
+      console.error('Failed to save model selection:', error);
+      showNotification({
+        title: "Failed to save model selection",
+        message: error instanceof Error ? error.message : "Unknown error",
+        type: "error",
+      });
+    }
+  }, [projectDirectory, showNotification]);
+
   // Button text based on state
   const buttonText = isCreatingPlan
     ? "Creating..."
@@ -266,16 +320,15 @@ export function ImplementationPlansPanel({
     <div className="space-y-4 p-4">
       <header className="flex justify-between items-center mb-4">
         <h2 className="text-lg font-semibold text-foreground">Implementation Plans</h2>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => refreshJobs()}
-          disabled={isLoading}
-          className="bg-background/90 backdrop-blur-sm shadow-soft border-border/30 text-muted-foreground hover:bg-muted/50 hover:text-primary hover:border-primary/20"
-        >
-          <RefreshCw className="h-4 w-4 mr-2" />
-          Refresh
-        </Button>
+        <div className="flex items-center gap-2">
+          {onCreatePlan && allowedModelsForPlan.length > 1 && (
+            <ModelSelectorToggle
+              models={allowedModelsForPlan}
+              selectedModelId={selectedModelId}
+              onSelect={handleModelSelect}
+            />
+          )}
+        </div>
       </header>
 
       {/* Create Implementation Plan Section */}
@@ -323,6 +376,24 @@ export function ImplementationPlansPanel({
                             </AlertDescription>
                           </Alert>
                         );
+                      } else if (tokenPercentage > 95) {
+                        return (
+                          <Alert variant="destructive">
+                            <XCircle className="h-4 w-4" />
+                            <AlertDescription className="text-xs">
+                              <strong>Safety limit reached:</strong> {Math.round(tokenPercentage)}% of context window used. Plan creation disabled to prevent API failures. Please reduce files or switch to a higher-context model.
+                            </AlertDescription>
+                          </Alert>
+                        );
+                      } else if (tokenPercentage > 80) {
+                        return (
+                          <Alert variant="warning">
+                            <AlertTriangle className="h-4 w-4" />
+                            <AlertDescription className="text-xs">
+                              <strong>Approaching limit:</strong> Using {Math.round(tokenPercentage)}% of context window ({estimatedTokens.toLocaleString()}/{contextWindow.toLocaleString()} tokens). Consider reviewing file selection.
+                            </AlertDescription>
+                          </Alert>
+                        );
                       }
                       
                       return null;
@@ -348,12 +419,15 @@ export function ImplementationPlansPanel({
                 size="sm"
                 onClick={handleCreatePlan}
                 disabled={!canCreatePlan || (() => {
-                  // Disable if tokens exceed context window
+                  // Disable if tokens exceed context window safety threshold
                   if (!estimatedTokens || !runtimeConfig) return false;
                   const implementationPlanModel = runtimeConfig.tasks?.implementationPlan?.model;
                   const modelInfo = runtimeConfig.providers?.flatMap(p => p.models).find(m => m.id === implementationPlanModel);
                   const contextWindow = modelInfo?.contextWindow;
-                  return contextWindow ? estimatedTokens > contextWindow : false;
+                  
+                  // Only disable if we have context window info and tokens exceed 95% of limit
+                  if (!contextWindow) return false; // Allow if we don't know the limit (fallback to server validation)
+                  return estimatedTokens > (contextWindow * 0.95); // 95% safety buffer
                 })()}
                 className="flex items-center justify-center w-full h-9"
               >
