@@ -130,7 +130,7 @@ const VoiceTranscription = function VoiceTranscription({
             : isRecording && showStartingUI
               ? "bg-amber-500 hover:bg-amber-600 text-white animate-bounce"
             : canRecord 
-              ? "hover:bg-green-50 text-green-700" 
+              ? "hover:bg-success/10 text-success" 
               : "opacity-60"
         } transition-all duration-200`}
         title={
@@ -160,7 +160,7 @@ const VoiceTranscription = function VoiceTranscription({
             <div className="w-4 h-4 bg-amber-500 rounded-full animate-pulse" />
             <div className="absolute inset-0 w-4 h-4 bg-amber-400 rounded-full animate-ping opacity-75" />
           </div>
-          <span className="text-amber-600 font-medium bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200 animate-in slide-in-from-right-2 duration-300">
+          <span className="text-warning-foreground font-medium bg-warning/10 px-2 py-0.5 rounded-md border border-warning/20 animate-in slide-in-from-right-2 duration-300">
             Starting recording...
           </span>
         </div>
@@ -184,8 +184,8 @@ const VoiceTranscription = function VoiceTranscription({
 
       {isProcessing && (
         <div className="flex items-center gap-2 text-base animate-fade-in">
-          <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
-          <span className="text-blue-600 font-medium">Processing...</span>
+          <div className="w-4 h-4 border-2 border-info border-t-transparent rounded-full animate-spin" />
+          <span className="text-info-foreground font-medium">Processing...</span>
         </div>
       )}
 
@@ -235,8 +235,8 @@ const VoiceTranscription = function VoiceTranscription({
       )}
 
       {status === 'ERROR' && statusMessage && (
-        <div className="bg-red-50 border border-red-200 rounded px-2 py-1 animate-fade-in">
-          <div className="text-xs text-red-700 font-medium max-w-[200px] truncate" title={statusMessage}>
+        <div className="bg-destructive/10 border border-destructive/20 rounded px-2 py-1 animate-fade-in">
+          <div className="text-xs text-destructive-foreground font-medium max-w-[200px] truncate" title={statusMessage}>
             {statusMessage}
           </div>
         </div>

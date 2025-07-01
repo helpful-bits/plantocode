@@ -370,15 +370,12 @@ impl From<AppError> for RateLimitError {
 }
 
 /// Validation utilities for billing operations
-pub fn validate_amount(amount: f64) -> Result<(), AppError> {
-    if amount < 0.0 {
+pub fn validate_amount(amount: &bigdecimal::BigDecimal) -> Result<(), AppError> {
+    if amount < &bigdecimal::BigDecimal::from(0) {
         return Err(AppError::InvalidArgument("Amount cannot be negative".to_string()));
     }
-    if amount > 1_000_000.0 {
+    if amount > &bigdecimal::BigDecimal::from(1_000_000) {
         return Err(AppError::InvalidArgument("Amount exceeds maximum allowed value".to_string()));
-    }
-    if !amount.is_finite() {
-        return Err(AppError::InvalidArgument("Amount must be a finite number".to_string()));
     }
     Ok(())
 }
@@ -476,9 +473,8 @@ mod tests {
     #[test]
     fn test_validation_functions() {
         // Test amount validation
-        assert!(validate_amount(100.0).is_ok());
-        assert!(validate_amount(-1.0).is_err());
-        assert!(validate_amount(f64::INFINITY).is_err());
+        assert!(validate_amount(&bigdecimal::BigDecimal::from(100)).is_ok());
+        assert!(validate_amount(&bigdecimal::BigDecimal::from(-1)).is_err());
 
         // Test currency validation
         assert!(validate_currency("USD").is_ok());

@@ -13,8 +13,8 @@ VALUES (
     "tasks": {
       "implementation_plan": {
         "model": "google/gemini-2.5-pro",
-        "allowed_models": ["openai/o3", "openai/o3-pro", "openai/o4-mini-high", "deepseek/deepseek-r1-0528", "google/gemini-2.5-pro", "openai/o3:web"],
-        "max_tokens": 65536,
+        "allowed_models": ["openai/o3", "openai/o4-mini", "openai/o4-mini-high", "openai/o4-mini-high:web", "deepseek/deepseek-r1-0528", "google/gemini-2.5-pro", "openai/o3:web"],
+        "max_tokens": 23000,
         "temperature": 0.7,
         "copy_buttons": [
           {

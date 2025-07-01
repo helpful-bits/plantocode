@@ -186,7 +186,6 @@ pub use billing_commands::{
     get_usage_summary_command,
     create_billing_portal_session_command,
     list_invoices_command,
-    get_detailed_usage_command,
     get_auto_top_off_settings_command,
     update_auto_top_off_settings_command,
 };

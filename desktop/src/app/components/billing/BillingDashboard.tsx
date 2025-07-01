@@ -6,7 +6,8 @@ import {
   AlertTriangle,
   RefreshCw,
   DollarSign,
-  Plus
+  Plus,
+  FileWarning
 } from "lucide-react";
 
 import { Button } from "@/ui/button";
@@ -16,12 +17,15 @@ import { useBillingData } from "@/hooks/use-billing-data";
 import { CreditManager, PaymentMethodsList, InvoicesList, BillingHistory } from "./billing-components";
 import { AutoTopOffSettings } from "./components/AutoTopOffSettings";
 import { formatUsdCurrency } from "@/utils/currency-utils";
+import { openBillingPortal } from "@/actions/billing/payment-method.actions";
+import { open } from "@tauri-apps/plugin-shell";
 
 interface BillingDashboardProps {}
 
 
 export function BillingDashboard({}: BillingDashboardProps = {}) {
   const [isCreditManagerOpen, setIsCreditManagerOpen] = useState(false);
+  const [isOpeningPortal, setIsOpeningPortal] = useState(false);
 
   const { 
     dashboardData,
@@ -58,6 +62,19 @@ export function BillingDashboard({}: BillingDashboardProps = {}) {
     };
   }, []);
 
+  const handleUpdateBillingInfo = async () => {
+    try {
+      setIsOpeningPortal(true);
+      const portalUrl = await openBillingPortal();
+      await open(portalUrl);
+    } catch (err) {
+      console.error("Billing portal error:", err);
+      // Handle error silently or show notification if needed
+    } finally {
+      setIsOpeningPortal(false);
+    }
+  };
+
 
 
 
@@ -88,6 +105,31 @@ export function BillingDashboard({}: BillingDashboardProps = {}) {
   return (
     <div className="space-y-8" role="main" aria-label="Billing Dashboard">
       
+      {(dashboardData?.isPaymentMethodRequired || dashboardData?.isBillingInfoRequired) && (
+        <Alert variant="destructive" className="border-orange-200 bg-orange-50">
+          <FileWarning className="h-5 w-5" />
+          <AlertTitle className="text-orange-800 font-semibold">Action Required</AlertTitle>
+          <AlertDescription className="flex items-center justify-between mt-2">
+            <span className="text-orange-700">
+              {dashboardData?.isPaymentMethodRequired && dashboardData?.isBillingInfoRequired
+                ? "A payment method and complete billing information are required to ensure uninterrupted service."
+                : dashboardData?.isPaymentMethodRequired
+                ? "A payment method is required to ensure uninterrupted service."
+                : "Complete billing information is required to ensure uninterrupted service."
+              }
+            </span>
+            <Button 
+              size="sm" 
+              onClick={handleUpdateBillingInfo}
+              disabled={isOpeningPortal}
+              className="ml-4 bg-orange-600 hover:bg-orange-700"
+            >
+              {isOpeningPortal ? "Opening..." : "Update Information Now"}
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
+
       {dashboardData?.servicesBlocked && (
         <Alert variant="destructive" className="border-red-200 bg-red-50">
           <AlertTriangle className="h-5 w-5" />
@@ -132,7 +174,7 @@ export function BillingDashboard({}: BillingDashboardProps = {}) {
             <div className="h-10 w-10 bg-primary/10 rounded-full flex items-center justify-center">
               <DollarSign className="h-5 w-5 text-primary" />
             </div>
-            Credits Dashboard
+            Credits
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -178,10 +220,7 @@ export function BillingDashboard({}: BillingDashboardProps = {}) {
 
       <CreditManager
         isOpen={isCreditManagerOpen}
-        onClose={() => {
-          setIsCreditManagerOpen(false);
-          refreshBillingData();
-        }}
+        onClose={() => setIsCreditManagerOpen(false)}
       />
       
     </div>

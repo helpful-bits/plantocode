@@ -412,10 +412,11 @@ impl JobProcessor for FileRelevanceAssessmentProcessor {
                                 captured_system_prompt_template = system_prompt_template;
                             }
                             
-                            // Aggregate usage information from this chunk
+                            // Aggregate server-provided usage information from this chunk
                             if let Some(usage) = chunk_usage {
                                 total_input_tokens += usage.prompt_tokens;
                                 total_output_tokens += usage.completion_tokens;
+                                // Sum server-calculated costs from multiple chunks
                                 total_cost += usage.cost.unwrap_or(0.0);
                             }
                             
@@ -611,6 +612,9 @@ impl JobProcessor for FileRelevanceAssessmentProcessor {
                 completion_tokens: total_output_tokens,
                 total_tokens: total_input_tokens + total_output_tokens,
                 cost: Some(total_cost),
+                cached_input_tokens: Some(0),
+                cache_write_tokens: Some(0),
+                cache_read_tokens: Some(0),
             })
         } else {
             None

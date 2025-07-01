@@ -308,6 +308,61 @@ impl AnthropicClient {
     pub fn extract_tokens_from_stream_chunk(chunk_str: &str) -> Option<(i32, i32, i32, i32)> {
         Self::extract_usage_from_stream_chunk(chunk_str)
     }
+
+    // Extract cost from streaming chunk - prioritizes usage.cost field
+    pub fn extract_cost_from_stream_chunk(chunk_str: &str, model: &str) -> Option<f64> {
+        if chunk_str.trim().is_empty() {
+            return None;
+        }
+        
+        match serde_json::from_str::<AnthropicStreamChunk>(chunk_str.trim()) {
+            Ok(parsed) => {
+                if let Some(usage) = parsed.usage {
+                    if let Ok(usage_value) = serde_json::to_value(&usage) {
+                        if let Some(cost) = usage_value.get("cost").and_then(|c| c.as_f64()) {
+                            return Some(cost);
+                        }
+                    }
+                    
+                    let cache_write_tokens = usage.cache_creation_input_tokens.unwrap_or(0);
+                    let cache_read_tokens = usage.cache_read_input_tokens.unwrap_or(0);
+                    let cost = Self::calculate_cost_from_tokens(
+                        usage.input_tokens,
+                        cache_write_tokens,
+                        cache_read_tokens,
+                        usage.output_tokens,
+                        model
+                    );
+                    return Some(cost);
+                }
+            },
+            Err(_) => {}
+        }
+        None
+    }
+
+    // Calculate cost from token counts using Anthropic pricing
+    fn calculate_cost_from_tokens(input_tokens: i32, cache_write_tokens: i32, cache_read_tokens: i32, output_tokens: i32, model: &str) -> f64 {
+        let (input_price_per_1k, output_price_per_1k, cache_write_price_per_1k, cache_read_price_per_1k) = Self::get_model_pricing(model);
+        
+        let input_cost = (input_tokens as f64 / 1000.0) * input_price_per_1k;
+        let cache_write_cost = (cache_write_tokens as f64 / 1000.0) * cache_write_price_per_1k;
+        let cache_read_cost = (cache_read_tokens as f64 / 1000.0) * cache_read_price_per_1k;
+        let output_cost = (output_tokens as f64 / 1000.0) * output_price_per_1k;
+        
+        input_cost + cache_write_cost + cache_read_cost + output_cost
+    }
+
+    // Get model pricing - returns (input_per_1k, output_per_1k, cache_write_per_1k, cache_read_per_1k)
+    fn get_model_pricing(model: &str) -> (f64, f64, f64, f64) {
+        match model {
+            m if m.contains("claude-3-5-sonnet") => (0.003, 0.015, 0.00375, 0.0003),
+            m if m.contains("claude-3-opus") => (0.015, 0.075, 0.01875, 0.0015),
+            m if m.contains("claude-3-sonnet") => (0.003, 0.015, 0.00375, 0.0003),
+            m if m.contains("claude-3-haiku") => (0.00025, 0.00125, 0.0003125, 0.000025),
+            _ => (0.003, 0.015, 0.00375, 0.0003),
+        }
+    }
     
     // Convert a generic JSON Value into an AnthropicChatRequest
     pub fn convert_to_chat_request(&self, payload: Value) -> Result<AnthropicChatRequest, AppError> {
@@ -384,6 +439,25 @@ impl AnthropicClient {
         let cache_write_tokens = response.usage.cache_creation_input_tokens.unwrap_or(0);
         let cache_read_tokens = response.usage.cache_read_input_tokens.unwrap_or(0);
         (response.usage.input_tokens, cache_write_tokens, cache_read_tokens, response.usage.output_tokens)
+    }
+
+    // Extract cost from response - prioritizes usage.cost field
+    pub fn extract_cost_from_response(&self, response: &AnthropicChatResponse, model: &str) -> f64 {
+        if let Ok(usage_value) = serde_json::to_value(&response.usage) {
+            if let Some(cost) = usage_value.get("cost").and_then(|c| c.as_f64()) {
+                return cost;
+            }
+        }
+        
+        let cache_write_tokens = response.usage.cache_creation_input_tokens.unwrap_or(0);
+        let cache_read_tokens = response.usage.cache_read_input_tokens.unwrap_or(0);
+        Self::calculate_cost_from_tokens(
+            response.usage.input_tokens,
+            cache_write_tokens,
+            cache_read_tokens,
+            response.usage.output_tokens,
+            model
+        )
     }
 }
 

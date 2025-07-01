@@ -42,7 +42,6 @@ export function JobDetailsCostUsageSection() {
   const cacheWriteTokens = metadata.cacheWriteTokens || 0;
   const cacheReadTokens = metadata.cacheReadTokens || 0;
   
-  const jobCost = job.actualCost ?? metadata?.taskData?.actualCost;
 
   return (
     <Card>
@@ -86,12 +85,15 @@ export function JobDetailsCostUsageSection() {
           
           {/* Cache Token Display Section - Only show if any cache tokens exist */}
           {(cachedInputTokens > 0 || cacheWriteTokens > 0 || cacheReadTokens > 0) && (
-            <div className="pt-4">
-              <div className="text-xs text-muted-foreground mb-3 font-medium">Cache Tokens</div>
-              <div className="grid grid-cols-3 gap-4">
+            <div className="pt-4 border-t border-border/50">
+              <div className="text-xs text-muted-foreground mb-2 font-medium">Cache Usage</div>
+              <div className="text-xs text-muted-foreground mb-3 leading-relaxed">
+                Cache tokens optimize performance and reduce costs by reusing previously processed content
+              </div>
+              <div className="grid grid-cols-1 gap-3">
                 {cachedInputTokens > 0 && (
-                  <div>
-                    <div className="flex items-center gap-2 mb-1">
+                  <div className="flex items-center justify-between p-2 bg-muted/50 rounded-sm">
+                    <div className="flex items-center gap-2">
                       <div className="w-2 h-2 rounded-full bg-cyan-500"></div>
                       <div className="text-xs text-muted-foreground">Cached Input</div>
                     </div>
@@ -101,8 +103,8 @@ export function JobDetailsCostUsageSection() {
                   </div>
                 )}
                 {cacheWriteTokens > 0 && (
-                  <div>
-                    <div className="flex items-center gap-2 mb-1">
+                  <div className="flex items-center justify-between p-2 bg-muted/50 rounded-sm">
+                    <div className="flex items-center gap-2">
                       <div className="w-2 h-2 rounded-full bg-amber-500"></div>
                       <div className="text-xs text-muted-foreground">Cache Write</div>
                     </div>
@@ -112,8 +114,8 @@ export function JobDetailsCostUsageSection() {
                   </div>
                 )}
                 {cacheReadTokens > 0 && (
-                  <div>
-                    <div className="flex items-center gap-2 mb-1">
+                  <div className="flex items-center justify-between p-2 bg-muted/50 rounded-sm">
+                    <div className="flex items-center gap-2">
                       <div className="w-2 h-2 rounded-full bg-teal-500"></div>
                       <div className="text-xs text-muted-foreground">Cache Read</div>
                     </div>
@@ -123,34 +125,24 @@ export function JobDetailsCostUsageSection() {
                   </div>
                 )}
               </div>
+              <div className="mt-3 text-xs text-muted-foreground">
+                <div><strong>Cached Input:</strong> Previously processed input tokens (discounted billing)</div>
+                <div><strong>Cache Write:</strong> New tokens stored for future reuse (full billing)</div>
+                <div><strong>Cache Read:</strong> Tokens retrieved from cache (reduced billing)</div>
+              </div>
             </div>
           )}
           
           {/* Cost Display Section */}
           <div className="pt-2 border-t border-border/50">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <div className="flex items-center gap-2 mb-1">
-                  <div className="w-2 h-2 rounded-full bg-orange-500"></div>
-                  <div className="text-xs text-muted-foreground">Cost</div>
-                </div>
-                <div className="text-sm font-mono font-medium text-foreground">
-                  {jobCost !== null && jobCost !== undefined ? formatUsdCurrencyPrecise(jobCost) : 'N/A'}
-                </div>
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <div className="w-2 h-2 rounded-full bg-orange-500"></div>
+                <div className="text-xs text-muted-foreground">Cost</div>
               </div>
-              {job.duration_ms && (
-                <div>
-                  <div className="flex items-center gap-2 mb-1">
-                    <div className="w-2 h-2 rounded-full bg-blue-400"></div>
-                    <div className="text-xs text-muted-foreground">API Duration</div>
-                  </div>
-                  <div className="text-sm font-mono font-medium text-foreground">
-                    {job.duration_ms < 1000 
-                      ? `${job.duration_ms}ms` 
-                      : `${(job.duration_ms / 1000).toFixed(2)}s`}
-                  </div>
-                </div>
-              )}
+              <div className="text-sm font-mono font-medium text-foreground">
+                {job.actualCost !== null && job.actualCost !== undefined ? formatUsdCurrencyPrecise(job.actualCost) : 'N/A'}
+              </div>
             </div>
           </div>
         </div>

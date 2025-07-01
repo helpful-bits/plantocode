@@ -99,7 +99,7 @@ export function AddPaymentMethodModal({
                 Add Payment Method
               </DialogTitle>
               <DialogDescription>
-                Add a new credit or debit card to your account for payments and subscriptions.
+                Add a new credit or debit card to your account for payments and credit purchases.
               </DialogDescription>
             </DialogHeader>
 

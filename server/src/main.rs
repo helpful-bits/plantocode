@@ -4,6 +4,8 @@ use dotenv::dotenv;
 use std::env;
 use std::net::TcpListener;
 use reqwest::Client;
+use tokio_cron_scheduler::{JobScheduler, Job};
+use log::{info, error};
 
 mod auth_stores;
 mod clients;
@@ -37,6 +39,7 @@ use crate::services::auth::jwt;
 use crate::services::auth::oauth::Auth0OAuthService;
 use crate::services::billing_service::BillingService;
 use crate::services::credit_service::CreditService;
+use crate::services::reconciliation_service::ReconciliationService;
 use crate::routes::{configure_routes, configure_public_api_routes, configure_public_auth_routes, configure_webhook_routes};
 
 /// Validates AI model configurations at startup to catch misconfigurations early
@@ -59,20 +62,10 @@ async fn validate_ai_model_configurations(
     for (task_name, task_config) in &ai_settings.tasks {
         let model_id = &task_config.model;
         
-        let model = model_map.get(model_id)
+        let _model = model_map.get(model_id)
             .ok_or_else(|| format!("Task '{}' references non-existent model: {}", task_name, model_id))?;
         
-        let expected_pricing_type = match task_name.as_str() {
-            "voice_transcription" => "duration_based",
-            _ => "token_based",
-        };
-        
-        if model.pricing_type != expected_pricing_type {
-            return Err(format!(
-                "Task '{}' model '{}' has pricing type '{}' but expected '{}'",
-                task_name, model_id, model.pricing_type, expected_pricing_type
-            ));
-        }
+        // Model exists - no additional validation needed as all models are token-based
     }
     
     // Ensure critical tasks are configured
@@ -82,6 +75,84 @@ async fn validate_ai_model_configurations(
             return Err(format!("Required task '{}' is not configured", required_task));
         }
     }
+    
+    Ok(())
+}
+
+/// Initialize and start the reconciliation scheduler for hourly balance verification
+async fn start_reconciliation_scheduler(db_pools: DatabasePools) -> Result<(), String> {
+    info!("Initializing reconciliation scheduler for hourly financial balance verification");
+    
+    let scheduler = JobScheduler::new()
+        .await
+        .map_err(|e| format!("Failed to create job scheduler: {}", e))?;
+    
+    // Create reconciliation service instance for the job
+    let reconciliation_service = ReconciliationService::new(db_pools);
+    
+    // Schedule reconciliation to run every hour at minute 0
+    let job = Job::new_async("0 0 * * * *", move |_uuid, _l| {
+        let service = reconciliation_service.clone();
+        Box::pin(async move {
+            info!("Starting scheduled financial reconciliation");
+            
+            match service.generate_reconciliation_report().await {
+                Ok(report) => {
+                    info!(
+                        "Reconciliation completed successfully: {} users checked, {} discrepancies found",
+                        report.total_users_checked, report.users_with_discrepancies
+                    );
+                    
+                    // Log critical financial discrepancies with ERROR level for monitoring
+                    if report.users_with_discrepancies > 0 {
+                        error!(
+                            "FINANCIAL RECONCILIATION ALERT: {} users have balance discrepancies. Total system discrepancy: {}. Largest individual discrepancy: {:?}",
+                            report.users_with_discrepancies,
+                            report.total_discrepancy_amount,
+                            report.largest_discrepancy
+                        );
+                        
+                        // Log individual discrepancies for audit trail
+                        for discrepancy in &report.discrepancies {
+                            error!(
+                                "User {} balance discrepancy: expected {}, actual {}, difference {} (last transaction: {:?})",
+                                discrepancy.user_id,
+                                discrepancy.expected_balance,
+                                discrepancy.actual_balance,
+                                discrepancy.discrepancy_amount,
+                                discrepancy.last_transaction_date
+                            );
+                        }
+                    } else {
+                        info!("Financial reconciliation passed: all user balances are consistent with transaction history");
+                    }
+                }
+                Err(e) => {
+                    error!("Scheduled reconciliation failed: {}", e);
+                }
+            }
+        })
+    })
+    .map_err(|e| format!("Failed to create reconciliation job: {}", e))?;
+    
+    scheduler.add(job)
+        .await
+        .map_err(|e| format!("Failed to add reconciliation job to scheduler: {}", e))?;
+    
+    scheduler.start()
+        .await
+        .map_err(|e| format!("Failed to start reconciliation scheduler: {}", e))?;
+    
+    info!("Reconciliation scheduler started successfully - will run hourly financial balance verification");
+    
+    // Keep the scheduler running in the background
+    tokio::spawn(async move {
+        // Keep the scheduler alive by holding a reference to it
+        let _scheduler = scheduler;
+        loop {
+            tokio::time::sleep(tokio::time::Duration::from_secs(3600)).await; // Sleep for 1 hour
+        }
+    });
     
     Ok(())
 }
@@ -164,6 +235,12 @@ async fn main() -> std::io::Result<()> {
     // Initialize Auth0 OAuth service with system pool (for Auth0 user creation/lookup)
     let auth0_oauth_service = Auth0OAuthService::new(&app_settings, db_pools.system_pool.clone());
     log::info!("Auth0 OAuth service initialized successfully");
+    
+    // Initialize and start reconciliation scheduler for financial balance verification
+    if let Err(e) = start_reconciliation_scheduler(db_pools.clone()).await {
+        log::error!("Failed to start reconciliation scheduler: {}", e);
+        log::error!("Continuing without automated reconciliation - manual verification required");
+    }
     
     // Get server host and port from settings
     let host = &app_settings.server.host;
@@ -346,6 +423,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(web::Data::new(credit_service.clone()))
             .app_data(web::Data::new(app_settings.clone()))
             .app_data(web::Data::new(db_pools.clone()))
+            .app_data(web::Data::new(ApiUsageRepository::new(db_pools.user_pool.clone())))
             
             // Register health check endpoint with IP-based rate limiting
             .service(

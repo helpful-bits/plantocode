@@ -317,8 +317,14 @@ impl OpenRouterClient {
     
     // Helper method to extract cost from a stream chunk
     pub fn extract_cost_from_stream_chunk(chunk_str: &str) -> Option<f64> {
-        // OpenRouter doesn't provide cost in stream chunks, return None
-        None
+        if chunk_str.trim().is_empty() || chunk_str.trim() == "[DONE]" {
+            return None;
+        }
+        
+        match serde_json::from_str::<OpenRouterStreamChunk>(chunk_str.trim()) {
+            Ok(parsed) => parsed.usage.and_then(|u| u.cost),
+            Err(_) => None,
+        }
     }
 
     

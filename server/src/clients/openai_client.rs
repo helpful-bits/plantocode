@@ -1324,6 +1324,65 @@ impl OpenAIClient {
         Self::extract_usage_from_chat_stream_chunk(chunk_str)
     }
 
+    // Extract cost from streaming chunk - prioritizes usage.cost field
+    pub fn extract_cost_from_stream_chunk(chunk_str: &str, model: &str) -> Option<f64> {
+        for line in chunk_str.lines() {
+            if line.starts_with("data: ") {
+                let json_str = &line[6..];
+                if json_str.trim() == "[DONE]" {
+                    continue;
+                }
+                
+                if let Ok(parsed) = serde_json::from_str::<OpenAIStreamChunk>(json_str.trim()) {
+                    if let Some(usage) = parsed.usage {
+                        if let Ok(usage_value) = serde_json::to_value(&usage) {
+                            if let Some(cost) = usage_value.get("cost").and_then(|c| c.as_f64()) {
+                                return Some(cost);
+                            }
+                        }
+                        
+                        let cached_tokens = usage.prompt_tokens_details
+                            .and_then(|details| details.cached_tokens)
+                            .unwrap_or(0);
+                        let cost = Self::calculate_cost_from_tokens(
+                            usage.prompt_tokens, 
+                            cached_tokens, 
+                            usage.completion_tokens, 
+                            model
+                        );
+                        return Some(cost);
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    // Calculate cost from token counts using OpenAI pricing
+    fn calculate_cost_from_tokens(prompt_tokens: i32, cached_tokens: i32, completion_tokens: i32, model: &str) -> f64 {
+        let (input_price_per_1k, output_price_per_1k, cache_discount) = Self::get_model_pricing(model);
+        
+        let uncached_input_tokens = prompt_tokens - cached_tokens;
+        let input_cost = (uncached_input_tokens as f64 / 1000.0) * input_price_per_1k;
+        let cached_cost = (cached_tokens as f64 / 1000.0) * input_price_per_1k * cache_discount;
+        let output_cost = (completion_tokens as f64 / 1000.0) * output_price_per_1k;
+        
+        input_cost + cached_cost + output_cost
+    }
+
+    // Get model pricing - returns (input_per_1k, output_per_1k, cache_discount_factor)
+    fn get_model_pricing(model: &str) -> (f64, f64, f64) {
+        match model {
+            m if m.contains("gpt-4o") => (0.0025, 0.01, 0.5),
+            m if m.contains("gpt-4-turbo") => (0.01, 0.03, 0.5),
+            m if m.contains("gpt-4") => (0.03, 0.06, 0.5),
+            m if m.contains("gpt-3.5-turbo") => (0.0005, 0.0015, 0.5),
+            m if m.contains("o1-preview") => (0.015, 0.06, 1.0),
+            m if m.contains("o1-mini") => (0.003, 0.012, 1.0),
+            _ => (0.001, 0.002, 0.5),
+        }
+    }
+
     // Convert a generic JSON Value into an OpenAIChatRequest
     pub fn convert_to_openai_request(&self, payload: Value) -> Result<OpenAIChatRequest, AppError> {
         let mut request: OpenAIChatRequest = serde_json::from_value(payload)
@@ -1356,6 +1415,29 @@ impl OpenAIClient {
         } else {
             (0, 0, 0, 0)
         }
+    }
+
+    // Extract cost from response - prioritizes usage.cost field
+    pub fn extract_cost_from_response(&self, response: &OpenAIChatResponse, model: &str) -> f64 {
+        if let Some(usage) = &response.usage {
+            if let Ok(usage_value) = serde_json::to_value(usage) {
+                if let Some(cost) = usage_value.get("cost").and_then(|c| c.as_f64()) {
+                    return cost;
+                }
+            }
+            
+            let cached_tokens = usage.prompt_tokens_details
+                .as_ref()
+                .and_then(|details| details.cached_tokens)
+                .unwrap_or(0);
+            return Self::calculate_cost_from_tokens(
+                usage.prompt_tokens, 
+                cached_tokens, 
+                usage.completion_tokens, 
+                model
+            );
+        }
+        0.0
     }
 
     /// Creates a Chat Completions format SSE chunk for streaming
