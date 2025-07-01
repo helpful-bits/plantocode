@@ -1,4 +1,4 @@
-import { AlertCircle, RefreshCw, Sparkles, Loader2 } from "lucide-react";
+import { AlertCircle, RefreshCw, Loader2 } from "lucide-react";
 
 import { Button } from "@/ui/button";
 import { Card, CardContent, CardHeader } from "@/ui/card";
@@ -74,7 +74,7 @@ export function ErrorState({ message, onRetry }: ErrorStateProps) {
       <div className="text-center space-y-4 p-6">
         <AlertCircle className="h-12 w-12 text-destructive mx-auto" />
         <div>
-          <h3 className="font-semibold mb-2">Subscription Error</h3>
+          <h3 className="font-semibold mb-2">Billing Error</h3>
           <p className="text-sm text-muted-foreground leading-7">
             {message}
           </p>
@@ -93,35 +93,6 @@ export function ErrorState({ message, onRetry }: ErrorStateProps) {
   );
 }
 
-interface NoSubscriptionStateProps {
-  onUpgrade: () => void;
-}
-
-export function NoSubscriptionState({
-  onUpgrade,
-}: NoSubscriptionStateProps) {
-  return (
-    <div className="text-center space-y-6 p-6">
-      <Sparkles className="h-12 w-12 text-primary mx-auto" />
-      <div>
-        <h3 className="font-semibold text-xl mb-2">No Subscription</h3>
-        <p className="text-sm text-muted-foreground leading-7 max-w-md mx-auto">
-          Get started with a subscription to access premium features.
-        </p>
-      </div>
-      <Button
-        onClick={onUpgrade}
-        className="shadow-soft hover:shadow-soft-md backdrop-blur-sm transition-all duration-200"
-        size="default"
-      >
-        Upgrade to Pro
-      </Button>
-      <p className="text-xs text-muted-foreground leading-7">
-        30-day guarantee • No setup fees
-      </p>
-    </div>
-  );
-}
 
 interface ProcessingStateProps {
   title: string;

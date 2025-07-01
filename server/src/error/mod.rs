@@ -35,6 +35,7 @@ pub enum AppError {
     NotImplemented(String),
     TooManyRequests(String),
     Billing(String),
+    AlreadyExists(String),
 }
 
 #[derive(Serialize, Deserialize)]
@@ -76,6 +77,7 @@ impl fmt::Display for AppError {
             AppError::NotImplemented(e) => write!(f, "Not implemented: {}", e),
             AppError::TooManyRequests(e) => write!(f, "Too many requests: {}", e),
             AppError::Billing(e) => write!(f, "Billing error: {}", e),
+            AppError::AlreadyExists(e) => write!(f, "Already exists: {}", e),
         }
     }
 }
@@ -114,6 +116,7 @@ impl ResponseError for AppError {
             AppError::NotImplemented(_) => (StatusCode::NOT_IMPLEMENTED, "not_implemented"),
             AppError::TooManyRequests(_) => (StatusCode::TOO_MANY_REQUESTS, "too_many_requests"),
             AppError::Billing(_) => (StatusCode::PAYMENT_REQUIRED, "billing_error"),
+            AppError::AlreadyExists(_) => (StatusCode::CONFLICT, "already_exists"),
         };
 
         let error_response = ErrorResponse {
@@ -156,6 +159,7 @@ impl ResponseError for AppError {
             AppError::NotImplemented(_) => StatusCode::NOT_IMPLEMENTED,
             AppError::TooManyRequests(_) => StatusCode::TOO_MANY_REQUESTS,
             AppError::Billing(_) => StatusCode::PAYMENT_REQUIRED,
+            AppError::AlreadyExists(_) => StatusCode::CONFLICT,
         }
     }
 }
@@ -202,8 +206,8 @@ impl From<crate::services::stripe_service::StripeServiceError> for AppError {
             crate::services::stripe_service::StripeServiceError::PaymentProcessing(msg) => {
                 AppError::Payment(format!("Payment processing error: {}", msg))
             }
-            crate::services::stripe_service::StripeServiceError::SubscriptionManagement(msg) => {
-                AppError::Payment(format!("Subscription management error: {}", msg))
+            crate::services::stripe_service::StripeServiceError::CreditBilling(msg) => {
+                AppError::Payment(format!("Credit billing error: {}", msg))
             }
         }
     }

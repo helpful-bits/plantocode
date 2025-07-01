@@ -1,10 +1,12 @@
 use actix_web::{web, HttpResponse};
 use tracing::{info, instrument};
 use serde::{Deserialize, Serialize};
+use bigdecimal::BigDecimal;
 
 use crate::error::AppError;
 use crate::db::repositories::{ModelRepository, ModelWithProvider};
 use crate::models::runtime_config::AppState;
+use crate::models::model_pricing::ModelPricing;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -14,10 +16,6 @@ pub struct ModelResponse {
     pub context_window: i32,
     pub price_input: String,  // BigDecimal as string for JSON
     pub price_output: String, // BigDecimal as string for JSON
-    pub pricing_type: String,
-    pub price_per_hour: Option<String>,
-    pub minimum_billable_seconds: Option<i32>,
-    pub billing_unit: String,
     pub model_type: String,
     pub capabilities: serde_json::Value,
     pub status: String,
@@ -46,10 +44,6 @@ impl From<ModelWithProvider> for ModelResponse {
             context_window: model.context_window,
             price_input: model.price_input.to_string(),
             price_output: model.price_output.to_string(),
-            pricing_type: model.pricing_type,
-            price_per_hour: model.price_per_hour.map(|p| p.to_string()),
-            minimum_billable_seconds: model.minimum_billable_seconds,
-            billing_unit: model.billing_unit,
             model_type: model.model_type,
             capabilities: model.capabilities,
             status: model.status,
@@ -134,5 +128,228 @@ pub async fn get_models_by_type(
     let response: Vec<ModelResponse> = models.into_iter().map(Into::into).collect();
     
     info!("Returning {} models of type: {}", response.len(), model_type);
+    Ok(HttpResponse::Ok().json(response))
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CostEstimationRequest {
+    pub model_id: String,
+    pub input_tokens: i64,
+    pub output_tokens: i64,
+    pub cache_write_tokens: Option<i64>,
+    pub cache_read_tokens: Option<i64>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CostEstimationResponse {
+    pub model_id: String,
+    pub input_tokens: i64,
+    pub output_tokens: i64,
+    pub cache_write_tokens: i64,
+    pub cache_read_tokens: i64,
+    pub estimated_cost: String, // BigDecimal as string
+    pub cost_breakdown: CostBreakdown,
+    pub pricing_model: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CostBreakdown {
+    pub input_cost: String,
+    pub output_cost: String,
+    pub cache_write_cost: Option<String>,
+    pub cache_read_cost: Option<String>,
+}
+
+/// Estimate cost for a given model and token usage
+#[instrument(skip(app_state))]
+pub async fn estimate_cost(
+    app_state: web::Data<AppState>,
+    request: web::Json<CostEstimationRequest>,
+) -> Result<HttpResponse, AppError> {
+    let req = request.into_inner();
+    info!("API request: Estimate cost for model {} with {} input tokens, {} output tokens", 
+          req.model_id, req.input_tokens, req.output_tokens);
+    
+    // Get model with provider information
+    let model = app_state.model_repository
+        .find_by_id_with_provider(&req.model_id)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("Model '{}' not found", req.model_id)))?;
+    
+    // Calculate input cost with cache token support
+    let cache_write_tokens = req.cache_write_tokens.unwrap_or(0);
+    let cache_read_tokens = req.cache_read_tokens.unwrap_or(0);
+    
+    let input_cost = model.calculate_input_cost(
+        req.input_tokens,
+        cache_write_tokens,
+        cache_read_tokens
+    ).map_err(|e| AppError::InvalidArgument(format!("Input cost calculation failed: {}", e)))?;
+    
+    // Calculate output cost
+    let output_cost = if let Some(rate) = model.get_output_cost_per_million_tokens() {
+        let million = BigDecimal::from(1_000_000);
+        let output_tokens_bd = BigDecimal::from(req.output_tokens);
+        (&rate * &output_tokens_bd) / &million
+    } else {
+        BigDecimal::from(0)
+    };
+    
+    // Calculate total cost
+    let total_cost = &input_cost + &output_cost;
+    
+    // Prepare cache cost breakdown
+    let cache_write_cost = if cache_write_tokens > 0 {
+        if let Some(rate) = model.get_cache_write_cost_per_million_tokens() {
+            let million = BigDecimal::from(1_000_000);
+            let tokens_bd = BigDecimal::from(cache_write_tokens);
+            Some(((&rate * &tokens_bd) / &million).to_string())
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+    
+    let cache_read_cost = if cache_read_tokens > 0 {
+        if let Some(rate) = model.get_cache_read_cost_per_million_tokens() {
+            let million = BigDecimal::from(1_000_000);
+            let tokens_bd = BigDecimal::from(cache_read_tokens);
+            Some(((&rate * &tokens_bd) / &million).to_string())
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+    
+    let model_id = req.model_id.clone();
+    let response = CostEstimationResponse {
+        model_id: req.model_id,
+        input_tokens: req.input_tokens,
+        output_tokens: req.output_tokens,
+        cache_write_tokens,
+        cache_read_tokens,
+        estimated_cost: total_cost.to_string(),
+        cost_breakdown: CostBreakdown {
+            input_cost: input_cost.to_string(),
+            output_cost: output_cost.to_string(),
+            cache_write_cost,
+            cache_read_cost,
+        },
+        pricing_model: model.pricing_model_description(),
+    };
+    
+    info!("Estimated cost for model {}: {}", model_id, total_cost);
+    Ok(HttpResponse::Ok().json(response))
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BatchCostEstimationRequest {
+    pub requests: Vec<CostEstimationRequest>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BatchCostEstimationResponse {
+    pub estimates: Vec<CostEstimationResponse>,
+    pub total_estimated_cost: String,
+}
+
+/// Estimate costs for multiple models/requests in batch
+#[instrument(skip(app_state))]
+pub async fn estimate_batch_cost(
+    app_state: web::Data<AppState>,
+    request: web::Json<BatchCostEstimationRequest>,
+) -> Result<HttpResponse, AppError> {
+    let req = request.into_inner();
+    info!("API request: Batch cost estimation for {} requests", req.requests.len());
+    
+    let mut estimates = Vec::new();
+    let mut total_cost = BigDecimal::from(0);
+    
+    for cost_req in req.requests {
+        // Get model with provider information
+        let model = app_state.model_repository
+            .find_by_id_with_provider(&cost_req.model_id)
+            .await?
+            .ok_or_else(|| AppError::NotFound(format!("Model '{}' not found", cost_req.model_id)))?;
+        
+        // Calculate input cost with cache token support
+        let cache_write_tokens = cost_req.cache_write_tokens.unwrap_or(0);
+        let cache_read_tokens = cost_req.cache_read_tokens.unwrap_or(0);
+        
+        let input_cost = model.calculate_input_cost(
+            cost_req.input_tokens,
+            cache_write_tokens,
+            cache_read_tokens
+        ).map_err(|e| AppError::InvalidArgument(format!("Input cost calculation failed: {}", e)))?;
+        
+        // Calculate output cost
+        let output_cost = if let Some(rate) = model.get_output_cost_per_million_tokens() {
+            let million = BigDecimal::from(1_000_000);
+            let output_tokens_bd = BigDecimal::from(cost_req.output_tokens);
+            (&rate * &output_tokens_bd) / &million
+        } else {
+            BigDecimal::from(0)
+        };
+        
+        // Calculate total cost for this request
+        let request_total_cost = &input_cost + &output_cost;
+        
+        total_cost = total_cost + &request_total_cost;
+        
+        // Prepare cache cost breakdown
+        let cache_write_cost = if cache_write_tokens > 0 {
+            if let Some(rate) = model.get_cache_write_cost_per_million_tokens() {
+                let million = BigDecimal::from(1_000_000);
+                let tokens_bd = BigDecimal::from(cache_write_tokens);
+                Some(((&rate * &tokens_bd) / &million).to_string())
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+        
+        let cache_read_cost = if cache_read_tokens > 0 {
+            if let Some(rate) = model.get_cache_read_cost_per_million_tokens() {
+                let million = BigDecimal::from(1_000_000);
+                let tokens_bd = BigDecimal::from(cache_read_tokens);
+                Some(((&rate * &tokens_bd) / &million).to_string())
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+        
+        estimates.push(CostEstimationResponse {
+            model_id: cost_req.model_id,
+            input_tokens: cost_req.input_tokens,
+            output_tokens: cost_req.output_tokens,
+            cache_write_tokens,
+            cache_read_tokens,
+            estimated_cost: request_total_cost.to_string(),
+            cost_breakdown: CostBreakdown {
+                input_cost: input_cost.to_string(),
+                output_cost: output_cost.to_string(),
+                cache_write_cost,
+                cache_read_cost,
+            },
+            pricing_model: model.pricing_model_description(),
+        });
+    }
+    
+    let response = BatchCostEstimationResponse {
+        estimates,
+        total_estimated_cost: total_cost.to_string(),
+    };
+    
+    info!("Batch cost estimation completed. Total estimated cost: {}", total_cost);
     Ok(HttpResponse::Ok().json(response))
 }

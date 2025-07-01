@@ -14,7 +14,6 @@ pub mod payment_method;
 pub mod price;
 pub mod product;
 pub mod setup_intent;
-pub mod subscription;
 
 // Re-export all types for convenience
 pub use billing_portal_session::BillingPortalSession;
@@ -28,7 +27,6 @@ pub use payment_method::{PaymentMethod, PaymentMethodList};
 pub use price::Price;
 pub use product::Product;
 pub use setup_intent::SetupIntent;
-pub use subscription::{Subscription, SubscriptionStatus, SubscriptionItem};
 
 // Common enums and types
 #[derive(serde::Deserialize, serde::Serialize, Debug, Clone)]

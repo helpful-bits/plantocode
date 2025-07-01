@@ -97,10 +97,6 @@ pub async fn check_auth_status_and_exchange_token(
     app_state: State<'_, AppState>,
     token_manager: State<'_, Arc<TokenManager>>,
 ) -> AppResult<Option<FrontendUser>> {
-    // Cleanup old attempts
-    app_state.auth0_state_store.cleanup_old_attempts()
-        .map_err(|e| AppError::InternalError(format!("Failed to cleanup auth attempts: {}", e)))?;
-    
     // Get the stored attempt
     let (pkce_verifier_secret, csrf_token_tauri_original) = 
         app_state.auth0_state_store.get_attempt(&polling_id)

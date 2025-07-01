@@ -19,13 +19,13 @@ export function RecommendationsPanel({
   }
 
   return (
-    <div className="mb-6 p-4 bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/30 dark:to-indigo-950/30 rounded-xl border border-blue-200 dark:border-blue-800">
+    <div className="mb-6 p-4 bg-info/10 rounded-xl border border-info/20">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
-          <h3 className="text-lg font-semibold text-blue-900 dark:text-blue-100">
+          <h3 className="text-lg font-semibold text-info-foreground">
             AI Recommendations
           </h3>
-          <Badge variant="secondary" className="bg-blue-100 text-blue-800">
+          <Badge variant="secondary" className="bg-info/20 text-info-foreground">
             {recommendations.length} insights
           </Badge>
         </div>
@@ -33,7 +33,7 @@ export function RecommendationsPanel({
           variant="ghost"
           size="sm"
           onClick={onClose}
-          className="text-blue-600 hover:text-blue-800 cursor-pointer"
+          className="text-info hover:text-info/80 cursor-pointer"
         >
           Close
         </Button>
@@ -63,8 +63,8 @@ export function RecommendationsPanel({
                     <p className="text-green-600">{rec.estimatedImprovement}</p>
                   </div>
                   <div>
-                    <span className="font-medium text-blue-700">Change:</span>
-                    <p className="text-blue-600">{rec.currentValue} → {rec.recommendedValue}</p>
+                    <span className="font-medium text-info">Change:</span>
+                    <p className="text-info/80">{rec.currentValue} → {rec.recommendedValue}</p>
                   </div>
                 </div>
               </div>

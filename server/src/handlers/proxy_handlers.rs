@@ -38,6 +38,86 @@ fn is_fallback_error(error: &AppError) -> bool {
     }
 }
 
+/// Comprehensive cost validation for API endpoints
+/// Ensures that all cost calculations follow server-side validation rules
+async fn validate_request_cost_limits(
+    model: &ModelWithProvider,
+    input_tokens: i64,
+    output_tokens: i64,
+    cache_write_tokens: i64,
+    cache_read_tokens: i64,
+    user_balance: &BigDecimal,
+) -> Result<BigDecimal, AppError> {
+    // Validate model has pricing configuration
+
+    if !model.has_valid_pricing() {
+        return Err(AppError::InvalidArgument(format!("Model '{}' has no valid pricing configuration", model.id)));
+    }
+
+    // Calculate estimated cost using server-side pricing logic (no duration-based billing)
+    let estimated_cost = model.calculate_total_cost(input_tokens, output_tokens)
+        .map_err(|e| AppError::InvalidArgument(format!("Cost calculation failed: {}", e)))?;
+
+    // Validate user has sufficient credits for the estimated cost
+    if estimated_cost > *user_balance {
+        return Err(AppError::CreditInsufficient(
+            format!("Insufficient credits. Required: {}, Available: {}", estimated_cost, user_balance)
+        ));
+    }
+
+    // Validate against maximum cost per request limits
+    let max_cost_per_request = BigDecimal::from(50); // $50 max per request
+    if estimated_cost > max_cost_per_request {
+        return Err(AppError::InvalidArgument(
+            format!("Request cost {} exceeds maximum allowed cost per request ({})", estimated_cost, max_cost_per_request)
+        ));
+    }
+
+    // Validate token limits for security
+    if input_tokens > 1_000_000 || output_tokens > 1_000_000 {
+        return Err(AppError::InvalidArgument(
+            "Token counts exceed maximum allowed limits (1M tokens per type)".to_string()
+        ));
+    }
+
+    if cache_write_tokens > 1_000_000 || cache_read_tokens > 1_000_000 {
+        return Err(AppError::InvalidArgument(
+            "Cache token counts exceed maximum allowed limits (1M tokens per type)".to_string()
+        ));
+    }
+
+    Ok(estimated_cost)
+}
+
+/// Pre-request validation for all API endpoints
+/// Ensures the request meets all cost and security requirements before processing
+async fn validate_api_request(
+    user_id: &uuid::Uuid,
+    model: &ModelWithProvider,
+    max_tokens: Option<u32>,
+    billing_service: &BillingService,
+) -> Result<BigDecimal, AppError> {
+    // Get current user balance
+    let balance = billing_service.get_credit_service().get_user_balance(user_id).await?;
+    if balance.balance <= BigDecimal::from(0) {
+        return Err(AppError::CreditInsufficient("No credits available".to_string()));
+    }
+
+    // Estimate tokens based on max_tokens parameter (conservative estimate)
+    let estimated_input_tokens = max_tokens.unwrap_or(4000) as i64 / 2; // Assume 50% for input
+    let estimated_output_tokens = max_tokens.unwrap_or(4000) as i64 / 2; // Assume 50% for output
+
+    // Validate cost limits with conservative estimates
+    validate_request_cost_limits(
+        model,
+        estimated_input_tokens,
+        estimated_output_tokens,
+        0, // No cache tokens in estimate
+        0,
+        &balance.balance,
+    ).await
+}
+
 /// Manages token accumulation and single billing operation for streaming requests
 struct StreamingBillingManager {
     user_id: uuid::Uuid,
@@ -77,15 +157,13 @@ impl StreamingBillingManager {
         let entry = ApiUsageEntryDto {
             user_id: self.user_id,
             service_name: self.model_id.clone(),
-            tokens_input: self.total_input_tokens,
-            tokens_output: self.total_output_tokens,
+            tokens_input: self.total_input_tokens as i64,
+            tokens_output: self.total_output_tokens as i64,
             cached_input_tokens: 0,
             cache_write_tokens: 0,
             cache_read_tokens: 0,
             request_id: Some(self.request_id.clone()),
             metadata: None,
-            processing_ms: None,
-            input_duration_ms: None,
         };
         
         match self.billing_service.charge_for_api_usage(entry).await {
@@ -131,26 +209,23 @@ fn create_api_usage_entry_with_cache(
     cache_write_tokens: i32, 
     cache_read_tokens: i32, 
     request_id: String, 
-    duration_ms: Option<i64>
 ) -> ApiUsageEntryDto {
     ApiUsageEntryDto {
         user_id,
         service_name: model_id,
-        tokens_input,
-        tokens_output,
-        cached_input_tokens: cache_write_tokens + cache_read_tokens,
-        cache_write_tokens,
-        cache_read_tokens,
+        tokens_input: tokens_input as i64,
+        tokens_output: tokens_output as i64,
+        cached_input_tokens: (cache_write_tokens + cache_read_tokens) as i64,
+        cache_write_tokens: cache_write_tokens as i64,
+        cache_read_tokens: cache_read_tokens as i64,
         request_id: Some(request_id),
         metadata: None,
-        processing_ms: None,
-        input_duration_ms: duration_ms,
     }
 }
 
 /// Helper function to create API usage entry for billing (backward compatibility)
-fn create_api_usage_entry(user_id: Uuid, model_id: String, tokens_input: i32, tokens_output: i32, request_id: String, duration_ms: Option<i64>) -> ApiUsageEntryDto {
-    create_api_usage_entry_with_cache(user_id, model_id, tokens_input, tokens_output, 0, 0, request_id, duration_ms)
+fn create_api_usage_entry(user_id: Uuid, model_id: String, tokens_input: i32, tokens_output: i32, request_id: String) -> ApiUsageEntryDto {
+    create_api_usage_entry_with_cache(user_id, model_id, tokens_input, tokens_output, 0, 0, request_id)
 }
 
 /// Helper function to extract cached token information from client response tuple
@@ -191,7 +266,6 @@ pub struct LlmCompletionRequest {
     pub stream: Option<bool>,
     pub max_tokens: Option<u32>,
     pub temperature: Option<f32>,
-    pub duration_ms: Option<i64>,
     #[serde(flatten)]
     pub other: HashMap<String, Value>,
 }
@@ -211,13 +285,6 @@ pub async fn llm_chat_completion_handler(
     
     info!("Processing LLM chat completion request for user: {}", user_id);
     
-    // Check if user has sufficient credits
-    let balance = billing_service.get_credit_service().get_user_balance(&user_id).await?;
-    if balance.balance <= BigDecimal::from(0) {
-        warn!("Insufficient credits for user: {}", user_id);
-        return Err(AppError::CreditInsufficient("Insufficient credits for AI service usage".to_string()));
-    }
-    
     // Extract model ID from request payload
     let model_id = payload.model.clone();
     debug!("Routing request for model: {}", model_id);
@@ -230,11 +297,16 @@ pub async fn llm_chat_completion_handler(
     
     info!("Routing to provider: {} for model: {}", model_with_provider.provider_code, model_with_provider.name);
     
+    // Comprehensive cost and security validation
+    let _estimated_cost = validate_api_request(
+        &user_id,
+        &model_with_provider,
+        payload.max_tokens,
+        &billing_service,
+    ).await?;
+    
     // Check if request is streaming
     let is_streaming = payload.stream.unwrap_or(false);
-    
-    // Extract duration_ms for cost calculation
-    let _duration_ms = payload.duration_ms;
     
     // Extract payload for different handler types
     let payload_inner = payload.into_inner();
@@ -317,7 +389,7 @@ async fn handle_openai_request(
     };
     
     // Create API usage entry and bill atomically with auto top-off integration
-    let entry = create_api_usage_entry_with_cache(*user_id, model.id.clone(), tokens_input, tokens_output, cache_write_tokens, cache_read_tokens, request_id, None);
+    let entry = create_api_usage_entry_with_cache(*user_id, model.id.clone(), tokens_input, tokens_output, cache_write_tokens, cache_read_tokens, request_id);
     
     let (api_usage_record, _user_credit) = billing_service
         .charge_for_api_usage(entry)
@@ -372,7 +444,6 @@ async fn handle_openai_streaming_request(
     let user_id_clone = *user_id;
     let model_clone = model.clone();
     let billing_service_clone = Arc::clone(&billing_service);
-    let _duration_ms = payload.duration_ms;
     
     let processed_stream = stream.then(move |chunk_result| {
         let billing_service_inner = billing_service_clone.clone();
@@ -463,7 +534,7 @@ async fn handle_anthropic_request(
     // Token counts already extracted from client method
     
     // Create API usage entry and bill atomically with auto top-off integration
-    let entry = create_api_usage_entry_with_cache(*user_id, model.id.clone(), tokens_input, tokens_output, 0, 0, request_id, None);
+    let entry = create_api_usage_entry_with_cache(*user_id, model.id.clone(), tokens_input, tokens_output, 0, 0, request_id);
     
     let (api_usage_record, _user_credit) = billing_service
         .charge_for_api_usage(entry)
@@ -597,7 +668,7 @@ async fn handle_google_request(
     // Token counts already extracted from client method
     
     // Create API usage entry and bill atomically with auto top-off integration
-    let entry = create_api_usage_entry_with_cache(*user_id, model.id.clone(), tokens_input, tokens_output, 0, 0, request_id, None);
+    let entry = create_api_usage_entry_with_cache(*user_id, model.id.clone(), tokens_input, tokens_output, 0, 0, request_id);
     
     let (api_usage_record, _user_credit) = billing_service
         .charge_for_api_usage(entry)
@@ -793,7 +864,7 @@ async fn handle_openrouter_request(
     // Token counts already extracted from client method (ignore OpenRouter's cost calculation)
     
     // Create API usage entry and bill atomically with auto top-off integration
-    let entry = create_api_usage_entry_with_cache(*user_id, model.id.clone(), tokens_input, tokens_output, 0, 0, request_id, None);
+    let entry = create_api_usage_entry_with_cache(*user_id, model.id.clone(), tokens_input, tokens_output, 0, 0, request_id);
     
     let (api_usage_record, _user_credit) = billing_service
         .charge_for_api_usage(entry)
@@ -893,12 +964,7 @@ pub async fn transcription_handler(
     let user_id = user_id.0;
     info!("Processing transcription request for user: {}", user_id);
 
-    // Check if user has sufficient credits
-    let balance = billing_service.get_credit_service().get_user_balance(&user_id).await?;
-    if balance.balance <= BigDecimal::from(0) {
-        warn!("Insufficient credits for user: {}", user_id);
-        return Err(AppError::CreditInsufficient("Insufficient credits for transcription service usage".to_string()));
-    }
+    // Pre-validation will be done after we get the model information
 
     let mut model = String::new();
     let mut file_data = Vec::new();
@@ -907,7 +973,6 @@ pub async fn transcription_handler(
     let mut prompt: Option<String> = None;
     let mut temperature: Option<f32> = None;
     let mut mime_type: Option<String> = None;
-    let mut duration_ms: Option<i64> = None;
 
     // Parse multipart form data
     while let Some(mut field) = payload.try_next().await.map_err(|e| AppError::BadRequest(format!("Failed to parse multipart data: {}", e)))? {
@@ -968,16 +1033,6 @@ pub async fn transcription_handler(
                     temperature = Some(temp_str.parse().map_err(|e| AppError::BadRequest(format!("Invalid temperature value: {}", e)))?);
                 }
             }
-            "duration_ms" => {
-                let mut data = Vec::new();
-                while let Some(chunk) = field.try_next().await.map_err(|e| AppError::BadRequest(format!("Failed to read duration_ms field: {}", e)))? {
-                    data.extend_from_slice(&chunk);
-                }
-                if !data.is_empty() {
-                    let duration_str = String::from_utf8(data).map_err(|e| AppError::BadRequest(format!("Invalid duration_ms field: {}", e)))?;
-                    duration_ms = Some(duration_str.parse().map_err(|e| AppError::BadRequest(format!("Invalid duration_ms value: {}", e)))?);
-                }
-            }
             _ => {
                 // Skip unknown fields
                 while let Some(_chunk) = field.try_next().await.map_err(|e| AppError::BadRequest(format!("Failed to skip field data: {}", e)))? {
@@ -996,6 +1051,14 @@ pub async fn transcription_handler(
         .find_by_id_with_provider(&model)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("Model '{}' not found or inactive", model)))?;
+
+    // Comprehensive cost and security validation for transcription
+    let _estimated_cost = validate_api_request(
+        &user_id,
+        &model_with_provider,
+        None, // No max_tokens for transcription
+        &billing_service,
+    ).await?;
 
     // Use the API model ID for the actual API call
     let api_model_id = &model_with_provider.api_model_id;
@@ -1055,15 +1118,8 @@ pub async fn transcription_handler(
         &cleaned_mime_type,
     ).await?;
 
-    // Handle billing if duration_ms is provided
-    if let Some(duration) = duration_ms {
-        // Create API usage entry for duration-based billing using the ModelWithProvider
-        let entry = create_api_usage_entry(user_id, model_with_provider.id.clone(), 0, 0, uuid::Uuid::new_v4().to_string(), Some(duration));
-        
-        billing_service
-            .charge_for_api_usage(entry)
-            .await?;
-    }
+    // Note: Duration tracking is kept for UI job timing purposes but no longer used for billing
+    // Transcription is now billed using token-based pricing through the standard OpenAI client
 
     let response = TranscriptionResponse {
         text: transcription_text,

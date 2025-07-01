@@ -122,15 +122,15 @@ impl LlmTaskRunner {
             .map(|choice| choice.message.content.clone())
             .unwrap_or_default();
         
-        // Ensure we capture server-calculated cost from the non-streaming response
-        debug!("Non-streaming LLM response usage: {:?}", response.usage);
+        // Server provides authoritative cost and token counts - no client-side calculation needed
+        debug!("Non-streaming LLM response usage (server-calculated): {:?}", response.usage);
         
         // Log complete interaction (prompt + response) to file for debugging
         self.log_complete_interaction(&system_prompt, &user_prompt, &response_text, &response.usage, "non_streaming").await;
         
         Ok(LlmTaskResult {
             response: response_text,
-            usage: response.usage, // Contains server-calculated cost
+            usage: response.usage, // Server-authoritative usage data including cost
             system_prompt_id,
             system_prompt_template,
         })
@@ -198,15 +198,12 @@ impl LlmTaskRunner {
         // Log server-authoritative usage data for billing audit trail
         debug!("Server-authoritative usage data from streaming LLM response: {:?}", stream_result.final_usage);
         
-        // Ensure we capture server-calculated cost from the streaming response
-        debug!("Streaming LLM response usage: {:?}", stream_result.final_usage);
-        
         // Log complete interaction (prompt + response) to file for debugging
         self.log_complete_interaction(&system_prompt, &user_prompt, &stream_result.accumulated_response, &stream_result.final_usage, "streaming").await;
         
         Ok(LlmTaskResult {
             response: stream_result.accumulated_response,
-            usage: stream_result.final_usage, // Contains server-calculated cost from final stream chunk
+            usage: stream_result.final_usage, // Server-authoritative usage data including cost
             system_prompt_id,
             system_prompt_template,
         })

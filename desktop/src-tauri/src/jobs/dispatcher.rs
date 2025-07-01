@@ -220,7 +220,7 @@ async fn handle_job_success(
                     result.tokens_received,
                     None,
                     None,
-                    None // actual_cost
+                    None // Server will provide actual_cost through job finalization
                 ).await?;
             } else {
                 background_job_repo.mark_job_completed(
@@ -231,7 +231,7 @@ async fn handle_job_success(
                     result.tokens_received,
                     None,
                     None,
-                    None // actual_cost
+                    None // Server will provide actual_cost through job finalization
                 ).await?;
             }
             
@@ -273,7 +273,7 @@ async fn handle_job_success(
         JobStatus::Canceled => {
             // Update job status to canceled with error message
             let cancel_reason = result.error.as_deref().unwrap_or("Job canceled");
-            background_job_repo.mark_job_canceled(job_id, cancel_reason).await?;
+            background_job_repo.mark_job_canceled(job_id, cancel_reason, None).await?;
             
             // Emit job status change event
             job_processor_utils::emit_job_status_change(
@@ -572,6 +572,12 @@ async fn handle_job_failure_or_retry_internal(
         
         error!("PERMANENT JOB FAILURE: Job {} has been marked as permanently failed. Reason: {}", job_id, failure_reason);
         
+        // Check if job incurred costs and report to server for cancelled job billing
+        if let Err(e) = report_cancelled_job_cost_if_needed(app_handle, job_copy).await {
+            error!("Failed to report cancelled job cost for job {}: {}", job_id, e);
+            // Don't fail the entire operation if cost reporting fails
+        }
+        
         // Update job status to failed with user-friendly error message
         let user_facing_error = format_user_error(error);
         if let Err(e) = background_job_repo.update_job_status(
@@ -857,5 +863,100 @@ async fn add_orphaned_job_to_workflow(
     ).await?;
     
     info!("Added orphaned job {} to workflow {} as stage {}", job.id, workflow_id, stage_name);
+    Ok(())
+}
+
+/// Report cancelled job cost to server if the job incurred costs
+/// This ensures that cancelled jobs that had partial execution costs are still billed
+/// Server will extract user_id from JWT token automatically
+async fn report_cancelled_job_cost_if_needed(
+    app_handle: &AppHandle,
+    job: &BackgroundJob,
+) -> AppResult<()> {
+    // Extract cost and token information from job metadata or actual_cost field
+    let (final_cost, token_counts) = extract_job_cost_data(job)?;
+    
+    // Only report if there is an actual cost incurred
+    if let Some(cost) = final_cost {
+        if cost > 0.0 {
+            info!("Reporting cancelled job cost for job {}: ${:.6}", job.id, cost);
+            
+            // Send to server billing endpoint
+            if let Err(e) = send_cancelled_job_cost_report(app_handle, &job.id, cost, token_counts, Some(&job.task_type)).await {
+                error!("Failed to send cancelled job cost report for job {}: {}", job.id, e);
+                return Err(e);
+            }
+            
+            info!("Successfully reported cancelled job cost for job {}", job.id);
+        } else {
+            debug!("Job {} had zero cost, no billing report needed", job.id);
+        }
+    } else {
+        debug!("Job {} had no cost information, no billing report needed", job.id);
+    }
+    
+    Ok(())
+}
+
+/// Extract cost and token count data from a background job
+fn extract_job_cost_data(job: &BackgroundJob) -> AppResult<(Option<f64>, serde_json::Value)> {
+    // First check the actual_cost field from the database
+    let final_cost = job.actual_cost;
+    
+    // Extract token counts from job fields and metadata
+    let mut token_counts = serde_json::json!({
+        "input_tokens": job.tokens_sent,
+        "output_tokens": job.tokens_received
+    });
+    
+    // Try to extract additional token information from metadata
+    if let Some(metadata_str) = &job.metadata {
+        if let Ok(metadata_value) = serde_json::from_str::<serde_json::Value>(metadata_str) {
+            // Extract cache token information if available
+            if let Some(task_data) = metadata_value.get("task_data") {
+                if let Some(cached_input) = task_data.get("cachedInputTokens") {
+                    token_counts["cached_input_tokens"] = cached_input.clone();
+                }
+                if let Some(cache_write) = task_data.get("cacheWriteTokens") {
+                    token_counts["cache_write_tokens"] = cache_write.clone();
+                }
+                if let Some(cache_read) = task_data.get("cacheReadTokens") {
+                    token_counts["cache_read_tokens"] = cache_read.clone();
+                }
+                
+                // Also check for cost in metadata if not in actual_cost field
+                if final_cost.is_none() {
+                    if let Some(metadata_cost) = task_data.get("actual_cost").and_then(|v| v.as_f64()) {
+                        return Ok((Some(metadata_cost), token_counts));
+                    }
+                }
+            }
+        }
+    }
+    
+    Ok((final_cost, token_counts))
+}
+
+
+/// Send cancelled job cost report to server
+/// Server will extract user_id from JWT token automatically
+async fn send_cancelled_job_cost_report(
+    app_handle: &AppHandle,
+    request_id: &str,
+    final_cost: f64,
+    token_counts: serde_json::Value,
+    service_name: Option<&str>,
+) -> AppResult<()> {
+    // Get billing client
+    if let Some(billing_client) = app_handle.try_state::<Arc<crate::api_clients::billing_client::BillingClient>>() {
+        // Use the public method to send the report (no user_id needed)
+        billing_client.report_cancelled_job_cost(request_id, final_cost, token_counts, service_name).await?;
+        
+        info!("Successfully reported cancelled job cost for request {}: ${:.6}", request_id, final_cost);
+    } else {
+        warn!("Billing client not available, cancelled job cost not reported");
+        return Err(AppError::InitializationError("Billing client not available".to_string()));
+    }
+    
     Ok(())
 }

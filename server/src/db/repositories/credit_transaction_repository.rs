@@ -355,4 +355,25 @@ impl CreditTransactionRepository {
 
         self.create_transaction_with_executor(&transaction, balance_after, executor).await
     }
+
+    pub async fn has_purchase_transaction_with_executor(
+        &self,
+        user_id: &Uuid,
+        executor: &mut sqlx::Transaction<'_, sqlx::Postgres>
+    ) -> Result<bool, AppError> {
+        let result = sqlx::query!(
+            r#"
+            SELECT EXISTS(
+                SELECT 1 FROM credit_transactions 
+                WHERE user_id = $1 AND transaction_type = 'purchase'
+            ) as has_purchase
+            "#,
+            user_id
+        )
+        .fetch_one(&mut **executor)
+        .await
+        .map_err(|e| AppError::Database(format!("Failed to check purchase transactions: {}", e)))?;
+
+        Ok(result.has_purchase.unwrap_or(false))
+    }
 }

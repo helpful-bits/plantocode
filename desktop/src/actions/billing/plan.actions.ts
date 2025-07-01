@@ -8,14 +8,26 @@ export interface DetailedUsage {
   totalRequests: number;
   totalInputTokens: number;
   totalOutputTokens: number;
-  totalDurationMs: number;
 }
 
-export async function getDetailedUsage(
+export interface UsageSummary {
+  totalCost: number;
+  totalRequests: number;
+  totalInputTokens: number;
+  totalOutputTokens: number;
+}
+
+export interface DetailedUsageResponse {
+  detailedUsage: DetailedUsage[];
+  summary: UsageSummary;
+}
+
+
+export async function getDetailedUsageWithSummary(
   startDate: string,
   endDate: string
-): Promise<DetailedUsage[]> {
-  return await invoke<DetailedUsage[]>('get_detailed_usage_command', { startDate, endDate });
+): Promise<DetailedUsageResponse> {
+  return await invoke<DetailedUsageResponse>('get_detailed_usage_with_summary_command', { startDate, endDate });
 }
 
 

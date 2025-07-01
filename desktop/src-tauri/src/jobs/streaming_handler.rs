@@ -21,6 +21,7 @@ pub struct StreamConfig {
 pub struct StreamResult {
     pub accumulated_response: String,
     pub final_usage: Option<OpenRouterUsage>,
+    pub cost: Option<f64>, // Server-calculated cost
 }
 
 /// Handler for processing streamed LLM responses
@@ -63,7 +64,6 @@ impl StreamedResponseHandler {
         
         let mut current_metadata_str = self.initial_db_job_metadata.clone();
         let mut accumulated_response = String::new();
-        let mut tokens_received: u32 = 0;
         let mut final_usage: Option<OpenRouterUsage> = None;
         
         // Process stream chunks
@@ -89,18 +89,15 @@ impl StreamedResponseHandler {
                     if !chunk_content.is_empty() {
                         accumulated_response.push_str(&chunk_content);
                         
-                        // Estimate tokens in this chunk
-                        let chunk_tokens = crate::utils::token_estimator::estimate_tokens(&chunk_content);
-                        tokens_received += chunk_tokens as u32;
-                        
-                        // Update job stream progress
+                        // Update job stream progress with server-calculated tokens
                         let new_metadata = self.repo.update_job_stream_progress(
                             &self.job_id,
                             &chunk_content,
-                            chunk_tokens as i32,
+                            0, // Server will provide accurate token counts
                             accumulated_response.len() as i32,
                             self.initial_db_job_metadata.as_deref(),
                             self.app_handle.as_ref(),
+                            None, // Server will provide cost in final usage
                         ).await?;
                         current_metadata_str = Some(new_metadata);
                     }
@@ -108,33 +105,33 @@ impl StreamedResponseHandler {
                     // Check for final usage information including server-calculated cost
                     if chunk.usage.is_some() {
                         final_usage = chunk.usage.clone();
-                        debug!("Received usage information from server: {:?}", final_usage);
+                        debug!("Received server-authoritative usage information: {:?}", final_usage);
                         
-                        // If we have cost information, update the metadata immediately
+                        // If we have cost information from server, update the metadata immediately
                         if let Some(ref usage) = final_usage {
                             if let Some(cost) = usage.cost {
-                                // Emit job status change event with cost information immediately
+                                // Emit job status change event with server-calculated cost
                                 if let Some(ref app_handle) = self.app_handle {
                                     if let Err(e) = job_processor_utils::emit_job_status_change(
                                         app_handle,
                                         &self.job_id,
                                         "running",
-                                        Some("Received cost information."),
+                                        Some("Received server-calculated cost information."),
                                         Some(cost),
                                     ) {
                                         warn!("Failed to emit cost update event: {}", e);
                                     }
                                 }
                                 
-                                // Parse existing metadata and add actual cost
+                                // Parse existing metadata and add server-calculated cost
                                 let updated_metadata = if let Some(metadata_str) = current_metadata_str.as_deref() {
                                     if let Ok(mut ui_metadata) = serde_json::from_str::<crate::jobs::types::JobUIMetadata>(metadata_str) {
-                                        // Add actualCost to task_data
+                                        // Add server-calculated cost to task_data
                                         if let serde_json::Value::Object(ref mut task_map) = ui_metadata.task_data {
-                                            task_map.insert("actualCost".to_string(), serde_json::json!(cost));
+                                            task_map.insert("actual_cost".to_string(), serde_json::json!(cost));
                                         } else {
                                             ui_metadata.task_data = serde_json::json!({
-                                                "actualCost": cost
+                                                "actual_cost": cost
                                             });
                                         }
                                         
@@ -142,38 +139,39 @@ impl StreamedResponseHandler {
                                         match serde_json::to_string(&ui_metadata) {
                                             Ok(serialized) => Some(serialized),
                                             Err(e) => {
-                                                debug!("Failed to serialize metadata with cost: {}", e);
+                                                debug!("Failed to serialize metadata with server cost: {}", e);
                                                 None
                                             }
                                         }
                                     } else {
-                                        // Create new metadata with cost
+                                        // Create new metadata with server-calculated cost
                                         let new_metadata = serde_json::json!({
                                             "task_data": {
-                                                "actualCost": cost
+                                                "actual_cost": cost
                                             }
                                         });
                                         serde_json::to_string(&new_metadata).ok()
                                     }
                                 } else {
-                                    // No existing metadata, create new with cost
+                                    // No existing metadata, create new with server-calculated cost
                                     let new_metadata = serde_json::json!({
                                         "task_data": {
-                                            "actualCost": cost
+                                            "actual_cost": cost
                                         }
                                     });
                                     serde_json::to_string(&new_metadata).ok()
                                 };
                                 
-                                // Update job with the cost information (empty chunk, just metadata update)
+                                // Update job with the server-calculated cost information
                                 if let Some(metadata_str) = updated_metadata {
                                     let new_metadata = self.repo.update_job_stream_progress(
                                         &self.job_id,
                                         "", // Empty chunk - just updating metadata
-                                        0,  // No new tokens
+                                        0,  // Server provides accurate token counts
                                         accumulated_response.len() as i32,
                                         Some(&metadata_str),
                                         self.app_handle.as_ref(),
+                                        Some(cost), // Server-calculated cost
                                     ).await?;
                                     current_metadata_str = Some(new_metadata);
                                 }
@@ -192,28 +190,34 @@ impl StreamedResponseHandler {
                 }
                 Err(e) => {
                     error!("Streaming error: {}", e);
+                    
+                    // Check if job has been canceled to extract any costs incurred
+                    if job_processor_utils::check_job_canceled(&self.repo, &self.job_id).await? {
+                        info!("Job {} canceled during streaming error", self.job_id);
+                        
+                        // No need to extract cost from metadata - server will provide authoritative cost
+                        
+                        return Err(AppError::JobError(format!("Job was canceled with error: {}", e)));
+                    }
+                    
                     return Err(e);
                 }
             }
         }
         
-        // Use final usage from stream (with server-calculated cost) or create estimated usage
+        // Use server-authoritative usage information only
         let usage_result = if let Some(usage) = final_usage {
-            debug!("Using server-provided usage information with cost: {:?}", usage.cost);
+            debug!("Using server-authoritative usage information with cost: {:?}", usage.cost);
             Some(usage)
         } else {
-            debug!("No server usage received, creating estimated usage without cost");
-            Some(OpenRouterUsage {
-                prompt_tokens: self.config.prompt_tokens as i32,
-                completion_tokens: tokens_received as i32,
-                total_tokens: (self.config.prompt_tokens + tokens_received as usize) as i32,
-                cost: None, // No cost available for estimated usage
-            })
+            debug!("No server usage received - server will provide usage data through other channels");
+            None // Don't create estimated usage - rely on server data only
         };
         
         Ok(StreamResult {
             accumulated_response,
-            final_usage: usage_result,
+            final_usage: usage_result.clone(),
+            cost: usage_result.and_then(|usage| usage.cost),
         })
     }
 
@@ -236,21 +240,11 @@ impl StreamedResponseHandler {
     }
 }
 
-/// Helper function to estimate prompt tokens from system and user prompts
-pub fn estimate_prompt_tokens(system_prompt: &str, user_prompt: &str) -> usize {
-    let system_tokens = crate::utils::token_estimator::estimate_tokens(system_prompt);
-    let user_tokens = crate::utils::token_estimator::estimate_tokens(user_prompt);
-    let overhead_tokens = 100u32; // Overhead for formatting, roles, etc.
-    
-    (system_tokens + user_tokens + overhead_tokens) as usize
-}
-
 /// Create a StreamConfig from system and user prompts
+/// Server will provide accurate token counts, so we don't estimate client-side
 pub fn create_stream_config(system_prompt: &str, user_prompt: &str) -> StreamConfig {
-    let prompt_tokens = estimate_prompt_tokens(system_prompt, user_prompt);
-    
     StreamConfig {
-        prompt_tokens,
+        prompt_tokens: 0, // Server will provide accurate token counts
         system_prompt: system_prompt.to_string(),
         user_prompt: user_prompt.to_string(),
     }

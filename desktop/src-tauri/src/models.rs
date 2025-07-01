@@ -437,6 +437,12 @@ pub struct OpenRouterUsage {
     pub completion_tokens: i32,
     pub total_tokens: i32,
     pub cost: Option<f64>,
+    #[serde(default)]
+    pub cached_input_tokens: Option<i32>,
+    #[serde(default)]
+    pub cache_write_tokens: Option<i32>,
+    #[serde(default)]
+    pub cache_read_tokens: Option<i32>,
 }
 
 // OpenRouter streaming response chunks
@@ -702,7 +708,7 @@ pub struct DatabaseHealthData {
 /// Customer billing plan model that matches server response and frontend expectations
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct SubscriptionPlan {
+pub struct BillingPlan {
     pub id: String,
     pub name: String,
     pub description: String,

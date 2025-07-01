@@ -590,6 +590,98 @@ impl ServerProxyClient {
         
         Ok(Box::pin(stream))
     }
+
+    /// Estimate cost for a given model and token usage using server-side calculation
+    pub async fn estimate_cost(
+        &self,
+        model_id: &str,
+        input_tokens: i64,
+        output_tokens: i64,
+        cache_write_tokens: Option<i64>,
+        cache_read_tokens: Option<i64>,
+        duration_ms: Option<i64>,
+    ) -> AppResult<serde_json::Value> {
+        info!("Estimating cost for model {} via server proxy", model_id);
+        
+        // Get auth token
+        let auth_token = self.get_auth_token().await?;
+        
+        let estimation_url = format!("{}/api/models/estimate-cost", self.server_url);
+        
+        let request_body = json!({
+            "modelId": model_id,
+            "inputTokens": input_tokens,
+            "outputTokens": output_tokens,
+            "cacheWriteTokens": cache_write_tokens,
+            "cacheReadTokens": cache_read_tokens,
+            "durationMs": duration_ms
+        });
+        
+        let response = self.http_client
+            .post(&estimation_url)
+            .header("Authorization", format!("Bearer {}", auth_token))
+            .header("Content-Type", "application/json")
+            .header("HTTP-Referer", APP_HTTP_REFERER)
+            .header("X-Title", APP_X_TITLE)
+            .json(&request_body)
+            .send()
+            .await
+            .map_err(|e| AppError::HttpError(e.to_string()))?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_text = response.text().await.unwrap_or_else(|_| "Failed to get error text".to_string());
+            error!("Server proxy cost estimation API error: {} - {}", status, error_text);
+            return Err(self.handle_auth_error(status.as_u16(), &error_text).await);
+        }
+
+        let cost_response: serde_json::Value = response.json().await
+            .map_err(|e| AppError::ServerProxyError(format!("Failed to parse cost estimation response: {}", e)))?;
+
+        info!("Cost estimation through server proxy successful");
+        Ok(cost_response)
+    }
+
+    /// Estimate costs for multiple models/requests in batch using server-side calculation
+    pub async fn estimate_batch_cost(
+        &self,
+        requests: Vec<serde_json::Value>,
+    ) -> AppResult<serde_json::Value> {
+        info!("Estimating batch cost for {} requests via server proxy", requests.len());
+        
+        // Get auth token
+        let auth_token = self.get_auth_token().await?;
+        
+        let estimation_url = format!("{}/api/models/estimate-batch-cost", self.server_url);
+        
+        let request_body = json!({
+            "requests": requests
+        });
+        
+        let response = self.http_client
+            .post(&estimation_url)
+            .header("Authorization", format!("Bearer {}", auth_token))
+            .header("Content-Type", "application/json")
+            .header("HTTP-Referer", APP_HTTP_REFERER)
+            .header("X-Title", APP_X_TITLE)
+            .json(&request_body)
+            .send()
+            .await
+            .map_err(|e| AppError::HttpError(e.to_string()))?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_text = response.text().await.unwrap_or_else(|_| "Failed to get error text".to_string());
+            error!("Server proxy batch cost estimation API error: {} - {}", status, error_text);
+            return Err(self.handle_auth_error(status.as_u16(), &error_text).await);
+        }
+
+        let cost_response: serde_json::Value = response.json().await
+            .map_err(|e| AppError::ServerProxyError(format!("Failed to parse batch cost estimation response: {}", e)))?;
+
+        info!("Batch cost estimation through server proxy successful");
+        Ok(cost_response)
+    }
 }
 
 #[async_trait]
@@ -644,6 +736,8 @@ impl TranscriptionClient for ServerProxyClient {
         info!("Transcription through server proxy successful");
         Ok(text)
     }
+
+
 }
 
 #[async_trait]
@@ -680,5 +774,12 @@ impl ApiClient for ServerProxyClient {
         
         // Execute streaming with duration measurement using internal helper
         self.execute_chat_completion_stream_with_duration(messages, options, auth_token).await
+    }
+
+    /// Extract cost from response - uses server-authoritative cost from usage.cost field
+    fn extract_cost_from_response(&self, response: &OpenRouterResponse) -> f64 {
+        response.usage.as_ref()
+            .and_then(|usage| usage.cost)
+            .unwrap_or(0.0)
     }
 }

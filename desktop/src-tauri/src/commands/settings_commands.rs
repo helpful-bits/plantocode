@@ -284,6 +284,9 @@ pub async fn get_project_task_model_settings_command(app_handle: AppHandle, proj
         if let Some(copy_buttons) = &server_task_config.copy_buttons {
             task_config.insert("copyButtons".to_string(), json!(copy_buttons));
         }
+        if let Some(allowed_models) = &server_task_config.allowed_models {
+            task_config.insert("allowedModels".to_string(), json!(allowed_models));
+        }
         
         // Apply project-specific overrides
         for (override_key, override_value) in &project_overrides {

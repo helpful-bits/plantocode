@@ -34,6 +34,7 @@ reqwest-eventsource = "0.6.0"
 uuid = { version = "1.16.0", features = ["v4", "serde"] }
 rand = { version = "0.8", features = ["std_rng"] }
 chrono = { version = "0.4.41", features = ["serde"] }
+dashmap = "6.1.0"
 oauth2 = { version = "5.0.0", features = ["reqwest"] }
 url = "2.5.4"
 urlencoding = "2.1.3"
