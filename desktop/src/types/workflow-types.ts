@@ -9,7 +9,9 @@ export type WorkflowStage =
   | 'REGEX_FILE_FILTER'
   | 'FILE_RELEVANCE_ASSESSMENT'
   | 'EXTENDED_PATH_FINDER'
-  | 'PATH_CORRECTION';
+  | 'PATH_CORRECTION'
+  | 'WEB_SEARCH_QUERY_GENERATION'
+  | 'WEB_SEARCH_EXECUTION';
 
 // Workflow status - matches backend WorkflowStatus string representations
 export type WorkflowStatus =
@@ -147,7 +149,7 @@ export interface StageStatus {
 // Results from completed workflow
 export interface WorkflowResultsResponse {
   workflowId: string;
-  finalPaths: string[];
+  selectedFiles: string[];
   stageResults: Record<string, any>;
   totalExecutionTime: number;
   intermediateData?: WorkflowIntermediateData;
@@ -166,6 +168,8 @@ export interface WorkflowIntermediateData {
   extendedVerifiedPaths: string[];
   extendedUnverifiedPaths: string[];
   extendedCorrectedPaths: string[];
+  webSearchQueries?: string[];
+  webSearchResults?: string;
 }
 
 // Progress event payload from backend

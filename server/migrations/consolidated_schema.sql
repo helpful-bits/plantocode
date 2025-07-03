@@ -150,6 +150,26 @@ END $$;
 -- Load model data from separate file
 \i data_models.sql
 
+-- Create model provider mappings table for routing models through different providers
+CREATE TABLE IF NOT EXISTS model_provider_mappings (
+    id SERIAL PRIMARY KEY,
+    internal_model_id VARCHAR(255) NOT NULL REFERENCES models(id) ON DELETE CASCADE,
+    provider_code VARCHAR(50) NOT NULL REFERENCES providers(code) ON DELETE CASCADE,
+    provider_model_id VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    CONSTRAINT fk_model_provider_mappings_model FOREIGN KEY (internal_model_id) REFERENCES models(id) ON DELETE CASCADE,
+    CONSTRAINT fk_model_provider_mappings_provider FOREIGN KEY (provider_code) REFERENCES providers(code) ON DELETE CASCADE,
+    CONSTRAINT unique_model_provider_mapping UNIQUE (internal_model_id, provider_code)
+);
+
+-- Add indexes for model provider mappings
+CREATE INDEX IF NOT EXISTS idx_model_provider_mappings_internal_model_id ON model_provider_mappings(internal_model_id);
+CREATE INDEX IF NOT EXISTS idx_model_provider_mappings_provider_code ON model_provider_mappings(provider_code);
+CREATE INDEX IF NOT EXISTS idx_model_provider_mappings_provider_model_id ON model_provider_mappings(provider_model_id);
+
+-- Load model provider mappings data from separate file
+\i data_model_mappings.sql
+
 -- Create models_with_providers view for API queries
 CREATE VIEW models_with_providers AS
 SELECT 
@@ -511,6 +531,16 @@ USING (true);
 
 -- INSERT, UPDATE, DELETE typically handled by backend/service roles.
 
+-- RLS for model_provider_mappings table
+ALTER TABLE model_provider_mappings ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "App users can select model provider mappings"
+ON model_provider_mappings FOR SELECT
+TO vibe_manager_app, authenticated
+USING (true);
+
+-- INSERT, UPDATE, DELETE typically handled by backend/service roles.
+
 -- RLS for application_configurations table
 ALTER TABLE application_configurations ENABLE ROW LEVEL SECURITY;
 
@@ -597,6 +627,7 @@ USING (true); -- System-level table managed by application for auditing purposes
 -- These are for system tables that need to be readable by the application
 GRANT SELECT ON providers TO vibe_manager_app;
 GRANT SELECT ON models TO vibe_manager_app; 
+GRANT SELECT ON model_provider_mappings TO vibe_manager_app;
 GRANT SELECT ON application_configurations TO vibe_manager_app;
 GRANT SELECT ON default_system_prompts TO vibe_manager_app;
 

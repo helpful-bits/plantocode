@@ -472,39 +472,6 @@ impl AuditLogRepository {
 
 /// Convenience functions for common audit log scenarios
 impl AuditLogRepository {
-    /// Log a subscription-related action
-    pub async fn log_subscription_action(
-        &self,
-        user_id: Uuid,
-        action_type: &str,
-        subscription_id: &str,
-        old_values: Option<serde_json::Value>,
-        new_values: Option<serde_json::Value>,
-        performed_by: &str,
-        metadata: Option<serde_json::Value>,
-    ) -> Result<AuditLog, AppError> {
-        let request = CreateAuditLogRequest {
-            user_id,
-            action_type: action_type.to_string(),
-            entity_type: "subscription".to_string(),
-            entity_id: Some(subscription_id.to_string()),
-            old_values,
-            new_values,
-            metadata,
-            performed_by: performed_by.to_string(),
-            ip_address: None,
-            user_agent: None,
-            session_id: None,
-            request_id: None,
-            status: Some("completed".to_string()),
-            error_message: None,
-            previous_hash: None,
-            entry_hash: "legacy".to_string(),
-            signature: "legacy".to_string(),
-        };
-
-        self.create(request).await
-    }
 
     /// Log a payment-related action
     pub async fn log_payment_action(

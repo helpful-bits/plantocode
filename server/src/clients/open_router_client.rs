@@ -3,22 +3,18 @@
 // Token extraction functions return: (uncached_input, cache_write, cache_read, output)
 // For OpenRouter: no caching support, cache tokens always 0
 use crate::error::AppError;
-use bytes::Bytes;
-use actix_web::{web, HttpResponse};
+use actix_web::web;
 use futures_util::{Stream, StreamExt, TryStreamExt};
-use reqwest::{Client, Body, multipart::{Form, Part}, Response, header::HeaderMap};
+use reqwest::{Client, header::HeaderMap};
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
-use serde_json::{json, Value};
+use serde_json::Value;
 use std::pin::Pin;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use std::io::Cursor;
-use tokio_util::codec::{BytesCodec, FramedRead};
-use uuid::Uuid;
 use crate::config::settings::AppSettings;
-use tracing::{debug, info, warn, error, instrument};
-use chrono::Utc;
+use crate::clients::usage_extractor::{UsageExtractor, ProviderUsage};
+use tracing::{debug, instrument};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct UsageInclude {
@@ -147,10 +143,11 @@ pub struct OpenRouterClient {
     api_key: String,
     base_url: String,
     request_id_counter: Arc<Mutex<u64>>,
+    model_repo: Arc<crate::db::repositories::model_repository::ModelRepository>,
 }
 
 impl OpenRouterClient {
-    pub fn new(app_settings: &AppSettings) -> Result<Self, crate::error::AppError> {
+    pub fn new(app_settings: &AppSettings, model_repo: Arc<crate::db::repositories::model_repository::ModelRepository>) -> Result<Self, crate::error::AppError> {
         let api_key = app_settings.api_keys.openrouter_api_key.clone()
             .ok_or_else(|| crate::error::AppError::Configuration("OpenRouter API key must be configured".to_string()))?;
         
@@ -161,6 +158,7 @@ impl OpenRouterClient {
             api_key,
             base_url: OPENROUTER_BASE_URL.to_string(),
             request_id_counter: Arc::new(Mutex::new(0)),
+            model_repo,
         })
     }
 
@@ -176,6 +174,26 @@ impl OpenRouterClient {
         *counter
     }
 
+    /// Get the provider-specific model ID for OpenRouter
+    /// Falls back to the internal ID if no mapping is found
+    async fn get_provider_model_id(&self, internal_model_id: &str) -> Result<String, AppError> {
+        // Query the repository for the OpenRouter provider model ID
+        match self.model_repo.find_provider_model_id(internal_model_id, "openrouter").await {
+            Ok(Some(provider_model_id)) => {
+                Ok(provider_model_id)
+            },
+            Ok(None) => {
+                // No OpenRouter mapping found, fall back to internal ID
+                Ok(internal_model_id.to_string())
+            },
+            Err(e) => {
+                // Database error, fall back to internal ID
+                tracing::warn!("Failed to query model repository for OpenRouter mapping of {}: {}. Using fallback.", internal_model_id, e);
+                Ok(internal_model_id.to_string())
+            }
+        }
+    }
+
     // Chat Completions
     #[instrument(skip(self, request), fields(model = %request.model))]
     pub async fn chat_completion(&self, request: OpenRouterChatRequest, user_id: &str) -> Result<(OpenRouterChatResponse, HeaderMap, i32, i32, i32, i32), AppError> {
@@ -184,6 +202,9 @@ impl OpenRouterClient {
         
         let mut request_with_usage = request;
         request_with_usage.usage = Some(UsageInclude { include: true });
+        
+        // Map model ID to OpenRouter-compatible format
+        request_with_usage.model = self.get_provider_model_id(&request_with_usage.model).await?;
         
         let response = self.client
             .post(&url)
@@ -249,6 +270,9 @@ impl OpenRouterClient {
             streaming_request.stream = Some(true);
             streaming_request.usage = Some(UsageInclude { include: true });
             
+            // Map model ID to OpenRouter-compatible format
+            streaming_request.model = self.get_provider_model_id(&streaming_request.model).await?;
+            
             let response = client
                 .post(&url)
                 .header("Authorization", format!("Bearer {}", api_key))
@@ -289,43 +313,6 @@ impl OpenRouterClient {
         Ok(result)
     }
     
-    // Helper method to parse usage from a stream
-    // Returns (input_tokens, cache_write_tokens, cache_read_tokens, output_tokens)
-    pub fn extract_usage_from_stream_chunk(chunk_str: &str) -> Option<(i32, i32, i32, i32)> {
-        if chunk_str.trim().is_empty() || chunk_str.trim() == "[DONE]" {
-            return None;
-        }
-        
-        match serde_json::from_str::<OpenRouterStreamChunk>(chunk_str.trim()) {
-            Ok(parsed) => {
-                if let Some(usage) = parsed.usage {
-                    // OpenRouter doesn't support caching, so cache tokens are always 0
-                    Some((usage.prompt_tokens, 0, 0, usage.completion_tokens))
-                } else {
-                    None
-                }
-            },
-            Err(_) => None,
-        }
-    }
-    
-    // Helper method to extract tokens from a stream chunk
-    // Returns (input_tokens, cache_write_tokens, cache_read_tokens, output_tokens)
-    pub fn extract_tokens_from_stream_chunk(chunk_str: &str) -> Option<(i32, i32, i32, i32)> {
-        Self::extract_usage_from_stream_chunk(chunk_str)
-    }
-    
-    // Helper method to extract cost from a stream chunk
-    pub fn extract_cost_from_stream_chunk(chunk_str: &str) -> Option<f64> {
-        if chunk_str.trim().is_empty() || chunk_str.trim() == "[DONE]" {
-            return None;
-        }
-        
-        match serde_json::from_str::<OpenRouterStreamChunk>(chunk_str.trim()) {
-            Ok(parsed) => parsed.usage.and_then(|u| u.cost),
-            Err(_) => None,
-        }
-    }
 
     
     // Convert a generic JSON Value into an OpenRouterChatRequest
@@ -334,19 +321,152 @@ impl OpenRouterClient {
             .map_err(|e| AppError::BadRequest(format!("Failed to convert payload to chat request: {}", e)))
     }
     
-    // Helper functions for token and usage tracking
-    // Returns (input_tokens, cache_write_tokens, cache_read_tokens, output_tokens)
-    pub fn extract_tokens_from_response(&self, response: &OpenRouterChatResponse) -> (i32, i32, i32, i32) {
-        if let Some(usage) = &response.usage {
-            // OpenRouter doesn't support caching, so cache tokens are always 0
-            (usage.prompt_tokens, 0, 0, usage.completion_tokens)
-        } else {
-            (0, 0, 0, 0)
+    /// Parse a streaming chunk and extract OpenRouter usage if present
+    /// This method is used to properly handle cost extraction from streaming chunks
+    pub fn parse_streaming_chunk(&self, chunk_data: &str) -> Option<OpenRouterUsage> {
+        if chunk_data.starts_with("data: ") {
+            let json_str = &chunk_data[6..]; // Remove "data: " prefix
+            if json_str.trim() == "[DONE]" {
+                return None;
+            }
+            
+            // Try to parse the chunk as an OpenRouter stream chunk
+            if let Ok(chunk) = serde_json::from_str::<OpenRouterStreamChunk>(json_str.trim()) {
+                if let Some(usage) = chunk.usage {
+                    debug!("Parsed OpenRouter streaming usage: prompt_tokens={}, completion_tokens={}, cost={:?}", 
+                           usage.prompt_tokens, usage.completion_tokens, usage.cost);
+                    return Some(usage);
+                }
+            }
         }
+        None
     }
     
-    pub fn extract_cost_from_response(&self, response: &OpenRouterChatResponse) -> Option<f64> {
-        response.usage.as_ref().and_then(|usage| usage.cost)
+    /// Extract usage from OpenRouter SSE (Server-Sent Events) streaming body
+    /// Processes streaming responses line by line to find usage information
+    fn extract_usage_from_sse_body(&self, body: &str, model_id: &str) -> Option<ProviderUsage> {
+        debug!("Processing OpenRouter SSE body for usage extraction, model: {}", model_id);
+        
+        // Process streaming body line by line to find usage information
+        for line in body.lines() {
+            if line.starts_with("data: ") {
+                let json_str = &line[6..]; // Remove "data: " prefix
+                if json_str.trim() == "[DONE]" {
+                    continue;
+                }
+                
+                // Try to parse the chunk as JSON
+                if let Ok(chunk_json) = serde_json::from_str::<serde_json::Value>(json_str.trim()) {
+                    // Check if this chunk has usage information
+                    if chunk_json.get("usage").is_some() {
+                        debug!("Found usage data in SSE chunk for model: {}", model_id);
+                        // Look for usage information in this chunk
+                        if let Some(usage) = self.extract_usage_from_json(&chunk_json, model_id) {
+                            return Some(usage);
+                        }
+                    }
+                }
+            }
+        }
+        debug!("No usage data found in SSE body for model: {}", model_id);
+        None
+    }
+    
+    /// Extract usage from parsed JSON (handles OpenRouter response format)
+    fn extract_usage_from_json(&self, json_value: &serde_json::Value, model_id: &str) -> Option<ProviderUsage> {
+        let usage = json_value.get("usage")?;
+        
+        // Handle OpenRouter format: {"prompt_tokens", "completion_tokens", "cost"}
+        let prompt_tokens = match usage.get("prompt_tokens").and_then(|v| v.as_i64()) {
+            Some(tokens) => tokens as i32,
+            None => {
+                tracing::warn!("Missing or invalid prompt_tokens in OpenRouter response");
+                return None;
+            }
+        };
+        
+        let completion_tokens = match usage.get("completion_tokens").and_then(|v| v.as_i64()) {
+            Some(tokens) => tokens as i32,
+            None => {
+                tracing::warn!("Missing or invalid completion_tokens in OpenRouter response");
+                return None;
+            }
+        };
+        
+        // Extract cost from OpenRouter response and preserve it
+        let cost = usage.get("cost").and_then(|v| v.as_f64());
+        if let Some(cost_value) = cost {
+            debug!("OpenRouter cost extracted: ${:.6} for model: {} (input_tokens: {}, output_tokens: {})", 
+                   cost_value, model_id, prompt_tokens, completion_tokens);
+        } else {
+            debug!("No cost field found in OpenRouter response for model: {} (input_tokens: {}, output_tokens: {})", 
+                   model_id, prompt_tokens, completion_tokens);
+            // Log the full usage object for debugging
+            debug!("OpenRouter usage object content: {}", serde_json::to_string(usage).unwrap_or_default());
+        }
+        
+        Some(ProviderUsage {
+            prompt_tokens,
+            completion_tokens,
+            cache_write_tokens: 0, // OpenRouter doesn't support caching
+            cache_read_tokens: 0,
+            model_id: model_id.to_string(),
+            duration_ms: None,
+            cost, // Preserve the extracted cost
+        })
+    }
+}
+
+impl UsageExtractor for OpenRouterClient {
+    /// Extract usage information from OpenRouter HTTP response body (2025-07 format)
+    /// Supports usage: {prompt_tokens, completion_tokens, cost}
+    async fn extract_from_http_body(&self, body: &[u8], model_id: &str, is_streaming: bool) -> Result<ProviderUsage, AppError> {
+        let body_str = std::str::from_utf8(body)
+            .map_err(|e| AppError::InvalidArgument(format!("Invalid UTF-8: {}", e)))?;
+        
+        debug!("OpenRouter extract_from_http_body called - model: {}, is_streaming: {}, body_length: {}", 
+               model_id, is_streaming, body.len());
+        
+        if is_streaming {
+            // Handle streaming SSE format
+            if body_str.contains("data: ") {
+                debug!("Processing OpenRouter streaming response for model: {}", model_id);
+                return self.extract_usage_from_sse_body(body_str, model_id)
+                    .map(|mut usage| {
+                        usage.model_id = model_id.to_string();
+                        debug!("Successfully extracted usage from OpenRouter streaming response: input={}, output={}", 
+                               usage.prompt_tokens, usage.completion_tokens);
+                        usage
+                    })
+                    .ok_or_else(|| AppError::External("Failed to extract usage from OpenRouter streaming response".to_string()));
+            }
+        }
+        
+        // Handle regular JSON response
+        debug!("Processing OpenRouter non-streaming response for model: {}", model_id);
+        let json_value: serde_json::Value = serde_json::from_str(body_str)
+            .map_err(|e| AppError::External(format!("Failed to parse JSON: {}", e)))?;
+        
+        // Extract usage from parsed JSON
+        self.extract_usage_from_json(&json_value, model_id)
+            .map(|mut usage| {
+                usage.model_id = model_id.to_string();
+                debug!("Successfully extracted usage from OpenRouter response: input={}, output={}", 
+                       usage.prompt_tokens, usage.completion_tokens);
+                usage
+            })
+            .ok_or_else(|| AppError::External("Failed to extract usage from OpenRouter response".to_string()))
+    }
+    
+    fn extract_usage(&self, raw_json: &serde_json::Value) -> Option<ProviderUsage> {
+        self.extract_usage_from_json(raw_json, "unknown")
+    }
+    
+    fn extract_usage_from_stream_chunk(&self, chunk_json: &serde_json::Value) -> Option<ProviderUsage> {
+        debug!("Extracting usage from OpenRouter stream chunk");
+        
+        // For OpenRouter streaming, usage info comes in the final chunk
+        self.extract_usage_from_json(chunk_json, "unknown")
     }
 }
 
@@ -357,6 +477,7 @@ impl Clone for OpenRouterClient {
             api_key: self.api_key.clone(),
             base_url: self.base_url.clone(),
             request_id_counter: self.request_id_counter.clone(),
+            model_repo: self.model_repo.clone(),
         }
     }
 }

@@ -135,8 +135,8 @@ export class WorkflowTracker {
     console.log(`Initiating cancellation for workflow: ${this.workflowId}`);
     
     try {
-      const { cancelFileFinderWorkflowAction } = await import("@/actions/file-system/file-finder-workflow.actions");
-      const result = await cancelFileFinderWorkflowAction(this.workflowId);
+      const { cancelWorkflowAction } = await import("@/actions/workflows/workflow.actions");
+      const result = await cancelWorkflowAction(this.workflowId);
       
       if (!result.isSuccess) {
         throw new Error(result.message || 'Failed to cancel workflow');
@@ -741,6 +741,10 @@ export const WorkflowUtils = {
         return 'EXTENDED_PATH_FINDER';
       case 'Path Correction':
         return 'PATH_CORRECTION';
+      case 'Web Search Query Generation':
+        return 'WEB_SEARCH_QUERY_GENERATION';
+      case 'Web Search Execution':
+        return 'WEB_SEARCH_EXECUTION';
         
       // PascalCase variants from results responses
       case 'RegexFileFilter':
@@ -751,6 +755,10 @@ export const WorkflowUtils = {
         return 'EXTENDED_PATH_FINDER';
       case 'PathCorrection':
         return 'PATH_CORRECTION';
+      case 'WebSearchQueryGeneration':
+        return 'WEB_SEARCH_QUERY_GENERATION';
+      case 'WebSearchExecution':
+        return 'WEB_SEARCH_EXECUTION';
         
       // SCREAMING_SNAKE_CASE from WorkflowStageJob.stage and WorkflowStageEvent.stage
       case 'REGEX_FILE_FILTER':
@@ -761,6 +769,10 @@ export const WorkflowUtils = {
         return 'EXTENDED_PATH_FINDER';
       case 'PATH_CORRECTION':
         return 'PATH_CORRECTION';
+      case 'WEB_SEARCH_QUERY_GENERATION':
+        return 'WEB_SEARCH_QUERY_GENERATION';
+      case 'WEB_SEARCH_EXECUTION':
+        return 'WEB_SEARCH_EXECUTION';
         
       default:
         return null;
@@ -775,7 +787,9 @@ export const WorkflowUtils = {
       'REGEX_FILE_FILTER', 
       'FILE_RELEVANCE_ASSESSMENT',
       'EXTENDED_PATH_FINDER',
-      'PATH_CORRECTION'
+      'PATH_CORRECTION',
+      'WEB_SEARCH_QUERY_GENERATION',
+      'WEB_SEARCH_EXECUTION'
     ];
     
     return validStages.includes(stageName as WorkflowStage) ? (stageName as WorkflowStage) : null;
@@ -787,7 +801,7 @@ export const WorkflowUtils = {
   calculateProgress(stageJobs: any[]): number {
     if (stageJobs.length === 0) return 0;
     
-    const totalStages = 4; // Updated to match FileFinderWorkflow: REGEX_FILE_FILTER, FILE_RELEVANCE_ASSESSMENT, EXTENDED_PATH_FINDER, PATH_CORRECTION
+    const totalStages = 6; // Updated to match FileFinderWorkflow: REGEX_FILE_FILTER, FILE_RELEVANCE_ASSESSMENT, EXTENDED_PATH_FINDER, PATH_CORRECTION, WEB_SEARCH_QUERY_GENERATION, WEB_SEARCH_EXECUTION
     const completedStages = stageJobs.filter(job => job.status === 'completed' || job.status === 'completedByTag').length;
     const runningStages = stageJobs.filter(job => 
       job.status === 'running' || 
@@ -811,6 +825,8 @@ export const WorkflowUtils = {
       'FILE_RELEVANCE_ASSESSMENT': 'AI File Relevance Assessment',
       'EXTENDED_PATH_FINDER': 'Extended Path Finding',
       'PATH_CORRECTION': 'Path Correction',
+      'WEB_SEARCH_QUERY_GENERATION': 'Web Search Query Generation',
+      'WEB_SEARCH_EXECUTION': 'Web Search Execution',
     };
     return stageNames[stage] || stage;
   },
@@ -824,6 +840,8 @@ export const WorkflowUtils = {
       'FILE_RELEVANCE_ASSESSMENT': 'Using AI to assess relevance of filtered files to the task',
       'EXTENDED_PATH_FINDER': 'Finding additional relevant paths for comprehensive results',
       'PATH_CORRECTION': 'Path correction and validation',
+      'WEB_SEARCH_QUERY_GENERATION': 'Generating optimized search queries for web-enhanced task refinement',
+      'WEB_SEARCH_EXECUTION': 'Executing web searches and synthesizing results into actionable insights',
     };
     return descriptions[stage] || 'Processing stage';
   },

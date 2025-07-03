@@ -28,6 +28,8 @@ pub enum WorkflowStage {
     FileRelevanceAssessment,
     ExtendedPathFinder,
     PathCorrection,
+    WebSearchQueryGeneration,
+    WebSearchExecution,
 }
 
 impl std::fmt::Display for WorkflowStage {
@@ -37,23 +39,15 @@ impl std::fmt::Display for WorkflowStage {
 }
 
 impl WorkflowStage {
-    /// Get all stages in execution order
-    pub fn all_stages() -> Vec<WorkflowStage> {
-        vec![
-            WorkflowStage::RegexFileFilter,
-            WorkflowStage::FileRelevanceAssessment,
-            WorkflowStage::ExtendedPathFinder,
-            WorkflowStage::PathCorrection,
-        ]
-    }
-
     /// Get the next stage in the workflow
     pub fn next_stage(&self) -> Option<WorkflowStage> {
         match self {
             WorkflowStage::RegexFileFilter => Some(WorkflowStage::FileRelevanceAssessment),
             WorkflowStage::FileRelevanceAssessment => Some(WorkflowStage::ExtendedPathFinder),
             WorkflowStage::ExtendedPathFinder => Some(WorkflowStage::PathCorrection),
-            WorkflowStage::PathCorrection => None,
+            WorkflowStage::PathCorrection => Some(WorkflowStage::WebSearchQueryGeneration),
+            WorkflowStage::WebSearchQueryGeneration => Some(WorkflowStage::WebSearchExecution),
+            WorkflowStage::WebSearchExecution => None,
         }
     }
 
@@ -64,6 +58,8 @@ impl WorkflowStage {
             WorkflowStage::FileRelevanceAssessment => Some(WorkflowStage::RegexFileFilter),
             WorkflowStage::ExtendedPathFinder => Some(WorkflowStage::FileRelevanceAssessment),
             WorkflowStage::PathCorrection => Some(WorkflowStage::ExtendedPathFinder),
+            WorkflowStage::WebSearchQueryGeneration => Some(WorkflowStage::PathCorrection),
+            WorkflowStage::WebSearchExecution => Some(WorkflowStage::WebSearchQueryGeneration),
         }
     }
 
@@ -74,6 +70,8 @@ impl WorkflowStage {
             WorkflowStage::FileRelevanceAssessment => 1,
             WorkflowStage::ExtendedPathFinder => 2,
             WorkflowStage::PathCorrection => 3,
+            WorkflowStage::WebSearchQueryGeneration => 4,
+            WorkflowStage::WebSearchExecution => 5,
         }
     }
 
@@ -84,6 +82,8 @@ impl WorkflowStage {
             WorkflowStage::FileRelevanceAssessment => "AI File Relevance Assessment",
             WorkflowStage::ExtendedPathFinder => "Extended Path Finding",
             WorkflowStage::PathCorrection => "Path Correction",
+            WorkflowStage::WebSearchQueryGeneration => "Web Search Query Generation",
+            WorkflowStage::WebSearchExecution => "Web Search Execution",
         }
     }
 
@@ -98,6 +98,10 @@ impl WorkflowStage {
             "ExtendedPathFinder" => Some(WorkflowStage::ExtendedPathFinder), // Handle enum variant name
             "Path Correction" => Some(WorkflowStage::PathCorrection),
             "PathCorrection" => Some(WorkflowStage::PathCorrection), // Handle enum variant name
+            "Web Search Query Generation" => Some(WorkflowStage::WebSearchQueryGeneration),
+            "WebSearchQueryGeneration" => Some(WorkflowStage::WebSearchQueryGeneration), // Handle enum variant name
+            "Web Search Execution" => Some(WorkflowStage::WebSearchExecution),
+            "WebSearchExecution" => Some(WorkflowStage::WebSearchExecution), // Handle enum variant name
             _ => None,
         }
     }
@@ -109,6 +113,8 @@ impl WorkflowStage {
             TaskType::FileRelevanceAssessment => Some(WorkflowStage::FileRelevanceAssessment),
             TaskType::ExtendedPathFinder => Some(WorkflowStage::ExtendedPathFinder),
             TaskType::PathCorrection => Some(WorkflowStage::PathCorrection),
+            TaskType::WebSearchQueryGeneration => Some(WorkflowStage::WebSearchQueryGeneration),
+            TaskType::WebSearchExecution => Some(WorkflowStage::WebSearchExecution),
             _ => None,
         }
     }
@@ -366,6 +372,8 @@ pub struct WorkflowIntermediateData {
     pub extended_verified_paths: Vec<String>,
     pub extended_unverified_paths: Vec<String>,
     pub extended_corrected_paths: Vec<String>,
+    pub web_search_prompt: Option<String>,
+    pub web_search_results: Option<String>,
 }
 
 impl Default for WorkflowIntermediateData {
@@ -385,6 +393,8 @@ impl WorkflowIntermediateData {
             extended_verified_paths: Vec::new(),
             extended_unverified_paths: Vec::new(),
             extended_corrected_paths: Vec::new(),
+            web_search_prompt: None,
+            web_search_results: None,
         }
     }
 

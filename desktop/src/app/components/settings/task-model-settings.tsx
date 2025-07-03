@@ -54,6 +54,23 @@ const FILE_FINDING_WORKFLOW_STAGES = [
   },
 ] as const;
 
+const WEB_SEARCH_WORKFLOW_STAGES = [
+  {
+    key: 'webSearchQueryGeneration',
+    stageNumber: 1,
+    displayName: 'Query Generation',
+    nextStage: 'Search Execution',
+    description: 'Generate effective search queries for web search'
+  },
+  {
+    key: 'webSearchExecution',
+    stageNumber: 2,
+    displayName: 'Search Execution',
+    nextStage: null,
+    description: 'Execute web searches and process results'
+  },
+] as const;
+
 
 
 
@@ -243,12 +260,45 @@ export default function TaskModelSettings({
   }, [projectDirectory, onRefresh]);
 
 
-  const { workflowStages, standaloneFeatures } = useMemo(() => {
-    const stages = FILE_FINDING_WORKFLOW_STAGES.filter(stage => 
+  const { fileFinderStages, webSearchStages, workflows, standaloneFeatures } = useMemo(() => {
+    const fileFinderStages = FILE_FINDING_WORKFLOW_STAGES.filter(stage => 
       taskSettings[stage.key as keyof TaskSettings] !== undefined
     );
     
-    const workflowStageKeys = new Set(FILE_FINDING_WORKFLOW_STAGES.map(stage => stage.key as keyof TaskSettings));
+    const webSearchStages = WEB_SEARCH_WORKFLOW_STAGES.filter(stage => 
+      taskSettings[stage.key as keyof TaskSettings] !== undefined
+    );
+    
+    const allWorkflowStageKeys = new Set([
+      ...FILE_FINDING_WORKFLOW_STAGES.map(stage => stage.key as keyof TaskSettings),
+      ...WEB_SEARCH_WORKFLOW_STAGES.map(stage => stage.key as keyof TaskSettings)
+    ]);
+    
+    const workflowTasks = Object.keys(taskSettings)
+      .filter((key): key is keyof TaskSettings => {
+        const typedKey = key as keyof TaskSettings;
+        const taskType = taskSettingsKeyToTaskType[typedKey];
+        const taskDetails = TaskTypeDetails[taskType];
+        
+        return (
+          !allWorkflowStageKeys.has(typedKey) &&
+          !taskDetails?.hidden &&
+          taskDetails?.category === 'Workflow' &&
+          typedKey !== 'fileFinderWorkflow' &&
+          typedKey !== 'webSearchWorkflow'
+        );
+      })
+      .map(key => {
+        const taskType = taskSettingsKeyToTaskType[key];
+        const taskDetails = TaskTypeDetails[taskType];
+        
+        return {
+          key,
+          displayName: taskDetails?.displayName || key,
+          description: taskDetails?.description || ''
+        };
+      })
+      .sort((a, b) => a.displayName.localeCompare(b.displayName));
     
     const features = Object.keys(taskSettings)
       .filter((key): key is keyof TaskSettings => {
@@ -257,7 +307,7 @@ export default function TaskModelSettings({
         const taskDetails = TaskTypeDetails[taskType];
         
         return (
-          !workflowStageKeys.has(typedKey) &&
+          !allWorkflowStageKeys.has(typedKey) &&
           !taskDetails?.hidden &&
           taskDetails?.category !== 'Workflow' &&
           taskDetails?.category !== 'Workflow Stage'
@@ -275,11 +325,16 @@ export default function TaskModelSettings({
       })
       .sort((a, b) => a.displayName.localeCompare(b.displayName));
 
-    return { workflowStages: stages, standaloneFeatures: features };
+    return { 
+      fileFinderStages,
+      webSearchStages,
+      workflows: workflowTasks,
+      standaloneFeatures: features 
+    };
   }, [taskSettings]);
 
   const [selectedCategory, setSelectedCategory] = useState<'workflow' | 'standalone' | 'bulk-optimization'>('workflow');
-  const [selectedTask, setSelectedTask] = useState<string>('regexFileFilter');
+  const [selectedTask, setSelectedTask] = useState<string>('');
 
   const filteredProvidersWithModels = useMemo(() => {
     if (!providersWithModels) return null;
@@ -312,7 +367,7 @@ export default function TaskModelSettings({
     const taskExists = taskSettings[selectedTask as keyof TaskSettings] !== undefined;
     const isBulkOptimization = selectedTask === 'bulk-optimization';
     if (!taskExists && !isBulkOptimization) {
-      const firstWorkflowTask = workflowStages[0]?.key;
+      const firstWorkflowTask = workflows[0]?.key || fileFinderStages[0]?.key || webSearchStages[0]?.key;
       const firstStandaloneTask = standaloneFeatures[0]?.key;
       
       if (firstWorkflowTask) {
@@ -323,10 +378,10 @@ export default function TaskModelSettings({
         setSelectedTask(firstStandaloneTask);
       }
     }
-  }, [workflowStages, standaloneFeatures, selectedTask, taskSettings]);
+  }, [workflows, fileFinderStages, webSearchStages, standaloneFeatures, selectedTask, taskSettings]);
   
   useEffect(() => {
-    const isWorkflowTask = workflowStages.some(stage => stage.key === selectedTask);
+    const isWorkflowTask = workflows.some(workflow => workflow.key === selectedTask) || fileFinderStages.some(stage => stage.key === selectedTask) || webSearchStages.some(stage => stage.key === selectedTask);
     const isStandaloneTask = standaloneFeatures.some(feature => feature.key === selectedTask);
     
     if (isWorkflowTask && selectedCategory !== 'workflow') {
@@ -334,16 +389,16 @@ export default function TaskModelSettings({
     } else if (isStandaloneTask && selectedCategory !== 'standalone') {
       setSelectedCategory('standalone');
     }
-  }, [selectedTask, workflowStages, standaloneFeatures]);
+  }, [selectedTask, workflows, fileFinderStages, webSearchStages, standaloneFeatures]);
   
   useEffect(() => {
     const taskExists = taskSettings[selectedTask as keyof TaskSettings] !== undefined;
     const isBulkOptimization = selectedTask === 'bulk-optimization';
     if (!taskExists && !isBulkOptimization) {
-      const fallbackTask = workflowStages[0]?.key || standaloneFeatures[0]?.key || 'regexFileFilter';
+      const fallbackTask = workflows[0]?.key || fileFinderStages[0]?.key || webSearchStages[0]?.key || standaloneFeatures[0]?.key;
       setSelectedTask(fallbackTask);
     }
-  }, [taskSettings, selectedTask, workflowStages, standaloneFeatures]);
+  }, [taskSettings, selectedTask, workflows, fileFinderStages, webSearchStages, standaloneFeatures]);
   
 
   return (
@@ -353,12 +408,109 @@ export default function TaskModelSettings({
           <div className="space-y-4">
             
             <div className="space-y-3">
+              {workflows.length > 0 && (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-semibold text-foreground">Workflows</h3>
+                  </div>
+                  <div className="space-y-1 pl-2">
+                    {workflows.map((workflow) => {
+                      const camelCaseKey = workflow.key;
+                      const isSelected = selectedTask === camelCaseKey;
+                      
+                      return (
+                        <button
+                          key={camelCaseKey}
+                          onClick={() => {
+                            setSelectedCategory('workflow');
+                            setSelectedTask(camelCaseKey);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              setSelectedCategory('workflow');
+                              setSelectedTask(camelCaseKey);
+                            }
+                          }}
+                          aria-label={`Configure ${workflow.displayName} settings`}
+                          aria-pressed={isSelected}
+                          className={`w-full text-left p-2 rounded-md text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-primary/50 cursor-pointer ${
+                            isSelected 
+                              ? 'bg-primary/10 text-primary border border-primary/20' 
+                              : 'hover:bg-muted/50 text-muted-foreground hover:text-foreground'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <span>{workflow.displayName}</span>
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+              
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
-                  <h3 className="text-sm font-semibold text-foreground">File Finding Workflow</h3>
+                  <h3 className="text-sm font-semibold text-foreground">File Finder Stages</h3>
                 </div>
                 <div className="space-y-1 pl-2 border-l-2 border-muted">
-                  {workflowStages.map((stage) => {
+                  {fileFinderStages.map((stage) => {
+                    const camelCaseKey = stage.key;
+                    const isSelected = selectedTask === camelCaseKey;
+                    
+                    return (
+                      <div key={camelCaseKey} className="space-y-1">
+                        <button
+                          onClick={() => {
+                            setSelectedCategory('workflow');
+                            setSelectedTask(camelCaseKey);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              setSelectedCategory('workflow');
+                              setSelectedTask(camelCaseKey);
+                            }
+                          }}
+                          aria-label={`Configure ${stage.displayName} settings`}
+                          aria-pressed={isSelected}
+                          className={`group w-full text-left p-2 rounded-md text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-primary/50 cursor-pointer ${
+                            isSelected 
+                              ? 'bg-primary/10 text-primary border border-primary/20' 
+                              : 'hover:bg-muted/50 text-muted-foreground hover:text-foreground'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <span className="w-5 h-5 rounded-full bg-primary/20 text-primary text-xs flex items-center justify-center font-mono">
+                                {'stageNumber' in stage ? stage.stageNumber : '#'}
+                              </span>
+                              <span>{stage.displayName}</span>
+                              
+                            </div>
+                          </div>
+                        </button>
+                        {'nextStage' in stage && stage.nextStage && (
+                          <div className="pl-6 text-xs text-muted-foreground flex items-center gap-1">
+                            <span>↓ feeds into</span>
+                            <span className="font-medium">{stage.nextStage}</span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+              
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm font-semibold text-foreground">Web Search Stages</h3>
+                </div>
+                <div className="space-y-1 pl-2 border-l-2 border-muted">
+                  {webSearchStages.map((stage) => {
                     const camelCaseKey = stage.key;
                     const isSelected = selectedTask === camelCaseKey;
                     

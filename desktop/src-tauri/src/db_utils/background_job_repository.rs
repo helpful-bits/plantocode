@@ -76,6 +76,7 @@ impl BackgroundJobRepository {
     /// * `new_tokens_received` - The number of tokens in this chunk
     /// * `current_total_response_length` - The current length of the accumulated response (characters)
     /// * `current_metadata_str` - The current metadata string from BackgroundJob.metadata
+    /// * `cost` - Optional cost value to store in both metadata and database
     pub async fn update_job_stream_progress(&self, job_id: &str, chunk: &str, new_tokens_received: i32, current_total_response_length: i32, current_metadata_str: Option<&str>, app_handle: Option<&tauri::AppHandle>, cost: Option<f64>) -> AppResult<String> {
         // First check if the job exists and is in running status
         let job = self.get_job_by_id(job_id).await?
@@ -180,25 +181,50 @@ impl BackgroundJobRepository {
             }
         };
         
-        // Update the job in the database
-        sqlx::query(
-            r#"
-            UPDATE background_jobs SET
-                response = $1, 
-                tokens_received = $2,
-                updated_at = $3,
-                metadata = $4
-            WHERE id = $5 AND status = $6
-            "#)
-            .bind(new_response)
-            .bind(tokens_received)
-            .bind(now)
-            .bind(&metadata_str)
-            .bind(job_id)
-            .bind(JobStatus::Running.to_string())
-            .execute(&*self.pool)
-            .await
-            .map_err(|e| AppError::DatabaseError(format!("Failed to append to job response: {}", e)))?;
+        // Update the job in the database - include cost in database if provided
+        let query_result = if let Some(cost_value) = cost {
+            debug!("Updating job {} streaming progress with cost: ${:.6}", job_id, cost_value);
+            sqlx::query(
+                r#"
+                UPDATE background_jobs SET
+                    response = $1, 
+                    tokens_received = $2,
+                    updated_at = $3,
+                    metadata = $4,
+                    actual_cost = $5
+                WHERE id = $6 AND status = $7
+                "#)
+                .bind(new_response)
+                .bind(tokens_received)
+                .bind(now)
+                .bind(&metadata_str)
+                .bind(cost_value)
+                .bind(job_id)
+                .bind(JobStatus::Running.to_string())
+                .execute(&*self.pool)
+                .await
+        } else {
+            debug!("Updating job {} streaming progress without cost", job_id);
+            sqlx::query(
+                r#"
+                UPDATE background_jobs SET
+                    response = $1, 
+                    tokens_received = $2,
+                    updated_at = $3,
+                    metadata = $4
+                WHERE id = $5 AND status = $6
+                "#)
+                .bind(new_response)
+                .bind(tokens_received)
+                .bind(now)
+                .bind(&metadata_str)
+                .bind(job_id)
+                .bind(JobStatus::Running.to_string())
+                .execute(&*self.pool)
+                .await
+        };
+        
+        query_result.map_err(|e| AppError::DatabaseError(format!("Failed to append to job response: {}", e)))?;
             
         // Emit streaming response update event to frontend if AppHandle is provided
         if let Some(handle) = app_handle {
@@ -241,35 +267,38 @@ impl BackgroundJobRepository {
         let current_ts = get_timestamp();
         
         if days_to_keep == -1 {
-            // Delete all completed, failed, or canceled jobs
-            sqlx::query("DELETE FROM background_jobs WHERE status IN ($1, $2, $3)")
+            // Delete all completed, failed, or canceled jobs (excluding implementation plans)
+            sqlx::query("DELETE FROM background_jobs WHERE status IN ($1, $2, $3) AND task_type <> $4")
                 .bind(JobStatus::Completed.to_string())
                 .bind(JobStatus::Failed.to_string())
                 .bind(JobStatus::Canceled.to_string())
+                .bind(crate::models::TaskType::ImplementationPlan.to_string())
                 .execute(&*self.pool)
                 .await
                 .map_err(|e| AppError::DatabaseError(format!("Failed to delete job history: {}", e)))?;
         } else if days_to_keep > 0 {
-            // Delete jobs older than specified days
+            // Delete jobs older than specified days (excluding implementation plans)
             let target_date_ts = current_ts - (days_to_keep * 24 * 60 * 60 * 1000); // Convert days to milliseconds
             
-            sqlx::query("DELETE FROM background_jobs WHERE status IN ($1, $2, $3) AND created_at < $4")
+            sqlx::query("DELETE FROM background_jobs WHERE status IN ($1, $2, $3) AND created_at < $4 AND task_type <> $5")
                 .bind(JobStatus::Completed.to_string())
                 .bind(JobStatus::Failed.to_string())
                 .bind(JobStatus::Canceled.to_string())
                 .bind(target_date_ts)
+                .bind(crate::models::TaskType::ImplementationPlan.to_string())
                 .execute(&*self.pool)
                 .await
                 .map_err(|e| AppError::DatabaseError(format!("Failed to delete job history: {}", e)))?;
         } else {
-            // Delete jobs older than 90 days (default cleanup)
+            // Delete jobs older than 90 days (default cleanup, excluding implementation plans)
             let ninety_days_ago_ts = current_ts - (90 * 24 * 60 * 60 * 1000); // Convert days to milliseconds
             
-            sqlx::query("DELETE FROM background_jobs WHERE status IN ($1, $2, $3) AND created_at < $4")
+            sqlx::query("DELETE FROM background_jobs WHERE status IN ($1, $2, $3) AND created_at < $4 AND task_type <> $5")
                 .bind(JobStatus::Completed.to_string())
                 .bind(JobStatus::Failed.to_string())
                 .bind(JobStatus::Canceled.to_string())
                 .bind(ninety_days_ago_ts)
+                .bind(crate::models::TaskType::ImplementationPlan.to_string())
                 .execute(&*self.pool)
                 .await
                 .map_err(|e| AppError::DatabaseError(format!("Failed to delete old job history: {}", e)))?;
@@ -424,7 +453,6 @@ impl BackgroundJobRepository {
             .bind(job.tokens_received.map(|v| v as i64))
             .bind(&job.model_used)
             .bind(job.actual_cost)
-            // Note: cost field is not stored in database, only kept in memory
             .bind(&job.metadata)
             .bind(&job.system_prompt_template)
             .bind(job.created_at)
@@ -473,7 +501,6 @@ impl BackgroundJobRepository {
             .bind(job.tokens_received.map(|v| v as i64))
             .bind(&job.model_used)
             .bind(job.actual_cost)
-            // Note: cost field is not stored in database, only kept in memory
             .bind(&job.metadata)
             .bind(&job.system_prompt_template)
             .bind(&job.id)
@@ -553,6 +580,7 @@ impl BackgroundJobRepository {
     }
     
     /// Mark a job as completed with response and optional metadata
+    /// Ensures cost is stored in both database field and metadata for consistency
     pub async fn mark_job_completed(
         &self,
         job_id: &str,
@@ -565,6 +593,29 @@ impl BackgroundJobRepository {
         actual_cost: Option<f64>,
     ) -> AppResult<()> {
         let now = get_timestamp();
+        
+        // Log cost information for debugging
+        if let Some(cost) = actual_cost {
+            info!("Marking job {} as completed with cost: ${:.6}", job_id, cost);
+        } else {
+            debug!("Marking job {} as completed without cost", job_id);
+        }
+        
+        // Verify cost consistency between metadata and parameter
+        if let Some(metadata_str) = metadata {
+            if let Ok(metadata_json) = serde_json::from_str::<Value>(metadata_str) {
+                let metadata_cost = metadata_json.get("task_data")
+                    .and_then(|task_data| task_data.get("actual_cost"))
+                    .and_then(|v| v.as_f64());
+                
+                if let (Some(param_cost), Some(meta_cost)) = (actual_cost, metadata_cost) {
+                    if (param_cost - meta_cost).abs() > f64::EPSILON {
+                        warn!("Cost mismatch in job {}: parameter=${:.6}, metadata=${:.6}", 
+                              job_id, param_cost, meta_cost);
+                    }
+                }
+            }
+        }
         
         // Build the SQL dynamically based on which parameters are provided
         let mut final_query = String::from("UPDATE background_jobs SET status = $1, response = $2, updated_at = $3, end_time = $4");
@@ -641,17 +692,50 @@ impl BackgroundJobRepository {
         query_obj = query_obj.bind(job_id);
         
         // Execute the query
-        query_obj
+        let result = query_obj
             .execute(&*self.pool)
             .await
             .map_err(|e| AppError::DatabaseError(format!("Failed to mark job as completed: {}", e)))?;
+            
+        if result.rows_affected() > 0 {
+            debug!("Successfully marked job {} as completed", job_id);
+            if let Some(cost) = actual_cost {
+                debug!("Cost ${:.6} stored in database for job {}", cost, job_id);
+            }
+        } else {
+            warn!("No rows affected when marking job {} as completed", job_id);
+        }
             
         Ok(())
     }
     
     /// Mark a job as failed with error message and optional metadata
+    /// Tracks partial cost for failed jobs to maintain cost accounting accuracy
     pub async fn mark_job_failed(&self, job_id: &str, error_message: &str, metadata: Option<&str>, tokens_sent: Option<i32>, tokens_received: Option<i32>, model_used: Option<&str>, actual_cost: Option<f64>) -> AppResult<()> {
         let now = get_timestamp();
+        
+        // Log failure with cost information for debugging
+        if let Some(cost) = actual_cost {
+            info!("Marking job {} as failed with partial cost: ${:.6}, error: {}", job_id, cost, error_message);
+        } else {
+            info!("Marking job {} as failed without cost, error: {}", job_id, error_message);
+        }
+        
+        // Verify cost consistency between metadata and parameter for failed jobs
+        if let Some(metadata_str) = metadata {
+            if let Ok(metadata_json) = serde_json::from_str::<Value>(metadata_str) {
+                let metadata_cost = metadata_json.get("task_data")
+                    .and_then(|task_data| task_data.get("actual_cost"))
+                    .and_then(|v| v.as_f64());
+                
+                if let (Some(param_cost), Some(meta_cost)) = (actual_cost, metadata_cost) {
+                    if (param_cost - meta_cost).abs() > f64::EPSILON {
+                        warn!("Cost mismatch in failed job {}: parameter=${:.6}, metadata=${:.6}", 
+                              job_id, param_cost, meta_cost);
+                    }
+                }
+            }
+        }
         
         // Build the SQL dynamically based on which parameters are provided
         let mut final_query = String::from("UPDATE background_jobs SET status = $1, error_message = $2, updated_at = $3, end_time = $4");
@@ -719,17 +803,34 @@ impl BackgroundJobRepository {
         query_obj = query_obj.bind(job_id);
         
         // Execute the query
-        query_obj
+        let result = query_obj
             .execute(&*self.pool)
             .await
             .map_err(|e| AppError::DatabaseError(format!("Failed to mark job as failed: {}", e)))?;
+            
+        if result.rows_affected() > 0 {
+            debug!("Successfully marked job {} as failed", job_id);
+            if let Some(cost) = actual_cost {
+                debug!("Partial cost ${:.6} stored in database for failed job {}", cost, job_id);
+            }
+        } else {
+            warn!("No rows affected when marking job {} as failed", job_id);
+        }
             
         Ok(())
     }
     
     /// Mark a job as canceled with optional reason and cost tracking
+    /// Preserves any accumulated cost for proper billing reconciliation
     pub async fn mark_job_canceled(&self, job_id: &str, reason: &str, cost: Option<f64>) -> AppResult<()> {
         let now = get_timestamp();
+        
+        // Log cancellation with cost information
+        if let Some(cost_value) = cost {
+            info!("Marking job {} as canceled with cost: ${:.6}, reason: {}", job_id, cost_value, reason);
+        } else {
+            info!("Marking job {} as canceled without cost, reason: {}", job_id, reason);
+        }
         
         let query = if let Some(cost_value) = cost {
             sqlx::query(
@@ -765,14 +866,24 @@ impl BackgroundJobRepository {
                 .bind(job_id)
         };
         
-        query.execute(&*self.pool)
+        let result = query.execute(&*self.pool)
             .await
             .map_err(|e| AppError::DatabaseError(format!("Failed to mark job as canceled: {}", e)))?;
+            
+        if result.rows_affected() > 0 {
+            debug!("Successfully marked job {} as canceled", job_id);
+            if let Some(cost_value) = cost {
+                debug!("Cost ${:.6} stored in database for canceled job {}", cost_value, job_id);
+            }
+        } else {
+            warn!("No rows affected when marking job {} as canceled", job_id);
+        }
             
         Ok(())
     }
 
     /// Mark a job as canceled with optional reason and usage tracking
+    /// Comprehensive cancellation with all usage metrics for accurate cost accounting
     pub async fn mark_job_canceled_with_usage(
         &self, 
         job_id: &str, 
@@ -783,6 +894,15 @@ impl BackgroundJobRepository {
         actual_cost: Option<f64>,
     ) -> AppResult<()> {
         let now = get_timestamp();
+        
+        // Log comprehensive cancellation with usage tracking
+        if let Some(cost) = actual_cost {
+            info!("Marking job {} as canceled with full usage tracking and cost: ${:.6}, reason: {}", 
+                  job_id, cost, reason);
+        } else {
+            info!("Marking job {} as canceled with usage tracking but no cost, reason: {}", 
+                  job_id, reason);
+        }
         
         // Build the SQL dynamically based on which parameters are provided
         let mut final_query = String::from("UPDATE background_jobs SET status = $1, error_message = $2, updated_at = $3, end_time = $4");
@@ -841,10 +961,19 @@ impl BackgroundJobRepository {
         query_obj = query_obj.bind(job_id);
         
         // Execute the query
-        query_obj
+        let result = query_obj
             .execute(&*self.pool)
             .await
             .map_err(|e| AppError::DatabaseError(format!("Failed to mark job as canceled with usage: {}", e)))?;
+            
+        if result.rows_affected() > 0 {
+            debug!("Successfully marked job {} as canceled with usage tracking", job_id);
+            if let Some(cost) = actual_cost {
+                debug!("Cost ${:.6} and usage metrics stored for canceled job {}", cost, job_id);
+            }
+        } else {
+            warn!("No rows affected when marking job {} as canceled with usage", job_id);
+        }
             
         Ok(())
     }
@@ -988,6 +1117,7 @@ impl BackgroundJobRepository {
     }
     
     /// Helper method to convert a database row to a BackgroundJob struct
+    /// Ensures proper retrieval of cost data from database
     fn row_to_job(&self, row: &SqliteRow) -> AppResult<BackgroundJob> {
         let id: String = row.try_get::<'_, String, _>("id")?;
         let session_id: String = row.try_get::<'_, String, _>("session_id")?;
@@ -1006,6 +1136,14 @@ impl BackgroundJobRepository {
         let updated_at: Option<i64> = row.try_get::<'_, Option<i64>, _>("updated_at").unwrap_or(None);
         let start_time: Option<i64> = row.try_get::<'_, Option<i64>, _>("start_time").unwrap_or(None);
         let end_time: Option<i64> = row.try_get::<'_, Option<i64>, _>("end_time").unwrap_or(None);
+        // Retrieve cost from database with proper error handling
+        let actual_cost = row.try_get::<'_, Option<f64>, _>("actual_cost").unwrap_or(None);
+        
+        // Log cost retrieval for debugging if present
+        if let Some(cost) = actual_cost {
+            debug!("Retrieved job {} from database with cost: ${:.6}", id, cost);
+        }
+        
         Ok(BackgroundJob {
             id,
             session_id,
@@ -1017,7 +1155,7 @@ impl BackgroundJobRepository {
             tokens_sent,
             tokens_received,
             model_used,
-            actual_cost: row.try_get::<'_, Option<f64>, _>("actual_cost").unwrap_or(None),
+            actual_cost,
             duration_ms: row.try_get::<'_, Option<i64>, _>("duration_ms").unwrap_or(None),
             metadata,
             system_prompt_template,
@@ -1184,11 +1322,12 @@ impl BackgroundJobRepository {
     
     /// Delete all completed jobs
     pub async fn clear_all_completed_jobs(&self) -> AppResult<usize> {
-        // Delete completed, failed, or canceled jobs
-        let result = sqlx::query("DELETE FROM background_jobs WHERE status IN ($1, $2, $3)")
+        // Delete completed, failed, or canceled jobs (excluding implementation plans)
+        let result = sqlx::query("DELETE FROM background_jobs WHERE status IN ($1, $2, $3) AND task_type <> $4")
             .bind(JobStatus::Completed.to_string())
             .bind(JobStatus::Failed.to_string())
             .bind(JobStatus::Canceled.to_string())
+            .bind(crate::models::TaskType::ImplementationPlan.to_string())
             .execute(&*self.pool)
             .await
             .map_err(|e| AppError::DatabaseError(format!("Failed to delete all completed jobs: {}", e)))?;
@@ -1198,12 +1337,13 @@ impl BackgroundJobRepository {
     
     /// Delete completed jobs for a specific session
     pub async fn clear_completed_jobs_for_session(&self, session_id: &str) -> AppResult<usize> {
-        // Delete completed, failed, or canceled jobs for the session
-        let result = sqlx::query("DELETE FROM background_jobs WHERE session_id = $1 AND status IN ($2, $3, $4)")
+        // Delete completed, failed, or canceled jobs for the session (excluding implementation plans)
+        let result = sqlx::query("DELETE FROM background_jobs WHERE session_id = $1 AND status IN ($2, $3, $4) AND task_type <> $5")
             .bind(session_id)
             .bind(JobStatus::Completed.to_string())
             .bind(JobStatus::Failed.to_string())
             .bind(JobStatus::Canceled.to_string())
+            .bind(crate::models::TaskType::ImplementationPlan.to_string())
             .execute(&*self.pool)
             .await
             .map_err(|e| AppError::DatabaseError(format!("Failed to delete completed jobs for session: {}", e)))?;
@@ -1269,5 +1409,114 @@ impl BackgroundJobRepository {
         }
         
         Ok(jobs)
+    }
+    
+    /// Validate cost consistency between database and metadata for a job
+    /// This method helps ensure cost data integrity across different storage locations
+    pub async fn validate_job_cost_consistency(&self, job_id: &str) -> AppResult<bool> {
+        let job = self.get_job_by_id(job_id).await?
+            .ok_or_else(|| AppError::NotFoundError(format!("Job {} not found", job_id)))?;
+        
+        let db_cost = job.actual_cost;
+        
+        let metadata_cost = if let Some(metadata_str) = &job.metadata {
+            if let Ok(metadata_json) = serde_json::from_str::<Value>(metadata_str) {
+                metadata_json.get("task_data")
+                    .and_then(|task_data| task_data.get("actual_cost"))
+                    .and_then(|v| v.as_f64())
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+        
+        match (db_cost, metadata_cost) {
+            (Some(db), Some(meta)) => {
+                let is_consistent = (db - meta).abs() < f64::EPSILON;
+                if !is_consistent {
+                    warn!("Cost inconsistency detected in job {}: db=${:.6}, metadata=${:.6}", 
+                          job_id, db, meta);
+                }
+                Ok(is_consistent)
+            },
+            (Some(_), None) => {
+                debug!("Job {} has cost in database but not in metadata", job_id);
+                Ok(true) // Not necessarily inconsistent
+            },
+            (None, Some(_)) => {
+                debug!("Job {} has cost in metadata but not in database", job_id);
+                Ok(true) // Not necessarily inconsistent
+            },
+            (None, None) => {
+                debug!("Job {} has no cost data in either location", job_id);
+                Ok(true)
+            }
+        }
+    }
+    
+    /// Get total cost for jobs in a specific session
+    /// Useful for session-based billing and cost tracking
+    pub async fn get_session_total_cost(&self, session_id: &str) -> AppResult<f64> {
+        let jobs = self.get_jobs_by_session_id(session_id).await?;
+        let total_cost = jobs.iter()
+            .filter_map(|job| job.actual_cost)
+            .sum::<f64>();
+        
+        info!("Session {} total cost: ${:.6} across {} jobs", 
+              session_id, total_cost, jobs.len());
+        
+        Ok(total_cost)
+    }
+    
+    /// Update job cost in both database and metadata for consistency
+    /// This method ensures cost is properly synchronized across storage locations
+    pub async fn update_job_cost(&self, job_id: &str, cost: f64) -> AppResult<()> {
+        // First get the current job to preserve existing metadata
+        let job = self.get_job_by_id(job_id).await?
+            .ok_or_else(|| AppError::NotFoundError(format!("Job {} not found", job_id)))?;
+        
+        // Update metadata to include the cost
+        let updated_metadata = if let Some(metadata_str) = &job.metadata {
+            if let Ok(mut metadata_json) = serde_json::from_str::<Value>(metadata_str) {
+                if let Some(task_data) = metadata_json.get_mut("task_data") {
+                    if let serde_json::Value::Object(task_map) = task_data {
+                        task_map.insert("actual_cost".to_string(), serde_json::json!(cost));
+                    }
+                }
+                serde_json::to_string(&metadata_json)
+                    .map_err(|e| AppError::SerializationError(format!("Failed to serialize metadata: {}", e)))?
+            } else {
+                // Invalid JSON, create new metadata with cost
+                serde_json::to_string(&serde_json::json!({
+                    "task_data": {
+                        "actual_cost": cost
+                    }
+                })).unwrap()
+            }
+        } else {
+            // No existing metadata, create new
+            serde_json::to_string(&serde_json::json!({
+                "task_data": {
+                    "actual_cost": cost
+                }
+            })).unwrap()
+        };
+        
+        // Update both database cost field and metadata
+        let now = get_timestamp();
+        sqlx::query(
+            "UPDATE background_jobs SET actual_cost = $1, metadata = $2, updated_at = $3 WHERE id = $4")
+            .bind(cost)
+            .bind(updated_metadata)
+            .bind(now)
+            .bind(job_id)
+            .execute(&*self.pool)
+            .await
+            .map_err(|e| AppError::DatabaseError(format!("Failed to update job cost: {}", e)))?;
+        
+        info!("Updated cost for job {} to ${:.6} in both database and metadata", job_id, cost);
+        
+        Ok(())
     }
 }

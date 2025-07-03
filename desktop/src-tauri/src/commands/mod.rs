@@ -13,7 +13,7 @@ pub mod session_commands;
 // New modular task command modules
 pub mod text_commands;
 pub mod implementation_plan_commands;
-pub mod file_finder_workflow_commands;
+pub mod workflow_commands;
 pub mod generic_task_commands;
 pub mod setup_commands;
 pub mod database_maintenance_commands;
@@ -61,12 +61,14 @@ pub use implementation_plan_commands::{
     estimate_prompt_tokens_command,
 };
 
-// Re-exports from file finder workflow commands module  
-pub use file_finder_workflow_commands::{
+// Re-exports from workflow commands module  
+pub use workflow_commands::{
     start_file_finder_workflow,
+    start_web_search_workflow,
     get_file_finder_workflow_status,
     get_file_finder_workflow_results,
     cancel_file_finder_workflow,
+    cancel_workflow,
     pause_file_finder_workflow,
     resume_file_finder_workflow,
     retry_workflow_stage_command,

@@ -16,6 +16,7 @@ import { Button } from "@/ui/button";
 import { Textarea } from "@/ui/textarea";
 import { cn } from "@/utils/utils";
 import VoiceTranscription from "./voice-transcription";
+import { listen } from "@tauri-apps/api/event";
 
 export interface TaskDescriptionHandle {
   insertTextAtCursorPosition: (text: string) => void;
@@ -23,6 +24,7 @@ export interface TaskDescriptionHandle {
   replaceSelection: (newText: string) => void;
   replaceText: (oldText: string, newText: string) => void;
   flushPendingChanges: () => string; // Immediately flush any pending debounced changes and return current value
+  setValue: (value: string) => void;
   // Add properties that use-task-description-state.ts expects
   value: string;
   selectionStart: number;
@@ -171,6 +173,11 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
         get selectionStart() { return internalTextareaRef.current?.selectionStart ?? 0; },
         get selectionEnd() { return internalTextareaRef.current?.selectionEnd ?? 0; },
         focus: () => internalTextareaRef.current?.focus(),
+        setValue: (value: string) => {
+          setInternalValue(value);
+          debouncedOnChange(value);
+          onInteraction();
+        },
       }), [insertTextAtCursor, internalValue, debouncedOnChange, onInteraction, onChange]);
 
 
@@ -212,6 +219,63 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
         // Return empty cleanup function if no element
         return () => {};
       }, [internalValue, onChange]);
+
+      // Add event listener for apply-text-to-task-description event
+      useEffect(() => {
+        const handleApplyTextEvent = async () => {
+          const unlisten = await listen<string>('apply-text-to-task-description', (event) => {
+            if (ref && typeof ref === 'object' && ref.current) {
+              ref.current.setValue(event.payload);
+            }
+          });
+          
+          return unlisten;
+        };
+        
+        let unlisten: (() => void) | undefined;
+        
+        handleApplyTextEvent().then((unlistenFn) => {
+          unlisten = unlistenFn;
+        });
+        
+        return () => {
+          if (unlisten) {
+            unlisten();
+          }
+        };
+      }, [ref]);
+
+      // Add event listener for apply-web-search-to-task-description event (with XML formatting)
+      useEffect(() => {
+        const handleApplyWebSearchEvent = async () => {
+          const unlisten = await listen<string>('apply-web-search-to-task-description', (event) => {
+            if (ref && typeof ref === 'object' && ref.current) {
+              const currentValue = ref.current.value || '';
+              const originalTask = currentValue.trim();
+              const searchFindings = event.payload.trim();
+              
+              // Create XML-formatted task description
+              const formattedValue = `<original_task>\n${originalTask}\n</original_task>\n\n<web_search_findings>\n${searchFindings}\n</web_search_findings>`;
+              
+              ref.current.setValue(formattedValue);
+            }
+          });
+          
+          return unlisten;
+        };
+        
+        let unlisten: (() => void) | undefined;
+        
+        handleApplyWebSearchEvent().then((unlistenFn) => {
+          unlisten = unlistenFn;
+        });
+        
+        return () => {
+          if (unlisten) {
+            unlisten();
+          }
+        };
+      }, [ref]);
 
       // Simple empty check
       const effectiveIsEmpty = !internalValue?.trim();

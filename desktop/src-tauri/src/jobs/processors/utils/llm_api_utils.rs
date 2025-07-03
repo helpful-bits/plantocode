@@ -47,6 +47,7 @@ pub fn create_api_client_options(
         max_tokens,
         temperature,
         stream,
+        request_id: None, // Will be set by calling code if needed
     })
 }
 

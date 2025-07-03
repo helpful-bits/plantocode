@@ -15,6 +15,8 @@ use tokio::sync::Mutex;
 use crate::config::settings::AppSettings;
 use tracing::{debug, info, warn, error, instrument};
 
+use crate::clients::usage_extractor::{ProviderUsage, UsageExtractor};
+
 // Base URL for Anthropic API
 const ANTHROPIC_BASE_URL: &str = "https://api.anthropic.com/v1";
 
@@ -95,6 +97,8 @@ pub struct AnthropicUsage {
     pub output_tokens: i32,
     pub cache_creation_input_tokens: Option<i32>,
     pub cache_read_input_tokens: Option<i32>,
+    /// Cost field available in Anthropic v2024-06 API
+    pub cost: Option<f64>,
 }
 
 // Anthropic Streaming Structs
@@ -204,12 +208,12 @@ impl AnthropicClient {
         let result = response.json::<AnthropicChatResponse>().await
             .map_err(|e| AppError::Internal(format!("Anthropic deserialization failed: {}", e.to_string())))?;
         
-        let input_tokens = result.usage.input_tokens;
-        let cache_write_tokens = result.usage.cache_creation_input_tokens.unwrap_or(0);
-        let cache_read_tokens = result.usage.cache_read_input_tokens.unwrap_or(0);
-        let output_tokens = result.usage.output_tokens;
+        // Extract usage using the new extract_from_http_body method
+        let response_body = serde_json::to_string(&result)
+            .map_err(|e| AppError::Internal(format!("Failed to serialize response: {}", e)))?;
+        let usage = self.extract_from_http_body(response_body.as_bytes(), &request.model, false).await?;
             
-        Ok((result, headers, input_tokens, cache_write_tokens, cache_read_tokens, output_tokens))
+        Ok((result, headers, usage.prompt_tokens, usage.cache_write_tokens, usage.cache_read_tokens, usage.completion_tokens))
     }
 
     // Streaming Chat Completions for actix-web compatibility
@@ -277,92 +281,6 @@ impl AnthropicClient {
         Ok(result)
     }
     
-    // Helper method to parse usage from a stream
-    // Returns (input_tokens, cache_write_tokens, cache_read_tokens, output_tokens)
-    // 
-    // Example Anthropic usage JSON with cache tokens:
-    // {"usage": {"input_tokens": 100, "output_tokens": 50, 
-    //  "cache_creation_input_tokens": 10, "cache_read_input_tokens": 5}}
-    pub fn extract_usage_from_stream_chunk(chunk_str: &str) -> Option<(i32, i32, i32, i32)> {
-        if chunk_str.trim().is_empty() {
-            return None;
-        }
-        
-        match serde_json::from_str::<AnthropicStreamChunk>(chunk_str.trim()) {
-            Ok(parsed) => {
-                if let Some(usage) = parsed.usage {
-                    let cache_write_tokens = usage.cache_creation_input_tokens.unwrap_or(0);
-                    let cache_read_tokens = usage.cache_read_input_tokens.unwrap_or(0);
-                    Some((usage.input_tokens, cache_write_tokens, cache_read_tokens, usage.output_tokens))
-                } else {
-                    None
-                }
-            },
-            Err(_) => None,
-        }
-    }
-    
-    // Helper method to extract tokens from a stream chunk
-    // Returns (input_tokens, cache_write_tokens, cache_read_tokens, output_tokens)
-    // Note: For Anthropic, separate fields for cache creation (writes) and cache reads.
-    pub fn extract_tokens_from_stream_chunk(chunk_str: &str) -> Option<(i32, i32, i32, i32)> {
-        Self::extract_usage_from_stream_chunk(chunk_str)
-    }
-
-    // Extract cost from streaming chunk - prioritizes usage.cost field
-    pub fn extract_cost_from_stream_chunk(chunk_str: &str, model: &str) -> Option<f64> {
-        if chunk_str.trim().is_empty() {
-            return None;
-        }
-        
-        match serde_json::from_str::<AnthropicStreamChunk>(chunk_str.trim()) {
-            Ok(parsed) => {
-                if let Some(usage) = parsed.usage {
-                    if let Ok(usage_value) = serde_json::to_value(&usage) {
-                        if let Some(cost) = usage_value.get("cost").and_then(|c| c.as_f64()) {
-                            return Some(cost);
-                        }
-                    }
-                    
-                    let cache_write_tokens = usage.cache_creation_input_tokens.unwrap_or(0);
-                    let cache_read_tokens = usage.cache_read_input_tokens.unwrap_or(0);
-                    let cost = Self::calculate_cost_from_tokens(
-                        usage.input_tokens,
-                        cache_write_tokens,
-                        cache_read_tokens,
-                        usage.output_tokens,
-                        model
-                    );
-                    return Some(cost);
-                }
-            },
-            Err(_) => {}
-        }
-        None
-    }
-
-    // Calculate cost from token counts using Anthropic pricing
-    fn calculate_cost_from_tokens(input_tokens: i32, cache_write_tokens: i32, cache_read_tokens: i32, output_tokens: i32, model: &str) -> f64 {
-        let (input_price_per_1k, output_price_per_1k, cache_write_price_per_1k, cache_read_price_per_1k) = Self::get_model_pricing(model);
-        
-        let input_cost = (input_tokens as f64 / 1000.0) * input_price_per_1k;
-        let cache_write_cost = (cache_write_tokens as f64 / 1000.0) * cache_write_price_per_1k;
-        let cache_read_cost = (cache_read_tokens as f64 / 1000.0) * cache_read_price_per_1k;
-        let output_cost = (output_tokens as f64 / 1000.0) * output_price_per_1k;
-        
-        input_cost + cache_write_cost + cache_read_cost + output_cost
-    }
-
-    // Get model pricing - returns (input_per_1k, output_per_1k, cache_write_per_1k, cache_read_per_1k)
-    fn get_model_pricing(model: &str) -> (f64, f64, f64, f64) {
-        match model {
-            m if m.contains("claude-3-5-sonnet") => (0.003, 0.015, 0.00375, 0.0003),
-            m if m.contains("claude-3-opus") => (0.015, 0.075, 0.01875, 0.0015),
-            m if m.contains("claude-3-sonnet") => (0.003, 0.015, 0.00375, 0.0003),
-            m if m.contains("claude-3-haiku") => (0.00025, 0.00125, 0.0003125, 0.000025),
-            _ => (0.003, 0.015, 0.00375, 0.0003),
-        }
-    }
     
     // Convert a generic JSON Value into an AnthropicChatRequest
     pub fn convert_to_chat_request(&self, payload: Value) -> Result<AnthropicChatRequest, AppError> {
@@ -432,32 +350,97 @@ impl AnthropicClient {
         
         Ok(request)
     }
-    
-    // Helper functions for token and usage tracking
-    // Returns (input_tokens, cache_write_tokens, cache_read_tokens, output_tokens)
-    pub fn extract_tokens_from_response(&self, response: &AnthropicChatResponse) -> (i32, i32, i32, i32) {
-        let cache_write_tokens = response.usage.cache_creation_input_tokens.unwrap_or(0);
-        let cache_read_tokens = response.usage.cache_read_input_tokens.unwrap_or(0);
-        (response.usage.input_tokens, cache_write_tokens, cache_read_tokens, response.usage.output_tokens)
-    }
+}
 
-    // Extract cost from response - prioritizes usage.cost field
-    pub fn extract_cost_from_response(&self, response: &AnthropicChatResponse, model: &str) -> f64 {
-        if let Ok(usage_value) = serde_json::to_value(&response.usage) {
-            if let Some(cost) = usage_value.get("cost").and_then(|c| c.as_f64()) {
-                return cost;
-            }
-        }
+impl UsageExtractor for AnthropicClient {
+    /// Extract usage information from Anthropic API HTTP response body (2025-07 format)
+    /// Supports both streaming and non-streaming responses with provider cost extraction
+    async fn extract_from_http_body(&self, body: &[u8], model_id: &str, is_streaming: bool) -> Result<ProviderUsage, AppError> {
+        let body_str = std::str::from_utf8(body)
+            .map_err(|e| AppError::InvalidArgument(format!("Invalid UTF-8: {}", e)))?;
         
-        let cache_write_tokens = response.usage.cache_creation_input_tokens.unwrap_or(0);
-        let cache_read_tokens = response.usage.cache_read_input_tokens.unwrap_or(0);
-        Self::calculate_cost_from_tokens(
-            response.usage.input_tokens,
-            cache_write_tokens,
-            cache_read_tokens,
-            response.usage.output_tokens,
-            model
-        )
+        let json: serde_json::Value = serde_json::from_str(body_str)
+            .map_err(|e| AppError::External(format!("Failed to parse JSON: {}", e)))?;
+        
+        let usage_result = if is_streaming {
+            self.extract_usage_from_stream_chunk(&json)
+        } else {
+            self.extract_usage(&json)
+        };
+        
+        usage_result
+            .map(|mut usage| {
+                usage.model_id = model_id.to_string();
+                usage
+            })
+            .ok_or_else(|| AppError::External("Failed to extract usage from Anthropic response".to_string()))
+    }
+    
+    /// Extract usage information from Anthropic response JSON
+    fn extract_usage(&self, json_value: &serde_json::Value) -> Option<ProviderUsage> {
+        // Extract usage from parsed JSON
+        let usage = json_value.get("usage")?;
+        
+        let input_tokens = match usage.get("input_tokens").and_then(|v| v.as_i64()) {
+            Some(tokens) => tokens as i32,
+            None => {
+                tracing::warn!("Missing or invalid input_tokens in Anthropic response");
+                return None;
+            }
+        };
+        
+        let output_tokens = match usage.get("output_tokens").and_then(|v| v.as_i64()) {
+            Some(tokens) => tokens as i32,
+            None => {
+                tracing::warn!("Missing or invalid output_tokens in Anthropic response");
+                return None;
+            }
+        };
+        
+        // Extract cache tokens with proper error handling
+        let cache_creation_input_tokens = usage.get("cache_creation_input_tokens")
+            .and_then(|v| v.as_i64())
+            .unwrap_or(0) as i32;
+        let cache_read_input_tokens = usage.get("cache_read_input_tokens")
+            .and_then(|v| v.as_i64())
+            .unwrap_or(0) as i32;
+        
+        Some(ProviderUsage {
+            prompt_tokens: 0,
+            completion_tokens: output_tokens,
+            cache_write_tokens: cache_creation_input_tokens,
+            cache_read_tokens: cache_read_input_tokens,
+            model_id: "unknown".to_string(), // Will be set by caller
+            duration_ms: None,
+            cost: None, // Anthropic doesn't provide cost in responses
+        })
+    }
+    
+    /// Extract usage information from Anthropic streaming chunk
+    /// Handles both individual chunks and complete responses
+    fn extract_usage_from_stream_chunk(&self, chunk_json: &serde_json::Value) -> Option<ProviderUsage> {
+        // For Anthropic streaming, usage info comes in the final chunk with same structure
+        let usage = chunk_json.get("usage")?;
+        
+        let input_tokens = usage.get("input_tokens")?.as_i64()? as i32;
+        let output_tokens = usage.get("output_tokens")?.as_i64()? as i32;
+        
+        let cache_creation_input_tokens = usage.get("cache_creation_input_tokens")
+            .and_then(|v| v.as_i64())
+            .unwrap_or(0) as i32;
+        let cache_read_input_tokens = usage.get("cache_read_input_tokens")
+            .and_then(|v| v.as_i64())
+            .unwrap_or(0) as i32;
+        
+        Some(ProviderUsage {
+            prompt_tokens: 0,
+            completion_tokens: output_tokens,
+            cache_write_tokens: cache_creation_input_tokens,
+            cache_read_tokens: cache_read_input_tokens,
+            model_id: "unknown".to_string(), // Will be set by caller
+            duration_ms: None,
+            cost: None, // Anthropic doesn't provide cost in responses
+        })
     }
 }
 

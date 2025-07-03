@@ -17,8 +17,11 @@ export interface TaskSettings {
   implementationPlan: TaskModelSettings;
   genericLlmStream: TaskModelSettings;
   fileFinderWorkflow: TaskModelSettings;
+  webSearchWorkflow: TaskModelSettings;
   streaming: TaskModelSettings;
   unknown: TaskModelSettings;
   fileRelevanceAssessment: TaskModelSettings;
   extendedPathFinder: TaskModelSettings;
+  webSearchQueryGeneration: TaskModelSettings;
+  webSearchExecution: TaskModelSettings;
 }

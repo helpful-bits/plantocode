@@ -228,7 +228,7 @@ fn main() {
             commands::file_system_commands::normalize_path_command,
             commands::file_system_commands::get_temp_dir_command,
             commands::file_system_commands::path_is_absolute_command,
-            commands::file_finder_workflow_commands::cancel_workflow_stage_command,
+            commands::workflow_commands::cancel_workflow_stage_command,
             
             // Text commands
             commands::text_commands::improve_text_command,
@@ -241,16 +241,20 @@ fn main() {
             commands::implementation_plan_commands::get_prompt_command,
             commands::implementation_plan_commands::estimate_prompt_tokens_command,
 
-            // File finder workflow commands (new stage-based approach)
-            commands::file_finder_workflow_commands::start_file_finder_workflow,
-            commands::file_finder_workflow_commands::get_file_finder_workflow_status,
-            commands::file_finder_workflow_commands::cancel_file_finder_workflow,
-            commands::file_finder_workflow_commands::pause_file_finder_workflow,
-            commands::file_finder_workflow_commands::resume_file_finder_workflow,
-            commands::file_finder_workflow_commands::get_file_finder_workflow_results,
-            commands::file_finder_workflow_commands::get_all_workflows_command,
-            commands::file_finder_workflow_commands::get_workflow_details_command,
-            commands::file_finder_workflow_commands::retry_workflow_stage_command,
+            // Workflow commands (new stage-based approach)
+            commands::workflow_commands::start_file_finder_workflow,
+            commands::workflow_commands::start_web_search_workflow,
+            commands::workflow_commands::get_file_finder_workflow_status,
+            commands::workflow_commands::cancel_file_finder_workflow,
+            commands::workflow_commands::cancel_workflow,
+            commands::workflow_commands::pause_file_finder_workflow,
+            commands::workflow_commands::resume_file_finder_workflow,
+            commands::workflow_commands::get_file_finder_workflow_results,
+            commands::workflow_commands::get_all_workflows_command,
+            commands::workflow_commands::get_workflow_details_command,
+            commands::workflow_commands::retry_workflow_stage_command,
+            commands::workflow_commands::get_workflow_state,
+            commands::workflow_commands::get_workflow_results,
             
             
             // Generic task commands

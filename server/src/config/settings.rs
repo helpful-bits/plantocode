@@ -42,7 +42,7 @@ pub struct ApiKeysConfig {
     pub openrouter_api_key: Option<String>,
     pub openai_api_key: Option<String>,
     pub anthropic_api_key: Option<String>,
-    pub google_api_key: Option<String>,
+    pub google_api_keys: Option<Vec<String>>,
     pub auth0_domain: String,
     pub auth0_api_audience: String,
     pub auth0_server_client_id: Option<String>,
@@ -126,7 +126,15 @@ impl AppSettings {
         let openrouter_api_key = env::var("OPENROUTER_API_KEY").ok();
         let openai_api_key = env::var("OPENAI_API_KEY").ok();
         let anthropic_api_key = env::var("ANTHROPIC_API_KEY").ok();
-        let google_api_key = env::var("GOOGLE_API_KEY").ok();
+        let google_api_keys = env::var("GOOGLE_API_KEYS")
+            .ok()
+            .map(|keys_str| {
+                keys_str.split(',')
+                    .map(|key| key.trim().to_string())
+                    .filter(|key| !key.is_empty())
+                    .collect::<Vec<String>>()
+            })
+            .filter(|keys| !keys.is_empty());
         
         let auth0_domain = env::var("AUTH0_DOMAIN")
             .map_err(|_| AppError::Configuration("AUTH0_DOMAIN must be set".to_string()))?;
@@ -232,7 +240,7 @@ impl AppSettings {
                 openrouter_api_key,
                 openai_api_key,
                 anthropic_api_key,
-                google_api_key,
+                google_api_keys,
                 auth0_domain,
                 auth0_api_audience,
                 auth0_server_client_id,

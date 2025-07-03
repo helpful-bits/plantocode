@@ -449,15 +449,15 @@
 
   .dark {
     /* Dark mode with icon-inspired navy and teal accents */
-    /* Background: Inspired by #071C2A (midnight navy) */
-    --color-background: oklch(0.12 0.02 206);
-    --color-background-gradient: linear-gradient(135deg, oklch(0.08 0.02 206) 0%, oklch(0.12 0.02 206) 40%, oklch(0.14 0.03 195) 100%);
+    /* Background: Lighter navy for better visibility */
+    --color-background: oklch(0.18 0.02 206);
+    --color-background-gradient: linear-gradient(135deg, oklch(0.15 0.02 206) 0%, oklch(0.18 0.02 206) 40%, oklch(0.20 0.03 195) 100%);
     --color-foreground: oklch(0.9 0 0);
     
     /* Cards: Slightly lighter navy */
-    --color-card: oklch(0.16 0.02 206);
+    --color-card: oklch(0.22 0.02 206);
     --color-card-foreground: oklch(0.88 0 0);
-    --color-popover: oklch(0.14 0.02 206);
+    --color-popover: oklch(0.20 0.02 206);
     --color-popover-foreground: oklch(0.9 0 0);
     
     /* Primary: Brighter teal for dark mode */
@@ -465,9 +465,9 @@
     --color-primary-foreground: oklch(0.12 0.02 206);
     
     /* Secondary and muted: Navy tones */
-    --color-secondary: oklch(0.22 0.02 206);
+    --color-secondary: oklch(0.28 0.02 206);
     --color-secondary-foreground: oklch(0.82 0 0);
-    --color-muted: oklch(0.18 0.02 206);
+    --color-muted: oklch(0.24 0.02 206);
     --color-muted-foreground: oklch(0.62 0 0);
     
     /* Accent: Light teal with good contrast */
@@ -491,9 +491,9 @@
     --color-success-border: oklch(0.3 0.06 145);
     
     /* UI elements with navy tones */
-    --color-border: oklch(0.28 0.02 206);
-    --color-border-modal: oklch(0.25 0.05 195);
-    --color-input: oklch(0.2 0.02 206);
+    --color-border: oklch(0.34 0.02 206);
+    --color-border-modal: oklch(0.30 0.05 195);
+    --color-input: oklch(0.26 0.02 206);
     --color-ring: oklch(0.65 0.08 195);
     
     /* Variable mappings for dark mode */

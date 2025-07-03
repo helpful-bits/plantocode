@@ -542,6 +542,11 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
                   ? WorkflowUtils.getStageName(parsedMeta.workflowStage)
                   : 'Unknown Stage';
                 
+                // If we get "Unknown Stage", just show "Job Details"
+                if (formattedStageName === 'Unknown Stage') {
+                  return <>Job Details</>;
+                }
+                
                 return (
                   <div className="flex items-center gap-3">
                     <div className="flex items-center gap-2">

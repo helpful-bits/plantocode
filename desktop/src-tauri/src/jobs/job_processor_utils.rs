@@ -116,10 +116,13 @@ pub async fn check_job_canceled(
 /// Extracts the `actual_cost` from the `llm_usage.cost` field, which is the definitive, 
 /// server-calculated cost. This cost is saved to the `background_jobs` table and should 
 /// be treated as the single source of truth for billing and user-facing cost display.
-/// The `llm_usage.cost` field is the definitive, server-calculated cost and should be treated
-/// as the single source of truth for billing and display purposes.
 /// 
-/// ## Other Parameters
+/// Cost extraction priority:
+/// 1. Server-provided `llm_usage.cost` (primary source)
+/// 2. Existing metadata `actual_cost` (fallback for edge cases)
+/// 3. No cost tracking if neither available
+/// 
+/// ## Parameters
 /// - Ensures all token counts (tokens_sent, tokens_received, total_tokens) are correctly updated from OpenRouterUsage
 /// - The metadata parameter accepts Option<serde_json::Value> for type safety and flexibility
 /// - Correctly merges provided metadata (additional_params) into existing JobWorkerMetadata structure
@@ -143,16 +146,43 @@ pub async fn finalize_job_success(
     
     let db_job = repo.get_job_by_id(job_id).await?.ok_or_else(|| AppError::NotFoundError(format!("Job {} not found for finalization", job_id)))?;
     
+    // Extract server-authoritative cost with comprehensive logging
     let actual_cost = llm_usage.as_ref().and_then(|usage| usage.cost)
         .or_else(|| {
-            db_job.metadata.as_deref()
+            // Fallback to existing metadata cost (edge case handling)
+            let fallback_cost = db_job.metadata.as_deref()
                 .and_then(|metadata_str| serde_json::from_str::<Value>(metadata_str).ok())
                 .and_then(|metadata_value| {
                     metadata_value.get("task_data")
                         .and_then(|task_data| task_data.get("actual_cost"))
                         .and_then(|v| v.as_f64())
-                })
+                });
+            
+            if fallback_cost.is_some() {
+                warn!("Job {} using fallback cost from metadata instead of server-provided cost", job_id);
+            }
+            fallback_cost
         });
+    
+    // Log cost finalization details
+    match (llm_usage.as_ref(), actual_cost) {
+        (Some(usage), Some(cost)) => {
+            info!("Job {} cost finalized: ${:.6} (tokens: prompt={}, completion={}, total={})", 
+                job_id, cost, usage.prompt_tokens, usage.completion_tokens, usage.total_tokens);
+            
+            // Log cache token usage if present
+            if usage.cached_input_tokens.is_some() || usage.cache_write_tokens.is_some() || usage.cache_read_tokens.is_some() {
+                debug!("Job {} cache usage: cached_input={:?}, cache_write={:?}, cache_read={:?}",
+                    job_id, usage.cached_input_tokens, usage.cache_write_tokens, usage.cache_read_tokens);
+            }
+        }
+        (Some(_), None) => {
+            warn!("Job {} completed with usage data but no cost information from server", job_id);
+        }
+        (None, _) => {
+            debug!("Job {} completed without server usage/cost data", job_id);
+        }
+    }
     
     let final_metadata = if let Some(metadata_str) = db_job.metadata.as_deref() {
         if let Ok(mut ui_meta) = serde_json::from_str::<JobUIMetadata>(metadata_str) {
@@ -169,12 +199,19 @@ pub async fn finalize_job_success(
             }
             
             if let Value::Object(ref mut task_map) = ui_meta.task_data {
+                // Store server-authoritative cost
                 if let Some(cost) = actual_cost {
                     task_map.insert("actual_cost".to_string(), serde_json::json!(cost));
+                    debug!("Job {} stored actual_cost ${:.6} in metadata", job_id, cost);
                 }
                 
-                // Store cache token information from server usage object
+                // Store comprehensive token usage from server
                 if let Some(usage) = &llm_usage {
+                    task_map.insert("prompt_tokens".to_string(), serde_json::json!(usage.prompt_tokens));
+                    task_map.insert("completion_tokens".to_string(), serde_json::json!(usage.completion_tokens));
+                    task_map.insert("total_tokens".to_string(), serde_json::json!(usage.total_tokens));
+                    
+                    // Store cache token information if available
                     if let Some(cached_input) = usage.cached_input_tokens {
                         task_map.insert("cachedInputTokens".to_string(), serde_json::json!(cached_input));
                     }
@@ -199,12 +236,19 @@ pub async fn finalize_job_success(
             
             let mut task_data = metadata.unwrap_or_else(|| serde_json::json!({}));
             if let Value::Object(ref mut task_map) = task_data {
+                // Store server-authoritative cost
                 if let Some(cost) = actual_cost {
                     task_map.insert("actual_cost".to_string(), serde_json::json!(cost));
+                    debug!("Job {} stored actual_cost ${:.6} in new metadata", job_id, cost);
                 }
                 
-                // Store cache token information from server usage object
+                // Store comprehensive token usage from server
                 if let Some(usage) = &llm_usage {
+                    task_map.insert("prompt_tokens".to_string(), serde_json::json!(usage.prompt_tokens));
+                    task_map.insert("completion_tokens".to_string(), serde_json::json!(usage.completion_tokens));
+                    task_map.insert("total_tokens".to_string(), serde_json::json!(usage.total_tokens));
+                    
+                    // Store cache token information if available
                     if let Some(cached_input) = usage.cached_input_tokens {
                         task_map.insert("cachedInputTokens".to_string(), serde_json::json!(cached_input));
                     }
@@ -216,25 +260,31 @@ pub async fn finalize_job_success(
                     }
                 }
             } else {
-                let mut cache_data = serde_json::Map::new();
+                let mut usage_data = serde_json::Map::new();
                 if let Some(cost) = actual_cost {
-                    cache_data.insert("actual_cost".to_string(), serde_json::json!(cost));
+                    usage_data.insert("actual_cost".to_string(), serde_json::json!(cost));
+                    debug!("Job {} stored actual_cost ${:.6} in new object metadata", job_id, cost);
                 }
                 
-                // Store cache token information from server usage object
+                // Store comprehensive token usage from server
                 if let Some(usage) = &llm_usage {
+                    usage_data.insert("prompt_tokens".to_string(), serde_json::json!(usage.prompt_tokens));
+                    usage_data.insert("completion_tokens".to_string(), serde_json::json!(usage.completion_tokens));
+                    usage_data.insert("total_tokens".to_string(), serde_json::json!(usage.total_tokens));
+                    
+                    // Store cache token information if available
                     if let Some(cached_input) = usage.cached_input_tokens {
-                        cache_data.insert("cachedInputTokens".to_string(), serde_json::json!(cached_input));
+                        usage_data.insert("cachedInputTokens".to_string(), serde_json::json!(cached_input));
                     }
                     if let Some(cache_write) = usage.cache_write_tokens {
-                        cache_data.insert("cacheWriteTokens".to_string(), serde_json::json!(cache_write));
+                        usage_data.insert("cacheWriteTokens".to_string(), serde_json::json!(cache_write));
                     }
                     if let Some(cache_read) = usage.cache_read_tokens {
-                        cache_data.insert("cacheReadTokens".to_string(), serde_json::json!(cache_read));
+                        usage_data.insert("cacheReadTokens".to_string(), serde_json::json!(cache_read));
                     }
                 }
                 
-                task_data = serde_json::Value::Object(cache_data);
+                task_data = serde_json::Value::Object(usage_data);
             }
             
             crate::utils::job_ui_metadata_builder::JobUIMetadataBuilder::new(default_payload)
@@ -252,12 +302,19 @@ pub async fn finalize_job_success(
         
         let mut task_data = metadata.unwrap_or_else(|| serde_json::json!({}));
         if let Value::Object(ref mut task_map) = task_data {
+            // Store server-authoritative cost
             if let Some(cost) = actual_cost {
                 task_map.insert("actual_cost".to_string(), serde_json::json!(cost));
+                debug!("Job {} stored actual_cost ${:.6} in default metadata", job_id, cost);
             }
             
-            // Store cache token information from server usage object
+            // Store comprehensive token usage from server
             if let Some(usage) = &llm_usage {
+                task_map.insert("prompt_tokens".to_string(), serde_json::json!(usage.prompt_tokens));
+                task_map.insert("completion_tokens".to_string(), serde_json::json!(usage.completion_tokens));
+                task_map.insert("total_tokens".to_string(), serde_json::json!(usage.total_tokens));
+                
+                // Store cache token information if available
                 if let Some(cached_input) = usage.cached_input_tokens {
                     task_map.insert("cachedInputTokens".to_string(), serde_json::json!(cached_input));
                 }
@@ -269,25 +326,31 @@ pub async fn finalize_job_success(
                 }
             }
         } else {
-            let mut cache_data = serde_json::Map::new();
+            let mut usage_data = serde_json::Map::new();
             if let Some(cost) = actual_cost {
-                cache_data.insert("actual_cost".to_string(), serde_json::json!(cost));
+                usage_data.insert("actual_cost".to_string(), serde_json::json!(cost));
+                debug!("Job {} stored actual_cost ${:.6} in default object metadata", job_id, cost);
             }
             
-            // Store cache token information from server usage object
+            // Store comprehensive token usage from server
             if let Some(usage) = &llm_usage {
+                usage_data.insert("prompt_tokens".to_string(), serde_json::json!(usage.prompt_tokens));
+                usage_data.insert("completion_tokens".to_string(), serde_json::json!(usage.completion_tokens));
+                usage_data.insert("total_tokens".to_string(), serde_json::json!(usage.total_tokens));
+                
+                // Store cache token information if available
                 if let Some(cached_input) = usage.cached_input_tokens {
-                    cache_data.insert("cachedInputTokens".to_string(), serde_json::json!(cached_input));
+                    usage_data.insert("cachedInputTokens".to_string(), serde_json::json!(cached_input));
                 }
                 if let Some(cache_write) = usage.cache_write_tokens {
-                    cache_data.insert("cacheWriteTokens".to_string(), serde_json::json!(cache_write));
+                    usage_data.insert("cacheWriteTokens".to_string(), serde_json::json!(cache_write));
                 }
                 if let Some(cache_read) = usage.cache_read_tokens {
-                    cache_data.insert("cacheReadTokens".to_string(), serde_json::json!(cache_read));
+                    usage_data.insert("cacheReadTokens".to_string(), serde_json::json!(cache_read));
                 }
             }
             
-            task_data = serde_json::Value::Object(cache_data);
+            task_data = serde_json::Value::Object(usage_data);
         }
         
         crate::utils::job_ui_metadata_builder::JobUIMetadataBuilder::new(default_payload)
@@ -309,7 +372,8 @@ pub async fn finalize_job_success(
         actual_cost,
     ).await?;
     
-    info!("Job {} completed successfully", job_id);
+    info!("Job {} completed successfully with model {}, cost: {:?}", job_id, model_used, 
+        actual_cost.map(|c| format!("${:.6}", c)).unwrap_or_else(|| "N/A".to_string()));
     
     // Emit final job status to frontend
     emit_job_status_change(
@@ -331,10 +395,15 @@ pub async fn finalize_job_success(
 /// partial usage and cost data to ensure that even failed jobs that incurred costs are tracked
 /// accurately for billing purposes.
 /// 
+/// ## Cost Handling for Failed Jobs
 /// The `llm_usage` parameter contains server-authoritative cost information (if available) and
 /// should be treated as the ground truth for any costs incurred during the failed job execution.
-/// The `llm_usage.cost` field is the definitive, server-calculated cost and should be treated
-/// as the single source of truth for billing and display purposes.
+/// Failed jobs may still incur partial costs that must be tracked and billed appropriately.
+/// 
+/// Cost extraction priority for failed jobs:
+/// 1. Server-provided `llm_usage.cost` (primary source)
+/// 2. Existing metadata `actual_cost` (fallback for edge cases)
+/// 3. No cost tracking if neither available (job failed before any LLM calls)
 pub async fn finalize_job_failure(
     job_id: &str,
     repo: &BackgroundJobRepository,
@@ -355,6 +424,41 @@ pub async fn finalize_job_failure(
         }
     };
 
+    // Extract server-authoritative cost with comprehensive logging for failed jobs
+    let actual_cost = llm_usage.as_ref().and_then(|usage| usage.cost)
+        .or_else(|| {
+            // Fallback to existing metadata cost (edge case handling)
+            let fallback_cost = current_job.metadata.as_deref()
+                .and_then(|metadata_str| serde_json::from_str::<Value>(metadata_str).ok())
+                .and_then(|metadata_value| {
+                    metadata_value.get("task_data")
+                        .and_then(|task_data| task_data.get("actual_cost"))
+                        .and_then(|v| v.as_f64())
+                });
+            
+            if fallback_cost.is_some() {
+                warn!("Failed job {} using fallback cost from metadata instead of server-provided cost", job_id);
+            }
+            fallback_cost
+        });
+    
+    // Log cost finalization details for failed jobs
+    match (llm_usage.as_ref(), actual_cost) {
+        (Some(usage), Some(cost)) => {
+            warn!("Failed job {} incurred partial cost: ${:.6} (tokens: prompt={}, completion={}, total={})", 
+                job_id, cost, usage.prompt_tokens, usage.completion_tokens, usage.total_tokens);
+        }
+        (Some(_), None) => {
+            warn!("Failed job {} had usage data but no cost information from server", job_id);
+        }
+        (None, Some(cost)) => {
+            warn!("Failed job {} has cost ${:.6} from metadata without server usage data", job_id, cost);
+        }
+        (None, None) => {
+            debug!("Failed job {} completed without usage/cost data (likely failed before LLM call)", job_id);
+        }
+    }
+
     // Try to parse existing metadata as JobUIMetadata, create new if fails
     let updated_metadata_str = if let Some(metadata_str) = current_job.metadata.as_deref() {
         if let Ok(mut ui_meta) = serde_json::from_str::<JobUIMetadata>(metadata_str) {
@@ -368,8 +472,19 @@ pub async fn finalize_job_failure(
             if let serde_json::Value::Object(ref mut task_map) = ui_meta.task_data {
                 task_map.insert("failure_info".to_string(), error_info);
                 
-                // Store cache token information from server usage object for failed jobs
+                // Store partial cost for failed job if available
+                if let Some(cost) = actual_cost {
+                    task_map.insert("actual_cost".to_string(), serde_json::json!(cost));
+                    debug!("Failed job {} stored partial actual_cost ${:.6} in metadata", job_id, cost);
+                }
+                
+                // Store comprehensive token usage from server for failed jobs
                 if let Some(usage) = &llm_usage {
+                    task_map.insert("prompt_tokens".to_string(), serde_json::json!(usage.prompt_tokens));
+                    task_map.insert("completion_tokens".to_string(), serde_json::json!(usage.completion_tokens));
+                    task_map.insert("total_tokens".to_string(), serde_json::json!(usage.total_tokens));
+                    
+                    // Store cache token information if available
                     if let Some(cached_input) = usage.cached_input_tokens {
                         task_map.insert("cachedInputTokens".to_string(), serde_json::json!(cached_input));
                     }
@@ -384,8 +499,19 @@ pub async fn finalize_job_failure(
                 let mut failure_data = serde_json::Map::new();
                 failure_data.insert("failure_info".to_string(), error_info);
                 
-                // Store cache token information from server usage object for failed jobs
+                // Store partial cost for failed job if available
+                if let Some(cost) = actual_cost {
+                    failure_data.insert("actual_cost".to_string(), serde_json::json!(cost));
+                    debug!("Failed job {} stored partial actual_cost ${:.6} in new metadata", job_id, cost);
+                }
+                
+                // Store comprehensive token usage from server for failed jobs
                 if let Some(usage) = &llm_usage {
+                    failure_data.insert("prompt_tokens".to_string(), serde_json::json!(usage.prompt_tokens));
+                    failure_data.insert("completion_tokens".to_string(), serde_json::json!(usage.completion_tokens));
+                    failure_data.insert("total_tokens".to_string(), serde_json::json!(usage.total_tokens));
+                    
+                    // Store cache token information if available
                     if let Some(cached_input) = usage.cached_input_tokens {
                         failure_data.insert("cachedInputTokens".to_string(), serde_json::json!(cached_input));
                     }
@@ -411,24 +537,12 @@ pub async fn finalize_job_failure(
         None
     };
 
-    // Extract token counts and cost from server response for tracking partial usage in failed jobs
+    // Extract token counts from server response for tracking partial usage in failed jobs
     let (tokens_sent, tokens_received) = if let Some(usage) = &llm_usage {
         (Some(usage.prompt_tokens), Some(usage.completion_tokens))
     } else {
         (None, None)
     };
-
-    // Extract actual cost from LLM usage, with fallback to metadata
-    let actual_cost = llm_usage.as_ref().and_then(|usage| usage.cost)
-        .or_else(|| {
-            current_job.metadata.as_deref()
-                .and_then(|metadata_str| serde_json::from_str::<Value>(metadata_str).ok())
-                .and_then(|metadata_value| {
-                    metadata_value.get("task_data")
-                        .and_then(|task_data| task_data.get("actual_cost"))
-                        .and_then(|v| v.as_f64())
-                })
-        });
     
     // Mark the job as failed with usage tracking
     repo.mark_job_failed(
@@ -441,7 +555,8 @@ pub async fn finalize_job_failure(
         actual_cost,
     ).await?;
     
-    error!("Job {} failed: {}", job_id, error_message);
+    error!("Job {} failed: {} (model: {:?}, partial_cost: {:?})", job_id, error_message, 
+        model_used, actual_cost.map(|c| format!("${:.6}", c)).unwrap_or_else(|| "N/A".to_string()));
     
     // Emit final job status to frontend
     emit_job_status_change(
@@ -478,7 +593,11 @@ pub async fn get_llm_task_config(
     }
 }
 
-/// Emit a job status change event
+/// Emit a job status change event with cost propagation
+/// 
+/// Ensures that server-authoritative cost information is properly propagated to the frontend
+/// via job status change events. This allows the UI to display accurate, up-to-date cost
+/// information for both successful and failed jobs.
 pub fn emit_job_status_change(
     app_handle: &AppHandle,
     job_id: &str,
@@ -498,8 +617,17 @@ pub fn emit_job_status_change(
         return Err(AppError::TauriError(format!("Failed to emit job status change event: {}", e)));
     }
     
-    debug!("Emitted job status change event for job {}: status={}, message={:?}", 
-        job_id, status, message);
+    // Log cost propagation for tracking
+    match actual_cost {
+        Some(cost) => {
+            debug!("Emitted job status change event for job {}: status={}, cost=${:.6}, message={:?}", 
+                job_id, status, cost, message);
+        }
+        None => {
+            debug!("Emitted job status change event for job {}: status={}, no_cost, message={:?}", 
+                job_id, status, message);
+        }
+    }
         
     Ok(())
 }

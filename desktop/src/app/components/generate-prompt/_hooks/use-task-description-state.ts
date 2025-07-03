@@ -3,8 +3,10 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 
 import { refineTaskDescriptionAction } from "@/actions/ai/task-refinement.actions";
+import { startWebSearchWorkflowOrchestratorAction } from "@/actions/workflows/workflow.actions";
 import { getTaskDescriptionHistoryAction, syncTaskDescriptionHistoryAction } from "@/actions/session";
 import { useBackgroundJob } from "@/contexts/_hooks/use-background-job";
+import { useWorkflowState } from "@/contexts/_hooks/use-workflow-state";
 import { useNotification } from "@/contexts/notification-context";
 import { useProject } from "@/contexts/project-context";
 import { useSessionActionsContext, useSessionStateContext } from "@/contexts/session";
@@ -46,6 +48,10 @@ export function useTaskDescriptionState({
   const [taskRefinementJobId, setTaskRefinementJobId] = useState<
     string | undefined
   >(undefined);
+  const [isWebRefiningTask, setIsWebRefiningTask] = useState(false);
+  const [webSearchWorkflowId, setWebSearchWorkflowId] = useState<
+    string | undefined
+  >(undefined);
 
   // Undo/redo state
   const [historyState, setHistoryState] = useState<HistoryState>({
@@ -59,6 +65,8 @@ export function useTaskDescriptionState({
   const { showNotification } = useNotification();
   // Fetch the background job using typed hook
   const taskRefinementJob = useBackgroundJob(taskRefinementJobId ?? null);
+  // Fetch the web search workflow state
+  const webSearchWorkflow = useWorkflowState({ workflowId: webSearchWorkflowId });
   
 
 
@@ -67,6 +75,8 @@ export function useTaskDescriptionState({
     setTaskCopySuccess(false);
     setIsRefiningTask(false);
     setTaskRefinementJobId(undefined);
+    setIsWebRefiningTask(false);
+    setWebSearchWorkflowId(undefined);
   }, []);
 
 
@@ -104,7 +114,18 @@ export function useTaskDescriptionState({
         const refinedTask = String(job.response).trim();
         if (refinedTask) {
           saveToHistory(sessionTaskDescription);
-          sessionActions.updateCurrentSessionFields({ taskDescription: refinedTask });
+          // The backend now returns structured content (original + refined)
+          // Parse if it's structured, otherwise use the response as-is
+          let finalTaskDescription = refinedTask;
+          try {
+            const parsed = JSON.parse(refinedTask);
+            if (parsed.original && parsed.refined) {
+              finalTaskDescription = parsed.original + "\n\n" + parsed.refined;
+            }
+          } catch {
+            // Not structured JSON, use as-is
+          }
+          sessionActions.updateCurrentSessionFields({ taskDescription: finalTaskDescription });
           sessionActions.setSessionModified(true);
           onInteraction?.();
           showNotification({ title: "Task refined", message: "Task description has been refined.", type: "success" });
@@ -121,6 +142,58 @@ export function useTaskDescriptionState({
     handleJobCompletion();
   }, [taskRefinementJob.job?.status, taskRefinementJobId, isSwitchingSession, activeSessionId, onInteraction, showNotification, saveToHistory, sessionTaskDescription, sessionActions]);
 
+  // Web search workflow monitoring
+  useEffect(() => {
+    if (isSwitchingSession || !webSearchWorkflowId || !webSearchWorkflow.workflow) return;
+
+    const workflow = webSearchWorkflow.workflow;
+    if (!workflow?.status) return;
+
+    const handleWorkflowCompletion = async () => {
+      if (workflow.status === "Completed" && webSearchWorkflow.results && workflow.sessionId === activeSessionId) {
+        const results = webSearchWorkflow.results;
+        // Extract web search results from workflow results
+        if (results.stageResults && results.stageResults.WebSearchExecution) {
+          const webSearchResults = results.stageResults.WebSearchExecution;
+          if (webSearchResults) {
+            saveToHistory(sessionTaskDescription);
+            
+            // Format the task description with XML tags for LLM clarity
+            const originalTask = sessionTaskDescription.trim();
+            let searchFindings = "";
+            
+            // Extract the actual search results text
+            if (typeof webSearchResults === 'string') {
+              searchFindings = webSearchResults;
+            } else if (webSearchResults.searchResults) {
+              searchFindings = webSearchResults.searchResults;
+            } else if (webSearchResults.results) {
+              searchFindings = webSearchResults.results;
+            } else {
+              // Fallback: stringify the object
+              searchFindings = JSON.stringify(webSearchResults, null, 2);
+            }
+            
+            // Create XML-formatted task description
+            const finalTaskDescription = `<original_task>\n${originalTask}\n</original_task>\n\n<web_search_findings>\n${searchFindings.trim()}\n</web_search_findings>`;
+            
+            sessionActions.updateCurrentSessionFields({ taskDescription: finalTaskDescription });
+            sessionActions.setSessionModified(true);
+            onInteraction?.();
+            showNotification({ title: "Web search completed", message: "Task description has been enhanced with web search findings.", type: "success" });
+          }
+        }
+        setIsWebRefiningTask(false);
+        setWebSearchWorkflowId(undefined);
+      } else if ((workflow.status === "Failed" || workflow.status === "Canceled") && workflow.sessionId === activeSessionId) {
+        setIsWebRefiningTask(false);
+        setWebSearchWorkflowId(undefined);
+        showNotification({ title: "Web search failed", message: workflow.errorMessage || "Failed to enhance task description with web search.", type: "error" });
+      }
+    };
+
+    handleWorkflowCompletion();
+  }, [webSearchWorkflow.workflow?.status, webSearchWorkflow.results, webSearchWorkflowId, isSwitchingSession, activeSessionId, onInteraction, showNotification, saveToHistory, sessionTaskDescription, sessionActions]);
 
   // Function to copy task description to clipboard
   const copyTaskDescription = useCallback(async () => {
@@ -217,6 +290,74 @@ export function useTaskDescriptionState({
     isSwitchingSession,
     activeSessionId,
     sessionState.currentSession?.includedFiles,
+    projectDirectory,
+  ]);
+
+  // Handle web search workflow
+  const handleWebRefineTask = useCallback(async (): Promise<void> => {
+    if (!sessionTaskDescription.trim()) {
+      showNotification({
+        title: "No task description",
+        message: "Please enter a task description to enhance.",
+        type: "warning",
+      });
+      return;
+    }
+
+    if (isWebRefiningTask) {
+      showNotification({
+        title: "Already enhancing task",
+        message: "Please wait for the current web search to complete.",
+        type: "warning",
+      });
+      return;
+    }
+
+    if (isSwitchingSession || !activeSessionId) {
+      return;
+    }
+
+    // Set loading state
+    setIsWebRefiningTask(true);
+
+    try {
+      // Call the web search workflow action
+      const result = await startWebSearchWorkflowOrchestratorAction({
+        taskDescription: sessionTaskDescription,
+        projectDirectory,
+        sessionId: activeSessionId,
+      });
+
+      if (result.isSuccess) {
+        // Store workflow ID to track progress
+        if (result.data?.workflowId) {
+          setWebSearchWorkflowId(result.data.workflowId);
+        }
+      } else {
+        throw new Error(
+          result.message || "Failed to start web search workflow."
+        );
+      }
+    } catch (error) {
+      console.error("Error starting web search:", error);
+      setIsWebRefiningTask(false);
+
+      // Extract error info and create user-friendly message
+      const errorInfo = extractErrorInfo(error);
+      const userFriendlyMessage = createUserFriendlyErrorMessage(errorInfo, 'web search workflow');
+      
+      showNotification({
+        title: "Error starting web search",
+        message: userFriendlyMessage,
+        type: "error",
+      });
+    }
+  }, [
+    sessionTaskDescription,
+    isWebRefiningTask,
+    showNotification,
+    isSwitchingSession,
+    activeSessionId,
     projectDirectory,
   ]);
 
@@ -349,6 +490,7 @@ export function useTaskDescriptionState({
   return useMemo(
     () => ({
       isRefiningTask,
+      isWebRefiningTask,
       taskCopySuccess,
       taskDescriptionRef,
       canUndo,
@@ -356,6 +498,7 @@ export function useTaskDescriptionState({
 
       // Actions
       handleRefineTask,
+      handleWebRefineTask,
       copyTaskDescription,
       reset,
       undo,
@@ -364,11 +507,13 @@ export function useTaskDescriptionState({
     }),
     [
       isRefiningTask,
+      isWebRefiningTask,
       taskCopySuccess,
       taskDescriptionRef,
       canUndo,
       canRedo,
       handleRefineTask,
+      handleWebRefineTask,
       copyTaskDescription,
       reset,
       undo,

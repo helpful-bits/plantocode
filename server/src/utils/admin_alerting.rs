@@ -632,7 +632,7 @@ pub async fn send_billing_allowance_reset_failure_alert(
         AlertType::PaymentProcessingError,
         "Billing Allowance Reset Failed After Payment".to_string(),
         format!(
-            "CRITICAL: User {} paid subscription (invoice {}) but monthly spending allowances failed to reset. Manual intervention required. Error: {}",
+            "CRITICAL: User {} made payment (invoice {}) but monthly spending allowances failed to reset. Manual intervention required. Error: {}",
             user_id, invoice_id, error_message
         ),
     )

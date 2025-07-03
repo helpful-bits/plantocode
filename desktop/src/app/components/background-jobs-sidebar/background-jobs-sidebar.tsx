@@ -7,6 +7,9 @@ import { SidebarHeader, StatusMessages } from "@/ui";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/ui/collapsible";
 import { getSidebarStyle } from "@/utils/ui-utils";
 import { FileBrowser, type FileBrowserHandle } from "../generate-prompt/file-browser";
+import { emit } from "@tauri-apps/api/event";
+import { type BackgroundJob } from "@/types/session-types";
+import { useSessionStateContext } from "@/contexts/session";
 
 import { JobContent } from "./_components/job-content";
 import { useJobFiltering } from "./hooks/use-job-filtering";
@@ -22,6 +25,7 @@ import { JobDetailsModal } from "./job-details-modal";
  */
 export const BackgroundJobsSidebar = () => {
   const { jobs, isLoading, error } = useContext(BackgroundJobsContext);
+  const { activeSessionId } = useSessionStateContext();
   const fileBrowserRef = useRef<FileBrowserHandle>(null);
 
   // Use the extracted sidebar state manager hook
@@ -94,6 +98,21 @@ export const BackgroundJobsSidebar = () => {
     }
   };
 
+  // Function to apply text from job to task description
+  const handleApplyTextFromJob = (job: BackgroundJob) => {
+    if (job.response) {
+      // For web search execution jobs, we need to format the response with XML tags
+      if (job.taskType === 'web_search_execution') {
+        // We'll emit a special event that the task description component can handle
+        // to preserve the original task and format with XML tags
+        emit('apply-web-search-to-task-description', job.response);
+      } else {
+        // For other job types, apply the response directly
+        emit('apply-text-to-task-description', job.response);
+      }
+    }
+  };
+
   // Get container style from utility function
   const containerStyle = getSidebarStyle(activeCollapsed);
 
@@ -140,6 +159,8 @@ export const BackgroundJobsSidebar = () => {
               handleRetry={handleRetry}
               onSelect={handleSelectJob}
               onApplyFiles={handleApplyFilesFromJob}
+              onApplyText={handleApplyTextFromJob}
+              currentSessionId={activeSessionId || undefined}
             />
           </CollapsibleContent>
         </Collapsible>

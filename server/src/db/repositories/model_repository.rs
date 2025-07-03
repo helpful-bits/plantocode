@@ -408,4 +408,80 @@ impl ModelRepository {
         info!("Retrieved {} models of type {}", result.len(), model_type);
         Ok(result)
     }
+
+    /// Update model pricing information
+    #[instrument(skip(self))]
+    pub async fn update_model_pricing(
+        &self,
+        model_id: &str,
+        price_input: Option<&BigDecimal>,
+        price_output: Option<&BigDecimal>,
+        price_cache_write: Option<&BigDecimal>,
+        price_cache_read: Option<&BigDecimal>,
+        price_input_long_context: Option<&BigDecimal>,
+        price_output_long_context: Option<&BigDecimal>,
+        long_context_threshold: Option<i32>,
+    ) -> AppResult<bool> {
+        info!("Updating pricing for model: {}", model_id);
+        
+        let query = r#"
+            UPDATE models 
+            SET 
+                price_input = COALESCE($2, price_input),
+                price_output = COALESCE($3, price_output),
+                price_cache_write = COALESCE($4, price_cache_write),
+                price_cache_read = COALESCE($5, price_cache_read),
+                price_input_long_context = COALESCE($6, price_input_long_context),
+                price_output_long_context = COALESCE($7, price_output_long_context),
+                long_context_threshold = COALESCE($8, long_context_threshold)
+            WHERE id = $1 AND status = 'active'
+        "#;
+        
+        let result = sqlx::query(query)
+            .bind(model_id)
+            .bind(price_input)
+            .bind(price_output)
+            .bind(price_cache_write)
+            .bind(price_cache_read)
+            .bind(price_input_long_context)
+            .bind(price_output_long_context)
+            .bind(long_context_threshold)
+            .execute(&*self.pool)
+            .await
+            .map_err(|e| AppError::Database(format!("Failed to update model pricing for {}: {}", model_id, e)))?;
+        
+        let updated = result.rows_affected() > 0;
+        if updated {
+            info!("Successfully updated pricing for model: {}", model_id);
+        } else {
+            info!("No pricing update needed for model: {}", model_id);
+        }
+        
+        Ok(updated)
+    }
+
+    /// Find provider model ID by internal model ID and provider code
+    /// For now, returns the API model ID from the models table
+    #[instrument(skip(self))]
+    pub async fn find_provider_model_id(&self, internal_model_id: &str, provider_code: &str) -> AppResult<Option<String>> {
+        info!("Finding provider model ID for internal model: {} with provider: {}", internal_model_id, provider_code);
+        
+        // Query the model_provider_mappings table to find the provider-specific model ID
+        let result = sqlx::query!(
+            "SELECT provider_model_id FROM model_provider_mappings WHERE internal_model_id = $1 AND provider_code = $2",
+            internal_model_id,
+            provider_code
+        )
+        .fetch_optional(&*self.pool)
+        .await
+        .map_err(|e| AppError::Database(format!("Failed to query model provider mappings for model {} with provider {}: {}", internal_model_id, provider_code, e)))?;
+        
+        if let Some(row) = result {
+            info!("Found provider model ID: {} for internal model: {} with provider: {}", row.provider_model_id, internal_model_id, provider_code);
+            Ok(Some(row.provider_model_id))
+        } else {
+            info!("No provider model ID found for internal model: {} with provider: {}", internal_model_id, provider_code);
+            Ok(None)
+        }
+    }
 }

@@ -40,6 +40,7 @@ use crate::services::auth::oauth::Auth0OAuthService;
 use crate::services::billing_service::BillingService;
 use crate::services::credit_service::CreditService;
 use crate::services::reconciliation_service::ReconciliationService;
+use crate::services::price_sync_service::PriceSyncService;
 use crate::routes::{configure_routes, configure_public_api_routes, configure_public_auth_routes, configure_webhook_routes};
 
 /// Validates AI model configurations at startup to catch misconfigurations early
@@ -157,6 +158,20 @@ async fn start_reconciliation_scheduler(db_pools: DatabasePools) -> Result<(), S
     Ok(())
 }
 
+/// Initialize and start the price sync service for automated provider pricing updates
+async fn start_price_sync_service(db_pools: DatabasePools) -> Result<(), String> {
+    info!("Initializing price sync service for automated provider pricing updates");
+    
+    let price_sync_service = PriceSyncService::new(db_pools);
+    
+    // Start the background sync service
+    price_sync_service.start_background_sync()
+        .await
+        .map_err(|e| format!("Failed to start price sync service: {}", e))?;
+    
+    info!("Price sync service started successfully - will run daily at 3 AM UTC");
+    Ok(())
+}
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -240,6 +255,12 @@ async fn main() -> std::io::Result<()> {
     if let Err(e) = start_reconciliation_scheduler(db_pools.clone()).await {
         log::error!("Failed to start reconciliation scheduler: {}", e);
         log::error!("Continuing without automated reconciliation - manual verification required");
+    }
+    
+    // Initialize and start price sync service for automated provider pricing updates
+    if let Err(e) = start_price_sync_service(db_pools.clone()).await {
+        log::error!("Failed to start price sync service: {}", e);
+        log::error!("Continuing without automated price synchronization - manual updates required");
     }
     
     // Get server host and port from settings

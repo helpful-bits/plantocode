@@ -1,7 +1,7 @@
 use actix_web::{web, HttpResponse};
 use serde_json::{json, Value};
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use crate::db::repositories::api_usage_repository::ApiUsageEntryDto;
 use tracing::{debug, error, info, instrument, warn};
 use uuid::{self, Uuid};
@@ -9,8 +9,10 @@ use chrono;
 use crate::error::AppError;
 use crate::middleware::secure_auth::UserId;
 use crate::clients::{
-    OpenRouterClient, OpenAIClient, AnthropicClient, GoogleClient
+    OpenRouterClient, OpenAIClient, AnthropicClient, GoogleClient, UsageExtractor
 };
+use crate::services::cost_resolver::CostResolver;
+use crate::clients::usage_extractor::ProviderUsage;
 use crate::utils::transcription_validation::{
     mime_type_to_extension, validate_server_language, validate_server_prompt, 
     validate_server_temperature, validate_server_audio_file, RequestValidationContext
@@ -23,10 +25,15 @@ use crate::services::billing_service::BillingService;
 use crate::config::settings::AppSettings;
 use bigdecimal::BigDecimal;
 
-use futures_util::{StreamExt, TryStreamExt, TryFutureExt};
+use futures_util::{StreamExt, TryStreamExt, Stream};
+use std::pin::Pin;
 use serde::{Deserialize, Serialize};
-use base64::Engine;
 use actix_multipart::Multipart;
+
+use crate::handlers::streaming_handler::StandardizedStreamHandler;
+use crate::handlers::provider_transformers::{
+    GoogleStreamTransformer, AnthropicStreamTransformer, OpenAIStreamTransformer, OpenRouterStreamTransformer
+};
 
 /// Helper function to determine if an error should trigger a fallback to OpenRouter
 fn is_fallback_error(error: &AppError) -> bool {
@@ -34,6 +41,7 @@ fn is_fallback_error(error: &AppError) -> bool {
         AppError::External(_) => true,
         AppError::TooManyRequests(_) => true, 
         AppError::BadRequest(msg) => msg.contains("rate limit") || msg.contains("quota") || msg.contains("capacity"),
+        AppError::Internal(msg) => msg.contains("deserialization failed") || msg.contains("JSON parse"),
         _ => false,
     }
 }
@@ -118,123 +126,6 @@ async fn validate_api_request(
     ).await
 }
 
-/// Manages token accumulation and single billing operation for streaming requests
-struct StreamingBillingManager {
-    user_id: uuid::Uuid,
-    model_id: String,
-    request_id: String,
-    billing_service: Arc<BillingService>,
-    total_input_tokens: i32,
-    total_output_tokens: i32,
-    is_billed: bool,
-}
-
-impl StreamingBillingManager {
-    fn new(user_id: uuid::Uuid, model_id: String, request_id: String, billing_service: Arc<BillingService>) -> Self {
-        Self {
-            user_id,
-            model_id,
-            request_id,
-            billing_service,
-            total_input_tokens: 0,
-            total_output_tokens: 0,
-            is_billed: false,
-        }
-    }
-    
-    fn update_tokens(&mut self, input: i32, output: i32) {
-        self.total_input_tokens = self.total_input_tokens.max(input);
-        self.total_output_tokens = self.total_output_tokens.max(output);
-    }
-    
-    async fn finalize_billing(&mut self) -> Result<BigDecimal, AppError> {
-        if self.is_billed || (self.total_input_tokens == 0 && self.total_output_tokens == 0) {
-            return Ok(BigDecimal::from(0));
-        }
-        
-        self.is_billed = true;
-        
-        let entry = ApiUsageEntryDto {
-            user_id: self.user_id,
-            service_name: self.model_id.clone(),
-            tokens_input: self.total_input_tokens as i64,
-            tokens_output: self.total_output_tokens as i64,
-            cached_input_tokens: 0,
-            cache_write_tokens: 0,
-            cache_read_tokens: 0,
-            request_id: Some(self.request_id.clone()),
-            metadata: None,
-        };
-        
-        match self.billing_service.charge_for_api_usage(entry).await {
-            Ok((api_usage_record, _)) => {
-                info!("Finalized streaming billing for request {} with cost: {}", self.request_id, api_usage_record.cost);
-                Ok(api_usage_record.cost)
-            },
-            Err(e) => {
-                error!("Failed to finalize streaming billing for request {}: {}", self.request_id, e);
-                Err(e)
-            }
-        }
-    }
-}
-
-/// Drop guard to ensure billing is finalized even if client disconnects
-struct BillingOnDrop {
-    manager: Arc<Mutex<StreamingBillingManager>>,
-}
-
-impl BillingOnDrop {
-    fn new(manager: Arc<Mutex<StreamingBillingManager>>) -> Self {
-        Self { manager }
-    }
-}
-
-impl Drop for BillingOnDrop {
-    fn drop(&mut self) {
-        if let Ok(mut manager) = self.manager.lock() {
-            if !manager.is_billed && (manager.total_input_tokens > 0 || manager.total_output_tokens > 0) {
-                warn!("Streaming request {} dropped without billing finalization - tokens may be unbilled", manager.request_id);
-            }
-        }
-    }
-}
-
-/// Helper function to create API usage entry for billing with cached token support
-fn create_api_usage_entry_with_cache(
-    user_id: Uuid, 
-    model_id: String, 
-    tokens_input: i32, 
-    tokens_output: i32, 
-    cache_write_tokens: i32, 
-    cache_read_tokens: i32, 
-    request_id: String, 
-) -> ApiUsageEntryDto {
-    ApiUsageEntryDto {
-        user_id,
-        service_name: model_id,
-        tokens_input: tokens_input as i64,
-        tokens_output: tokens_output as i64,
-        cached_input_tokens: (cache_write_tokens + cache_read_tokens) as i64,
-        cache_write_tokens: cache_write_tokens as i64,
-        cache_read_tokens: cache_read_tokens as i64,
-        request_id: Some(request_id),
-        metadata: None,
-    }
-}
-
-/// Helper function to create API usage entry for billing (backward compatibility)
-fn create_api_usage_entry(user_id: Uuid, model_id: String, tokens_input: i32, tokens_output: i32, request_id: String) -> ApiUsageEntryDto {
-    create_api_usage_entry_with_cache(user_id, model_id, tokens_input, tokens_output, 0, 0, request_id)
-}
-
-/// Helper function to extract cached token information from client response tuple
-/// When clients are updated to return (uncached_tokens, cache_write_tokens, cache_read_tokens, output_tokens)
-/// this function will map the tuple values to the correct DTO fields
-fn extract_cached_token_info(client_response: (i32, i32, i32, i32)) -> (i32, i32, i32, i32) {
-    let (uncached_tokens, cache_write_tokens, cache_read_tokens, output_tokens) = client_response;
-    (uncached_tokens, cache_write_tokens, cache_read_tokens, output_tokens)
-}
 
 /// Helper function to create standardized OpenRouter usage response
 fn create_openrouter_usage(tokens_input: i32, tokens_output: i32, cost: &BigDecimal) -> Result<OpenRouterUsage, AppError> {
@@ -246,18 +137,6 @@ fn create_openrouter_usage(tokens_input: i32, tokens_output: i32, cost: &BigDeci
     })
 }
 
-/// Helper function to set up streaming billing manager and guard
-fn setup_streaming_billing(user_id: Uuid, model_id: String, billing_service: Arc<BillingService>) -> (Arc<Mutex<StreamingBillingManager>>, BillingOnDrop) {
-    let request_id = uuid::Uuid::new_v4().to_string();
-    let billing_manager = Arc::new(Mutex::new(StreamingBillingManager::new(
-        user_id,
-        model_id,
-        request_id,
-        billing_service
-    )));
-    let billing_guard = BillingOnDrop::new(Arc::clone(&billing_manager));
-    (billing_manager, billing_guard)
-}
 
 #[derive(Deserialize, Serialize, Clone)]
 pub struct LlmCompletionRequest {
@@ -283,7 +162,13 @@ pub async fn llm_chat_completion_handler(
     // User ID is already extracted by authentication middleware
     let user_id = user_id.0;
     
-    info!("Processing LLM chat completion request for user: {}", user_id);
+    // Extract or generate unique request ID for tracking streaming costs
+    let request_id = payload.other.get("request_id")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+    
+    info!("Processing LLM chat completion request for user: {} (request_id: {})", user_id, request_id);
     
     // Extract model ID from request payload
     let model_id = payload.model.clone();
@@ -316,39 +201,39 @@ pub async fn llm_chat_completion_handler(
     match model_with_provider.provider_code.as_str() {
         "openai" => {
             if is_streaming {
-                handle_openai_streaming_request(payload_inner.clone(), &model_with_provider, &user_id, &app_settings, Arc::clone(&billing_service)).await
+                handle_openai_streaming_request(payload_value.clone(), &model_with_provider, &user_id, &app_settings, Arc::clone(&billing_service), model_repository.clone()).await
             } else {
-                handle_openai_request(payload_inner, &model_with_provider, &user_id, &app_settings, Arc::clone(&billing_service)).await
+                handle_openai_request(payload_value.clone(), &model_with_provider, &user_id, &app_settings, Arc::clone(&billing_service), model_repository.clone()).await
             }
         },
         "anthropic" => {
             if is_streaming {
-                handle_anthropic_streaming_request(payload_value.clone(), &model_with_provider, &user_id, &app_settings, Arc::clone(&billing_service)).await
+                handle_anthropic_streaming_request(payload_value.clone(), &model_with_provider, &user_id, &app_settings, Arc::clone(&billing_service), model_repository.clone()).await
             } else {
-                handle_anthropic_request(payload_value.clone(), &model_with_provider, &user_id, &app_settings, Arc::clone(&billing_service)).await
+                handle_anthropic_request(payload_value.clone(), &model_with_provider, &user_id, &app_settings, Arc::clone(&billing_service), model_repository.clone()).await
             }
         },
         "google" => {
             if is_streaming {
-                handle_google_streaming_request(payload_value.clone(), &model_with_provider, &user_id, &app_settings, Arc::clone(&billing_service)).await
+                handle_google_streaming_request(payload_value.clone(), &model_with_provider, &user_id, &app_settings, Arc::clone(&billing_service), model_repository.clone()).await
             } else {
-                handle_google_request(payload_value.clone(), &model_with_provider, &user_id, &app_settings, Arc::clone(&billing_service)).await
+                handle_google_request(payload_value.clone(), &model_with_provider, &user_id, &app_settings, Arc::clone(&billing_service), model_repository.clone()).await
             }
         },
         "deepseek" => {
             // Route DeepSeek models through OpenRouter
             if is_streaming {
-                handle_openrouter_streaming_request(payload_value.clone(), &model_with_provider, &user_id, &app_settings, Arc::clone(&billing_service)).await
+                handle_openrouter_streaming_request(payload_value.clone(), &model_with_provider, &user_id, &app_settings, Arc::clone(&billing_service), Arc::clone(&model_repository), &request_id).await
             } else {
-                handle_openrouter_request(payload_value.clone(), &model_with_provider, &user_id, &app_settings, Arc::clone(&billing_service)).await
+                handle_openrouter_request(payload_value.clone(), &model_with_provider, &user_id, &app_settings, Arc::clone(&billing_service), Arc::clone(&model_repository)).await
             }
         },
         "openrouter" => {
             // Route OpenRouter models
             if is_streaming {
-                handle_openrouter_streaming_request(payload_value.clone(), &model_with_provider, &user_id, &app_settings, Arc::clone(&billing_service)).await
+                handle_openrouter_streaming_request(payload_value.clone(), &model_with_provider, &user_id, &app_settings, Arc::clone(&billing_service), Arc::clone(&model_repository), &request_id).await
             } else {
-                handle_openrouter_request(payload_value.clone(), &model_with_provider, &user_id, &app_settings, Arc::clone(&billing_service)).await
+                handle_openrouter_request(payload_value.clone(), &model_with_provider, &user_id, &app_settings, Arc::clone(&billing_service), Arc::clone(&model_repository)).await
             }
         },
         _ => {
@@ -360,47 +245,64 @@ pub async fn llm_chat_completion_handler(
 
 /// Handle OpenAI non-streaming request
 async fn handle_openai_request(
-    payload: LlmCompletionRequest,
+    payload: Value,
     model: &ModelWithProvider,
     user_id: &Uuid,
     app_settings: &AppSettings,
     billing_service: Arc<BillingService>,
+    model_repository: web::Data<ModelRepository>,
 ) -> Result<HttpResponse, AppError> {
     let client = OpenAIClient::new(app_settings)?;
     let request_id = uuid::Uuid::new_v4().to_string();
     
-    // Convert LlmCompletionRequest to Value for client conversion and clone for fallback use
-    let payload_value = serde_json::to_value(&payload)?;
-    let payload_value_clone = payload_value.clone();
-    let mut request = client.convert_to_openai_request(payload_value)?;
+    // Clone payload for fallback use
+    let payload_value_clone = payload.clone();
+    let mut request = client.convert_to_openai_request(payload)?;
     
     // Use the pre-computed API model ID
     request.model = model.api_model_id.clone();
     
-    let (response, _headers, tokens_input, cache_write_tokens, cache_read_tokens, tokens_output) = match client.chat_completion(request).await {
-        Ok(result) => result,
+    let (response, _headers) = match client.chat_completion(request).await {
+        Ok((response, headers, _, _, _, _)) => (response, headers),
         Err(error) => {
             if is_fallback_error(&error) {
                 warn!("[FALLBACK] OpenAI request failed, retrying with OpenRouter: {}", error);
-                return handle_openrouter_request(payload_value_clone, model, user_id, app_settings, billing_service).await;
+                return handle_openrouter_request(payload_value_clone, model, user_id, app_settings, billing_service, Arc::new(model_repository.get_ref().clone())).await;
             }
             return Err(error);
         }
     };
     
-    // Create API usage entry and bill atomically with auto top-off integration
-    let entry = create_api_usage_entry_with_cache(*user_id, model.id.clone(), tokens_input, tokens_output, cache_write_tokens, cache_read_tokens, request_id);
+    // Serialize response to get HTTP body for usage extraction
+    let response_body = serde_json::to_string(&response)?;
+    
+    // Get usage from provider using unified extraction
+    let usage = client.extract_from_http_body(response_body.as_bytes(), &model.id, false).await?;
+    let final_cost = CostResolver::resolve(usage.clone(), &model);
+    
+    // Create API usage entry
+    let api_usage = ApiUsageEntryDto {
+        user_id: *user_id,
+        service_name: model.id.clone(),
+        tokens_input: usage.prompt_tokens as i64,
+        tokens_output: usage.completion_tokens as i64,
+        cached_input_tokens: (usage.cache_write_tokens + usage.cache_read_tokens) as i64,
+        cache_write_tokens: usage.cache_write_tokens as i64,
+        cache_read_tokens: usage.cache_read_tokens as i64,
+        request_id: Some(request_id),
+        metadata: None,
+    };
     
     let (api_usage_record, _user_credit) = billing_service
-        .charge_for_api_usage(entry)
+        .charge_for_api_usage(api_usage, final_cost)
         .await?;
     let cost = api_usage_record.cost;
     
     // Convert to OpenRouter format for consistent client parsing with standardized usage
     let mut response_value = serde_json::to_value(response)?;
     if let Some(obj) = response_value.as_object_mut() {
-        let usage = create_openrouter_usage(tokens_input, tokens_output, &cost)?;
-        obj.insert("usage".to_string(), serde_json::to_value(usage)?);
+        let usage_response = create_openrouter_usage(usage.prompt_tokens, usage.completion_tokens, &cost)?;
+        obj.insert("usage".to_string(), serde_json::to_value(usage_response)?);
     }
     
     Ok(HttpResponse::Ok().json(response_value))
@@ -408,98 +310,45 @@ async fn handle_openai_request(
 
 /// Handle OpenAI streaming request
 async fn handle_openai_streaming_request(
-    payload: LlmCompletionRequest,
+    payload: Value,
     model: &ModelWithProvider,
     user_id: &Uuid,
     app_settings: &AppSettings,
     billing_service: Arc<BillingService>,
+    model_repository: web::Data<ModelRepository>,
 ) -> Result<HttpResponse, AppError> {
+    let payload_value_clone = payload.clone();
+    
     let client = OpenAIClient::new(app_settings)?;
-    // Convert LlmCompletionRequest to Value for client conversion and clone for fallback use
-    let payload_value = serde_json::to_value(&payload)?;
-    let payload_value_clone = payload_value.clone();
-    let mut request = client.convert_to_openai_request(payload_value)?;
+    let mut request = client.convert_to_openai_request(payload)?;
+    let request_id = uuid::Uuid::new_v4().to_string();
     
-    // Set the original model ID (with :web) for tool detection, but cleaned model for API calls
-    request.model = model.id.clone(); // Keep original for tool detection in prepare_request_body
+    request.model = model.api_model_id.clone();
     
-    let (headers, stream, _token_counter) = match client.stream_chat_completion(request).await {
+    let (_headers, provider_stream) = match client.stream_chat_completion(request).await {
         Ok(result) => result,
         Err(error) => {
             if is_fallback_error(&error) {
                 warn!("[FALLBACK] OpenAI streaming request failed, retrying with OpenRouter: {}", error);
-                return handle_openrouter_streaming_request(payload_value_clone, model, user_id, app_settings, billing_service).await;
+                return handle_openrouter_streaming_request(payload_value_clone, model, user_id, app_settings, billing_service, Arc::clone(&model_repository), &request_id).await;
             }
             return Err(error);
         }
     };
     
-    let (billing_manager, _billing_guard) = setup_streaming_billing(*user_id, model.id.clone(), Arc::clone(&billing_service));
-    let request_id = {
-        let manager = billing_manager.lock().unwrap();
-        manager.request_id.clone()
-    };
-    
-    // Create a stream processor to track tokens and calculate cost
-    let user_id_clone = *user_id;
-    let model_clone = model.clone();
-    let billing_service_clone = Arc::clone(&billing_service);
-    
-    let processed_stream = stream.then(move |chunk_result| {
-        let billing_service_inner = billing_service_clone.clone();
-        let model_id = model_clone.id.clone();
-        let user_id = user_id_clone;
-        let billing_manager_clone = Arc::clone(&billing_manager);
-        let request_id_clone = request_id.clone();
-        
-        async move {
-            match chunk_result {
-                Ok(bytes) => {
-                    if let Ok(chunk_str) = std::str::from_utf8(&bytes) {
-                        // Extract tokens from chunk if available
-                        if let Some((current_input, cache_write_tokens, cache_read_tokens, current_output)) = OpenAIClient::extract_tokens_from_chat_stream_chunk(chunk_str) {
-                            // Always update tokens when extracted
-                            {
-                                let mut manager = billing_manager_clone.lock().unwrap();
-                                manager.update_tokens(current_input, current_output);
-                            }
-                            
-                            // This chunk contains usage data, so it's the final chunk
-                            let mut manager = billing_manager_clone.lock().unwrap();
-                            if let Ok(cost) = manager.finalize_billing().await {
-                                if let Ok(modified_chunk) = add_cost_to_openai_stream_chunk(chunk_str, &cost) {
-                                    return Ok(web::Bytes::from(modified_chunk));
-                                }
-                            }
-                        } else {
-                            // Check for finish_reason in chunks without usage data (content completion)
-                            let has_finish_reason = chunk_str.contains("\"finish_reason\":");
-                            let is_done_marker = chunk_str.contains("[DONE]");
-                            
-                            if has_finish_reason || is_done_marker {
-                                // This could be the final chunk, attempt finalization once
-                                let mut manager = billing_manager_clone.lock().unwrap();
-                                if let Ok(cost) = manager.finalize_billing().await {
-                                    if cost > BigDecimal::from(0) {
-                                        // Only modify chunk if we actually billed something
-                                        if let Ok(modified_chunk) = add_cost_to_openai_stream_chunk(chunk_str, &cost) {
-                                            return Ok(web::Bytes::from(modified_chunk));
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    Ok(bytes)
-                },
-                Err(e) => Err(e)
-            }
-        }
-    });
+    let transformer = Box::new(OpenAIStreamTransformer::new(&model.id));
+    let standardized_handler = StandardizedStreamHandler::new(
+        provider_stream,
+        transformer,
+        model.clone(),
+        *user_id,
+        billing_service.clone(),
+        request_id,
+    );
     
     Ok(HttpResponse::Ok()
         .content_type("text/event-stream")
-        .streaming(processed_stream))
+        .streaming(standardized_handler))
 }
 
 /// Handle Anthropic non-streaming request
@@ -509,6 +358,7 @@ async fn handle_anthropic_request(
     user_id: &Uuid,
     app_settings: &AppSettings,
     billing_service: Arc<BillingService>,
+    model_repository: web::Data<ModelRepository>,
 ) -> Result<HttpResponse, AppError> {
     let payload_clone = payload.clone();
     let client = AnthropicClient::new(app_settings)?;
@@ -519,30 +369,45 @@ async fn handle_anthropic_request(
     // Use the pre-computed API model ID
     request.model = model.api_model_id.clone();
     
-    let (response, _headers, tokens_input, _cache_write, _cache_read, tokens_output) = match client.chat_completion(request, &user_id.to_string()).await {
+    let (response, _headers, _, _, _, _) = match client.chat_completion(request, &user_id.to_string()).await {
         Ok(result) => result,
         Err(error) => {
             if is_fallback_error(&error) {
                 warn!("[FALLBACK] Anthropic request failed, retrying with OpenRouter: {}", error);
-                return handle_openrouter_request(payload_clone, model, user_id, app_settings, billing_service).await;
+                return handle_openrouter_request(payload_clone, model, user_id, app_settings, billing_service, Arc::clone(&model_repository)).await;
             } else {
                 return Err(error);
             }
         }
     };
     
-    // Token counts already extracted from client method
+    // Serialize response to get HTTP body for usage extraction
+    let response_body = serde_json::to_string(&response)?;
     
-    // Create API usage entry and bill atomically with auto top-off integration
-    let entry = create_api_usage_entry_with_cache(*user_id, model.id.clone(), tokens_input, tokens_output, 0, 0, request_id);
+    // Get usage from provider using unified extraction
+    let usage = client.extract_from_http_body(response_body.as_bytes(), &model.id, false).await?;
+    let final_cost = CostResolver::resolve(usage.clone(), &model);
+    
+    // Create API usage entry
+    let api_usage = ApiUsageEntryDto {
+        user_id: *user_id,
+        service_name: model.id.clone(),
+        tokens_input: usage.prompt_tokens as i64,
+        tokens_output: usage.completion_tokens as i64,
+        cached_input_tokens: (usage.cache_write_tokens + usage.cache_read_tokens) as i64,
+        cache_write_tokens: usage.cache_write_tokens as i64,
+        cache_read_tokens: usage.cache_read_tokens as i64,
+        request_id: Some(request_id),
+        metadata: None,
+    };
     
     let (api_usage_record, _user_credit) = billing_service
-        .charge_for_api_usage(entry)
+        .charge_for_api_usage(api_usage, final_cost)
         .await?;
     let cost = api_usage_record.cost;
     
     // Transform Anthropic response to OpenRouter format for consistent client parsing
-    let usage = create_openrouter_usage(tokens_input, tokens_output, &cost)?;
+    let usage_response = create_openrouter_usage(usage.prompt_tokens, usage.completion_tokens, &cost)?;
     
     let openrouter_response = json!({
         "id": response.id,
@@ -557,7 +422,7 @@ async fn handle_anthropic_request(
             },
             "finish_reason": response.stop_reason
         }],
-        "usage": serde_json::to_value(usage)?
+        "usage": serde_json::to_value(usage_response)?
     });
     
     Ok(HttpResponse::Ok().json(openrouter_response))
@@ -570,74 +435,39 @@ async fn handle_anthropic_streaming_request(
     user_id: &Uuid,
     app_settings: &AppSettings,
     billing_service: Arc<BillingService>,
+    model_repository: web::Data<ModelRepository>,
 ) -> Result<HttpResponse, AppError> {
     let payload_clone = payload.clone();
     let client = AnthropicClient::new(app_settings)?;
+    let request_id = uuid::Uuid::new_v4().to_string();
     let mut request = client.convert_to_chat_request(payload)?;
     
-    // Use the pre-computed API model ID
     request.model = model.api_model_id.clone();
     
-    let (_headers, stream) = match client.stream_chat_completion(request, user_id.to_string()).await {
+    let (headers, provider_stream) = match client.stream_chat_completion(request, user_id.to_string()).await {
         Ok(result) => result,
         Err(error) => {
             if is_fallback_error(&error) {
                 warn!("[FALLBACK] Anthropic streaming request failed, retrying with OpenRouter: {}", error);
-                return handle_openrouter_streaming_request(payload_clone, model, user_id, app_settings, billing_service).await;
-            } else {
-                return Err(error);
+                return handle_openrouter_streaming_request(payload_clone, model, user_id, app_settings, billing_service, Arc::clone(&model_repository), &request_id).await;
             }
+            return Err(error);
         }
     };
     
-    let request_id = uuid::Uuid::new_v4().to_string();
-    let billing_manager = Arc::new(Mutex::new(StreamingBillingManager::new(
+    let transformer = Box::new(AnthropicStreamTransformer::new(&model.id));
+    let standardized_handler = StandardizedStreamHandler::new(
+        provider_stream,
+        transformer,
+        model.clone(),
         *user_id,
-        model.id.clone(),
-        request_id.clone(),
-        Arc::clone(&billing_service)
-    )));
-    let _billing_guard = BillingOnDrop::new(Arc::clone(&billing_manager));
-    
-    // Create a stream processor to track tokens and calculate cost
-    let user_id_clone = *user_id;
-    let model_clone = model.clone();
-    let billing_service_clone = Arc::clone(&billing_service);
-    
-    let processed_stream = stream.then(move |chunk_result| {
-        let billing_manager_clone = Arc::clone(&billing_manager);
-        
-        async move {
-            match chunk_result {
-                Ok(bytes) => {
-                    if let Ok(chunk_str) = std::str::from_utf8(&bytes) {
-                        // Always extract and update tokens when available
-                        if let Some((current_input, _cache_write, _cache_read, current_output)) = AnthropicClient::extract_tokens_from_stream_chunk(chunk_str) {
-                            let mut manager = billing_manager_clone.lock().unwrap();
-                            manager.update_tokens(current_input, current_output);
-                        }
-                        
-                        // Check if this is the final chunk (message_stop event)
-                        let is_final_chunk = chunk_str.contains("\"type\":\"message_stop\"");
-                        if is_final_chunk {
-                            let mut manager = billing_manager_clone.lock().unwrap();
-                            if let Ok(cost) = manager.finalize_billing().await {
-                                if let Ok(modified_chunk) = add_cost_to_anthropic_stream_chunk(chunk_str, &cost) {
-                                    return Ok(web::Bytes::from(modified_chunk));
-                                }
-                            }
-                        }
-                    }
-                    Ok(bytes)
-                },
-                Err(e) => Err(e)
-            }
-        }
-    });
+        billing_service.clone(),
+        request_id,
+    );
     
     Ok(HttpResponse::Ok()
         .content_type("text/event-stream")
-        .streaming(processed_stream))
+        .streaming(standardized_handler))
 }
 
 /// Handle Google non-streaming request
@@ -647,6 +477,7 @@ async fn handle_google_request(
     user_id: &Uuid,
     app_settings: &AppSettings,
     billing_service: Arc<BillingService>,
+    model_repository: web::Data<ModelRepository>,
 ) -> Result<HttpResponse, AppError> {
     let payload_clone = payload.clone();
     let client = GoogleClient::new(app_settings)?;
@@ -654,24 +485,39 @@ async fn handle_google_request(
     
     let request = client.convert_to_chat_request_with_capabilities(payload, Some(&model.capabilities))?;
     
-    let (response, _headers, tokens_input, _cache_write, _cache_read, tokens_output) = match client.chat_completion(request, &model.api_model_id, &user_id.to_string()).await {
+    let (response, _headers, _, _, _, _) = match client.chat_completion(request, &model.api_model_id, &user_id.to_string()).await {
         Ok(result) => result,
         Err(error) => {
             if is_fallback_error(&error) {
                 warn!("[FALLBACK] Google request failed, retrying with OpenRouter: {}", error);
-                return handle_openrouter_request(payload_clone, model, user_id, app_settings, billing_service).await;
+                return handle_openrouter_request(payload_clone, model, user_id, app_settings, billing_service, Arc::clone(&model_repository)).await;
             }
             return Err(error);
         }
     };
     
-    // Token counts already extracted from client method
+    // Serialize response to get HTTP body for usage extraction
+    let response_body = serde_json::to_string(&response)?;
     
-    // Create API usage entry and bill atomically with auto top-off integration
-    let entry = create_api_usage_entry_with_cache(*user_id, model.id.clone(), tokens_input, tokens_output, 0, 0, request_id);
+    // Get usage from provider using unified extraction
+    let usage = client.extract_from_http_body(response_body.as_bytes(), &model.id, false).await?;
+    let final_cost = CostResolver::resolve(usage.clone(), &model);
+    
+    // Create API usage entry
+    let api_usage = ApiUsageEntryDto {
+        user_id: *user_id,
+        service_name: model.id.clone(),
+        tokens_input: usage.prompt_tokens as i64,
+        tokens_output: usage.completion_tokens as i64,
+        cached_input_tokens: (usage.cache_write_tokens + usage.cache_read_tokens) as i64,
+        cache_write_tokens: usage.cache_write_tokens as i64,
+        cache_read_tokens: usage.cache_read_tokens as i64,
+        request_id: Some(request_id),
+        metadata: None,
+    };
     
     let (api_usage_record, _user_credit) = billing_service
-        .charge_for_api_usage(entry)
+        .charge_for_api_usage(api_usage, final_cost)
         .await?;
     let cost = api_usage_record.cost;
     
@@ -681,7 +527,7 @@ async fn handle_google_request(
         .as_str()
         .unwrap_or("");
     
-    let usage = create_openrouter_usage(tokens_input, tokens_output, &cost)?;
+    let usage_response = create_openrouter_usage(usage.prompt_tokens, usage.completion_tokens, &cost)?;
     
     let openrouter_response = json!({
         "id": format!("chatcmpl-{}", uuid::Uuid::new_v4()),
@@ -696,152 +542,51 @@ async fn handle_google_request(
             },
             "finish_reason": "stop"
         }],
-        "usage": serde_json::to_value(usage)?
+        "usage": serde_json::to_value(usage_response)?
     });
     
     Ok(HttpResponse::Ok().json(openrouter_response))
 }
 
-/// Handle Google streaming request
+/// Handle Google streaming request using standardized architecture
 async fn handle_google_streaming_request(
     payload: Value,
     model: &ModelWithProvider,
     user_id: &Uuid,
     app_settings: &AppSettings,
     billing_service: Arc<BillingService>,
+    model_repository: web::Data<ModelRepository>,
 ) -> Result<HttpResponse, AppError> {
     let payload_clone = payload.clone();
+    let request_id = uuid::Uuid::new_v4().to_string();
     let client = GoogleClient::new(app_settings)?;
     let request = client.convert_to_chat_request_with_capabilities(payload, Some(&model.capabilities))?;
     
-    let (headers, stream) = match client.stream_chat_completion(request, model.api_model_id.clone(), user_id.to_string()).await {
+    let (_headers, google_stream) = match client.stream_chat_completion(request, model.api_model_id.clone(), user_id.to_string()).await {
         Ok(result) => result,
         Err(error) => {
             if is_fallback_error(&error) {
                 warn!("[FALLBACK] Google streaming request failed, retrying with OpenRouter: {}", error);
-                return handle_openrouter_streaming_request(payload_clone, model, user_id, app_settings, billing_service).await;
+                return handle_openrouter_streaming_request(payload_clone, model, user_id, app_settings, billing_service, Arc::clone(&model_repository), &uuid::Uuid::new_v4().to_string()).await;
             }
             return Err(error);
         }
     };
     
-    let request_id = uuid::Uuid::new_v4().to_string();
-    let billing_manager = Arc::new(Mutex::new(StreamingBillingManager::new(
+    // Use standardized streaming handler with Google transformer
+    let transformer = Box::new(GoogleStreamTransformer::new(&model.id));
+    let standardized_handler = StandardizedStreamHandler::new(
+        google_stream,
+        transformer,
+        model.clone(),
         *user_id,
-        model.id.clone(),
-        request_id.clone(),
-        Arc::clone(&billing_service)
-    )));
-    let _billing_guard = BillingOnDrop::new(Arc::clone(&billing_manager));
-    
-    // Create a stream processor to track tokens and calculate cost
-    let model_id_for_response = model.id.clone();
-    
-    let processed_stream = stream.then(move |chunk_result| {
-        let model_id_for_chunk = model_id_for_response.clone();
-        let billing_manager_clone = Arc::clone(&billing_manager);
-        
-        async move {
-            match chunk_result {
-                Ok(bytes) => {
-                    if let Ok(chunk_str) = std::str::from_utf8(&bytes) {
-                        let mut output_chunks = Vec::new();
-                        let mut has_done_marker = false;
-                        
-                        for line in chunk_str.lines() {
-                            if line.starts_with("data: ") {
-                                let json_str = &line[6..]; // Remove "data: " prefix
-                                if json_str.trim() == "[DONE]" {
-                                    has_done_marker = true;
-                                    break;
-                                }
-                                
-                                match serde_json::from_str::<GoogleStreamChunk>(json_str.trim()) {
-                                    Ok(google_chunk) => {
-                                        // Convert Google chunk to OpenRouter format
-                                        let openrouter_chunk = convert_google_to_openrouter_chunk(google_chunk, &model_id_for_chunk);
-                                        
-                                        // Accumulate tokens if usage metadata is present
-                                        if let Some(ref usage) = openrouter_chunk.usage {
-                                            let mut manager = billing_manager_clone.lock().unwrap();
-                                            manager.update_tokens(usage.prompt_tokens, usage.completion_tokens);
-                                        }
-                                        
-                                        // Serialize and add to output
-                                        match serde_json::to_string(&openrouter_chunk) {
-                                            Ok(json_str) => {
-                                                output_chunks.push(format!("data: {}\n\n", json_str));
-                                            },
-                                            Err(e) => {
-                                                error!("Failed to serialize OpenRouter chunk: {}", e);
-                                            }
-                                        }
-                                    },
-                                    Err(e) => {
-                                        error!("Failed to parse Google stream chunk: {}", e);
-                                    }
-                                }
-                            }
-                        }
-                        
-                        // Handle [DONE] marker - finalize billing exactly once
-                        if has_done_marker {
-                            let manager_guard = billing_manager_clone.lock().unwrap();
-                            let input_tokens = manager_guard.total_input_tokens;
-                            let output_tokens = manager_guard.total_output_tokens;
-                            drop(manager_guard);
-                            
-                            // Only finalize if we have accumulated tokens
-                            if input_tokens > 0 || output_tokens > 0 {
-                                let mut manager = billing_manager_clone.lock().unwrap();
-                                if let Ok(cost) = manager.finalize_billing().await {
-                                    // Create final usage chunk with cost information
-                                    let final_usage_chunk = OpenRouterStreamChunk {
-                                        id: format!("chatcmpl-{}", uuid::Uuid::new_v4()),
-                                        choices: vec![],
-                                        created: Some(chrono::Utc::now().timestamp()),
-                                        model: model_id_for_chunk.clone(),
-                                        object: Some("chat.completion.chunk".to_string()),
-                                        usage: Some(OpenRouterUsage {
-                                            prompt_tokens: input_tokens,
-                                            completion_tokens: output_tokens,
-                                            total_tokens: input_tokens + output_tokens,
-                                            cost: Some(cost.to_string().parse::<f64>().unwrap_or(0.0)),
-                                        }),
-                                    };
-                                    
-                                    match serde_json::to_string(&final_usage_chunk) {
-                                        Ok(json_str) => {
-                                            output_chunks.push(format!("data: {}\n\n", json_str));
-                                        },
-                                        Err(e) => {
-                                            error!("Failed to serialize final usage chunk: {}", e);
-                                        }
-                                    }
-                                }
-                            }
-                            
-                            // Always add the [DONE] marker at the end
-                            output_chunks.push("data: [DONE]\n\n".to_string());
-                            return Ok(web::Bytes::from(output_chunks.join("")));
-                        }
-                        
-                        // Return all processed chunks for this batch
-                        if !output_chunks.is_empty() {
-                            return Ok(web::Bytes::from(output_chunks.join("")));
-                        }
-                    }
-                    // Never forward raw bytes - return empty bytes instead
-                    Ok(web::Bytes::new())
-                },
-                Err(e) => Err(e)
-            }
-        }
-    });
+        billing_service,
+        request_id,
+    );
     
     Ok(HttpResponse::Ok()
         .content_type("text/event-stream")
-        .streaming(processed_stream))
+        .streaming(standardized_handler))
 }
 
 /// Handle OpenRouter (DeepSeek) non-streaming request
@@ -851,31 +596,47 @@ async fn handle_openrouter_request(
     user_id: &Uuid,
     app_settings: &AppSettings,
     billing_service: Arc<BillingService>,
+    model_repository: Arc<ModelRepository>,
 ) -> Result<HttpResponse, AppError> {
-    let client = OpenRouterClient::new(app_settings)?;
+    let client = OpenRouterClient::new(app_settings, model_repository)?;
     let request_id = uuid::Uuid::new_v4().to_string();
     
     let mut request = client.convert_to_chat_request(payload)?;
     
     request.model = model.id.clone();
     
-    let (response, _headers, tokens_input, _cache_write, _cache_read, tokens_output) = client.chat_completion(request, &user_id.to_string()).await?;
+    let (response, _headers, _, _, _, _) = client.chat_completion(request, &user_id.to_string()).await?;
     
-    // Token counts already extracted from client method (ignore OpenRouter's cost calculation)
+    // Serialize response to get HTTP body for usage extraction
+    let response_body = serde_json::to_string(&response)?;
     
-    // Create API usage entry and bill atomically with auto top-off integration
-    let entry = create_api_usage_entry_with_cache(*user_id, model.id.clone(), tokens_input, tokens_output, 0, 0, request_id);
+    // Get usage from provider using unified extraction
+    let usage = client.extract_from_http_body(response_body.as_bytes(), &model.id, false).await?;
+    let final_cost = CostResolver::resolve(usage.clone(), &model);
+    
+    // Create API usage entry
+    let api_usage = ApiUsageEntryDto {
+        user_id: *user_id,
+        service_name: model.id.clone(),
+        tokens_input: usage.prompt_tokens as i64,
+        tokens_output: usage.completion_tokens as i64,
+        cached_input_tokens: (usage.cache_write_tokens + usage.cache_read_tokens) as i64,
+        cache_write_tokens: usage.cache_write_tokens as i64,
+        cache_read_tokens: usage.cache_read_tokens as i64,
+        request_id: Some(request_id),
+        metadata: None,
+    };
     
     let (api_usage_record, _user_credit) = billing_service
-        .charge_for_api_usage(entry)
+        .charge_for_api_usage(api_usage, final_cost)
         .await?;
     let cost = api_usage_record.cost;
     
-    // Replace OpenRouter's cost with server-calculated cost in response using standardized usage
+    // Update response with centrally resolved cost using standardized usage
     let mut response_value = serde_json::to_value(response)?;
     if let Some(obj) = response_value.as_object_mut() {
-        let usage = create_openrouter_usage(tokens_input, tokens_output, &cost)?;
-        obj.insert("usage".to_string(), serde_json::to_value(usage)?);
+        let usage_response = create_openrouter_usage(usage.prompt_tokens, usage.completion_tokens, &cost)?;
+        obj.insert("usage".to_string(), serde_json::to_value(usage_response)?);
     }
     
     Ok(HttpResponse::Ok().json(response_value))
@@ -888,62 +649,29 @@ async fn handle_openrouter_streaming_request(
     user_id: &Uuid,
     app_settings: &AppSettings,
     billing_service: Arc<BillingService>,
+    model_repository: Arc<ModelRepository>,
+    request_id: &str, // Use request_id from desktop client
 ) -> Result<HttpResponse, AppError> {
-    let client = OpenRouterClient::new(app_settings)?;
+    let client = OpenRouterClient::new(app_settings, model_repository)?;
     let mut request = client.convert_to_chat_request(payload)?;
     
     request.model = model.id.clone();
     
     let (_headers, stream) = client.stream_chat_completion(request, user_id.to_string()).await?;
     
-    let request_id = uuid::Uuid::new_v4().to_string();
-    let billing_manager = Arc::new(Mutex::new(StreamingBillingManager::new(
+    let transformer = Box::new(OpenRouterStreamTransformer::new(&model.id));
+    let standardized_handler = StandardizedStreamHandler::new(
+        stream,
+        transformer,
+        model.clone(),
         *user_id,
-        model.id.clone(),
-        request_id.clone(),
-        Arc::clone(&billing_service)
-    )));
-    let _billing_guard = BillingOnDrop::new(Arc::clone(&billing_manager));
-    
-    // Create a stream processor to intercept final chunk with usage data
-    let user_id_clone = *user_id;
-    let model_clone = model.clone();
-    let billing_service_clone = Arc::clone(&billing_service);
-    
-    let processed_stream = stream.then(move |chunk_result| {
-        let billing_service_inner = billing_service_clone.clone();
-        let model_id = model_clone.id.clone();
-        let user_id = user_id_clone;
-        let billing_manager_clone = Arc::clone(&billing_manager);
-        let request_id_clone = request_id.clone();
-        
-        async move {
-            match chunk_result {
-                Ok(bytes) => {
-                    if let Ok(chunk_str) = std::str::from_utf8(&bytes) {
-                        // Check if this chunk contains usage data (final chunk)
-                        if let Some((current_input, _cache_write, _cache_read, current_output)) = OpenRouterClient::extract_tokens_from_stream_chunk(chunk_str) {
-                            let mut manager = billing_manager_clone.lock().unwrap();
-                            manager.update_tokens(current_input, current_output);
-                            
-                            // This is the final chunk since it contains usage data
-                            if let Ok(cost) = manager.finalize_billing().await {
-                                if let Ok(modified_chunk) = replace_cost_in_openrouter_stream_chunk(chunk_str, &cost) {
-                                    return Ok(web::Bytes::from(modified_chunk));
-                                }
-                            }
-                        }
-                    }
-                    Ok(bytes)
-                },
-                Err(e) => Err(e)
-            }
-        }
-    });
+        billing_service.clone(),
+        request_id.to_string(),
+    );
     
     Ok(HttpResponse::Ok()
         .content_type("text/event-stream")
-        .streaming(processed_stream))
+        .streaming(standardized_handler))
 }
 
 
@@ -1118,8 +846,6 @@ pub async fn transcription_handler(
         &cleaned_mime_type,
     ).await?;
 
-    // Note: Duration tracking is kept for UI job timing purposes but no longer used for billing
-    // Transcription is now billed using token-based pricing through the standard OpenAI client
 
     let response = TranscriptionResponse {
         text: transcription_text,
@@ -1129,85 +855,7 @@ pub async fn transcription_handler(
 }
 
 
-/// Helper function to add cost to OpenAI stream chunk usage data
-fn add_cost_to_openai_stream_chunk(chunk_str: &str, cost: &BigDecimal) -> Result<String, AppError> {
-    let cost_float = cost.to_string().parse::<f64>().unwrap_or(0.0);
-    let mut modified_lines = Vec::new();
-    
-    for line in chunk_str.lines() {
-        if line.starts_with("data: ") {
-            let json_str = &line[6..]; // Remove "data: " prefix
-            if json_str.trim() == "[DONE]" {
-                modified_lines.push(line.to_string());
-                continue;
-            }
-            
-            match serde_json::from_str::<Value>(json_str.trim()) {
-                Ok(mut parsed) => {
-                    // Check if this chunk has usage data
-                    if let Some(usage) = parsed.get_mut("usage") {
-                        if let Some(usage_obj) = usage.as_object_mut() {
-                            usage_obj.insert("cost".to_string(), json!(cost_float));
-                        }
-                        let modified_json = serde_json::to_string(&parsed)
-                            .map_err(|e| AppError::Internal(format!("Failed to serialize modified chunk: {}", e)))?;
-                        modified_lines.push(format!("data: {}", modified_json));
-                    } else {
-                        modified_lines.push(line.to_string());
-                    }
-                },
-                Err(_) => {
-                    modified_lines.push(line.to_string());
-                }
-            }
-        } else {
-            modified_lines.push(line.to_string());
-        }
-    }
-    
-    Ok(modified_lines.join("\n"))
-}
 
-/// Helper function to add cost to Anthropic stream chunk usage data
-fn add_cost_to_anthropic_stream_chunk(chunk_str: &str, cost: &BigDecimal) -> Result<String, AppError> {
-    let cost_float = cost.to_string().parse::<f64>().unwrap_or(0.0);
-    let mut modified_lines = Vec::new();
-    
-    for line in chunk_str.lines() {
-        if line.starts_with("data: ") {
-            let json_str = &line[6..]; // Remove "data: " prefix
-            if json_str.trim() == "[DONE]" {
-                modified_lines.push(line.to_string());
-                continue;
-            }
-            
-            match serde_json::from_str::<Value>(json_str.trim()) {
-                Ok(mut parsed) => {
-                    // Check for message_stop event with usage data
-                    if parsed.get("type").and_then(|t| t.as_str()) == Some("message_stop") {
-                        if let Some(usage) = parsed.get_mut("usage") {
-                            if let Some(usage_obj) = usage.as_object_mut() {
-                                usage_obj.insert("cost".to_string(), json!(cost_float));
-                            }
-                        }
-                        let modified_json = serde_json::to_string(&parsed)
-                            .map_err(|e| AppError::Internal(format!("Failed to serialize modified chunk: {}", e)))?;
-                        modified_lines.push(format!("data: {}", modified_json));
-                    } else {
-                        modified_lines.push(line.to_string());
-                    }
-                },
-                Err(_) => {
-                    modified_lines.push(line.to_string());
-                }
-            }
-        } else {
-            modified_lines.push(line.to_string());
-        }
-    }
-    
-    Ok(modified_lines.join("\n"))
-}
 
 /// Helper function to convert Google stream chunk to OpenRouter format
 fn convert_google_to_openrouter_chunk(google_chunk: GoogleStreamChunk, model_id: &str) -> OpenRouterStreamChunk {
@@ -1248,43 +896,6 @@ fn convert_google_to_openrouter_chunk(google_chunk: GoogleStreamChunk, model_id:
     }
 }
 
-/// Helper function to replace OpenRouter's cost with server-calculated cost in stream chunk
-fn replace_cost_in_openrouter_stream_chunk(chunk_str: &str, server_cost: &BigDecimal) -> Result<String, AppError> {
-    let server_cost_float = server_cost.to_string().parse::<f64>().unwrap_or(0.0);
-    let mut modified_lines = Vec::new();
-    
-    for line in chunk_str.lines() {
-        if line.starts_with("data: ") {
-            let json_str = &line[6..]; // Remove "data: " prefix
-            if json_str.trim() == "[DONE]" {
-                modified_lines.push(line.to_string());
-                continue;
-            }
-            
-            match serde_json::from_str::<Value>(json_str.trim()) {
-                Ok(mut parsed) => {
-                    // Check if this chunk has usage data
-                    if let Some(usage) = parsed.get_mut("usage") {
-                        if let Some(usage_obj) = usage.as_object_mut() {
-                            // Replace OpenRouter's cost with server-calculated cost
-                            usage_obj.insert("cost".to_string(), json!(server_cost_float));
-                        }
-                        let modified_json = serde_json::to_string(&parsed)
-                            .map_err(|e| AppError::Internal(format!("Failed to serialize modified chunk: {}", e)))?;
-                        modified_lines.push(format!("data: {}", modified_json));
-                    } else {
-                        modified_lines.push(line.to_string());
-                    }
-                },
-                Err(_) => {
-                    modified_lines.push(line.to_string());
-                }
-            }
-        } else {
-            modified_lines.push(line.to_string());
-        }
-    }
-    
-    Ok(modified_lines.join("\n"))
-}
+
+
 

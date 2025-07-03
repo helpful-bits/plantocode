@@ -73,6 +73,18 @@ VALUES (
         "model": "google/gemini-2.5-flash",
         "max_tokens": 2048,
         "temperature": 0.3
+      },
+      "web_search_query_generation": {
+        "model": "google/gemini-2.5-flash",
+        "allowed_models": ["google/gemini-2.5-flash", "openai/o4-mini"],
+        "max_tokens": 2000,
+        "temperature": 0.3
+      },
+      "web_search_execution": {
+        "model": "openai/o4-mini:web",
+        "allowed_models": ["openai/o3:web", "openai/o4-mini:web", "openai/o4-mini-high:web"],
+        "max_tokens": 4000,
+        "temperature": 0.3
       }
     }
   }'::jsonb,

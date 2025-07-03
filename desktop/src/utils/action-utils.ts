@@ -265,12 +265,32 @@ export function handleActionError(
           workflowContext: finalWorkflowContext
         });
       } else {
-        // String is not JobWorkerMetadata JSON structure - backend should send proper format
-        throw new Error(`Backend sent invalid error format (not JobWorkerMetadata): ${error.substring(0, 100)}`);
+        // String is not JobWorkerMetadata JSON structure - create fallback AppError
+        appError = new AppError(
+          `Backend error: ${error.substring(0, 200)}`,
+          ErrorType.INTERNAL_ERROR,
+          {
+            metadata: {
+              source: 'backend-raw',
+              rawError: error,
+              parseError: 'Non-JSON structure'
+            }
+          }
+        );
       }
     } catch (jsonParseError) {
-      // String is not JSON - backend should send proper JSON error format
-      throw new Error(`Backend sent invalid error format (not JSON): ${error}`);
+      // String is not JSON - create fallback AppError with raw error info
+      appError = new AppError(
+        `Backend error: ${error.substring(0, 200)}`,
+        ErrorType.INTERNAL_ERROR,
+        {
+          metadata: {
+            source: 'backend-raw',
+            rawError: error,
+            parseError: 'Invalid JSON format'
+          }
+        }
+      );
     }
     return { isSuccess: false, message: appError.message, error: appError, metadata: appError.metadata };
   } else if (isTauriError(error)) {

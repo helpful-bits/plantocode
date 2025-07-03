@@ -117,7 +117,14 @@ impl JobProcessor for TaskRefinementProcessor {
         info!("Task Refinement LLM task completed successfully for job {}", job_id);
         info!("System prompt ID: {}", llm_result.system_prompt_id);
         
-        let refined_description = llm_result.response.trim().to_string();
+        let refined_content = llm_result.response.trim().to_string();
+        
+        // Format the response with structured appending: original + refinement
+        let structured_response = format!(
+            "{}\n\n---\n\n<refined_task>\n{}\n</refined_task>",
+            payload.task_description,
+            refined_content
+        );
         
         // Extract usage before moving it
         let usage_for_result = llm_result.usage.clone();
@@ -132,9 +139,9 @@ impl JobProcessor for TaskRefinementProcessor {
         
         info!("Completed Task Refinement job {}", job_id);
         
-        let task_len = refined_description.len() as i32;
+        let task_len = structured_response.len() as i32;
         
-        Ok(JobProcessResult::success(job_id, refined_description)
+        Ok(JobProcessResult::success(job_id, structured_response)
             .with_tokens(
                 usage_for_result.as_ref().map(|u| u.prompt_tokens as i32),
                 usage_for_result.as_ref().map(|u| u.completion_tokens as i32),

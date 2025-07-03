@@ -32,6 +32,7 @@ const TaskSection = React.memo(function TaskSection({
   const {
     taskDescriptionRef,
     isRefiningTask,
+    isDoingWebSearch,
     canUndo,
     canRedo,
     tokenEstimate,
@@ -40,6 +41,7 @@ const TaskSection = React.memo(function TaskSection({
   const { 
     // New actions for task refinement and undo/redo
     handleRefineTask,
+    handleWebSearch,
     undo,
     redo,
   } = taskActions;
@@ -74,14 +76,28 @@ const TaskSection = React.memo(function TaskSection({
         onRedo={redo}
       />
 
-      {/* Refine Task button - only shown when tokens exceed 30,000 */}
+      {/* Web Search Enhancement - always available */}
+      <div className="mt-4">
+        <Button
+          onClick={handleWebSearch}
+          isLoading={isDoingWebSearch}
+          disabled={disabled || isRefiningTask || isDoingWebSearch || !sessionState.currentSession?.taskDescription?.trim()}
+          variant="secondary"
+          size="sm"
+          className="w-full"
+        >
+          Enhance with Web Search
+        </Button>
+      </div>
+
+      {/* AI Refine Task button - only shown when tokens exceed 100,000 */}
       {shouldShowRefineTask && (
-        <div className="mt-4">
+        <div className="mt-2 space-y-2">
           <Button
             variant="default"
             size="sm"
             onClick={handleRefineTask}
-            disabled={disabled}
+            disabled={disabled || isDoingWebSearch}
             isLoading={isRefiningTask}
             loadingText="AI is refining..."
             className="w-full"
@@ -93,7 +109,7 @@ const TaskSection = React.memo(function TaskSection({
           </Button>
           <Tooltip>
             <TooltipTrigger asChild>
-              <p className="text-xs text-muted-foreground mt-2 text-center">
+              <p className="text-xs text-muted-foreground text-center">
                 <span className="underline decoration-dashed cursor-help">
                   The estimated prompt size (task + files) is large ({tokenEstimate?.totalTokens?.toLocaleString()} tokens). AI can help refine it for better results.
                 </span>

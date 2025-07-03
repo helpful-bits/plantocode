@@ -89,6 +89,21 @@ pub(super) async fn extract_and_store_stage_data_internal(
                 debug!("Extracted {} AI filtered files with {} tokens from job {}", ai_filtered_files.len(), token_count, job_id);
                 serde_json::json!({ "relevantFiles": ai_filtered_files, "tokenCount": token_count })
             }
+            TaskType::WebSearchQueryGeneration => {
+                // Treat job's response as a single string prompt
+                let raw_response = job.response.as_ref()
+                    .ok_or_else(|| AppError::JobError(format!("No response found for web search query generation job {}", job_id)))?;
+                
+                serde_json::json!({ "prompt": raw_response })
+            }
+            TaskType::WebSearchExecution => {
+                // Extract the synthesized web search results as raw text
+                let raw_response = job.response.as_ref()
+                    .ok_or_else(|| AppError::JobError(format!("No response found for web search execution job {}", job_id)))?;
+                
+                debug!("Extracted web search results from job {}", job_id);
+                serde_json::json!({ "searchResults": raw_response })
+            }
             _ => {
                 warn!("No stage data extraction implemented for task type {:?} in job {}", stage_job.task_type, job_id);
                 serde_json::json!({})

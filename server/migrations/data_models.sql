@@ -2,9 +2,8 @@
 INSERT INTO models (id, name, context_window, price_input, price_output, provider_id, model_type, capabilities, status, description, price_input_long_context, price_output_long_context, long_context_threshold, price_cache_write, price_cache_read)
 VALUES
 -- Anthropic models (prices per 1M tokens) - Updated with Anthropic cache pricing
-('anthropic/claude-opus-4-20250514',   'Claude 4 Opus',       200000, 15.000000, 75.000000, (SELECT id FROM providers WHERE code = 'anthropic'), 'text', '{"text": true, "chat": true, "reasoning": true}', 'active', 'Advanced language model with strong reasoning capabilities', NULL, NULL, NULL, 18.750000, 1.500000),
 ('anthropic/claude-sonnet-4-20250514', 'Claude 4 Sonnet',     200000, 3.000000, 15.000000, (SELECT id FROM providers WHERE code = 'anthropic'), 'text', '{"text": true, "chat": true, "reasoning": true}', 'active', 'Balanced language model with strong reasoning capabilities', NULL, NULL, NULL, 3.750000, 0.300000),
-('anthropic/claude-4-opus-20250522', 'Claude Opus 4 (2025-05-22)', 200000, 15.000000, 75.000000, (SELECT id FROM providers WHERE code = 'anthropic'), 'text', '{"text": true, "chat": true, "reasoning": true, "vision": true}', 'active', 'Claude Opus 4 with 2025-05-22 training cutoff', NULL, NULL, NULL, 18.750000, 1.500000),
+('anthropic/claude-opus-4-20250514',   'Claude 4 Opus',       200000, 15.000000, 75.000000, (SELECT id FROM providers WHERE code = 'anthropic'), 'text', '{"text": true, "chat": true, "reasoning": true}', 'active', 'Advanced language model with strong reasoning capabilities', NULL, NULL, NULL, 18.750000, 1.500000),
 ('anthropic/claude-3-7-sonnet-20250219', 'Claude 3.7 Sonnet (2025-02-19)', 200000, 3.000000, 15.000000, (SELECT id FROM providers WHERE code = 'anthropic'), 'text', '{"text": true, "chat": true, "reasoning": true, "vision": true}', 'active', 'Claude 3.7 Sonnet with 2025-02-19 training cutoff', NULL, NULL, NULL, 3.750000, 0.300000),
 
 -- OpenAI models (prices per 1M tokens) - OpenAI cached reads are 25% of input price

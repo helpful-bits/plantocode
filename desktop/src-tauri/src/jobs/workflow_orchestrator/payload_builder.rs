@@ -93,6 +93,33 @@ pub(super) async fn create_abstract_stage_payload(
             );
             Ok(JobPayload::FileRelevanceAssessment(payload))
         }
+        TaskType::WebSearchQueryGeneration => {
+            use crate::jobs::types::WebSearchQueryGenerationPayload;
+            
+            // WebSearchQueryGeneration gets all data it needs from the session directly
+            // No need to pass files through the workflow payload
+            let payload = WebSearchQueryGenerationPayload {
+                task_description: workflow_state.task_description.clone(),
+            };
+            Ok(JobPayload::WebSearchQueryGeneration(payload))
+        }
+        TaskType::WebSearchExecution => {
+            use crate::jobs::types::WebSearchExecutionPayload;
+            
+            // Get prompt from intermediate_data (it should be stored from the query generation stage)
+            let prompt = workflow_state.intermediate_data.web_search_prompt.clone().unwrap_or_default();
+            
+            if prompt.is_empty() {
+                warn!("Web search prompt is empty in intermediate_data for WebSearchExecution");
+            } else {
+                debug!("Using web search prompt for WebSearchExecution payload");
+            }
+
+            let payload = WebSearchExecutionPayload {
+                prompt,
+            };
+            Ok(JobPayload::WebSearchExecution(payload))
+        }
         _ => Err(AppError::JobError(format!("Unsupported task type for abstract workflow: {:?}", task_type)))
     }
 }

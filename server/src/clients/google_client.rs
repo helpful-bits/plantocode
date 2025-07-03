@@ -2,17 +2,19 @@
 // This file implements cached token counting for Google API.
 // Token extraction functions return: (uncached_input, cache_write, cache_read, output)
 use crate::error::AppError;
-use actix_web::{web, HttpResponse};
+use actix_web::web;
 use futures_util::{Stream, StreamExt, TryStreamExt};
-use reqwest::{Client, Response, header::HeaderMap};
+use reqwest::{Client, header::HeaderMap};
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
 use serde_json::{json, Value};
 use std::pin::Pin;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use tokio::sync::Mutex;
 use crate::config::settings::AppSettings;
-use tracing::{debug, info, warn, error, instrument};
+use crate::clients::usage_extractor::{UsageExtractor, ProviderUsage};
+use tracing::{debug, info, error, instrument};
 
 // Base URL for Google AI API
 const GOOGLE_BASE_URL: &str = "https://generativelanguage.googleapis.com/v1beta";
@@ -99,7 +101,7 @@ pub struct GoogleCandidate {
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct GoogleResponseContent {
-    pub parts: Vec<GoogleResponsePart>,
+    pub parts: Option<Vec<GoogleResponsePart>>,
     pub role: String,
 }
 
@@ -156,21 +158,27 @@ pub struct GoogleStreamPart {
 // Google Client
 pub struct GoogleClient {
     client: Client,
-    api_key: String,
+    api_keys: Vec<String>,
+    current_key_index: AtomicUsize,
     base_url: String,
     request_id_counter: Arc<Mutex<u64>>,
 }
 
 impl GoogleClient {
     pub fn new(app_settings: &AppSettings) -> Result<Self, crate::error::AppError> {
-        let api_key = app_settings.api_keys.google_api_key.clone()
-            .ok_or_else(|| crate::error::AppError::Configuration("Google API key must be configured".to_string()))?;
+        let api_keys = app_settings.api_keys.google_api_keys.clone()
+            .ok_or_else(|| crate::error::AppError::Configuration("Google API keys must be configured".to_string()))?;
+        
+        if api_keys.is_empty() {
+            return Err(crate::error::AppError::Configuration("Google API keys list cannot be empty".to_string()));
+        }
         
         let client = Client::new();
         
         Ok(Self {
             client,
-            api_key,
+            api_keys,
+            current_key_index: AtomicUsize::new(0),
             base_url: GOOGLE_BASE_URL.to_string(),
             request_id_counter: Arc::new(Mutex::new(0)),
         })
@@ -187,6 +195,21 @@ impl GoogleClient {
         *counter
     }
 
+    fn is_retryable_error(&self, e: &AppError) -> bool {
+        match e {
+            AppError::External(msg) => {
+                msg.contains("status 401") ||
+                msg.contains("status 403") ||
+                msg.contains("status 429") ||
+                msg.contains("status 5") ||
+                msg.contains("network error") ||
+                msg.contains("timeout") ||
+                msg.contains("connection")
+            },
+            _ => false,
+        }
+    }
+
     // Chat Completions
     #[instrument(skip(self, request, model_id), fields(model = %model_id))]
     pub async fn chat_completion(&self, request: GoogleChatRequest, model_id: &str, user_id: &str) -> Result<(GoogleChatResponse, HeaderMap, i32, i32, i32, i32), AppError> {
@@ -199,49 +222,92 @@ impl GoogleClient {
             model_id
         };
         
-        let url = format!("{}/models/{}:generateContent?key={}", self.base_url, clean_model_id, self.api_key);
+        let num_keys = self.api_keys.len();
+        let start_index = self.current_key_index.fetch_add(1, Ordering::Relaxed) % num_keys;
+        let mut last_error = None;
         
-        debug!("Sending Google API request to: {}", url.replace(&self.api_key, "[REDACTED]"));
-        debug!("Request contents count: {}", request.contents.len());
-        
-        let response = self.client
-            .post(&url)
-            .header("Content-Type", "application/json")
-            .header("X-Request-ID", request_id.to_string())
-            .json(&request)
-            .send()
-            .await
-            .map_err(|e| AppError::External(format!("Google request failed: {}", e.to_string())))?;
-        
-        let status = response.status();
-        let headers = response.headers().clone();
-        
-        if !status.is_success() {
-            let error_text = response.text().await
-                .unwrap_or_else(|_| "Failed to get error response".to_string());
-            error!("Google API request failed with status {}: {}", status, error_text);
-            debug!("Request URL: {}", url);
-            debug!("Request payload: {:?}", serde_json::to_string(&request).unwrap_or("Failed to serialize".to_string()));
-            return Err(AppError::External(format!(
-                "Google request failed with status {}: {}",
-                status, error_text
-            )));
+        for i in 0..num_keys {
+            let key_index = (start_index + i) % num_keys;
+            let api_key = &self.api_keys[key_index];
+            let url = format!("{}/models/{}:generateContent?key={}", self.base_url, clean_model_id, api_key);
+            
+            debug!("Attempting Google API request with key {} (attempt {} of {})", key_index + 1, i + 1, num_keys);
+            
+            let response_result = self.client
+                .post(&url)
+                .header("Content-Type", "application/json")
+                .header("X-Request-ID", request_id.to_string())
+                .json(&request)
+                .send()
+                .await;
+            
+            let response = match response_result {
+                Ok(resp) => resp,
+                Err(e) => {
+                    let app_error = AppError::External(format!("Google request failed: {}", e.to_string()));
+                    if self.is_retryable_error(&app_error) {
+                        debug!("Request failed with retryable error, trying next key: {}", e);
+                        last_error = Some(app_error);
+                        continue;
+                    } else {
+                        return Err(app_error);
+                    }
+                }
+            };
+            
+            let status = response.status();
+            let headers = response.headers().clone();
+            
+            if !status.is_success() {
+                let error_text = response.text().await
+                    .unwrap_or_else(|_| "Failed to get error response".to_string());
+                let app_error = AppError::External(format!(
+                    "Google request failed with status {}: {}",
+                    status, error_text
+                ));
+                
+                if self.is_retryable_error(&app_error) {
+                    debug!("Request failed with retryable status {}, trying next key", status);
+                    last_error = Some(app_error);
+                    continue;
+                } else {
+                    return Err(app_error);
+                }
+            }
+            
+            let response_text = response.text().await
+                .map_err(|e| AppError::Internal(format!("Failed to get response text: {}", e.to_string())))?;
+            
+            let result = serde_json::from_str::<GoogleChatResponse>(&response_text)
+                .map_err(|e| {
+                    error!("Google deserialization failed: {} | Response: {}", e.to_string(), response_text);
+                    AppError::Internal(format!("Google deserialization failed: {}", e.to_string()))
+                })?;
+            
+            // Check if response has usable content - if not, trigger fallback
+            if let Some(first_candidate) = result.candidates.first() {
+                if first_candidate.content.parts.is_none() || 
+                   first_candidate.content.parts.as_ref().map_or(true, |parts| parts.is_empty()) {
+                    let finish_reason = first_candidate.finish_reason.as_deref().unwrap_or("unknown");
+                    return Err(AppError::External(format!("Google API returned response without content parts (finish_reason: {})", finish_reason)));
+                }
+            }
+            
+            info!("Google API request successful for model: {} with key {}", clean_model_id, key_index + 1);
+            debug!("Response candidates count: {}", result.candidates.len());
+            
+            let (input_tokens, cache_write_tokens, cache_read_tokens, output_tokens) = if let Some(usage) = &result.usage_metadata {
+                let cached = usage.cached_content_token_count.unwrap_or(0);
+                (usage.prompt_token_count, 0, cached, usage.candidates_token_count)
+            } else {
+                (0, 0, 0, 0)
+            };
+                
+            return Ok((result, headers, input_tokens, cache_write_tokens, cache_read_tokens, output_tokens));
         }
         
-        let result = response.json::<GoogleChatResponse>().await
-            .map_err(|e| AppError::Internal(format!("Google deserialization failed: {}", e.to_string())))?;
-        
-        info!("Google API request successful for model: {}", clean_model_id);
-        debug!("Response candidates count: {}", result.candidates.len());
-        
-        let (input_tokens, cache_write_tokens, cache_read_tokens, output_tokens) = if let Some(usage) = &result.usage_metadata {
-            let cached = usage.cached_content_token_count.unwrap_or(0);
-            (usage.prompt_token_count, 0, cached, usage.candidates_token_count)
-        } else {
-            (0, 0, 0, 0)
-        };
-            
-        Ok((result, headers, input_tokens, cache_write_tokens, cache_read_tokens, output_tokens))
+        // If we get here, all keys failed
+        Err(last_error.unwrap_or_else(|| AppError::External("All Google API keys failed".to_string())))
     }
 
     // Streaming Chat Completions for actix-web compatibility
@@ -252,9 +318,13 @@ impl GoogleClient {
         model_id: String,
         user_id: String
     ) -> Result<(HeaderMap, Pin<Box<dyn Stream<Item = Result<web::Bytes, AppError>> + Send + 'static>>), AppError> {
+        // Get the next key index upfront
+        let num_keys = self.api_keys.len();
+        let start_index = self.current_key_index.fetch_add(1, Ordering::Relaxed) % num_keys;
+        
         // Clone necessary parts for 'static lifetime
         let client = self.client.clone();
-        let api_key = self.api_key.clone();
+        let api_keys = self.api_keys.clone();
         let base_url = self.base_url.clone();
         let request_id_counter = self.request_id_counter.clone();
         
@@ -271,127 +341,90 @@ impl GoogleClient {
             } else {
                 &model_id
             };
+            let mut last_error = None;
             
-            let url = format!("{}/models/{}:streamGenerateContent?key={}&alt=sse", base_url, clean_model_id, api_key);
-            
-            let response = client
-                .post(&url)
-                .header("Content-Type", "application/json")
-                .header("X-Request-ID", request_id.to_string())
-                .json(&request)
-                .send()
-                .await
-                .map_err(|e| AppError::External(format!("Google request failed: {}", e.to_string())))?;
-            
-            let status = response.status();
-            let headers = response.headers().clone();
-            
-            if !status.is_success() {
-                let error_text = response.text().await
-                    .unwrap_or_else(|_| "Failed to get error response".to_string());
-                error!("Google streaming API request failed with status {}: {}", status, error_text);
-                debug!("Request URL: {}", url);
-                debug!("Request payload: {:?}", serde_json::to_string(&request).unwrap_or("Failed to serialize".to_string()));
-                return Err(AppError::External(format!(
-                    "Google streaming request failed with status {}: {}",
-                    status, error_text
-                )));
+            for i in 0..num_keys {
+                let key_index = (start_index + i) % num_keys;
+                let api_key = &api_keys[key_index];
+                let url = format!("{}/models/{}:streamGenerateContent?key={}&alt=sse", base_url, clean_model_id, api_key);
+                
+                let response_result = client
+                    .post(&url)
+                    .header("Content-Type", "application/json")
+                    .header("X-Request-ID", request_id.to_string())
+                    .json(&request)
+                    .send()
+                    .await;
+                
+                let response = match response_result {
+                    Ok(resp) => resp,
+                    Err(e) => {
+                        let app_error = AppError::External(format!("Google request failed: {}", e.to_string()));
+                        let is_retryable = match &app_error {
+                            AppError::External(msg) => {
+                                msg.contains("status 401") || msg.contains("status 403") || 
+                                msg.contains("status 429") || msg.contains("status 5") ||
+                                msg.contains("network error") || msg.contains("timeout") || msg.contains("connection")
+                            },
+                            _ => false,
+                        };
+                        
+                        if is_retryable {
+                            last_error = Some(app_error);
+                            continue;
+                        } else {
+                            return Err(app_error);
+                        }
+                    }
+                };
+                
+                let status = response.status();
+                let headers = response.headers().clone();
+                
+                if !status.is_success() {
+                    let error_text = response.text().await
+                        .unwrap_or_else(|_| "Failed to get error response".to_string());
+                    let app_error = AppError::External(format!(
+                        "Google streaming request failed with status {}: {}",
+                        status, error_text
+                    ));
+                    
+                    let is_retryable = match &app_error {
+                        AppError::External(msg) => {
+                            msg.contains("status 401") || msg.contains("status 403") || 
+                            msg.contains("status 429") || msg.contains("status 5") ||
+                            msg.contains("network error") || msg.contains("timeout") || msg.contains("connection")
+                        },
+                        _ => false,
+                    };
+                    
+                    if is_retryable {
+                        last_error = Some(app_error);
+                        continue;
+                    } else {
+                        return Err(app_error);
+                    }
+                }
+                
+                let stream = response.bytes_stream()
+                    .map(|result| {
+                        match result {
+                            Ok(bytes) => Ok(web::Bytes::from(bytes)),
+                            Err(e) => Err(AppError::External(format!("Google network error: {}", e.to_string()))),
+                        }
+                    });
+                    
+                let boxed_stream: Pin<Box<dyn Stream<Item = Result<web::Bytes, AppError>> + Send + 'static>> = Box::pin(stream);
+                return Ok((headers, boxed_stream));
             }
             
-            // Return a stream that can be consumed by actix-web
-            let stream = response.bytes_stream()
-                .map(|result| {
-                    match result {
-                        Ok(bytes) => Ok(web::Bytes::from(bytes)),
-                        Err(e) => Err(AppError::External(format!("Google network error: {}", e.to_string()))),
-                    }
-                });
-                
-            let boxed_stream: Pin<Box<dyn Stream<Item = Result<web::Bytes, AppError>> + Send + 'static>> = Box::pin(stream);
-            Ok((headers, boxed_stream))
+            // If we get here, all keys failed
+            Err(last_error.unwrap_or_else(|| AppError::External("All Google API keys failed".to_string())))
         }.await?;
         
         Ok(result)
     }
     
-    // Helper method to parse usage from a stream
-    // Returns (input_tokens, cache_write_tokens, cache_read_tokens, output_tokens)
-    pub fn extract_usage_from_stream_chunk(chunk_str: &str) -> Option<(i32, i32, i32, i32)> {
-        if chunk_str.trim().is_empty() {
-            return None;
-        }
-        
-        match serde_json::from_str::<GoogleStreamChunk>(chunk_str.trim()) {
-            Ok(parsed) => {
-                if let Some(usage) = parsed.usage_metadata {
-                    let cached = usage.cached_content_token_count.unwrap_or(0);
-                    Some((usage.prompt_token_count, 0, cached, usage.candidates_token_count))
-                } else {
-                    None
-                }
-            },
-            Err(_) => None,
-        }
-    }
-    
-    // Helper method to extract tokens from a stream chunk
-    // Returns (input_tokens, cache_write_tokens, cache_read_tokens, output_tokens)
-    pub fn extract_tokens_from_stream_chunk(chunk_str: &str) -> Option<(i32, i32, i32, i32)> {
-        Self::extract_usage_from_stream_chunk(chunk_str)
-    }
-
-    // Extract cost from streaming chunk - prioritizes usage.cost field
-    pub fn extract_cost_from_stream_chunk(chunk_str: &str, model: &str) -> Option<f64> {
-        if chunk_str.trim().is_empty() {
-            return None;
-        }
-        
-        match serde_json::from_str::<GoogleStreamChunk>(chunk_str.trim()) {
-            Ok(parsed) => {
-                if let Some(usage) = parsed.usage_metadata {
-                    if let Ok(usage_value) = serde_json::to_value(&usage) {
-                        if let Some(cost) = usage_value.get("cost").and_then(|c| c.as_f64()) {
-                            return Some(cost);
-                        }
-                    }
-                    
-                    let cached = usage.cached_content_token_count.unwrap_or(0);
-                    let cost = Self::calculate_cost_from_tokens(
-                        usage.prompt_token_count,
-                        cached,
-                        usage.candidates_token_count,
-                        model
-                    );
-                    return Some(cost);
-                }
-            },
-            Err(_) => {}
-        }
-        None
-    }
-
-    // Calculate cost from token counts using Google pricing
-    fn calculate_cost_from_tokens(input_tokens: i32, cached_tokens: i32, output_tokens: i32, model: &str) -> f64 {
-        let (input_price_per_1k, output_price_per_1k, cache_discount) = Self::get_model_pricing(model);
-        
-        let uncached_input_tokens = input_tokens - cached_tokens;
-        let input_cost = (uncached_input_tokens as f64 / 1000.0) * input_price_per_1k;
-        let cached_cost = (cached_tokens as f64 / 1000.0) * input_price_per_1k * cache_discount;
-        let output_cost = (output_tokens as f64 / 1000.0) * output_price_per_1k;
-        
-        input_cost + cached_cost + output_cost
-    }
-
-    // Get model pricing - returns (input_per_1k, output_per_1k, cache_discount_factor)
-    fn get_model_pricing(model: &str) -> (f64, f64, f64) {
-        match model {
-            m if m.contains("gemini-1.5-pro") => (0.00125, 0.005, 0.125),
-            m if m.contains("gemini-1.5-flash") => (0.000075, 0.0003, 0.125),
-            m if m.contains("gemini-2.0-flash") => (0.000075, 0.0003, 0.125),
-            m if m.contains("gemini-pro") => (0.0005, 0.0015, 0.125),
-            _ => (0.0005, 0.0015, 0.125),
-        }
-    }
     
     // Convert a generic JSON Value into a GoogleChatRequest
     pub fn convert_to_chat_request(&self, payload: Value) -> Result<GoogleChatRequest, AppError> {
@@ -600,35 +633,115 @@ impl GoogleClient {
         }
     }
     
-    // Helper functions for token and usage tracking
-    // Returns (input_tokens, cache_write_tokens, cache_read_tokens, output_tokens)
-    pub fn extract_tokens_from_response(&self, response: &GoogleChatResponse) -> (i32, i32, i32, i32) {
-        if let Some(usage) = &response.usage_metadata {
-            let cached = usage.cached_content_token_count.unwrap_or(0);
-            (usage.prompt_token_count, 0, cached, usage.candidates_token_count)
-        } else {
-            (0, 0, 0, 0)
-        }
-    }
-
-    // Extract cost from response - prioritizes usage.cost field
-    pub fn extract_cost_from_response(&self, response: &GoogleChatResponse, model: &str) -> f64 {
-        if let Some(usage) = &response.usage_metadata {
-            if let Ok(usage_value) = serde_json::to_value(usage) {
-                if let Some(cost) = usage_value.get("cost").and_then(|c| c.as_f64()) {
-                    return cost;
+    /// Extract usage from Google SSE (Server-Sent Events) streaming body
+    /// Processes streaming responses line by line to find usage metadata
+    fn extract_usage_from_sse_body(&self, body: &str, model_id: &str) -> Option<ProviderUsage> {
+        // Process streaming body line by line to find usage information
+        for line in body.lines() {
+            if line.starts_with("data: ") {
+                let json_str = &line[6..]; // Remove "data: " prefix
+                if json_str.trim().is_empty() {
+                    continue;
+                }
+                
+                // Try to parse the chunk as JSON
+                if let Ok(chunk_json) = serde_json::from_str::<serde_json::Value>(json_str.trim()) {
+                    // Look for usage information in this chunk
+                    if let Some(usage) = self.extract_usage_from_json(&chunk_json, model_id) {
+                        return Some(usage);
+                    }
+                }
+            } else if !line.trim().is_empty() {
+                // Try parsing non-SSE lines as JSON (some Google responses might not use SSE)
+                if let Ok(json) = serde_json::from_str::<serde_json::Value>(line.trim()) {
+                    if let Some(usage) = self.extract_usage_from_json(&json, model_id) {
+                        return Some(usage);
+                    }
                 }
             }
-            
-            let cached = usage.cached_content_token_count.unwrap_or(0);
-            return Self::calculate_cost_from_tokens(
-                usage.prompt_token_count,
-                cached,
-                usage.candidates_token_count,
-                model
-            );
         }
-        0.0
+        None
+    }
+    
+    /// Extract usage from parsed JSON (handles Google response format)
+    fn extract_usage_from_json(&self, json_value: &serde_json::Value, model_id: &str) -> Option<ProviderUsage> {
+        let usage_metadata = json_value.get("usageMetadata")?;
+        
+        // Handle Google format: {"promptTokenCount", "candidatesTokenCount", "cachedContentTokenCount"}
+        let prompt_token_count = match usage_metadata.get("promptTokenCount").and_then(|v| v.as_i64()) {
+            Some(tokens) => tokens as i32,
+            None => {
+                tracing::warn!("Missing or invalid promptTokenCount in Google response");
+                return None;
+            }
+        };
+        
+        let candidates_token_count = match usage_metadata.get("candidatesTokenCount").and_then(|v| v.as_i64()) {
+            Some(tokens) => tokens as i32,
+            None => {
+                tracing::warn!("Missing or invalid candidatesTokenCount in Google response");
+                return None;
+            }
+        };
+        
+        // Map cache_read from cachedContentTokenCount, cache_write = 0 (Google doesn't separate cache writes)
+        let cached_content_token_count = usage_metadata.get("cachedContentTokenCount")
+            .and_then(|v| v.as_i64())
+            .unwrap_or(0) as i32;
+        
+        // Calculate uncached prompt tokens to prevent double-counting
+        let uncached_prompt_tokens = prompt_token_count - cached_content_token_count;
+        
+        // Google API doesn't provide cost information - leave as None
+        Some(ProviderUsage {
+            prompt_tokens: uncached_prompt_tokens,
+            completion_tokens: candidates_token_count,
+            cache_write_tokens: 0, // Google doesn't provide this metric
+            cache_read_tokens: cached_content_token_count,
+            model_id: model_id.to_string(),
+            duration_ms: None,
+            cost: None, // Google doesn't provide cost in responses
+        })
+    }
+}
+
+impl UsageExtractor for GoogleClient {
+    /// Extract usage information from Google HTTP response body (2025-07 format)
+    /// Supports usageMetadata: {promptTokenCount, candidatesTokenCount, cachedContentTokenCount}
+    async fn extract_from_http_body(&self, body: &[u8], model_id: &str, is_streaming: bool) -> Result<ProviderUsage, AppError> {
+        let body_str = std::str::from_utf8(body)
+            .map_err(|e| AppError::InvalidArgument(format!("Invalid UTF-8: {}", e)))?;
+        
+        if is_streaming {
+            // Handle streaming SSE format
+            if body_str.contains("data: ") {
+                return self.extract_usage_from_sse_body(body_str, model_id)
+                    .map(|mut usage| {
+                        usage.model_id = model_id.to_string();
+                        usage
+                    })
+                    .ok_or_else(|| AppError::External("Failed to extract usage from Google streaming response".to_string()));
+            }
+        }
+        
+        // Handle regular JSON response
+        let json_value: serde_json::Value = serde_json::from_str(body_str)
+            .map_err(|e| AppError::External(format!("Failed to parse JSON: {}", e)))?;
+        
+        // Extract usage from parsed JSON
+        self.extract_usage_from_json(&json_value, model_id)
+            .ok_or_else(|| AppError::External("Failed to extract usage from Google response".to_string()))
+    }
+    
+    fn extract_usage(&self, raw_json: &serde_json::Value) -> Option<ProviderUsage> {
+        self.extract_usage_from_json(raw_json, "unknown")
+    }
+    
+    fn extract_usage_from_stream_chunk(&self, chunk_json: &serde_json::Value) -> Option<ProviderUsage> {
+        debug!("Extracting usage from Google stream chunk");
+        
+        // For Google streaming, usage info comes in the final chunk
+        self.extract_usage_from_json(chunk_json, "unknown")
     }
 }
 
@@ -636,7 +749,8 @@ impl Clone for GoogleClient {
     fn clone(&self) -> Self {
         Self {
             client: Client::new(),
-            api_key: self.api_key.clone(),
+            api_keys: self.api_keys.clone(),
+            current_key_index: AtomicUsize::new(0),
             base_url: self.base_url.clone(),
             request_id_counter: self.request_id_counter.clone(),
         }

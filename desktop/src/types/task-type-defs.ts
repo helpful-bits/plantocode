@@ -16,11 +16,14 @@ export type TaskType =
   | "generic_llm_stream"
   | "regex_file_filter"
   | "file_finder_workflow"
+  | "web_search_workflow"
   | "streaming"
   // New orchestrated workflow stage types
   | "local_file_filtering"
   | "file_relevance_assessment"
   | "extended_path_finder"
+  | "web_search_query_generation"
+  | "web_search_execution"
   | "unknown";
 
 // Task types that support system prompts (LLM tasks only)
@@ -33,7 +36,9 @@ export type TaskTypeSupportingSystemPrompts =
   | "regex_file_filter"
   | "generic_llm_stream"
   | "extended_path_finder"
-  | "file_relevance_assessment";
+  | "file_relevance_assessment"
+  | "web_search_query_generation"
+  | "web_search_execution";
 
 // Runtime array of all task types (synced with Rust TaskType enum)
 export const ALL_TASK_TYPES: readonly TaskType[] = [
@@ -45,9 +50,13 @@ export const ALL_TASK_TYPES: readonly TaskType[] = [
   "generic_llm_stream",
   "regex_file_filter",
   "file_finder_workflow",
+  "web_search_workflow",
   "streaming",
+  "local_file_filtering",
   "file_relevance_assessment",
   "extended_path_finder",
+  "web_search_query_generation",
+  "web_search_execution",
   "unknown",
 ] as const;
 
@@ -62,6 +71,8 @@ export const SYSTEM_PROMPT_TASK_TYPES: readonly TaskTypeSupportingSystemPrompts[
   "generic_llm_stream",
   "extended_path_finder",
   "file_relevance_assessment",
+  "web_search_query_generation",
+  "web_search_execution",
 ] as const;
 
 // Validation functions
@@ -148,6 +159,13 @@ export const TaskTypeDetails: Record<TaskType, {
     description: "Advanced file finding workflow with multiple steps",
     apiType: "filesystem"
   },
+  web_search_workflow: { 
+    requiresLlm: false, 
+    displayName: "Web Search Workflow", 
+    category: "Workflow",
+    description: "Enhanced task refinement with web search capabilities",
+    apiType: "local"
+  },
   streaming: { 
     requiresLlm: true, 
     displayName: "Streaming", 
@@ -178,6 +196,20 @@ export const TaskTypeDetails: Record<TaskType, {
     category: "Workflow Stage",
     description: "Comprehensive file discovery with deeper analysis",
     defaultProvider: "google"
+  },
+  web_search_query_generation: {
+    requiresLlm: true,
+    displayName: 'Web Search Query Generation',
+    category: 'Workflow Stage',
+    defaultProvider: 'google',
+    description: 'Generate optimized search queries for web-enhanced task refinement'
+  },
+  web_search_execution: {
+    requiresLlm: true,
+    displayName: 'Web Search Execution',
+    category: 'Workflow Stage',
+    defaultProvider: 'openai',
+    description: 'Execute web searches and synthesize results into actionable insights'
   },
   
   // Fallback

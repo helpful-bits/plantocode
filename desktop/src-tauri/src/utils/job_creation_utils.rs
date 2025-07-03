@@ -233,8 +233,9 @@ fn inject_job_id_into_payload(payload: &mut JobPayload, job_id: &str) {
         
         // Workflow stage payloads
         JobPayload::ExtendedPathFinder(_) => {},
-        JobPayload::RegexFileFilter(_) => {},
         JobPayload::FileRelevanceAssessment(_) => {},
+        JobPayload::WebSearchQueryGeneration(_) => {},
+        JobPayload::WebSearchExecution(_) => {},
         
         // Server proxy payloads (do not have background_job_id fields)
         JobPayload::OpenRouterLlm(_) => {

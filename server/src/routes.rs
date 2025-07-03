@@ -48,9 +48,16 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig, strict_rate_limiter: RateL
                     .route("/transaction-history", web::get().to(handlers::billing::credit_handlers::get_credit_history))
                     .route("/admin/adjust", web::post().to(handlers::billing::credit_handlers::admin_adjust_credits))
             )
+            // Usage debug routes (/api/billing/usage/*)
+            .service(
+                web::scope("/usage")
+                    .route("/providers", web::get().to(handlers::billing::usage_debug_handlers::get_usage_debug_data))
+            )
             // Streaming cost and cancelled job cost reporting endpoints  
             .route("/streaming-cost", web::post().to(handlers::billing::webhook_handlers::streaming_cost_update_authenticated))
             .route("/cancelled-job-cost", web::post().to(handlers::billing::webhook_handlers::cancelled_job_cost_authenticated))
+            // Final cost polling endpoint for desktop clients
+            .route("/final-cost/{request_id}", web::get().to(handlers::billing::webhook_handlers::get_final_cost_authenticated))
             // Customer billing lifecycle actions (cancel, resume, update) are handled by the billing portal
             // This prevents future additions of direct billing modification endpoints
     );

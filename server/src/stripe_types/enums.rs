@@ -18,7 +18,6 @@ pub const CHECKOUT_SESSION_STATUS_OPEN: &str = "open";
 // Checkout Session Modes
 pub const CHECKOUT_SESSION_MODE_PAYMENT: &str = "payment";
 pub const CHECKOUT_SESSION_MODE_SETUP: &str = "setup";
-pub const CHECKOUT_SESSION_MODE_SUBSCRIPTION: &str = "subscription";
 
 // Invoice Statuses
 pub const INVOICE_STATUS_DRAFT: &str = "draft";
@@ -27,11 +26,3 @@ pub const INVOICE_STATUS_PAID: &str = "paid";
 pub const INVOICE_STATUS_UNCOLLECTIBLE: &str = "uncollectible";
 pub const INVOICE_STATUS_VOID: &str = "void";
 
-// Subscription Statuses
-pub const SUBSCRIPTION_STATUS_ACTIVE: &str = "active";
-pub const SUBSCRIPTION_STATUS_CANCELED: &str = "canceled";
-pub const SUBSCRIPTION_STATUS_INCOMPLETE: &str = "incomplete";
-pub const SUBSCRIPTION_STATUS_INCOMPLETE_EXPIRED: &str = "incomplete_expired";
-pub const SUBSCRIPTION_STATUS_PAST_DUE: &str = "past_due";
-pub const SUBSCRIPTION_STATUS_TRIALING: &str = "trialing";
-pub const SUBSCRIPTION_STATUS_UNPAID: &str = "unpaid";

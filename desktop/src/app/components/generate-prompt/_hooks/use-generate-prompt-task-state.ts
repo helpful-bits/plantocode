@@ -35,7 +35,9 @@ export function useGeneratePromptTaskState({
   // Initialize task description state for UI-specific concerns
   const {
     isRefiningTask,
+    isWebRefiningTask: isDoingWebSearch,
     handleRefineTask,
+    handleWebRefineTask: handleWebSearch,
     canUndo,
     canRedo,
     undo,
@@ -61,12 +63,13 @@ export function useGeneratePromptTaskState({
       // Task Description State (session state only)
       taskDescriptionRef,
       isRefiningTask,
+      isDoingWebSearch,
       handleRefineTask,
+      handleWebSearch,
       canUndo,
       canRedo,
       undo,
       redo,
-
 
       // Combined Actions
       resetTaskState,
@@ -74,7 +77,9 @@ export function useGeneratePromptTaskState({
     [
       // taskDescriptionRef is a ref - stable
       isRefiningTask,
+      isDoingWebSearch,
       handleRefineTask, // memoized with useCallback
+      handleWebSearch, // memoized with useCallback
       canUndo,
       canRedo,
       undo, // memoized with useCallback

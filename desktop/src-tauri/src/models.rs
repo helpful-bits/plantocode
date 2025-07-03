@@ -178,6 +178,8 @@ pub enum TaskType {
     // New individual workflow stage types
     FileRelevanceAssessment,
     ExtendedPathFinder,
+    WebSearchQueryGeneration,
+    WebSearchExecution,
     Streaming,
     Unknown,
 }
@@ -195,6 +197,8 @@ impl ToString for TaskType {
             TaskType::FileFinderWorkflow => "file_finder_workflow".to_string(),
             TaskType::FileRelevanceAssessment => "file_relevance_assessment".to_string(),
             TaskType::ExtendedPathFinder => "extended_path_finder".to_string(),
+            TaskType::WebSearchQueryGeneration => "web_search_query_generation".to_string(),
+            TaskType::WebSearchExecution => "web_search_execution".to_string(),
             TaskType::Streaming => "streaming".to_string(),
             TaskType::Unknown => "unknown".to_string(),
         }
@@ -216,6 +220,8 @@ impl std::str::FromStr for TaskType {
             "file_finder_workflow" => Ok(TaskType::FileFinderWorkflow),
             "file_relevance_assessment" => Ok(TaskType::FileRelevanceAssessment),
             "extended_path_finder" => Ok(TaskType::ExtendedPathFinder),
+            "web_search_query_generation" => Ok(TaskType::WebSearchQueryGeneration),
+            "web_search_execution" => Ok(TaskType::WebSearchExecution),
             "streaming" => Ok(TaskType::Streaming),
             "unknown" => Ok(TaskType::Unknown),
             _ => Err(format!("Invalid task type: {}", s)),
@@ -238,7 +244,9 @@ impl TaskType {
             | TaskType::PathCorrection
             | TaskType::TaskRefinement
             | TaskType::GenericLlmStream
-            | TaskType::RegexFileFilter => true,
+            | TaskType::RegexFileFilter
+            | TaskType::WebSearchQueryGeneration
+            | TaskType::WebSearchExecution => true,
             // Streaming and Unknown default to true for safety
             TaskType::Streaming
             | TaskType::Unknown => true,
@@ -406,6 +414,7 @@ pub struct OpenRouterRequest {
     pub max_tokens: Option<u32>,
     pub temperature: Option<f32>,
     pub duration_ms: Option<i64>,
+    pub request_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

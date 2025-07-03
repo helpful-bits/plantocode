@@ -8,6 +8,7 @@ use crate::api_clients::ServerProxyClient;
 use crate::utils::hash_utils::generate_project_hash;
 use tauri::{AppHandle, Manager};
 use std::sync::Arc;
+use chrono::{Utc, Datelike};
 
 /// **UNIFIED PROMPT SYSTEM**
 /// This provides a single, comprehensive prompt processing system that handles
@@ -311,6 +312,10 @@ impl UnifiedPromptProcessor {
         if let Some(ref language) = context.language {
             substitutions.insert("{{LANGUAGE}}", language.as_str());
         }
+        
+        // Add current date in ISO format (YYYY-MM-DD)
+        let current_date = Utc::now().format("%Y-%m-%d").to_string();
+        substitutions.insert("{{CURRENT_DATE}}", &current_date);
         
         // Handle XML content placeholders
         if !file_contents_xml.is_empty() {

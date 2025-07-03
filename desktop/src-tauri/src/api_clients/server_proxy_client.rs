@@ -7,6 +7,7 @@ use reqwest_eventsource::{EventSource, Event};
 use serde_json::{json, Value};
 use log::{debug, error, info, trace, warn};
 use tauri::{AppHandle, Manager};
+use uuid;
 
 use crate::auth::TokenManager;
 use crate::constants::{SERVER_API_URL, APP_HTTP_REFERER, APP_X_TITLE};
@@ -30,7 +31,10 @@ impl ServerProxyClient {
     /// Create a new server proxy client
     pub fn new(app_handle: AppHandle, server_url: String, token_manager: Arc<TokenManager>) -> Self {
         let http_client = Client::builder()
-            .timeout(std::time::Duration::from_secs(300)) // 5 minute timeout
+            .timeout(std::time::Duration::from_secs(300)) // 5 minute request timeout
+            .connect_timeout(std::time::Duration::from_secs(30)) // 30-second connection timeout
+            .pool_idle_timeout(None) // Keep idle connections in the pool indefinitely
+            .tcp_keepalive(Some(std::time::Duration::from_secs(120))) // Send TCP keepalives every 2 minutes
             .build()
             .expect("Failed to create HTTP client");
             
@@ -374,6 +378,7 @@ impl ServerProxyClient {
         // Create request with estimated duration (used for initial attempt)
         let estimated_duration_ms = self.estimate_request_duration(&messages, &options.model);
         
+        let request_id = uuid::Uuid::new_v4().to_string();
         let mut request = OpenRouterRequest {
             model: options.model.clone(),
             messages: messages.clone(),
@@ -381,6 +386,7 @@ impl ServerProxyClient {
             max_tokens: Some(options.max_tokens),
             temperature: Some(options.temperature),
             duration_ms: Some(estimated_duration_ms),
+            request_id: Some(request_id.clone()),
         };
         
         // Create the server proxy endpoint URL for LLM chat completions
@@ -501,7 +507,11 @@ impl ServerProxyClient {
         // Estimate duration for the streaming request
         let estimated_duration_ms = self.estimate_request_duration(&messages, &options.model);
         
-        // Create request with estimated duration
+        // Use provided request ID or generate a unique one for tracking final costs
+        let request_id = options.request_id.clone()
+            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+        
+        // Create request with estimated duration and request ID
         let request = OpenRouterRequest {
             model: options.model.clone(),
             messages,
@@ -509,6 +519,7 @@ impl ServerProxyClient {
             max_tokens: Some(options.max_tokens),
             temperature: Some(options.temperature),
             duration_ms: Some(estimated_duration_ms),
+            request_id: Some(request_id.clone()),
         };
         
         // Create the server proxy endpoint URL for streaming LLM chat completions
@@ -781,5 +792,90 @@ impl ApiClient for ServerProxyClient {
         response.usage.as_ref()
             .and_then(|usage| usage.cost)
             .unwrap_or(0.0)
+    }
+    
+    /// Allow downcasting to concrete types for access to specific methods
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+}
+
+impl ServerProxyClient {
+    /// Poll for final streaming cost after stream completion
+    /// Returns the final cost if available, or None if not yet processed
+    pub async fn poll_final_streaming_cost(&self, request_id: &str) -> AppResult<Option<f64>> {
+        info!("Polling for final streaming cost: request_id={}", request_id);
+        
+        let auth_token = self.get_auth_token().await?;
+        let url = format!("{}/api/billing/final-cost/{}", self.server_url, request_id);
+        
+        let response = self.http_client
+            .get(&url)
+            .header(header::CONTENT_TYPE, "application/json")
+            .header("Authorization", format!("Bearer {}", auth_token))
+            .header("HTTP-Referer", APP_HTTP_REFERER)
+            .header("X-Title", APP_X_TITLE)
+            .send()
+            .await
+            .map_err(|e| AppError::HttpError(e.to_string()))?;
+            
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_text = response.text().await.unwrap_or_else(|_| "Failed to get error text".to_string());
+            return Err(self.handle_auth_error(status.as_u16(), &error_text).await);
+        }
+        
+        let result: serde_json::Value = response.json().await
+            .map_err(|e| AppError::ServerProxyError(format!("Failed to parse final cost response: {}", e)))?;
+        
+        if let Some(found) = result.get("found").and_then(|v| v.as_bool()) {
+            if found {
+                if let Some(cost) = result.get("final_cost").and_then(|v| v.as_f64()) {
+                    info!("Final cost retrieved for request {}: ${:.4}", request_id, cost);
+                    return Ok(Some(cost));
+                }
+            }
+        }
+        
+        debug!("Final cost not yet available for request {}", request_id);
+        Ok(None)
+    }
+    
+    /// Poll for final streaming cost with retries and timeout
+    /// Polls for up to max_attempts with delay_ms between attempts
+    pub async fn poll_final_streaming_cost_with_retry(
+        &self, 
+        request_id: &str, 
+        max_attempts: u32, 
+        delay_ms: u64
+    ) -> AppResult<Option<f64>> {
+        info!("Polling for final streaming cost with retry: request_id={}, max_attempts={}, delay={}ms", 
+              request_id, max_attempts, delay_ms);
+        
+        for attempt in 1..=max_attempts {
+            match self.poll_final_streaming_cost(request_id).await {
+                Ok(Some(cost)) => {
+                    info!("Final cost retrieved on attempt {}: ${:.4}", attempt, cost);
+                    return Ok(Some(cost));
+                }
+                Ok(None) => {
+                    if attempt < max_attempts {
+                        debug!("Final cost not available, waiting {}ms before attempt {}", delay_ms, attempt + 1);
+                        tokio::time::sleep(tokio::time::Duration::from_millis(delay_ms)).await;
+                    }
+                }
+                Err(e) => {
+                    warn!("Error polling for final cost on attempt {}: {}", attempt, e);
+                    if attempt < max_attempts {
+                        tokio::time::sleep(tokio::time::Duration::from_millis(delay_ms)).await;
+                    } else {
+                        return Err(e);
+                    }
+                }
+            }
+        }
+        
+        info!("Final cost not available after {} attempts for request {}", max_attempts, request_id);
+        Ok(None)
     }
 }

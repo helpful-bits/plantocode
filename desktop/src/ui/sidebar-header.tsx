@@ -10,12 +10,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/ui/dropdown-menu";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/ui/tooltip";
 
 interface SidebarHeaderProps {
   isCollapsed: boolean;
@@ -57,45 +51,27 @@ export const SidebarHeader: FC<SidebarHeaderProps> = ({
       <div className={`flex items-center gap-2 ${isCollapsed ? 'w-full justify-center' : 'ml-auto'}`}>
         {!isCollapsed && (
           <>
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="h-8 w-8"
-                    onClick={onRefresh}
-                    disabled={isRefreshing || refreshDisabled}
-                  >
-                    <RefreshCw className="h-4 w-4 text-foreground" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Refresh</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-8 w-8"
+              onClick={onRefresh}
+              disabled={isRefreshing || refreshDisabled}
+            >
+              <RefreshCw className="h-4 w-4 text-foreground" />
+            </Button>
 
             <DropdownMenu>
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-8 w-8"
-                        disabled={isClearing}
-                      >
-                        <Trash2 className="h-4 w-4 text-foreground" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                  </TooltipTrigger>
-                  <TooltipContent className="z-[9999]">
-                    <p>Delete job history options</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-8 w-8"
+                  disabled={isClearing}
+                >
+                  <Trash2 className="h-4 w-4 text-foreground" />
+                </Button>
+              </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 <DropdownMenuItem
                   onClick={() => onClearHistory()}

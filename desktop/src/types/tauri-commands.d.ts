@@ -493,6 +493,12 @@ export interface CancelWorkflowStageCommandArgs {
   stageJobId: string;
 }
 
+export interface StartWebEnhancedTaskRefinementWorkflowCommandArgs {
+  sessionId: string;
+  taskDescription: string;
+  projectDirectory: string;
+}
+
 
 // Common result types
 export interface JobResult {
@@ -625,7 +631,7 @@ export type TauriInvoke = {
   "get_stripe_publishable_key_command": () => Promise<string>;
   
   // Checkout commands
-  "create_credit_checkout_session_command": (args: CreateCreditCheckoutSessionCommandArgs) => Promise<CheckoutSessionResponse>;
+  "create_credit_purchase_checkout_session_command": (args: CreateCreditCheckoutSessionCommandArgs) => Promise<CheckoutSessionResponse>;
   "create_setup_checkout_session_command": (args: CreateSetupCheckoutSessionCommandArgs) => Promise<CheckoutSessionResponse>;
   "get_checkout_session_status_command": (args: { sessionId: string }) => Promise<CheckoutSessionStatusResponse>;
   
@@ -652,6 +658,9 @@ export type TauriInvoke = {
   "get_workflow_details_command": (args: GetWorkflowDetailsCommandArgs) => Promise<import("@/types/workflow-types").WorkflowStatusResponse | null>;
   "retry_workflow_stage_command": (args: RetryWorkflowStageCommandArgs) => Promise<string>;
   "cancel_workflow_stage_command": (args: CancelWorkflowStageCommandArgs) => Promise<void>;
+  "start_web_enhanced_task_refinement_workflow": (args: StartWebEnhancedTaskRefinementWorkflowCommandArgs) => Promise<import("@/types/workflow-types").WorkflowCommandResponse>;
+  "get_workflow_state": (args: { workflowId: string }) => Promise<any>;
+  "get_workflow_results": (args: { workflowId: string }) => Promise<any>;
 };
 
 // Billing-related types

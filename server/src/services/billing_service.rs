@@ -16,7 +16,8 @@ use chrono::{DateTime, Utc, Duration};
 use std::sync::Arc;
 use sqlx::PgPool;
 use crate::db::connection::DatabasePools;
-use bigdecimal::{BigDecimal, ToPrimitive};
+use bigdecimal::{BigDecimal, ToPrimitive, FromPrimitive};
+use std::str::FromStr;
 
 // Import Stripe service
 use crate::services::stripe_service::StripeService;
@@ -788,16 +789,17 @@ impl BillingService {
         Ok(settings)
     }
 
-    /// Record API usage, bill credits, and trigger auto-top-off if needed
-    /// This is a wrapper around credit_service.record_and_bill_usage that adds auto top-off functionality
+    /// Record API usage with pre-resolved cost (simplified billing flow)
+    /// This method takes a cost that has already been resolved by the CostResolver
     pub async fn charge_for_api_usage(
         &self,
         entry: ApiUsageEntryDto,
+        final_cost: BigDecimal,
     ) -> Result<(ApiUsageRecord, UserCredit), AppError> {
-        debug!("Processing API usage and checking auto top-off for user: {}", entry.user_id);
+        debug!("Processing API usage with pre-resolved cost for user: {}", entry.user_id);
         
-        // First, record the API usage and bill credits using the existing credit service
-        let (api_usage_record, user_credit) = self.credit_service.record_and_bill_usage(entry).await?;
+        // Record the API usage and bill credits using the pre-resolved cost
+        let (api_usage_record, user_credit) = self.credit_service.record_and_bill_usage_with_cost(entry, final_cost).await?;
         
         info!("Successfully billed user {} for API usage: {} (cost: {})", 
               api_usage_record.user_id, api_usage_record.service_name, api_usage_record.cost);
@@ -1276,8 +1278,8 @@ impl BillingService {
         model_id: &str,
         input_tokens: i64,
         output_tokens: i64,
-        cache_write_tokens: i64,
-        cache_read_tokens: i64,
+        _cache_write_tokens: i64,
+        _cache_read_tokens: i64,
     ) -> Result<BigDecimal, AppError> {
         // Get model pricing information
         let model_repository = Arc::new(crate::db::repositories::ModelRepository::new(
@@ -1347,7 +1349,7 @@ impl BillingService {
         };
 
         // Record the usage with the streaming cost and bill credits
-        let (_api_usage_record, user_credit) = self.charge_for_api_usage(usage_entry).await?;
+        let (_api_usage_record, user_credit) = self.charge_for_api_usage(usage_entry, incremental_cost.clone()).await?;
 
         info!("Streaming cost {} recorded for user {} request {}, new balance: {}", 
               incremental_cost, user_id, request_id, user_credit.balance);
@@ -1379,4 +1381,235 @@ impl BillingService {
         Ok(estimated_cost)
     }
 
+    /// Centralized cost resolution function that provides authoritative cost calculation
+    /// 
+    /// This function calculates cost using local pricing data and handles cache tokens properly.
+    /// 
+    /// # Arguments
+    /// * `model_id` - Model identifier for pricing lookup
+    /// * `tokens_input` - Number of input tokens (uncached)
+    /// * `tokens_output` - Number of output tokens
+    /// * `cache_write_tokens` - Number of cache write tokens
+    /// * `cache_read_tokens` - Number of cache read tokens
+    /// 
+    /// # Returns
+    /// Resolved cost as BigDecimal, ensuring consistent and secure billing
+    pub async fn resolve_cost(
+        &self,
+        model_id: &str,
+        tokens_input: i64,
+        tokens_output: i64,
+        cache_write_tokens: i64,
+        cache_read_tokens: i64,
+    ) -> Result<BigDecimal, AppError> {
+        // Validate input parameters
+        if tokens_input < 0 || tokens_output < 0 || cache_write_tokens < 0 || cache_read_tokens < 0 {
+            return Err(AppError::InvalidArgument("Token counts cannot be negative".to_string()));
+        }
+
+        // Maximum token limits for security
+        const MAX_TOKENS: i64 = 1_000_000_000;
+        if tokens_input > MAX_TOKENS || tokens_output > MAX_TOKENS || 
+           cache_write_tokens > MAX_TOKENS || cache_read_tokens > MAX_TOKENS {
+            return Err(AppError::InvalidArgument(
+                format!("Token counts exceed maximum allowed limits ({})", MAX_TOKENS)
+            ));
+        }
+
+        // Calculate cost using model pricing
+        info!("Using server-side model pricing calculation for model {}", model_id);
+        
+        // Get model pricing information
+        let model_repository = Arc::new(crate::db::repositories::ModelRepository::new(
+            Arc::new(self.db_pools.system_pool.clone())
+        ));
+        
+        let model = model_repository
+            .find_by_id_with_provider(model_id)
+            .await?
+            .ok_or_else(|| AppError::NotFound(format!("Model '{}' not found", model_id)))?;
+
+        // Calculate input cost with cache token support
+        let input_cost = model.calculate_input_cost(
+            tokens_input,
+            cache_write_tokens,
+            cache_read_tokens,
+        ).map_err(|e| AppError::InvalidArgument(format!("Input cost calculation failed: {}", e)))?;
+
+        // Calculate output cost
+        let output_cost = if let Some(rate) = model.get_output_cost_per_million_tokens() {
+            let million = BigDecimal::from(1_000_000);
+            let min_price = BigDecimal::from_str("0.000001")
+                .map_err(|e| AppError::InvalidArgument(format!("Failed to parse minimum price: {}", e)))?;
+            let max_price = BigDecimal::from(1000);
+            
+            // Validate pricing bounds
+            if rate < min_price || rate > max_price {
+                return Err(AppError::InvalidArgument(
+                    format!("Output pricing rate {} is outside allowed bounds ({} - {})", rate, min_price, max_price)
+                ));
+            }
+            
+            let output_tokens_bd = BigDecimal::from(tokens_output);
+            let product = &rate * &output_tokens_bd;
+            
+            // Check for overflow
+            if product > (&max_price * &million) {
+                return Err(AppError::InvalidArgument(
+                    "Output cost calculation would overflow maximum allowed cost".to_string()
+                ));
+            }
+            
+            product / &million
+        } else {
+            BigDecimal::from(0)
+        };
+
+        // Validate total cost
+        let total_cost = &input_cost + &output_cost;
+        let max_cost = BigDecimal::from(1000);
+        if total_cost > max_cost {
+            return Err(AppError::InvalidArgument(
+                "Total cost calculation would exceed maximum allowed cost".to_string()
+            ));
+        }
+
+        // Ensure cost is non-negative
+        if total_cost < BigDecimal::from(0) {
+            return Err(AppError::InvalidArgument(
+                "Calculated cost cannot be negative".to_string()
+            ));
+        }
+
+        info!("Calculated cost for model {} using server pricing: {}", model_id, total_cost);
+        Ok(total_cost)
+    }
+
+    /// Store final cost for later retrieval by desktop clients
+    /// This allows desktop clients to poll for final streaming costs after post-stream billing completes
+    pub async fn store_streaming_final_cost(
+        &self,
+        user_id: &Uuid,
+        request_id: &str,
+        service_name: &str,
+        final_cost: &BigDecimal,
+        tokens_input: i64,
+        tokens_output: i64,
+    ) -> Result<(), AppError> {
+        info!("Storing final streaming cost for desktop retrieval: user_id={}, request_id={}, cost=${:.4}", 
+              user_id, request_id, final_cost);
+        
+        // Simply use existing api_usage table - it already has cost and request_id fields!
+        let cost_f64 = final_cost.to_string().parse::<f64>()
+            .map_err(|e| AppError::Database(format!("Failed to convert cost to f64: {}", e)))?;
+        
+        // Create metadata for final cost tracking
+        let metadata = serde_json::json!({
+            "request_id": request_id,
+            "streaming": true,
+            "final_cost": true,
+            "cost_type": "streaming_final"
+        });
+        
+        // Create API usage entry specifically for final cost tracking
+        let entry = ApiUsageEntryDto {
+            user_id: *user_id,
+            service_name: format!("{}_final_cost", service_name), // Differentiate from regular usage entries
+            tokens_input,
+            tokens_output,
+            cached_input_tokens: 0,
+            cache_write_tokens: 0,
+            cache_read_tokens: 0,
+            request_id: Some(request_id.to_string()),
+            metadata: Some(metadata),
+        };
+        
+        // Use existing charge_for_api_usage method which handles everything properly
+        self.charge_for_api_usage(entry, final_cost.clone()).await?;
+        
+        info!("Final cost successfully stored for desktop retrieval: request_id={}, cost=${:.4}", 
+              request_id, final_cost);
+        Ok(())
+    }
+
+    /// Retrieve final streaming cost by request_id for desktop clients
+    pub async fn get_final_streaming_cost(
+        &self,
+        user_id: &Uuid,
+        request_id: &str,
+    ) -> Result<Option<FinalCostData>, AppError> {
+        info!("Retrieving final streaming cost: user_id={}, request_id={}", user_id, request_id);
+        
+        let pool = self.db_pools.user_pool.clone();
+        let mut tx = pool.begin().await
+            .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
+        
+        // Set user context for RLS
+        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
+            .bind(user_id.to_string())
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| AppError::Database(format!("Failed to set user context: {}", e)))?;
+        
+        // Query for final cost entries with the specific request_id
+        let result = sqlx::query!(
+            r#"
+            SELECT 
+                service_name, 
+                tokens_input, 
+                tokens_output, 
+                cost,
+                metadata,
+                timestamp
+            FROM api_usage 
+            WHERE request_id = $1 
+              AND service_name LIKE '%_final_cost'
+              AND metadata->>'cost_type' = 'streaming_final'
+            ORDER BY timestamp DESC 
+            LIMIT 1
+            "#,
+            request_id
+        )
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(|e| AppError::Database(format!("Failed to query final cost: {}", e)))?;
+        
+        tx.commit().await
+            .map_err(|e| AppError::Database(format!("Failed to commit transaction: {}", e)))?;
+        
+        if let Some(row) = result {
+            // Use the cost directly from the database - it's already the final cost
+            let final_cost = row.cost;
+            
+            // Remove the "_final_cost" suffix from service name
+            let service_name = row.service_name.strip_suffix("_final_cost")
+                .unwrap_or(&row.service_name)
+                .to_string();
+            
+            let cost_data = FinalCostData {
+                cost: final_cost,
+                tokens_input: row.tokens_input as i64,
+                tokens_output: row.tokens_output as i64,
+                service_name,
+                recorded_at: row.timestamp,
+            };
+            
+            info!("Final cost retrieved for request {}: ${:.4}", request_id, cost_data.cost);
+            Ok(Some(cost_data))
+        } else {
+            info!("No final cost found for request {}", request_id);
+            Ok(None)
+        }
+    }
+
+}
+
+/// Data structure for final cost information
+#[derive(Debug, Clone, Serialize)]
+pub struct FinalCostData {
+    pub cost: BigDecimal,
+    pub tokens_input: i64,
+    pub tokens_output: i64,
+    pub service_name: String,
+    pub recorded_at: DateTime<Utc>,
 }

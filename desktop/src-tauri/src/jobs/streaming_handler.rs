@@ -103,79 +103,41 @@ impl StreamedResponseHandler {
                     }
                     
                     // Check for final usage information including server-calculated cost
-                    if chunk.usage.is_some() {
-                        final_usage = chunk.usage.clone();
-                        debug!("Received server-authoritative usage information: {:?}", final_usage);
+                    if let Some(ref usage) = chunk.usage {
+                        final_usage = Some(usage.clone());
+                        info!("Received server-authoritative usage information for job {}: tokens={}, cost={:?}", 
+                              self.job_id, usage.total_tokens, usage.cost);
                         
-                        // If we have cost information from server, update the metadata immediately
-                        if let Some(ref usage) = final_usage {
-                            if let Some(cost) = usage.cost {
-                                // Emit job status change event with server-calculated cost
-                                if let Some(ref app_handle) = self.app_handle {
-                                    if let Err(e) = job_processor_utils::emit_job_status_change(
-                                        app_handle,
-                                        &self.job_id,
-                                        "running",
-                                        Some("Received server-calculated cost information."),
-                                        Some(cost),
-                                    ) {
-                                        warn!("Failed to emit cost update event: {}", e);
-                                    }
-                                }
-                                
-                                // Parse existing metadata and add server-calculated cost
-                                let updated_metadata = if let Some(metadata_str) = current_metadata_str.as_deref() {
-                                    if let Ok(mut ui_metadata) = serde_json::from_str::<crate::jobs::types::JobUIMetadata>(metadata_str) {
-                                        // Add server-calculated cost to task_data
-                                        if let serde_json::Value::Object(ref mut task_map) = ui_metadata.task_data {
-                                            task_map.insert("actual_cost".to_string(), serde_json::json!(cost));
-                                        } else {
-                                            ui_metadata.task_data = serde_json::json!({
-                                                "actual_cost": cost
-                                            });
-                                        }
-                                        
-                                        // Serialize back to string
-                                        match serde_json::to_string(&ui_metadata) {
-                                            Ok(serialized) => Some(serialized),
-                                            Err(e) => {
-                                                debug!("Failed to serialize metadata with server cost: {}", e);
-                                                None
-                                            }
-                                        }
-                                    } else {
-                                        // Create new metadata with server-calculated cost
-                                        let new_metadata = serde_json::json!({
-                                            "task_data": {
-                                                "actual_cost": cost
-                                            }
-                                        });
-                                        serde_json::to_string(&new_metadata).ok()
-                                    }
-                                } else {
-                                    // No existing metadata, create new with server-calculated cost
-                                    let new_metadata = serde_json::json!({
-                                        "task_data": {
-                                            "actual_cost": cost
-                                        }
-                                    });
-                                    serde_json::to_string(&new_metadata).ok()
-                                };
-                                
-                                // Update job with the server-calculated cost information
-                                if let Some(metadata_str) = updated_metadata {
-                                    let new_metadata = self.repo.update_job_stream_progress(
-                                        &self.job_id,
-                                        "", // Empty chunk - just updating metadata
-                                        0,  // Server provides accurate token counts
-                                        accumulated_response.len() as i32,
-                                        Some(&metadata_str),
-                                        self.app_handle.as_ref(),
-                                        Some(cost), // Server-calculated cost
-                                    ).await?;
-                                    current_metadata_str = Some(new_metadata);
+                        // Process server-calculated cost if available
+                        if let Some(cost) = usage.cost {
+                            info!("Processing server-calculated cost ${:.6} for job {}", cost, self.job_id);
+                            
+                            // Emit job status change event with server-calculated cost
+                            if let Some(ref app_handle) = self.app_handle {
+                                if let Err(e) = job_processor_utils::emit_job_status_change(
+                                    app_handle,
+                                    &self.job_id,
+                                    "running",
+                                    Some("Received server-calculated cost information."),
+                                    Some(cost),
+                                ) {
+                                    error!("Failed to emit cost update event for job {}: {}", self.job_id, e);
                                 }
                             }
+                            
+                            // Update metadata with server-calculated cost
+                            match self.update_metadata_with_cost(current_metadata_str.as_deref(), cost).await {
+                                Ok(updated_metadata_str) => {
+                                    current_metadata_str = Some(updated_metadata_str);
+                                    debug!("Successfully updated job {} metadata with server cost ${:.6}", self.job_id, cost);
+                                }
+                                Err(e) => {
+                                    error!("Failed to update metadata with server cost for job {}: {}", self.job_id, e);
+                                    // Continue processing - cost will still be captured in final_usage
+                                }
+                            }
+                        } else {
+                            debug!("Server usage information received for job {} but no cost field present", self.job_id);
                         }
                     }
                     
@@ -189,16 +151,18 @@ impl StreamedResponseHandler {
                     }
                 }
                 Err(e) => {
-                    error!("Streaming error: {}", e);
+                    error!("Streaming error for job {}: {}", self.job_id, e);
                     
-                    // Check if job has been canceled to extract any costs incurred
+                    // Check if job has been canceled 
                     if job_processor_utils::check_job_canceled(&self.repo, &self.job_id).await? {
                         info!("Job {} canceled during streaming error", self.job_id);
-                        
-                        // No need to extract cost from metadata - server will provide authoritative cost
-                        
                         return Err(AppError::JobError(format!("Job was canceled with error: {}", e)));
                     }
+                    
+                    // For streaming errors, we still want to preserve any cost data we may have received
+                    // The server may provide partial usage information even on failure
+                    warn!("Streaming error occurred for job {} - final usage will be preserved if available: {:?}", 
+                          self.job_id, final_usage);
                     
                     return Err(e);
                 }
@@ -207,10 +171,16 @@ impl StreamedResponseHandler {
         
         // Use server-authoritative usage information only
         let usage_result = if let Some(usage) = final_usage {
-            debug!("Using server-authoritative usage information with cost: {:?}", usage.cost);
+            if let Some(cost) = usage.cost {
+                info!("Stream processing completed for job {} with server-calculated cost: ${:.6} (tokens: {})", 
+                      self.job_id, cost, usage.total_tokens);
+            } else {
+                debug!("Stream processing completed for job {} with server usage data but no cost field (tokens: {})", 
+                       self.job_id, usage.total_tokens);
+            }
             Some(usage)
         } else {
-            debug!("No server usage received - server will provide usage data through other channels");
+            debug!("Stream processing completed for job {} - no server usage received, server will provide usage data through other channels", self.job_id);
             None // Don't create estimated usage - rely on server data only
         };
         
@@ -219,6 +189,75 @@ impl StreamedResponseHandler {
             final_usage: usage_result.clone(),
             cost: usage_result.and_then(|usage| usage.cost),
         })
+    }
+
+    /// Helper method to update job metadata with server-calculated cost
+    /// Returns the updated metadata string on success
+    async fn update_metadata_with_cost(
+        &self,
+        current_metadata: Option<&str>,
+        server_cost: f64,
+    ) -> AppResult<String> {
+        debug!("Updating metadata with server-calculated cost ${:.6} for job {}", server_cost, self.job_id);
+        
+        let updated_metadata = match current_metadata {
+            Some(metadata_str) => {
+                // Parse existing metadata
+                match serde_json::from_str::<crate::jobs::types::JobUIMetadata>(metadata_str) {
+                    Ok(mut ui_metadata) => {
+                        // Add server-calculated cost to task_data
+                        match ui_metadata.task_data {
+                            serde_json::Value::Object(ref mut task_map) => {
+                                task_map.insert("actual_cost".to_string(), serde_json::json!(server_cost));
+                                debug!("Added server cost to existing task_data for job {}", self.job_id);
+                            }
+                            _ => {
+                                // Replace non-object task_data with object containing cost
+                                ui_metadata.task_data = serde_json::json!({
+                                    "actual_cost": server_cost
+                                });
+                                debug!("Replaced task_data with cost object for job {}", self.job_id);
+                            }
+                        }
+                        
+                        // Serialize back to string
+                        serde_json::to_string(&ui_metadata)
+                            .map_err(|e| AppError::SerializationError(format!("Failed to serialize updated metadata: {}", e)))?
+                    }
+                    Err(e) => {
+                        // If parsing fails, create new metadata structure
+                        warn!("Failed to parse existing metadata for job {}, creating new structure: {}", self.job_id, e);
+                        serde_json::to_string(&serde_json::json!({
+                            "task_data": {
+                                "actual_cost": server_cost
+                            }
+                        })).map_err(|e| AppError::SerializationError(format!("Failed to create new metadata: {}", e)))?
+                    }
+                }
+            }
+            None => {
+                // Create new metadata with server-calculated cost
+                debug!("Creating new metadata with server cost for job {}", self.job_id);
+                serde_json::to_string(&serde_json::json!({
+                    "task_data": {
+                        "actual_cost": server_cost
+                    }
+                })).map_err(|e| AppError::SerializationError(format!("Failed to create metadata: {}", e)))?
+            }
+        };
+        
+        // Update job with the server-calculated cost information
+        let new_metadata = self.repo.update_job_stream_progress(
+            &self.job_id,
+            "", // Empty chunk - just updating metadata
+            0,  // Server provides accurate token counts
+            0,  // No new content being added
+            Some(&updated_metadata),
+            self.app_handle.as_ref(),
+            Some(server_cost), // Server-calculated cost
+        ).await.map_err(|e| AppError::DatabaseError(format!("Failed to update job metadata with cost: {}", e)))?;
+        
+        Ok(new_metadata)
     }
 
     

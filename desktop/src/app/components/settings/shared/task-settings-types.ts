@@ -13,6 +13,7 @@ export const taskSettingsKeyToTaskType: Record<keyof TaskSettings, TaskType> = {
   textImprovement: "text_improvement",
   implementationPlan: "implementation_plan",
   fileFinderWorkflow: "file_finder_workflow",
+  webSearchWorkflow: "web_search_workflow",
   extendedPathFinder: "extended_path_finder",
   fileRelevanceAssessment: "file_relevance_assessment",
   taskRefinement: "task_refinement",
@@ -20,6 +21,8 @@ export const taskSettingsKeyToTaskType: Record<keyof TaskSettings, TaskType> = {
   regexFileFilter: "regex_file_filter",
   streaming: "streaming",
   unknown: "unknown",
+  webSearchQueryGeneration: "web_search_query_generation",
+  webSearchExecution: "web_search_execution",
 };
 
 export const TRANSCRIPTION_LANGUAGES = [
