@@ -18,6 +18,8 @@ interface JobContentProps {
   isRetrying?: Record<string, boolean>;
   onSelect: (job: BackgroundJob) => void;
   onApplyFiles?: (job: BackgroundJob) => void;
+  onApplyText?: (job: BackgroundJob) => void;
+  currentSessionId?: string;
 }
 
 /**
@@ -35,6 +37,8 @@ export const JobContent = ({
   isRetrying,
   onSelect,
   onApplyFiles,
+  onApplyText,
+  currentSessionId,
 }: JobContentProps) => {
   return (
     <div className="flex flex-col w-full min-h-full px-3 py-3 pb-24">
@@ -56,6 +60,8 @@ export const JobContent = ({
               isRetrying={isRetrying}
               onSelect={onSelect}
               onApplyFiles={onApplyFiles}
+              onApplyText={onApplyText}
+              currentSessionId={currentSessionId}
             />
           ))}
         </div>

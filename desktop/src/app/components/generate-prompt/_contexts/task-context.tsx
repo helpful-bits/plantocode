@@ -13,12 +13,14 @@ const defaultValue: TaskContextValue = {
     taskDescriptionRef: { current: null }, // Provide a stable, null-initialized ref object
     tokenEstimate: null,
     isRefiningTask: false,
+    isDoingWebSearch: false,
     canUndo: false,
     canRedo: false,
   },
   actions: {
     // These default implementations will be replaced by actual implementations
     handleRefineTask: async () => Promise.resolve(),
+    handleWebSearch: async () => Promise.resolve(),
     flushPendingTaskChanges: () => null,
     reset: () => {},
     undo: () => {},

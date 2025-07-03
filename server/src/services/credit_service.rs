@@ -349,7 +349,15 @@ impl CreditService {
         info!("Processing credit purchase for user {}: {} {}", user_id, amount, currency);
         
         let pool = self.user_credit_repository.get_pool();
+        
+        // Start transaction and immediately set SERIALIZABLE isolation level to prevent race conditions
         let mut tx = pool.begin().await.map_err(AppError::from)?;
+        
+        // Set SERIALIZABLE isolation level for this transaction to prevent race conditions in auto-top-off flow
+        sqlx::query("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE")
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| AppError::Database(format!("Failed to set SERIALIZABLE isolation level: {}", e)))?;
 
         sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
             .bind(user_id.to_string())
@@ -357,9 +365,35 @@ impl CreditService {
             .await
             .map_err(|e| AppError::Database(format!("Failed to set user context: {}", e)))?;
 
-        let current_balance = self.user_credit_repository
-            .ensure_balance_record_exists_with_executor(user_id, &mut tx)
-            .await?;
+        // Lock the user row to prevent concurrent modifications during auto-top-off
+        let current_balance = sqlx::query_as!(
+            UserCredit,
+            r#"
+            SELECT 
+                user_id,
+                balance,
+                currency,
+                created_at,
+                updated_at
+            FROM user_credits 
+            WHERE user_id = $1 
+            FOR UPDATE
+            "#,
+            user_id
+        )
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(|e| AppError::Database(format!("Failed to lock user credits row: {}", e)))?;
+
+        let current_balance = match current_balance {
+            Some(balance) => balance,
+            None => {
+                // Create balance record if it doesn't exist, still within the locked transaction
+                self.user_credit_repository
+                    .ensure_balance_record_exists_with_executor(user_id, &mut tx)
+                    .await?
+            }
+        };
 
         // Validate that the purchase won't result in a negative balance (safety check)
         validate_balance_adjustment(&current_balance.balance, &amount, "Credit purchase")?;
@@ -388,7 +422,7 @@ impl CreditService {
             .create_transaction_with_executor(&transaction, &updated_balance.balance, &mut tx)
             .await?;
 
-        // Commit transaction and handle database constraint violations for duplicate prevention
+        // Commit transaction and handle both constraint violations and serialization failures
         match tx.commit().await {
             Ok(()) => {},
             Err(e) => {
@@ -397,6 +431,14 @@ impl CreditService {
                     if db_error.code().as_deref() == Some("23505") { // PostgreSQL unique constraint violation
                         info!("Credit purchase for stripe charge {} was already recorded (constraint violation)", stripe_charge_id);
                         return Ok(self.get_user_balance(user_id).await?);
+                    }
+                    // Handle serialization failures that can occur with SERIALIZABLE isolation
+                    if db_error.code().as_deref() == Some("40001") { // PostgreSQL serialization failure
+                        warn!("Serialization failure during credit purchase for user {} and charge {}: {}", user_id, stripe_charge_id, db_error);
+                        return Err(AppError::Database(format!(
+                            "Transaction serialization conflict during credit purchase. This may indicate concurrent auto-top-off attempts: {}", 
+                            db_error
+                        )));
                     }
                 }
                 return Err(AppError::from(e));
@@ -498,6 +540,98 @@ impl CreditService {
         Ok(result)
     }
     
+    /// Record API usage and bill credits with a pre-resolved cost
+    /// This method is used by the billing service after centralized cost resolution
+    pub async fn record_and_bill_usage_with_cost(
+        &self, 
+        entry: ApiUsageEntryDto, 
+        resolved_cost: BigDecimal
+    ) -> Result<(ApiUsageRecord, UserCredit), AppError> {
+        // Start transaction
+        let pool = self.user_credit_repository.get_pool();
+        let mut tx = pool.begin().await.map_err(AppError::from)?;
+        
+        // Set user context for RLS policies
+        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
+            .bind(entry.user_id.to_string())
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| AppError::Database(format!("Failed to set user context: {}", e)))?;
+        
+        // Normalize the resolved cost
+        let cost = normalized(&resolved_cost);
+        
+        // Record API usage first
+        let api_usage_record = self.api_usage_repository
+            .record_usage_with_executor(entry, cost.clone(), &mut tx)
+            .await?;
+        
+        // Consume credits with reference to the API usage record
+        let usage_description = format!("{} - {} tokens in, {} tokens out", 
+            api_usage_record.service_name, api_usage_record.tokens_input, api_usage_record.tokens_output);
+        
+        // Ensure user has a credit record within the transaction
+        let current_balance = self.user_credit_repository
+            .ensure_balance_record_exists_with_executor(&api_usage_record.user_id, &mut tx)
+            .await?;
+
+        // Check if user has sufficient credits
+        if current_balance.balance < cost {
+            return Err(AppError::CreditInsufficient(
+                format!("Insufficient credits. Required: {}, Available: {}", cost, current_balance.balance)
+            ));
+        }
+
+        // Deduct the credits within the transaction
+        let negative_amount = -&cost;
+        let updated_balance = self.user_credit_repository
+            .increment_balance_with_executor(&api_usage_record.user_id, &negative_amount, &mut tx)
+            .await?;
+
+        // Record the consumption transaction within the same transaction
+        let transaction = CreditTransaction {
+            id: Uuid::new_v4(),
+            user_id: api_usage_record.user_id,
+            transaction_type: "consumption".to_string(),
+            amount: negative_amount,
+            currency: "USD".to_string(),
+            description: Some(usage_description),
+            stripe_charge_id: None,
+            related_api_usage_id: api_usage_record.id,
+            metadata: api_usage_record.metadata.clone(),
+            created_at: Some(Utc::now()),
+            balance_after: updated_balance.balance.clone(),
+        };
+
+        let _created_transaction = self.credit_transaction_repository
+            .create_transaction_with_executor(&transaction, &updated_balance.balance, &mut tx)
+            .await?;
+        
+        // Log audit event for credit consumption
+        let audit_context = crate::services::audit_service::AuditContext::new(api_usage_record.user_id);
+        if let Err(audit_error) = self.audit_service.log_credit_consumption(
+            &audit_context,
+            &api_usage_record.user_id,
+            &api_usage_record.service_name,
+            &cost,
+            api_usage_record.tokens_input as i32,
+            api_usage_record.tokens_output as i32,
+            0, // cached_input_tokens - legacy field, use 0
+            api_usage_record.cache_write_tokens as i32,
+            api_usage_record.cache_read_tokens as i32,
+            &current_balance.balance,
+            &updated_balance.balance,
+            api_usage_record.id,
+        ).await {
+            warn!("Failed to log audit event for credit consumption: {}", audit_error);
+        }
+        
+        // Commit transaction
+        tx.commit().await.map_err(AppError::from)?;
+        
+        Ok((api_usage_record, updated_balance))
+    }
+    
     /// Private helper for recording and billing within an existing transaction
     async fn _record_and_bill_in_transaction(
         &self,
@@ -511,17 +645,21 @@ impl CreditService {
             .await
             .map_err(|e| AppError::Database(format!("Failed to set user context: {}", e)))?;
         
-        // Get model details and calculate cost
-        let model_with_provider = self.model_repository
-            .find_by_id_with_provider(&entry.service_name)
-            .await?
-            .ok_or_else(|| AppError::NotFound(format!("Model '{}' not found", entry.service_name)))?;
-        
-        // Extract cache token counts before moving entry
+        // Extract token counts and provider cost from metadata before moving entry
         let tokens_input = entry.tokens_input;
         let cache_write_tokens = entry.cache_write_tokens;
         let cache_read_tokens = entry.cache_read_tokens;
         let tokens_output = entry.tokens_output;
+        let model_id = entry.service_name.clone();
+        
+        // Note: This method provides fallback cost resolution for backward compatibility
+        // The preferred entry point is now BillingService.charge_for_api_usage which uses centralized resolution
+        
+        // Get model details for validation
+        let model_with_provider = self.model_repository
+            .find_by_id_with_provider(&model_id)
+            .await?
+            .ok_or_else(|| AppError::NotFound(format!("Model '{}' not found", model_id)))?;
         
         // Calculate cost using secure cached token pricing with overflow protection
         let input_cost = model_with_provider.calculate_input_cost(
@@ -566,8 +704,10 @@ impl CreditService {
             BigDecimal::from(0)
         };
         
-        // Validate total cost with overflow protection
+        // Use calculated cost
         let cost = &input_cost + &output_cost;
+        
+        // Validate total cost with overflow protection
         let max_cost = BigDecimal::from(1000);
         if cost > max_cost {
             return Err(AppError::InvalidArgument(

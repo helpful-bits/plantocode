@@ -1,6 +1,6 @@
 use actix_web::{web, HttpResponse, post, HttpRequest};
 use crate::error::AppError;
-use crate::services::billing_service::BillingService;
+use crate::services::billing_service::{BillingService, FinalCostData};
 use crate::services::audit_service::{AuditService, AuditContext};
 use crate::db::repositories::webhook_idempotency_repository::WebhookIdempotencyRepository;
 use crate::db::repositories::user_credit_repository::UserCreditRepository;
@@ -663,9 +663,6 @@ async fn handle_checkout_session_completed(
                 process_credit_purchase(&payment_intent, billing_service, &email_service).await?;
             }
         },
-        CheckoutSessionMode::Subscription => {
-            info!("Legacy subscription mode checkout session: {} - subscription processing removed", session.id);
-        },
         CheckoutSessionMode::Setup => {
             info!("Setup mode checkout session completed successfully: {}", session.id);
         },
@@ -767,4 +764,45 @@ pub async fn cancelled_job_cost_authenticated(
         "status": "success",
         "message": "Cancelled job cost recorded"
     })))
+}
+
+/// Get final cost for a streaming request by request_id
+/// Allows desktop clients to poll for resolved costs after streaming completion
+pub async fn get_final_cost_authenticated(
+    user_id: crate::middleware::secure_auth::UserId,
+    path: web::Path<String>,
+    billing_service: web::Data<BillingService>,
+) -> Result<HttpResponse, AppError> {
+    let request_id = path.into_inner();
+    info!("Retrieving final cost for authenticated user {} request {}", 
+          user_id.0, request_id);
+    
+    match billing_service.get_final_streaming_cost(&user_id.0, &request_id).await {
+        Ok(Some(cost_data)) => {
+            info!("Final cost found for request {}: ${:.4}", request_id, cost_data.cost);
+            Ok(HttpResponse::Ok().json(serde_json::json!({
+                "status": "success",
+                "found": true,
+                "request_id": request_id,
+                "final_cost": cost_data.cost,
+                "tokens_input": cost_data.tokens_input,
+                "tokens_output": cost_data.tokens_output,
+                "service_name": cost_data.service_name,
+                "recorded_at": cost_data.recorded_at
+            })))
+        }
+        Ok(None) => {
+            info!("No final cost found for request {}", request_id);
+            Ok(HttpResponse::Ok().json(serde_json::json!({
+                "status": "success",
+                "found": false,
+                "request_id": request_id,
+                "message": "Final cost not yet available or request not found"
+            })))
+        }
+        Err(e) => {
+            error!("Failed to retrieve final cost for request {}: {}", request_id, e);
+            Err(e)
+        }
+    }
 }

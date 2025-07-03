@@ -34,7 +34,8 @@ pub fn deserialize_value_to_job_payload(json_value: &serde_json::Value, task_typ
         ExtendedPathFinderPayload, ImplementationPlanPayload,
         TaskRefinementPayload,
         TextImprovementPayload, GenericLlmStreamPayload,
-        OpenRouterLlmPayload, FileRelevanceAssessmentPayload
+        OpenRouterLlmPayload, FileRelevanceAssessmentPayload,
+        WebSearchQueryGenerationPayload, WebSearchExecutionPayload
     };
     use crate::models::TaskType;
     
@@ -78,6 +79,16 @@ pub fn deserialize_value_to_job_payload(json_value: &serde_json::Value, task_typ
             let payload: FileRelevanceAssessmentPayload = serde_json::from_value(json_value.clone())
                 .map_err(|e| AppError::JobError(format!("Failed to deserialize FileRelevanceAssessmentPayload: {}", e)))?;
             Ok(JobPayload::FileRelevanceAssessment(payload))
+        }
+        TaskType::WebSearchQueryGeneration => {
+            let payload: WebSearchQueryGenerationPayload = serde_json::from_value(json_value.clone())
+                .map_err(|e| AppError::JobError(format!("Failed to deserialize WebSearchQueryGenerationPayload: {}", e)))?;
+            Ok(JobPayload::WebSearchQueryGeneration(payload))
+        }
+        TaskType::WebSearchExecution => {
+            let payload: WebSearchExecutionPayload = serde_json::from_value(json_value.clone())
+                .map_err(|e| AppError::JobError(format!("Failed to deserialize WebSearchExecutionPayload: {}", e)))?;
+            Ok(JobPayload::WebSearchExecution(payload))
         }
         // FileFinderWorkflow is handled by workflow orchestrator, not individual payload deserialization
         TaskType::FileFinderWorkflow => {

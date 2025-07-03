@@ -21,6 +21,8 @@ use uuid;
 // OpenAI API base URL
 const OPENAI_BASE_URL: &str = "https://api.openai.com/v1";
 
+use crate::clients::usage_extractor::{ProviderUsage, UsageExtractor};
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct OpenAITranscriptionResponse {
     pub text: String,
@@ -266,20 +268,8 @@ impl OpenAIClient {
         *counter
     }
 
-    fn endpoint_for_model(model: &str) -> &'static str {
-        if model.contains(":web") || model.contains("deep-research") {
-            return "responses";
-        }
-        if model.contains("codex") 
-            || model.contains("transcribe") 
-            || model.ends_with("-preview")
-            || model.starts_with("o4-")
-            || model.contains("o4-mini")
-            || model.contains("computer-use") {
-            "responses"
-        } else {
-            "chat/completions"
-        }
+    fn endpoint_for_model(_model: &str) -> &'static str {
+        "responses"
     }
 
     fn convert_messages_to_responses_input(messages: &[OpenAIMessage]) -> Vec<OpenAIResponsesInputItem> {
@@ -350,7 +340,6 @@ impl OpenAIClient {
         base_url: String,
         response_id: String,
         model: String,
-        token_counter: Arc<Mutex<Option<(i32, i32)>>>,
     ) -> impl Stream<Item = Result<web::Bytes, AppError>> + Send + 'static {
         use futures_util::stream::{self, StreamExt};
         use tokio::time::{sleep, Duration, Instant};
@@ -373,7 +362,6 @@ impl OpenAIClient {
                 let base_url = base_url.clone();
                 let response_id = response_id.clone();
                 let model = model.clone();
-                let token_counter = token_counter.clone();
                 
                 async move {
                     match state {
@@ -413,12 +401,6 @@ impl OpenAIClient {
                                                     // Extract content and prepare for streaming
                                                     let content = Self::extract_content_from_responses(&responses_response);
                                                     
-                                                    // Update token counter
-                                                    if let Some(usage) = &responses_response.usage {
-                                                        if let Ok(mut counter) = token_counter.try_lock() {
-                                                            *counter = Some((usage.input_tokens, usage.output_tokens));
-                                                        }
-                                                    }
                                                     
                                                     Some((
                                                         Ok(web::Bytes::from("")), // Transition chunk
@@ -716,98 +698,88 @@ impl OpenAIClient {
     }
 
     fn prepare_request_body(request: &OpenAIChatRequest, force_background: Option<bool>) -> Result<(String, serde_json::Value), AppError> {
-        let endpoint = Self::endpoint_for_model(&request.model);
-        let request_body = if endpoint == "responses" {
-            let max_output_tokens = request.max_completion_tokens
-                .or(request.max_tokens)
-                .or(Some(512)); // Default for deep-research models since 26 Jun 2025
-            let input = Self::convert_messages_to_responses_input(&request.messages);
-            let tools = Self::model_requires_tools(&request.model);
-            
-            // Only use background when explicitly forced (don't auto-set for :web and deep-research)
-            let background = force_background;
-            
-            // Use cleaned model ID for API call (strip provider prefix and :web suffix)
-            let api_model_id = if request.model.contains(":web") {
-                let cleaned = request.model.replace(":web", "");
-                // Strip provider prefix (e.g., "openai/" -> "")
-                cleaned.split('/').last().unwrap_or(&cleaned).to_string()
-            } else {
-                // Strip provider prefix for regular models too
-                request.model.split('/').last().unwrap_or(&request.model).to_string()
-            };
-            
-            // Only add web search specific fields for :web models
-            let (text_format, reasoning_config, store_config) = if request.model.contains(":web") {
-                (
-                    Some(OpenAIResponsesTextFormat {
-                        format: OpenAIResponsesFormatType {
-                            format_type: "text".to_string(),
-                        },
-                    }),
-                    Some(OpenAIResponsesReasoning {
-                        effort: "medium".to_string(),
-                        summary: "auto".to_string(),
-                    }),
-                    Some(true), // Must be true when using background processing
-                )
-            } else {
-                (None, None, None)
-            };
-            
-            // Ensure request uniqueness to prevent OpenAI response ID deduplication
-            let unique_user_id = if background.unwrap_or(false) {
-                // For background requests, append unique timestamp and UUID to prevent deduplication
-                let timestamp = chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0);
-                let unique_suffix = format!("_{}_{}", timestamp, uuid::Uuid::new_v4());
-                match &request.user {
-                    Some(existing_user) => {
-                        // Truncate original user ID to ensure total length stays under 100 chars
-                        let max_base_len = 100 - unique_suffix.len();
-                        let truncated_user = if existing_user.len() > max_base_len {
-                            &existing_user[..max_base_len]
-                        } else {
-                            existing_user
-                        };
-                        format!("{}{}", truncated_user, unique_suffix)
-                    },
-                    None => unique_suffix,
-                }
-            } else {
-                request.user.clone().unwrap_or_default()
-            };
-
-            let responses_request = OpenAIResponsesRequest {
-                model: api_model_id,
-                input,
-                stream: request.stream,
-                background,
-                temperature: if request.model.contains("o3") && request.model.contains(":web") {
-                    None // o3:web models still don't support temperature parameter
-                } else {
-                    request.temperature
-                },
-                max_output_tokens,
-                top_p: request.top_p,
-                frequency_penalty: request.frequency_penalty,
-                presence_penalty: request.presence_penalty,
-                stop: request.stop.clone(),
-                user: Some(unique_user_id),
-                tools,
-                text: text_format,
-                reasoning: reasoning_config,
-                store: store_config,
-            };
-            serde_json::to_value(responses_request)?
+        let max_output_tokens = request.max_completion_tokens
+            .or(request.max_tokens)
+            .or(Some(512)); // Default for deep-research models since 26 Jun 2025
+        let input = Self::convert_messages_to_responses_input(&request.messages);
+        let tools = Self::model_requires_tools(&request.model);
+        
+        // Only use background when explicitly forced (don't auto-set for :web and deep-research)
+        let background = force_background;
+        
+        // Use cleaned model ID for API call (strip provider prefix and :web suffix)
+        let api_model_id = if request.model.contains(":web") {
+            let cleaned = request.model.replace(":web", "");
+            // Strip provider prefix (e.g., "openai/" -> "")
+            cleaned.split('/').last().unwrap_or(&cleaned).to_string()
         } else {
-            // Use cleaned model ID for chat completions API call (strip :web suffix)
-            let mut chat_request = request.clone();
-            if chat_request.model.contains(":web") {
-                chat_request.model = chat_request.model.replace(":web", "");
-            }
-            serde_json::to_value(chat_request)?
+            // Strip provider prefix for regular models too
+            request.model.split('/').last().unwrap_or(&request.model).to_string()
         };
-        Ok((endpoint.to_string(), request_body))
+        
+        // Only add web search specific fields for :web models
+        let (text_format, reasoning_config, store_config) = if request.model.contains(":web") {
+            (
+                Some(OpenAIResponsesTextFormat {
+                    format: OpenAIResponsesFormatType {
+                        format_type: "text".to_string(),
+                    },
+                }),
+                Some(OpenAIResponsesReasoning {
+                    effort: "medium".to_string(),
+                    summary: "auto".to_string(),
+                }),
+                Some(true), // Must be true when using background processing
+            )
+        } else {
+            (None, None, None)
+        };
+        
+        // Ensure request uniqueness to prevent OpenAI response ID deduplication
+        let unique_user_id = if background.unwrap_or(false) {
+            // For background requests, append unique timestamp and UUID to prevent deduplication
+            let timestamp = chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0);
+            let unique_suffix = format!("_{}_{}", timestamp, uuid::Uuid::new_v4());
+            match &request.user {
+                Some(existing_user) => {
+                    // Truncate original user ID to ensure total length stays under 100 chars
+                    let max_base_len = 100 - unique_suffix.len();
+                    let truncated_user = if existing_user.len() > max_base_len {
+                        &existing_user[..max_base_len]
+                    } else {
+                        existing_user
+                    };
+                    format!("{}{}", truncated_user, unique_suffix)
+                },
+                None => unique_suffix,
+            }
+        } else {
+            request.user.clone().unwrap_or_default()
+        };
+
+        let responses_request = OpenAIResponsesRequest {
+            model: api_model_id,
+            input,
+            stream: request.stream,
+            background,
+            temperature: if request.model.contains("o3") {
+                None // o3 models don't support temperature parameter
+            } else {
+                request.temperature
+            },
+            max_output_tokens,
+            top_p: request.top_p,
+            frequency_penalty: request.frequency_penalty,
+            presence_penalty: request.presence_penalty,
+            stop: request.stop.clone(),
+            user: Some(unique_user_id),
+            tools,
+            text: text_format,
+            reasoning: reasoning_config,
+            store: store_config,
+        };
+        let request_body = serde_json::to_value(responses_request)?;
+        Ok(("responses".to_string(), request_body))
     }
 
     // Chat Completions
@@ -817,108 +789,12 @@ impl OpenAIClient {
         request: OpenAIChatRequest
     ) -> Result<(OpenAIChatResponse, HeaderMap, i32, i32, i32, i32), AppError> {
         let request_id = self.get_next_request_id().await;
-        let endpoint = Self::endpoint_for_model(&request.model);
+        let requires_background = Self::model_requires_background(&request.model);
         
-        // For deep research models, use wait-then-complete pattern
-        if endpoint == "responses" && Self::model_requires_background(&request.model) {
-            // Step 1: Create background job
-            let mut background_request = request.clone();
-            background_request.stream = Some(false);
-            let (_, request_body) = Self::prepare_request_body(&background_request, Some(true))?;
-            let url = format!("{}/{}", self.base_url, endpoint);
-            
-            let response = self.client
-                .post(&url)
-                .bearer_auth(&self.api_key)
-                .header("Content-Type", "application/json")
-                .header("X-Request-ID", request_id.to_string())
-                .json(&request_body)
-                .send()
-                .await
-                .map_err(|e| AppError::External(format!("OpenAI request failed: {}", e)))?;
-            
-            let status = response.status();
-            let headers = response.headers().clone();
-            
-            if !status.is_success() {
-                let error_text = response.text().await
-                    .unwrap_or_else(|_| "Failed to get error response".to_string());
-                return Err(AppError::External(format!(
-                    "OpenAI request failed with status {}: {}",
-                    status, error_text
-                )));
-            }
-            
-            let background_response: OpenAIResponsesResponse = response.json().await
-                .map_err(|e| AppError::Internal(format!("OpenAI deserialization failed: {}", e)))?;
-            
-            // Step 2: Wait for completion
-            let completed_response = self.wait_until_complete(&background_response.id).await?;
-            
-            // Step 3: Convert to chat completion format
-            let (prompt_tokens, cache_write, cache_read, completion_tokens) = if let Some(usage) = &completed_response.usage {
-                // Responses API doesn't currently support cached tokens
-                (usage.input_tokens, 0, 0, usage.output_tokens)
-            } else {
-                (0, 0, 0, 0)
-            };
-            
-            // Extract text content from output
-            let content = completed_response.output
-                .as_ref()
-                .and_then(|outputs| {
-                    // Find message output type with content
-                    outputs.iter().find_map(|output| {
-                        if output.get("type").and_then(|t| t.as_str()) == Some("message") {
-                            output.get("content")
-                                .and_then(|content_array| content_array.as_array())
-                                .and_then(|array| {
-                                    array.iter().find_map(|content_item| {
-                                        if content_item.get("type").and_then(|t| t.as_str()) == Some("output_text") {
-                                            content_item.get("text").and_then(|text| text.as_str())
-                                        } else {
-                                            None
-                                        }
-                                    })
-                                })
-                        } else {
-                            None
-                        }
-                    })
-                })
-                .unwrap_or("")
-                .to_string();
-            
-            // Convert Responses usage to Chat Completions usage format
-            let chat_usage = completed_response.usage.map(|responses_usage| OpenAIUsage {
-                prompt_tokens: responses_usage.input_tokens,
-                completion_tokens: responses_usage.output_tokens,
-                total_tokens: responses_usage.total_tokens,
-                prompt_tokens_details: None, // Responses API doesn't provide cached token details
-            });
-            
-            let chat_response = OpenAIChatResponse {
-                id: completed_response.id,
-                choices: vec![OpenAIChoice {
-                    message: OpenAIResponseMessage {
-                        role: "assistant".to_string(),
-                        content: Some(content),
-                    },
-                    index: 0,
-                    finish_reason: Some("stop".to_string()),
-                }],
-                created: completed_response.created_at,
-                model: completed_response.model,
-                object: Some("chat.completion".to_string()),
-                usage: chat_usage,
-            };
-            
-            return Ok((chat_response, headers, prompt_tokens, cache_write, cache_read, completion_tokens));
-        }
-        
-        // Standard flow for non-background models
-        let (_, request_body) = Self::prepare_request_body(&request, None)?;
-        let url = format!("{}/{}", self.base_url, endpoint);
+        let mut non_streaming_request = request.clone();
+        non_streaming_request.stream = Some(false);
+        let (_, request_body) = Self::prepare_request_body(&non_streaming_request, Some(requires_background))?;
+        let url = format!("{}/responses", self.base_url);
         
         let response = self.client
             .post(&url)
@@ -942,21 +818,47 @@ impl OpenAIClient {
             )));
         }
         
-        let result = response.json::<OpenAIChatResponse>().await
+        let responses_response: OpenAIResponsesResponse = response.json().await
             .map_err(|e| AppError::Internal(format!("OpenAI deserialization failed: {}", e)))?;
-            
-        let (prompt_tokens, cache_write, cache_read, completion_tokens) = if let Some(usage) = &result.usage {
-            let cached = usage.prompt_tokens_details
-                .as_ref()
-                .and_then(|details| details.cached_tokens)
-                .unwrap_or(0);
-            // Format: (uncached_input, cache_write, cache_read, output)
-            (usage.prompt_tokens, 0, cached, usage.completion_tokens)
+        
+        let final_response = if requires_background {
+            self.wait_until_complete(&responses_response.id).await?
+        } else {
+            responses_response
+        };
+        
+        let (prompt_tokens, cache_write, cache_read, completion_tokens) = if let Some(usage) = &final_response.usage {
+            (usage.input_tokens, 0, 0, usage.output_tokens)
         } else {
             (0, 0, 0, 0)
         };
         
-        Ok((result, headers, prompt_tokens, cache_write, cache_read, completion_tokens))
+        let content = Self::extract_content_from_responses(&final_response);
+        
+        let chat_usage = final_response.usage.map(|responses_usage| OpenAIUsage {
+            prompt_tokens: responses_usage.input_tokens,
+            completion_tokens: responses_usage.output_tokens,
+            total_tokens: responses_usage.total_tokens,
+            prompt_tokens_details: None,
+        });
+        
+        let chat_response = OpenAIChatResponse {
+            id: final_response.id,
+            choices: vec![OpenAIChoice {
+                message: OpenAIResponseMessage {
+                    role: "assistant".to_string(),
+                    content: Some(content),
+                },
+                index: 0,
+                finish_reason: Some("stop".to_string()),
+            }],
+            created: final_response.created_at,
+            model: final_response.model,
+            object: Some("chat.completion".to_string()),
+            usage: chat_usage,
+        };
+        
+        Ok((chat_response, headers, prompt_tokens, cache_write, cache_read, completion_tokens))
     }
 
     // Streaming Chat Completions for actix-web compatibility
@@ -964,28 +866,24 @@ impl OpenAIClient {
     pub async fn stream_chat_completion(
         &self, 
         request: OpenAIChatRequest
-    ) -> Result<(HeaderMap, Pin<Box<dyn Stream<Item = Result<web::Bytes, AppError>> + Send + 'static>>, Arc<Mutex<Option<(i32, i32)>>>), AppError> {
+    ) -> Result<(HeaderMap, Pin<Box<dyn Stream<Item = Result<web::Bytes, AppError>> + Send + 'static>>), AppError> {
         // Clone necessary parts for 'static lifetime
         let client = self.client.clone();
         let api_key = self.api_key.clone();
         let base_url = self.base_url.clone();
         let request_id_counter = self.request_id_counter.clone();
         
-        let endpoint = Self::endpoint_for_model(&request.model);
         
-        // Shared token counter for streaming
-        let token_counter = Arc::new(Mutex::new(None::<(i32, i32)>));
-        let token_counter_clone = token_counter.clone();
         
         // For deep research models, use immediate streaming with progress updates
-        if endpoint == "responses" && Self::model_requires_background(&request.model) {
+        if Self::model_requires_background(&request.model) {
             tracing::info!("Using immediate synthetic streaming for deep research model: {}", request.model);
             
             // Step 1: Create background job (non-blocking)
             let mut background_request = request.clone();
             background_request.stream = Some(false);
             let (_, background_body) = Self::prepare_request_body(&background_request, Some(true))?;
-            let create_url = format!("{}/{}", base_url, endpoint);
+            let create_url = format!("{}/responses", base_url);
             
             let create_response = client
                 .post(&create_url)
@@ -1022,12 +920,11 @@ impl OpenAIClient {
                 base_url,
                 response_id,
                 response_model,
-                token_counter_clone,
             );
             
             let headers = HeaderMap::new(); // Default headers for synthetic stream
             let boxed_stream: Pin<Box<dyn Stream<Item = Result<web::Bytes, AppError>> + Send + 'static>> = Box::pin(synthetic_stream);
-            return Ok((headers, boxed_stream, token_counter));
+            return Ok((headers, boxed_stream));
         }
         
         // Standard streaming flow for non-background models
@@ -1042,7 +939,7 @@ impl OpenAIClient {
                 *counter += 1;
                 *counter
             };
-            let url = format!("{}/{}", base_url, endpoint);
+            let url = format!("{}/responses", base_url);
             
             let response = client
                 .post(&url)
@@ -1072,29 +969,12 @@ impl OpenAIClient {
                     match result {
                         Ok(bytes) => {
                             if let Ok(chunk_str) = std::str::from_utf8(&bytes) {
-                                // Transform Responses API format to Chat Completions format if needed
-                                if endpoint == "responses" {
-                                    match Self::transform_responses_chunk_to_chat_format(chunk_str) {
-                                        Ok(transformed) => {
-                                            // Try to extract token information from transformed chunk
-                                            if let Some((prompt_tokens, _cache_write, _cache_read, completion_tokens)) = Self::extract_tokens_from_chat_stream_chunk(&transformed) {
-                                                if let Ok(mut counter) = token_counter_clone.try_lock() {
-                                                    *counter = Some((prompt_tokens, completion_tokens));
-                                                }
-                                            }
-                                            return Ok(web::Bytes::from(transformed));
-                                        },
-                                        Err(_) => {
-                                            // If transformation fails, pass through original
-                                            return Ok(web::Bytes::from(bytes));
-                                        }
-                                    }
-                                } else {
-                                    // Try to extract token information from chunk
-                                    if let Some((prompt_tokens, _cache_write, _cache_read, completion_tokens)) = Self::extract_tokens_from_chat_stream_chunk(chunk_str) {
-                                        if let Ok(mut counter) = token_counter_clone.try_lock() {
-                                            *counter = Some((prompt_tokens, completion_tokens));
-                                        }
+                                match Self::transform_responses_chunk_to_chat_format(chunk_str) {
+                                    Ok(transformed) => {
+                                        return Ok(web::Bytes::from(transformed));
+                                    },
+                                    Err(_) => {
+                                        return Err(AppError::External("Failed to transform response chunk".to_string()));
                                     }
                                 }
                             }
@@ -1108,7 +988,7 @@ impl OpenAIClient {
             Ok((headers, boxed_stream))
         }.await?;
         
-        Ok((result.0, result.1, token_counter))
+        Ok((result.0, result.1))
     }
 
     /// Transcribe audio using OpenAI's direct API with GPT-4o-transcribe
@@ -1283,80 +1163,8 @@ impl OpenAIClient {
         Ok(())
     }
 
-    // Helper method to parse usage from a chat completion stream chunk
-    // Returns (uncached_input, cache_write, cache_read, output)
-    // 
-    // Example OpenAI usage JSON with cached tokens:
-    // {"usage": {"prompt_tokens": 100, "completion_tokens": 50, "total_tokens": 150, 
-    //  "prompt_tokens_details": {"cached_tokens": 20}}}
-    // Note: For OpenAI, cached_tokens represents cache reads. Cache writes use same pricing as uncached.
-    pub fn extract_usage_from_chat_stream_chunk(chunk_str: &str) -> Option<(i32, i32, i32, i32)> {
-        // OpenAI streams are Server-Sent Events format
-        for line in chunk_str.lines() {
-            if line.starts_with("data: ") {
-                let json_str = &line[6..]; // Remove "data: " prefix
-                if json_str.trim() == "[DONE]" {
-                    continue;
-                }
-                
-                match serde_json::from_str::<OpenAIStreamChunk>(json_str.trim()) {
-                    Ok(parsed) => {
-                        if let Some(usage) = parsed.usage {
-                            let cached_tokens = usage.prompt_tokens_details
-                                .and_then(|details| details.cached_tokens)
-                                .unwrap_or(0);
-                            // Return format: (uncached_input, cache_write, cache_read, output)
-                            // For OpenAI: cached_tokens are reads, no separate write tracking
-                            return Some((usage.prompt_tokens, 0, cached_tokens, usage.completion_tokens));
-                        }
-                    },
-                    Err(_) => continue,
-                }
-            }
-        }
-        None
-    }
     
-    // Helper method to extract tokens from a chat completion stream chunk
-    // Returns (uncached_input, cache_write, cache_read, output)
-    // Note: For OpenAI, cached_tokens represents cache reads. Cache writes use same pricing as uncached.
-    pub fn extract_tokens_from_chat_stream_chunk(chunk_str: &str) -> Option<(i32, i32, i32, i32)> {
-        Self::extract_usage_from_chat_stream_chunk(chunk_str)
-    }
 
-    // Extract cost from streaming chunk - prioritizes usage.cost field
-    pub fn extract_cost_from_stream_chunk(chunk_str: &str, model: &str) -> Option<f64> {
-        for line in chunk_str.lines() {
-            if line.starts_with("data: ") {
-                let json_str = &line[6..];
-                if json_str.trim() == "[DONE]" {
-                    continue;
-                }
-                
-                if let Ok(parsed) = serde_json::from_str::<OpenAIStreamChunk>(json_str.trim()) {
-                    if let Some(usage) = parsed.usage {
-                        if let Ok(usage_value) = serde_json::to_value(&usage) {
-                            if let Some(cost) = usage_value.get("cost").and_then(|c| c.as_f64()) {
-                                return Some(cost);
-                            }
-                        }
-                        
-                        let cached_tokens = usage.prompt_tokens_details
-                            .and_then(|details| details.cached_tokens)
-                            .unwrap_or(0);
-                        let cost = Self::calculate_cost_from_tokens(
-                            usage.prompt_tokens, 
-                            cached_tokens, 
-                            usage.completion_tokens, 
-                            model
-                        );
-                        return Some(cost);
-                    }
-                }
-            }
-        }
-        None
-    }
 
     // Calculate cost from token counts using OpenAI pricing
     fn calculate_cost_from_tokens(prompt_tokens: i32, cached_tokens: i32, completion_tokens: i32, model: &str) -> f64 {
@@ -1388,57 +1196,19 @@ impl OpenAIClient {
         let mut request: OpenAIChatRequest = serde_json::from_value(payload)
             .map_err(|e| AppError::BadRequest(format!("Failed to convert payload to OpenAI chat request: {}", e)))?;
         
-        if Self::endpoint_for_model(&request.model) == "chat/completions" {
-            // Smart parameter mapping for OpenAI API compatibility
-            
-            // 1. Handle max_tokens vs max_completion_tokens
-            if request.max_completion_tokens.is_none() && request.max_tokens.is_some() {
-                request.max_completion_tokens = request.max_tokens.take();
-            }
-            
-            // Temperature is now supported by o3 models, so pass it through
+        // Smart parameter mapping for OpenAI API compatibility
+        
+        // 1. Handle max_tokens vs max_completion_tokens
+        if request.max_completion_tokens.is_none() && request.max_tokens.is_some() {
+            request.max_completion_tokens = request.max_tokens.take();
         }
+        
+        // Temperature is now supported by o3 models, so pass it through
         
         Ok(request)
     }
     
-    // Helper functions for token and usage tracking
-    // Returns (uncached_input, cache_write, cache_read, output)
-    pub fn extract_tokens_from_chat_response(&self, response: &OpenAIChatResponse) -> (i32, i32, i32, i32) {
-        if let Some(usage) = &response.usage {
-            let cached_tokens = usage.prompt_tokens_details
-                .as_ref()
-                .and_then(|details| details.cached_tokens)
-                .unwrap_or(0);
-            // Return format: (uncached_input, cache_write, cache_read, output)
-            (usage.prompt_tokens, 0, cached_tokens, usage.completion_tokens)
-        } else {
-            (0, 0, 0, 0)
-        }
-    }
 
-    // Extract cost from response - prioritizes usage.cost field
-    pub fn extract_cost_from_response(&self, response: &OpenAIChatResponse, model: &str) -> f64 {
-        if let Some(usage) = &response.usage {
-            if let Ok(usage_value) = serde_json::to_value(usage) {
-                if let Some(cost) = usage_value.get("cost").and_then(|c| c.as_f64()) {
-                    return cost;
-                }
-            }
-            
-            let cached_tokens = usage.prompt_tokens_details
-                .as_ref()
-                .and_then(|details| details.cached_tokens)
-                .unwrap_or(0);
-            return Self::calculate_cost_from_tokens(
-                usage.prompt_tokens, 
-                cached_tokens, 
-                usage.completion_tokens, 
-                model
-            );
-        }
-        0.0
-    }
 
     /// Creates a Chat Completions format SSE chunk for streaming
     fn create_chat_completion_chunk(
@@ -1521,5 +1291,119 @@ impl Clone for OpenAIClient {
             base_url: self.base_url.clone(),
             request_id_counter: self.request_id_counter.clone(),
         }
+    }
+}
+
+impl UsageExtractor for OpenAIClient {
+    /// Extract usage information from OpenAI HTTP response body (2025-07 format)
+    /// Supports both streaming and non-streaming responses with provider cost extraction
+    async fn extract_from_http_body(&self, body: &[u8], model_id: &str, is_streaming: bool) -> Result<ProviderUsage, AppError> {
+        let body_str = std::str::from_utf8(body)
+            .map_err(|e| AppError::InvalidArgument(format!("Invalid UTF-8: {}", e)))?;
+        
+        if is_streaming {
+            // Handle streaming SSE format
+            if body_str.contains("data: ") {
+                return Self::extract_usage_from_sse_body(body_str, model_id)
+                    .map(|mut usage| {
+                        usage.model_id = model_id.to_string();
+                        usage
+                    })
+                    .ok_or_else(|| AppError::External("Failed to extract usage from OpenAI streaming response".to_string()));
+            }
+        }
+        
+        // Handle regular JSON response
+        let json_value: serde_json::Value = serde_json::from_str(body_str)
+            .map_err(|e| AppError::External(format!("Failed to parse JSON: {}", e)))?;
+        
+        // Extract usage from JSON response
+        Self::extract_usage_from_json(&json_value, model_id)
+            .ok_or_else(|| AppError::External("Failed to extract usage from OpenAI response".to_string()))
+    }
+    
+    fn extract_usage(&self, raw_json: &serde_json::Value) -> Option<ProviderUsage> {
+        Self::extract_usage_from_json(raw_json, "unknown")
+    }
+    
+    /// Extract usage information from OpenAI streaming chunk
+    fn extract_usage_from_stream_chunk(&self, chunk_json: &serde_json::Value) -> Option<ProviderUsage> {
+        // For OpenAI streaming, usage info comes in the final chunk
+        Self::extract_usage_from_json(chunk_json, "unknown")
+    }
+}
+
+impl OpenAIClient {
+    /// Extract usage from OpenAI SSE (Server-Sent Events) streaming body
+    /// Processes streaming responses line by line to find final usage chunk
+    fn extract_usage_from_sse_body(body: &str, model_id: &str) -> Option<ProviderUsage> {
+        // Process streaming body line by line to find usage information
+        for line in body.lines() {
+            if line.starts_with("data: ") {
+                let json_str = &line[6..]; // Remove "data: " prefix
+                if json_str.trim() == "[DONE]" {
+                    continue;
+                }
+                
+                // Try to parse the chunk as JSON
+                if let Ok(chunk_json) = serde_json::from_str::<serde_json::Value>(json_str.trim()) {
+                    // Look for usage information in this chunk
+                    if let Some(usage) = Self::extract_usage_from_json(&chunk_json, model_id) {
+                        return Some(usage);
+                    }
+                }
+            }
+        }
+        None
+    }
+    
+    /// Extract usage from parsed JSON (handles all OpenAI response formats)
+    fn extract_usage_from_json(json_value: &serde_json::Value, model_id: &str) -> Option<ProviderUsage> {
+        let usage = json_value.get("usage")?;
+        
+        // Handle Chat Completions API format: {"prompt_tokens", "completion_tokens", "prompt_tokens_details": {"cached_tokens"}}
+        if let (Some(prompt_tokens), Some(completion_tokens)) = (
+            usage.get("prompt_tokens").and_then(|v| v.as_i64()),
+            usage.get("completion_tokens").and_then(|v| v.as_i64())
+        ) {
+            let cached_tokens = usage.get("prompt_tokens_details")
+                .and_then(|details| details.get("cached_tokens"))
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0) as i32;
+                
+            // Calculate cache mapping for Chat Completions API format
+            let total_input_tokens = prompt_tokens as i32;
+            let cache_read_tokens = cached_tokens;
+            let cache_write_tokens = total_input_tokens - cache_read_tokens;
+            
+            return Some(ProviderUsage {
+                prompt_tokens: 0, // Set to 0 since all input tokens are either cache read or cache write
+                completion_tokens: completion_tokens as i32,
+                cache_write_tokens,
+                cache_read_tokens,
+                model_id: model_id.to_string(),
+                duration_ms: None,
+                cost: None, // OpenAI doesn't provide cost in responses
+            });
+        }
+        
+        // Handle Responses API format: {"input_tokens", "output_tokens", "total_tokens"}
+        if let (Some(input_tokens), Some(output_tokens)) = (
+            usage.get("input_tokens").and_then(|v| v.as_i64()),
+            usage.get("output_tokens").and_then(|v| v.as_i64())
+        ) {
+            return Some(ProviderUsage {
+                prompt_tokens: input_tokens as i32,
+                completion_tokens: output_tokens as i32,
+                cache_write_tokens: 0, // Responses API doesn't provide cache details
+                cache_read_tokens: 0,
+                model_id: model_id.to_string(),
+                duration_ms: None,
+                cost: None, // OpenAI doesn't provide cost in responses
+            });
+        }
+        
+        tracing::warn!("Unable to extract usage from OpenAI response: unknown format");
+        None
     }
 }

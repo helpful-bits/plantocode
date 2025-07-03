@@ -74,6 +74,22 @@ pub(super) fn update_intermediate_data_internal(
                 warn!("PathCorrection stage_data missing or invalid 'correctedPaths' field");
             }
         }
+        WorkflowStage::WebSearchQueryGeneration => {
+            if let Some(prompt) = stage_data.get("prompt").and_then(|v| v.as_str()) {
+                workflow_state.intermediate_data.web_search_prompt = Some(prompt.to_string());
+                debug!("Stored web search prompt in intermediate_data");
+            } else {
+                warn!("WebSearchQueryGeneration stage_data missing or invalid 'prompt' field");
+            }
+        }
+        WorkflowStage::WebSearchExecution => {
+            if let Some(results) = stage_data.get("searchResults").and_then(|v| v.as_str()) {
+                workflow_state.intermediate_data.web_search_results = Some(results.to_string());
+                debug!("Stored web search results in intermediate_data");
+            } else {
+                warn!("WebSearchExecution stage_data missing or invalid 'searchResults' field");
+            }
+        }
     }
     Ok(())
 }

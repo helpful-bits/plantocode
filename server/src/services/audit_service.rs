@@ -163,11 +163,6 @@ impl AuditService {
                 tags.push("PCI_DSS".to_string());
                 tags.push("PAYMENT_DATA".to_string());
             },
-            ("subscription_created" | "subscription_cancelled" | "subscription_plan_changed", "subscription") => {
-                // DEPRECATED: Subscription events are legacy - system is credit-based only
-                tags.push("SOX".to_string());
-                tags.push("FINANCIAL_DATA".to_string());
-            },
             ("webhook_processed", "webhook") => {
                 tags.push("PSD2".to_string());
                 tags.push("WEBHOOK_PROCESSING".to_string());
@@ -671,248 +666,6 @@ impl AuditService {
         info!("Successfully migrated {} legacy audit logs to secure format", migrated_count);
         Ok(migrated_count)
     }
-}
-
-/// Legacy convenience methods for subscription audit scenarios (DEPRECATED - system is now credit-based only)
-/// These methods are kept for historical audit data compatibility but should not be used for new features.
-impl AuditService {
-    /// Log subscription creation
-    pub async fn log_subscription_created(
-        &self,
-        context: &AuditContext,
-        subscription_id: &str,
-        plan_id: &str,
-        stripe_data: Option<serde_json::Value>,
-    ) -> Result<AuditLog, AppError> {
-        let metadata = serde_json::json!({
-            "plan_id": plan_id,
-            "stripe_data": stripe_data,
-            "action_timestamp": Utc::now().to_rfc3339()
-        });
-
-        let event = AuditEvent::new("subscription_created", "subscription")
-            .with_entity_id(subscription_id)
-            .with_new_values(serde_json::json!({
-                "plan_id": plan_id,
-                "status": "active"
-            }))
-            .with_metadata(metadata)
-            .with_performed_by("stripe_webhook");
-
-        self.log_event(context, event).await
-    }
-
-    /// Log subscription plan change
-    pub async fn log_subscription_plan_changed(
-        &self,
-        context: &AuditContext,
-        subscription_id: &str,
-        old_plan_id: &str,
-        new_plan_id: &str,
-        change_type: &str, // "upgrade" or "downgrade"
-        is_immediate: bool,
-        stripe_data: Option<serde_json::Value>,
-    ) -> Result<AuditLog, AppError> {
-        let metadata = serde_json::json!({
-            "change_type": change_type,
-            "is_immediate": is_immediate,
-            "stripe_data": stripe_data,
-            "action_timestamp": Utc::now().to_rfc3339()
-        });
-
-        let event = AuditEvent::new("subscription_plan_changed", "subscription")
-            .with_entity_id(subscription_id)
-            .with_old_values(serde_json::json!({
-                "plan_id": old_plan_id
-            }))
-            .with_new_values(serde_json::json!({
-                "plan_id": new_plan_id
-            }))
-            .with_metadata(metadata)
-            .with_performed_by("user");
-
-        self.log_event(context, event).await
-    }
-
-    /// Log subscription plan change with transaction
-    pub async fn log_subscription_plan_changed_with_tx<'a>(
-        &self,
-        context: &AuditContext,
-        subscription_id: &str,
-        old_plan_id: &str,
-        new_plan_id: &str,
-        change_type: &str,
-        is_immediate: bool,
-        stripe_data: Option<serde_json::Value>,
-        tx: &mut sqlx::Transaction<'a, sqlx::Postgres>,
-    ) -> Result<AuditLog, AppError> {
-        let metadata = serde_json::json!({
-            "change_type": change_type,
-            "is_immediate": is_immediate,
-            "stripe_data": stripe_data,
-            "action_timestamp": Utc::now().to_rfc3339()
-        });
-
-        let event = AuditEvent::new("subscription_plan_changed", "subscription")
-            .with_entity_id(subscription_id)
-            .with_old_values(serde_json::json!({
-                "plan_id": old_plan_id
-            }))
-            .with_new_values(serde_json::json!({
-                "plan_id": new_plan_id
-            }))
-            .with_metadata(metadata)
-            .with_performed_by("user");
-
-        self.log_event_with_transaction(context, event, tx).await
-    }
-
-    /// Log subscription cancellation
-    pub async fn log_subscription_cancelled(
-        &self,
-        context: &AuditContext,
-        subscription_id: &str,
-        at_period_end: bool,
-        cancellation_reason: Option<&str>,
-        stripe_data: Option<serde_json::Value>,
-    ) -> Result<AuditLog, AppError> {
-        let metadata = serde_json::json!({
-            "at_period_end": at_period_end,
-            "cancellation_reason": cancellation_reason,
-            "stripe_data": stripe_data,
-            "action_timestamp": Utc::now().to_rfc3339()
-        });
-
-        let event = AuditEvent::new("subscription_cancelled", "subscription")
-            .with_entity_id(subscription_id)
-            .with_old_values(serde_json::json!({
-                "status": "active"
-            }))
-            .with_new_values(serde_json::json!({
-                "status": if at_period_end { "active" } else { "cancelled" },
-                "cancel_at_period_end": at_period_end
-            }))
-            .with_metadata(metadata)
-            .with_performed_by("user");
-
-        self.log_event(context, event).await
-    }
-
-    /// Log subscription cancellation with transaction
-    pub async fn log_subscription_cancelled_with_tx<'a>(
-        &self,
-        context: &AuditContext,
-        subscription_id: &str,
-        at_period_end: bool,
-        cancellation_reason: Option<&str>,
-        stripe_data: Option<serde_json::Value>,
-        tx: &mut sqlx::Transaction<'a, sqlx::Postgres>,
-    ) -> Result<AuditLog, AppError> {
-        let metadata = serde_json::json!({
-            "at_period_end": at_period_end,
-            "cancellation_reason": cancellation_reason,
-            "stripe_data": stripe_data,
-            "action_timestamp": Utc::now().to_rfc3339()
-        });
-
-        let event = AuditEvent::new("subscription_cancelled", "subscription")
-            .with_entity_id(subscription_id)
-            .with_old_values(serde_json::json!({
-                "status": "active"
-            }))
-            .with_new_values(serde_json::json!({
-                "status": if at_period_end { "active" } else { "cancelled" },
-                "cancel_at_period_end": at_period_end
-            }))
-            .with_metadata(metadata)
-            .with_performed_by("user");
-
-        self.log_event_with_transaction(context, event, tx).await
-    }
-
-    /// Log subscription reactivation
-    pub async fn log_subscription_reactivated(
-        &self,
-        context: &AuditContext,
-        subscription_id: &str,
-        new_plan_id: &str,
-        stripe_data: Option<serde_json::Value>,
-    ) -> Result<AuditLog, AppError> {
-        let metadata = serde_json::json!({
-            "new_plan_id": new_plan_id,
-            "stripe_data": stripe_data,
-            "action_timestamp": Utc::now().to_rfc3339()
-        });
-
-        let event = AuditEvent::new("subscription_reactivated", "subscription")
-            .with_entity_id(subscription_id)
-            .with_old_values(serde_json::json!({
-                "status": "cancelled"
-            }))
-            .with_new_values(serde_json::json!({
-                "status": "active",
-                "plan_id": new_plan_id
-            }))
-            .with_metadata(metadata)
-            .with_performed_by("user");
-
-        self.log_event(context, event).await
-    }
-
-    /// Log subscription resumption (removing cancel_at_period_end flag)
-    pub async fn log_subscription_resumed(
-        &self,
-        context: &AuditContext,
-        subscription_id: &str,
-        stripe_data: Option<serde_json::Value>,
-    ) -> Result<AuditLog, AppError> {
-        let metadata = serde_json::json!({
-            "stripe_data": stripe_data,
-            "action_timestamp": Utc::now().to_rfc3339()
-        });
-
-        let event = AuditEvent::new("subscription_resumed", "subscription")
-            .with_entity_id(subscription_id)
-            .with_old_values(serde_json::json!({
-                "cancel_at_period_end": true
-            }))
-            .with_new_values(serde_json::json!({
-                "cancel_at_period_end": false,
-                "status": "active"
-            }))
-            .with_metadata(metadata)
-            .with_performed_by("user");
-
-        self.log_event(context, event).await
-    }
-
-    /// Log subscription resumption with transaction (removing cancel_at_period_end flag)
-    pub async fn log_subscription_resumed_with_tx<'a>(
-        &self,
-        context: &AuditContext,
-        subscription_id: &str,
-        stripe_data: Option<serde_json::Value>,
-        tx: &mut sqlx::Transaction<'a, sqlx::Postgres>,
-    ) -> Result<AuditLog, AppError> {
-        let metadata = serde_json::json!({
-            "stripe_data": stripe_data,
-            "action_timestamp": Utc::now().to_rfc3339()
-        });
-
-        let event = AuditEvent::new("subscription_resumed", "subscription")
-            .with_entity_id(subscription_id)
-            .with_old_values(serde_json::json!({
-                "cancel_at_period_end": true
-            }))
-            .with_new_values(serde_json::json!({
-                "cancel_at_period_end": false,
-                "status": "active"
-            }))
-            .with_metadata(metadata)
-            .with_performed_by("user");
-
-        self.log_event_with_transaction(context, event, tx).await
-    }
 
     /// Log payment processing
     pub async fn log_payment_processed(
@@ -921,7 +674,7 @@ impl AuditService {
         payment_intent_id: &str,
         amount: &bigdecimal::BigDecimal,
         currency: &str,
-        payment_type: &str, // "subscription", "credit_purchase", etc.
+        payment_type: &str, // "credit_purchase", "auto_top_off", etc.
         stripe_data: Option<serde_json::Value>,
     ) -> Result<AuditLog, AppError> {
         let metadata = serde_json::json!({
@@ -1036,7 +789,7 @@ impl AuditService {
         self.log_event(context, event).await
     }
 
-    /// Log spending limit reset after successful subscription payment
+    /// Log spending limit reset after successful payment
     pub async fn log_spending_limit_reset(
         &self,
         context: &AuditContext,
@@ -1045,7 +798,7 @@ impl AuditService {
     ) -> Result<AuditLog, AppError> {
         let metadata = serde_json::json!({
             "invoice_id": invoice_id,
-            "reset_reason": "successful_subscription_payment",
+            "reset_reason": "successful_payment",
             "action_timestamp": Utc::now().to_rfc3339()
         });
 
@@ -1128,5 +881,4 @@ impl AuditService {
 
         self.log_event(context, event).await
     }
-
 }

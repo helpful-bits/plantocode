@@ -174,6 +174,7 @@ pub async fn generate_simple_text_command(
         max_tokens: resolved_max_tokens,
         temperature: resolved_temperature,
         stream: false, // Non-streaming
+        request_id: None, // No request tracking needed for non-streaming
     };
     
     // Call chat completion (non-streaming)

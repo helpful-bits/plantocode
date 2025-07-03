@@ -87,7 +87,55 @@ export async function startFileFinderWorkflowAction(
   }
 }
 
-export async function cancelFileFinderWorkflowAction(
+export async function startWebSearchWorkflowOrchestratorAction(
+  args: FileFinderWorkflowArgs
+): Promise<ActionState<{ workflowId: string }>> {
+  try {
+    // Validate required inputs
+    if (!args.sessionId || typeof args.sessionId !== "string" || !args.sessionId.trim()) {
+      return {
+        isSuccess: false,
+        message: "Invalid or missing session ID",
+      };
+    }
+
+    if (!args.taskDescription || args.taskDescription.trim().length < 10) {
+      return {
+        isSuccess: false,
+        message: "Please provide a more detailed task description (minimum 10 characters). This helps the AI find the most relevant information for your project.",
+      };
+    }
+
+    if (!args.projectDirectory || typeof args.projectDirectory !== "string" || !args.projectDirectory.trim()) {
+      return {
+        isSuccess: false,
+        message: "Invalid or missing project directory",
+      };
+    }
+
+    // Invoke the new web search workflow command
+    const result = await invoke<WorkflowCommandResponse>(
+      "start_web_search_workflow",
+      {
+        sessionId: args.sessionId,
+        taskDescription: args.taskDescription,
+        projectDirectory: args.projectDirectory,
+        excludedPaths: args.excludedPaths || [],
+        timeoutMs: args.timeoutMs,
+      }
+    );
+
+    return {
+      isSuccess: true,
+      message: `Web search workflow started successfully: ${result.workflowId}`,
+      data: { workflowId: result.workflowId },
+    };
+  } catch (error) {
+    return handleActionError(error) as ActionState<{ workflowId: string }>;
+  }
+}
+
+export async function cancelWorkflowAction(
   workflowId: string
 ): Promise<ActionState<void>> {
   try {

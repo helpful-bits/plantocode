@@ -325,10 +325,15 @@ export function useFileSelection(projectDirectory?: string) {
         });
         setHistoryIndex(prev => Math.min(prev + 1, 49));
         
-        // Update session with found files
-        const currentIncluded = currentSession?.includedFiles || [];
-        const newIncludedFiles = [...new Set([...currentIncluded, ...paths])];
-        updateCurrentSessionFields({ includedFiles: newIncludedFiles });
+        // Replace session files with workflow results (don't merge, replace)
+        const pathsSet = new Set(paths);
+        const currentExcluded = currentSession?.forceExcludedFiles || [];
+        const newExcludedFiles = currentExcluded.filter(path => !pathsSet.has(path));
+        
+        updateCurrentSessionFields({ 
+          includedFiles: paths,
+          forceExcludedFiles: newExcludedFiles
+        });
         
         console.log(`Applied ${paths.length} files from ${source}`);
       }, 0);
@@ -367,9 +372,9 @@ export function useFileSelection(projectDirectory?: string) {
       // Listen for workflow completion
       tracker.onComplete(async (results) => {
         try {
-          applyWorkflowResultsToSession(results.finalPaths || [], "workflow completion");
+          applyWorkflowResultsToSession(results.selectedFiles || [], "workflow completion");
           // Switch to "selected" filter mode to show the newly found files
-          if (results.finalPaths && results.finalPaths.length > 0) {
+          if (results.selectedFiles && results.selectedFiles.length > 0) {
             setFilterMode("selected");
           }
         } catch (error) {

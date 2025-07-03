@@ -336,4 +336,133 @@ impl ApiUsageRepository {
         Ok(results)
     }
 
+    /// Admin-only method to fetch raw usage data for debugging (ADMIN USE ONLY)
+    pub async fn get_raw_usage_records_for_debug(
+        &self,
+        limit: i64,
+        user_filter: Option<Uuid>,
+        service_filter: Option<&str>,
+    ) -> Result<Vec<sqlx::postgres::PgRow>, AppError> {
+        let (query_sql, bind_values) = self.build_debug_query(limit, user_filter, service_filter);
+        
+        let mut query = sqlx::query(&query_sql);
+        
+        // Bind values in order  
+        for value in bind_values {
+            match value {
+                DebugBindValue::Uuid(v) => query = query.bind(v),
+                DebugBindValue::String(v) => query = query.bind(v),
+                DebugBindValue::I64(v) => query = query.bind(v),
+            }
+        }
+        
+        let rows = query.fetch_all(&self.db_pool).await
+            .map_err(|e| AppError::Database(format!("Failed to fetch usage debug data: {}", e)))?;
+        
+        Ok(rows)
+    }
+
+    /// Build the debug query with appropriate filters (private helper)
+    fn build_debug_query(
+        &self,
+        limit: i64,
+        user_filter: Option<Uuid>,
+        service_filter: Option<&str>,
+    ) -> (String, Vec<DebugBindValue>) {
+        let mut bind_values = Vec::new();
+        let mut where_clauses = Vec::new();
+        let mut bind_index = 1;
+        
+        // Build WHERE clause
+        if let Some(user_id) = user_filter {
+            where_clauses.push(format!("user_id = ${}", bind_index));
+            bind_values.push(DebugBindValue::Uuid(user_id));
+            bind_index += 1;
+        }
+        
+        if let Some(service_name) = service_filter {
+            where_clauses.push(format!("service_name ILIKE ${}", bind_index));
+            bind_values.push(DebugBindValue::String(format!("%{}%", service_name)));
+            bind_index += 1;
+        }
+        
+        let where_clause = if where_clauses.is_empty() {
+            "".to_string()
+        } else {
+            format!("WHERE {}", where_clauses.join(" AND "))
+        };
+        
+        bind_values.push(DebugBindValue::I64(limit));
+        let limit_bind = format!("${}", bind_index);
+        
+        let query = format!(
+            r#"
+            WITH usage_records AS (
+                SELECT 
+                    id,
+                    user_id,
+                    service_name,
+                    tokens_input,
+                    tokens_output,
+                    cached_input_tokens,
+                    cache_write_tokens,
+                    cache_read_tokens,
+                    cost,
+                    timestamp,
+                    request_id,
+                    metadata,
+                    CASE
+                        WHEN service_name LIKE '%/%' AND metadata->>'modelId' IS NOT NULL THEN 'provider_and_metadata'
+                        WHEN service_name LIKE '%/%' THEN 'provider_service_name'
+                        WHEN metadata->>'modelId' IS NOT NULL THEN 'metadata_model_id'
+                        WHEN metadata->>'model_id' IS NOT NULL THEN 'metadata_model_id_alt'
+                        ELSE 'service_name_fallback'
+                    END as cost_resolution_method,
+                    CASE
+                        WHEN service_name LIKE '%/%' THEN service_name
+                        WHEN metadata->>'modelId' IS NOT NULL THEN metadata->>'modelId'
+                        WHEN metadata->>'model_id' IS NOT NULL THEN metadata->>'model_id'
+                        ELSE service_name
+                    END as effective_model_id
+                FROM api_usage
+                {}
+                ORDER BY timestamp DESC
+                LIMIT {}
+            ),
+            debug_summary AS (
+                SELECT 
+                    COUNT(*) as total_records,
+                    array_agg(DISTINCT cost_resolution_method) as cost_methods,
+                    array_agg(DISTINCT service_name) as service_names,
+                    array_agg(DISTINCT user_id::text) as user_ids,
+                    MIN(timestamp) as earliest_record,
+                    MAX(timestamp) as latest_record
+                FROM usage_records
+            )
+            SELECT 
+                ur.*,
+                ds.total_records,
+                ds.cost_methods,
+                ds.service_names,
+                ds.user_ids,
+                ds.earliest_record,
+                ds.latest_record
+            FROM usage_records ur
+            CROSS JOIN debug_summary ds
+            ORDER BY ur.timestamp DESC
+            "#,
+            where_clause,
+            limit_bind
+        );
+        
+        (query, bind_values)
+    }
+
+}
+
+#[derive(Debug)]
+enum DebugBindValue {
+    Uuid(Uuid),
+    String(String),
+    I64(i64),
 }

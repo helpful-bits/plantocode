@@ -413,7 +413,6 @@ impl StripeService {
         Ok(payment_intent)
     }
 
-    // Subscription functionality removed - system is credit-based only
 
     /// Create billing portal session for customer self-service
     /// This is the primary method for complex billing operations
@@ -457,7 +456,6 @@ impl StripeService {
         Ok(payment_intent)
     }
 
-    // Subscription retrieval removed - system is credit-based only
 
 
     
@@ -738,10 +736,6 @@ impl StripeService {
                     setup_intent_data.insert("metadata".to_string(), serde_json::Value::Object(metadata_obj));
                     session_data["setup_intent_data"] = serde_json::Value::Object(setup_intent_data);
                 }
-            }
-            "subscription" => {
-                // Subscription mode is deprecated - credit-based billing only
-                warn!("Subscription mode requested but system is credit-based only");
             }
             _ => {}
         }

@@ -1,4 +1,4 @@
-use tauri::{command, AppHandle, Manager};
+use tauri::{command, AppHandle, Manager, State};
 use log::{info, debug};
 use serde::Serialize;
 use std::sync::Arc;
@@ -7,6 +7,7 @@ use chrono::{DateTime, Utc};
 use crate::db_utils::BackgroundJobRepository;
 use crate::jobs::workflow_orchestrator::get_workflow_orchestrator;
 use crate::jobs::workflow_types::{WorkflowStatus, WorkflowStage};
+use crate::AppState;
 
 // New response types for workflow commands
 #[derive(Debug, Serialize)]
@@ -76,6 +77,7 @@ pub struct WorkflowProgress {
 // The file finder workflow now uses a distributed approach where each stage 
 // runs as a separate background job, coordinated by the orchestrator.
 
+
 /// Start a new file finder workflow using WorkflowOrchestrator
 #[command]
 pub async fn start_file_finder_workflow(
@@ -124,6 +126,54 @@ pub async fn start_file_finder_workflow(
     })
 }
 
+/// Start a new web search workflow using WorkflowOrchestrator
+#[command]
+pub async fn start_web_search_workflow(
+    session_id: String,
+    task_description: String,
+    project_directory: String,
+    excluded_paths: Vec<String>,
+    timeout_ms: Option<u64>,
+    app_handle: AppHandle
+) -> Result<WorkflowCommandResponse, String> {
+    info!("Starting web search workflow for task: {}", task_description);
+    
+    // Validate required fields
+    if session_id.is_empty() {
+        return Err("Session ID is required".to_string());
+    }
+    
+    if task_description.trim().len() < 10 {
+        return Err("Task description must be at least 10 characters".to_string());
+    }
+    
+    if project_directory.is_empty() {
+        return Err("Project directory is required".to_string());
+    }
+    
+    // Get the workflow orchestrator
+    let orchestrator = get_workflow_orchestrator().await
+        .map_err(|e| format!("Failed to get workflow orchestrator: {}", e))?;
+    
+    // Start the workflow via the orchestrator using the WebSearchWorkflow definition
+    let workflow_id = orchestrator.start_workflow(
+        "WebSearchWorkflow".to_string(),
+        session_id,
+        task_description,
+        project_directory,
+        excluded_paths,
+        timeout_ms
+    ).await.map_err(|e| format!("Failed to start workflow: {}", e))?;
+    
+    info!("Started web search workflow: {}", workflow_id);
+    
+    Ok(WorkflowCommandResponse {
+        workflow_id: workflow_id.clone(),
+        first_stage_job_id: "N/A".to_string(), // Orchestrator manages job IDs internally
+        status: "started".to_string(),
+    })
+}
+
 /// Get workflow status and progress using WorkflowOrchestrator
 #[command]
 pub async fn get_file_finder_workflow_status(
@@ -157,12 +207,15 @@ pub async fn get_file_finder_workflow_status(
     let workflow_state = orchestrator.get_workflow_status(&workflow_id).await
         .map_err(|e| format!("Failed to get workflow status: {}", e))?;
     
-    Ok(convert_workflow_state_to_response(&workflow_state))
+    // Get workflow definition for dynamic stage reporting
+    let workflow_definition = orchestrator.get_workflow_definition(&workflow_state.workflow_definition_name).await;
+    
+    Ok(convert_workflow_state_to_response(&workflow_state, workflow_definition))
 }
 
 /// Cancel entire workflow using WorkflowOrchestrator
 #[command]
-pub async fn cancel_file_finder_workflow(
+pub async fn cancel_workflow(
     workflow_id: String,
     app_handle: AppHandle
 ) -> Result<(), String> {
@@ -178,6 +231,15 @@ pub async fn cancel_file_finder_workflow(
     
     info!("Successfully cancelled workflow: {}", workflow_id);
     Ok(())
+}
+
+/// Cancel entire workflow using WorkflowOrchestrator (legacy alias)
+#[command]
+pub async fn cancel_file_finder_workflow(
+    workflow_id: String,
+    app_handle: AppHandle
+) -> Result<(), String> {
+    cancel_workflow(workflow_id, app_handle).await
 }
 
 /// Pause a workflow - prevents new stages from starting
@@ -360,7 +422,9 @@ pub async fn get_all_workflows_command(
     let mut workflow_responses = Vec::new();
     
     for workflow_state in workflow_states {
-        workflow_responses.push(convert_workflow_state_to_response(&workflow_state));
+        // Get workflow definition for dynamic stage reporting
+        let workflow_definition = orchestrator.get_workflow_definition(&workflow_state.workflow_definition_name).await;
+        workflow_responses.push(convert_workflow_state_to_response(&workflow_state, workflow_definition));
     }
     
     info!("Retrieved {} workflows", workflow_responses.len());
@@ -418,59 +482,133 @@ pub async fn get_workflow_details_command(
         .map_err(|e| format!("Failed to get workflow state: {}", e))?;
     
     if let Some(workflow_state) = workflow_state_opt {
-        Ok(Some(convert_workflow_state_to_response(&workflow_state)))
+        // Get workflow definition for dynamic stage reporting
+        let workflow_definition = orchestrator.get_workflow_definition(&workflow_state.workflow_definition_name).await;
+        Ok(Some(convert_workflow_state_to_response(&workflow_state, workflow_definition)))
     } else {
         Ok(None)
     }
 }
 
-fn convert_workflow_state_to_response(workflow_state: &crate::jobs::workflow_types::WorkflowState) -> WorkflowStatusResponse {
-    let mut stage_statuses = Vec::new();
-    let all_stages = WorkflowStage::all_stages();
+#[tauri::command]
+pub async fn get_workflow_state(
+    workflow_id: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let orchestrator = get_workflow_orchestrator().await
+        .map_err(|e| format!("Failed to get workflow orchestrator: {}", e))?;
     
-    for stage in &all_stages {
-        let stage_job = workflow_state.get_stage_job_by_name(&stage.display_name());
-        
-        let stage_status = if let Some(job) = stage_job {
-            let progress = match job.status {
+    match orchestrator.get_workflow_state_by_id(&workflow_id).await {
+        Ok(Some(workflow_state)) => {
+            Ok(serde_json::to_value(workflow_state)
+                .map_err(|e| format!("Failed to serialize workflow state: {}", e))?)
+        }
+        Ok(None) => Err(format!("Workflow not found: {}", workflow_id)),
+        Err(e) => Err(format!("Failed to get workflow state: {}", e))
+    }
+}
+
+#[tauri::command]
+pub async fn get_workflow_results(
+    workflow_id: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let orchestrator = get_workflow_orchestrator().await
+        .map_err(|e| format!("Failed to get workflow orchestrator: {}", e))?;
+    
+    match orchestrator.get_workflow_results(&workflow_id).await {
+        Ok(results) => {
+            Ok(serde_json::to_value(results)
+                .map_err(|e| format!("Failed to serialize workflow results: {}", e))?)
+        }
+        Err(e) => Err(format!("Failed to get workflow results: {}", e))
+    }
+}
+
+fn convert_workflow_state_to_response(workflow_state: &crate::jobs::workflow_types::WorkflowState, workflow_definition: Option<std::sync::Arc<crate::jobs::workflow_types::WorkflowDefinition>>) -> WorkflowStatusResponse {
+    let mut stage_statuses = Vec::new();
+    
+    if let Some(definition) = workflow_definition {
+        // Use workflow definition to determine stages
+        for stage_def in &definition.stages {
+            let stage_job = workflow_state.get_stage_job_by_name(&stage_def.stage_name);
+            
+            // Generate display name from task type
+            let display_name = if let Some(stage_enum) = WorkflowStage::from_task_type(&stage_def.task_type) {
+                stage_enum.display_name().to_string()
+            } else {
+                stage_def.stage_name.clone()
+            };
+            
+            let stage_status = if let Some(job) = stage_job {
+                let progress = match job.status {
+                    crate::models::JobStatus::Completed => 100.0,
+                    crate::models::JobStatus::Failed => 0.0,
+                    crate::models::JobStatus::Running | crate::models::JobStatus::ProcessingStream => 50.0,
+                    _ => 0.0,
+                };
+                
+                StageStatus {
+                    stage_name: display_name,
+                    job_id: Some(job.job_id.clone()),
+                    status: job.status.to_string(),
+                    progress_percentage: progress,
+                    started_at: job.started_at.map(|t| DateTime::<Utc>::from_timestamp_millis(t).map(|dt| dt.to_rfc3339()).unwrap_or_default()),
+                    completed_at: job.completed_at.map(|t| DateTime::<Utc>::from_timestamp_millis(t).map(|dt| dt.to_rfc3339()).unwrap_or_default()),
+                    depends_on: job.depends_on.clone(),
+                    created_at: Some(DateTime::<Utc>::from_timestamp_millis(job.created_at).map(|dt| dt.to_rfc3339()).unwrap_or_default()),
+                    error_message: job.error_message.clone(),
+                    execution_time_ms: job.completed_at.and_then(|completed| 
+                        job.started_at.map(|started| (completed - started))
+                    ),
+                    sub_status_message: job.sub_status_message.clone(),
+                }
+            } else {
+                StageStatus {
+                    stage_name: display_name,
+                    job_id: None,
+                    status: "pending".to_string(),
+                    progress_percentage: 0.0,
+                    started_at: None,
+                    completed_at: None,
+                    depends_on: None,
+                    created_at: None,
+                    error_message: None,
+                    execution_time_ms: None,
+                    sub_status_message: None,
+                }
+            };
+            
+            stage_statuses.push(stage_status);
+        }
+    } else {
+        // Fallback: iterate through existing stage jobs for backward compatibility
+        for stage_job in &workflow_state.stage_jobs {
+            let progress = match stage_job.status {
                 crate::models::JobStatus::Completed => 100.0,
                 crate::models::JobStatus::Failed => 0.0,
                 crate::models::JobStatus::Running | crate::models::JobStatus::ProcessingStream => 50.0,
                 _ => 0.0,
             };
             
-            StageStatus {
-                stage_name: stage.display_name().to_string(),
-                job_id: Some(job.job_id.clone()),
-                status: job.status.to_string(),
+            let stage_status = StageStatus {
+                stage_name: stage_job.stage_name.clone(),
+                job_id: Some(stage_job.job_id.clone()),
+                status: stage_job.status.to_string(),
                 progress_percentage: progress,
-                started_at: job.started_at.map(|t| DateTime::<Utc>::from_timestamp_millis(t).map(|dt| dt.to_rfc3339()).unwrap_or_default()),
-                completed_at: job.completed_at.map(|t| DateTime::<Utc>::from_timestamp_millis(t).map(|dt| dt.to_rfc3339()).unwrap_or_default()),
-                depends_on: job.depends_on.clone(),
-                created_at: Some(DateTime::<Utc>::from_timestamp_millis(job.created_at).map(|dt| dt.to_rfc3339()).unwrap_or_default()),
-                error_message: job.error_message.clone(),
-                execution_time_ms: job.completed_at.and_then(|completed| 
-                    job.started_at.map(|started| (completed - started))
+                started_at: stage_job.started_at.map(|t| DateTime::<Utc>::from_timestamp_millis(t).map(|dt| dt.to_rfc3339()).unwrap_or_default()),
+                completed_at: stage_job.completed_at.map(|t| DateTime::<Utc>::from_timestamp_millis(t).map(|dt| dt.to_rfc3339()).unwrap_or_default()),
+                depends_on: stage_job.depends_on.clone(),
+                created_at: Some(DateTime::<Utc>::from_timestamp_millis(stage_job.created_at).map(|dt| dt.to_rfc3339()).unwrap_or_default()),
+                error_message: stage_job.error_message.clone(),
+                execution_time_ms: stage_job.completed_at.and_then(|completed| 
+                    stage_job.started_at.map(|started| (completed - started))
                 ),
-                sub_status_message: job.sub_status_message.clone(),
-            }
-        } else {
-            StageStatus {
-                stage_name: stage.display_name().to_string(),
-                job_id: None,
-                status: "pending".to_string(),
-                progress_percentage: 0.0,
-                started_at: None,
-                completed_at: None,
-                depends_on: None,
-                created_at: None,
-                error_message: None,
-                execution_time_ms: None,
-                sub_status_message: None,
-            }
-        };
-        
-        stage_statuses.push(stage_status);
+                sub_status_message: stage_job.sub_status_message.clone(),
+            };
+            
+            stage_statuses.push(stage_status);
+        }
     }
     
     let progress = workflow_state.calculate_progress();

@@ -13,6 +13,7 @@ pub struct ApiClientOptions {
     pub max_tokens: u32,
     pub temperature: f32,
     pub stream: bool,
+    pub request_id: Option<String>,
 }
 
 // Default implementation removed to force explicit model configuration
@@ -59,6 +60,9 @@ pub trait ApiClient: Send + Sync {
             .and_then(|usage| usage.cost)
             .unwrap_or(0.0)
     }
+    
+    /// Allow downcasting to concrete types for access to specific methods
+    fn as_any(&self) -> &dyn std::any::Any;
 }
 
 // Transcription service trait

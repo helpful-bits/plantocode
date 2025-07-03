@@ -4,6 +4,7 @@ use log::{debug, info, warn};
 use serde_json::Value;
 use chrono;
 use tokio::fs;
+use uuid;
 
 use crate::error::{AppError, AppResult};
 use crate::models::OpenRouterUsage;
@@ -159,13 +160,18 @@ impl LlmTaskRunner {
         let system_prompt_id = composed_prompt.system_prompt_id.clone();
         let system_prompt_template = composed_prompt.system_prompt_template.clone();
         
-        // Create API options with streaming enabled
-        let api_options = llm_api_utils::create_api_client_options(
+        // Generate unique request ID for tracking final costs
+        let request_id = uuid::Uuid::new_v4().to_string();
+        info!("Generated request ID for streaming job {}: {}", self.job.id, request_id);
+        
+        // Create API options with streaming enabled and request ID
+        let mut api_options = llm_api_utils::create_api_client_options(
             self.config.model.clone(),
             self.config.temperature,
             self.config.max_tokens,
             true, // Force streaming
         )?;
+        api_options.request_id = Some(request_id.clone());
         
         // Log full prompt to file for debugging
         self.log_prompt_to_file(&system_prompt, &user_prompt, "streaming").await;
@@ -198,12 +204,44 @@ impl LlmTaskRunner {
         // Log server-authoritative usage data for billing audit trail
         debug!("Server-authoritative usage data from streaming LLM response: {:?}", stream_result.final_usage);
         
+        // Poll for final cost if no cost was received in the stream
+        let final_usage = if let Some(usage) = &stream_result.final_usage {
+            if usage.cost.is_some() {
+                // Cost already received in stream, use it
+                stream_result.final_usage.clone()
+            } else {
+                // No cost in stream, poll for final cost from server
+                self.poll_and_update_final_cost(&request_id, usage.clone(), repo.clone(), job_id).await
+                    .unwrap_or_else(|e| {
+                        warn!("Failed to poll for final cost for job {}: {}", job_id, e);
+                        stream_result.final_usage.clone()
+                    })
+            }
+        } else {
+            // No usage data at all, try to poll for final cost
+            if let Ok(Some(final_cost)) = self.poll_for_final_cost_only(&request_id).await {
+                info!("Retrieved final cost via polling for job {}: ${:.4}", job_id, final_cost);
+                // Create minimal usage data with the final cost
+                Some(OpenRouterUsage {
+                    prompt_tokens: 0,
+                    completion_tokens: 0,
+                    total_tokens: 0,
+                    cost: Some(final_cost),
+                    cached_input_tokens: None,
+                    cache_write_tokens: None,
+                    cache_read_tokens: None,
+                })
+            } else {
+                stream_result.final_usage.clone()
+            }
+        };
+        
         // Log complete interaction (prompt + response) to file for debugging
-        self.log_complete_interaction(&system_prompt, &user_prompt, &stream_result.accumulated_response, &stream_result.final_usage, "streaming").await;
+        self.log_complete_interaction(&system_prompt, &user_prompt, &stream_result.accumulated_response, &final_usage, "streaming").await;
         
         Ok(LlmTaskResult {
             response: stream_result.accumulated_response,
-            usage: stream_result.final_usage, // Server-authoritative usage data including cost
+            usage: final_usage, // Server-authoritative usage data including cost
             system_prompt_id,
             system_prompt_template,
         })
@@ -331,6 +369,116 @@ impl LlmTaskRunner {
         );
         
         let _ = fs::write(&filepath, full_interaction).await;
+    }
+    
+    /// Poll for final cost and update usage data with resolved cost
+    async fn poll_and_update_final_cost(
+        &self,
+        request_id: &str,
+        mut usage: OpenRouterUsage,
+        repo: Arc<BackgroundJobRepository>,
+        job_id: &str,
+    ) -> AppResult<Option<OpenRouterUsage>> {
+        info!("Polling for final cost for job {} with request_id: {}", job_id, request_id);
+        
+        // Get API client for polling
+        let llm_client = llm_api_utils::get_api_client(&self.app_handle)?;
+        
+        // Cast to ServerProxyClient to access polling methods
+        let proxy_client = llm_client.as_any()
+            .downcast_ref::<crate::api_clients::server_proxy_client::ServerProxyClient>()
+            .ok_or_else(|| AppError::InternalError("Cannot poll for final cost with non-server proxy client".to_string()))?;
+        
+        // Poll for final cost with retry (5 attempts, 1 second delay)
+        match proxy_client.poll_final_streaming_cost_with_retry(request_id, 5, 1000).await {
+            Ok(Some(final_cost)) => {
+                info!("Final cost retrieved for job {}: ${:.4}", job_id, final_cost);
+                
+                // Update usage with final cost
+                usage.cost = Some(final_cost);
+                
+                // Update job metadata with final cost
+                if let Err(e) = self.update_job_with_final_cost(&repo, job_id, final_cost).await {
+                    warn!("Failed to update job {} metadata with final cost: {}", job_id, e);
+                }
+                
+                Ok(Some(usage))
+            }
+            Ok(None) => {
+                info!("Final cost not available for job {} after polling", job_id);
+                Ok(Some(usage))
+            }
+            Err(e) => {
+                warn!("Error polling for final cost for job {}: {}", job_id, e);
+                Ok(Some(usage))
+            }
+        }
+    }
+    
+    /// Poll for final cost only (when no usage data is available)
+    async fn poll_for_final_cost_only(&self, request_id: &str) -> AppResult<Option<f64>> {
+        info!("Polling for final cost only with request_id: {}", request_id);
+        
+        // Get API client for polling
+        let llm_client = llm_api_utils::get_api_client(&self.app_handle)?;
+        
+        // Cast to ServerProxyClient to access polling methods
+        let proxy_client = llm_client.as_any()
+            .downcast_ref::<crate::api_clients::server_proxy_client::ServerProxyClient>()
+            .ok_or_else(|| AppError::InternalError("Cannot poll for final cost with non-server proxy client".to_string()))?;
+        
+        // Poll for final cost with retry (5 attempts, 1 second delay)
+        proxy_client.poll_final_streaming_cost_with_retry(request_id, 5, 1000).await
+    }
+    
+    /// Update job metadata with final cost
+    async fn update_job_with_final_cost(
+        &self,
+        repo: &Arc<BackgroundJobRepository>,
+        job_id: &str,
+        final_cost: f64,
+    ) -> AppResult<()> {
+        info!("Updating job {} metadata with final cost: ${:.4}", job_id, final_cost);
+        
+        // Get current job to update metadata
+        let job = repo.get_job_by_id(job_id).await?
+            .ok_or_else(|| AppError::InternalError(format!("Job {} not found", job_id)))?;
+        
+        // Parse existing metadata or create new
+        let mut metadata: serde_json::Value = if let Some(meta_str) = &job.metadata {
+            serde_json::from_str(meta_str).unwrap_or_else(|_| serde_json::json!({}))
+        } else {
+            serde_json::json!({})
+        };
+        
+        // Add final cost to metadata
+        if let Some(task_data) = metadata.get_mut("task_data") {
+            task_data["finalCost"] = serde_json::json!(final_cost);
+            task_data["actualCost"] = serde_json::json!(final_cost);
+        } else {
+            metadata["task_data"] = serde_json::json!({
+                "finalCost": final_cost,
+                "actualCost": final_cost
+            });
+        }
+        
+        // Update job metadata
+        let updated_metadata = serde_json::to_string(&metadata)
+            .map_err(|e| AppError::InternalError(format!("Failed to serialize metadata: {}", e)))?;
+        
+        // Use the existing update_job_stream_progress method to update metadata
+        repo.update_job_stream_progress(
+            job_id,
+            "", // No new response content
+            0,  // No new tokens
+            0,  // Current response length  
+            Some(&updated_metadata),
+            None, // No app_handle
+            Some(final_cost),
+        ).await?;
+        
+        info!("Successfully updated job {} with final cost: ${:.4}", job_id, final_cost);
+        Ok(())
     }
 }
 

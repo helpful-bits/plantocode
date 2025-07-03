@@ -29,7 +29,6 @@ pub struct Invoice {
     pub number: Option<String>,
     pub payment_intent: Option<String>,
     pub status: InvoiceStatus,
-    pub subscription: Option<String>,
     pub subtotal: i64,
     pub tax: Option<i64>,
     pub total: i64,
@@ -63,7 +62,6 @@ pub struct InvoiceItem {
     pub price: Option<crate::stripe_types::Price>,
     pub proration: bool,
     pub quantity: i64,
-    pub subscription: Option<String>,
     pub unit_amount: Option<i64>,
     pub unit_amount_decimal: Option<String>,
 }

@@ -10,7 +10,6 @@ pub struct CheckoutSession {
     pub mode: CheckoutSessionMode,
     pub payment_intent: Option<String>,
     pub setup_intent: Option<String>,
-    pub subscription: Option<String>,
     pub success_url: String,
     pub cancel_url: String,
     pub url: Option<String>,
@@ -28,7 +27,6 @@ pub struct CheckoutSession {
 pub enum CheckoutSessionMode {
     Payment,
     Setup,
-    Subscription,
 }
 
 // Helper structs for creating checkout sessions

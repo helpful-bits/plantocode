@@ -261,6 +261,7 @@ export function GeneratePromptFeatureProvider({
         // Task UI state
         taskDescriptionRef: taskState.taskDescriptionRef,
         isRefiningTask: taskState.isRefiningTask,
+        isDoingWebSearch: taskState.isDoingWebSearch,
         tokenEstimate: tokenEstimate,
         canUndo: taskState.canUndo,
         canRedo: taskState.canRedo,
@@ -268,6 +269,7 @@ export function GeneratePromptFeatureProvider({
       actions: {
         // Task description actions
         handleRefineTask: taskState.handleRefineTask,
+        handleWebSearch: taskState.handleWebSearch,
         flushPendingTaskChanges,
         reset: taskState.resetTaskState,
         undo: taskState.undo,

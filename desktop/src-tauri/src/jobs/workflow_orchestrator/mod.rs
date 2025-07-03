@@ -134,6 +134,14 @@ impl WorkflowOrchestrator {
         orchestrator
     }
 
+    /// Get workflow definition by name
+    pub async fn get_workflow_definition(&self, workflow_name: &str) -> Option<Arc<WorkflowDefinition>> {
+        match self.get_workflow_definitions().await {
+            Ok(definitions) => definitions.get(workflow_name).cloned(),
+            Err(_) => None,
+        }
+    }
+
     /// Load workflow definitions from configuration files
     async fn load_default_workflow_definitions(&self) -> AppResult<()> {
         // Load workflow definitions from JSON files - NO FALLBACK
@@ -519,6 +527,7 @@ impl WorkflowOrchestrator {
             timeout_ms,
         ).await
     }
+
 
     /// Handle successful completion of a stage
     async fn handle_stage_completion(&self, workflow_id: &str, job_id: &str) -> AppResult<()> {

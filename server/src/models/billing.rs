@@ -77,7 +77,7 @@ pub struct UsageSummaryQuery {
     pub end_date: chrono::DateTime<chrono::Utc>,
 }
 
-// Subscription models
+// Auto top-off models
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AutoTopOffSettings {
