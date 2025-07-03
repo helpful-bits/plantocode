@@ -132,6 +132,16 @@ pub struct FileRelevanceAssessmentPayload {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WebSearchQueryGenerationPayload {
+    pub task_description: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WebSearchExecutionPayload {
+    pub prompt: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FileRelevanceAssessmentProcessingDetails {
     pub approach: String,
     pub total_files: usize,
@@ -206,6 +216,8 @@ pub enum JobPayload {
     ExtendedPathFinder(ExtendedPathFinderPayload),
     RegexFileFilter(RegexFileFilterPayload),
     FileRelevanceAssessment(FileRelevanceAssessmentPayload),
+    WebSearchQueryGeneration(WebSearchQueryGenerationPayload),
+    WebSearchExecution(WebSearchExecutionPayload),
 }
 
 // Structured types for Implementation Plan parsing
@@ -339,7 +351,8 @@ pub enum WorkflowStage {
     PathCorrection,
     RegexFileFilter,
     FileRelevanceAssessment,
-    // Add more stages as workflows expand
+    WebSearchQueryGeneration,
+    WebSearchExecution,
 }
 
 impl std::fmt::Display for WorkflowStage {
@@ -349,6 +362,8 @@ impl std::fmt::Display for WorkflowStage {
             WorkflowStage::PathCorrection => write!(f, "PathCorrection"),
             WorkflowStage::RegexFileFilter => write!(f, "RegexFileFilter"),
             WorkflowStage::FileRelevanceAssessment => write!(f, "FileRelevanceAssessment"),
+            WorkflowStage::WebSearchQueryGeneration => write!(f, "WebSearchQueryGeneration"),
+            WorkflowStage::WebSearchExecution => write!(f, "WebSearchExecution"),
         }
     }
 }

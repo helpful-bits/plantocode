@@ -6,7 +6,6 @@ use uuid::Uuid;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use std::convert::TryFrom;
 use log::{info, warn, error, debug};
 
 #[derive(Debug, Clone)]
@@ -47,6 +46,7 @@ pub struct ReconciliationSummary {
     pub total_actual_balance: BigDecimal,
     pub system_level_discrepancy: BigDecimal,
 }
+
 
 impl ReconciliationService {
     pub fn new(db_pools: DatabasePools) -> Self {
@@ -93,7 +93,7 @@ impl ReconciliationService {
             let discrepancy_amount = &actual_balance - &expected_balance;
 
             // Only report discrepancies that are non-zero (accounting for precision issues)
-            let tolerance = BigDecimal::try_from(0.0001f64).unwrap_or_else(|_| BigDecimal::from(0));
+            let tolerance = BigDecimal::from(1) / BigDecimal::from(10000); // 0.0001
             if discrepancy_amount.abs() > tolerance {
                 error!(
                     "Balance discrepancy detected for user {}: expected {}, actual {}, discrepancy {}",
@@ -261,7 +261,7 @@ impl ReconciliationService {
         let discrepancy_amount = &actual_balance - &expected_balance;
 
         // Return discrepancy if significant (accounting for precision issues)
-        let tolerance = BigDecimal::try_from(0.0001f64).unwrap_or_else(|_| BigDecimal::from(0));
+        let tolerance = BigDecimal::from(1) / BigDecimal::from(10000); // 0.0001
         if discrepancy_amount.abs() > tolerance {
             error!(
                 "Balance discrepancy for user {}: expected {}, actual {}, discrepancy {}",
@@ -307,6 +307,14 @@ impl ReconciliationService {
 
         Ok((total, last_date, count))
     }
+
+
+
+
+
+
+
+
 
     /// Get a reference to the underlying database pools for external access
     pub fn get_db_pools(&self) -> &DatabasePools {

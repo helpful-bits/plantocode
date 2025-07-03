@@ -443,7 +443,7 @@ impl BillingClient {
         debug!("Creating checkout session for credit amount: {}", amount);
         
         let request_body = serde_json::json!({
-            "amount": amount
+            "amount": amount.to_string()
         });
         
         let response: CheckoutSessionResponse = self.make_authenticated_request(
@@ -596,8 +596,8 @@ impl BillingClient {
         
         let request_body = serde_json::json!({
             "enabled": request.enabled,
-            "threshold": request.threshold,
-            "amount": request.amount
+            "threshold": request.threshold.map(|v| v.to_string()),
+            "amount": request.amount.map(|v| v.to_string())
         });
         
         let settings = self.make_authenticated_request(

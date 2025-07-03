@@ -141,6 +141,8 @@ pub(super) fn stage_to_task_type_internal(stage: &WorkflowStage) -> TaskType {
         WorkflowStage::FileRelevanceAssessment => TaskType::FileRelevanceAssessment,
         WorkflowStage::ExtendedPathFinder => TaskType::ExtendedPathFinder,
         WorkflowStage::PathCorrection => TaskType::PathCorrection,
+        WorkflowStage::WebSearchQueryGeneration => TaskType::WebSearchQueryGeneration,
+        WorkflowStage::WebSearchExecution => TaskType::WebSearchExecution,
     }
 }
 

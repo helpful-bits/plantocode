@@ -12,6 +12,7 @@ export interface TaskContextState {
   taskDescriptionRef: RefObject<TaskDescriptionHandle | null>;
   tokenEstimate: TokenEstimate | null;
   isRefiningTask: boolean;
+  isDoingWebSearch: boolean;
   canUndo: boolean;
   canRedo: boolean;
 }
@@ -19,6 +20,7 @@ export interface TaskContextState {
 export interface TaskContextActions {
   // Task description actions
   handleRefineTask: () => Promise<void>;
+  handleWebSearch: () => Promise<void>;
   flushPendingTaskChanges: () => string | null; // Immediately flush any pending task description changes and return current value
   reset: () => void;
   undo: () => void;

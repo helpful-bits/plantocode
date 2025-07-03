@@ -253,6 +253,8 @@ fn stage_to_task_type_for_retry(stage: &WorkflowStage) -> TaskType {
         WorkflowStage::FileRelevanceAssessment => TaskType::FileRelevanceAssessment,
         WorkflowStage::ExtendedPathFinder => TaskType::ExtendedPathFinder,
         WorkflowStage::PathCorrection => TaskType::PathCorrection,
+        WorkflowStage::WebSearchQueryGeneration => TaskType::WebSearchQueryGeneration,
+        WorkflowStage::WebSearchExecution => TaskType::WebSearchExecution,
     }
 }
 
@@ -263,6 +265,8 @@ fn task_type_to_workflow_stage(task_type: TaskType) -> Option<WorkflowStage> {
         TaskType::FileRelevanceAssessment => Some(WorkflowStage::FileRelevanceAssessment),
         TaskType::ExtendedPathFinder => Some(WorkflowStage::ExtendedPathFinder),
         TaskType::PathCorrection => Some(WorkflowStage::PathCorrection),
+        TaskType::WebSearchQueryGeneration => Some(WorkflowStage::WebSearchQueryGeneration),
+        TaskType::WebSearchExecution => Some(WorkflowStage::WebSearchExecution),
         _ => None, // Other task types don't correspond to workflow stages
     }
 }

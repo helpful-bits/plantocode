@@ -20,6 +20,7 @@ import { TaskTypeDetails, type TaskType } from "@/types/task-type-defs";
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
 import { Progress } from "@/ui/progress";
+import { cn } from "@/utils/utils";
 
 import {
   getStatusIconClass,
@@ -43,6 +44,8 @@ export interface JobCardProps {
   handleRetry?: (workflowId: string, jobId: string) => Promise<void>;
   isRetrying?: Record<string, boolean>;
   onApplyFiles?: (job: BackgroundJob) => void;
+  onApplyText?: (job: BackgroundJob) => void;
+  currentSessionId?: string;
 }
 
 /**
@@ -92,7 +95,7 @@ const getErrorPreview = (errorMessage?: string) => {
 };
 
 export const JobCard = React.memo(
-  ({ job, handleCancel, handleDelete, isCancelling, isDeleting, onSelect, handleRetry, isRetrying, onApplyFiles }: JobCardProps) => {
+  ({ job, handleCancel, handleDelete, isCancelling, isDeleting, onSelect, handleRetry, isRetrying, onApplyFiles, onApplyText, currentSessionId }: JobCardProps) => {
     
     // Determine if job is running for live progress updates  
     const isJobRunning = ["running", "processingStream", "generatingStream", "preparing", "preparing_input"].includes(job.status);
@@ -131,6 +134,12 @@ export const JobCard = React.memo(
 
     // Use memoized helper functions with current job data
     const errorPreview = React.useMemo(() => getErrorPreview(job.errorMessage), [job.errorMessage]);
+    
+    // Determine if this job belongs to the current session
+    const isCurrentSession = React.useMemo(() => 
+      currentSessionId && job.sessionId === currentSessionId, 
+      [currentSessionId, job.sessionId]
+    );
 
     // Render the appropriate status icon
     const renderStatusIcon = (status: JobStatus) => {
@@ -174,7 +183,17 @@ export const JobCard = React.memo(
     // Render card content
     return (
       <div
-        className="border border-border/60 bg-background/80 p-2 rounded-lg text-xs text-foreground cursor-pointer hover:bg-muted/50 transition-colors flex flex-col w-full max-w-full overflow-hidden shadow-soft backdrop-blur-sm min-w-0"
+        className={cn(
+          "border border-border/60 bg-background/80 dark:bg-muted/30 p-2 rounded-lg text-xs text-foreground cursor-pointer transition-colors flex flex-col w-full max-w-full overflow-hidden shadow-soft backdrop-blur-sm min-w-0",
+          {
+            // Current session highlighting - very subtle for both light and dark modes
+            "ring-1 ring-primary/20 border-primary/30 bg-primary/[0.02] dark:bg-muted/50": isCurrentSession,
+            // Default hover state for non-current session
+            "hover:bg-muted/50": !isCurrentSession,
+            // Enhanced hover for current session - slightly more visible in dark mode
+            "hover:ring-primary/30 hover:bg-primary/[0.04] dark:hover:bg-muted/80": isCurrentSession,
+          }
+        )}
         style={{
           minHeight: "140px", // Reduced minimum height for better space utilization
         }}
@@ -353,6 +372,30 @@ export const JobCard = React.memo(
                     {/* Results Summary (left side) - Only show meaningful results */}
                     <div className="flex items-center gap-1.5 text-muted-foreground min-w-0 flex-1">
                       {(() => {
+                        // Handle web search execution tasks
+                        if (job.taskType === "web_search_execution") {
+                          return (
+                            <>
+                              <span className="font-medium text-foreground">
+                                Search completed
+                              </span>
+                              {onApplyText && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    onApplyText(job);
+                                  }}
+                                  className="ml-2 h-6 px-2 text-xs"
+                                >
+                                  Apply to Task
+                                </Button>
+                              )}
+                            </>
+                          );
+                        }
+                        
                         // Handle all file-finding tasks that should show file counts
                         const fileFindingTasks = [
                           "extended_path_finder", 

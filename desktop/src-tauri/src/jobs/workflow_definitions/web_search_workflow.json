@@ -1,0 +1,20 @@
+{
+  "name": "WebSearchWorkflow",
+  "description": "Performs web search with query generation and execution stages.",
+  "stages": [
+    {
+      "stage_name": "WebSearchQueryGeneration",
+      "task_type": "web_search_query_generation",
+      "processor_name": null,
+      "dependencies": [],
+      "allow_parallel_execution": false
+    },
+    {
+      "stage_name": "WebSearchExecution",
+      "task_type": "web_search_execution",
+      "processor_name": null,
+      "dependencies": ["WebSearchQueryGeneration"],
+      "allow_parallel_execution": false
+    }
+  ]
+}

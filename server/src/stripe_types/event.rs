@@ -22,7 +22,6 @@ pub enum EventObject {
     Customer(crate::stripe_types::Customer),
     #[serde(rename = "invoice")]
     Invoice(crate::stripe_types::Invoice),
-    // Subscription events removed - system is credit-based only
     #[serde(rename = "payment_method")]
     PaymentMethod(crate::stripe_types::PaymentMethod),
 }
@@ -36,7 +35,6 @@ pub enum EventType {
     PaymentIntentPaymentFailed,
     #[serde(rename = "checkout.session.completed")]
     CheckoutSessionCompleted,
-    // Subscription events removed - system is credit-based only
     #[serde(rename = "invoice.payment_succeeded")]
     InvoicePaymentSucceeded,
     #[serde(rename = "invoice.payment_failed")]
