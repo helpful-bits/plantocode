@@ -7,9 +7,9 @@ use tokio::fs;
 
 use crate::error::{AppError, AppResult};
 use crate::jobs::processor_trait::JobProcessor;
-use crate::jobs::types::{Job, JobPayload, JobProcessResult, ExtendedPathFinderPayload};
+use crate::jobs::types::{Job, JobPayload, JobProcessResult, JobResultData, ExtendedPathFinderPayload};
 use crate::jobs::job_processor_utils;
-use crate::jobs::processors::utils::{prompt_utils};
+use crate::jobs::processors::utils::{prompt_utils, parsing_utils};
 use crate::jobs::processors::{LlmTaskRunner, LlmTaskConfigBuilder, LlmPromptContext};
 use crate::models::TaskType;
 use crate::utils::directory_tree::get_directory_tree_with_defaults;
@@ -21,75 +21,6 @@ impl ExtendedPathFinderProcessor {
         Self
     }
 
-    /// Parse paths from LLM text response with robust format handling
-    fn parse_paths_from_text_response(response_text: &str, project_directory: &str) -> AppResult<Vec<String>> {
-        let mut paths = Vec::new();
-        
-        // Normalize line endings
-        let normalized_text = response_text.replace("\r\n", "\n").replace("\r", "\n");
-        
-        // Split by newlines and process each line
-        for line in normalized_text.lines() {
-            let line = line.trim();
-            
-            // Filter out empty lines or lines that are clearly not paths
-            if line.is_empty()
-                || line.starts_with("//")
-                || line.starts_with("#")
-                || line.starts_with("Note:")
-                || line.starts_with("Analysis:")
-                || line.starts_with("Here are")
-                || line.starts_with("The following")
-                || line.starts_with("Based on")
-                || line.starts_with("```")
-                || line == "json"
-                || line == "JSON"
-                || line.len() < 2
-            {
-                continue;
-            }
-            
-            // Handle numbered lists (e.g., "1. path/to/file")
-            let line_without_numbers = if line.chars().next().map_or(false, |c| c.is_ascii_digit()) {
-                if let Some(dot_pos) = line.find('.') {
-                    line[dot_pos + 1..].trim()
-                } else {
-                    line
-                }
-            } else {
-                line
-            };
-            
-            // Handle bullet points (e.g., "- path/to/file", "* path/to/file")
-            let line_without_bullets = if line_without_numbers.starts_with("- ") || line_without_numbers.starts_with("* ") {
-                &line_without_numbers[2..]
-            } else {
-                line_without_numbers
-            };
-            
-            // Clean the line of potential prefixes/suffixes
-            let cleaned_path = line_without_bullets
-                .trim_matches(|c| {
-                    c == '\"' || c == '\'' || c == '`' || c == ',' || c == ':' || c == ';'
-                })
-                .trim();
-            
-            if !cleaned_path.is_empty() {
-                paths.push(cleaned_path.to_string());
-            }
-        }
-        
-        // Remove duplicates while preserving order
-        let mut unique_paths = Vec::new();
-        let mut seen = std::collections::HashSet::new();
-        for path in paths {
-            if seen.insert(path.clone()) {
-                unique_paths.push(path);
-            }
-        }
-        
-        Ok(unique_paths)
-    }
 }
 
 #[async_trait::async_trait]
@@ -165,10 +96,7 @@ impl JobProcessor for ExtendedPathFinderProcessor {
         info!("Sending {} file contents to AI for better path finding", file_contents.len());
         
         // Setup LLM task configuration
-        let llm_config = LlmTaskConfigBuilder::new()
-            .model(model_used.clone())
-            .temperature(temperature)
-            .max_tokens(max_output_tokens)
+        let llm_config = LlmTaskConfigBuilder::new(model_used.clone(), temperature, max_output_tokens)
             .stream(false)
             .build();
         
@@ -209,7 +137,6 @@ impl JobProcessor for ExtendedPathFinderProcessor {
             Err(e) => {
                 error!("Extended path finding LLM task execution failed: {}", e);
                 let error_msg = format!("LLM task execution failed: {}", e);
-                task_runner.finalize_failure(&repo, &job.id, &error_msg, Some(&e), None).await?;
                 return Ok(JobProcessResult::failure(job.id.clone(), error_msg));
             }
         };
@@ -221,14 +148,11 @@ impl JobProcessor for ExtendedPathFinderProcessor {
         let response_content = llm_result.response.clone();
         
         // Parse paths from the LLM response using standardized utility
-        let extended_paths = match Self::parse_paths_from_text_response(&response_content, project_directory) {
+        let extended_paths = match parsing_utils::parse_paths_from_text_response(&response_content, project_directory) {
             Ok(paths) => paths,
             Err(e) => {
                 let error_msg = format!("Failed to parse paths from LLM response: {}", e);
                 error!("{}", error_msg);
-                
-                // Finalize job failure using task runner
-                task_runner.finalize_failure(&repo, &job.id, &error_msg, Some(&e), llm_result.usage).await?;
                 
                 return Ok(JobProcessResult::failure(job.id.clone(), error_msg));
             }
@@ -286,43 +210,38 @@ impl JobProcessor for ExtendedPathFinderProcessor {
             "taskDescription": payload.task_description,
             "projectDirectory": project_directory.clone(),
             "modelUsed": model_used,
-            "summary": format!("Extended path finding: {} AI-filtered initial + {} validated = {} total verified paths", 
+            "summary": format!("{} AI-filtered initial + {} validated = {} total verified paths", 
                 payload.initial_paths.len(), 
                 validated_extended_paths.len(),
                 combined_validated_paths.len())
         });
         
-        // Create standardized JSON response with verifiedPaths and unverifiedPaths structure
-        let response_json_content = serde_json::json!({
-            "verifiedPaths": combined_validated_paths,
-            "unverifiedPaths": unverified_extended_paths,
-            "count": combined_validated_paths.len(),
-            "summary": format!("Extended path finding: {} AI-filtered initial + {} validated = {} total verified paths", 
-                payload.initial_paths.len(), 
-                validated_extended_paths.len(),
-                combined_validated_paths.len())
-        }).to_string();
-        
-        // Create a modified LLM result with our JSON response
-        let mut modified_llm_result = llm_result.clone();
-        modified_llm_result.response = response_json_content.clone();
-        
-        // Finalize job success using task runner
-        task_runner.finalize_success(
-            &repo,
-            &job.id,
-            &modified_llm_result,
-            Some(result_metadata),
-        ).await?;
-        
         debug!("Extended path finding completed for workflow {}", job.id);
         
         // NOTE: No longer handling internal chaining - WorkflowOrchestrator manages transitions
         
-        // Return success result
+        // Extract system prompt template and cost
+        let system_prompt_template = llm_result.system_prompt_template.clone();
+        let actual_cost = llm_result.usage.as_ref().and_then(|u| u.cost).unwrap_or(0.0);
+        
+        // Return success result with structured JSON data
         Ok(JobProcessResult::success(
             job.id.clone(), 
-            response_json_content
-        ))
+            JobResultData::Json(serde_json::json!({
+                "verifiedPaths": combined_validated_paths,
+                "unverifiedPaths": unverified_extended_paths,
+                "count": combined_validated_paths.len(),
+                "summary": format!("{} AI-filtered initial + {} validated = {} total verified paths", 
+                    payload.initial_paths.len(), 
+                    validated_extended_paths.len(),
+                    combined_validated_paths.len())
+            }))
+        )
+        .with_tokens(
+            llm_result.usage.as_ref().map(|u| u.prompt_tokens as u32),
+            llm_result.usage.as_ref().map(|u| u.completion_tokens as u32)
+        )
+        .with_system_prompt_template(system_prompt_template)
+        .with_actual_cost(actual_cost))
     }
 }

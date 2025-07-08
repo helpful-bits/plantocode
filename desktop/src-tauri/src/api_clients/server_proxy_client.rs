@@ -387,6 +387,7 @@ impl ServerProxyClient {
             temperature: Some(options.temperature),
             duration_ms: Some(estimated_duration_ms),
             request_id: Some(request_id.clone()),
+            task_type: options.task_type.clone(),
         };
         
         // Create the server proxy endpoint URL for LLM chat completions
@@ -499,7 +500,7 @@ impl ServerProxyClient {
         messages: Vec<crate::models::OpenRouterRequestMessage>,
         options: ApiClientOptions,
         auth_token: String,
-    ) -> AppResult<Pin<Box<dyn Stream<Item = AppResult<OpenRouterStreamChunk>> + Send>>> {
+    ) -> AppResult<Pin<Box<dyn Stream<Item = AppResult<crate::models::stream_event::StreamEvent>> + Send>>> {
         // Ensure streaming is enabled
         let mut options = options;
         options.stream = true;
@@ -520,6 +521,7 @@ impl ServerProxyClient {
             temperature: Some(options.temperature),
             duration_ms: Some(estimated_duration_ms),
             request_id: Some(request_id.clone()),
+            task_type: options.task_type.clone(),
         };
         
         // Create the server proxy endpoint URL for streaming LLM chat completions
@@ -548,25 +550,50 @@ impl ServerProxyClient {
             loop {
                 match event_source.next().await {
                     Some(Ok(Event::Message(message))) => {
-                        if message.data == "[DONE]" {
-                            if !stream_ended {
-                                let actual_duration = start_time.elapsed();
-                                let actual_duration_ms = actual_duration.as_millis() as i64;
-                                debug!("Streaming completed in {}ms (estimated: {}ms)", actual_duration_ms, estimated_duration_ms);
-                                stream_ended = true;
-                            }
-                            debug!("Received [DONE] signal, ending stream");
-                            return None;
-                        }
-                        
-                        match serde_json::from_str::<OpenRouterStreamChunk>(&message.data) {
-                            Ok(chunk) => {
-                                trace!("Successfully parsed stream chunk");
-                                return Some((Ok(chunk), (event_source, start_time, stream_ended)));
+                        // Check for event type in the message
+                        match message.event.as_str() {
+                            "usage_update" => {
+                                // Parse usage update event
+                                match serde_json::from_str::<crate::models::usage_update::UsageUpdate>(&message.data) {
+                                    Ok(usage_update) => {
+                                        debug!("Received usage_update event: input={}, output={}, total={}, cost={}", 
+                                              usage_update.tokens_input, 
+                                              usage_update.tokens_output, 
+                                              usage_update.tokens_total, 
+                                              usage_update.estimated_cost);
+                                        
+                                        // Return the usage update as a stream event
+                                        return Some((Ok(crate::models::stream_event::StreamEvent::UsageUpdate(usage_update)), (event_source, start_time, stream_ended)));
+                                    },
+                                    Err(e) => {
+                                        warn!("Failed to parse usage_update event: {} - Data: '{}'", e, message.data);
+                                        continue;
+                                    }
+                                }
                             },
-                            Err(e) => {
-                                debug!("Failed to parse streaming chunk: {} - Data: '{}'", e, message.data);
-                                return Some((Err(AppError::InvalidResponse(format!("Invalid streaming JSON: {}", e))), (event_source, start_time, stream_ended)));
+                            _ => {
+                                // Handle regular message events (no special event type)
+                                if message.data == "[DONE]" {
+                                    if !stream_ended {
+                                        let actual_duration = start_time.elapsed();
+                                        let actual_duration_ms = actual_duration.as_millis() as i64;
+                                        debug!("Streaming completed in {}ms (estimated: {}ms)", actual_duration_ms, estimated_duration_ms);
+                                        stream_ended = true;
+                                    }
+                                    debug!("Received [DONE] signal, ending stream");
+                                    return None;
+                                }
+                                
+                                match serde_json::from_str::<OpenRouterStreamChunk>(&message.data) {
+                                    Ok(chunk) => {
+                                        trace!("Successfully parsed stream chunk");
+                                        return Some((Ok(crate::models::stream_event::StreamEvent::ContentChunk(chunk)), (event_source, start_time, stream_ended)));
+                                    },
+                                    Err(e) => {
+                                        debug!("Failed to parse streaming chunk: {} - Data: '{}'", e, message.data);
+                                        return Some((Err(AppError::InvalidResponse(format!("Invalid streaming JSON: {}", e))), (event_source, start_time, stream_ended)));
+                                    }
+                                }
                             }
                         }
                     },
@@ -771,12 +798,12 @@ impl ApiClient for ServerProxyClient {
     }
     
     
-    /// Send a streaming completion request with messages and get a stream of chunks
+    /// Send a streaming completion request with messages and get a stream of events
     async fn chat_completion_stream(
         &self,
         messages: Vec<crate::models::OpenRouterRequestMessage>,
         options: ApiClientOptions,
-    ) -> AppResult<Pin<Box<dyn Stream<Item = AppResult<OpenRouterStreamChunk>> + Send>>> {
+    ) -> AppResult<Pin<Box<dyn Stream<Item = AppResult<crate::models::stream_event::StreamEvent>> + Send>>> {
         info!("Sending streaming chat completion request to server proxy with model: {}", options.model);
         debug!("Proxy options: {:?}", options);
         
@@ -841,25 +868,26 @@ impl ServerProxyClient {
         Ok(None)
     }
     
-    /// Poll for final streaming cost with retries and timeout
-    /// Polls for up to max_attempts with delay_ms between attempts
+    /// Poll for final streaming cost with exponential backoff retry
+    /// Retries with exponential backoff (1s, 2s, 4s) up to 3 times
     pub async fn poll_final_streaming_cost_with_retry(
         &self, 
-        request_id: &str, 
-        max_attempts: u32, 
-        delay_ms: u64
-    ) -> AppResult<Option<f64>> {
-        info!("Polling for final streaming cost with retry: request_id={}, max_attempts={}, delay={}ms", 
-              request_id, max_attempts, delay_ms);
+        request_id: &str
+    ) -> AppResult<Option<crate::models::FinalCostData>> {
+        info!("Polling for final streaming cost with exponential backoff: request_id={}", request_id);
+        
+        let max_attempts = 3;
+        let base_delay_ms = 1000; // Start with 1 second
         
         for attempt in 1..=max_attempts {
-            match self.poll_final_streaming_cost(request_id).await {
-                Ok(Some(cost)) => {
-                    info!("Final cost retrieved on attempt {}: ${:.4}", attempt, cost);
-                    return Ok(Some(cost));
+            match self.poll_final_streaming_cost_detailed(request_id).await {
+                Ok(Some(cost_data)) => {
+                    info!("Final cost retrieved on attempt {}: ${:.4}", attempt, cost_data.cost);
+                    return Ok(Some(cost_data));
                 }
                 Ok(None) => {
                     if attempt < max_attempts {
+                        let delay_ms = base_delay_ms * (1 << (attempt - 1)); // Exponential backoff: 1s, 2s, 4s
                         debug!("Final cost not available, waiting {}ms before attempt {}", delay_ms, attempt + 1);
                         tokio::time::sleep(tokio::time::Duration::from_millis(delay_ms)).await;
                     }
@@ -867,6 +895,7 @@ impl ServerProxyClient {
                 Err(e) => {
                     warn!("Error polling for final cost on attempt {}: {}", attempt, e);
                     if attempt < max_attempts {
+                        let delay_ms = base_delay_ms * (1 << (attempt - 1)); // Exponential backoff: 1s, 2s, 4s
                         tokio::time::sleep(tokio::time::Duration::from_millis(delay_ms)).await;
                     } else {
                         return Err(e);
@@ -877,5 +906,44 @@ impl ServerProxyClient {
         
         info!("Final cost not available after {} attempts for request {}", max_attempts, request_id);
         Ok(None)
+    }
+    
+    /// Poll for detailed final streaming cost data
+    async fn poll_final_streaming_cost_detailed(&self, request_id: &str) -> AppResult<Option<crate::models::FinalCostData>> {
+        info!("Polling for detailed final streaming cost: request_id={}", request_id);
+        
+        let auth_token = self.get_auth_token().await?;
+        let url = format!("{}/api/billing/final-cost/{}", self.server_url, request_id);
+        
+        let response = self.http_client
+            .get(&url)
+            .header(header::CONTENT_TYPE, "application/json")
+            .header("Authorization", format!("Bearer {}", auth_token))
+            .header("HTTP-Referer", APP_HTTP_REFERER)
+            .header("X-Title", APP_X_TITLE)
+            .send()
+            .await
+            .map_err(|e| AppError::HttpError(e.to_string()))?;
+            
+        if response.status() == 404 {
+            // Not found is expected when cost is not yet available
+            return Ok(None);
+        }
+        
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_text = response.text().await.unwrap_or_else(|_| "Failed to get error text".to_string());
+            return Err(self.handle_auth_error(status.as_u16(), &error_text).await);
+        }
+        
+        let cost_response: crate::models::FinalCostResponse = response.json().await
+            .map_err(|e| AppError::ServerProxyError(format!("Failed to parse final cost response: {}", e)))?;
+        
+        Ok(Some(crate::models::FinalCostData {
+            cost: cost_response.cost,
+            tokens_input: cost_response.tokens_input,
+            tokens_output: cost_response.tokens_output,
+            service_name: cost_response.service_name,
+        }))
     }
 }

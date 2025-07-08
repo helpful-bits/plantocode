@@ -5,7 +5,7 @@ use async_trait::async_trait;
 
 
 use crate::error::{AppError, AppResult};
-use crate::jobs::types::{Job, JobPayload, JobProcessResult};
+use crate::jobs::types::{Job, JobPayload, JobProcessResult, JobResultData};
 use crate::jobs::processor_trait::JobProcessor;
 use crate::jobs::job_processor_utils;
 use crate::jobs::processors::{LlmTaskRunner, LlmTaskConfigBuilder, LlmPromptContext};
@@ -52,11 +52,8 @@ impl JobProcessor for TextImprovementProcessor {
         let model_settings = job_processor_utils::get_llm_task_config(&db_job, &app_handle, &session).await?;
         let (model_used, temperature, max_output_tokens) = model_settings;
         
-        // Setup LLM task configuration
-        let llm_config = LlmTaskConfigBuilder::new()
-            .model(model_used.clone())
-            .temperature(temperature)
-            .max_tokens(max_output_tokens)
+        // Setup LLM task configuration with explicit values from config resolution
+        let llm_config = LlmTaskConfigBuilder::new(model_used.clone(), temperature, max_output_tokens)
             .stream(false)
             .build();
         
@@ -88,36 +85,21 @@ impl JobProcessor for TextImprovementProcessor {
                 
                 let processed_text = llm_result.response.clone();
                 let text_len = processed_text.len() as i32;
-                
-                // Create metadata
-                let metadata = serde_json::json!({
-                    "job_type": "TEXT_IMPROVEMENT",
-                    "workflow_stage": "TextImprovement"
-                });
-                
-                // Finalize job success using task runner
-                task_runner.finalize_success(
-                    &repo,
-                    &job.id,
-                    &llm_result,
-                    Some(metadata),
-                ).await?;
+                let system_prompt_template = llm_result.system_prompt_template.clone();
+                let actual_cost = llm_result.usage.as_ref().and_then(|u| u.cost).unwrap_or(0.0);
                 
                 // Create and return the result
-                JobProcessResult::success(job.id.to_string(), processed_text)
+                JobProcessResult::success(job.id.to_string(), JobResultData::Text(processed_text))
                     .with_tokens(
-                        llm_result.usage.as_ref().map(|u| u.prompt_tokens as i32),
-                        llm_result.usage.as_ref().map(|u| u.completion_tokens as i32),
-                        llm_result.usage.as_ref().map(|u| u.total_tokens as i32),
-                        Some(text_len)
+                        llm_result.usage.as_ref().map(|u| u.prompt_tokens as u32),
+                        llm_result.usage.as_ref().map(|u| u.completion_tokens as u32)
                     )
+                    .with_system_prompt_template(system_prompt_template)
+                    .with_actual_cost(actual_cost)
             },
             Err(e) => {
                 let error_message = format!("Text improvement failed: {}", e);
                 error!("{}", error_message);
-                
-                // Finalize job failure using task runner
-                task_runner.finalize_failure(&repo, &job.id, &error_message, Some(&e), None).await?;
                 
                 // Return failure result
                 JobProcessResult::failure(job.id.to_string(), error_message)

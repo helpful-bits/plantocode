@@ -6,7 +6,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/ui/collap
 import { useJobDetailsContext } from "../../_contexts/job-details-context";
 
 export function JobDetailsMetadataSection() {
-  const { parsedMetadata, formatMetadata, formatRegexPatterns } = useJobDetailsContext();
+  const { parsedMetadata } = useJobDetailsContext();
   const [isMetadataOpen, setIsMetadataOpen] = useState(false);
   
   const parsedMeta = parsedMetadata;
@@ -15,13 +15,49 @@ export function JobDetailsMetadataSection() {
     return null;
   }
 
-  const formattedMetadata = formatMetadata(parsedMeta);
+  // Display structured metadata directly - no complex formatting needed
+  const formattedMetadata = parsedMeta ? JSON.stringify(parsedMeta, null, 2) : "None";
 
   // Access parsed JSON data from regex pattern generation
   const parsedJsonData = parsedMeta?.taskData?.parsedJsonData;
   const jsonValid = parsedMeta?.taskData?.jsonValid;
   
-  const formattedRegex = parsedJsonData ? formatRegexPatterns(parsedJsonData) : null;
+  // Format regex patterns directly here
+  const formattedRegex = (() => {
+    if (!parsedJsonData) return null;
+    
+    try {
+      let data: Record<string, any>;
+      
+      if (typeof parsedJsonData === "string") {
+        try {
+          data = JSON.parse(parsedJsonData) as Record<string, any>;
+        } catch (_e) {
+          return "Regex data not available or not valid JSON.";
+        }
+      } else if (parsedJsonData && typeof parsedJsonData === "object") {
+        data = parsedJsonData as Record<string, any>;
+      } else {
+        return "Regex data not available or not valid JSON.";
+      }
+      
+      const cleanPatterns = [
+        data.pathPattern && `Path: ${data.pathPattern}`,
+        data.contentPattern && `Content: ${data.contentPattern}`,
+        data.negativePathPattern && `Negative Path: ${data.negativePathPattern}`,
+        data.negativeContentPattern && `Negative Content: ${data.negativeContentPattern}`,
+      ].filter(Boolean);
+
+      if (cleanPatterns.length > 0) {
+        return cleanPatterns.join("\n");
+      }
+
+      return "No regex patterns found. Expected clean 4-pattern structure.";
+    } catch (e) {
+      console.error("Error formatting regex patterns:", e);
+      return "Regex data not available or not valid JSON.";
+    }
+  })();
 
   // Access implementation plan data
   const planData = parsedMeta?.taskData?.planData;
@@ -78,6 +114,30 @@ export function JobDetailsMetadataSection() {
                 </pre>
               </div>
             )}
+
+            {(() => {
+              const executedPrompts = parsedMeta?.executedPrompts;
+              if (executedPrompts && Array.isArray(executedPrompts) && executedPrompts.length > 0) {
+                return (
+                  <Collapsible>
+                    <CollapsibleTrigger className="flex items-center gap-2 text-sm font-medium mb-2">
+                      <ChevronDown className="h-4 w-4" />
+                      Executed Prompts ({executedPrompts.length})
+                    </CollapsibleTrigger>
+                    <CollapsibleContent>
+                      <div className="space-y-3 mt-2">
+                        {executedPrompts.map((prompt: unknown, index: number) => (
+                          <Card key={index} className="p-3">
+                            <pre className="whitespace-pre-wrap text-xs">{String(prompt)}</pre>
+                          </Card>
+                        ))}
+                      </div>
+                    </CollapsibleContent>
+                  </Collapsible>
+                );
+              }
+              return null;
+            })()}
 
             {/* Other metadata */}
             <div>

@@ -21,6 +21,8 @@ function CopyButtonListEditorComponent({ copyButtons, onChange, readOnly, showCu
     useSensor(PointerSensor, {
       activationConstraint: {
         distance: 8,
+        delay: 100,
+        tolerance: 5
       },
     })
   );
@@ -103,18 +105,25 @@ function CopyButtonListEditorComponent({ copyButtons, onChange, readOnly, showCu
         </div>
       ) : (
         <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
-          <SortableContext items={copyButtons.map(b => b.id)} strategy={verticalListSortingStrategy}>
+          <SortableContext items={copyButtons.filter(b => b.id).map(b => b.id)} strategy={verticalListSortingStrategy} id="copy-buttons-sortable-context">
             <div className="space-y-3">
-              {copyButtons.map((button, index) => (
-                <CopyButtonEditor
-                  key={button.id}
-                  fieldId={button.id}
-                  button={button}
-                  onChange={(updatedButton) => handleButtonChange(index, updatedButton)}
-                  onDelete={() => handleButtonDelete(index)}
-                  readOnly={readOnly || showCustomizeButton}
-                />
-              ))}
+              {copyButtons.map((button, index) => {
+                // Ensure button has an ID
+                const buttonWithId = {
+                  ...button,
+                  id: button.id || `button-${index}-${Date.now()}`
+                };
+                return (
+                  <CopyButtonEditor
+                    key={buttonWithId.id}
+                    fieldId={buttonWithId.id}
+                    button={buttonWithId}
+                    onChange={(updatedButton) => handleButtonChange(index, updatedButton)}
+                    onDelete={() => handleButtonDelete(index)}
+                    readOnly={readOnly || showCustomizeButton}
+                  />
+                );
+              })}
             </div>
           </SortableContext>
         </DndContext>

@@ -5,6 +5,7 @@ use serde_json::Value;
 
 use crate::error::AppResult;
 use crate::models::{OpenRouterResponse, OpenRouterStreamChunk};
+use crate::models::stream_event::StreamEvent;
 
 /// Common options for API clients
 #[derive(Debug, Clone)]
@@ -14,6 +15,7 @@ pub struct ApiClientOptions {
     pub temperature: f32,
     pub stream: bool,
     pub request_id: Option<String>,
+    pub task_type: Option<String>,
 }
 
 // Default implementation removed to force explicit model configuration
@@ -44,15 +46,16 @@ pub trait ApiClient: Send + Sync {
         options: ApiClientOptions
     ) -> AppResult<OpenRouterResponse>;
     
-    /// Send a streaming completion request with messages and get a stream of chunks
+    /// Send a streaming completion request with messages and get a stream of events
     /// 
+    /// The stream can contain either content chunks or usage updates.
     /// The final stream chunk's `OpenRouterStreamChunk.usage.cost` field contains the
     /// server-authoritative cost and should be used as the ground truth for billing purposes.
     async fn chat_completion_stream(
         &self,
         messages: Vec<crate::models::OpenRouterRequestMessage>,
         options: ApiClientOptions,
-    ) -> AppResult<Pin<Box<dyn Stream<Item = AppResult<OpenRouterStreamChunk>> + Send>>>;
+    ) -> AppResult<Pin<Box<dyn Stream<Item = AppResult<StreamEvent>> + Send>>>;
 
     /// Extract cost from response - uses usage.cost field as source of truth
     fn extract_cost_from_response(&self, response: &OpenRouterResponse) -> f64 {

@@ -4,6 +4,7 @@ use crate::jobs::types::{
     RegexFileFilterPayload, FileRelevanceAssessmentPayload
 };
 use crate::db_utils::SettingsRepository;
+use crate::error::{AppError, AppResult};
 use std::sync::Arc;
 
 /// Stage-specific data injection utilities for creating next-stage payloads
@@ -45,44 +46,32 @@ impl StageDataInjector {
     }
 
     /// Parse max files value from string
-    fn parse_max_files(max_files_str: &str, default: usize) -> usize {
-        max_files_str.parse::<usize>().unwrap_or_else(|_| {
-            warn!("Invalid max files value '{}', using default: {}", max_files_str, default);
-            default
-        })
+    fn parse_max_files(max_files_str: &str) -> AppResult<usize> {
+        max_files_str.parse::<usize>()
+            .map_err(|e| AppError::ConfigError(format!("Invalid max files value '{}': {}", max_files_str, e)))
     }
 
     /// Create ExtendedPathFinderPayload from specific data fields
     /// Data sourced from WorkflowState.intermediate_data
     /// Note: directory_tree is now generated on-demand by the processor
     pub async fn create_extended_finder_payload(
-        settings_repo: &Arc<SettingsRepository>,
+        _settings_repo: &Arc<SettingsRepository>,
         _workflow_id: String,
         _session_id: String,
         task_description: String,
         _project_directory: String,
         initial_paths: Vec<String>
-    ) -> ExtendedPathFinderPayload {
+    ) -> AppResult<ExtendedPathFinderPayload> {
         info!("Creating ExtendedPathFinder payload from specific data fields");
         
         debug!("Initial paths count: {}", initial_paths.len());
         
         // Model settings are handled by the job creation system, not stored in payload
         
-        // Get max files with content setting
-        let max_files_setting = Self::get_workflow_setting(
-            settings_repo,
-            "FileFinderWorkflow",
-            "maxFilesWithContent",
-            Some("50")
-        ).await.unwrap_or_else(|| "50".to_string());
-        
-        let _max_files_with_content = Self::parse_max_files(&max_files_setting, 50);
-        
-        ExtendedPathFinderPayload {
+        Ok(ExtendedPathFinderPayload {
             task_description,
             initial_paths, // AI-filtered files from FileRelevanceAssessment stage
-        }
+        })
     }
 
 

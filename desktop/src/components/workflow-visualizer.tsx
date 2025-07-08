@@ -3,7 +3,7 @@
  * Provides comprehensive visual representation of workflow progress and status
  */
 
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Clock, CheckCircle, XCircle, AlertCircle, Play, Pause, Loader2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/ui/card';
 import { Progress } from '@/ui/progress';
@@ -12,76 +12,13 @@ import { Button } from '@/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/ui/collapsible';
 import { WorkflowUtils } from '@/utils/workflow-utils';
 import { WORKFLOW_STATUSES } from '@/types/workflow-types';
-import { retryWorkflowStageAction, cancelWorkflowStageAction } from '@/actions/file-system/workflow-stage.actions';
+import { retryWorkflowStageAction, cancelWorkflowStageAction } from '@/actions/workflows/workflow.actions';
 import { extractErrorInfo, createUserFriendlyErrorMessage } from '@/utils/error-handling';
-import type { WorkflowState, WorkflowStageJob, WorkflowStage, WorkflowStatusResponse, WorkflowStatus, JobStatus } from '@/types/workflow-types';
-
-// Helper functions for robust type mapping from backend responses
-// These handle various string formats from the backend and map them to frontend enum types
-function mapWorkflowStatus(status: string): WorkflowStatus {
-  const normalizedStatus = status.toLowerCase().trim();
-  switch (normalizedStatus) {
-    case WORKFLOW_STATUSES.BACKEND.CREATED: return WORKFLOW_STATUSES.CREATED;
-    case WORKFLOW_STATUSES.BACKEND.RUNNING: return WORKFLOW_STATUSES.RUNNING;
-    case WORKFLOW_STATUSES.BACKEND.PAUSED: return WORKFLOW_STATUSES.PAUSED;
-    case WORKFLOW_STATUSES.BACKEND.COMPLETED: return WORKFLOW_STATUSES.COMPLETED;
-    case WORKFLOW_STATUSES.BACKEND.FAILED: return WORKFLOW_STATUSES.FAILED;
-    case WORKFLOW_STATUSES.BACKEND.CANCELED:
-    case 'cancelled': return WORKFLOW_STATUSES.CANCELED;
-    default: 
-      console.warn(`Unknown workflow status: ${status}, defaulting to Created`);
-      return WORKFLOW_STATUSES.CREATED;
-  }
-}
-
-function mapJobStatus(status: string): JobStatus {
-  const normalizedStatus = status.toLowerCase().trim();
-  switch (normalizedStatus) {
-    case 'idle': return 'idle';
-    case 'created': return 'created';
-    case 'queued': return 'queued';
-    case 'acknowledgedByWorker': return 'acknowledgedByWorker';
-    case 'preparing': return 'preparing';
-    case 'preparingInput': return 'preparingInput';
-    case 'generatingStream': return 'generatingStream';
-    case 'processingStream': return 'processingStream';
-    case 'running': return 'running';
-    case 'completedByTag': return 'completedByTag';
-    case 'completed': return 'completed';
-    case 'failed': return 'failed';
-    case 'canceled': return 'canceled';
-    default: 
-      console.warn(`Unknown job status: ${status}, defaulting to idle`);
-      return 'idle';
-  }
-}
-
-function mapWorkflowStage(stageName: string): WorkflowStage {
-  // Primary: Use the centralized mapping utility that handles all backend formats
-  const mappedStage = WorkflowUtils.mapStageNameToEnum(stageName);
-  if (mappedStage) {
-    return mappedStage;
-  }
-  
-  // Secondary: If the centralized utility couldn't map it, try a more flexible approach
-  // by normalizing any input to uppercase with underscores (for edge cases)
-  const normalizedStage = stageName.toUpperCase().replace(/\s+/g, '_').replace(/[^A-Z_]/g, '').trim();
-  
-  // Try the normalized version with the centralized utility again
-  const secondAttempt = WorkflowUtils.mapStageNameToEnum(normalizedStage);
-  if (secondAttempt) {
-    return secondAttempt;
-  }
-  
-  // Ultimate fallback with warning - log more details for debugging
-  console.warn(`Unknown workflow stage: "${stageName}" (normalized: "${normalizedStage}"), defaulting to REGEX_FILE_FILTER`);
-  return 'REGEX_FILE_FILTER';
-}
+import type { WorkflowState, WorkflowStageJob } from '@/types/workflow-types';
 
 
 export interface WorkflowVisualizerProps {
-  workflowState?: WorkflowState;
-  workflowStatus?: WorkflowStatusResponse; // Alternative input for WorkflowStatusResponse
+  workflowState: WorkflowState;
   showDetails?: boolean;
   showTiming?: boolean;
   onCancel?: () => void;
@@ -96,7 +33,6 @@ export interface WorkflowVisualizerProps {
 
 export function WorkflowVisualizer({ 
   workflowState, 
-  workflowStatus,
   showDetails = true, 
   showTiming = true,
   onCancel,
@@ -111,62 +47,10 @@ export function WorkflowVisualizer({
   const [retryingStage, setRetryingStage] = useState<string | null>(null);
   const [cancelingStage, setCancelingStage] = useState<string | null>(null);
   
-  // Convert WorkflowStatusResponse to WorkflowState if needed
-  const effectiveWorkflowState = React.useMemo(() => {
-    if (workflowState) return workflowState;
-    if (!workflowStatus) throw new Error('Either workflowState or workflowStatus must be provided');
-    
-    // Convert WorkflowStatusResponse to WorkflowState with robust mapping
-    const convertedState: WorkflowState = {
-      workflowId: workflowStatus.workflowId,
-      sessionId: workflowStatus.sessionId || '',
-      projectHash: workflowStatus.sessionId || '',
-      status: mapWorkflowStatus(workflowStatus.status),
-      stageJobs: workflowStatus.stageStatuses.map(stage => {
-        const mappedStage = mapWorkflowStage(stage.stageName);
-        return {
-          stage: mappedStage,
-          jobId: stage.jobId || `placeholder-${mappedStage}`,
-          status: mapJobStatus(stage.status),
-          createdAt: stage.createdAt ? new Date(stage.createdAt).getTime() : Date.now(),
-          startedAt: stage.startedAt ? new Date(stage.startedAt).getTime() : undefined,
-          completedAt: stage.completedAt ? new Date(stage.completedAt).getTime() : undefined,
-          executionTimeMs: stage.executionTimeMs || undefined,
-          errorMessage: stage.errorMessage || undefined,
-          dependsOn: stage.dependsOn || undefined,
-          subStatusMessage: stage.subStatusMessage || undefined,
-        };
-      }),
-      progressPercentage: workflowStatus.progressPercentage,
-      currentStage: workflowStatus.currentStage ? mapWorkflowStage(workflowStatus.currentStage) : undefined,
-      createdAt: workflowStatus.createdAt || Date.now(),
-      updatedAt: workflowStatus.updatedAt || Date.now(),
-      completedAt: workflowStatus.completedAt,
-      totalExecutionTimeMs: workflowStatus.totalExecutionTimeMs,
-      errorMessage: workflowStatus.errorMessage,
-      taskDescription: workflowStatus.taskDescription || '',
-      projectDirectory: workflowStatus.projectDirectory || '',
-      excludedPaths: workflowStatus.excludedPaths || [],
-      timeoutMs: workflowStatus.timeoutMs,
-      intermediateData: {
-        locallyFilteredFiles: [],
-        aiFilteredFiles: [],
-        initialVerifiedPaths: [],
-        initialUnverifiedPaths: [],
-        initialCorrectedPaths: [],
-        extendedVerifiedPaths: [],
-        extendedUnverifiedPaths: [],
-        extendedCorrectedPaths: [],
-      },
-    };
-    
-    return convertedState;
-  }, [workflowState, workflowStatus]);
-  
-  const isRunning = WorkflowUtils.isRunning(effectiveWorkflowState.status);
-  const isPaused = effectiveWorkflowState.status === WORKFLOW_STATUSES.PAUSED;
+  const isRunning = WorkflowUtils.isRunning(workflowState.status);
+  const isPaused = workflowState.status === WORKFLOW_STATUSES.PAUSED;
   const canCancel = (isRunning || isPaused) && onCancel;
-  const canRetry = (effectiveWorkflowState.status === WORKFLOW_STATUSES.FAILED || effectiveWorkflowState.status === WORKFLOW_STATUSES.CANCELED) && onRetry;
+  const canRetry = (workflowState.status === WORKFLOW_STATUSES.FAILED || workflowState.status === WORKFLOW_STATUSES.CANCELED) && onRetry;
   const canPause = isRunning && onPause;
   const canResume = isPaused && onResume;
 
@@ -176,19 +60,19 @@ export function WorkflowVisualizer({
         <div className="flex items-center justify-between">
           <CardTitle className="text-lg">
             <div className="flex items-center gap-2">
-              <WorkflowStatusIcon status={effectiveWorkflowState.status} />
+              <WorkflowStatusIcon status={workflowState.status} />
               Workflow Progress
             </div>
           </CardTitle>
           <div className="flex items-center gap-2">
-            {showTiming && effectiveWorkflowState.totalExecutionTimeMs && (
+            {showTiming && workflowState.totalExecutionTimeMs && (
               <Badge variant="outline" className="text-xs">
                 <Clock className="w-3 h-3 mr-1" />
-                {WorkflowUtils.formatExecutionTime(effectiveWorkflowState.totalExecutionTimeMs)}
+                {WorkflowUtils.formatExecutionTime(workflowState.totalExecutionTimeMs)}
               </Badge>
             )}
-            <Badge variant={getStatusBadgeVariant(effectiveWorkflowState.status)}>
-              {effectiveWorkflowState.status}
+            <Badge variant={getStatusBadgeVariant(workflowState.status)}>
+              {workflowState.status}
             </Badge>
           </div>
         </div>
@@ -199,30 +83,30 @@ export function WorkflowVisualizer({
         <div className="space-y-2">
           <div className="flex justify-between text-sm">
             <span className="font-medium">Overall Progress</span>
-            <span>{effectiveWorkflowState.progressPercentage.toFixed(0)}%</span>
+            <span>{workflowState.progressPercentage.toFixed(0)}%</span>
           </div>
-          <Progress value={effectiveWorkflowState.progressPercentage} className="h-2" />
+          <Progress value={workflowState.progressPercentage} className="h-2" />
         </div>
 
         {/* Current Stage */}
-        {effectiveWorkflowState.currentStage && (
+        {workflowState.currentStage && (
           <div className="bg-gray-50 dark:bg-gray-900 rounded-lg p-3">
             <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
-              Current Stage: {WorkflowUtils.getStageName(effectiveWorkflowState.currentStage)}
+              Current Stage: {WorkflowUtils.getStageName(workflowState.currentStage)}
             </div>
             <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
-              {WorkflowUtils.getStageDescription(effectiveWorkflowState.currentStage)}
+              {WorkflowUtils.getStageDescription(workflowState.currentStage)}
             </div>
           </div>
         )}
 
         {/* Error Message */}
-        {effectiveWorkflowState.errorMessage && (
+        {workflowState.errorMessage && (
           <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3">
             <div className="flex items-start gap-2">
               <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
               <div className="text-sm text-red-800 dark:text-red-200">
-                {effectiveWorkflowState.errorMessage}
+                {workflowState.errorMessage}
               </div>
             </div>
           </div>
@@ -233,7 +117,7 @@ export function WorkflowVisualizer({
           <Collapsible>
             <CollapsibleTrigger asChild>
               <Button variant="ghost" size="sm" className="w-full justify-between">
-                Stage Details ({effectiveWorkflowState.stageJobs.length} stages)
+                Stage Details ({workflowState.stageJobs.length} stages)
                 <svg
                   className="w-4 h-4 transition-transform group-data-[state=open]:rotate-180"
                   fill="none"
@@ -245,7 +129,7 @@ export function WorkflowVisualizer({
               </Button>
             </CollapsibleTrigger>
             <CollapsibleContent className="space-y-2 mt-2">
-              {effectiveWorkflowState.stageJobs.map((stageJob) => {
+              {workflowState.stageJobs.map((stageJob) => {
                 return (
                   <StageJobCard
                     key={stageJob.stage}
@@ -258,7 +142,7 @@ export function WorkflowVisualizer({
                     cancelingStage={cancelingStage}
                     setRetryingStage={setRetryingStage}
                     setCancelingStage={setCancelingStage}
-                    workflowId={effectiveWorkflowState.workflowId}
+                    workflowId={workflowState.workflowId}
                   />
                 );
               })}
@@ -488,7 +372,7 @@ function StageJobCard({
               {errorInfo.workflowContext?.stageName && (
                 <span>Failed at stage: {(() => {
                   // Use WorkflowUtils to get consistent stage display names
-                  const stageEnum = WorkflowUtils.mapStageNameToEnum(errorInfo.workflowContext.stageName);
+                  const stageEnum = WorkflowUtils.mapTaskTypeToEnum(errorInfo.workflowContext.stageName);
                   return stageEnum ? WorkflowUtils.getStageName(stageEnum) : errorInfo.workflowContext.stageName;
                 })()}</span>
               )}

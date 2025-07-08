@@ -72,7 +72,7 @@ pub async fn build_unified_prompt(
     
     let context = UnifiedPromptContextBuilder::new(
         project_directory,
-        job.job_type,
+        job.task_type,
         task_description,
     )
     .file_contents(file_contents)

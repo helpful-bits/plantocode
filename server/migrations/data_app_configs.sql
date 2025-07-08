@@ -2,18 +2,10 @@ INSERT INTO application_configurations (config_key, config_value, description)
 VALUES (
   'ai_settings',
   '{
-    "path_finder_settings": {
-      "max_files_with_content": 10,
-      "include_file_contents": true,
-      "max_content_size_per_file": 5000,
-      "max_file_count": 50,
-      "file_content_truncation_chars": 2000,
-      "token_limit_buffer": 1000
-    },
     "tasks": {
       "implementation_plan": {
         "model": "google/gemini-2.5-pro",
-        "allowed_models": ["openai/o3", "openai/o4-mini", "openai/o4-mini-high", "openai/o4-mini-high:web", "deepseek/deepseek-r1-0528", "google/gemini-2.5-pro", "openai/o3:web"],
+        "allowed_models": ["openai/o3", "openai/o4-mini", "deepseek/deepseek-r1-0528", "google/gemini-2.5-pro"],
         "max_tokens": 23000,
         "temperature": 0.7,
         "copy_buttons": [
@@ -26,6 +18,12 @@ VALUES (
             "content": "Investigate the results of the work of each of the agents, and be sure that we have implemented the plan CORRECTLY!"
           }
         ]
+      },
+      "implementation_plan_merge": {
+        "model": "google/gemini-2.5-pro",
+        "allowed_models": ["google/gemini-2.5-flash", "google/gemini-2.5-flash", "openai/o4-mini"],
+        "max_tokens": 35000,
+        "temperature": 0.35
       },
       "text_improvement": {
         "model": "anthropic/claude-sonnet-4-20250514",
@@ -74,20 +72,39 @@ VALUES (
         "max_tokens": 2048,
         "temperature": 0.3
       },
-      "web_search_query_generation": {
+      "web_search_prompts_generation": {
         "model": "google/gemini-2.5-flash",
         "allowed_models": ["google/gemini-2.5-flash", "openai/o4-mini"],
-        "max_tokens": 2000,
-        "temperature": 0.3
+        "max_tokens": 30000,
+        "temperature": 0.35
       },
       "web_search_execution": {
-        "model": "openai/o4-mini:web",
-        "allowed_models": ["openai/o3:web", "openai/o4-mini:web", "openai/o4-mini-high:web"],
+        "model": "openai/o4-mini",
+        "allowed_models": ["openai/o3", "openai/o4-mini"],
         "max_tokens": 4000,
         "temperature": 0.3
+      },
+      "generic_llm_stream": {
+        "model": "anthropic/claude-sonnet-4-20250514",
+        "allowed_models": ["anthropic/claude-sonnet-4-20250514", "google/gemini-2.5-flash", "openai/o4-mini"],
+        "max_tokens": 8192,
+        "temperature": 0.7
+      },
+      "streaming": {
+        "model": "anthropic/claude-sonnet-4-20250514",
+        "allowed_models": ["anthropic/claude-sonnet-4-20250514", "google/gemini-2.5-flash"],
+        "max_tokens": 4096,
+        "temperature": 0.7
+      },
+      "unknown": {
+        "model": "google/gemini-2.5-flash",
+        "allowed_models": ["google/gemini-2.5-flash", "anthropic/claude-sonnet-4-20250514"],
+        "max_tokens": 2048,
+        "temperature": 0.5
       }
-    }
-  }'::jsonb,
+    },
+    "max_concurrent_jobs": 20
+}'::jsonb,
   'Task-driven AI settings with no global default models - complete original data preserved'
 )
 ON CONFLICT (config_key) DO UPDATE SET

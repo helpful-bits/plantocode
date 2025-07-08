@@ -12,7 +12,6 @@ import {
 
 import { type TaskDescriptionHandle } from "../_components/task-description";
 import { useGenerateFormState } from "../_hooks/use-generate-form-state";
-import { useGeneratePromptDisplayState } from "../_hooks/use-generate-prompt-display-state";
 import { useGeneratePromptTaskState } from "../_hooks/use-generate-prompt-task-state";
 import { useGeneratePromptPlanState } from "../_hooks/use-generate-prompt-plan-state";
 import { generateDirectoryTreeAction } from "@/actions/file-system/directory-tree.actions";
@@ -21,11 +20,9 @@ import { type PromptTokenEstimateResponse as TokenEstimate } from "@/types/tauri
 
 // Import the granular context providers
 import { type CorePromptContextValue } from "./_types/generate-prompt-core-types";
-import { type DisplayContextValue } from "./_types/generated-prompt-display-types";
 import { type PlanContextValue } from "./_types/implementation-plan-types";
 import { type TaskContextValue } from "./_types/task-description-types";
 import { CorePromptContextProvider } from "./core-prompt-context";
-import { DisplayContextProvider } from "./display-context";
 import { PlanContextProvider } from "./plan-context";
 import { TaskContextProvider } from "./task-context";
 
@@ -66,7 +63,6 @@ export function GeneratePromptFeatureProvider({
 
   // Use self-contained hooks that access session context directly
   const taskState = useGeneratePromptTaskState({ taskDescriptionRef });
-  const displayState = useGeneratePromptDisplayState();
   const planState = useGeneratePromptPlanState();
 
   // Complete state reset function
@@ -265,6 +261,7 @@ export function GeneratePromptFeatureProvider({
         tokenEstimate: tokenEstimate,
         canUndo: taskState.canUndo,
         canRedo: taskState.canRedo,
+        webSearchResults: taskState.webSearchResults,
       },
       actions: {
         // Task description actions
@@ -274,6 +271,7 @@ export function GeneratePromptFeatureProvider({
         reset: taskState.resetTaskState,
         undo: taskState.undo,
         redo: taskState.redo,
+        applyWebSearchResults: taskState.applyWebSearchResults,
       },
     }),
     [
@@ -285,26 +283,6 @@ export function GeneratePromptFeatureProvider({
   );
 
 
-  const displayContextValue = useMemo<DisplayContextValue>(
-    () => ({
-      state: {
-        // Generated prompt state
-        prompt: displayState.prompt,
-        tokenCount: displayState.tokenCount,
-        copySuccess: displayState.copySuccess,
-        showPrompt: displayState.showPrompt,
-      },
-      actions: {
-        // Generated prompt display actions
-        setShowPrompt: displayState.setShowPrompt,
-        copyPrompt: displayState.copyPrompt,
-      },
-    }),
-    [
-      // The displayState object is already memoized from the hook
-      displayState,
-    ]
-  );
 
   const planContextValue = useMemo<PlanContextValue>(
     () => ({
@@ -328,13 +306,11 @@ export function GeneratePromptFeatureProvider({
   return (
     <CorePromptContextProvider value={coreContextValue}>
       <TaskContextProvider value={taskContextValue}>
-        <DisplayContextProvider value={displayContextValue}>
-          <PlanContextProvider value={planContextValue}>
-            <TooltipProvider>
-              {children}
-            </TooltipProvider>
-          </PlanContextProvider>
-        </DisplayContextProvider>
+        <PlanContextProvider value={planContextValue}>
+          <TooltipProvider>
+            {children}
+          </TooltipProvider>
+        </PlanContextProvider>
       </TaskContextProvider>
     </CorePromptContextProvider>
   );

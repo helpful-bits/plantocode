@@ -92,7 +92,7 @@ pub(super) fn get_dependency_job_for_data_extraction(
     use crate::models::TaskType;
     use crate::jobs::workflow_types::WorkflowStage;
     
-    workflow_state.stage_jobs.iter()
+    workflow_state.stages.iter()
         .find(|job| {
             job.task_type == dependency_task_type && job.status == JobStatus::Completed
         })
@@ -108,7 +108,7 @@ pub(super) fn get_latest_job_for_stage(
     use crate::models::TaskType;
     use crate::jobs::workflow_types::WorkflowStage;
     
-    workflow_state.stage_jobs.iter()
+    workflow_state.stages.iter()
         .filter(|job| {
             job.task_type == dependency_task_type && 
             (job.status == JobStatus::Completed || 

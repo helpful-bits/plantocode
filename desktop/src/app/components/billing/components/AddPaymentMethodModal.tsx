@@ -10,7 +10,7 @@ import {
   DialogTitle,
 } from "@/ui/dialog";
 import { Button } from "@/ui/button";
-import { createSetupCheckoutSession } from "@/actions/billing/checkout.actions";
+import { createSetupCheckoutSession } from "@/actions/billing";
 import { PaymentPollingScreen } from "./PaymentPollingScreen";
 import { getErrorMessage } from "@/utils/error-handling";
 import { useNotification } from "@/contexts/notification-context";

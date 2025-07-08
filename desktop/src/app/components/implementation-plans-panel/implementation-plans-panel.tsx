@@ -34,10 +34,12 @@ import { estimatePromptTokensAction } from "@/actions/ai/prompt.actions";
 import ImplementationPlanCard from "./_components/ImplementationPlanCard";
 import PlanContentModal from "./_components/PlanContentModal";
 import PromptCopyModal from "./_components/PromptCopyModal";
+import { MergePlansSection } from "./_components/MergePlansSection";
 import { useImplementationPlansLogic } from "./_hooks/useImplementationPlansLogic";
 import { usePromptCopyModal } from "./_hooks/usePromptCopyModal";
 import { replacePlaceholders } from "@/utils/placeholder-utils";
 import { getContentForStep } from "./_utils/plan-content-parser";
+import { normalizeJobResponse } from '@/utils/response-utils';
 
 interface ImplementationPlansPanelProps {
   sessionId: string | null;
@@ -65,12 +67,18 @@ export function ImplementationPlansPanel({
     jobForModal,
     jobToDelete,
     isDeleting,
+    selectedPlanIds,
+    mergeInstructions,
+    isMerging,
 
     handleDeletePlan,
     handleViewPlanDetails,
     handleClosePlanDetails,
     setJobToDelete,
     refreshJobs,
+    handleTogglePlanSelection,
+    setMergeInstructions,
+    handleMergePlans,
   } = useImplementationPlansLogic({ sessionId });
 
   // State for plan content modal - now only stores the jobId
@@ -171,8 +179,8 @@ export function ImplementationPlansPanel({
     try {
       const fullPlan = plan.response || '';
       const data = {
-        IMPLEMENTATION_PLAN: fullPlan,
-        STEP_CONTENT: selectedStepNumber ? getContentForStep(fullPlan, selectedStepNumber) : ''
+        IMPLEMENTATION_PLAN: normalizeJobResponse(fullPlan).content,
+        STEP_CONTENT: selectedStepNumber ? getContentForStep(normalizeJobResponse(fullPlan).content, selectedStepNumber) : ''
       };
       const processedContent = replacePlaceholders(buttonConfig.content, data);
       
@@ -286,6 +294,12 @@ export function ImplementationPlansPanel({
       });
     }
   }, [onCreatePlan, canCreatePlan, taskDescription, currentSession?.taskDescription, includedPaths, showNotification]);
+
+  // Memoized callback for clearing selection
+  const handleClearSelection = useCallback(() => {
+    setMergeInstructions("");
+    selectedPlanIds.forEach(id => handleTogglePlanSelection(id));
+  }, [selectedPlanIds, handleTogglePlanSelection, setMergeInstructions]);
 
   const handleModelSelect = useCallback(async (modelId: string) => {
     if (!projectDirectory) return;
@@ -453,6 +467,18 @@ export function ImplementationPlansPanel({
       )}
 
 
+      {/* Merge Plans Section */}
+      {selectedPlanIds.length > 0 && (
+        <MergePlansSection
+          selectedCount={selectedPlanIds.length}
+          mergeInstructions={mergeInstructions}
+          isMerging={isMerging}
+          onMergeInstructionsChange={setMergeInstructions}
+          onMerge={handleMergePlans}
+          onClearSelection={handleClearSelection}
+        />
+      )}
+
       {/* Implementation Plans List */}
       {implementationPlans.length > 0 && (
         <ScrollArea className="h-[calc(100vh-300px)] pr-4">
@@ -463,10 +489,15 @@ export function ImplementationPlansPanel({
                 plan={plan}
                 onViewContent={handleViewPlanContent}
                 onViewDetails={handleViewPlanDetails}
-                onDelete={(jobId) => setJobToDelete(jobId)}
+                onDelete={(jobId) => {
+                  const planToDelete = implementationPlans.find(p => p.id === jobId);
+                  if (planToDelete) setJobToDelete(planToDelete);
+                }}
                 isDeleting={isDeleting[plan.id] || false}
                 copyButtons={implementationPlanSettings || []}
                 onCopyButtonClick={(buttonConfig) => handleCopyButtonClick(buttonConfig, plan)}
+                isSelected={selectedPlanIds.includes(plan.id)}
+                onToggleSelection={handleTogglePlanSelection}
               />
             ))}
           </div>
@@ -532,7 +563,7 @@ export function ImplementationPlansPanel({
             <Button
               variant="destructive"
               isLoading={Object.values(isDeleting).some(Boolean)}
-              onClick={() => jobToDelete && handleDeletePlan(jobToDelete)}
+              onClick={handleDeletePlan}
             >
               Delete
             </Button>

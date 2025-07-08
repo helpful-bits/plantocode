@@ -5,6 +5,7 @@ use crate::models::TaskType;
 
 /// Workflow execution status
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub enum WorkflowStatus {
     Created,
     Running,
@@ -22,13 +23,13 @@ impl Default for WorkflowStatus {
 
 /// Workflow stage enumeration
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Hash, Eq)]
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+#[serde(rename_all = "snake_case")]
 pub enum WorkflowStage {
     RegexFileFilter,
     FileRelevanceAssessment,
     ExtendedPathFinder,
     PathCorrection,
-    WebSearchQueryGeneration,
+    WebSearchPromptsGeneration,
     WebSearchExecution,
 }
 
@@ -45,8 +46,8 @@ impl WorkflowStage {
             WorkflowStage::RegexFileFilter => Some(WorkflowStage::FileRelevanceAssessment),
             WorkflowStage::FileRelevanceAssessment => Some(WorkflowStage::ExtendedPathFinder),
             WorkflowStage::ExtendedPathFinder => Some(WorkflowStage::PathCorrection),
-            WorkflowStage::PathCorrection => Some(WorkflowStage::WebSearchQueryGeneration),
-            WorkflowStage::WebSearchQueryGeneration => Some(WorkflowStage::WebSearchExecution),
+            WorkflowStage::PathCorrection => Some(WorkflowStage::WebSearchPromptsGeneration),
+            WorkflowStage::WebSearchPromptsGeneration => Some(WorkflowStage::WebSearchExecution),
             WorkflowStage::WebSearchExecution => None,
         }
     }
@@ -58,8 +59,8 @@ impl WorkflowStage {
             WorkflowStage::FileRelevanceAssessment => Some(WorkflowStage::RegexFileFilter),
             WorkflowStage::ExtendedPathFinder => Some(WorkflowStage::FileRelevanceAssessment),
             WorkflowStage::PathCorrection => Some(WorkflowStage::ExtendedPathFinder),
-            WorkflowStage::WebSearchQueryGeneration => Some(WorkflowStage::PathCorrection),
-            WorkflowStage::WebSearchExecution => Some(WorkflowStage::WebSearchQueryGeneration),
+            WorkflowStage::WebSearchPromptsGeneration => Some(WorkflowStage::PathCorrection),
+            WorkflowStage::WebSearchExecution => Some(WorkflowStage::WebSearchPromptsGeneration),
         }
     }
 
@@ -70,7 +71,7 @@ impl WorkflowStage {
             WorkflowStage::FileRelevanceAssessment => 1,
             WorkflowStage::ExtendedPathFinder => 2,
             WorkflowStage::PathCorrection => 3,
-            WorkflowStage::WebSearchQueryGeneration => 4,
+            WorkflowStage::WebSearchPromptsGeneration => 4,
             WorkflowStage::WebSearchExecution => 5,
         }
     }
@@ -82,7 +83,7 @@ impl WorkflowStage {
             WorkflowStage::FileRelevanceAssessment => "AI File Relevance Assessment",
             WorkflowStage::ExtendedPathFinder => "Extended Path Finding",
             WorkflowStage::PathCorrection => "Path Correction",
-            WorkflowStage::WebSearchQueryGeneration => "Web Search Query Generation",
+            WorkflowStage::WebSearchPromptsGeneration => "Web Search Prompts Generation",
             WorkflowStage::WebSearchExecution => "Web Search Execution",
         }
     }
@@ -98,8 +99,8 @@ impl WorkflowStage {
             "ExtendedPathFinder" => Some(WorkflowStage::ExtendedPathFinder), // Handle enum variant name
             "Path Correction" => Some(WorkflowStage::PathCorrection),
             "PathCorrection" => Some(WorkflowStage::PathCorrection), // Handle enum variant name
-            "Web Search Query Generation" => Some(WorkflowStage::WebSearchQueryGeneration),
-            "WebSearchQueryGeneration" => Some(WorkflowStage::WebSearchQueryGeneration), // Handle enum variant name
+            "Web Search Prompts Generation" => Some(WorkflowStage::WebSearchPromptsGeneration),
+            "WebSearchPromptsGeneration" => Some(WorkflowStage::WebSearchPromptsGeneration), // Handle enum variant name
             "Web Search Execution" => Some(WorkflowStage::WebSearchExecution),
             "WebSearchExecution" => Some(WorkflowStage::WebSearchExecution), // Handle enum variant name
             _ => None,
@@ -113,7 +114,7 @@ impl WorkflowStage {
             TaskType::FileRelevanceAssessment => Some(WorkflowStage::FileRelevanceAssessment),
             TaskType::ExtendedPathFinder => Some(WorkflowStage::ExtendedPathFinder),
             TaskType::PathCorrection => Some(WorkflowStage::PathCorrection),
-            TaskType::WebSearchQueryGeneration => Some(WorkflowStage::WebSearchQueryGeneration),
+            TaskType::WebSearchPromptsGeneration => Some(WorkflowStage::WebSearchPromptsGeneration),
             TaskType::WebSearchExecution => Some(WorkflowStage::WebSearchExecution),
             _ => None,
         }
@@ -124,42 +125,44 @@ impl WorkflowStage {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkflowStageJob {
-    pub stage_name: String,
+    pub name: String,
     pub task_type: TaskType,
     pub job_id: String,
     pub status: JobStatus,
-    pub depends_on: Option<String>, // Job ID this stage depends on
+    pub dependency_job_id: Option<String>, // Job ID this stage depends on
     pub created_at: i64,
     pub started_at: Option<i64>,
     pub completed_at: Option<i64>,
     pub error_message: Option<String>,
     pub sub_status_message: Option<String>, // Detailed stage progress message
+    pub actual_cost: Option<f64>,
 }
 
 impl WorkflowStageJob {
     pub fn new(stage_name: String, task_type: TaskType, job_id: String, depends_on: Option<String>) -> Self {
         let now = chrono::Utc::now().timestamp_millis();
         Self {
-            stage_name,
+            name: stage_name,
             task_type,
             job_id,
             status: JobStatus::Queued,
-            depends_on,
+            dependency_job_id: depends_on,
             created_at: now,
             started_at: None,
             completed_at: None,
             error_message: None,
             sub_status_message: None,
+            actual_cost: None,
         }
     }
 
     /// Check if this stage can be executed (dependencies completed)
     pub fn can_execute(&self, workflow_state: &WorkflowState) -> bool {
-        match &self.depends_on {
+        match &self.dependency_job_id {
             None => true, // No dependencies, can execute
             Some(dep_job_id) => {
                 // Find the dependency job and check if it's completed
-                workflow_state.stage_jobs.iter()
+                workflow_state.stages.iter()
                     .find(|job| &job.job_id == dep_job_id)
                     .map(|job| job.status == JobStatus::Completed)
                     .unwrap_or(false)
@@ -176,7 +179,7 @@ pub struct WorkflowState {
     pub workflow_definition_name: String,
     pub session_id: String,
     pub status: WorkflowStatus,
-    pub stage_jobs: Vec<WorkflowStageJob>,
+    pub stages: Vec<WorkflowStageJob>,
     pub created_at: i64,
     pub updated_at: i64,
     pub completed_at: Option<i64>,
@@ -188,6 +191,7 @@ pub struct WorkflowState {
     pub intermediate_data: WorkflowIntermediateData,
     /// Overall error message if workflow failed
     pub error_message: Option<String>,
+    pub total_actual_cost: Option<f64>,
 }
 
 impl WorkflowState {
@@ -206,7 +210,7 @@ impl WorkflowState {
             workflow_definition_name,
             session_id,
             status: WorkflowStatus::Created,
-            stage_jobs: Vec::new(),
+            stages: Vec::new(),
             created_at: now,
             updated_at: now,
             completed_at: None,
@@ -216,6 +220,7 @@ impl WorkflowState {
             timeout_ms,
             intermediate_data: WorkflowIntermediateData::default(),
             error_message: None,
+            total_actual_cost: None,
         }
     }
 
@@ -223,12 +228,12 @@ impl WorkflowState {
     /// NOTE: This method only considers created stage jobs, which may be misleading
     /// Use calculate_progress_with_definition() for accurate progress calculation
     pub fn calculate_progress(&self) -> f32 {
-        if self.stage_jobs.is_empty() {
+        if self.stages.is_empty() {
             return 0.0;
         }
 
-        let total_stages = self.stage_jobs.len() as f32;
-        let completed_stages = self.stage_jobs.iter()
+        let total_stages = self.stages.len() as f32;
+        let completed_stages = self.stages.iter()
             .filter(|job| job.status == JobStatus::Completed)
             .count() as f32;
 
@@ -242,7 +247,7 @@ impl WorkflowState {
             return 100.0; // Empty workflow is considered complete
         }
 
-        let completed_stages = self.stage_jobs.iter()
+        let completed_stages = self.stages.iter()
             .filter(|job| job.status == JobStatus::Completed)
             .count() as f32;
 
@@ -252,26 +257,26 @@ impl WorkflowState {
     /// Get current active stage (running or next to run)
     pub fn current_stage(&self) -> Option<&WorkflowStageJob> {
         // First, look for any running stage
-        if let Some(running_stage) = self.stage_jobs.iter().find(|job| job.status == JobStatus::Running) {
+        if let Some(running_stage) = self.stages.iter().find(|job| job.status == JobStatus::Running) {
             return Some(running_stage);
         }
 
         // If no running stage, find the next stage that can be executed
-        self.stage_jobs.iter()
+        self.stages.iter()
             .filter(|job| job.status == JobStatus::Queued && job.can_execute(self))
             .next() // Remove stage_index dependency for now, TODO: implement proper ordering
     }
 
     /// Get all completed stages
     pub fn completed_stages(&self) -> Vec<&WorkflowStageJob> {
-        self.stage_jobs.iter()
+        self.stages.iter()
             .filter(|job| job.status == JobStatus::Completed)
             .collect()
     }
 
     /// Get all failed stages
     pub fn failed_stages(&self) -> Vec<&WorkflowStageJob> {
-        self.stage_jobs.iter()
+        self.stages.iter()
             .filter(|job| job.status == JobStatus::Failed)
             .collect()
     }
@@ -280,18 +285,18 @@ impl WorkflowState {
     pub fn is_completed(&self) -> bool {
         // For now, check if all stage jobs are completed
         // TODO: This should be updated to work with workflow definitions
-        !self.stage_jobs.is_empty() && 
-        self.stage_jobs.iter().all(|job| job.status == JobStatus::Completed)
+        !self.stages.is_empty() && 
+        self.stages.iter().all(|job| job.status == JobStatus::Completed)
     }
 
     /// Check if any stage has failed
     pub fn has_failed(&self) -> bool {
-        self.stage_jobs.iter().any(|job| job.status == JobStatus::Failed)
+        self.stages.iter().any(|job| job.status == JobStatus::Failed)
     }
 
     /// Check if any stage has been cancelled
     pub fn has_cancelled(&self) -> bool {
-        self.stage_jobs.iter().any(|job| job.status == JobStatus::Canceled)
+        self.stages.iter().any(|job| job.status == JobStatus::Canceled)
     }
 
     /// Check if workflow should stop (failed or cancelled)
@@ -301,7 +306,7 @@ impl WorkflowState {
 
     /// Update stage job status
     pub fn update_stage_job(&mut self, job_id: &str, status: JobStatus, error_message: Option<String>) {
-        if let Some(stage_job) = self.stage_jobs.iter_mut().find(|job| job.job_id == job_id) {
+        if let Some(stage_job) = self.stages.iter_mut().find(|job| job.job_id == job_id) {
             let now = chrono::Utc::now().timestamp_millis();
             
             match status {
@@ -322,7 +327,7 @@ impl WorkflowState {
 
     /// Update stage job status with sub-status message
     pub fn update_stage_job_with_sub_status(&mut self, job_id: &str, status: JobStatus, error_message: Option<String>, sub_status_message: Option<String>) {
-        if let Some(stage_job) = self.stage_jobs.iter_mut().find(|job| job.job_id == job_id) {
+        if let Some(stage_job) = self.stages.iter_mut().find(|job| job.job_id == job_id) {
             let now = chrono::Utc::now().timestamp_millis();
             
             match status {
@@ -345,18 +350,18 @@ impl WorkflowState {
     /// Add a stage job to the workflow
     pub fn add_stage_job(&mut self, stage_name: String, task_type: TaskType, job_id: String, depends_on: Option<String>) {
         let stage_job = WorkflowStageJob::new(stage_name, task_type, job_id, depends_on);
-        self.stage_jobs.push(stage_job);
+        self.stages.push(stage_job);
         self.updated_at = chrono::Utc::now().timestamp_millis();
     }
 
     /// Get stage job by job ID
     pub fn get_stage_job(&self, job_id: &str) -> Option<&WorkflowStageJob> {
-        self.stage_jobs.iter().find(|job| job.job_id == job_id)
+        self.stages.iter().find(|job| job.job_id == job_id)
     }
 
     /// Get stage job by stage name
     pub fn get_stage_job_by_name(&self, stage_name: &str) -> Option<&WorkflowStageJob> {
-        self.stage_jobs.iter().find(|job| job.stage_name == stage_name)
+        self.stages.iter().find(|job| job.name == stage_name)
     }
 }
 
@@ -372,8 +377,8 @@ pub struct WorkflowIntermediateData {
     pub extended_verified_paths: Vec<String>,
     pub extended_unverified_paths: Vec<String>,
     pub extended_corrected_paths: Vec<String>,
-    pub web_search_prompt: Option<String>,
-    pub web_search_results: Option<String>,
+    pub web_search_prompts: Vec<String>,
+    pub web_search_results: Vec<String>,
 }
 
 impl Default for WorkflowIntermediateData {
@@ -393,8 +398,8 @@ impl WorkflowIntermediateData {
             extended_verified_paths: Vec::new(),
             extended_unverified_paths: Vec::new(),
             extended_corrected_paths: Vec::new(),
-            web_search_prompt: None,
-            web_search_results: None,
+            web_search_prompts: Vec::new(),
+            web_search_results: Vec::new(),
         }
     }
 
@@ -445,15 +450,15 @@ pub struct WorkflowStageEvent {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkflowResult {
-    pub success: bool,
     pub workflow_id: String,
-    pub selected_files: Vec<String>,
+    pub final_paths: Vec<String>,
     pub intermediate_data: WorkflowIntermediateData,
     pub error_message: Option<String>,
     pub total_stages: usize,
     pub completed_stages: usize,
     pub failed_stages: usize,
     pub total_duration_ms: Option<i64>,
+    pub total_actual_cost: Option<f64>,
 }
 
 /// Result of workflow cancellation operation
@@ -475,8 +480,8 @@ pub struct FailedCancellation {
 
 impl WorkflowResult {
     pub fn from_workflow_state(workflow_state: &WorkflowState) -> Self {
-        let selected_files = workflow_state.intermediate_data.get_final_selected_files();
-        let total_stages = workflow_state.stage_jobs.len();
+        let final_paths = workflow_state.intermediate_data.get_final_selected_files();
+        let total_stages = workflow_state.stages.len();
         let completed_stages = workflow_state.completed_stages().len();
         let failed_stages = workflow_state.failed_stages().len();
         
@@ -484,15 +489,15 @@ impl WorkflowResult {
             .map(|completed| completed - workflow_state.created_at);
 
         Self {
-            success: workflow_state.status == WorkflowStatus::Completed,
             workflow_id: workflow_state.workflow_id.clone(),
-            selected_files,
+            final_paths,
             intermediate_data: workflow_state.intermediate_data.clone(),
             error_message: workflow_state.error_message.clone(),
             total_stages,
             completed_stages,
             failed_stages,
             total_duration_ms,
+            total_actual_cost: workflow_state.total_actual_cost,
         }
     }
 }
@@ -571,6 +576,7 @@ pub struct WorkflowErrorResponse {
 
 /// Defines the structure and dependencies of a complete workflow
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct WorkflowDefinition {
     /// Unique name for the workflow
     pub name: String,
@@ -580,6 +586,7 @@ pub struct WorkflowDefinition {
 
 /// Defines a single stage within a workflow
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct WorkflowStageDefinition {
     /// Unique name for this stage within the workflow
     pub stage_name: String,
@@ -589,12 +596,11 @@ pub struct WorkflowStageDefinition {
     pub processor_name: Option<String>,
     /// Names of prerequisite stages that must complete before this stage can run
     pub dependencies: Vec<String>,
-    /// Whether this stage can run in parallel with other eligible stages
-    pub allow_parallel_execution: bool,
 }
 
 /// Current state of an abstract workflow execution
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AbstractWorkflowState {
     /// Unique identifier for this workflow execution
     pub workflow_id: String,
@@ -697,35 +703,12 @@ impl WorkflowStageDefinition {
             task_type,
             processor_name,
             dependencies,
-            allow_parallel_execution: false,
-        }
-    }
-
-    /// Create a new stage definition with parallel execution option
-    pub fn new_with_parallel(
-        stage_name: String,
-        task_type: TaskType,
-        processor_name: Option<String>,
-        dependencies: Vec<String>,
-        allow_parallel_execution: bool,
-    ) -> Self {
-        Self {
-            stage_name,
-            task_type,
-            processor_name,
-            dependencies,
-            allow_parallel_execution,
         }
     }
 
     /// Create a stage with no dependencies
     pub fn entry_stage(stage_name: String, task_type: TaskType) -> Self {
         Self::new(stage_name, task_type, None, vec![])
-    }
-
-    /// Create a stage with no dependencies that allows parallel execution
-    pub fn entry_stage_parallel(stage_name: String, task_type: TaskType) -> Self {
-        Self::new_with_parallel(stage_name, task_type, None, vec![], true)
     }
 
     /// Create a stage that depends on another stage
@@ -735,15 +718,6 @@ impl WorkflowStageDefinition {
         dependencies: Vec<String>,
     ) -> Self {
         Self::new(stage_name, task_type, None, dependencies)
-    }
-
-    /// Create a stage that depends on another stage and allows parallel execution
-    pub fn dependent_stage_parallel(
-        stage_name: String,
-        task_type: TaskType,
-        dependencies: Vec<String>,
-    ) -> Self {
-        Self::new_with_parallel(stage_name, task_type, None, dependencies, true)
     }
 }
 

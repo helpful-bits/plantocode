@@ -21,13 +21,8 @@ export function JobDetailsErrorSection() {
     parsedMetadata?.billingError === true ||
     parsedMetadata?.payment_required === true;
     
-  // Check for billing errors in string content
-  const isStringMatchBillingError = typeof job.errorMessage === 'string' && (
-    job.errorMessage.toLowerCase().includes('billing') ||
-    job.errorMessage.toLowerCase().includes('credits') ||
-    job.errorMessage.toLowerCase().includes('upgrade required') ||
-    job.errorMessage.toLowerCase().includes('payment required')
-  );
+  // Check for billing errors in string content - only match specific billing error patterns
+  const isStringMatchBillingError = false; // Disabled: Too broad, causes false positives
   
   // Prioritize structured error information from extractErrorInfo
   const isBillingError = errorInfo.type === ErrorType.PAYMENT_FAILED || 
@@ -93,7 +88,7 @@ export function JobDetailsErrorSection() {
     if (isValidationError) return "Invalid input or data was provided";
     if (isWorkflowError && workflowContext?.stageName) {
       // Use WorkflowUtils for consistent stage name mapping across all formats
-      const stageEnum = WorkflowUtils.mapStageNameToEnum(workflowContext.stageName);
+      const stageEnum = WorkflowUtils.mapTaskTypeToEnum(workflowContext.stageName);
       const stageDisplayName = stageEnum ? WorkflowUtils.getStageName(stageEnum) : workflowContext.stageName;
       return `Job failed during the "${stageDisplayName}" stage`;
     }
@@ -125,7 +120,7 @@ export function JobDetailsErrorSection() {
                 <div>Failed Stage: <span className="font-medium">
                   {(() => {
                     // Use WorkflowUtils for consistent stage name mapping across all formats
-                    const stageEnum = WorkflowUtils.mapStageNameToEnum(workflowContext.stageName);
+                    const stageEnum = WorkflowUtils.mapTaskTypeToEnum(workflowContext.stageName);
                     return stageEnum ? WorkflowUtils.getStageName(stageEnum) : workflowContext.stageName;
                   })()}
                 </span></div>

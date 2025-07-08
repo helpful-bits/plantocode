@@ -5,6 +5,7 @@ use std::collections::HashMap;
 
 use crate::error::{AppError, AppResult};
 use crate::models::{BackgroundJob, JobStatus, TaskType};
+use crate::jobs::workflow_types::{CancellationResult, ErrorRecoveryConfig, FailedCancellation, RecoveryStrategy, WorkflowErrorResponse, WorkflowStage};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -47,27 +48,6 @@ pub struct OpenRouterLlmPayload {
 }
 
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct InputPathFinderPayload {
-    pub session_id: String,
-    pub task_description: String,
-    pub model_override: Option<String>,
-    pub temperature_override: Option<f32>,
-    pub max_tokens_override: Option<u32>,
-    pub options: crate::jobs::processors::path_finder_types::PathFinderOptions,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PathFinderPayload {
-    pub task_description: String,
-    pub system_prompt: String,
-    pub directory_tree: Option<String>,
-    pub relevant_file_contents: std::collections::HashMap<String, String>,
-    pub estimated_input_tokens: Option<u32>,
-    pub options: crate::jobs::processors::path_finder_types::PathFinderOptions,
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -81,7 +61,7 @@ pub struct ImplementationPlanPayload {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PathCorrectionPayload {
-    pub paths_to_correct: String,
+    pub paths_to_correct: Vec<String>,
 }
 
 
@@ -132,16 +112,39 @@ pub struct FileRelevanceAssessmentPayload {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WebSearchQueryGenerationPayload {
+#[serde(rename_all = "camelCase")]
+pub struct WebSearchPromptsGenerationPayload {
     pub task_description: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct WebSearchExecutionPayload {
-    pub prompt: String,
+    pub prompts: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileFinderWorkflowPayload {
+    pub task_description: String,
+    pub session_id: String,
+    pub project_directory: String,
+    pub excluded_paths: Vec<String>,
+    pub timeout_ms: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WebSearchWorkflowPayload {
+    pub task_description: String,
+    pub session_id: String,
+    pub project_directory: String,
+    pub excluded_paths: Vec<String>,
+    pub timeout_ms: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct FileRelevanceAssessmentProcessingDetails {
     pub approach: String,
     pub total_files: usize,
@@ -160,6 +163,7 @@ pub struct FileRelevanceAssessmentProcessingDetails {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct FileRelevanceAssessmentQualityDetails {
     pub all_files_processed: bool,
     pub validated_results: bool,
@@ -188,6 +192,7 @@ pub struct PatternGroup {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct GroupResult {
     pub title: String,
     pub matched_files: Vec<String>,
@@ -195,19 +200,25 @@ pub struct GroupResult {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RegexFilterResult {
     pub filtered_files: Vec<String>,
     pub group_results: Option<Vec<GroupResult>>,
 }
 
-
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImplementationPlanMergePayload {
+    pub source_job_ids: Vec<String>,
+    pub merge_instructions: Option<String>,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", content = "data")]
 pub enum JobPayload {
     OpenRouterLlm(OpenRouterLlmPayload),
-    PathFinder(PathFinderPayload),
     ImplementationPlan(ImplementationPlanPayload),
+    ImplementationPlanMerge(ImplementationPlanMergePayload),
     PathCorrection(PathCorrectionPayload),
     TaskRefinement(TaskRefinementPayload),
     TextImprovement(TextImprovementPayload),
@@ -216,8 +227,11 @@ pub enum JobPayload {
     ExtendedPathFinder(ExtendedPathFinderPayload),
     RegexFileFilter(RegexFileFilterPayload),
     FileRelevanceAssessment(FileRelevanceAssessmentPayload),
-    WebSearchQueryGeneration(WebSearchQueryGenerationPayload),
+    WebSearchPromptsGeneration(WebSearchPromptsGenerationPayload),
     WebSearchExecution(WebSearchExecutionPayload),
+    // Workflow payloads
+    FileFinderWorkflow(FileFinderWorkflowPayload),
+    WebSearchWorkflow(WebSearchWorkflowPayload),
 }
 
 // Structured types for Implementation Plan parsing
@@ -248,22 +262,31 @@ pub struct StructuredImplementationPlan {
     pub steps: Vec<StructuredImplementationPlanStep>,
 }
 
+#[derive(Debug, Clone)]
+pub enum JobResultData {
+    Text(String),
+    Json(serde_json::Value),
+}
+
 // Result of a job process
 #[derive(Debug, Clone)]
 pub struct JobProcessResult {
     pub job_id: String,
     pub status: JobStatus,
-    pub response: Option<String>,
+    pub response: Option<JobResultData>,
     pub error: Option<String>,
-    pub tokens_sent: Option<i32>,
-    pub tokens_received: Option<i32>,
-    pub total_tokens: Option<i32>,
-    pub chars_received: Option<i32>,
+    pub tokens_sent: Option<u32>,
+    pub tokens_received: Option<u32>,
+    pub cache_write_tokens: Option<i64>,
+    pub cache_read_tokens: Option<i64>,
+    pub metadata: Option<serde_json::Value>,
+    pub system_prompt_template: Option<String>,
+    pub actual_cost: Option<f64>,
 }
 
 impl JobProcessResult {
     // Create a new successful result
-    pub fn success(job_id: String, response: String) -> Self {
+    pub fn success(job_id: String, response: JobResultData) -> Self {
         Self {
             job_id,
             status: JobStatus::Completed,
@@ -271,8 +294,11 @@ impl JobProcessResult {
             error: None,
             tokens_sent: None,
             tokens_received: None,
-            total_tokens: None,
-            chars_received: None,
+            cache_write_tokens: None,
+            cache_read_tokens: None,
+            metadata: None,
+            system_prompt_template: None,
+            actual_cost: None,
         }
     }
     
@@ -285,8 +311,28 @@ impl JobProcessResult {
             error: Some(error),
             tokens_sent: None,
             tokens_received: None,
-            total_tokens: None,
-            chars_received: None,
+            cache_write_tokens: None,
+            cache_read_tokens: None,
+            metadata: None,
+            system_prompt_template: None,
+            actual_cost: None,
+        }
+    }
+    
+    // Create a new successful result with metadata
+    pub fn success_with_metadata(job_id: String, response: JobResultData, metadata: serde_json::Value) -> Self {
+        Self {
+            job_id,
+            status: JobStatus::Completed,
+            response: Some(response),
+            error: None,
+            tokens_sent: None,
+            tokens_received: None,
+            cache_write_tokens: None,
+            cache_read_tokens: None,
+            metadata: Some(metadata),
+            system_prompt_template: None,
+            actual_cost: None,
         }
     }
     
@@ -299,23 +345,52 @@ impl JobProcessResult {
             error: Some(message),
             tokens_sent: None,
             tokens_received: None,
-            total_tokens: None,
-            chars_received: None,
+            cache_write_tokens: None,
+            cache_read_tokens: None,
+            metadata: None,
+            system_prompt_template: None,
+            actual_cost: None,
         }
     }
     
     // Set token usage information
+    /// Set token usage for this job result
+    /// 
+    /// TOKEN MAPPING CONVENTION:
+    /// - `tokens_sent` = input/prompt tokens (what was sent TO the model)
+    /// - `tokens_received` = output/completion tokens (what was received FROM the model)
+    /// 
+    /// This maps from ProviderUsage fields:
+    /// - `prompt_tokens` → `tokens_sent`
+    /// - `completion_tokens` → `tokens_received`
     pub fn with_tokens(
         mut self,
-        tokens_sent: Option<i32>,
-        tokens_received: Option<i32>,
-        total_tokens: Option<i32>,
-        chars_received: Option<i32>,
+        tokens_sent: Option<u32>,
+        tokens_received: Option<u32>,
     ) -> Self {
         self.tokens_sent = tokens_sent;
         self.tokens_received = tokens_received;
-        self.total_tokens = total_tokens;
-        self.chars_received = chars_received;
+        self
+    }
+    
+    pub fn with_system_prompt_template(mut self, template: String) -> Self {
+        self.system_prompt_template = Some(template);
+        self
+    }
+    
+    pub fn with_actual_cost(mut self, cost: f64) -> Self {
+        self.actual_cost = Some(cost);
+        self
+    }
+    
+    /// Set cache token usage for this job result
+    pub fn with_cache_tokens(
+        mut self,
+        cache_write_tokens: Option<i64>,
+        cache_read_tokens: Option<i64>,
+    ) -> Self {
+        self.cache_write_tokens = cache_write_tokens;
+        self.cache_read_tokens = cache_read_tokens;
         self
     }
 }
@@ -323,7 +398,7 @@ impl JobProcessResult {
 #[derive(Debug, Clone)]
 pub struct Job {
     pub id: String,
-    pub job_type: TaskType,
+    pub task_type: TaskType,
     pub payload: JobPayload,
     pub session_id: String,
     pub process_after: Option<i64>,
@@ -336,7 +411,7 @@ impl Job {
     }
     
     pub fn task_type_str(&self) -> String {
-        self.job_type.to_string()
+        self.task_type.to_string()
     }
     
     pub fn session_id(&self) -> &str {
@@ -344,97 +419,6 @@ impl Job {
     }
 }
 
-// Workflow stage enumeration for error tracking
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
-pub enum WorkflowStage {
-    ExtendedPathFinder,
-    PathCorrection,
-    RegexFileFilter,
-    FileRelevanceAssessment,
-    WebSearchQueryGeneration,
-    WebSearchExecution,
-}
-
-impl std::fmt::Display for WorkflowStage {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            WorkflowStage::ExtendedPathFinder => write!(f, "ExtendedPathFinder"),
-            WorkflowStage::PathCorrection => write!(f, "PathCorrection"),
-            WorkflowStage::RegexFileFilter => write!(f, "RegexFileFilter"),
-            WorkflowStage::FileRelevanceAssessment => write!(f, "FileRelevanceAssessment"),
-            WorkflowStage::WebSearchQueryGeneration => write!(f, "WebSearchQueryGeneration"),
-            WorkflowStage::WebSearchExecution => write!(f, "WebSearchExecution"),
-        }
-    }
-}
-
-// Workflow error types for comprehensive error handling
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum WorkflowErrorType {
-    StageExecutionFailed { stage: WorkflowStage, job_id: String, error: String },
-    DataExtractionFailed { from_job_id: String, error: String },
-    JobChainBroken { broken_at_stage: WorkflowStage, error: String },
-    CancellationFailed { job_id: String, error: String },
-    ResourceCleanupFailed { workflow_id: String, error: String },
-    TimeoutExceeded { workflow_id: String, timeout_ms: u64 },
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct WorkflowError {
-    pub workflow_id: String,
-    pub error_type: WorkflowErrorType,
-    pub occurred_at: i64,
-    pub recovery_attempted: bool,
-    pub recovery_successful: Option<bool>,
-}
-
-// Error recovery strategies
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum RecoveryStrategy {
-    RetryStage { max_attempts: u32, delay_ms: u64 },
-    SkipToNextStage { with_fallback_data: bool },
-    RestartFromPreviousStage,
-    AbortWorkflow,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ErrorRecoveryConfig {
-    pub strategy_map: HashMap<String, RecoveryStrategy>, // Using String key instead of WorkflowErrorType for easier serialization
-    pub max_consecutive_failures: u32,
-    pub workflow_timeout_ms: u64,
-}
-
-// Response types for error handling operations
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct WorkflowErrorResponse {
-    pub workflow_id: String,
-    pub error_handled: bool,
-    pub recovery_attempted: bool,
-    pub recovery_successful: Option<bool>,
-    pub next_action: String,
-}
-
-// Cancellation result types
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct FailedCancellation {
-    pub job_id: String,
-    pub error: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CancellationResult {
-    pub workflow_id: String,
-    pub canceled_jobs: Vec<String>,
-    pub failed_cancellations: Vec<FailedCancellation>,
-    pub cleanup_performed: bool,
-}
 
 // Cleanup result types
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -449,13 +433,22 @@ pub struct CleanupResult {
 // Monitoring and reporting types
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct SerializableWorkflowError {
+    pub error_type: String,
+    pub message: String,
+    pub timestamp: i64,
+    pub stage: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct WorkflowErrorReport {
     pub workflow_id: String,
     pub total_errors: u32,
     pub errors_by_stage: HashMap<String, u32>,
     pub errors_by_type: HashMap<String, u32>,
     pub recovery_success_rate: f32,
-    pub error_timeline: Vec<WorkflowError>,
+    pub error_timeline: Vec<SerializableWorkflowError>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -7,10 +7,11 @@ use crate::db::repositories::user_credit_repository::UserCreditRepository;
 use crate::db::repositories::credit_transaction_repository::CreditTransactionRepository;
 use crate::db::repositories::model_repository::ModelRepository;
 use crate::models::model_pricing::ModelPricing;
+use crate::clients::usage_extractor::ProviderUsage;
 use crate::services::credit_service::CreditService;
 use crate::services::audit_service::AuditService;
 use uuid::Uuid;
-use log::{debug, info, warn};
+use log::{debug, error, info, warn};
 use std::env;
 use chrono::{DateTime, Utc, Duration};
 use std::sync::Arc;
@@ -23,7 +24,7 @@ use std::str::FromStr;
 use crate::services::stripe_service::StripeService;
 // Import custom Stripe types
 use crate::stripe_types::*;
-use serde::Serialize;
+use serde::{Serialize, Deserialize};
 
 
 
@@ -37,6 +38,7 @@ pub struct BillingService {
     stripe_service: Option<StripeService>,
     default_signup_credits: f64,
     app_settings: crate::config::settings::AppSettings,
+    redis_client: Option<Arc<redis::aio::ConnectionManager>>,
 }
 
 impl BillingService {
@@ -89,6 +91,30 @@ impl BillingService {
             stripe_service,
             default_signup_credits,
             app_settings,
+            redis_client: None, // Will be set asynchronously
+        }
+    }
+    
+    /// Set Redis client for caching final costs
+    pub async fn set_redis_client(&mut self, redis_url: &str) -> Result<(), AppError> {
+        match redis::Client::open(redis_url) {
+            Ok(client) => {
+                match redis::aio::ConnectionManager::new(client).await {
+                    Ok(connection_manager) => {
+                        self.redis_client = Some(Arc::new(connection_manager));
+                        info!("Redis client initialized for billing service");
+                        Ok(())
+                    }
+                    Err(e) => {
+                        warn!("Failed to create Redis connection manager: {}", e);
+                        Err(AppError::Internal(format!("Redis connection failed: {}", e)))
+                    }
+                }
+            }
+            Err(e) => {
+                warn!("Failed to open Redis client: {}", e);
+                Err(AppError::Internal(format!("Redis client initialization failed: {}", e)))
+            }
         }
     }
     
@@ -788,6 +814,41 @@ impl BillingService {
         info!("Successfully updated auto top-off settings for user: {}", user_id);
         Ok(settings)
     }
+    
+    /// Estimate streaming cost for UI display only - does not charge the user
+    pub async fn estimate_streaming_cost(
+        &self,
+        model_id: &str,
+        input_tokens: i64,
+        output_tokens: i64,
+        cache_write_tokens: i64,
+        cache_read_tokens: i64,
+    ) -> Result<BigDecimal, AppError> {
+        // Get model pricing information
+        let model_repository = Arc::new(crate::db::repositories::ModelRepository::new(
+            Arc::new(self.db_pools.system_pool.clone())
+        ));
+        
+        let model = model_repository
+            .find_by_id_with_provider(model_id)
+            .await?
+            .ok_or_else(|| AppError::NotFound(format!("Model '{}' not found", model_id)))?;
+        
+        // Create ProviderUsage for cost calculation
+        let usage = ProviderUsage::with_cache(
+            input_tokens as i32,
+            output_tokens as i32,
+            cache_write_tokens as i32,
+            cache_read_tokens as i32,
+            model_id.to_string()
+        );
+        
+        // Calculate total cost using server-side pricing logic with full token breakdown
+        let total_cost = model.calculate_total_cost(&usage)
+            .map_err(|e| AppError::InvalidArgument(format!("Cost calculation failed: {}", e)))?;
+        
+        Ok(total_cost)
+    }
 
     /// Record API usage with pre-resolved cost (simplified billing flow)
     /// This method takes a cost that has already been resolved by the CostResolver
@@ -1082,132 +1143,8 @@ impl BillingService {
         }))
     }
 
-    /// Record streaming cost for partial billing entries
-    pub async fn record_streaming_cost(
-        &self,
-        user_id: &Uuid,
-        request_id: &str,
-        service_name: &str,
-        partial_cost: &BigDecimal,
-        tokens_input: i64,
-        tokens_output: i64,
-        is_cancelled: bool,
-    ) -> Result<(), AppError> {
-        let pool = self.db_pools.user_pool.clone();
-        let mut tx = pool.begin().await
-            .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
-        
-        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
-            .bind(user_id.to_string())
-            .execute(&mut *tx)
-            .await
-            .map_err(|e| AppError::Database(format!("Failed to set user context: {}", e)))?;
-        
-        let metadata = serde_json::json!({
-            "request_id": request_id,
-            "streaming": true,
-            "cancelled": is_cancelled,
-            "partial_cost": partial_cost,
-            "recorded_at": Utc::now().to_rfc3339()
-        });
-        
-        let entry = ApiUsageEntryDto {
-            user_id: *user_id,
-            service_name: service_name.to_string(),
-            tokens_input,
-            tokens_output,
-            cached_input_tokens: 0,
-            cache_write_tokens: 0,
-            cache_read_tokens: 0,
-            request_id: Some(request_id.to_string()),
-            metadata: Some(metadata),
-        };
-        
-        let api_usage_record = self.api_usage_repository
-            .record_usage_with_executor(entry, partial_cost.clone(), &mut tx)
-            .await?;
-        
-        if *partial_cost > BigDecimal::from(0) {
-            let current_balance = self.credit_service
-                .get_user_balance_with_executor(user_id, &mut tx)
-                .await?;
-            
-            if current_balance.balance >= *partial_cost {
-                let negative_amount = -partial_cost.clone();
-                let description = if is_cancelled {
-                    format!("Cancelled streaming request {} - partial cost", request_id)
-                } else {
-                    format!("Streaming cost for {} - request {}", service_name, request_id)
-                };
-                
-                let transaction_metadata = serde_json::json!({
-                    "streaming": true,
-                    "cancelled": is_cancelled,
-                    "request_id": request_id,
-                    "service_name": service_name,
-                    "partial_billing": true
-                });
-                
-                let balance_after = &current_balance.balance + &negative_amount;
-                let transaction = crate::db::repositories::credit_transaction_repository::CreditTransaction {
-                    id: Uuid::new_v4(),
-                    user_id: *user_id,
-                    transaction_type: "usage".to_string(),
-                    amount: negative_amount.clone(),
-                    currency: "USD".to_string(),
-                    description: Some(description),
-                    stripe_charge_id: None,
-                    related_api_usage_id: Some(api_usage_record.id.unwrap()),
-                    metadata: Some(transaction_metadata),
-                    created_at: Some(Utc::now()),
-                    balance_after: balance_after.clone(),
-                };
-                
-                self.credit_service.get_credit_transaction_repository()
-                    .create_transaction_with_executor(&transaction, &transaction.balance_after, &mut tx)
-                    .await?;
-                
-                self.credit_service.get_user_credit_repository()
-                    .increment_balance_with_executor(user_id, &negative_amount, &mut tx)
-                    .await?;
-            }
-        }
-        
-        tx.commit().await
-            .map_err(|e| AppError::Database(format!("Failed to commit streaming cost transaction: {}", e)))?;
-        
-        info!("Recorded streaming cost for user {}: {} (cancelled: {}, cost: {})", 
-              user_id, request_id, is_cancelled, partial_cost);
-        
-        Ok(())
-    }
-    
-    /// Record streaming cost update during active streaming operation
-    pub async fn update_streaming_cost(
-        &self,
-        user_id: &Uuid,
-        request_id: &str,
-        service_name: &str,
-        incremental_cost: &BigDecimal,
-        total_tokens_input: i64,
-        total_tokens_output: i64,
-    ) -> Result<(), AppError> {
-        if *incremental_cost <= BigDecimal::from(0) {
-            return Ok(());
-        }
-        
-        self.record_streaming_cost(
-            user_id,
-            request_id,
-            service_name,
-            incremental_cost,
-            total_tokens_input,
-            total_tokens_output,
-            false,
-        ).await
-    }
-    
     /// Record final cost for cancelled streaming jobs that incurred charges
+    /// This replaces partial billing with post-stream authoritative billing
     pub async fn record_cancelled_job_cost(
         &self,
         user_id: &Uuid,
@@ -1217,15 +1154,48 @@ impl BillingService {
         tokens_input: i64,
         tokens_output: i64,
     ) -> Result<(), AppError> {
-        self.record_streaming_cost(
+        info!("Recording cancelled job final cost: user_id={}, request_id={}, cost=${:.4}", 
+              user_id, request_id, final_cost);
+        
+        // Store final cost in Redis for desktop polling
+        self.store_streaming_final_cost(
             user_id,
             request_id,
             service_name,
             final_cost,
             tokens_input,
             tokens_output,
-            true,
-        ).await
+        ).await?;
+        
+        // Perform single atomic billing for the full final cost
+        let metadata = serde_json::json!({
+            "request_id": request_id,
+            "streaming": true,
+            "cancelled": true,
+            "final_cost": final_cost,
+            "billing_type": "authoritative_post_stream",
+            "recorded_at": Utc::now().to_rfc3339()
+        });
+        
+        let entry = ApiUsageEntryDto {
+            user_id: *user_id,
+            service_name: service_name.to_string(),
+            tokens_input,
+            tokens_output,
+            cache_write_tokens: 0,
+            cache_read_tokens: 0,
+            request_id: Some(request_id.to_string()),
+            metadata: Some(metadata),
+            provider_reported_cost: None,
+        };
+        
+        // Use the existing atomic billing method
+        let (api_usage_record, user_credit) = self.charge_for_api_usage(entry, final_cost.clone()).await?;
+        
+        info!("Successfully recorded cancelled job final cost: user_id={}, request_id={}, cost=${:.4}, new_balance=${:.4}", 
+              user_id, request_id, final_cost, user_credit.balance);
+        
+        Ok(())
     }
 
     /// Check billing readiness requirements for a user
@@ -1278,8 +1248,8 @@ impl BillingService {
         model_id: &str,
         input_tokens: i64,
         output_tokens: i64,
-        _cache_write_tokens: i64,
-        _cache_read_tokens: i64,
+        cache_write_tokens: i64,
+        cache_read_tokens: i64,
     ) -> Result<BigDecimal, AppError> {
         // Get model pricing information
         let model_repository = Arc::new(crate::db::repositories::ModelRepository::new(
@@ -1291,95 +1261,25 @@ impl BillingService {
             .await?
             .ok_or_else(|| AppError::NotFound(format!("Model '{}' not found", model_id)))?;
         
-        // Calculate total cost using server-side pricing logic (no duration-based billing)
-        let total_cost = model.calculate_total_cost(input_tokens, output_tokens)
+        // Create ProviderUsage for the new calculate_total_cost method
+        let usage = crate::clients::usage_extractor::ProviderUsage {
+            prompt_tokens: input_tokens as i32,
+            completion_tokens: output_tokens as i32,
+            cache_write_tokens: cache_write_tokens as i32,
+            cache_read_tokens: cache_read_tokens as i32,
+            model_id: model_id.to_string(),
+            duration_ms: None,
+            cost: None,
+        };
+        
+        // Calculate total cost using server-side pricing logic
+        let total_cost = model.calculate_total_cost(&usage)
             .map_err(|e| AppError::InvalidArgument(format!("Cost calculation failed: {}", e)))?;
         
         Ok(total_cost)
     }
 
-    /// Record streaming cost updates for real-time billing with server-calculated costs
-    pub async fn update_streaming_cost_with_model(
-        &self,
-        user_id: &Uuid,
-        request_id: &str,
-        model_id: &str,
-        incremental_input_tokens: i64,
-        incremental_output_tokens: i64,
-        cache_write_tokens: i64,
-        cache_read_tokens: i64,
-    ) -> Result<BigDecimal, AppError> {
-        info!("Recording streaming cost update for user {} request {} model {}: {} input, {} output tokens", 
-              user_id, request_id, model_id, incremental_input_tokens, incremental_output_tokens);
 
-        // Calculate cost using server-side model pricing (no duration-based billing)
-        let incremental_cost = self.calculate_streaming_cost(
-            model_id,
-            incremental_input_tokens,
-            incremental_output_tokens,
-            cache_write_tokens,
-            cache_read_tokens,
-        ).await?;
-
-        // Validate incremental cost
-        if incremental_cost < BigDecimal::from(0) {
-            return Err(AppError::InvalidArgument("Incremental cost cannot be negative".to_string()));
-        }
-
-        // Skip recording if cost is zero
-        if incremental_cost == BigDecimal::from(0) {
-            return Ok(incremental_cost);
-        }
-
-        // Create API usage entry for streaming cost
-        let usage_entry = ApiUsageEntryDto {
-            user_id: *user_id,
-            service_name: model_id.to_string(),
-            tokens_input: incremental_input_tokens,
-            tokens_output: incremental_output_tokens,
-            cached_input_tokens: cache_write_tokens + cache_read_tokens,
-            cache_write_tokens,
-            cache_read_tokens,
-            request_id: Some(request_id.to_string()),
-            metadata: Some(serde_json::json!({
-                "streaming": true,
-                "incremental": true,
-                "request_id": request_id
-            })),
-        };
-
-        // Record the usage with the streaming cost and bill credits
-        let (_api_usage_record, user_credit) = self.charge_for_api_usage(usage_entry, incremental_cost.clone()).await?;
-
-        info!("Streaming cost {} recorded for user {} request {}, new balance: {}", 
-              incremental_cost, user_id, request_id, user_credit.balance);
-
-        Ok(incremental_cost)
-    }
-
-    /// Get real-time cost estimation for streaming operations
-    pub async fn estimate_streaming_cost(
-        &self,
-        model_id: &str,
-        estimated_input_tokens: i64,
-        estimated_output_tokens: i64,
-        cache_write_tokens: i64,
-        cache_read_tokens: i64,
-    ) -> Result<BigDecimal, AppError> {
-        info!("Estimating streaming cost for model {} with {} input, {} output tokens", 
-              model_id, estimated_input_tokens, estimated_output_tokens);
-
-        let estimated_cost = self.calculate_streaming_cost(
-            model_id,
-            estimated_input_tokens,
-            estimated_output_tokens,
-            cache_write_tokens,
-            cache_read_tokens,
-        ).await?;
-
-        info!("Estimated streaming cost for model {}: {}", model_id, estimated_cost);
-        Ok(estimated_cost)
-    }
 
     /// Centralized cost resolution function that provides authoritative cost calculation
     /// 
@@ -1429,44 +1329,22 @@ impl BillingService {
             .await?
             .ok_or_else(|| AppError::NotFound(format!("Model '{}' not found", model_id)))?;
 
-        // Calculate input cost with cache token support
-        let input_cost = model.calculate_input_cost(
-            tokens_input,
-            cache_write_tokens,
-            cache_read_tokens,
-        ).map_err(|e| AppError::InvalidArgument(format!("Input cost calculation failed: {}", e)))?;
-
-        // Calculate output cost
-        let output_cost = if let Some(rate) = model.get_output_cost_per_million_tokens() {
-            let million = BigDecimal::from(1_000_000);
-            let min_price = BigDecimal::from_str("0.000001")
-                .map_err(|e| AppError::InvalidArgument(format!("Failed to parse minimum price: {}", e)))?;
-            let max_price = BigDecimal::from(1000);
-            
-            // Validate pricing bounds
-            if rate < min_price || rate > max_price {
-                return Err(AppError::InvalidArgument(
-                    format!("Output pricing rate {} is outside allowed bounds ({} - {})", rate, min_price, max_price)
-                ));
-            }
-            
-            let output_tokens_bd = BigDecimal::from(tokens_output);
-            let product = &rate * &output_tokens_bd;
-            
-            // Check for overflow
-            if product > (&max_price * &million) {
-                return Err(AppError::InvalidArgument(
-                    "Output cost calculation would overflow maximum allowed cost".to_string()
-                ));
-            }
-            
-            product / &million
-        } else {
-            BigDecimal::from(0)
+        // Create ProviderUsage for the new calculate_total_cost method
+        let usage = crate::clients::usage_extractor::ProviderUsage {
+            prompt_tokens: (tokens_input + cache_write_tokens + cache_read_tokens) as i32,
+            completion_tokens: tokens_output as i32,
+            cache_write_tokens: cache_write_tokens as i32,
+            cache_read_tokens: cache_read_tokens as i32,
+            model_id: model_id.to_string(),
+            duration_ms: None,
+            cost: None,
         };
-
+        
+        // Calculate total cost using the unified method
+        let total_cost = model.calculate_total_cost(&usage)
+            .map_err(|e| AppError::InvalidArgument(format!("Cost calculation failed: {}", e)))?;
+        
         // Validate total cost
-        let total_cost = &input_cost + &output_cost;
         let max_cost = BigDecimal::from(1000);
         if total_cost > max_cost {
             return Err(AppError::InvalidArgument(
@@ -1496,108 +1374,89 @@ impl BillingService {
         tokens_input: i64,
         tokens_output: i64,
     ) -> Result<(), AppError> {
-        info!("Storing final streaming cost for desktop retrieval: user_id={}, request_id={}, cost=${:.4}", 
+        info!("Storing final streaming cost in Redis for desktop retrieval: user_id={}, request_id={}, cost=${:.4}", 
               user_id, request_id, final_cost);
         
-        // Simply use existing api_usage table - it already has cost and request_id fields!
-        let cost_f64 = final_cost.to_string().parse::<f64>()
-            .map_err(|e| AppError::Database(format!("Failed to convert cost to f64: {}", e)))?;
-        
-        // Create metadata for final cost tracking
-        let metadata = serde_json::json!({
-            "request_id": request_id,
-            "streaming": true,
-            "final_cost": true,
-            "cost_type": "streaming_final"
-        });
-        
-        // Create API usage entry specifically for final cost tracking
-        let entry = ApiUsageEntryDto {
-            user_id: *user_id,
-            service_name: format!("{}_final_cost", service_name), // Differentiate from regular usage entries
-            tokens_input,
-            tokens_output,
-            cached_input_tokens: 0,
-            cache_write_tokens: 0,
-            cache_read_tokens: 0,
-            request_id: Some(request_id.to_string()),
-            metadata: Some(metadata),
-        };
-        
-        // Use existing charge_for_api_usage method which handles everything properly
-        self.charge_for_api_usage(entry, final_cost.clone()).await?;
-        
-        info!("Final cost successfully stored for desktop retrieval: request_id={}, cost=${:.4}", 
-              request_id, final_cost);
-        Ok(())
+        // Check if Redis is available
+        if let Some(redis_client) = &self.redis_client {
+            use redis::AsyncCommands;
+            
+            // Create data structure for storage
+            let cost_data = FinalCostData {
+                cost: final_cost.clone(),
+                tokens_input,
+                tokens_output,
+                service_name: service_name.to_string(),
+                recorded_at: chrono::Utc::now(),
+            };
+            
+            // Serialize to JSON
+            let json_data = serde_json::to_string(&cost_data)
+                .map_err(|e| AppError::Internal(format!("Failed to serialize cost data: {}", e)))?;
+            
+            // Store in Redis with 5 minute TTL
+            let redis_key = format!("streaming_cost:{}", request_id);
+            let ttl_seconds = 300; // 5 minutes
+            
+            let mut conn = redis_client.as_ref().clone();
+            match conn.set_ex::<_, _, ()>(&redis_key, json_data, ttl_seconds).await {
+                Ok(_) => {
+                    info!("Final cost successfully stored in Redis: request_id={}, cost=${:.4}", 
+                          request_id, final_cost);
+                    Ok(())
+                }
+                Err(e) => {
+                    error!("Failed to store cost in Redis: {}", e);
+                    Err(AppError::Internal(format!("Redis storage failed: {}", e)))
+                }
+            }
+        } else {
+            warn!("Redis not configured, cannot store final streaming cost");
+            // Don't fail the billing if Redis is not available
+            Ok(())
+        }
     }
 
     /// Retrieve final streaming cost by request_id for desktop clients
     pub async fn get_final_streaming_cost(
         &self,
-        user_id: &Uuid,
         request_id: &str,
     ) -> Result<Option<FinalCostData>, AppError> {
-        info!("Retrieving final streaming cost: user_id={}, request_id={}", user_id, request_id);
+        info!("Retrieving final streaming cost from Redis: request_id={}", request_id);
         
-        let pool = self.db_pools.user_pool.clone();
-        let mut tx = pool.begin().await
-            .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
-        
-        // Set user context for RLS
-        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
-            .bind(user_id.to_string())
-            .execute(&mut *tx)
-            .await
-            .map_err(|e| AppError::Database(format!("Failed to set user context: {}", e)))?;
-        
-        // Query for final cost entries with the specific request_id
-        let result = sqlx::query!(
-            r#"
-            SELECT 
-                service_name, 
-                tokens_input, 
-                tokens_output, 
-                cost,
-                metadata,
-                timestamp
-            FROM api_usage 
-            WHERE request_id = $1 
-              AND service_name LIKE '%_final_cost'
-              AND metadata->>'cost_type' = 'streaming_final'
-            ORDER BY timestamp DESC 
-            LIMIT 1
-            "#,
-            request_id
-        )
-        .fetch_optional(&mut *tx)
-        .await
-        .map_err(|e| AppError::Database(format!("Failed to query final cost: {}", e)))?;
-        
-        tx.commit().await
-            .map_err(|e| AppError::Database(format!("Failed to commit transaction: {}", e)))?;
-        
-        if let Some(row) = result {
-            // Use the cost directly from the database - it's already the final cost
-            let final_cost = row.cost;
+        // Check if Redis is available
+        if let Some(redis_client) = &self.redis_client {
+            use redis::AsyncCommands;
             
-            // Remove the "_final_cost" suffix from service name
-            let service_name = row.service_name.strip_suffix("_final_cost")
-                .unwrap_or(&row.service_name)
-                .to_string();
+            let redis_key = format!("streaming_cost:{}", request_id);
+            let mut conn = redis_client.as_ref().clone();
             
-            let cost_data = FinalCostData {
-                cost: final_cost,
-                tokens_input: row.tokens_input as i64,
-                tokens_output: row.tokens_output as i64,
-                service_name,
-                recorded_at: row.timestamp,
-            };
-            
-            info!("Final cost retrieved for request {}: ${:.4}", request_id, cost_data.cost);
-            Ok(Some(cost_data))
+            match conn.get::<_, Option<String>>(&redis_key).await {
+                Ok(Some(json_data)) => {
+                    // Deserialize the cost data
+                    match serde_json::from_str::<FinalCostData>(&json_data) {
+                        Ok(cost_data) => {
+                            info!("Final cost retrieved from Redis: request_id={}, cost=${:.4}", 
+                                  request_id, cost_data.cost);
+                            Ok(Some(cost_data))
+                        }
+                        Err(e) => {
+                            error!("Failed to deserialize cost data from Redis: {}", e);
+                            Err(AppError::Internal(format!("Failed to parse cost data: {}", e)))
+                        }
+                    }
+                }
+                Ok(None) => {
+                    info!("No final cost found in Redis for request_id={}", request_id);
+                    Ok(None)
+                }
+                Err(e) => {
+                    error!("Failed to retrieve cost from Redis: {}", e);
+                    Err(AppError::Internal(format!("Redis retrieval failed: {}", e)))
+                }
+            }
         } else {
-            info!("No final cost found for request {}", request_id);
+            warn!("Redis not configured, cannot retrieve final streaming cost");
             Ok(None)
         }
     }
@@ -1605,7 +1464,7 @@ impl BillingService {
 }
 
 /// Data structure for final cost information
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FinalCostData {
     pub cost: BigDecimal,
     pub tokens_input: i64,

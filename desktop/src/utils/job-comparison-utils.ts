@@ -4,6 +4,7 @@ import { type BackgroundJob, JOB_STATUSES } from "@/types/session-types";
 import { createLogger } from "@/utils/logger";
 import { safeStringCompare } from "@/utils/string-utils";
 import { getParsedMetadata } from "@/app/components/background-jobs-sidebar/utils";
+import { normalizeJobResponse, safeResponseLength, safeResponseIncludes } from './response-utils';
 
 const logger = createLogger({ namespace: "JobComparison" });
 
@@ -93,8 +94,8 @@ export function areJobsEqual(
 
       // Special handling for when we have response content that has been updated
       if (jobA.response !== jobB.response) {
-        const lengthA = jobA.response?.length || 0;
-        const lengthB = jobB.response?.length || 0;
+        const lengthA = safeResponseLength(jobA.response);
+        const lengthB = safeResponseLength(jobB.response);
 
         if (lengthA !== lengthB) {
           logger.debug(
@@ -221,18 +222,18 @@ export function areJobsEqual(
   }
 
   // Response content comparison for all job types
-  if (!safeStringCompare(jobA.response, jobB.response)) {
+  if (!safeStringCompare(normalizeJobResponse(jobA.response).content, normalizeJobResponse(jobB.response).content)) {
     logger.debug(
       `Response content changed for job ${jobA.id}`
     );
 
     // Additional debugging: detect file reference vs content changes
     const aHasFileRef =
-      jobA.response?.includes("Content stored in file:") ||
-      jobA.response?.includes("available in file:");
+      safeResponseIncludes(jobA.response, "Content stored in file:") ||
+      safeResponseIncludes(jobA.response, "available in file:");
     const bHasFileRef =
-      jobB.response?.includes("Content stored in file:") ||
-      jobB.response?.includes("available in file:");
+      safeResponseIncludes(jobB.response, "Content stored in file:") ||
+      safeResponseIncludes(jobB.response, "available in file:");
 
     if (aHasFileRef !== bHasFileRef) {
       logger.debug(

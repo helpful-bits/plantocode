@@ -9,16 +9,56 @@ use tokio::fs;
 
 use crate::error::{AppError, AppResult};
 use crate::jobs::processor_trait::JobProcessor;
-use crate::jobs::types::{Job, JobPayload, JobProcessResult, FileRelevanceAssessmentPayload, FileRelevanceAssessmentResponse, FileRelevanceAssessmentProcessingDetails, FileRelevanceAssessmentQualityDetails};
+use crate::jobs::types::{Job, JobPayload, JobProcessResult, JobResultData, FileRelevanceAssessmentPayload, FileRelevanceAssessmentResponse, FileRelevanceAssessmentProcessingDetails, FileRelevanceAssessmentQualityDetails};
 use crate::jobs::job_processor_utils;
 use crate::jobs::processors::abstract_llm_processor::{LlmTaskRunner, LlmTaskConfig, LlmTaskConfigBuilder, LlmPromptContext};
-use crate::utils::token_estimator::estimate_tokens_for_file_batch;
 
 pub struct FileRelevanceAssessmentProcessor;
 
 impl FileRelevanceAssessmentProcessor {
     pub fn new() -> Self {
         Self
+    }
+
+    /// Simple token estimation using character count heuristics
+    /// This is for local file size estimation only, not for billing
+    fn estimate_tokens(text: &str, chars_per_token: usize) -> u32 {
+        let char_count = text.chars().count();
+        ((char_count + chars_per_token - 1) / chars_per_token) as u32
+    }
+
+    /// Estimate tokens for a batch of files
+    async fn estimate_tokens_for_file_batch(
+        project_dir: &std::path::Path,
+        file_paths: &[String],
+    ) -> AppResult<u32> {
+        let mut total_tokens = 0u32;
+        
+        for file_path in file_paths {
+            let full_path = project_dir.join(file_path);
+            if let Ok(content) = fs::read_to_string(&full_path).await {
+                let extension = full_path
+                    .extension()
+                    .and_then(|ext| ext.to_str())
+                    .unwrap_or("");
+                
+                let tokens = match extension {
+                    "json" | "xml" | "yml" | "yaml" | "toml" => {
+                        Self::estimate_tokens(&content, 5) // Structured data
+                    }
+                    "rs" | "ts" | "js" | "tsx" | "jsx" | "py" | "java" | "cpp" | "c" | "h" | "cs" | "go" | "php" | "rb" | "swift" | "kt" => {
+                        Self::estimate_tokens(&content, 3) // Code
+                    }
+                    _ => {
+                        Self::estimate_tokens(&content, 4) // Regular text
+                    }
+                };
+                
+                total_tokens += tokens;
+            }
+        }
+        
+        Ok(total_tokens)
     }
 
     /// Parse paths from LLM text response using newline separation (as instructed in system prompt)
@@ -74,13 +114,13 @@ impl FileRelevanceAssessmentProcessor {
                         .unwrap_or("");
                     match extension {
                         "json" | "xml" | "yml" | "yaml" | "toml" => {
-                            crate::utils::token_estimator::estimate_structured_data_tokens(&content)
+                            Self::estimate_tokens(&content, 5) // Structured data: ~5 chars per token
                         }
                         "rs" | "ts" | "js" | "tsx" | "jsx" | "py" | "java" | "cpp" | "c" | "h" | "cs" | "go" | "php" | "rb" | "swift" | "kt" => {
-                            crate::utils::token_estimator::estimate_code_tokens(&content)
+                            Self::estimate_tokens(&content, 3) // Code: ~3 chars per token
                         }
                         _ => {
-                            crate::utils::token_estimator::estimate_tokens(&content)
+                            Self::estimate_tokens(&content, 4) // Regular text: ~4 chars per token
                         }
                     }
                 }
@@ -305,10 +345,7 @@ impl JobProcessor for FileRelevanceAssessmentProcessor {
         }
 
         // Initialize LlmTaskRunner with appropriate model settings
-        let task_config = LlmTaskConfigBuilder::new()
-            .model(model_used.clone())
-            .temperature(temperature)
-            .max_tokens(max_output_tokens)
+        let task_config = LlmTaskConfigBuilder::new(model_used.clone(), temperature, max_output_tokens)
             .stream(false)
             .build();
             
@@ -335,7 +372,6 @@ impl JobProcessor for FileRelevanceAssessmentProcessor {
             Err(e) => {
                 let error_msg = format!("Failed to create chunks using actual file sizes: {}", e);
                 error!("{}", error_msg);
-                task_runner.finalize_failure(&repo, &job.id, &error_msg, Some(&e), None).await?;
                 return Ok(JobProcessResult::failure(job.id.clone(), error_msg));
             }
         };
@@ -447,8 +483,6 @@ impl JobProcessor for FileRelevanceAssessmentProcessor {
                 chunks.len(), chunk_processing_errors);
             error!("{}", error_msg);
             
-            // Finalize job failure
-            task_runner.finalize_failure(&repo, &job.id, &error_msg, None, None).await?;
             return Ok(JobProcessResult::failure(job.id.clone(), error_msg));
         }
 
@@ -481,7 +515,7 @@ impl JobProcessor for FileRelevanceAssessmentProcessor {
             validated_relevant_paths.len(), invalid_relevant_paths.len());
         
         // Calculate token count for validated relevant paths
-        let token_count = match estimate_tokens_for_file_batch(&std::path::Path::new(project_directory), &validated_relevant_paths).await {
+        let token_count = match Self::estimate_tokens_for_file_batch(&std::path::Path::new(project_directory), &validated_relevant_paths).await {
             Ok(count) => count,
             Err(e) => {
                 error!("Failed to estimate tokens for file batch: {}", e);
@@ -508,13 +542,13 @@ impl JobProcessor for FileRelevanceAssessmentProcessor {
                         .unwrap_or("");
                     let tokens = match extension {
                         "json" | "xml" | "yml" | "yaml" | "toml" => {
-                            crate::utils::token_estimator::estimate_structured_data_tokens(&content)
+                            Self::estimate_tokens(&content, 5) // Structured data: ~5 chars per token
                         }
                         "rs" | "ts" | "js" | "tsx" | "jsx" | "py" | "java" | "cpp" | "c" | "h" | "cs" | "go" | "php" | "rb" | "swift" | "kt" => {
-                            crate::utils::token_estimator::estimate_code_tokens(&content)
+                            Self::estimate_tokens(&content, 3) // Code: ~3 chars per token
                         }
                         _ => {
-                            crate::utils::token_estimator::estimate_tokens(&content)
+                            Self::estimate_tokens(&content, 4) // Regular text: ~4 chars per token
                         }
                     };
                     total_tokens += tokens;
@@ -612,9 +646,9 @@ impl JobProcessor for FileRelevanceAssessmentProcessor {
                 completion_tokens: total_output_tokens,
                 total_tokens: total_input_tokens + total_output_tokens,
                 cost: Some(total_cost),
-                cached_input_tokens: Some(0),
-                cache_write_tokens: Some(0),
-                cache_read_tokens: Some(0),
+                cached_input_tokens: 0,
+                cache_write_tokens: 0,
+                cache_read_tokens: 0,
             })
         } else {
             None
@@ -636,20 +670,26 @@ impl JobProcessor for FileRelevanceAssessmentProcessor {
             system_prompt_template: captured_system_prompt_template, // Use actual template from first successful chunk
         };
 
-        // Call task_runner.finalize_success() with the combined result
-        task_runner.finalize_success(
-            &repo,
-            &job.id,
-            &combined_llm_result,
-            Some(result_metadata),
-        ).await?;
-        
         debug!("File relevance assessment completed for job {}", job.id);
         
-        // Return JobProcessResult::success() with the JSON response string
+        // Construct FileRelevanceAssessmentResponse struct, serialize to serde_json::Value
+        let response_value = serde_json::to_value(&response)
+            .map_err(|e| AppError::JobError(format!("Failed to serialize response to Value: {}", e)))?;
+        
+        // Extract system prompt template and actual cost from combined result
+        let system_prompt_template = combined_llm_result.system_prompt_template.clone();
+        let actual_cost = combined_llm_result.usage.as_ref().and_then(|u| u.cost).unwrap_or(0.0);
+        
+        // Return JobProcessResult::success() with structured JSON data
         Ok(JobProcessResult::success(
             job.id.clone(), 
-            response_json_content
-        ))
+            JobResultData::Json(response_value)
+        )
+        .with_tokens(
+            combined_llm_result.usage.as_ref().map(|u| u.prompt_tokens as u32),
+            combined_llm_result.usage.as_ref().map(|u| u.completion_tokens as u32)
+        )
+        .with_system_prompt_template(system_prompt_template)
+        .with_actual_cost(actual_cost))
     }
 }

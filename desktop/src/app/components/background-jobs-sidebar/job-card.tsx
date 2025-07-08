@@ -6,8 +6,6 @@ import {
   Loader2,
   X,
   Trash2,
-  RotateCcw,
-  Import,
 } from "lucide-react";
 import React, { useState, useEffect } from "react";
 
@@ -41,16 +39,14 @@ export interface JobCardProps {
   isCancelling: Record<string, boolean>;
   isDeleting: Record<string, boolean>;
   onSelect: (job: BackgroundJob) => void;
-  handleRetry?: (workflowId: string, jobId: string) => Promise<void>;
-  isRetrying?: Record<string, boolean>;
   onApplyFiles?: (job: BackgroundJob) => void;
-  onApplyText?: (job: BackgroundJob) => void;
   currentSessionId?: string;
 }
 
 /**
  * Custom hook for live progress updates
  * Updates progress every second for running jobs
+ * Reflects accurate streamProgress from metadata
  */
 const useLiveProgress = (
   metadata: any,
@@ -59,7 +55,7 @@ const useLiveProgress = (
   isRunning: boolean
 ): number | undefined => {
   const [progress, setProgress] = useState<number | undefined>(() => 
-    isRunning ? getStreamingProgressValue(metadata, startTime, taskType) : undefined
+    isRunning ? getStreamingProgressValue(metadata) : undefined
   );
 
   useEffect(() => {
@@ -69,7 +65,7 @@ const useLiveProgress = (
     }
 
     const updateProgress = () => {
-      const newProgress = getStreamingProgressValue(metadata, startTime, taskType);
+      const newProgress = getStreamingProgressValue(metadata);
       setProgress(newProgress);
     };
 
@@ -95,7 +91,7 @@ const getErrorPreview = (errorMessage?: string) => {
 };
 
 export const JobCard = React.memo(
-  ({ job, handleCancel, handleDelete, isCancelling, isDeleting, onSelect, handleRetry, isRetrying, onApplyFiles, onApplyText, currentSessionId }: JobCardProps) => {
+  ({ job, handleCancel, handleDelete, isCancelling, isDeleting, onSelect, onApplyFiles, currentSessionId }: JobCardProps) => {
     
     // Determine if job is running for live progress updates  
     const isJobRunning = ["running", "processingStream", "generatingStream", "preparing", "preparing_input"].includes(job.status);
@@ -119,18 +115,9 @@ export const JobCard = React.memo(
     // Determine if job can be canceled (only active/non-terminal jobs) - memoized for stability
     const canCancel = React.useMemo(() => JOB_STATUSES.ACTIVE.includes(job.status as JobStatus), [job.status]);
     
-    // Parse job metadata to check for workflowId
-    const parsedMetadata = React.useMemo(() => getParsedMetadata(job.metadata), [job.metadata]);
-    
-    // Determine if the job is a failed workflow stage and can be retried
-    const canRetry = React.useMemo(() => {
-      return job.status === "failed" && parsedMetadata?.workflowId;
-    }, [job.status, parsedMetadata?.workflowId]);
-    
     // Memoize status-specific booleans for better performance
     const isCurrentJobCancelling = React.useMemo(() => Boolean(isCancelling?.[job.id]), [isCancelling, job.id]);
     const isCurrentJobDeleting = React.useMemo(() => Boolean(isDeleting?.[job.id]), [isDeleting, job.id]);
-    const isCurrentJobRetrying = React.useMemo(() => Boolean(isRetrying?.[job.id]), [isRetrying, job.id]);
 
     // Use memoized helper functions with current job data
     const errorPreview = React.useMemo(() => getErrorPreview(job.errorMessage), [job.errorMessage]);
@@ -237,22 +224,6 @@ export const JobCard = React.memo(
               >
                 <X className="h-3.5 w-3.5" />
               </Button>
-            ) : canRetry && handleRetry ? (
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
-                  e.stopPropagation(); // Prevent triggering the card's onClick
-                  if (parsedMetadata?.workflowId) {
-                    void handleRetry(parsedMetadata.workflowId, job.id);
-                  }
-                }}
-                isLoading={isCurrentJobRetrying}
-                loadingIcon={<Loader2 className="h-3 w-3 animate-spin" />}
-                aria-label="Retry job"
-              >
-                <RotateCcw className="h-3.5 w-3.5" />
-              </Button>
             ) : (
               <Button
                 variant="ghost"
@@ -278,22 +249,39 @@ export const JobCard = React.memo(
         {isJobRunning && (
           <div className="mt-2 mb-1">
             {(() => {
-              // Use live progress for real-time updates
-              const displayProgress = liveProgress !== undefined ? liveProgress : 10;
+              // Show indeterminate progress if no accurate progress available
+              const displayProgress = liveProgress;
               
-              return (
-                <>
-                  <Progress
-                    value={displayProgress}
-                    className="h-1"
-                  />
-                  <div className="flex justify-between items-center min-w-0 overflow-hidden">
-                    <p className="text-[9px] text-muted-foreground mt-0.5 text-right">
-                      {Math.round(displayProgress)}%
-                    </p>
-                  </div>
-                </>
-              );
+              if (displayProgress !== undefined) {
+                return (
+                  <>
+                    <Progress
+                      value={displayProgress}
+                      className="h-1"
+                    />
+                    <div className="flex justify-between items-center min-w-0 overflow-hidden">
+                      <p className="text-[9px] text-muted-foreground mt-0.5 text-right">
+                        {Math.round(displayProgress)}%
+                      </p>
+                    </div>
+                  </>
+                );
+              } else {
+                // Show indeterminate progress when no progress data available
+                return (
+                  <>
+                    <Progress
+                      value={undefined}
+                      className="h-1"
+                    />
+                    <div className="flex justify-between items-center min-w-0 overflow-hidden">
+                      <p className="text-[9px] text-muted-foreground mt-0.5 text-right">
+                        Processing...
+                      </p>
+                    </div>
+                  </>
+                );
+              }
             })()
             }
           </div>
@@ -303,13 +291,11 @@ export const JobCard = React.memo(
           <div className="text-muted-foreground text-[10px] mt-2 flex items-center justify-between min-h-[24px] w-full min-w-0">
             <div className="flex flex-col gap-0.5 max-w-[90%] overflow-hidden min-w-0 flex-1">
               {(() => {
-                const parsedMeta = getParsedMetadata(job.metadata);
+                // Display token counts directly from job object (server-provided data)
+                const tokensSent = Number(job.tokensSent || 0);
+                const tokensReceived = Number(job.tokensReceived || 0);
                 
-                const tokensSent = Number(job.tokensSent || parsedMeta?.taskData?.tokensSent || 0);
-                const tokensReceived = Number(job.tokensReceived || parsedMeta?.taskData?.tokensReceived || 0);
-                const totalTokens = Number((tokensSent + tokensReceived) || parsedMeta?.taskData?.totalTokens || parsedMeta?.taskData?.tokensUsed || 0);
-                
-                return (tokensSent > 0 || tokensReceived > 0 || totalTokens > 0) ? (
+                return (tokensSent > 0 || tokensReceived > 0) ? (
                   <span className="flex items-center gap-1 overflow-hidden min-w-0">
                     <span className="text-[9px] text-muted-foreground flex-shrink-0">
                       Tokens:
@@ -321,11 +307,6 @@ export const JobCard = React.memo(
                     <span className="font-mono text-foreground text-[9px] flex-shrink-0">
                       {formatTokenCount(tokensReceived)}
                     </span>
-                    {totalTokens > 0 && totalTokens !== (tokensSent + tokensReceived) && (
-                      <span className="font-mono text-[9px] ml-1 text-muted-foreground">
-                        ({formatTokenCount(totalTokens)} total)
-                      </span>
-                    )}
                   </span>
                 ) : (
                   <span className="h-3"></span>
@@ -372,192 +353,100 @@ export const JobCard = React.memo(
                     {/* Results Summary (left side) - Only show meaningful results */}
                     <div className="flex items-center gap-1.5 text-muted-foreground min-w-0 flex-1">
                       {(() => {
-                        // Handle web search execution tasks
-                        if (job.taskType === "web_search_execution") {
-                          return (
-                            <>
-                              <span className="font-medium text-foreground">
-                                Search completed
-                              </span>
-                              {onApplyText && (
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    onApplyText(job);
-                                  }}
-                                  className="ml-2 h-6 px-2 text-xs"
-                                >
-                                  Apply to Task
-                                </Button>
-                              )}
-                            </>
-                          );
-                        }
                         
                         // Handle all file-finding tasks that should show file counts
                         const fileFindingTasks = [
                           "extended_path_finder", 
-                          "file_finder_workflow",
-                          "regex_file_filter",
-                          "file_relevance_assessment"
+                          "file_relevance_assessment",
+                          "regex_file_filter"
                         ];
                         
                         if (fileFindingTasks.includes(job.taskType)) {
-                          if (job.response) {
-                            try {
-                              const parsed = JSON.parse(job.response);
-                              
+                          // Get file paths from structured job.metadata or job.response
+                          let filePaths: string[] = [];
+                          
+                          // Check structured metadata first
+                          if (parsedMeta?.verifiedPaths && Array.isArray(parsedMeta.verifiedPaths)) {
+                            filePaths = parsedMeta.verifiedPaths;
+                          } else if (parsedMeta?.relevantFiles && Array.isArray(parsedMeta.relevantFiles)) {
+                            filePaths = parsedMeta.relevantFiles;
+                          } else if (parsedMeta?.correctedPaths && Array.isArray(parsedMeta.correctedPaths)) {
+                            filePaths = parsedMeta.correctedPaths;
+                          }
+                          
+                          // If no paths in metadata, check response
+                          if (filePaths.length === 0 && job.response) {
+                            if (typeof job.response === 'object' && job.response !== null) {
                               // Handle path finder specific format with verified/unverified paths
-                              if (parsed && typeof parsed === 'object' && 'verifiedPaths' in parsed && 'unverifiedPaths' in parsed) {
-                                const verifiedCount = Array.isArray(parsed.verifiedPaths) ? parsed.verifiedPaths.length : 0;
-                                const unverifiedCount = Array.isArray(parsed.unverifiedPaths) ? parsed.unverifiedPaths.length : 0;
+                              if ('verifiedPaths' in job.response && 'unverifiedPaths' in job.response) {
+                                const verifiedPaths = Array.isArray((job.response as any).verifiedPaths) ? (job.response as any).verifiedPaths : [];
+                                const unverifiedPaths = Array.isArray((job.response as any).unverifiedPaths) ? (job.response as any).unverifiedPaths : [];
+                                const verifiedCount = verifiedPaths.length;
+                                const unverifiedCount = unverifiedPaths.length;
                                 const totalCount = verifiedCount + unverifiedCount;
                                 
                                 if (totalCount > 0) {
                                   return (
-                                    <>
-                                      <span className="font-medium text-foreground">
-                                        {verifiedCount} verified, {unverifiedCount} unverified
-                                      </span>
-                                      {onApplyFiles && (
-                                        <Button
-                                          variant="ghost"
-                                          size="icon-xs"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            onApplyFiles(job);
-                                          }}
-                                          aria-label="Apply files to selection"
-                                          className="ml-2"
-                                        >
-                                          <Import className="h-3 w-3" />
-                                        </Button>
-                                      )}
-                                    </>
-                                  );
-                                }
-                              }
-                              // Handle array responses (most common format)
-                              else if (Array.isArray(parsed)) {
-                                const count = parsed.length;
-                                if (count > 0) {
-                                  return (
-                                    <>
-                                      <span className="font-medium text-foreground">
-                                        {count} file{count !== 1 ? "s" : ""} found
-                                      </span>
-                                      {onApplyFiles && (
-                                        <Button
-                                          variant="ghost"
-                                          size="icon-xs"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            onApplyFiles(job);
-                                          }}
-                                          aria-label="Apply files to selection"
-                                          className="ml-2"
-                                        >
-                                          <Import className="h-3 w-3" />
-                                        </Button>
-                                      )}
-                                    </>
-                                  );
-                                }
-                              }
-                              // Handle object responses with file arrays
-                              else if (parsed && typeof parsed === 'object') {
-                                // Check for all possible field names used by different task types
-                                const filePaths = parsed.filePaths || parsed.paths || parsed.files || 
-                                                 parsed.filteredFiles || parsed.relevantFiles;
-                                
-                                // For file_relevance_assessment, use the count field if available
-                                if (job.taskType === "file_relevance_assessment" && typeof parsed.count === 'number') {
-                                  const count = parsed.count;
-                                  if (count > 0) {
-                                    return (
-                                      <>
-                                        <span className="font-medium text-foreground">
-                                          {count} relevant file{count !== 1 ? "s" : ""} found
-                                        </span>
-                                        {onApplyFiles && (
-                                          <Button
-                                            variant="ghost"
-                                            size="icon-xs"
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              onApplyFiles(job);
-                                            }}
-                                            aria-label="Apply files to selection"
-                                            className="ml-2"
-                                          >
-                                            <Import className="h-3 w-3" />
-                                          </Button>
-                                        )}
-                                      </>
-                                    );
-                                  }
-                                }
-                                
-                                if (Array.isArray(filePaths)) {
-                                  const count = filePaths.length;
-                                  if (count > 0) {
-                                    // Show task-specific messaging
-                                    const actionWord = job.taskType === "regex_file_filter" ? "filtered" :
-                                                     job.taskType === "file_relevance_assessment" ? "relevant" : "found";
-                                    return (
-                                      <>
-                                        <span className="font-medium text-foreground">
-                                          {count} {actionWord} file{count !== 1 ? "s" : ""}
-                                        </span>
-                                        {onApplyFiles && (
-                                          <Button
-                                            variant="ghost"
-                                            size="icon-xs"
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              onApplyFiles(job);
-                                            }}
-                                            aria-label="Apply files to selection"
-                                            className="ml-2"
-                                          >
-                                            <Import className="h-3 w-3" />
-                                          </Button>
-                                        )}
-                                      </>
-                                    );
-                                  }
-                                }
-                              }
-                            } catch {
-                              // Fallback to metadata count
-                              const count = (typeof parsedMeta?.finalVerifiedPaths === 'number') ? parsedMeta.finalVerifiedPaths : 
-                                           (typeof parsedMeta?.taskData?.pathCount === 'number') ? parsedMeta.taskData.pathCount : 0;
-                              if (count > 0) {
-                                return (
-                                  <>
                                     <span className="font-medium text-foreground">
-                                      {count} file{count !== 1 ? "s" : ""} found
+                                      {verifiedCount} verified, {unverifiedCount} unverified
                                     </span>
-                                    {onApplyFiles && (
-                                      <Button
-                                        variant="ghost"
-                                        size="icon-xs"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          onApplyFiles(job);
-                                        }}
-                                        aria-label="Apply files to selection"
-                                        className="ml-2"
-                                      >
-                                        <Import className="h-3 w-3" />
-                                      </Button>
-                                    )}
-                                  </>
-                                );
+                                  );
+                                }
+                              } else {
+                                // Use standardized response format from backend
+                                const responseObj = job.response as any;
+                                
+                                // Backend now standardizes all file-finding responses to have 'files' and 'count'
+                                if (responseObj.files && Array.isArray(responseObj.files)) {
+                                  filePaths = responseObj.files;
+                                }
+                                
+                                // Use the standardized count field
+                                if (typeof responseObj.count === 'number' && responseObj.count > 0) {
+                                  const summary = responseObj.summary || `${responseObj.count} file${responseObj.count !== 1 ? "s" : ""} found`;
+                                  return (
+                                    <span className="font-medium text-foreground">
+                                      {summary}
+                                    </span>
+                                  );
+                                }
+                              }
+                            } else if (typeof job.response === 'string') {
+                              try {
+                                const parsed = JSON.parse(job.response);
+                                if (Array.isArray(parsed)) {
+                                  filePaths = parsed;
+                                } else if (typeof parsed === 'object' && parsed !== null) {
+                                  // Use standardized response format from backend
+                                  if (parsed.files && Array.isArray(parsed.files)) {
+                                    filePaths = parsed.files;
+                                  }
+                                  
+                                  // Use the standardized count and summary if available
+                                  if (typeof parsed.count === 'number' && parsed.count > 0) {
+                                    const summary = parsed.summary || `${parsed.count} file${parsed.count !== 1 ? "s" : ""} found`;
+                                    return (
+                                      <span className="font-medium text-foreground">
+                                        {summary}
+                                      </span>
+                                    );
+                                  }
+                                }
+                              } catch {
+                                // Ignore parsing errors
                               }
                             }
+                          }
+                          
+                          // Display file count if any files found
+                          if (filePaths.length > 0) {
+                            const actionWord = job.taskType === "regex_file_filter" ? "filtered" :
+                                             job.taskType === "file_relevance_assessment" ? "relevant" : "found";
+                            return (
+                              <span className="font-medium text-foreground">
+                                {filePaths.length} {actionWord} file{filePaths.length !== 1 ? "s" : ""}
+                              </span>
+                            );
                           }
                           
                           // Check metadata before showing "No files found"
@@ -565,25 +454,9 @@ export const JobCard = React.memo(
                                        (typeof parsedMeta?.taskData?.pathCount === 'number') ? parsedMeta.taskData.pathCount : 0;
                           if (count > 0) {
                             return (
-                              <>
-                                <span className="font-medium text-foreground">
-                                  {count} file{count !== 1 ? "s" : ""} found
-                                </span>
-                                {onApplyFiles && (
-                                  <Button
-                                    variant="ghost"
-                                    size="icon-xs"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      onApplyFiles(job);
-                                    }}
-                                    aria-label="Apply files to selection"
-                                    className="ml-2"
-                                  >
-                                    <Import className="h-3 w-3" />
-                                  </Button>
-                                )}
-                              </>
+                              <span className="font-medium text-foreground">
+                                {count} file{count !== 1 ? "s" : ""} found
+                              </span>
                             );
                           }
                           
@@ -628,91 +501,55 @@ export const JobCard = React.memo(
                         // Handle path correction tasks
                         if (job.taskType === "path_correction") {
                           if (job.response) {
-                            try {
-                              const parsed = JSON.parse(job.response);
-                              
-                              // Handle array responses (corrected paths)
-                              if (Array.isArray(parsed)) {
-                                const count = parsed.length;
-                                if (count > 0) {
-                                  return (
-                                    <>
+                            if (typeof job.response === 'string') {
+                              try {
+                                const parsed = JSON.parse(job.response);
+                                
+                                // Handle array responses (corrected paths) - legacy format
+                                if (Array.isArray(parsed)) {
+                                  const count = parsed.length;
+                                  if (count > 0) {
+                                    return (
                                       <span className="font-medium text-foreground">
                                         {count} corrected path{count !== 1 ? "s" : ""}
                                       </span>
-                                      {onApplyFiles && (
-                                        <Button
-                                          variant="ghost"
-                                          size="icon-xs"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            onApplyFiles(job);
-                                          }}
-                                          aria-label="Use corrected paths"
-                                          className="ml-2"
-                                        >
-                                          <Import className="h-3 w-3" />
-                                        </Button>
-                                      )}
-                                    </>
-                                  );
-                                }
-                              }
-                              // Handle object responses with corrected paths
-                              else if (parsed && typeof parsed === 'object') {
-                                const correctedPaths = parsed.correctedPaths || parsed.paths || parsed.files;
-                                
-                                if (Array.isArray(correctedPaths)) {
-                                  const count = correctedPaths.length;
-                                  if (count > 0) {
-                                    return (
-                                      <>
-                                        <span className="font-medium text-foreground">
-                                          {count} corrected path{count !== 1 ? "s" : ""}
-                                        </span>
-                                        {onApplyFiles && (
-                                          <Button
-                                            variant="ghost"
-                                            size="icon-xs"
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              onApplyFiles(job);
-                                            }}
-                                            aria-label="Use corrected paths"
-                                            className="ml-2"
-                                          >
-                                            <Import className="h-3 w-3" />
-                                          </Button>
-                                        )}
-                                      </>
                                     );
                                   }
                                 }
-                              }
-                            } catch {
-                              // Fallback to metadata
-                              const count = (typeof parsedMeta?.pathCount === 'number') ? parsedMeta.pathCount : 0;
-                              if (count > 0) {
-                                return (
-                                  <>
+                                // Use standardized response format from backend
+                                else if (parsed && typeof parsed === 'object') {
+                                  // Backend now standardizes to 'files' and 'count'
+                                  if (parsed.files && Array.isArray(parsed.files) && parsed.count > 0) {
+                                    const summary = parsed.summary || `${parsed.count} corrected path${parsed.count !== 1 ? "s" : ""}`;
+                                    return (
+                                      <span className="font-medium text-foreground">
+                                        {summary}
+                                      </span>
+                                    );
+                                  }
+                                }
+                              } catch {
+                                // Fallback to metadata
+                                const count = (typeof parsedMeta?.pathCount === 'number') ? parsedMeta.pathCount : 0;
+                                if (count > 0) {
+                                  return (
                                     <span className="font-medium text-foreground">
                                       {count} corrected path{count !== 1 ? "s" : ""}
                                     </span>
-                                    {onApplyFiles && (
-                                      <Button
-                                        variant="ghost"
-                                        size="icon-xs"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          onApplyFiles(job);
-                                        }}
-                                        aria-label="Use corrected paths"
-                                        className="ml-2"
-                                      >
-                                        <Import className="h-3 w-3" />
-                                      </Button>
-                                    )}
-                                  </>
+                                  );
+                                }
+                              }
+                            } else if (typeof job.response === 'object' && job.response !== null) {
+                              // Use standardized response format from backend
+                              const responseObj = job.response as any;
+                              
+                              // Backend now standardizes to 'files' and 'count'
+                              if (responseObj.files && Array.isArray(responseObj.files) && responseObj.count > 0) {
+                                const summary = responseObj.summary || `${responseObj.count} corrected path${responseObj.count !== 1 ? "s" : ""}`;
+                                return (
+                                  <span className="font-medium text-foreground">
+                                    {summary}
+                                  </span>
                                 );
                               }
                             }
@@ -726,11 +563,36 @@ export const JobCard = React.memo(
                           );
                         }
                         
-                        // Handle workflow context
-                        if (parsedMeta?.workflowId) {
+                        // Handle web search execution tasks
+                        if (job.taskType === "web_search_execution") {
+                          if (job.response) {
+                            try {
+                              let responseData: any;
+                              if (typeof job.response === 'string') {
+                                responseData = JSON.parse(job.response);
+                              } else {
+                                responseData = job.response;
+                              }
+                              
+                              // Check for searchResults array
+                              if (responseData.searchResults && Array.isArray(responseData.searchResults)) {
+                                const count = responseData.searchResults.length;
+                                if (count > 0) {
+                                  return (
+                                    <span className="font-medium text-foreground">
+                                      {count} research finding{count !== 1 ? "s" : ""} ready
+                                    </span>
+                                  );
+                                }
+                              }
+                            } catch (e) {
+                              // Fall through to generic message
+                            }
+                          }
+                          
                           return (
-                            <span className="font-medium text-primary">
-                              Workflow completed
+                            <span className="text-muted-foreground">
+                              No research findings generated
                             </span>
                           );
                         }
@@ -744,13 +606,70 @@ export const JobCard = React.memo(
                       })()}
                     </div>
                     
-                    {/* Cost (right side) - Show for any job with cost */}
-                    <div className="flex-shrink-0">
-                      {job.actualCost !== null && job.actualCost !== undefined && Number(job.actualCost) > 0 ? (
-                        <span className="font-mono text-[9px] text-foreground">
-                          {formatUsdCurrencyPrecise(job.actualCost)}
-                        </span>
-                      ) : null}
+                    {/* Right side - Cost and Add Files button */}
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      {(() => {
+                        // Determine if we should show the Add Files button
+                        const fileFindingTasks = [
+                          "extended_path_finder", 
+                          "file_relevance_assessment",
+                          "path_correction",
+                          "regex_file_filter"
+                        ];
+                        
+                        const shouldShowAddFiles = onApplyFiles && (
+                          // File finding tasks with results
+                          (fileFindingTasks.includes(job.taskType) && (
+                            // Check various response formats for file results
+                            (job.response && (
+                              (typeof job.response === 'object' && job.response !== null && 
+                                ((job.response as any).files?.length > 0 || 
+                                 (job.response as any).verifiedPaths?.length > 0 ||
+                                 (job.response as any).unverifiedPaths?.length > 0)) ||
+                              (typeof job.response === 'string' && job.response.length > 2)
+                            )) ||
+                            // Or metadata indicates files found
+                            (parsedMeta && (
+                              (parsedMeta.verifiedPaths as any)?.length > 0 ||
+                              (parsedMeta.relevantFiles as any)?.length > 0 ||
+                              (parsedMeta.correctedPaths as any)?.length > 0 ||
+                              (parsedMeta.finalVerifiedPaths as any) > 0 ||
+                              parsedMeta.taskData?.pathCount > 0
+                            ))
+                          )) ||
+                          // Web search with results (only for current session)
+                          (job.taskType === "web_search_execution" && 
+                           job.sessionId === currentSessionId &&
+                           job.response && 
+                           ((typeof job.response === 'object' && (job.response as any).searchResults?.length > 0) ||
+                            (typeof job.response === 'string' && job.response.includes('searchResults')))
+                          )
+                        );
+                        
+                        return (
+                          <>
+                            {shouldShowAddFiles && (
+                              <Button
+                                variant="outline"
+                                size="xs"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onApplyFiles(job);
+                                }}
+                                aria-label={job.taskType === "web_search_execution" ? "Apply research findings" : "Add files to selection"}
+                                className="text-[10px] h-6 px-2 py-0.5 font-medium border-primary/40 hover:border-primary hover:bg-primary/10"
+                              >
+                                {job.taskType === "web_search_execution" ? "Use Research" : "Use Files"}
+                              </Button>
+                            )}
+                            {job.actualCost !== null && job.actualCost !== undefined && job.actualCost > 0 && (
+                              <span className="font-mono text-[9px] text-foreground">
+                                {formatUsdCurrencyPrecise(job.actualCost)}
+                              </span>
+                            )}
+                          </>
+                        );
+                      })()}
                     </div>
                   </div>
                 </div>
@@ -771,13 +690,13 @@ export const JobCard = React.memo(
                         </div>
                       </div>
                     </div>
-                    {job.actualCost !== null && job.actualCost !== undefined && Number(job.actualCost) > 0 ? (
+                    {job.actualCost !== null && job.actualCost !== undefined && job.actualCost > 0 && (
                       <div className="flex-shrink-0">
                         <span className="font-mono text-[9px] text-foreground">
                           {formatUsdCurrencyPrecise(job.actualCost)}
                         </span>
                       </div>
-                    ) : null}
+                    )}
                   </div>
                 </div>
               );

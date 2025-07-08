@@ -48,6 +48,7 @@ pub fn create_api_client_options(
         temperature,
         stream,
         request_id: None, // Will be set by calling code if needed
+        task_type: None, // Will be set by calling code if needed
     })
 }
 

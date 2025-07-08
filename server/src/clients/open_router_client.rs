@@ -1,7 +1,3 @@
-// Step 3: Cached Token Pricing Implementation
-// This file implements cached token counting for OpenRouter API.
-// Token extraction functions return: (uncached_input, cache_write, cache_read, output)
-// For OpenRouter: no caching support, cache tokens always 0
 use crate::error::AppError;
 use actix_web::web;
 use futures_util::{Stream, StreamExt, TryStreamExt};
@@ -15,6 +11,8 @@ use tokio::sync::Mutex;
 use crate::config::settings::AppSettings;
 use crate::clients::usage_extractor::{UsageExtractor, ProviderUsage};
 use tracing::{debug, instrument};
+use bigdecimal::BigDecimal;
+use std::str::FromStr;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct UsageInclude {
@@ -102,11 +100,18 @@ pub struct OpenRouterResponseMessage {
 
 #[skip_serializing_none]
 #[derive(Debug, Deserialize, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct OpenRouterUsage {
     pub prompt_tokens: i32,
     pub completion_tokens: i32,
     pub total_tokens: i32,
     pub cost: Option<f64>,
+    #[serde(default)]
+    pub cached_input_tokens: i32,
+    #[serde(default)]
+    pub cache_write_tokens: i32,
+    #[serde(default)]
+    pub cache_read_tokens: i32,
 }
 
 // OpenRouter Streaming Structs
@@ -235,6 +240,7 @@ impl OpenRouterClient {
         
         let (input_tokens, cache_write_tokens, cache_read_tokens, output_tokens) = if let Some(usage) = &result.usage {
             // OpenRouter doesn't support caching, so cache tokens are always 0
+            // prompt_tokens already represents total input tokens
             (usage.prompt_tokens, 0, 0, usage.completion_tokens)
         } else {
             (0, 0, 0, 0)
@@ -376,7 +382,8 @@ impl OpenRouterClient {
     fn extract_usage_from_json(&self, json_value: &serde_json::Value, model_id: &str) -> Option<ProviderUsage> {
         let usage = json_value.get("usage")?;
         
-        // Handle OpenRouter format: {"prompt_tokens", "completion_tokens", "cost"}
+        // Handle OpenRouter format: {"prompt_tokens", "completion_tokens", "cost", "prompt_tokens_details"}
+        // OpenRouter's prompt_tokens already represents total input tokens
         let prompt_tokens = match usage.get("prompt_tokens").and_then(|v| v.as_i64()) {
             Some(tokens) => tokens as i32,
             None => {
@@ -393,33 +400,65 @@ impl OpenRouterClient {
             }
         };
         
-        // Extract cost from OpenRouter response and preserve it
-        let cost = usage.get("cost").and_then(|v| v.as_f64());
-        if let Some(cost_value) = cost {
-            debug!("OpenRouter cost extracted: ${:.6} for model: {} (input_tokens: {}, output_tokens: {})", 
-                   cost_value, model_id, prompt_tokens, completion_tokens);
+        // Extract cached tokens from prompt_tokens_details if available (OpenRouter may pass through provider details)
+        let cache_read_tokens = usage.get("prompt_tokens_details")
+            .and_then(|details| details.get("cached_tokens"))
+            .and_then(|v| v.as_i64())
+            .unwrap_or(0) as i32;
+        
+        // Extract cost from OpenRouter response with improved error handling
+        let cost = usage.get("cost")
+            .and_then(|v| match v {
+                serde_json::Value::Number(n) => n.as_f64(),
+                serde_json::Value::String(s) => s.parse::<f64>().ok(),
+                _ => {
+                    tracing::warn!("Invalid cost format in OpenRouter response: {:?}", v);
+                    None
+                }
+            })
+            .and_then(|f| {
+                // Validate cost is non-negative
+                if f < 0.0 {
+                    tracing::warn!("Negative cost value in OpenRouter response: {}", f);
+                    None
+                } else {
+                    BigDecimal::from_str(&f.to_string())
+                        .map_err(|e| {
+                            tracing::warn!("Failed to convert cost to BigDecimal: {} - {}", f, e);
+                            e
+                        })
+                        .ok()
+                }
+            });
+        
+        if let Some(ref cost_value) = cost {
+            debug!("OpenRouter cost extracted: ${} for model: {} (total_input_tokens: {}, output_tokens: {}, cache_read: {})", 
+                   cost_value, model_id, prompt_tokens, completion_tokens, cache_read_tokens);
         } else {
-            debug!("No cost field found in OpenRouter response for model: {} (input_tokens: {}, output_tokens: {})", 
-                   model_id, prompt_tokens, completion_tokens);
-            // Log the full usage object for debugging
-            debug!("OpenRouter usage object content: {}", serde_json::to_string(usage).unwrap_or_default());
+            debug!("No valid cost found in OpenRouter response for model: {} (total_input_tokens: {}, output_tokens: {}, cache_read: {})", 
+                   model_id, prompt_tokens, completion_tokens, cache_read_tokens);
+            // Log the cost field for debugging if it exists
+            if let Some(cost_field) = usage.get("cost") {
+                debug!("OpenRouter cost field value: {:?}", cost_field);
+            }
         }
         
-        Some(ProviderUsage {
-            prompt_tokens,
-            completion_tokens,
-            cache_write_tokens: 0, // OpenRouter doesn't support caching
-            cache_read_tokens: 0,
-            model_id: model_id.to_string(),
-            duration_ms: None,
-            cost, // Preserve the extracted cost
-        })
+        // Use the with_cost constructor for consistency with other providers
+        Some(ProviderUsage::with_cost(
+            prompt_tokens,      // Total input tokens (already correct semantics)
+            completion_tokens,  // Output tokens
+            0,                  // No cache write support in OpenRouter
+            cache_read_tokens,  // Cache read tokens from prompt_tokens_details if available
+            model_id.to_string(),
+            cost                // Provider-calculated cost
+        ))
     }
 }
 
 impl UsageExtractor for OpenRouterClient {
-    /// Extract usage information from OpenRouter HTTP response body (2025-07 format)
+    /// Extract usage information from OpenRouter HTTP response body
     /// Supports usage: {prompt_tokens, completion_tokens, cost}
+    /// Note: OpenRouter's prompt_tokens already represents total input tokens (no separate cache tracking)
     async fn extract_from_http_body(&self, body: &[u8], model_id: &str, is_streaming: bool) -> Result<ProviderUsage, AppError> {
         let body_str = std::str::from_utf8(body)
             .map_err(|e| AppError::InvalidArgument(format!("Invalid UTF-8: {}", e)))?;
@@ -434,8 +473,8 @@ impl UsageExtractor for OpenRouterClient {
                 return self.extract_usage_from_sse_body(body_str, model_id)
                     .map(|mut usage| {
                         usage.model_id = model_id.to_string();
-                        debug!("Successfully extracted usage from OpenRouter streaming response: input={}, output={}", 
-                               usage.prompt_tokens, usage.completion_tokens);
+                        debug!("Successfully extracted usage from OpenRouter streaming response: total_input={}, output={}, cost={:?}", 
+                               usage.prompt_tokens, usage.completion_tokens, usage.cost);
                         usage
                     })
                     .ok_or_else(|| AppError::External("Failed to extract usage from OpenRouter streaming response".to_string()));
@@ -451,8 +490,8 @@ impl UsageExtractor for OpenRouterClient {
         self.extract_usage_from_json(&json_value, model_id)
             .map(|mut usage| {
                 usage.model_id = model_id.to_string();
-                debug!("Successfully extracted usage from OpenRouter response: input={}, output={}", 
-                       usage.prompt_tokens, usage.completion_tokens);
+                debug!("Successfully extracted usage from OpenRouter response: total_input={}, output={}, cost={:?}", 
+                       usage.prompt_tokens, usage.completion_tokens, usage.cost);
                 usage
             })
             .ok_or_else(|| AppError::External("Failed to extract usage from OpenRouter response".to_string()))

@@ -8,7 +8,7 @@ use tokio::fs;
 
 use crate::error::{AppError, AppResult};
 use crate::jobs::processor_trait::JobProcessor;
-use crate::jobs::types::{Job, JobPayload, JobProcessResult, StructuredImplementationPlan, StructuredImplementationPlanStep};
+use crate::jobs::types::{Job, JobPayload, JobProcessResult, JobResultData, StructuredImplementationPlan, StructuredImplementationPlanStep};
 use crate::models::{JobStatus, TaskType, OpenRouterRequestMessage, OpenRouterContent};
 use crate::utils::{get_timestamp, path_utils};
 use crate::utils::xml_utils::extract_xml_from_markdown;
@@ -16,6 +16,7 @@ use crate::utils::job_metadata_builder::JobMetadataBuilder;
 use crate::jobs::job_processor_utils;
 use crate::jobs::processors::utils::{prompt_utils};
 use crate::jobs::processors::{LlmTaskRunner, LlmTaskConfigBuilder, LlmPromptContext, LlmTaskResult};
+use crate::jobs::processors::utils::parsing_utils;
 
 pub struct ImplementationPlanProcessor;
 
@@ -24,150 +25,6 @@ impl ImplementationPlanProcessor {
         Self {}
     }
     
-    // Parse implementation plan from the XML response with enhanced error handling
-    fn parse_implementation_plan(&self, clean_xml_content: &str) -> AppResult<(StructuredImplementationPlan, String)> {
-        debug!("Parsing implementation plan from cleaned XML content");
-        
-        if clean_xml_content.trim().is_empty() {
-            warn!("Empty XML content provided for parsing");
-            return Err(AppError::ValidationError("Empty XML content provided".to_string()));
-        }
-        
-        // First, try to validate that the content at least looks like XML
-        let is_xml_format = clean_xml_content.trim_start().starts_with('<');
-        if !is_xml_format {
-            warn!("Content does not appear to be XML: {}", &clean_xml_content[..100.min(clean_xml_content.len())]);
-            // Don't fail immediately, let's try to create a structured plan from the text
-            return self.create_fallback_plan_from_text(clean_xml_content);
-        }
-        
-        // Attempt to deserialize the clean XML content into structured format
-        match quick_xml::de::from_str::<StructuredImplementationPlan>(clean_xml_content) {
-            Ok(structured_plan) => {
-                // Validate the parsed plan has meaningful content
-                if structured_plan.steps.is_empty() {
-                    warn!("Parsed implementation plan has no steps");
-                }
-                
-                // Generate human-readable summary
-                let mut summary = String::new();
-                if let Some(instructions) = &structured_plan.agent_instructions {
-                    summary.push_str(&format!("Agent Instructions: {}\n\n", instructions));
-                }
-                
-                summary.push_str(&format!("Implementation Plan with {} steps:\n", structured_plan.steps.len()));
-                for (i, step) in structured_plan.steps.iter().enumerate() {
-                    summary.push_str(&format!("{}. {}: {}\n", i + 1, step.title, step.description));
-                }
-                
-                Ok((structured_plan, summary.trim().to_string()))
-            },
-            Err(e) => {
-                warn!("Failed to parse structured XML: {}. Content length: {}", e, clean_xml_content.len());
-                // Fall back to text parsing
-                self.create_fallback_plan_from_text(clean_xml_content)
-            }
-        }
-    }
-    
-    // Create a structured plan from plain text response
-    fn create_fallback_plan_from_text(&self, text_content: &str) -> AppResult<(StructuredImplementationPlan, String)> {
-        debug!("Creating fallback plan from text content");
-        
-        // Try to parse the text content into meaningful steps
-        let mut steps = Vec::new();
-        let mut current_step = 1;
-        
-        // Split by common step indicators (numbers, bullet points, etc.)
-        let lines: Vec<&str> = text_content.lines().collect();
-        let mut current_description = String::new();
-        let mut step_title = "Implementation Step".to_string();
-        
-        for line in lines.iter() {
-            let trimmed = line.trim();
-            if trimmed.is_empty() {
-                continue;
-            }
-            
-            // Check if this line looks like a step header (starts with number, bullet, etc.)
-            if trimmed.starts_with(char::is_numeric) || 
-               trimmed.starts_with("Step") ||
-               trimmed.starts_with("##") ||
-               trimmed.starts_with("-") ||
-               trimmed.starts_with("*") {
-                
-                // Save previous step if we have content
-                if !current_description.trim().is_empty() {
-                    steps.push(StructuredImplementationPlanStep {
-                        number: Some(current_step.to_string()),
-                        title: step_title.clone(),
-                        description: current_description.trim().to_string(),
-                        file_operations: None,
-                        bash_commands: None,
-                        exploration_commands: None,
-                    });
-                    current_step += 1;
-                    current_description.clear();
-                }
-                
-                // Extract title from this line
-                step_title = trimmed
-                    .trim_start_matches(char::is_numeric)
-                    .trim_start_matches('.')
-                    .trim_start_matches('-')
-                    .trim_start_matches('*')
-                    .trim_start_matches('#')
-                    .trim_start_matches("Step")
-                    .trim_start_matches(':')
-                    .trim()
-                    .to_string();
-                
-                if step_title.is_empty() {
-                    step_title = format!("Implementation Step {}", current_step);
-                }
-            } else {
-                // Add to current description
-                if !current_description.is_empty() {
-                    current_description.push('\n');
-                }
-                current_description.push_str(trimmed);
-            }
-        }
-        
-        // Add the last step
-        if !current_description.trim().is_empty() {
-            steps.push(StructuredImplementationPlanStep {
-                number: Some(current_step.to_string()),
-                title: step_title,
-                description: current_description.trim().to_string(),
-                file_operations: None,
-                bash_commands: None,
-                exploration_commands: None,
-            });
-        }
-        
-        // If no steps were parsed, create a single step with all content
-        if steps.is_empty() {
-            steps.push(StructuredImplementationPlanStep {
-                number: Some("1".to_string()),
-                title: "Implementation Plan".to_string(),
-                description: text_content.trim().to_string(),
-                file_operations: None,
-                bash_commands: None,
-                exploration_commands: None,
-            });
-        }
-        
-        let fallback_plan = StructuredImplementationPlan {
-            agent_instructions: Some("Note: This plan was parsed from text format. The LLM did not return XML as expected.".to_string()),
-            steps,
-        };
-        
-        // Generate summary
-        let summary = format!("Implementation Plan with {} steps (parsed from text format)", fallback_plan.steps.len());
-        
-        Ok((fallback_plan, summary))
-    }
     
 }
 
@@ -292,10 +149,7 @@ impl JobProcessor for ImplementationPlanProcessor {
         
         
         // Setup LLM task configuration for streaming
-        let llm_config = LlmTaskConfigBuilder::new()
-            .model(model_used.clone())
-            .temperature(temperature)
-            .max_tokens(max_output_tokens)
+        let llm_config = LlmTaskConfigBuilder::new(model_used.clone(), temperature, max_output_tokens)
             .stream(true) // Enable streaming for implementation plans
             .build();
         
@@ -345,7 +199,6 @@ impl JobProcessor for ImplementationPlanProcessor {
             Err(e) => {
                 error!("Streaming LLM task execution failed: {}", e);
                 let error_msg = format!("Streaming LLM task execution failed: {}", e);
-                task_runner.finalize_failure(&repo, &job.id, &error_msg, Some(&e), None).await?;
                 return Ok(JobProcessResult::failure(job.id.clone(), error_msg));
             }
         };
@@ -360,7 +213,6 @@ impl JobProcessor for ImplementationPlanProcessor {
         if response_content.is_empty() {
             let error_msg = "No content received from LLM stream";
             error!("Implementation plan job {} failed: {}", job.id, error_msg);
-            task_runner.finalize_failure(&repo, &job.id, &error_msg, None, llm_result.usage).await?;
             return Ok(JobProcessResult::failure(job.id.clone(), error_msg.to_string()));
         }
         
@@ -374,14 +226,11 @@ impl JobProcessor for ImplementationPlanProcessor {
         let clean_xml_content = extract_xml_from_markdown(&response_content);
         
         // Parse the implementation plan into structured format
-        let (structured_plan, human_readable_summary) = match self.parse_implementation_plan(&clean_xml_content) {
+        let (structured_plan, human_readable_summary) = match parsing_utils::parse_implementation_plan(&clean_xml_content) {
             Ok(result) => result,
             Err(e) => {
                 error!("Failed to parse implementation plan for job {}: {}", job.id, e);
                 let error_msg = format!("Failed to parse implementation plan: {}", e);
-                
-                // Update job to failed using helper - LLM succeeded but parsing failed
-                job_processor_utils::finalize_job_failure(&job.id, &repo, &error_msg, None, llm_result.usage, Some(model_used), &app_handle).await?;
                 
                 return Ok(JobProcessResult::failure(job.id.clone(), error_msg));
             }
@@ -446,23 +295,23 @@ impl JobProcessor for ImplementationPlanProcessor {
         let mut finalized_job = job.clone();
         finalized_job.response = Some(clean_xml_content.clone());
         
-        // Use task runner's finalize_success method to ensure consistent template handling
-        let updated_llm_result = LlmTaskResult {
-            response: clean_xml_content.clone(),
-            usage: llm_result.usage,
-            system_prompt_id: llm_result.system_prompt_id,
-            system_prompt_template: llm_result.system_prompt_template,
-        };
+        // Extract system prompt template, usage and cost
+        let system_prompt_template = llm_result.system_prompt_template.clone();
+        let usage_for_result = llm_result.usage.clone();
+        let actual_cost = llm_result.usage.as_ref().and_then(|u| u.cost).unwrap_or(0.0);
         
-        task_runner.finalize_success(
-            &repo,
-            &job.id,
-            &updated_llm_result,
-            Some(impl_plan_additional_params),
-        ).await?;
-        
-        // Return success result with the actual clean XML content
+        // Return success result with the actual clean XML content as Text data since it's XML
         let success_message = format!("Implementation plan '{}' generated successfully", generated_title);
-        Ok(JobProcessResult::success(job.id.clone(), clean_xml_content))
+        Ok(JobProcessResult::success(job.id.clone(), JobResultData::Text(clean_xml_content))
+            .with_tokens(
+                usage_for_result.as_ref().map(|u| u.prompt_tokens as u32),
+                usage_for_result.as_ref().map(|u| u.completion_tokens as u32)
+            )
+            .with_cache_tokens(
+                usage_for_result.as_ref().map(|u| u.cache_write_tokens as i64),
+                usage_for_result.as_ref().map(|u| u.cache_read_tokens as i64)
+            )
+            .with_system_prompt_template(system_prompt_template)
+            .with_actual_cost(actual_cost))
     }
 }

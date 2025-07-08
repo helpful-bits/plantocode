@@ -2,6 +2,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/
 import { useJobDetailsContext } from "../../_contexts/job-details-context";
 import { TaskTypeDetails, type TaskType } from "@/types/task-type-defs";
 import { formatUsdCurrencyPrecise } from "@/utils/currency-utils";
+import { AnimatedNumber } from "@/components/ui/animated-number";
 
 export function JobDetailsCostUsageSection() {
   const { job } = useJobDetailsContext();
@@ -25,22 +26,14 @@ export function JobDetailsCostUsageSection() {
     );
   }
 
+  // Display token and cost data directly from job object (server-provided data)
   const inputTokens = job.tokensSent || 0;
   const outputTokens = job.tokensReceived || 0;
   const totalTokens = (inputTokens + outputTokens);
   
-  // Extract cache token information from metadata
-  const metadata = typeof job.metadata === 'string' ? (() => {
-    try {
-      return JSON.parse(job.metadata);
-    } catch {
-      return {};
-    }
-  })() : (job.metadata || {});
-  
-  const cachedInputTokens = metadata.cachedInputTokens || 0;
-  const cacheWriteTokens = metadata.cacheWriteTokens || 0;
-  const cacheReadTokens = metadata.cacheReadTokens || 0;
+  // Extract cache token information from job fields directly
+  const cacheWriteTokens = job.cacheWriteTokens || 0;
+  const cacheReadTokens = job.cacheReadTokens || 0;
   
 
   return (
@@ -60,7 +53,11 @@ export function JobDetailsCostUsageSection() {
                 <div className="text-xs text-muted-foreground">Input</div>
               </div>
               <div className="text-sm font-mono font-medium text-foreground">
-                {inputTokens.toLocaleString()}
+                <AnimatedNumber 
+                  value={inputTokens} 
+                  duration={600}
+                  format={(v) => Math.round(v).toLocaleString()}
+                />
               </div>
             </div>
             <div>
@@ -69,7 +66,11 @@ export function JobDetailsCostUsageSection() {
                 <div className="text-xs text-muted-foreground">Output</div>
               </div>
               <div className="text-sm font-mono font-medium text-foreground">
-                {outputTokens.toLocaleString()}
+                <AnimatedNumber 
+                  value={outputTokens} 
+                  duration={600}
+                  format={(v) => Math.round(v).toLocaleString()}
+                />
               </div>
             </div>
             <div>
@@ -78,30 +79,23 @@ export function JobDetailsCostUsageSection() {
                 <div className="text-xs text-muted-foreground">Total</div>
               </div>
               <div className="text-sm font-mono font-medium text-foreground">
-                {totalTokens.toLocaleString()}
+                <AnimatedNumber 
+                  value={totalTokens} 
+                  duration={600}
+                  format={(v) => Math.round(v).toLocaleString()}
+                />
               </div>
             </div>
           </div>
           
           {/* Cache Token Display Section - Only show if any cache tokens exist */}
-          {(cachedInputTokens > 0 || cacheWriteTokens > 0 || cacheReadTokens > 0) && (
+          {(cacheWriteTokens > 0 || cacheReadTokens > 0) && (
             <div className="pt-4 border-t border-border/50">
               <div className="text-xs text-muted-foreground mb-2 font-medium">Cache Usage</div>
               <div className="text-xs text-muted-foreground mb-3 leading-relaxed">
                 Cache tokens optimize performance and reduce costs by reusing previously processed content
               </div>
               <div className="grid grid-cols-1 gap-3">
-                {cachedInputTokens > 0 && (
-                  <div className="flex items-center justify-between p-2 bg-muted/50 rounded-sm">
-                    <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 rounded-full bg-cyan-500"></div>
-                      <div className="text-xs text-muted-foreground">Cached Input</div>
-                    </div>
-                    <div className="text-sm font-mono font-medium text-foreground">
-                      {cachedInputTokens.toLocaleString()}
-                    </div>
-                  </div>
-                )}
                 {cacheWriteTokens > 0 && (
                   <div className="flex items-center justify-between p-2 bg-muted/50 rounded-sm">
                     <div className="flex items-center gap-2">
@@ -109,7 +103,11 @@ export function JobDetailsCostUsageSection() {
                       <div className="text-xs text-muted-foreground">Cache Write</div>
                     </div>
                     <div className="text-sm font-mono font-medium text-foreground">
-                      {cacheWriteTokens.toLocaleString()}
+                      <AnimatedNumber 
+                        value={cacheWriteTokens} 
+                        duration={600}
+                        format={(v) => Math.round(v).toLocaleString()}
+                      />
                     </div>
                   </div>
                 )}
@@ -120,15 +118,18 @@ export function JobDetailsCostUsageSection() {
                       <div className="text-xs text-muted-foreground">Cache Read</div>
                     </div>
                     <div className="text-sm font-mono font-medium text-foreground">
-                      {cacheReadTokens.toLocaleString()}
+                      <AnimatedNumber 
+                        value={cacheReadTokens} 
+                        duration={600}
+                        format={(v) => Math.round(v).toLocaleString()}
+                      />
                     </div>
                   </div>
                 )}
               </div>
-              <div className="mt-3 text-xs text-muted-foreground">
-                <div><strong>Cached Input:</strong> Previously processed input tokens (discounted billing)</div>
-                <div><strong>Cache Write:</strong> New tokens stored for future reuse (full billing)</div>
-                <div><strong>Cache Read:</strong> Tokens retrieved from cache (reduced billing)</div>
+              <div className="mt-3 text-xs text-muted-foreground space-y-1">
+                <div><strong>Cache Write:</strong> Tokens saved to cache for future use</div>
+                <div><strong>Cache Read:</strong> Tokens retrieved from cache</div>
               </div>
             </div>
           )}
@@ -141,7 +142,15 @@ export function JobDetailsCostUsageSection() {
                 <div className="text-xs text-muted-foreground">Cost</div>
               </div>
               <div className="text-sm font-mono font-medium text-foreground">
-                {job.actualCost !== null && job.actualCost !== undefined ? formatUsdCurrencyPrecise(job.actualCost) : 'N/A'}
+                {job.actualCost !== null && job.actualCost !== undefined ? (
+                  <AnimatedNumber 
+                    value={job.actualCost} 
+                    duration={800}
+                    format={formatUsdCurrencyPrecise}
+                  />
+                ) : (
+                  'N/A'
+                )}
               </div>
             </div>
           </div>

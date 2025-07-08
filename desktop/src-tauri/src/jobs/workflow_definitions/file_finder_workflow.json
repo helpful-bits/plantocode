@@ -3,32 +3,28 @@
   "description": "Finds relevant files based on a task description.",
   "stages": [
     {
-      "stage_name": "RegexFileFilter", 
-      "task_type": "regex_file_filter",
-      "processor_name": null,
-      "dependencies": [],
-      "allow_parallel_execution": false
+      "stageName": "RegexFileFilter", 
+      "taskType": "regex_file_filter",
+      "processorName": null,
+      "dependencies": []
     },
     {
-      "stage_name": "FileRelevanceAssessment",
-      "task_type": "file_relevance_assessment",
-      "processor_name": null,
-      "dependencies": ["RegexFileFilter"],
-      "allow_parallel_execution": false
+      "stageName": "FileRelevanceAssessment",
+      "taskType": "file_relevance_assessment",
+      "processorName": null,
+      "dependencies": ["RegexFileFilter"]
     },
     {
-      "stage_name": "ExtendedPathFinder",
-      "task_type": "extended_path_finder",
-      "processor_name": null,
-      "dependencies": ["FileRelevanceAssessment"],
-      "allow_parallel_execution": false
+      "stageName": "ExtendedPathFinder",
+      "taskType": "extended_path_finder",
+      "processorName": null,
+      "dependencies": ["FileRelevanceAssessment"]
     },
     {
-      "stage_name": "PathCorrection",
-      "task_type": "path_correction",
-      "processor_name": null,
-      "dependencies": ["ExtendedPathFinder"],
-      "allow_parallel_execution": false
+      "stageName": "PathCorrection",
+      "taskType": "path_correction",
+      "processorName": null,
+      "dependencies": ["ExtendedPathFinder"]
     }
   ]
 }

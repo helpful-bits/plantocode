@@ -35,17 +35,15 @@ pub(super) async fn get_stage_model_config(
             let model = if let Some(workflow_model) = workflow_model {
                 workflow_model
             } else {
+                // CRITICAL: Always use proper configuration, never hardcoded fallbacks
                 crate::utils::config_helpers::get_model_for_task(task_type, app_handle)
-                    .await
-                    .unwrap_or_else(|_| "file-finder-hybrid".to_string())
+                    .await?
             };
 
             let temperature = crate::utils::config_helpers::get_default_temperature_for_task(Some(task_type), app_handle)
-                .await
-                .unwrap_or(0.5);
+                .await?;
             let max_tokens = crate::utils::config_helpers::get_default_max_tokens_for_task(Some(task_type), app_handle)
-                .await
-                .unwrap_or(4000);
+                .await?;
 
             Ok(Some((model, temperature, max_tokens)))
         }
@@ -59,7 +57,7 @@ fn is_stage_skippable(stage_def: &WorkflowStageDefinition, workflow_state: &Work
         workflow_definition.stages.iter()
             .find(|s| &s.stage_name == dep_name)
             .map(|dep_stage| {
-                workflow_state.stage_jobs.iter().any(|job| {
+                workflow_state.stages.iter().any(|job| {
                     job.task_type == dep_stage.task_type && job.status == crate::models::JobStatus::Completed
                 })
             })
@@ -81,6 +79,19 @@ fn is_stage_skippable(stage_def: &WorkflowStageDefinition, workflow_state: &Work
                    can_skip, unverified_paths.len());
             can_skip
         }
+        TaskType::WebSearchPromptsGeneration => {
+            // WebSearchPromptsGeneration cannot be skipped - it's needed to generate prompts
+            false
+        }
+        TaskType::WebSearchExecution => {
+            // WebSearchExecution can be skipped only if there are no search prompts available
+            let web_search_prompts = &workflow_state.intermediate_data.web_search_prompts;
+            let prompts_available = !web_search_prompts.is_empty();
+            let can_skip = !prompts_available;
+            log::debug!("WebSearchExecution stage can be skipped: {} (prompts available: {})", 
+                   can_skip, prompts_available);
+            can_skip
+        }
         _ => false,
     }
 }
@@ -89,27 +100,44 @@ fn is_stage_skippable(stage_def: &WorkflowStageDefinition, workflow_state: &Work
 pub(super) fn is_workflow_complete(workflow_state: &WorkflowState, workflow_definition: &WorkflowDefinition) -> bool {
     log::debug!("Checking workflow completion for {} stages", workflow_definition.stages.len());
     
+    let mut completed_count = 0;
+    let mut skipped_count = 0;
+    let mut pending_count = 0;
+    
     // Check if all stages in the definition are either completed or validly skippable
     for stage_def in &workflow_definition.stages {
-        let stage_completed = workflow_state.stage_jobs.iter().any(|stage_job| {
+        let stage_completed = workflow_state.stages.iter().any(|stage_job| {
             // Match stage by task type directly
             stage_def.task_type == stage_job.task_type && stage_job.status == crate::models::JobStatus::Completed
         });
         
         log::debug!("Stage {:?}: completed={}", stage_def.task_type, stage_completed);
 
-        if !stage_completed {
+        if stage_completed {
+            completed_count += 1;
+        } else {
             // If stage is not completed, check if it can be validly skipped
             let can_skip = is_stage_skippable(stage_def, workflow_state, workflow_definition);
             log::debug!("Stage {:?}: can_skip={}", stage_def.task_type, can_skip);
             
-            if !can_skip {
+            if can_skip {
+                skipped_count += 1;
+            } else {
+                pending_count += 1;
                 log::debug!("Workflow incomplete: stage {:?} not completed and cannot be skipped", stage_def.task_type);
+                
+                // Log additional context for debugging
+                if stage_def.task_type == TaskType::WebSearchExecution {
+                    let prompts_count = workflow_state.intermediate_data.web_search_prompts.len();
+                    log::debug!("WebSearchExecution stage requires execution with {} prompts", prompts_count);
+                }
+                
                 return false;
             }
         }
     }
 
-    log::debug!("All workflow stages completed or validly skipped");
+    log::debug!("All workflow stages completed or validly skipped. Summary: completed={}, skipped={}, pending={}", 
+               completed_count, skipped_count, pending_count);
     true
 }

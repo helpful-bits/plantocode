@@ -28,19 +28,21 @@ export interface BackgroundJob {
   taskType: TaskType;
   status: JobStatus;
   prompt: string;
-  response?: string;
+  response?: string; // Responses are stored as strings, use response-utils for type-safe parsing
   errorMessage?: string;
   tokensSent?: number;
   tokensReceived?: number;
   modelUsed?: string;
-  actualCost?: number | null | undefined; // Server-authoritative cost - single source of truth for billing
-  duration_ms?: number; // Duration of LLM API call in milliseconds
+  actualCost: number | null; // Server-authoritative cost - single source of truth for billing
+  durationMs?: number; // Duration of LLM API call in milliseconds
   metadata?: JobMetadata | string | null;
   systemPromptTemplate?: string;
   createdAt: number;
   updatedAt?: number;
   startTime?: number;
   endTime?: number;
+  cacheWriteTokens: number | null; // Cache tokens written during the request
+  cacheReadTokens: number | null; // Cache tokens read from previous context
 }
 
 // Session structure - stores user context and preferences, NOT workflow artifacts

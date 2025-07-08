@@ -3,10 +3,12 @@ use std::collections::HashMap;
 use tokio::sync::Mutex;
 use log::{debug, error, info, warn};
 use tauri::AppHandle;
+use tauri::Manager;
 
 use crate::error::{AppError, AppResult};
 use crate::jobs::workflow_types::{WorkflowState, WorkflowStatus};
 use crate::jobs::workflow_error_handler::WorkflowErrorHandler;
+use crate::jobs::workflow_orchestrator;
 
 /// Handle failure of a stage (internal function)
 pub(super) async fn handle_stage_failure_internal(
@@ -33,8 +35,8 @@ pub(super) async fn handle_stage_failure_internal(
     let error_msg = error_message.unwrap_or_else(|| "Stage failed without error message".to_string());
 
     // Convert stage name to WorkflowStage enum
-    let workflow_stage = crate::jobs::workflow_types::WorkflowStage::from_display_name(&stage_job.stage_name)
-        .ok_or_else(|| AppError::JobError(format!("Unknown stage name: {}", stage_job.stage_name)))?;
+    let workflow_stage = crate::jobs::workflow_types::WorkflowStage::from_display_name(&stage_job.name)
+        .ok_or_else(|| AppError::JobError(format!("Unknown stage name: {}", stage_job.name)))?;
 
     // Delegate error handling to the WorkflowErrorHandler
     match workflow_error_handler.handle_stage_failure(
@@ -69,6 +71,7 @@ pub(super) async fn handle_stage_failure_internal(
 
                         // For skip strategy, we might need to advance to next stage
                         if response.next_action.contains("Skip") {
+                            let stage_job_clone = workflow.get_stage_job(job_id).cloned();
                             // Mark the current stage as completed with a note
                             workflow.update_stage_job(
                                 job_id,
@@ -78,7 +81,19 @@ pub(super) async fn handle_stage_failure_internal(
 
                             // Try to start next stage immediately
                             drop(workflows_guard); // Release lock before async call
-                            if let Err(e) = start_next_stages_internal(workflows, workflow_id).await {
+                            
+                            // Emit stage event for the skipped stage
+                            if let Some(stage_job) = stage_job_clone {
+                                super::event_emitter::emit_workflow_stage_event_internal(
+                                    app_handle,
+                                    workflow_id,
+                                    &stage_job,
+                                    &crate::models::JobStatus::Canceled,
+                                    Some(format!("Skipped due to error recovery: {}", response.next_action))
+                                ).await;
+                            }
+                            
+                            if let Err(e) = start_next_stages_internal(workflows, app_handle, workflow_id).await {
                                 error!("Failed to start next stages after skip recovery: {}", e);
                             }
                             return Ok(());
@@ -136,13 +151,15 @@ pub(super) async fn handle_stage_failure_internal(
     Ok(())
 }
 
-/// Helper function to start next stages (references orchestrator's method through stage scheduler)
+/// Helper function to start next stages by calling orchestrator's method
 async fn start_next_stages_internal(
     workflows: &Arc<Mutex<HashMap<String, WorkflowState>>>,
+    app_handle: &AppHandle,
     workflow_id: &str
 ) -> AppResult<()> {
-    // This is a placeholder - in practice, this would call the orchestrator's start_next_abstract_stages method
-    // Since we're working within the module structure, we'll delegate this back to the main orchestrator
-    warn!("start_next_stages_internal called - this should be handled by orchestrator's start_next_abstract_stages");
-    Ok(())
+    // Get the global workflow orchestrator
+    let orchestrator = app_handle.state::<Arc<workflow_orchestrator::WorkflowOrchestrator>>();
+    
+    // Call the public method to start next stages
+    orchestrator.start_next_abstract_stages(workflow_id).await
 }

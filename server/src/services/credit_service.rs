@@ -5,6 +5,7 @@ use crate::db::repositories::{
 };
 use crate::db::repositories::api_usage_repository::{ApiUsageEntryDto, ApiUsageRecord};
 use crate::models::model_pricing::ModelPricing;
+use crate::clients::usage_extractor::ProviderUsage;
 use crate::services::audit_service::{AuditService, AuditContext};
 use crate::utils::financial_validation::{
     validate_credit_purchase_amount, validate_credit_refund_amount, 
@@ -661,66 +662,18 @@ impl CreditService {
             .await?
             .ok_or_else(|| AppError::NotFound(format!("Model '{}' not found", model_id)))?;
         
-        // Calculate cost using secure cached token pricing with overflow protection
-        let input_cost = model_with_provider.calculate_input_cost(
-            tokens_input,
-            cache_write_tokens, 
-            cache_read_tokens
-        ).map_err(|e| AppError::InvalidArgument(format!("Input cost calculation failed: {}", e)))?;
+        // Create ProviderUsage for cost calculation
+        let usage = ProviderUsage::with_cache(
+            tokens_input as i32,
+            tokens_output as i32,
+            cache_write_tokens as i32,
+            cache_read_tokens as i32,
+            model_id.to_string()
+        );
         
-        // Calculate output cost separately with validation
-        let output_cost = if let Some(rate) = model_with_provider.get_output_cost_per_million_tokens() {
-            // Validate output token count
-            if tokens_output < 0 || tokens_output > 1_000_000_000 {
-                return Err(AppError::InvalidArgument(
-                    format!("Invalid output token count: {}. Must be between 0 and 1,000,000,000", tokens_output)
-                ));
-            }
-            
-            // Validate pricing bounds
-            let min_price = BigDecimal::from_str("0.000001")
-                .map_err(|e| AppError::InvalidArgument(format!("Failed to parse minimum price: {}", e)))?;
-            let max_price = BigDecimal::from(1000);
-            
-            if rate < min_price || rate > max_price {
-                return Err(AppError::InvalidArgument(
-                    format!("Output pricing rate {} is outside allowed bounds ({} - {})", rate, min_price, max_price)
-                ));
-            }
-            
-            let million = BigDecimal::from(1_000_000);
-            let output_tokens_bd = BigDecimal::from(tokens_output);
-            
-            // Check for potential overflow before multiplication
-            let product = &rate * &output_tokens_bd;
-            if product > (max_price.clone() * million.clone()) {
-                return Err(AppError::InvalidArgument(
-                    "Output cost calculation would overflow maximum allowed cost".to_string()
-                ));
-            }
-            
-            product / &million
-        } else {
-            BigDecimal::from(0)
-        };
-        
-        // Use calculated cost
-        let cost = &input_cost + &output_cost;
-        
-        // Validate total cost with overflow protection
-        let max_cost = BigDecimal::from(1000);
-        if cost > max_cost {
-            return Err(AppError::InvalidArgument(
-                "Combined token cost would exceed maximum allowed cost".to_string()
-            ));
-        }
-        
-        // Ensure cost is positive
-        if cost < BigDecimal::from(0) {
-            return Err(AppError::InvalidArgument(
-                "Calculated cost cannot be negative".to_string()
-            ));
-        }
+        // Calculate cost using model's calculate_total_cost method with full token breakdown
+        let cost = model_with_provider.calculate_total_cost(&usage)
+            .map_err(|e| AppError::InvalidArgument(format!("Cost calculation failed: {}", e)))?;
         
         // Normalize cost at usage entry point
         let cost = normalized(&cost);

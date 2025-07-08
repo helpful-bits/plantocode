@@ -6,11 +6,11 @@ use regex::Regex;
 
 
 use crate::jobs::processor_trait::JobProcessor;
-use crate::jobs::types::{Job, JobPayload, JobProcessResult};
+use crate::jobs::types::{Job, JobPayload, JobProcessResult, JobResultData};
 use crate::models::TaskType;
 use crate::error::{AppError, AppResult};
 use crate::jobs::job_processor_utils;
-use crate::jobs::processors::utils::prompt_utils;
+use crate::jobs::processors::utils::{prompt_utils, parsing_utils};
 use crate::jobs::processors::{LlmTaskRunner, LlmTaskConfigBuilder, LlmPromptContext};
 
 /// Processor for path correction jobs
@@ -75,75 +75,6 @@ impl PathCorrectionProcessor {
         Ok((corrected_paths, metadata))
     }
 
-    /// Parse paths from LLM text response with robust format handling
-    fn parse_paths_from_text_response(response_text: &str, project_directory: &str) -> AppResult<Vec<String>> {
-        let mut paths = Vec::new();
-        
-        // Normalize line endings
-        let normalized_text = response_text.replace("\r\n", "\n").replace("\r", "\n");
-        
-        // Split by newlines and process each line
-        for line in normalized_text.lines() {
-            let line = line.trim();
-            
-            // Filter out empty lines or lines that are clearly not paths
-            if line.is_empty()
-                || line.starts_with("//")
-                || line.starts_with("#")
-                || line.starts_with("Note:")
-                || line.starts_with("Analysis:")
-                || line.starts_with("Here are")
-                || line.starts_with("The following")
-                || line.starts_with("Based on")
-                || line.starts_with("```")
-                || line == "json"
-                || line == "JSON"
-                || line.len() < 2
-            {
-                continue;
-            }
-            
-            // Handle numbered lists (e.g., "1. path/to/file")
-            let line_without_numbers = if line.chars().next().map_or(false, |c| c.is_ascii_digit()) {
-                if let Some(dot_pos) = line.find('.') {
-                    line[dot_pos + 1..].trim()
-                } else {
-                    line
-                }
-            } else {
-                line
-            };
-            
-            // Handle bullet points (e.g., "- path/to/file", "* path/to/file")
-            let line_without_bullets = if line_without_numbers.starts_with("- ") || line_without_numbers.starts_with("* ") {
-                &line_without_numbers[2..]
-            } else {
-                line_without_numbers
-            };
-            
-            // Clean the line of potential prefixes/suffixes
-            let cleaned_path = line_without_bullets
-                .trim_matches(|c| {
-                    c == '\"' || c == '\'' || c == '`' || c == ',' || c == ':' || c == ';'
-                })
-                .trim();
-            
-            if !cleaned_path.is_empty() {
-                paths.push(cleaned_path.to_string());
-            }
-        }
-        
-        // Remove duplicates while preserving order
-        let mut unique_paths = Vec::new();
-        let mut seen = std::collections::HashSet::new();
-        for path in paths {
-            if seen.insert(path.clone()) {
-                unique_paths.push(path);
-            }
-        }
-        
-        Ok(unique_paths)
-    }
 }
 
 #[async_trait]
@@ -180,21 +111,18 @@ impl JobProcessor for PathCorrectionProcessor {
         let (model_used, temperature, max_output_tokens) = model_settings;
         
         job_processor_utils::log_job_start(&job.id, "path correction");
-        debug!("Paths to correct: {}", payload.paths_to_correct);
+        debug!("Paths to correct: {:?}", payload.paths_to_correct);
         
-        // Parse paths from string to array
+        // Use paths directly from Vec<String>
         let paths: Vec<&str> = payload.paths_to_correct
-            .split('\n')
-            .map(|line| line.trim())
+            .iter()
+            .map(|s| s.trim())
             .filter(|line| !line.is_empty() && !line.starts_with('#'))
             .collect();
         let project_directory = &session.project_directory;
         
         // Setup LLM task configuration
-        let llm_config = LlmTaskConfigBuilder::new()
-            .model(model_used.clone())
-            .temperature(temperature)
-            .max_tokens(max_output_tokens)
+        let llm_config = LlmTaskConfigBuilder::new(model_used.clone(), temperature, max_output_tokens)
             .stream(false)
             .build();
         
@@ -227,7 +155,7 @@ impl JobProcessor for PathCorrectionProcessor {
                     Err(e) => {
                         warn!("XML parsing failed: {}, trying fallback plain text parsing", e);
                         // Fallback to plain text parsing for robustness
-                        match Self::parse_paths_from_text_response(content, project_directory) {
+                        match parsing_utils::parse_paths_from_text_response(content, project_directory) {
                             Ok(paths) => {
                                 info!("Successfully parsed {} paths using plain text fallback", paths.len());
                                 paths
@@ -258,40 +186,26 @@ impl JobProcessor for PathCorrectionProcessor {
                     "parsedCorrections": detailed_metadata
                 });
                 
-                // Clone usage before moving it
-                let usage_clone = llm_result.usage.clone();
-                
-                // Create a modified LLM result with our JSON response
-                let mut modified_llm_result = llm_result.clone();
-                modified_llm_result.response = json_response_str.clone();
-                
-                // Finalize job success using task runner
-                task_runner.finalize_success(
-                    &repo,
-                    &job.id,
-                    &modified_llm_result,
-                    Some(metadata),
-                ).await?;
-                
                 info!("Path correction completed: {} paths corrected", corrected_paths.len());
                 debug!("Corrected paths: {:?}", corrected_paths);
                 
-                // Return success result
-                Ok(JobProcessResult::success(job.id.clone(), json_response_str.clone())
+                // Extract system prompt template and cost
+                let system_prompt_template = llm_result.system_prompt_template.clone();
+                let actual_cost = llm_result.usage.as_ref().and_then(|u| u.cost).unwrap_or(0.0);
+                
+                // Return success result with structured JSON data
+                Ok(JobProcessResult::success(job.id.clone(), JobResultData::Json(json_response_obj))
                     .with_tokens(
-                        usage_clone.as_ref().map(|u| u.prompt_tokens as i32),
-                        usage_clone.as_ref().map(|u| u.completion_tokens as i32),
-                        usage_clone.as_ref().map(|u| u.total_tokens as i32),
-                        Some(json_response_str.len() as i32)
-                    ))
+                        llm_result.usage.as_ref().map(|u| u.prompt_tokens as u32),
+                        llm_result.usage.as_ref().map(|u| u.completion_tokens as u32)
+                    )
+                    .with_system_prompt_template(system_prompt_template)
+                    .with_actual_cost(actual_cost))
             },
             Err(e) => {
                 // API error
                 let error_msg = format!("Path correction LLM task execution failed: {}", e);
                 error!("{}", error_msg);
-                
-                // Finalize job failure using task runner
-                task_runner.finalize_failure(&repo, &job.id, &error_msg, Some(&e), None).await?;
                 
                 Ok(JobProcessResult::failure(job.id.clone(), error_msg))
             }

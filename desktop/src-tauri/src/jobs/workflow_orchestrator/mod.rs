@@ -223,12 +223,14 @@ impl WorkflowOrchestrator {
         job_id: &str,
         status: JobStatus,
         error_message: Option<String>,
+        job_result_data: Option<crate::jobs::types::JobResultData>,
+        actual_cost: Option<f64>,
     ) -> AppResult<()> {
         debug!("Updating job status: {} -> {:?}", job_id, status);
 
         // Find workflow and update job status
         let workflow_id = query_service::find_workflow_id_by_job_id_internal(&self.workflows, job_id).await?;
-        state_updater::update_job_status_internal(&self.workflows, job_id, status.clone(), error_message.clone()).await?;
+        state_updater::update_job_status_internal(&self.workflows, job_id, status.clone(), error_message.clone(), actual_cost).await?;
 
         // Get the stage job for event emission
         if let Some(stage_job) = query_service::get_stage_job_by_id_internal(&self.workflows, job_id).await? {
@@ -238,7 +240,7 @@ impl WorkflowOrchestrator {
         // Handle stage completion/failure
         match status {
             JobStatus::Completed => {
-                if let Err(e) = self.handle_stage_completion(&workflow_id, job_id).await {
+                if let Err(e) = self.handle_stage_completion(&workflow_id, job_id, job_result_data).await {
                     error!("Failed to handle stage completion: {}", e);
                 }
             }
@@ -325,7 +327,7 @@ impl WorkflowOrchestrator {
                         let mut workflows_guard = self.workflows.lock().await;
                         if let Some(workflow_state) = workflows_guard.get_mut(workflow_id) {
                             // Check if job is already registered
-                            if !workflow_state.stage_jobs.iter().any(|stage_job| stage_job.job_id == job.id) {
+                            if !workflow_state.stages.iter().any(|stage_job| stage_job.job_id == job.id) {
                                 // This is an orphaned job - add it to the workflow
                                 if let Ok(task_type) = crate::models::TaskType::from_str(&job.task_type) {
                                     let stage_name = match task_type {
@@ -356,7 +358,7 @@ impl WorkflowOrchestrator {
                 workflows_guard.iter()
                     .filter(|(_, workflow_state)| workflow_state.status == crate::jobs::workflow_types::WorkflowStatus::Running)
                     .map(|(workflow_id, workflow_state)| {
-                        let completed_jobs: Vec<String> = workflow_state.stage_jobs.iter()
+                        let completed_jobs: Vec<String> = workflow_state.stages.iter()
                             .filter(|stage_job| stage_job.status == crate::models::JobStatus::Completed)
                             .map(|stage_job| stage_job.job_id.clone())
                             .collect();
@@ -366,9 +368,9 @@ impl WorkflowOrchestrator {
             };
             
             // Now trigger completion handlers without holding the lock
-            for (workflow_id, completed_job_ids) in workflows_to_check {
-                for job_id in completed_job_ids {
-                    if let Err(e) = self.handle_stage_completion(&workflow_id, &job_id).await {
+            for (workflow_id, completed_job_ids) in workflows_to_check.iter() {
+                for job_id in completed_job_ids.iter() {
+                    if let Err(e) = self.handle_stage_completion(&workflow_id, &job_id, None).await {
                         error!("Failed to handle stage completion during recovery for job {}: {}", job_id, e);
                     }
                 }
@@ -401,7 +403,7 @@ impl WorkflowOrchestrator {
         if let Some(workflow_state) = workflows_guard.get_mut(workflow_id) {
             for job in workflow_jobs {
                 // Check if job is already registered in the workflow
-                if !workflow_state.stage_jobs.iter().any(|stage_job| stage_job.job_id == job.id) {
+                if !workflow_state.stages.iter().any(|stage_job| stage_job.job_id == job.id) {
                     // This is an orphaned job - add it to the workflow
                     if let Ok(task_type) = crate::models::TaskType::from_str(&job.task_type) {
                         let stage_name = match task_type {
@@ -433,7 +435,7 @@ impl WorkflowOrchestrator {
                         stage_job.started_at = job.start_time;
                         stage_job.completed_at = job.end_time;
                         
-                        workflow_state.stage_jobs.push(stage_job);
+                        workflow_state.stages.push(stage_job);
                         recovered_count += 1;
                         info!("Lazy recovery: added job {} to workflow {}", job.id, workflow_id);
                     }
@@ -449,15 +451,15 @@ impl WorkflowOrchestrator {
             // Trigger progression check for any completed jobs
             let workflows_guard = self.workflows.lock().await;
             if let Some(workflow_state) = workflows_guard.get(workflow_id) {
-                let completed_jobs: Vec<String> = workflow_state.stage_jobs.iter()
+                let completed_jobs: Vec<String> = workflow_state.stages.iter()
                     .filter(|stage_job| stage_job.status == crate::models::JobStatus::Completed)
                     .map(|stage_job| stage_job.job_id.clone())
                     .collect();
                 
                 drop(workflows_guard);
                 
-                for job_id in completed_jobs {
-                    if let Err(e) = self.handle_stage_completion(workflow_id, &job_id).await {
+                for job_id in completed_jobs.iter() {
+                    if let Err(e) = self.handle_stage_completion(workflow_id, &job_id, None).await {
                         error!("Failed to handle stage completion during lazy recovery for job {}: {}", job_id, e);
                     }
                 }
@@ -508,6 +510,7 @@ impl WorkflowOrchestrator {
     /// Start a new workflow using abstract workflow definitions
     pub async fn start_workflow(
         &self,
+        workflow_id: String,
         workflow_definition_name: String,
         session_id: String,
         task_description: String,
@@ -519,6 +522,7 @@ impl WorkflowOrchestrator {
             &self.workflows,
             &self.app_handle,
             &self.workflow_definitions,
+            workflow_id,
             workflow_definition_name,
             session_id,
             task_description,
@@ -530,7 +534,8 @@ impl WorkflowOrchestrator {
 
 
     /// Handle successful completion of a stage
-    async fn handle_stage_completion(&self, workflow_id: &str, job_id: &str) -> AppResult<()> {
+    async fn handle_stage_completion(&self, workflow_id: &str, job_id: &str, job_result_data: Option<crate::jobs::types::JobResultData>) -> AppResult<()> {
+        
         // Create a closure that captures the necessary data
         let workflows = self.workflows.clone();
         let store_fn = move |job_id: &str, stage_data: serde_json::Value| {
@@ -546,6 +551,7 @@ impl WorkflowOrchestrator {
             self,
             workflow_id,
             job_id,
+            job_result_data,
             store_fn
         ).await
     }
@@ -662,7 +668,7 @@ impl WorkflowOrchestrator {
     }
     
     /// Start the next available abstract stages using workflow definitions
-    async fn start_next_abstract_stages(&self, workflow_id: &str) -> AppResult<()> {
+    pub async fn start_next_abstract_stages(&self, workflow_id: &str) -> AppResult<()> {
         let workflow_state = {
             let workflows = self.workflows.lock().await;
             workflows.get(workflow_id).cloned()
@@ -751,6 +757,46 @@ impl WorkflowOrchestrator {
     pub async fn mark_workflow_completed(&self, workflow_id: &str) -> AppResult<()> {
         let workflow_state = state_updater::mark_workflow_completed_internal(&self.workflows, workflow_id).await?;
         
+        // Get the BackgroundJobRepository to update the master workflow job
+        let background_job_repo = match self.app_handle.try_state::<Arc<BackgroundJobRepository>>() {
+            Some(repo) => repo.inner().clone(),
+            None => {
+                return Err(AppError::InitializationError(
+                    "BackgroundJobRepository not available in app state".to_string()
+                ));
+            }
+        };
+        
+        // Create workflow result from workflow state
+        let workflow_result = super::workflow_types::WorkflowResult::from_workflow_state(&workflow_state);
+        
+        // Serialize workflow result
+        let result_json = serde_json::to_string(&workflow_result)
+            .map_err(|e| AppError::JobError(format!("Failed to serialize workflow result: {}", e)))?;
+        
+        // Mark the master workflow job as completed
+        background_job_repo.mark_job_completed(
+            workflow_id, 
+            &result_json,
+            None,  // metadata
+            None,  // tokens_sent
+            None,  // tokens_received
+            None,  // model_used
+            None,  // system_prompt_template
+            workflow_state.total_actual_cost,   // actual_cost
+            None,  // cache_write_tokens
+            None   // cache_read_tokens
+        ).await?;
+        
+        // Emit generic job status change event for UI updates
+        crate::jobs::job_processor_utils::emit_job_status_change(
+            &self.app_handle,
+            workflow_id,
+            "completed",
+            None,
+            workflow_state.total_actual_cost
+        )?;
+        
         // Emit event to frontend
         event_emitter::emit_workflow_status_event_internal(&self.app_handle, &workflow_state, "Workflow completed successfully").await;
         
@@ -773,6 +819,36 @@ impl WorkflowOrchestrator {
     /// Mark workflow as failed
     pub async fn mark_workflow_failed(&self, workflow_id: &str, error_message: &str) -> AppResult<()> {
         let workflow_state = state_updater::mark_workflow_failed_internal(&self.workflows, workflow_id, error_message).await?;
+        
+        // Get the BackgroundJobRepository to update the master workflow job
+        let background_job_repo = match self.app_handle.try_state::<Arc<BackgroundJobRepository>>() {
+            Some(repo) => repo.inner().clone(),
+            None => {
+                return Err(AppError::InitializationError(
+                    "BackgroundJobRepository not available in app state".to_string()
+                ));
+            }
+        };
+        
+        // Mark the master workflow job as failed
+        background_job_repo.mark_job_failed(
+            workflow_id, 
+            error_message,
+            None,  // metadata
+            None,  // tokens_sent
+            None,  // tokens_received
+            None,  // model_used
+            workflow_state.total_actual_cost   // actual_cost
+        ).await?;
+        
+        // Emit generic job status change event for UI updates
+        crate::jobs::job_processor_utils::emit_job_status_change(
+            &self.app_handle,
+            workflow_id,
+            "failed",
+            Some(error_message),
+            workflow_state.total_actual_cost
+        )?;
         
         // Emit event to frontend
         event_emitter::emit_workflow_status_event_internal(&self.app_handle, &workflow_state, &format!("Workflow failed: {}", error_message)).await;
@@ -903,7 +979,7 @@ impl WorkflowOrchestrator {
         };
 
         // Find the stage job by the original failed job ID
-        let stage_job = workflow_state.stage_jobs.iter()
+        let stage_job = workflow_state.stages.iter()
             .find(|job| job.job_id == original_failed_job_id);
 
         let stage_job = match stage_job {
@@ -912,12 +988,12 @@ impl WorkflowOrchestrator {
         };
 
         // Convert the stage name to WorkflowStage
-        let workflow_stage = match stage_job.stage_name.as_str() {
+        let workflow_stage = match stage_job.name.as_str() {
             "RegexFileFilter" | "Regex File Filter" => WorkflowStage::RegexFileFilter,
             "FileRelevanceAssessment" | "File Relevance Assessment" => WorkflowStage::FileRelevanceAssessment,
             "ExtendedPathFinder" | "Extended Path Finder" => WorkflowStage::ExtendedPathFinder,
             "PathCorrection" | "Path Correction" => WorkflowStage::PathCorrection,
-            _ => return Err(AppError::JobError(format!("Unknown stage name: {}", stage_job.stage_name))),
+            _ => return Err(AppError::JobError(format!("Unknown stage name: {}", stage_job.name))),
         };
 
         // Call the internal retry handler

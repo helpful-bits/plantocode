@@ -13,7 +13,7 @@ pub(super) async fn emit_workflow_status_event_internal(
     message: &str
 ) {
     let current_stage = workflow_state.current_stage()
-        .map(|stage_job| stage_job.stage_name.clone());
+        .map(|stage_job| stage_job.name.clone());
 
     let event = WorkflowStatusEvent {
         workflow_id: workflow_state.workflow_id.clone(),
@@ -39,11 +39,11 @@ pub(super) async fn emit_workflow_stage_event_internal(
 ) {
     let event = WorkflowStageEvent {
         workflow_id: workflow_id.to_string(),
-        stage_name: stage_job.stage_name.clone(),
+        stage_name: stage_job.name.clone(),
         task_type: stage_job.task_type,
         job_id: stage_job.job_id.clone(),
         status: status.clone(),
-        message: format!("{} - {}", stage_job.stage_name, status.to_string()),
+        message: format!("{} - {}", stage_job.name, status.to_string()),
         error_message,
         data: None,
     };

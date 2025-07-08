@@ -42,6 +42,8 @@ export function useGeneratePromptTaskState({
     canRedo,
     undo,
     redo,
+    webSearchResults,
+    applyWebSearchResults,
   } = useTaskDescriptionState({
     activeSessionId: sessionState.currentSession?.id || null,
     taskDescriptionRef,
@@ -70,6 +72,8 @@ export function useGeneratePromptTaskState({
       canRedo,
       undo,
       redo,
+      webSearchResults,
+      applyWebSearchResults,
 
       // Combined Actions
       resetTaskState,
@@ -84,6 +88,8 @@ export function useGeneratePromptTaskState({
       canRedo,
       undo, // memoized with useCallback
       redo, // memoized with useCallback
+      webSearchResults,
+      applyWebSearchResults, // memoized with useCallback
       resetTaskState, // memoized with useCallback above
     ]
   );

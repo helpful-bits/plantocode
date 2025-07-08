@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/ui/card";
 import { Button } from "@/ui/button";
 import { Badge } from "@/ui/badge";
 import { LoadingSkeleton, ErrorState } from "./loading-and-error-states";
-import { listInvoices, downloadInvoicePdf, revealFileInExplorer, type Invoice, type ListInvoicesResponse } from "@/actions/billing/invoice.actions";
+import { listInvoices, downloadInvoicePdf, revealFileInExplorer, type Invoice, type ListInvoicesResponse } from "@/actions/billing";
 import { getErrorMessage } from "@/utils/error-handling";
 import { formatUsdCurrency } from "@/utils/currency-utils";
 

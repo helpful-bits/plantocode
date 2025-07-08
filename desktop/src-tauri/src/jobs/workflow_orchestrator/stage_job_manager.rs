@@ -34,7 +34,7 @@ pub async fn create_abstract_stage_job_with_lock_internal(
         TaskType::FileRelevanceAssessment => WorkflowStage::FileRelevanceAssessment,
         TaskType::ExtendedPathFinder => WorkflowStage::ExtendedPathFinder,
         TaskType::PathCorrection => WorkflowStage::PathCorrection,
-        TaskType::WebSearchQueryGeneration => WorkflowStage::WebSearchQueryGeneration,
+        TaskType::WebSearchPromptsGeneration => WorkflowStage::WebSearchPromptsGeneration,
         TaskType::WebSearchExecution => WorkflowStage::WebSearchExecution,
         _ => return Err(crate::error::AppError::JobError(format!("Unsupported task type for workflow stage: {:?}", task_type))),
     };
@@ -86,7 +86,7 @@ pub async fn create_abstract_stage_job_with_lock_internal(
                     workflow_definition.get_stage(dep_stage_name)
                 })
                 .and_then(|dep_stage_def| {
-                    workflow.stage_jobs.iter()
+                    workflow.stages.iter()
                         .find(|job| {
                                         job.task_type == dep_stage_def.task_type
                         })

@@ -20,10 +20,17 @@ function CopyButtonEditorComponent({ button, onChange, onDelete, readOnly, field
     attributes,
     listeners,
     setNodeRef,
+    setActivatorNodeRef,
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: fieldId });
+  } = useSortable({ 
+    id: fieldId,
+    data: {
+      type: 'copy-button',
+      button
+    }
+  });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -93,14 +100,10 @@ function CopyButtonEditorComponent({ button, onChange, onDelete, readOnly, field
   }, []);
 
   return (
-    <div ref={setNodeRef} style={style} className="relative">
-      <div 
-        className="absolute left-2 top-1/2 -translate-y-1/2 cursor-grab active:cursor-grabbing select-none touch-none" 
-        {...attributes} 
-        {...listeners}
-        style={{ userSelect: 'none', touchAction: 'none' }}
-      >
-        <GripVertical className="h-4 w-4 text-muted-foreground pointer-events-none" />
+    <div ref={setNodeRef} {...attributes} style={style} className={`relative ${isDragging ? 'opacity-50' : 'opacity-100'}`}>
+      <div ref={setActivatorNodeRef} {...listeners} 
+           className="absolute left-2 top-1/2 -translate-y-1/2 cursor-grab active:cursor-grabbing select-none touch-none p-2 -ml-1 -mt-1">
+        <GripVertical className="h-4 w-4 text-muted-foreground" />
       </div>
       <div className="space-y-4 p-4 pl-8 border border-border/50 rounded-lg bg-background/50">
         {!readOnly && (

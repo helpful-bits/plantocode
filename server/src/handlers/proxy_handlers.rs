@@ -21,9 +21,11 @@ use crate::clients::open_router_client::{OpenRouterStreamChunk, OpenRouterStream
 use crate::clients::google_client::GoogleStreamChunk;
 use crate::db::repositories::model_repository::{ModelRepository, ModelWithProvider};
 use crate::models::model_pricing::ModelPricing;
+use crate::models::standardized_usage_response::StandardizedUsageResponse;
 use crate::services::billing_service::BillingService;
 use crate::config::settings::AppSettings;
 use bigdecimal::BigDecimal;
+use std::str::FromStr;
 
 use futures_util::{StreamExt, TryStreamExt, Stream};
 use std::pin::Pin;
@@ -63,7 +65,14 @@ async fn validate_request_cost_limits(
     }
 
     // Calculate estimated cost using server-side pricing logic (no duration-based billing)
-    let estimated_cost = model.calculate_total_cost(input_tokens, output_tokens)
+    let usage = ProviderUsage::with_cache(
+        input_tokens as i32,
+        output_tokens as i32,
+        cache_write_tokens as i32,
+        cache_read_tokens as i32,
+        model.id.clone()
+    );
+    let estimated_cost = model.calculate_total_cost(&usage)
         .map_err(|e| AppError::InvalidArgument(format!("Cost calculation failed: {}", e)))?;
 
     // Validate user has sufficient credits for the estimated cost
@@ -127,14 +136,18 @@ async fn validate_api_request(
 }
 
 
-/// Helper function to create standardized OpenRouter usage response
-fn create_openrouter_usage(tokens_input: i32, tokens_output: i32, cost: &BigDecimal) -> Result<OpenRouterUsage, AppError> {
-    Ok(OpenRouterUsage {
-        prompt_tokens: tokens_input,
-        completion_tokens: tokens_output,
-        total_tokens: tokens_input + tokens_output,
+/// Helper function to create standardized usage response
+fn create_standardized_usage_response(usage: &ProviderUsage, cost: &BigDecimal) -> Result<serde_json::Value, AppError> {
+    let response = StandardizedUsageResponse {
+        prompt_tokens: usage.prompt_tokens,
+        completion_tokens: usage.completion_tokens,
+        total_tokens: usage.prompt_tokens + usage.completion_tokens,
+        cache_write_tokens: usage.cache_write_tokens,
+        cache_read_tokens: usage.cache_read_tokens,
+        cached_input_tokens: usage.cache_write_tokens + usage.cache_read_tokens,
         cost: Some(cost.to_string().parse::<f64>().unwrap_or(0.0)),
-    })
+    };
+    serde_json::to_value(response).map_err(|e| AppError::Internal(format!("Failed to serialize usage response: {}", e)))
 }
 
 
@@ -145,6 +158,7 @@ pub struct LlmCompletionRequest {
     pub stream: Option<bool>,
     pub max_tokens: Option<u32>,
     pub temperature: Option<f32>,
+    pub task_type: Option<String>,
     #[serde(flatten)]
     pub other: HashMap<String, Value>,
 }
@@ -193,6 +207,11 @@ pub async fn llm_chat_completion_handler(
     // Check if request is streaming
     let is_streaming = payload.stream.unwrap_or(false);
     
+    // Check if task type indicates web search functionality
+    let web_mode = payload.task_type.as_ref()
+        .map(|task_type| task_type == "web_search_execution")
+        .unwrap_or(false);
+    
     // Extract payload for different handler types
     let payload_inner = payload.into_inner();
     let payload_value = serde_json::to_value(&payload_inner)?;
@@ -201,9 +220,9 @@ pub async fn llm_chat_completion_handler(
     match model_with_provider.provider_code.as_str() {
         "openai" => {
             if is_streaming {
-                handle_openai_streaming_request(payload_value.clone(), &model_with_provider, &user_id, &app_settings, Arc::clone(&billing_service), model_repository.clone()).await
+                handle_openai_streaming_request(payload_value.clone(), &model_with_provider, &user_id, &app_settings, Arc::clone(&billing_service), model_repository.clone(), web_mode).await
             } else {
-                handle_openai_request(payload_value.clone(), &model_with_provider, &user_id, &app_settings, Arc::clone(&billing_service), model_repository.clone()).await
+                handle_openai_request(payload_value.clone(), &model_with_provider, &user_id, &app_settings, Arc::clone(&billing_service), model_repository.clone(), web_mode).await
             }
         },
         "anthropic" => {
@@ -251,6 +270,7 @@ async fn handle_openai_request(
     app_settings: &AppSettings,
     billing_service: Arc<BillingService>,
     model_repository: web::Data<ModelRepository>,
+    web_mode: bool,
 ) -> Result<HttpResponse, AppError> {
     let client = OpenAIClient::new(app_settings)?;
     let request_id = uuid::Uuid::new_v4().to_string();
@@ -262,7 +282,7 @@ async fn handle_openai_request(
     // Use the pre-computed API model ID
     request.model = model.api_model_id.clone();
     
-    let (response, _headers) = match client.chat_completion(request).await {
+    let (response, _headers) = match client.chat_completion(request, web_mode).await {
         Ok((response, headers, _, _, _, _)) => (response, headers),
         Err(error) => {
             if is_fallback_error(&error) {
@@ -286,11 +306,11 @@ async fn handle_openai_request(
         service_name: model.id.clone(),
         tokens_input: usage.prompt_tokens as i64,
         tokens_output: usage.completion_tokens as i64,
-        cached_input_tokens: (usage.cache_write_tokens + usage.cache_read_tokens) as i64,
         cache_write_tokens: usage.cache_write_tokens as i64,
         cache_read_tokens: usage.cache_read_tokens as i64,
         request_id: Some(request_id),
         metadata: None,
+        provider_reported_cost: usage.cost.as_ref().map(|c| BigDecimal::from_str(&c.to_string()).unwrap_or_default()),
     };
     
     let (api_usage_record, _user_credit) = billing_service
@@ -301,8 +321,8 @@ async fn handle_openai_request(
     // Convert to OpenRouter format for consistent client parsing with standardized usage
     let mut response_value = serde_json::to_value(response)?;
     if let Some(obj) = response_value.as_object_mut() {
-        let usage_response = create_openrouter_usage(usage.prompt_tokens, usage.completion_tokens, &cost)?;
-        obj.insert("usage".to_string(), serde_json::to_value(usage_response)?);
+        let usage_response = create_standardized_usage_response(&usage, &cost)?;
+        obj.insert("usage".to_string(), usage_response);
     }
     
     Ok(HttpResponse::Ok().json(response_value))
@@ -316,6 +336,7 @@ async fn handle_openai_streaming_request(
     app_settings: &AppSettings,
     billing_service: Arc<BillingService>,
     model_repository: web::Data<ModelRepository>,
+    web_mode: bool,
 ) -> Result<HttpResponse, AppError> {
     let payload_value_clone = payload.clone();
     
@@ -325,7 +346,7 @@ async fn handle_openai_streaming_request(
     
     request.model = model.api_model_id.clone();
     
-    let (_headers, provider_stream) = match client.stream_chat_completion(request).await {
+    let (_headers, provider_stream) = match client.stream_chat_completion(request, web_mode).await {
         Ok(result) => result,
         Err(error) => {
             if is_fallback_error(&error) {
@@ -394,11 +415,11 @@ async fn handle_anthropic_request(
         service_name: model.id.clone(),
         tokens_input: usage.prompt_tokens as i64,
         tokens_output: usage.completion_tokens as i64,
-        cached_input_tokens: (usage.cache_write_tokens + usage.cache_read_tokens) as i64,
         cache_write_tokens: usage.cache_write_tokens as i64,
         cache_read_tokens: usage.cache_read_tokens as i64,
         request_id: Some(request_id),
         metadata: None,
+        provider_reported_cost: usage.cost.as_ref().map(|c| BigDecimal::from_str(&c.to_string()).unwrap_or_default()),
     };
     
     let (api_usage_record, _user_credit) = billing_service
@@ -407,7 +428,7 @@ async fn handle_anthropic_request(
     let cost = api_usage_record.cost;
     
     // Transform Anthropic response to OpenRouter format for consistent client parsing
-    let usage_response = create_openrouter_usage(usage.prompt_tokens, usage.completion_tokens, &cost)?;
+    let usage_response = create_standardized_usage_response(&usage, &cost)?;
     
     let openrouter_response = json!({
         "id": response.id,
@@ -422,7 +443,7 @@ async fn handle_anthropic_request(
             },
             "finish_reason": response.stop_reason
         }],
-        "usage": serde_json::to_value(usage_response)?
+        "usage": usage_response
     });
     
     Ok(HttpResponse::Ok().json(openrouter_response))
@@ -509,11 +530,11 @@ async fn handle_google_request(
         service_name: model.id.clone(),
         tokens_input: usage.prompt_tokens as i64,
         tokens_output: usage.completion_tokens as i64,
-        cached_input_tokens: (usage.cache_write_tokens + usage.cache_read_tokens) as i64,
         cache_write_tokens: usage.cache_write_tokens as i64,
         cache_read_tokens: usage.cache_read_tokens as i64,
         request_id: Some(request_id),
         metadata: None,
+        provider_reported_cost: usage.cost.as_ref().map(|c| BigDecimal::from_str(&c.to_string()).unwrap_or_default()),
     };
     
     let (api_usage_record, _user_credit) = billing_service
@@ -527,7 +548,7 @@ async fn handle_google_request(
         .as_str()
         .unwrap_or("");
     
-    let usage_response = create_openrouter_usage(usage.prompt_tokens, usage.completion_tokens, &cost)?;
+    let usage_response = create_standardized_usage_response(&usage, &cost)?;
     
     let openrouter_response = json!({
         "id": format!("chatcmpl-{}", uuid::Uuid::new_v4()),
@@ -542,7 +563,7 @@ async fn handle_google_request(
             },
             "finish_reason": "stop"
         }],
-        "usage": serde_json::to_value(usage_response)?
+        "usage": usage_response
     });
     
     Ok(HttpResponse::Ok().json(openrouter_response))
@@ -603,7 +624,7 @@ async fn handle_openrouter_request(
     
     let mut request = client.convert_to_chat_request(payload)?;
     
-    request.model = model.id.clone();
+    request.model = model.api_model_id.clone();
     
     let (response, _headers, _, _, _, _) = client.chat_completion(request, &user_id.to_string()).await?;
     
@@ -620,11 +641,11 @@ async fn handle_openrouter_request(
         service_name: model.id.clone(),
         tokens_input: usage.prompt_tokens as i64,
         tokens_output: usage.completion_tokens as i64,
-        cached_input_tokens: (usage.cache_write_tokens + usage.cache_read_tokens) as i64,
         cache_write_tokens: usage.cache_write_tokens as i64,
         cache_read_tokens: usage.cache_read_tokens as i64,
         request_id: Some(request_id),
         metadata: None,
+        provider_reported_cost: usage.cost.as_ref().map(|c| BigDecimal::from_str(&c.to_string()).unwrap_or_default()),
     };
     
     let (api_usage_record, _user_credit) = billing_service
@@ -635,8 +656,8 @@ async fn handle_openrouter_request(
     // Update response with centrally resolved cost using standardized usage
     let mut response_value = serde_json::to_value(response)?;
     if let Some(obj) = response_value.as_object_mut() {
-        let usage_response = create_openrouter_usage(usage.prompt_tokens, usage.completion_tokens, &cost)?;
-        obj.insert("usage".to_string(), serde_json::to_value(usage_response)?);
+        let usage_response = create_standardized_usage_response(&usage, &cost)?;
+        obj.insert("usage".to_string(), usage_response);
     }
     
     Ok(HttpResponse::Ok().json(response_value))
@@ -655,7 +676,7 @@ async fn handle_openrouter_streaming_request(
     let client = OpenRouterClient::new(app_settings, model_repository)?;
     let mut request = client.convert_to_chat_request(payload)?;
     
-    request.model = model.id.clone();
+    request.model = model.api_model_id.clone();
     
     let (_headers, stream) = client.stream_chat_completion(request, user_id.to_string()).await?;
     
@@ -884,6 +905,9 @@ fn convert_google_to_openrouter_chunk(google_chunk: GoogleStreamChunk, model_id:
         completion_tokens: metadata.candidates_token_count,
         total_tokens: metadata.total_token_count,
         cost: None, // Will be filled in by caller
+        cached_input_tokens: 0,
+        cache_write_tokens: 0,
+        cache_read_tokens: 0,
     });
 
     OpenRouterStreamChunk {

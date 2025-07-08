@@ -19,6 +19,7 @@ pub mod setup_commands;
 pub mod database_maintenance_commands;
 pub mod config_cache_commands;
 pub mod backup_commands;
+pub mod error_recovery_commands;
 
 // Re-export all command functions for easier imports
 pub use regex_commands::{generate_regex_command, generate_regex_patterns_command};
@@ -59,6 +60,8 @@ pub use implementation_plan_commands::{
     read_implementation_plan_command,
     get_prompt_command,
     estimate_prompt_tokens_command,
+    update_implementation_plan_content_command,
+    create_merged_implementation_plan_command,
 };
 
 // Re-exports from workflow commands module  
@@ -202,6 +205,16 @@ pub use backup_commands::{
     create_manual_backup_command,
     verify_backup_command,
     delete_backup_command,
+};
+
+// Re-exports from error recovery commands module
+pub use error_recovery_commands::{
+    attempt_config_recovery,
+    detect_config_issues,
+    rebuild_config_cache,
+    emergency_config_reset,
+    validate_current_config,
+    get_config_health_status,
 };
 
 // All command functions will return AppResult<T> directly

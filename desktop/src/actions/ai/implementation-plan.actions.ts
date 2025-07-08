@@ -146,3 +146,32 @@ export async function readImplementationPlanAction(jobId: string): Promise<
     }>;
   }
 }
+
+/**
+ * Create a merged implementation plan from multiple source plans
+ */
+export async function createMergedImplementationPlanAction(
+  sessionId: string,
+  sourceJobIds: string[],
+  mergeInstructions?: string
+): Promise<ActionState<{ jobId: string }>> {
+  try {
+    const result = await invoke<{ job_id: string }>(
+      "create_merged_implementation_plan_command",
+      {
+        sessionId,
+        sourceJobIds,
+        mergeInstructions,
+      }
+    );
+    
+    return {
+      isSuccess: true,
+      message: "Merge implementation plan started",
+      data: { jobId: result.job_id },
+    };
+  } catch (error) {
+    console.error("Failed to create merged implementation plan:", error);
+    return handleActionError(error) as ActionState<{ jobId: string }>;
+  }
+}

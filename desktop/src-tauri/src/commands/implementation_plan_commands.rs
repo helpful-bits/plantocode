@@ -12,7 +12,7 @@ use crate::db_utils::{BackgroundJobRepository, SessionRepository, SettingsReposi
 use crate::error::{AppError, AppResult};
 use crate::models::JobCommandResponse;
 use crate::utils::unified_prompt_system::{UnifiedPromptProcessor, UnifiedPromptContextBuilder, ComposedPrompt as UnifiedComposedPrompt};
-use crate::jobs::types::JobPayload;
+use crate::jobs::types::{JobPayload, ImplementationPlanMergePayload};
 
 /// Request payload for the implementation plan generation command
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -427,4 +427,81 @@ pub async fn update_implementation_plan_content_command(
     
     info!("Successfully updated implementation plan content for job: {}", job_id);
     Ok(())
+}
+
+/// Creates a merged implementation plan from multiple source plans
+#[command]
+pub async fn create_merged_implementation_plan_command(
+    app_handle: tauri::AppHandle,
+    session_id: String,
+    source_job_ids: Vec<String>,
+    merge_instructions: Option<String>,
+) -> AppResult<JobCommandResponse> {
+    info!("Creating merged implementation plan for {} source plans", source_job_ids.len());
+    
+    // Validate required fields
+    if session_id.is_empty() {
+        return Err(AppError::ValidationError("Session ID is required".to_string()));
+    }
+    
+    if source_job_ids.is_empty() {
+        return Err(AppError::ValidationError("At least one source job ID is required".to_string()));
+    }
+    
+    // Get session to find the project directory
+    let background_job_repo = app_handle.state::<Arc<BackgroundJobRepository>>().inner().clone();
+    let session_repo = SessionRepository::new(background_job_repo.get_pool());
+    let session = session_repo.get_session_by_id(&session_id).await?
+        .ok_or_else(|| AppError::JobError(format!("Session {} not found", session_id)))?;
+    
+    // Get model configuration for this task using centralized resolver
+    let model_settings = crate::utils::config_resolver::resolve_model_settings(
+        &app_handle,
+        TaskType::ImplementationPlanMerge,
+        &session.project_directory,
+        None,  // No model override
+        None,  // No temperature override
+        None,  // No max_tokens override
+    ).await?;
+    
+    // Create the prompt description including the task description from session
+    let prompt_description = if let Some(ref task_desc) = session.task_description {
+        if let Some(ref instructions) = merge_instructions {
+            format!("{} - Merge {} plans with instructions: {}", task_desc, source_job_ids.len(), instructions)
+        } else {
+            format!("{} - Merged from {} implementation plans", task_desc, source_job_ids.len())
+        }
+    } else {
+        // Fallback if no task description in session
+        if let Some(ref instructions) = merge_instructions {
+            format!("Merge {} plans: {}", source_job_ids.len(), instructions)
+        } else {
+            format!("Merged from {} implementation plans", source_job_ids.len())
+        }
+    };
+    
+    let payload = JobPayload::ImplementationPlanMerge(ImplementationPlanMergePayload {
+        source_job_ids,
+        merge_instructions,
+    });
+    
+    let job_id = crate::utils::job_creation_utils::create_and_queue_background_job(
+        &session_id,
+        &session.project_directory,
+        "openrouter",
+        TaskType::ImplementationPlanMerge,
+        "IMPLEMENTATION_PLAN_MERGE",
+        &prompt_description,
+        model_settings,
+        payload,
+        2, // Priority
+        None, // No workflow_id
+        None, // No workflow_stage
+        None, // No extra metadata
+        &app_handle,
+    ).await?;
+    
+    info!("Created merged implementation plan job: {}", job_id);
+    
+    Ok(JobCommandResponse { job_id })
 }

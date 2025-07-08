@@ -22,6 +22,46 @@ export interface UseWorkflowManagerReturn extends WorkflowManagerState {
 }
 
 /**
+ * Helper function to validate and enrich WorkflowStatusResponse
+ */
+function validateAndEnrichWorkflowStatus(workflow: WorkflowStatusResponse): WorkflowStatusResponse {
+  // Ensure stageStatuses is properly populated with detailed information
+  if (!workflow.stageStatuses) {
+    workflow.stageStatuses = [];
+  }
+  
+  // Validate each stage status has required fields with comprehensive mapping
+  workflow.stageStatuses = workflow.stageStatuses.map(stage => ({
+    ...stage,
+    // Ensure all required fields are present with proper defaults
+    stageName: stage.stageName || 'UNKNOWN_STAGE',
+    status: stage.status || 'idle',
+    progressPercentage: stage.progressPercentage || 0,
+    jobId: stage.jobId || undefined,
+    errorMessage: stage.errorMessage || undefined,
+    executionTimeMs: stage.executionTimeMs || undefined,
+    startedAt: stage.startedAt || undefined,
+    completedAt: stage.completedAt || undefined,
+    createdAt: stage.createdAt || undefined,
+    dependsOn: stage.dependsOn || undefined,
+    subStatusMessage: stage.subStatusMessage || undefined,
+  }));
+  
+  // Ensure overall workflow fields are properly set
+  workflow.progressPercentage = workflow.progressPercentage || 0;
+  workflow.sessionId = workflow.sessionId || '';
+  workflow.taskDescription = workflow.taskDescription || undefined;
+  workflow.projectDirectory = workflow.projectDirectory || undefined;
+  workflow.createdAt = workflow.createdAt || undefined;
+  workflow.updatedAt = workflow.updatedAt || undefined;
+  workflow.completedAt = workflow.completedAt || undefined;
+  workflow.totalExecutionTimeMs = workflow.totalExecutionTimeMs || undefined;
+  workflow.errorMessage = workflow.errorMessage || undefined;
+  
+  return workflow;
+}
+
+/**
  * Hook to manage workflow interactions - fetching, refreshing, and controlling workflows
  */
 export function useWorkflowManager(): UseWorkflowManagerReturn {
@@ -60,38 +100,8 @@ export function useWorkflowManager(): UseWorkflowManagerReturn {
           return false;
         }
         
-        // Ensure stageStatuses is properly populated with detailed information
-        if (!workflow.stageStatuses) {
-          workflow.stageStatuses = [];
-        }
-        
-        // Validate each stage status has required fields with comprehensive mapping
-        workflow.stageStatuses = workflow.stageStatuses.map(stage => ({
-          ...stage,
-          // Ensure all required fields are present with proper defaults
-          stageName: stage.stageName || 'UNKNOWN_STAGE',
-          status: stage.status || 'idle',
-          progressPercentage: stage.progressPercentage || 0,
-          jobId: stage.jobId || undefined,
-          errorMessage: stage.errorMessage || undefined,
-          executionTimeMs: stage.executionTimeMs || undefined,
-          startedAt: stage.startedAt || undefined,
-          completedAt: stage.completedAt || undefined,
-          createdAt: stage.createdAt || undefined,
-          dependsOn: stage.dependsOn || undefined,
-          subStatusMessage: stage.subStatusMessage || undefined,
-        }));
-        
-        // Ensure overall workflow fields are properly set
-        workflow.progressPercentage = workflow.progressPercentage || 0;
-        workflow.sessionId = workflow.sessionId || '';
-        workflow.taskDescription = workflow.taskDescription || undefined;
-        workflow.projectDirectory = workflow.projectDirectory || undefined;
-        workflow.createdAt = workflow.createdAt || undefined;
-        workflow.updatedAt = workflow.updatedAt || undefined;
-        workflow.completedAt = workflow.completedAt || undefined;
-        workflow.totalExecutionTimeMs = workflow.totalExecutionTimeMs || undefined;
-        workflow.errorMessage = workflow.errorMessage || undefined;
+        // Use helper function to validate and enrich the workflow
+        validateAndEnrichWorkflowStatus(workflow);
         
         return true;
       });
@@ -144,38 +154,8 @@ export function useWorkflowManager(): UseWorkflowManagerReturn {
         return null;
       }
       
-      // Ensure stageStatuses is properly populated with detailed information
-      if (!workflow.stageStatuses) {
-        workflow.stageStatuses = [];
-      }
-      
-      // Validate and enrich each stage status with comprehensive mapping
-      workflow.stageStatuses = workflow.stageStatuses.map(stage => ({
-        ...stage,
-        // Ensure all required fields are present with proper defaults
-        stageName: stage.stageName || 'UNKNOWN_STAGE',
-        status: stage.status || 'idle',
-        progressPercentage: stage.progressPercentage || 0,
-        jobId: stage.jobId || undefined,
-        errorMessage: stage.errorMessage || undefined,
-        executionTimeMs: stage.executionTimeMs || undefined,
-        startedAt: stage.startedAt || undefined,
-        completedAt: stage.completedAt || undefined,
-        createdAt: stage.createdAt || undefined,
-        dependsOn: stage.dependsOn || undefined,
-        subStatusMessage: stage.subStatusMessage || undefined,
-      }));
-      
-      // Ensure overall workflow fields are properly set with comprehensive mapping
-      workflow.progressPercentage = workflow.progressPercentage || 0;
-      workflow.sessionId = workflow.sessionId || '';
-      workflow.taskDescription = workflow.taskDescription || undefined;
-      workflow.projectDirectory = workflow.projectDirectory || undefined;
-      workflow.createdAt = workflow.createdAt || undefined;
-      workflow.updatedAt = workflow.updatedAt || undefined;
-      workflow.completedAt = workflow.completedAt || undefined;
-      workflow.totalExecutionTimeMs = workflow.totalExecutionTimeMs || undefined;
-      workflow.errorMessage = workflow.errorMessage || undefined;
+      // Use helper function to validate and enrich the workflow
+      validateAndEnrichWorkflowStatus(workflow);
       
       return workflow;
     } catch (error) {
@@ -292,38 +272,8 @@ export function useWorkflowDetails(workflowId: string | null) {
         return;
       }
       
-      // Ensure stageStatuses is properly populated with detailed information
-      if (!workflowData.stageStatuses) {
-        workflowData.stageStatuses = [];
-      }
-      
-      // Validate and enrich each stage status with comprehensive mapping
-      workflowData.stageStatuses = workflowData.stageStatuses.map(stage => ({
-        ...stage,
-        // Ensure all required fields are present with proper defaults
-        stageName: stage.stageName || 'UNKNOWN_STAGE',
-        status: stage.status || 'idle',
-        progressPercentage: stage.progressPercentage || 0,
-        jobId: stage.jobId || undefined,
-        errorMessage: stage.errorMessage || undefined,
-        executionTimeMs: stage.executionTimeMs || undefined,
-        startedAt: stage.startedAt || undefined,
-        completedAt: stage.completedAt || undefined,
-        createdAt: stage.createdAt || undefined,
-        dependsOn: stage.dependsOn || undefined,
-        subStatusMessage: stage.subStatusMessage || undefined,
-      }));
-      
-      // Ensure overall workflow fields are properly set with comprehensive mapping
-      workflowData.progressPercentage = workflowData.progressPercentage || 0;
-      workflowData.sessionId = workflowData.sessionId || '';
-      workflowData.taskDescription = workflowData.taskDescription || undefined;
-      workflowData.projectDirectory = workflowData.projectDirectory || undefined;
-      workflowData.createdAt = workflowData.createdAt || undefined;
-      workflowData.updatedAt = workflowData.updatedAt || undefined;
-      workflowData.completedAt = workflowData.completedAt || undefined;
-      workflowData.totalExecutionTimeMs = workflowData.totalExecutionTimeMs || undefined;
-      workflowData.errorMessage = workflowData.errorMessage || undefined;
+      // Use helper function to validate and enrich the workflow
+      validateAndEnrichWorkflowStatus(workflowData);
       
       setWorkflow(workflowData);
     } catch (error) {

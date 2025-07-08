@@ -10,7 +10,7 @@ import { Input } from "@/ui/input";
 import { Loader2, CreditCard, AlertCircle, DollarSign } from "lucide-react";
 import { invoke } from '@tauri-apps/api/core';
 import { type BillingDashboardData } from '@/types/tauri-commands';
-import { createCreditPurchaseCheckoutSession } from "@/actions/billing/checkout.actions";
+import { createCreditPurchaseCheckoutSession } from "@/actions/billing";
 import { useNotification } from "@/contexts/notification-context";
 import { getErrorMessage } from "@/utils/error-handling";
 import { open } from "@/utils/shell-utils";

@@ -13,7 +13,7 @@ use tokio::fs as tokio_fs;
 
 use crate::error::{AppError, AppResult};
 use crate::jobs::processor_trait::JobProcessor;
-use crate::jobs::types::{Job, JobPayload, JobProcessResult, PatternGroup};
+use crate::jobs::types::{Job, JobPayload, JobProcessResult, JobResultData, PatternGroup};
 use crate::jobs::job_processor_utils;
 use crate::jobs::processors::{LlmTaskRunner, LlmTaskConfigBuilder, LlmPromptContext};
 use crate::utils::directory_tree::get_directory_tree_with_defaults;
@@ -233,10 +233,7 @@ impl JobProcessor for RegexFileFilterProcessor {
         job_processor_utils::log_job_start(&job.id, "regex pattern generation");
 
         // Setup LLM task configuration
-        let llm_config = LlmTaskConfigBuilder::new()
-            .model(model_used.clone())
-            .temperature(temperature)
-            .max_tokens(max_output_tokens)
+        let llm_config = LlmTaskConfigBuilder::new(model_used.clone(), temperature, max_output_tokens)
             .stream(false)
             .build();
         
@@ -259,7 +256,6 @@ impl JobProcessor for RegexFileFilterProcessor {
             Err(e) => {
                 error!("Regex Pattern Generation LLM task execution failed: {}", e);
                 let error_msg = format!("LLM task execution failed: {}", e);
-                task_runner.finalize_failure(&repo, &job.id, &error_msg, Some(&e), None).await?;
                 return Ok(JobProcessResult::failure(job.id.clone(), error_msg));
             }
         };
@@ -350,28 +346,23 @@ impl JobProcessor for RegexFileFilterProcessor {
             return Err(AppError::JobError("Cannot apply file filtering - JSON parsing failed".to_string()));
         };
         
-        // Create minimal metadata
-        let metadata = serde_json::json!({
-            "job_type": "REGEX_FILE_FILTER", 
-            "workflow_stage": "RegexFileFilter",
-            "fileCount": filtered_files.len()
-        });
-        
-        // Finalize job success using task runner
-        task_runner.finalize_success(
-            &repo,
-            &job.id,
-            &llm_result,
-            Some(metadata),
-        ).await?;
-        
         info!("RegexFileFilter completed: Generated patterns and filtered {} files", filtered_files.len());
         
-        // Return success result with filtered files as JSON
-        let response_json = json!({
-            "filteredFiles": filtered_files
-        });
+        // Extract system prompt template and cost
+        let system_prompt_template = llm_result.system_prompt_template.clone();
+        let actual_cost = llm_result.usage.as_ref().and_then(|u| u.cost).unwrap_or(0.0);
         
-        Ok(JobProcessResult::success(job.id.clone(), response_json.to_string()))
+        // Return success result with filtered files as JSON, including token usage
+        let result = JobProcessResult::success(job.id.clone(), JobResultData::Json(json!({
+            "filteredFiles": filtered_files
+        })))
+        .with_tokens(
+            llm_result.usage.as_ref().map(|u| u.prompt_tokens as u32),
+            llm_result.usage.as_ref().map(|u| u.completion_tokens as u32)
+        )
+        .with_system_prompt_template(system_prompt_template)
+        .with_actual_cost(actual_cost);
+        
+        Ok(result)
     }
 }

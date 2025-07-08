@@ -1,7 +1,5 @@
-// Step 3: Cached Token Pricing Implementation
-// This file implements cached token counting for Anthropic API.
-// Token extraction functions return: (uncached_input, cache_write, cache_read, output)
-// For Anthropic: separate fields for cache_creation_input_tokens and cache_read_input_tokens
+// Anthropic API client implementation with proper token counting
+// Handles both cached and uncached tokens according to the 2025-07 API specification
 use crate::error::AppError;
 use actix_web::{web, HttpResponse};
 use futures_util::{Stream, StreamExt, TryStreamExt};
@@ -99,6 +97,8 @@ pub struct AnthropicUsage {
     pub cache_read_input_tokens: Option<i32>,
     /// Cost field available in Anthropic v2024-06 API
     pub cost: Option<f64>,
+    #[serde(flatten)]
+    pub other: Option<serde_json::Value>,
 }
 
 // Anthropic Streaming Structs
@@ -205,13 +205,13 @@ impl AnthropicClient {
             )));
         }
         
-        let result = response.json::<AnthropicChatResponse>().await
+        let body = response.bytes().await
+            .map_err(|e| AppError::Internal(format!("Failed to read response body: {}", e)))?;
+        
+        let result: AnthropicChatResponse = serde_json::from_slice(&body)
             .map_err(|e| AppError::Internal(format!("Anthropic deserialization failed: {}", e.to_string())))?;
         
-        // Extract usage using the new extract_from_http_body method
-        let response_body = serde_json::to_string(&result)
-            .map_err(|e| AppError::Internal(format!("Failed to serialize response: {}", e)))?;
-        let usage = self.extract_from_http_body(response_body.as_bytes(), &request.model, false).await?;
+        let usage = self.extract_from_http_body(&body, &request.model, false).await?;
             
         Ok((result, headers, usage.prompt_tokens, usage.cache_write_tokens, usage.cache_read_tokens, usage.completion_tokens))
     }
@@ -381,7 +381,8 @@ impl UsageExtractor for AnthropicClient {
         // Extract usage from parsed JSON
         let usage = json_value.get("usage")?;
         
-        let input_tokens = match usage.get("input_tokens").and_then(|v| v.as_i64()) {
+        // Anthropic's input_tokens is the total input tokens (uncached + cache_creation + cache_read)
+        let total_input_tokens = match usage.get("input_tokens").and_then(|v| v.as_i64()) {
             Some(tokens) => tokens as i32,
             None => {
                 tracing::warn!("Missing or invalid input_tokens in Anthropic response");
@@ -406,7 +407,7 @@ impl UsageExtractor for AnthropicClient {
             .unwrap_or(0) as i32;
         
         Some(ProviderUsage {
-            prompt_tokens: 0,
+            prompt_tokens: total_input_tokens,  // Total input tokens as per API contract
             completion_tokens: output_tokens,
             cache_write_tokens: cache_creation_input_tokens,
             cache_read_tokens: cache_read_input_tokens,
@@ -419,10 +420,17 @@ impl UsageExtractor for AnthropicClient {
     /// Extract usage information from Anthropic streaming chunk
     /// Handles both individual chunks and complete responses
     fn extract_usage_from_stream_chunk(&self, chunk_json: &serde_json::Value) -> Option<ProviderUsage> {
-        // For Anthropic streaming, usage info comes in the final chunk with same structure
+        // For Anthropic streaming, usage info comes only in message_stop event type
+        let chunk_type = chunk_json.get("type")?.as_str()?;
+        if chunk_type != "message_stop" {
+            return None;
+        }
+        
+        // Extract usage from message_stop event
         let usage = chunk_json.get("usage")?;
         
-        let input_tokens = usage.get("input_tokens")?.as_i64()? as i32;
+        // Anthropic's input_tokens is the total input tokens (uncached + cache_creation + cache_read)
+        let total_input_tokens = usage.get("input_tokens")?.as_i64()? as i32;
         let output_tokens = usage.get("output_tokens")?.as_i64()? as i32;
         
         let cache_creation_input_tokens = usage.get("cache_creation_input_tokens")
@@ -433,7 +441,7 @@ impl UsageExtractor for AnthropicClient {
             .unwrap_or(0) as i32;
         
         Some(ProviderUsage {
-            prompt_tokens: 0,
+            prompt_tokens: total_input_tokens,  // Total input tokens as per API contract
             completion_tokens: output_tokens,
             cache_write_tokens: cache_creation_input_tokens,
             cache_read_tokens: cache_read_input_tokens,

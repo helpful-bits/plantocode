@@ -56,11 +56,11 @@ const FILE_FINDING_WORKFLOW_STAGES = [
 
 const WEB_SEARCH_WORKFLOW_STAGES = [
   {
-    key: 'webSearchQueryGeneration',
+    key: 'webSearchPromptsGeneration',
     stageNumber: 1,
-    displayName: 'Query Generation',
+    displayName: 'Prompts Generation',
     nextStage: 'Search Execution',
-    description: 'Generate effective search queries for web search'
+    description: 'Generate sophisticated search prompts for web research'
   },
   {
     key: 'webSearchExecution',
@@ -191,7 +191,7 @@ export default function TaskModelSettings({
     }
     
     const settings = getTaskSettings(camelCaseKey);
-    return settingName === 'maxTokens' ? (settings.maxTokens ?? 4000) : (settings.temperature ?? 0.7);
+    return settingName === 'maxTokens' ? (settings?.maxTokens ?? 4000) : (settings?.temperature ?? 0.7);
   };
 
   const setSliderValue = (camelCaseKey: keyof TaskSettings, settingName: 'maxTokens' | 'temperature', value: number) => {

@@ -7,6 +7,9 @@ use chrono::{DateTime, Utc};
 use crate::db_utils::BackgroundJobRepository;
 use crate::jobs::workflow_orchestrator::get_workflow_orchestrator;
 use crate::jobs::workflow_types::{WorkflowStatus, WorkflowStage};
+use crate::jobs::types::{JobPayload, FileFinderWorkflowPayload, WebSearchWorkflowPayload};
+use crate::models::{JobCommandResponse, TaskType};
+use crate::utils::job_creation_utils;
 use crate::AppState;
 
 // New response types for workflow commands
@@ -32,6 +35,7 @@ pub struct StageStatus {
     pub error_message: Option<String>,
     pub execution_time_ms: Option<i64>,
     pub sub_status_message: Option<String>, // Detailed stage progress message
+    pub task_type: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -58,8 +62,11 @@ pub struct WorkflowStatusResponse {
 #[serde(rename_all = "camelCase")]
 pub struct WorkflowResultsResponse {
     pub workflow_id: String,
-    pub final_paths: Vec<String>,
+    pub selected_files: Vec<String>,
     pub stage_results: HashMap<String, serde_json::Value>,
+    pub total_execution_time: i64,
+    pub intermediate_data: Option<crate::jobs::workflow_types::WorkflowIntermediateData>,
+    pub total_actual_cost: Option<f64>,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -87,7 +94,7 @@ pub async fn start_file_finder_workflow(
     excluded_paths: Vec<String>,
     timeout_ms: Option<u64>,
     app_handle: AppHandle
-) -> Result<WorkflowCommandResponse, String> {
+) -> Result<JobCommandResponse, String> {
     info!("Starting file finder workflow for task: {}", task_description);
     
     // Validate required fields
@@ -103,12 +110,38 @@ pub async fn start_file_finder_workflow(
         return Err("Project directory is required".to_string());
     }
     
+    // First create a master BackgroundJob for the workflow
+    let workflow_payload = FileFinderWorkflowPayload {
+        task_description: task_description.clone(),
+        session_id: session_id.clone(),
+        project_directory: project_directory.clone(),
+        excluded_paths: excluded_paths.clone(),
+        timeout_ms,
+    };
+    
+    let workflow_id = job_creation_utils::create_and_queue_background_job(
+        &session_id,
+        &project_directory,
+        "workflow",
+        TaskType::FileFinderWorkflow,
+        "FILE_FINDER_WORKFLOW",
+        &task_description,
+        None, // workflows don't need LLM settings
+        JobPayload::FileFinderWorkflow(workflow_payload),
+        10, // High priority for workflows
+        None, // workflow_id - will be the job ID itself
+        None, // workflow_stage
+        None, // metadata
+        &app_handle,
+    ).await.map_err(|e| format!("Failed to create workflow job: {}", e))?;
+    
     // Get the workflow orchestrator
     let orchestrator = get_workflow_orchestrator().await
         .map_err(|e| format!("Failed to get workflow orchestrator: {}", e))?;
     
     // Start the workflow via the orchestrator using the FileFinderWorkflow definition
-    let workflow_id = orchestrator.start_workflow(
+    orchestrator.start_workflow(
+        workflow_id.clone(),
         "FileFinderWorkflow".to_string(),
         session_id,
         task_description,
@@ -119,10 +152,8 @@ pub async fn start_file_finder_workflow(
     
     info!("Started file finder workflow: {}", workflow_id);
     
-    Ok(WorkflowCommandResponse {
-        workflow_id: workflow_id.clone(),
-        first_stage_job_id: "N/A".to_string(), // Orchestrator manages job IDs internally
-        status: "started".to_string(),
+    Ok(JobCommandResponse {
+        job_id: workflow_id,
     })
 }
 
@@ -135,7 +166,7 @@ pub async fn start_web_search_workflow(
     excluded_paths: Vec<String>,
     timeout_ms: Option<u64>,
     app_handle: AppHandle
-) -> Result<WorkflowCommandResponse, String> {
+) -> Result<JobCommandResponse, String> {
     info!("Starting web search workflow for task: {}", task_description);
     
     // Validate required fields
@@ -151,12 +182,38 @@ pub async fn start_web_search_workflow(
         return Err("Project directory is required".to_string());
     }
     
+    // First create a master BackgroundJob for the workflow
+    let workflow_payload = WebSearchWorkflowPayload {
+        task_description: task_description.clone(),
+        session_id: session_id.clone(),
+        project_directory: project_directory.clone(),
+        excluded_paths: excluded_paths.clone(),
+        timeout_ms,
+    };
+    
+    let workflow_id = job_creation_utils::create_and_queue_background_job(
+        &session_id,
+        &project_directory,
+        "workflow",
+        TaskType::WebSearchWorkflow,
+        "WEB_SEARCH_WORKFLOW",
+        &task_description,
+        None, // workflows don't need LLM settings
+        JobPayload::WebSearchWorkflow(workflow_payload),
+        10, // High priority for workflows
+        None, // workflow_id - will be the job ID itself
+        None, // workflow_stage
+        None, // metadata
+        &app_handle,
+    ).await.map_err(|e| format!("Failed to create workflow job: {}", e))?;
+    
     // Get the workflow orchestrator
     let orchestrator = get_workflow_orchestrator().await
         .map_err(|e| format!("Failed to get workflow orchestrator: {}", e))?;
     
     // Start the workflow via the orchestrator using the WebSearchWorkflow definition
-    let workflow_id = orchestrator.start_workflow(
+    orchestrator.start_workflow(
+        workflow_id.clone(),
         "WebSearchWorkflow".to_string(),
         session_id,
         task_description,
@@ -167,10 +224,8 @@ pub async fn start_web_search_workflow(
     
     info!("Started web search workflow: {}", workflow_id);
     
-    Ok(WorkflowCommandResponse {
-        workflow_id: workflow_id.clone(),
-        first_stage_job_id: "N/A".to_string(), // Orchestrator manages job IDs internally
-        status: "started".to_string(),
+    Ok(JobCommandResponse {
+        job_id: workflow_id,
     })
 }
 
@@ -368,8 +423,11 @@ pub async fn get_file_finder_workflow_results(
     
     Ok(WorkflowResultsResponse {
         workflow_id,
-        final_paths: workflow_result.selected_files,
+        selected_files: workflow_result.final_paths,
         stage_results,
+        total_execution_time: workflow_result.total_duration_ms.unwrap_or(0),
+        intermediate_data: Some(workflow_result.intermediate_data),
+        total_actual_cost: workflow_result.total_actual_cost,
     })
 }
 
@@ -457,7 +515,9 @@ pub async fn cancel_workflow_stage_command(
     orchestrator.update_job_status(
         &stage_job_id, 
         crate::models::JobStatus::Canceled, 
-        Some("Canceled by user".to_string())
+        Some("Canceled by user".to_string()),
+        None,
+        None
     ).await
     .map_err(|e| format!("Failed to cancel workflow stage: {}", e))?;
     
@@ -555,13 +615,14 @@ fn convert_workflow_state_to_response(workflow_state: &crate::jobs::workflow_typ
                     progress_percentage: progress,
                     started_at: job.started_at.map(|t| DateTime::<Utc>::from_timestamp_millis(t).map(|dt| dt.to_rfc3339()).unwrap_or_default()),
                     completed_at: job.completed_at.map(|t| DateTime::<Utc>::from_timestamp_millis(t).map(|dt| dt.to_rfc3339()).unwrap_or_default()),
-                    depends_on: job.depends_on.clone(),
+                    depends_on: job.dependency_job_id.clone(),
                     created_at: Some(DateTime::<Utc>::from_timestamp_millis(job.created_at).map(|dt| dt.to_rfc3339()).unwrap_or_default()),
                     error_message: job.error_message.clone(),
                     execution_time_ms: job.completed_at.and_then(|completed| 
                         job.started_at.map(|started| (completed - started))
                     ),
                     sub_status_message: job.sub_status_message.clone(),
+                    task_type: stage_def.task_type.to_string(),
                 }
             } else {
                 StageStatus {
@@ -576,6 +637,7 @@ fn convert_workflow_state_to_response(workflow_state: &crate::jobs::workflow_typ
                     error_message: None,
                     execution_time_ms: None,
                     sub_status_message: None,
+                    task_type: stage_def.task_type.to_string(),
                 }
             };
             
@@ -583,7 +645,7 @@ fn convert_workflow_state_to_response(workflow_state: &crate::jobs::workflow_typ
         }
     } else {
         // Fallback: iterate through existing stage jobs for backward compatibility
-        for stage_job in &workflow_state.stage_jobs {
+        for stage_job in &workflow_state.stages {
             let progress = match stage_job.status {
                 crate::models::JobStatus::Completed => 100.0,
                 crate::models::JobStatus::Failed => 0.0,
@@ -592,19 +654,20 @@ fn convert_workflow_state_to_response(workflow_state: &crate::jobs::workflow_typ
             };
             
             let stage_status = StageStatus {
-                stage_name: stage_job.stage_name.clone(),
+                stage_name: stage_job.name.clone(),
                 job_id: Some(stage_job.job_id.clone()),
                 status: stage_job.status.to_string(),
                 progress_percentage: progress,
                 started_at: stage_job.started_at.map(|t| DateTime::<Utc>::from_timestamp_millis(t).map(|dt| dt.to_rfc3339()).unwrap_or_default()),
                 completed_at: stage_job.completed_at.map(|t| DateTime::<Utc>::from_timestamp_millis(t).map(|dt| dt.to_rfc3339()).unwrap_or_default()),
-                depends_on: stage_job.depends_on.clone(),
+                depends_on: stage_job.dependency_job_id.clone(),
                 created_at: Some(DateTime::<Utc>::from_timestamp_millis(stage_job.created_at).map(|dt| dt.to_rfc3339()).unwrap_or_default()),
                 error_message: stage_job.error_message.clone(),
                 execution_time_ms: stage_job.completed_at.and_then(|completed| 
                     stage_job.started_at.map(|started| (completed - started))
                 ),
                 sub_status_message: stage_job.sub_status_message.clone(),
+                task_type: stage_job.task_type.to_string(),
             };
             
             stage_statuses.push(stage_status);
@@ -614,7 +677,7 @@ fn convert_workflow_state_to_response(workflow_state: &crate::jobs::workflow_typ
     let progress = workflow_state.calculate_progress();
     
     let current_stage = workflow_state.current_stage()
-        .map(|stage_job| stage_job.stage_name.clone())
+        .map(|stage_job| stage_job.name.clone())
         .unwrap_or_else(|| {
             match workflow_state.status {
                 WorkflowStatus::Completed => "Completed".to_string(),

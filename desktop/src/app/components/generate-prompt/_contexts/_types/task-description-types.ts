@@ -15,6 +15,7 @@ export interface TaskContextState {
   isDoingWebSearch: boolean;
   canUndo: boolean;
   canRedo: boolean;
+  webSearchResults: string[] | null;
 }
 
 export interface TaskContextActions {
@@ -25,6 +26,7 @@ export interface TaskContextActions {
   reset: () => void;
   undo: () => void;
   redo: () => void;
+  applyWebSearchResults: (results?: string[]) => void;
 }
 
 export interface TaskContextValue {

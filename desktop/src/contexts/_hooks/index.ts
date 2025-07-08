@@ -1,1 +1,1 @@
-export { useWorkflowState } from './use-workflow-state';
+// Workflow state is now managed by WorkflowTracker

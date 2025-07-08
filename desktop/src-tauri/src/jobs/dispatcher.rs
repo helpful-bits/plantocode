@@ -6,7 +6,7 @@ use chrono::Utc;
 
 use crate::constants::DEFAULT_JOB_TIMEOUT_SECONDS;
 use crate::error::{AppError, AppResult};
-use crate::jobs::types::{Job, JobProcessResult, JobStatusChangeEvent, JobPayload};
+use crate::jobs::types::{Job, JobProcessResult, JobStatusChangeEvent, JobPayload, JobResultData};
 use crate::jobs::queue::{get_job_queue, JobPriority};
 use crate::jobs::registry::get_job_registry;
 use crate::db_utils::background_job_repository::BackgroundJobRepository;
@@ -16,6 +16,88 @@ use crate::jobs::{job_payload_utils, retry_utils};
 use crate::jobs::job_processor_utils;
 use crate::jobs::workflow_orchestrator::get_workflow_orchestrator;
 use std::str::FromStr;
+use serde_json::{json, Value};
+
+/// Check if a task type is a file-finding task
+fn is_file_finding_task(task_type: &TaskType) -> bool {
+    matches!(
+        task_type,
+        TaskType::RegexFileFilter | 
+        TaskType::FileRelevanceAssessment |
+        TaskType::ExtendedPathFinder |
+        TaskType::PathCorrection
+    )
+}
+
+/// Standardize file-finding job responses to a consistent format
+fn standardize_file_finding_response(response: Value, task_type: &TaskType) -> Value {
+    match task_type {
+        TaskType::RegexFileFilter => {
+            // {"filteredFiles": [...]} -> {"files": [...], "count": n}
+            if let Some(filtered_files) = response.get("filteredFiles").and_then(|v| v.as_array()) {
+                json!({
+                    "files": filtered_files,
+                    "count": filtered_files.len(),
+                    "summary": format!("{} files filtered", filtered_files.len())
+                })
+            } else {
+                response
+            }
+        },
+        TaskType::FileRelevanceAssessment => {
+            // {"relevantFiles": [...], "tokenCount": n} -> {"files": [...], "count": n, "metadata": {...}}
+            if let Some(relevant_files) = response.get("relevantFiles").and_then(|v| v.as_array()) {
+                let token_count = response.get("tokenCount").and_then(|v| v.as_u64());
+                json!({
+                    "files": relevant_files,
+                    "count": relevant_files.len(),
+                    "summary": format!("{} relevant files found", relevant_files.len()),
+                    "metadata": {
+                        "tokenCount": token_count
+                    }
+                })
+            } else {
+                response
+            }
+        },
+        TaskType::ExtendedPathFinder => {
+            // {"verifiedPaths": [...], "unverifiedPaths": [...]} -> {"files": [...], "count": n, "metadata": {...}}
+            let empty_vec = vec![];
+            let verified_paths = response.get("verifiedPaths").and_then(|v| v.as_array()).unwrap_or(&empty_vec);
+            let unverified_paths = response.get("unverifiedPaths").and_then(|v| v.as_array()).unwrap_or(&empty_vec);
+            let mut all_files = Vec::new();
+            all_files.extend(verified_paths.clone());
+            all_files.extend(unverified_paths.clone());
+            
+            json!({
+                "files": all_files,
+                "count": all_files.len(),
+                "summary": response.get("summary").and_then(|v| v.as_str()).unwrap_or(&format!(
+                    "{} verified, {} unverified paths", 
+                    verified_paths.len(), 
+                    unverified_paths.len()
+                )),
+                "metadata": {
+                    "verifiedCount": verified_paths.len(),
+                    "unverifiedCount": unverified_paths.len()
+                }
+            })
+        },
+        TaskType::PathCorrection => {
+            // {"correctedPaths": [...]} -> {"files": [...], "count": n}
+            if let Some(corrected_paths) = response.get("correctedPaths").and_then(|v| v.as_array()) {
+                json!({
+                    "files": corrected_paths,
+                    "count": corrected_paths.len(),
+                    "summary": format!("{} paths corrected", corrected_paths.len())
+                })
+            } else {
+                response
+            }
+        },
+        _ => response
+    }
+}
 
 // Clean retry system using JobUIMetadata
 
@@ -81,6 +163,16 @@ pub async fn process_next_job(app_handle: AppHandle) -> AppResult<Option<JobProc
         None,
     )?;
     
+    // Check if this is a workflow job - workflows don't have processors
+    // They are orchestrated by the WorkflowOrchestrator which creates individual stage jobs
+    if matches!(job.task_type, TaskType::FileFinderWorkflow | TaskType::WebSearchWorkflow) {
+        info!("Skipping processor lookup for workflow job {} - will be handled by WorkflowOrchestrator", job_id);
+        // Mark the workflow job as acknowledged since it will be handled by the orchestrator
+        background_job_repo.update_job_status(&job_id, &JobStatus::AcknowledgedByWorker, Some("Workflow orchestration started")).await?;
+        drop(permit);
+        return Ok(None);
+    }
+
     // Find a processor for the job
     let processor_opt_result = registry.find_processor(&job).await;
 
@@ -210,30 +302,79 @@ async fn handle_job_success(
         JobStatus::Completed => {
             info!("Job {} completed successfully", job_id);
             
-            // Update job status to completed with comprehensive result data
-            if let Some(response) = &result.response {
-                background_job_repo.mark_job_completed(
-                    job_id,
-                    response,
-                    None,
-                    result.tokens_sent,
-                    result.tokens_received,
-                    None,
-                    None,
-                    None // Server will provide actual_cost through job finalization
-                ).await?;
+            // Get the original job to preserve workflow metadata
+            let original_job = background_job_repo.get_job_by_id(job_id).await?
+                .ok_or_else(|| AppError::NotFoundError(format!("Job {} not found", job_id)))?;
+            
+            // Merge the original metadata with the result metadata
+            let merged_metadata = if let Some(original_metadata_str) = &original_job.metadata {
+                if let Ok(mut original_metadata) = serde_json::from_str::<serde_json::Value>(original_metadata_str) {
+                    if let Some(result_metadata) = &result.metadata {
+                        if let serde_json::Value::Object(ref mut original_map) = original_metadata {
+                            if let serde_json::Value::Object(result_map) = result_metadata {
+                                // Merge result metadata into original metadata
+                                for (key, value) in result_map {
+                                    original_map.insert(key.clone(), value.clone());
+                                }
+                            }
+                        }
+                    }
+                    serde_json::to_string(&original_metadata).ok()
+                } else {
+                    // If we can't parse original metadata, just use result metadata
+                    result.metadata.as_ref().and_then(|m| serde_json::to_string(m).ok())
+                }
             } else {
-                background_job_repo.mark_job_completed(
-                    job_id,
-                    "No response content",
-                    None,
-                    result.tokens_sent,
-                    result.tokens_received,
-                    None,
-                    None,
-                    None // Server will provide actual_cost through job finalization
-                ).await?;
-            }
+                // No original metadata, just use result metadata
+                result.metadata.as_ref().and_then(|m| serde_json::to_string(m).ok())
+            };
+            
+            let metadata_string = merged_metadata;
+            
+            // Extract model_used from metadata if present
+            let model_used = if let Some(metadata) = &result.metadata {
+                metadata.get("model_used").and_then(|v| v.as_str())
+            } else {
+                None
+            };
+            
+            // Extract and potentially standardize response
+            let response_str = if let Some(response_data) = &result.response {
+                match response_data {
+                    JobResultData::Json(value) => {
+                        // Standardize file-finding job responses
+                        let task_type = TaskType::from_str(&original_job.task_type).ok();
+                        let standardized = if let Some(ref tt) = task_type {
+                            if is_file_finding_task(tt) {
+                                standardize_file_finding_response(value.clone(), tt)
+                            } else {
+                                value.clone()
+                            }
+                        } else {
+                            value.clone()
+                        };
+                        serde_json::to_string(&standardized)
+                            .unwrap_or_else(|_| "JSON serialization failed".to_string())
+                    },
+                    JobResultData::Text(text) => text.clone(),
+                }
+            } else {
+                "No response content".to_string()
+            };
+            
+            // Update job status to completed with comprehensive result data
+            background_job_repo.mark_job_completed(
+                job_id,
+                &response_str,
+                metadata_string.as_deref(),
+                result.tokens_sent.map(|v| v as i32),
+                result.tokens_received.map(|v| v as i32),
+                model_used,
+                result.system_prompt_template.as_deref(),
+                result.actual_cost,
+                result.cache_write_tokens,
+                result.cache_read_tokens
+            ).await?;
             
             // Get the completed job from database to extract actual cost
             let completed_job = background_job_repo.get_job_by_id(job_id).await?
@@ -248,18 +389,55 @@ async fn handle_job_success(
                 completed_job.actual_cost,
             )?;
 
-            // Check if this job is part of a workflow and handle orchestration
-            if let Err(e) = handle_workflow_job_completion(job_id, result, &app_handle).await {
-                error!("Failed to handle workflow job completion for job {}: {}", job_id, e);
-                // Don't fail the original job, just log the workflow error
+            // Check if this job is part of a workflow and notify WorkflowOrchestrator
+            // Use the completed_job's metadata which contains the original workflowId
+            if let Some(metadata_str) = &completed_job.metadata {
+                debug!("Job {} metadata: {}", job_id, metadata_str);
+                if let Ok(metadata_json) = serde_json::from_str::<serde_json::Value>(metadata_str) {
+                    // Check both at root level and inside workflowId field (due to JobUIMetadata structure)
+                    let workflow_id = metadata_json.get("workflowId")
+                        .and_then(|v| v.as_str())
+                        .or_else(|| {
+                            // Also check inside the metadata structure itself
+                            metadata_json.as_object()
+                                .and_then(|obj| obj.values().find_map(|v| {
+                                    v.as_object()?.get("workflowId")?.as_str()
+                                }))
+                        });
+                    
+                    if let Some(workflow_id) = workflow_id {
+                        info!("Job {} is part of workflow {}, notifying WorkflowOrchestrator", job_id, workflow_id);
+                        
+                        match get_workflow_orchestrator().await {
+                            Ok(orchestrator) => {
+                                if let Err(e) = orchestrator.update_job_status(job_id, result.status.clone(), result.error.clone(), result.response.clone(), completed_job.actual_cost).await {
+                                    error!("Failed to notify WorkflowOrchestrator about job {} completion: {}", job_id, e);
+                                }
+                            }
+                            Err(e) => {
+                                error!("Failed to get workflow orchestrator for job {}: {}", job_id, e);
+                            }
+                        }
+                    } else {
+                        debug!("Job {} metadata does not contain workflowId", job_id);
+                        // Log the metadata structure for debugging
+                        debug!("Metadata structure: {:?}", metadata_json);
+                    }
+                } else {
+                    warn!("Failed to parse job {} metadata as JSON", job_id);
+                }
+            } else {
+                debug!("Job {} has no metadata", job_id);
             }
         },
         JobStatus::Failed => {
             let error_message = result.error.clone().unwrap_or_else(|| "Unknown error".to_string());
             error!("Job {} failed: {}", job_id, error_message);
             
+            let metadata_string = result.metadata.as_ref().and_then(|m| serde_json::to_string(m).ok());
+            
             // Update job status to failed with detailed error information
-            background_job_repo.mark_job_failed(job_id, &error_message, None, None, None, None, None).await?;
+            background_job_repo.mark_job_failed(job_id, &error_message, metadata_string.as_deref(), None, None, None, result.actual_cost).await?;
             
             // Emit job status change event
             job_processor_utils::emit_job_status_change(
@@ -284,9 +462,40 @@ async fn handle_job_success(
                 None,
             )?;
             
-            // Handle workflow job completion for canceled jobs
-            if let Err(e) = handle_workflow_job_completion(job_id, result, app_handle).await {
-                error!("Failed to handle workflow job completion for canceled job {}: {}", job_id, e);
+            // Get the canceled job to access its original metadata
+            let canceled_job = background_job_repo.get_job_by_id(job_id).await?
+                .ok_or_else(|| AppError::NotFoundError(format!("Job {} not found after cancellation", job_id)))?;
+            
+            // Check if this job is part of a workflow and notify WorkflowOrchestrator
+            // Use the canceled_job's metadata which contains the original workflowId
+            if let Some(metadata_str) = &canceled_job.metadata {
+                if let Ok(metadata_json) = serde_json::from_str::<serde_json::Value>(metadata_str) {
+                    // Check both at root level and inside workflowId field (due to JobUIMetadata structure)
+                    let workflow_id = metadata_json.get("workflowId")
+                        .and_then(|v| v.as_str())
+                        .or_else(|| {
+                            // Also check inside the metadata structure itself
+                            metadata_json.as_object()
+                                .and_then(|obj| obj.values().find_map(|v| {
+                                    v.as_object()?.get("workflowId")?.as_str()
+                                }))
+                        });
+                    
+                    if let Some(workflow_id) = workflow_id {
+                        info!("Canceled job {} is part of workflow {}, notifying WorkflowOrchestrator", job_id, workflow_id);
+                        
+                        match get_workflow_orchestrator().await {
+                            Ok(orchestrator) => {
+                                if let Err(e) = orchestrator.update_job_status(job_id, result.status.clone(), result.error.clone(), None, canceled_job.actual_cost).await {
+                                    error!("Failed to notify WorkflowOrchestrator about canceled job {} completion: {}", job_id, e);
+                                }
+                            }
+                            Err(e) => {
+                                error!("Failed to get workflow orchestrator for canceled job {}: {}", job_id, e);
+                            }
+                        }
+                    }
+                }
             }
         },
         _ => {
@@ -399,7 +608,7 @@ async fn handle_job_failure_or_retry_internal(
     };
 
     if is_workflow_job {
-        info!("Job {} is part of a workflow. Deferring retry/failure handling to WorkflowOrchestrator.", job_copy.id);
+        info!("Job {} is part of a workflow. Passing to WorkflowOrchestrator.", job_copy.id);
         
         // Ensure job is marked as Failed in DB for the orchestrator to pick up
         let user_facing_error = format_user_error(error);
@@ -419,8 +628,16 @@ async fn handle_job_failure_or_retry_internal(
             None,
         )?;
         
-        if let Err(e) = handle_workflow_job_completion(&job_id, &JobProcessResult::failure(job_id.to_string(), error.to_string()), app_handle).await {
-            error!("Failed to handle workflow job failure for job {}: {}", job_id, e);
+        // ALWAYS pass to WorkflowOrchestrator if job has workflowId
+        match get_workflow_orchestrator().await {
+            Ok(orchestrator) => {
+                if let Err(e) = orchestrator.update_job_status(&job_id, JobStatus::Failed, Some(error.to_string()), None, job_copy.actual_cost).await {
+                    error!("Failed to notify WorkflowOrchestrator about job {} failure: {}", job_id, e);
+                }
+            }
+            Err(e) => {
+                error!("Failed to get workflow orchestrator for failed job {}: {}", job_id, e);
+            }
         }
         
         return Ok(JobFailureHandlingResult::PermanentFailure(format!("Workflow job failed. Orchestrator will handle: {}", error.to_string())));
@@ -733,138 +950,7 @@ async fn re_queue_job_with_delay(
 }
 
 
-/// Handle workflow job completion by checking if the job is part of a workflow
-/// and delegating to the WorkflowOrchestrator if needed
-async fn handle_workflow_job_completion(
-    job_id: &str,
-    result: &JobProcessResult,
-    app_handle: &AppHandle,
-) -> AppResult<()> {
-    // Get the completed job from the database to check if it's part of a workflow
-    let background_job_repo = match app_handle.try_state::<Arc<BackgroundJobRepository>>() {
-        Some(repo) => repo,
-        None => {
-            return Err(AppError::InitializationError(
-                "BackgroundJobRepository not available in app state. App initialization may be incomplete.".to_string()
-            ));
-        }
-    };
-    let job = match background_job_repo.get_job_by_id(job_id).await? {
-        Some(job) => job,
-        None => {
-            debug!("Job {} not found in database for workflow check", job_id);
-            return Ok(());
-        }
-    };
 
-    // Parse metadata to check for workflowId
-    let metadata = match &job.metadata {
-        Some(meta) => meta,
-        None => {
-            debug!("Job {} has no metadata, not part of a workflow", job_id);
-            return Ok(());
-        }
-    };
-
-    let metadata_value: serde_json::Value = match serde_json::from_str(metadata) {
-        Ok(val) => val,
-        Err(e) => {
-            debug!("Failed to parse metadata for job {}: {}", job_id, e);
-            return Ok(());
-        }
-    };
-
-    // Check if this job has a workflowId
-    let workflow_id = match metadata_value.get("workflowId") {
-        Some(serde_json::Value::String(id)) => id.clone(),
-        _ => {
-            debug!("Job {} has no workflowId, not part of a workflow", job_id);
-            return Ok(());
-        }
-    };
-
-    info!("Job {} is part of workflow {}, notifying WorkflowOrchestrator", job_id, workflow_id);
-
-    // Get the workflow orchestrator and update job status
-    match get_workflow_orchestrator().await {
-        Ok(orchestrator) => {
-            // Try to update job status
-            match orchestrator.update_job_status(job_id, result.status.clone(), result.error.clone()).await {
-                Ok(_) => {
-                    // Store stage data if response is available
-                    if let Some(response) = &result.response {
-                        if let Ok(response_json) = serde_json::from_str::<serde_json::Value>(response) {
-                            orchestrator.store_stage_data(job_id, response_json).await?;
-                        }
-                    }
-                    info!("Successfully notified WorkflowOrchestrator about job {} completion", job_id);
-                }
-                Err(e) => {
-                    warn!("Job {} not found in workflow state, attempting to add it: {}", job_id, e);
-                    
-                    // Try to add the job to the workflow and then update status
-                    if let Err(add_err) = add_orphaned_job_to_workflow(&orchestrator, &job, &workflow_id).await {
-                        error!("Failed to add orphaned job {} to workflow {}: {}", job_id, workflow_id, add_err);
-                    } else {
-                        // Retry the status update after adding the job
-                        if let Err(retry_err) = orchestrator.update_job_status(job_id, result.status.clone(), result.error.clone()).await {
-                            error!("Failed to update status for job {} even after adding to workflow: {}", job_id, retry_err);
-                        } else {
-                            // Store stage data if response is available
-                            if let Some(response) = &result.response {
-                                if let Ok(response_json) = serde_json::from_str::<serde_json::Value>(response) {
-                                    orchestrator.store_stage_data(job_id, response_json).await?;
-                                }
-                            }
-                            info!("Successfully added orphaned job {} to workflow and updated status", job_id);
-                        }
-                    }
-                }
-            }
-        }
-        Err(e) => {
-            error!("Failed to get workflow orchestrator for job {}: {}", job_id, e);
-            // Continue without workflow handling
-        }
-    }
-
-    Ok(())
-}
-
-/// Add an orphaned job (has workflow metadata but not in workflow state) to the workflow
-async fn add_orphaned_job_to_workflow(
-    orchestrator: &Arc<crate::jobs::workflow_orchestrator::WorkflowOrchestrator>,
-    job: &BackgroundJob,
-    workflow_id: &str,
-) -> AppResult<()> {
-    use crate::models::TaskType;
-    
-    // Parse the job's task type
-    let task_type = TaskType::from_str(&job.task_type)
-        .map_err(|e| AppError::JobError(format!("Invalid task type: {}", e)))?;
-    
-    // Determine stage name from task type
-    let stage_name = match task_type {
-        TaskType::RegexFileFilter => "RegexFileFilter",
- 
-        TaskType::FileRelevanceAssessment => "FileRelevanceAssessment",
-        TaskType::ExtendedPathFinder => "ExtendedPathFinder",
-        TaskType::PathCorrection => "PathCorrection",
-        _ => return Err(AppError::JobError(format!("Unsupported workflow task type: {:?}", task_type))),
-    };
-    
-    // Add the stage job to the workflow
-    orchestrator.add_stage_job_to_workflow(
-        workflow_id, 
-        stage_name.to_string(),
-        task_type,
-        job.id.clone(),
-        None, // No dependency tracking for orphaned jobs
-    ).await?;
-    
-    info!("Added orphaned job {} to workflow {} as stage {}", job.id, workflow_id, stage_name);
-    Ok(())
-}
 
 /// Report cancelled job cost to server if the job incurred costs
 /// This ensures that cancelled jobs that had partial execution costs are still billed

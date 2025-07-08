@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import { Button } from "@/ui/button";
 import { type ModelInfo } from "@/types/config-types";
 
@@ -13,9 +14,8 @@ export function ModelSelectorToggle({ models, selectedModelId, onSelect }: Model
   return (
     <div className="flex items-center border border-border/50 rounded-lg overflow-hidden">
       {models.map((model, index) => (
-        <>
+        <React.Fragment key={model.id}>
           <Button
-            key={model.id}
             variant="ghost"
             size="sm"
             onClick={() => onSelect(model.id)}
@@ -33,7 +33,7 @@ export function ModelSelectorToggle({ models, selectedModelId, onSelect }: Model
           {index < models.length - 1 && (
             <div className="w-[1px] h-6 bg-border/40" />
           )}
-        </>
+        </React.Fragment>
       ))}
     </div>
   );

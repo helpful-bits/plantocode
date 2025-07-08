@@ -7,7 +7,7 @@ import { useUILayout } from "@/contexts/ui-layout-context";
 import { useNotification } from "@/contexts/notification-context";
 import { type BackgroundJob } from "@/types/session-types";
 import { setSidebarWidth } from "@/utils/ui-utils";
-import { retryWorkflowStageAction } from "@/actions/file-system/workflow-stage.actions";
+import { retryWorkflowStageAction } from "@/actions/workflows/workflow.actions";
 
 export interface SidebarState {
   selectedJob: BackgroundJob | null;
@@ -201,11 +201,13 @@ export function useSidebarStateManager(): SidebarManager {
 
         // Set appropriate feedback message based on the clearing operation
         const feedbackMessage =
-          daysToKeep === -1
-            ? "All completed, failed, and canceled jobs have been deleted"
-            : daysToKeep === undefined || daysToKeep === 0
-              ? "Jobs older than 90 days permanently deleted"
-              : `Jobs older than ${daysToKeep} day${daysToKeep > 1 ? "s" : ""} have been deleted`;
+          daysToKeep === -2
+            ? "All jobs and implementation plans have been deleted"
+            : daysToKeep === -1
+              ? "All completed, failed, and canceled jobs have been deleted"
+              : daysToKeep === undefined || daysToKeep === 0
+                ? "Jobs older than 90 days permanently deleted"
+                : `Jobs older than ${daysToKeep} day${daysToKeep > 1 ? "s" : ""} have been deleted`;
 
         setState((prev: SidebarState) => ({ ...prev, clearFeedback: feedbackMessage }));
       } catch (err) {

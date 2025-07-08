@@ -76,8 +76,11 @@ impl BackgroundJobRepository {
     /// * `new_tokens_received` - The number of tokens in this chunk
     /// * `current_total_response_length` - The current length of the accumulated response (characters)
     /// * `current_metadata_str` - The current metadata string from BackgroundJob.metadata
+    /// * `app_handle` - Optional Tauri app handle for event emission
     /// * `cost` - Optional cost value to store in both metadata and database
-    pub async fn update_job_stream_progress(&self, job_id: &str, chunk: &str, new_tokens_received: i32, current_total_response_length: i32, current_metadata_str: Option<&str>, app_handle: Option<&tauri::AppHandle>, cost: Option<f64>) -> AppResult<String> {
+    /// * `cache_write_tokens` - Optional cache write tokens to update
+    /// * `cache_read_tokens` - Optional cache read tokens to update
+    pub async fn update_job_stream_progress(&self, job_id: &str, chunk: &str, new_tokens_received: i32, current_total_response_length: i32, current_metadata_str: Option<&str>, app_handle: Option<&tauri::AppHandle>, cost: Option<f64>, cache_write_tokens: Option<i64>, cache_read_tokens: Option<i64>) -> AppResult<String> {
         // First check if the job exists and is in running status
         let job = self.get_job_by_id(job_id).await?
             .ok_or_else(|| AppError::DatabaseError(format!("Job not found: {}", job_id)))?;
@@ -181,8 +184,33 @@ impl BackgroundJobRepository {
             }
         };
         
-        // Update the job in the database - include cost in database if provided
-        let query_result = if let Some(cost_value) = cost {
+        // Update the job in the database - include cost and cache tokens if provided
+        let query_result = if let (Some(cost_value), Some(cache_write), Some(cache_read)) = (cost, cache_write_tokens, cache_read_tokens) {
+            debug!("Updating job {} streaming progress with cost: ${:.6} and cache tokens", job_id, cost_value);
+            sqlx::query(
+                r#"
+                UPDATE background_jobs SET
+                    response = $1, 
+                    tokens_received = $2,
+                    updated_at = $3,
+                    metadata = $4,
+                    actual_cost = $5,
+                    cache_write_tokens = $6,
+                    cache_read_tokens = $7
+                WHERE id = $8 AND status = $9
+                "#)
+                .bind(new_response)
+                .bind(tokens_received)
+                .bind(now)
+                .bind(&metadata_str)
+                .bind(cost_value)
+                .bind(cache_write)
+                .bind(cache_read)
+                .bind(job_id)
+                .bind(JobStatus::Running.to_string())
+                .execute(&*self.pool)
+                .await
+        } else if let Some(cost_value) = cost {
             debug!("Updating job {} streaming progress with cost: ${:.6}", job_id, cost_value);
             sqlx::query(
                 r#"
@@ -266,7 +294,16 @@ impl BackgroundJobRepository {
     pub async fn clear_job_history(&self, days_to_keep: i64) -> AppResult<()> {
         let current_ts = get_timestamp();
         
-        if days_to_keep == -1 {
+        if days_to_keep == -2 {
+            // Delete all completed, failed, or canceled jobs (including implementation plans)
+            sqlx::query("DELETE FROM background_jobs WHERE status IN ($1, $2, $3)")
+                .bind(JobStatus::Completed.to_string())
+                .bind(JobStatus::Failed.to_string())
+                .bind(JobStatus::Canceled.to_string())
+                .execute(&*self.pool)
+                .await
+                .map_err(|e| AppError::DatabaseError(format!("Failed to delete job history: {}", e)))?;
+        } else if days_to_keep == -1 {
             // Delete all completed, failed, or canceled jobs (excluding implementation plans)
             sqlx::query("DELETE FROM background_jobs WHERE status IN ($1, $2, $3) AND task_type <> $4")
                 .bind(JobStatus::Completed.to_string())
@@ -361,7 +398,13 @@ impl BackgroundJobRepository {
     
     /// Get active jobs (pending or running)
     pub async fn get_active_jobs(&self) -> AppResult<Vec<BackgroundJob>> {
-        let rows = sqlx::query("SELECT * FROM background_jobs WHERE status IN ($1, $2) ORDER BY created_at ASC")
+        let rows = sqlx::query(
+            r#"
+            SELECT * FROM background_jobs 
+            WHERE status IN ($1, $2) 
+            AND (metadata IS NULL OR json_extract(metadata, '$.workflowId') IS NULL)
+            ORDER BY created_at ASC
+            "#)
             .bind(JobStatus::Queued.to_string())
             .bind(JobStatus::Running.to_string())
             .fetch_all(&*self.pool)
@@ -383,26 +426,30 @@ impl BackgroundJobRepository {
         let rows = sqlx::query(
             r#"
             SELECT * FROM background_jobs 
+            WHERE task_type NOT IN ($1, $2)
+            AND (metadata IS NULL OR json_extract(metadata, '$.workflowId') IS NULL)
             ORDER BY 
                 CASE 
-                    WHEN status IN ($1, $2, $3, $4, $5, $6) THEN 0
+                    WHEN status IN ($3, $4, $5, $6, $7, $8) THEN 0
                     ELSE 1
                 END,
                 CASE 
-                    WHEN status = $7 THEN 0
-                    WHEN status = $8 THEN 1
-                    WHEN status = $9 THEN 2
-                    WHEN status = $10 THEN 3
-                    WHEN status = $11 THEN 4
-                    WHEN status = $12 THEN 5
-                    WHEN status = $13 THEN 6
-                    WHEN status = $14 THEN 7
-                    WHEN status = $15 THEN 8
+                    WHEN status = $9 THEN 0
+                    WHEN status = $10 THEN 1
+                    WHEN status = $11 THEN 2
+                    WHEN status = $12 THEN 3
+                    WHEN status = $13 THEN 4
+                    WHEN status = $14 THEN 5
+                    WHEN status = $15 THEN 6
+                    WHEN status = $16 THEN 7
+                    WHEN status = $17 THEN 8
                     ELSE 9
                 END,
                 updated_at DESC
             LIMIT 500
             "#)
+            .bind(TaskType::FileFinderWorkflow.to_string())
+            .bind(TaskType::WebSearchWorkflow.to_string())
             .bind(JobStatus::Running.to_string())
             .bind(JobStatus::Preparing.to_string()) 
             .bind(JobStatus::Queued.to_string())
@@ -438,9 +485,10 @@ impl BackgroundJobRepository {
             r#"
             INSERT INTO background_jobs (
                 id, session_id, task_type, status, prompt, response, error_message,
-                tokens_sent, tokens_received, model_used, actual_cost, metadata, system_prompt_template,
+                tokens_sent, tokens_received, cache_write_tokens, cache_read_tokens,
+                model_used, actual_cost, metadata, system_prompt_template,
                 created_at, updated_at, start_time, end_time
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
             "#)
             .bind(&job.id)
             .bind(&job.session_id)
@@ -451,6 +499,8 @@ impl BackgroundJobRepository {
             .bind(&job.error_message)
             .bind(job.tokens_sent.map(|v| v as i64))
             .bind(job.tokens_received.map(|v| v as i64))
+            .bind(job.cache_write_tokens)
+            .bind(job.cache_read_tokens)
             .bind(&job.model_used)
             .bind(job.actual_cost)
             .bind(&job.metadata)
@@ -482,11 +532,13 @@ impl BackgroundJobRepository {
                 error_message = $9,
                 tokens_sent = $10,
                 tokens_received = $11,
-                model_used = $12,
-                actual_cost = $13,
-                metadata = $14,
-                system_prompt_template = $15
-            WHERE id = $16
+                cache_write_tokens = $12,
+                cache_read_tokens = $13,
+                model_used = $14,
+                actual_cost = $15,
+                metadata = $16,
+                system_prompt_template = $17
+            WHERE id = $18
             "#)
             .bind(&job.session_id)
             .bind(&job.task_type)
@@ -499,6 +551,8 @@ impl BackgroundJobRepository {
             .bind(&job.error_message)
             .bind(job.tokens_sent.map(|v| v as i64))
             .bind(job.tokens_received.map(|v| v as i64))
+            .bind(job.cache_write_tokens)
+            .bind(job.cache_read_tokens)
             .bind(&job.model_used)
             .bind(job.actual_cost)
             .bind(&job.metadata)
@@ -591,6 +645,8 @@ impl BackgroundJobRepository {
         model_used: Option<&str>,
         system_prompt_template: Option<&str>,
         actual_cost: Option<f64>,
+        cache_write_tokens: Option<i64>,
+        cache_read_tokens: Option<i64>,
     ) -> AppResult<()> {
         let now = get_timestamp();
         
@@ -651,6 +707,16 @@ impl BackgroundJobRepository {
             param_index += 1;
         }
         
+        if cache_write_tokens.is_some() {
+            final_query.push_str(&format!(", cache_write_tokens = ${}", param_index));
+            param_index += 1;
+        }
+        
+        if cache_read_tokens.is_some() {
+            final_query.push_str(&format!(", cache_read_tokens = ${}", param_index));
+            param_index += 1;
+        }
+        
         // Add the WHERE clause
         final_query.push_str(&format!(" WHERE id = ${}", param_index));
         
@@ -686,6 +752,14 @@ impl BackgroundJobRepository {
         
         if let Some(cost) = actual_cost {
             query_obj = query_obj.bind(cost);
+        }
+        
+        if let Some(cwt) = cache_write_tokens {
+            query_obj = query_obj.bind(cwt);
+        }
+        
+        if let Some(crt) = cache_read_tokens {
+            query_obj = query_obj.bind(crt);
         }
         
         // Bind job_id last
@@ -1130,6 +1204,8 @@ impl BackgroundJobRepository {
         let error_message: Option<String> = row.try_get::<'_, Option<String>, _>("error_message").unwrap_or(None);
         let tokens_sent: Option<i32> = row.try_get::<'_, Option<i64>, _>("tokens_sent").map(|v| v.map(|val| val as i32)).unwrap_or(None);
         let tokens_received: Option<i32> = row.try_get::<'_, Option<i64>, _>("tokens_received").map(|v| v.map(|val| val as i32)).unwrap_or(None);
+        let cache_write_tokens: Option<i64> = row.try_get::<'_, Option<i64>, _>("cache_write_tokens").unwrap_or(None);
+        let cache_read_tokens: Option<i64> = row.try_get::<'_, Option<i64>, _>("cache_read_tokens").unwrap_or(None);
         let model_used: Option<String> = row.try_get::<'_, Option<String>, _>("model_used").unwrap_or(None);
         let metadata: Option<String> = row.try_get::<'_, Option<String>, _>("metadata").unwrap_or(None);
         let system_prompt_template: Option<String> = row.try_get::<'_, Option<String>, _>("system_prompt_template").unwrap_or(None);
@@ -1154,6 +1230,8 @@ impl BackgroundJobRepository {
             error_message,
             tokens_sent,
             tokens_received,
+            cache_write_tokens,
+            cache_read_tokens,
             model_used,
             actual_cost,
             duration_ms: row.try_get::<'_, Option<i64>, _>("duration_ms").unwrap_or(None),
@@ -1517,6 +1595,100 @@ impl BackgroundJobRepository {
         
         info!("Updated cost for job {} to ${:.6} in both database and metadata", job_id, cost);
         
+        Ok(())
+    }
+    
+    /// Update job prompt field with the actual executed prompts
+    pub async fn update_job_prompt(&self, job_id: &str, prompt: &str) -> AppResult<()> {
+        let now = get_timestamp();
+        sqlx::query("UPDATE background_jobs SET prompt = $1, updated_at = $2 WHERE id = $3")
+            .bind(prompt)
+            .bind(now)
+            .bind(job_id)
+            .execute(&*self.pool)
+            .await
+            .map_err(|e| AppError::DatabaseError(format!("Failed to update job prompt: {}", e)))?;
+        Ok(())
+    }
+    
+    /// Increment job streaming progress atomically with delta values
+    /// This method is used for real-time usage updates during SSE streaming
+    /// 
+    /// # Arguments
+    /// * `job_id` - The ID of the job to update
+    /// * `response_chunk` - The text chunk to append to the response
+    /// * `tokens_input_delta` - Incremental input tokens to add
+    /// * `tokens_output_delta` - Incremental output tokens to add  
+    /// * `cost_delta` - Incremental cost to add
+    pub async fn increment_job_stream_progress(
+        &self,
+        job_id: &str,
+        response_chunk: &str,
+        tokens_input_delta: i32,
+        tokens_output_delta: i32,
+        cost_delta: f64,
+        app_handle: Option<&tauri::AppHandle>,
+    ) -> AppResult<()> {
+        // First check if the job exists and is in a streaming status
+        let job = self.get_job_by_id(job_id).await?
+            .ok_or_else(|| AppError::DatabaseError(format!("Job not found: {}", job_id)))?;
+            
+        // Only update jobs that are actively streaming
+        let status = JobStatus::from_str(&job.status).unwrap_or(JobStatus::Idle);
+        if !matches!(status, JobStatus::GeneratingStream | JobStatus::ProcessingStream | JobStatus::Running) {
+            return Err(AppError::DatabaseError(format!("Cannot update job with status {}", job.status)));
+        }
+        
+        let now = get_timestamp();
+        
+        // Perform atomic incremental update
+        sqlx::query(
+            r#"
+            UPDATE background_jobs SET
+                response = response || $1,
+                tokens_sent = COALESCE(tokens_sent, 0) + $2,
+                tokens_received = COALESCE(tokens_received, 0) + $3,
+                actual_cost = COALESCE(actual_cost, 0.0) + $4,
+                updated_at = $5
+            WHERE id = $6
+            "#)
+            .bind(response_chunk)
+            .bind(tokens_input_delta as i64)
+            .bind(tokens_output_delta as i64)
+            .bind(cost_delta)
+            .bind(now)
+            .bind(job_id)
+            .execute(&*self.pool)
+            .await
+            .map_err(|e| AppError::DatabaseError(format!("Failed to increment job stream progress: {}", e)))?;
+            
+        // Emit event for UI updates if AppHandle is provided
+        if let Some(handle) = app_handle {
+            // Get updated totals for the event
+            let updated_job = self.get_job_by_id(job_id).await?
+                .ok_or_else(|| AppError::DatabaseError(format!("Job not found after update: {}", job_id)))?;
+                
+            let event_payload = serde_json::json!({
+                "job_id": job_id,
+                "response_chunk": response_chunk,
+                "tokens_sent": updated_job.tokens_sent.unwrap_or(0),
+                "tokens_received": updated_job.tokens_received.unwrap_or(0),
+                "actual_cost": updated_job.actual_cost.unwrap_or(0.0),
+                "incremental_update": true,
+                "tokens_input_delta": tokens_input_delta,
+                "tokens_output_delta": tokens_output_delta,
+                "cost_delta": cost_delta
+            });
+            
+            if let Err(e) = handle.emit("VIBE_MANAGER_JOB_USAGE_UPDATE_EVENT", &event_payload) {
+                log::warn!("Failed to emit job usage update event for job {}: {}", job_id, e);
+                // Don't fail the operation if event emission fails
+            }
+        }
+        
+        debug!("Incremented job {} stream progress: +{} input tokens, +{} output tokens, +${:.6} cost", 
+              job_id, tokens_input_delta, tokens_output_delta, cost_delta);
+            
         Ok(())
     }
 }

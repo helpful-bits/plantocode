@@ -8,6 +8,7 @@
 import { invoke } from "@tauri-apps/api/core";
 
 import { type ActionState } from "@/types";
+import { type BackgroundJob } from "@/types/session-types";
 import { handleActionError } from "@/utils/action-utils";
 
 /**
@@ -58,29 +59,29 @@ export async function clearJobHistoryAction(
  */
 export async function getBackgroundJobAction(
   jobId: string
-): Promise<ActionState<unknown>> {
+): Promise<ActionState<BackgroundJob>> {
   try {
     const job = await invoke("get_background_job_by_id_command", { jobId });
     return {
       isSuccess: true,
-      data: job,
+      data: job as BackgroundJob,
     };
   } catch (e) {
-    return handleActionError(e) as ActionState<unknown>;
+    return handleActionError(e) as ActionState<BackgroundJob>;
   }
 }
 
 /**
  * Gets all active background jobs
  */
-export async function getActiveJobsAction(): Promise<ActionState<unknown>> {
+export async function getActiveJobsAction(): Promise<ActionState<BackgroundJob[]>> {
   try {
     const jobs = await invoke("get_active_jobs_command");
     return {
       isSuccess: true,
-      data: jobs,
+      data: jobs as BackgroundJob[],
     };
   } catch (e) {
-    return handleActionError(e) as ActionState<unknown>;
+    return handleActionError(e) as ActionState<BackgroundJob[]>;
   }
 }
