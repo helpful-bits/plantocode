@@ -1,6 +1,7 @@
 use actix_web::{web, HttpResponse, post, HttpRequest};
 use crate::error::AppError;
-use crate::services::billing_service::{BillingService, FinalCostData};
+use crate::services::billing_service::BillingService;
+use crate::db::repositories::api_usage_repository::ApiUsageEntryDto;
 use crate::services::audit_service::{AuditService, AuditContext};
 use crate::db::repositories::webhook_idempotency_repository::WebhookIdempotencyRepository;
 use crate::db::repositories::user_credit_repository::UserCreditRepository;
@@ -701,7 +702,7 @@ fn is_permanent_error(error: &AppError) -> bool {
 pub struct StreamingCostUpdateRequest {
     pub request_id: String,
     pub service_name: String,
-    pub incremental_cost: BigDecimal,
+    pub incremental_cost: BigDecimal, // NOTE: Despite the name, this now contains the final total cost for authoritative post-stream billing
     pub total_tokens_input: i64,
     pub total_tokens_output: i64,
 }
@@ -717,27 +718,56 @@ pub struct CancelledJobCostRequest {
 }
 
 
-/// Handle streaming cost updates for real-time billing with authentication
+/// Handle final streaming cost for authoritative post-stream billing
 pub async fn streaming_cost_update_authenticated(
     user_id: crate::middleware::secure_auth::UserId,
     payload: web::Json<StreamingCostUpdateRequest>,
     billing_service: web::Data<BillingService>,
 ) -> Result<HttpResponse, AppError> {
-    info!("Processing streaming cost update for authenticated user {} request {}", 
+    info!("Processing final streaming cost for authenticated user {} request {}", 
           user_id.0, payload.request_id);
     
-    billing_service.update_streaming_cost(
+    // Store final cost in Redis for desktop client polling
+    billing_service.store_streaming_final_cost(
         &user_id.0,
         &payload.request_id,
         &payload.service_name,
-        &payload.incremental_cost,
+        &payload.incremental_cost, // This is now the final cost, not incremental
         payload.total_tokens_input,
         payload.total_tokens_output,
     ).await?;
     
+    // Perform single atomic billing for the complete final cost
+    let metadata = serde_json::json!({
+        "request_id": payload.request_id,
+        "streaming": true,
+        "cancelled": false,
+        "final_cost": payload.incremental_cost,
+        "billing_type": "authoritative_post_stream",
+        "recorded_at": chrono::Utc::now().to_rfc3339()
+    });
+    
+    let entry = ApiUsageEntryDto {
+        user_id: user_id.0,
+        service_name: payload.service_name.clone(),
+        tokens_input: payload.total_tokens_input,
+        tokens_output: payload.total_tokens_output,
+        cache_write_tokens: 0,
+        cache_read_tokens: 0,
+        request_id: Some(payload.request_id.clone()),
+        metadata: Some(metadata),
+        provider_reported_cost: None,
+    };
+    
+    // Use the existing atomic billing method
+    let (api_usage_record, user_credit) = billing_service.charge_for_api_usage(entry, payload.incremental_cost.clone()).await?;
+    
+    info!("Successfully processed final streaming cost: user_id={}, request_id={}, cost=${:.4}, new_balance=${:.4}", 
+          user_id.0, payload.request_id, payload.incremental_cost, user_credit.balance);
+    
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "status": "success",
-        "message": "Streaming cost updated"
+        "message": "Final streaming cost processed and cached"
     })))
 }
 
@@ -748,7 +778,7 @@ pub async fn cancelled_job_cost_authenticated(
     payload: web::Json<CancelledJobCostRequest>,
     billing_service: web::Data<BillingService>,
 ) -> Result<HttpResponse, AppError> {
-    info!("Processing cancelled job cost for authenticated user {} request {}", 
+    info!("Processing cancelled job final cost for authenticated user {} request {}", 
           user_id.0, payload.request_id);
     
     billing_service.record_cancelled_job_cost(
@@ -762,47 +792,7 @@ pub async fn cancelled_job_cost_authenticated(
     
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "status": "success",
-        "message": "Cancelled job cost recorded"
+        "message": "Cancelled job final cost processed and cached"
     })))
 }
 
-/// Get final cost for a streaming request by request_id
-/// Allows desktop clients to poll for resolved costs after streaming completion
-pub async fn get_final_cost_authenticated(
-    user_id: crate::middleware::secure_auth::UserId,
-    path: web::Path<String>,
-    billing_service: web::Data<BillingService>,
-) -> Result<HttpResponse, AppError> {
-    let request_id = path.into_inner();
-    info!("Retrieving final cost for authenticated user {} request {}", 
-          user_id.0, request_id);
-    
-    match billing_service.get_final_streaming_cost(&user_id.0, &request_id).await {
-        Ok(Some(cost_data)) => {
-            info!("Final cost found for request {}: ${:.4}", request_id, cost_data.cost);
-            Ok(HttpResponse::Ok().json(serde_json::json!({
-                "status": "success",
-                "found": true,
-                "request_id": request_id,
-                "final_cost": cost_data.cost,
-                "tokens_input": cost_data.tokens_input,
-                "tokens_output": cost_data.tokens_output,
-                "service_name": cost_data.service_name,
-                "recorded_at": cost_data.recorded_at
-            })))
-        }
-        Ok(None) => {
-            info!("No final cost found for request {}", request_id);
-            Ok(HttpResponse::Ok().json(serde_json::json!({
-                "status": "success",
-                "found": false,
-                "request_id": request_id,
-                "message": "Final cost not yet available or request not found"
-            })))
-        }
-        Err(e) => {
-            error!("Failed to retrieve final cost for request {}: {}", request_id, e);
-            Err(e)
-        }
-    }
-}

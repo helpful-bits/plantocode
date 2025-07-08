@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader } from "@/ui/card";
 import { Button } from "@/ui/button";
 import { Badge } from "@/ui/badge";
 import { useNotification } from "@/contexts/notification-context";
-import { openBillingPortal } from "@/actions/billing/payment-method.actions";
+import { openBillingPortal } from "@/actions/billing";
 import { useCustomerBillingInfo } from "@/hooks/use-customer-billing-info";
 
 import { BillingDashboard } from "@/app/components/billing/BillingDashboard";
@@ -72,7 +72,7 @@ export default function AccountPage() {
     <div className="container mx-auto px-4 sm:px-6 pt-6 pb-8 max-w-5xl">
       <div className="space-y-8">
         <div className="space-y-3">
-          <h1 className="text-3xl font-bold tracking-tight">Account</h1>
+          <h1 className="text-3xl font-bold tracking-tight text-foreground">Account</h1>
           <p className="text-muted-foreground text-lg">Manage your profile, billing, and account settings</p>
         </div>
 

@@ -11,7 +11,7 @@ interface JobDetailsContextValue {
   responseContent: string;
   promptContent: string;
   formatMetadata: (metadata: any) => string;
-  formatRegexPatterns: (parsedJsonData: any) => string | null;
+  formatStructuredResponse: (job: BackgroundJob) => React.ReactNode | null;
   copyButtons?: CopyButtonConfig[];
 }
 

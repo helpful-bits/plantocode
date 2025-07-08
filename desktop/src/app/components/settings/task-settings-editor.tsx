@@ -377,13 +377,25 @@ export function TaskSettingsEditor({
             )}
           </div>
           <CopyButtonListEditor
-            copyButtons={settings.copyButtons || serverDefaults?.[taskKey]?.copyButtons || []}
+            copyButtons={(() => {
+              const buttons = settings.copyButtons || serverDefaults?.[taskKey]?.copyButtons || [];
+              // Ensure all buttons have IDs
+              return buttons.map((button: CopyButtonConfig, index: number) => ({
+                ...button,
+                id: button.id || `default-button-${index}`
+              }));
+            })()}
             onChange={onCopyButtonsChange}
             showCustomizeButton={!settings.copyButtons && !!serverDefaults?.[taskKey]?.copyButtons}
             onCustomize={() => {
               // Copy server defaults to user settings to enable editing
               const defaultButtons = serverDefaults?.[taskKey]?.copyButtons || [];
-              onCopyButtonsChange([...defaultButtons]);
+              // Ensure each button has a unique ID
+              const buttonsWithIds = defaultButtons.map((button, index) => ({
+                ...button,
+                id: button.id || `button-${Date.now()}-${index}`
+              }));
+              onCopyButtonsChange(buttonsWithIds);
             }}
             readOnly={readOnly}
           />

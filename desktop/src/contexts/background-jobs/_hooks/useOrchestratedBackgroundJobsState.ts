@@ -384,16 +384,16 @@ export function useOrchestratedBackgroundJobsState({
         unlistenResponseUpdatePromise = listen("VIBE_MANAGER_JOB_RESPONSE_UPDATE_EVENT", async (event) => {
           try {
             const payload = event.payload as { 
-              job_id: string; 
-              response_chunk: string; 
-              tokens_received: number; 
+              jobId: string; 
+              responseChunk: string; 
+              tokensReceived: number; 
               metadata: string;
-              actual_cost?: number | null; // Server-provided cost from API responses
+              actualCost?: number | null; // Server-provided cost from API responses
             };
             
-            if (!payload.job_id) {
+            if (!payload.jobId) {
               console.error(
-                "[BackgroundJobs] Received VIBE_MANAGER_JOB_RESPONSE_UPDATE_EVENT without job_id",
+                "[BackgroundJobs] Received VIBE_MANAGER_JOB_RESPONSE_UPDATE_EVENT without jobId",
                 event.payload
               );
               return;
@@ -401,7 +401,7 @@ export function useOrchestratedBackgroundJobsState({
 
             // Update the job in state with new response chunk
             setJobs(prevJobs => {
-              const jobIndex = prevJobs.findIndex(j => j.id === payload.job_id);
+              const jobIndex = prevJobs.findIndex(j => j.id === payload.jobId);
               if (jobIndex === -1) {
                 // Job not found in current state, ignore
                 return prevJobs;
@@ -409,16 +409,16 @@ export function useOrchestratedBackgroundJobsState({
 
               const existingJob = prevJobs[jobIndex];
               const currentResponse = existingJob.response || "";
-              const updatedResponse = currentResponse + payload.response_chunk;
+              const updatedResponse = currentResponse + payload.responseChunk;
 
               const updatedJob: BackgroundJob = {
                 ...existingJob,
                 response: updatedResponse,
-                tokensReceived: payload.tokens_received,
+                tokensReceived: payload.tokensReceived,
                 updatedAt: Date.now(),
                 metadata: payload.metadata,
                 // Extract actualCost from payload if provided
-                actualCost: payload.actual_cost !== undefined ? payload.actual_cost : existingJob.actualCost,
+                actualCost: payload.actualCost !== undefined ? payload.actualCost : existingJob.actualCost,
               };
 
               // Check if this is actually a change to avoid unnecessary re-renders
@@ -431,7 +431,7 @@ export function useOrchestratedBackgroundJobsState({
 
               // Also update active jobs if this job is active
               setActiveJobs(prevActiveJobs => {
-                const activeJobIndex = prevActiveJobs.findIndex(j => j.id === payload.job_id);
+                const activeJobIndex = prevActiveJobs.findIndex(j => j.id === payload.jobId);
                 if (activeJobIndex !== -1) {
                   const newActiveJobs = [...prevActiveJobs];
                   newActiveJobs[activeJobIndex] = updatedJob;

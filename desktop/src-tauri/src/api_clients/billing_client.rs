@@ -104,7 +104,7 @@ impl BillingClient {
         body: Option<serde_json::Value>,
     ) -> Result<T, AppError> {
         let server_url = std::env::var("MAIN_SERVER_BASE_URL")
-            .unwrap_or_else(|_| "http://localhost:8080".to_string());
+            .map_err(|_| AppError::ConfigError("MAIN_SERVER_BASE_URL environment variable not set".to_string()))?;
         
         let token = self.token_manager.get().await
             .ok_or_else(|| AppError::AuthError("No authentication token available".to_string()))?;

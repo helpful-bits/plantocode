@@ -175,6 +175,7 @@ pub async fn generate_simple_text_command(
         temperature: resolved_temperature,
         stream: false, // Non-streaming
         request_id: None, // No request tracking needed for non-streaming
+        task_type: None, // Not a workflow task, no task type needed
     };
     
     // Call chat completion (non-streaming)

@@ -16,6 +16,7 @@ const defaultValue: TaskContextValue = {
     isDoingWebSearch: false,
     canUndo: false,
     canRedo: false,
+    webSearchResults: null,
   },
   actions: {
     // These default implementations will be replaced by actual implementations
@@ -25,6 +26,7 @@ const defaultValue: TaskContextValue = {
     reset: () => {},
     undo: () => {},
     redo: () => {},
+    applyWebSearchResults: () => {},
   },
 };
 

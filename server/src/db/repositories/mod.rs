@@ -16,7 +16,7 @@ pub use credit_transaction_repository::{CreditTransactionRepository, CreditTrans
 pub use customer_billing_repository::{CustomerBillingRepository, CustomerBilling};
 pub use user_credit_repository::{UserCreditRepository, UserCredit};
 pub use user_repository::UserRepository;
-pub use settings_repository::{SettingsRepository, DatabaseAIModelSettings, TaskConfig, DatabasePathFinderSettings};
+pub use settings_repository::{SettingsRepository, DatabaseAIModelSettings, TaskConfig};
 pub use model_repository::{ModelRepository, ModelWithProvider, Model};
 pub use provider_repository::{ProviderRepository, Provider, ProviderWithModelCount};
 pub use system_prompts_repository::{SystemPromptsRepository, DefaultSystemPrompt};

@@ -4,9 +4,11 @@ use log::{debug, info, error, warn};
 
 use crate::error::{AppError, AppResult};
 use crate::models::{OpenRouterUsage, OpenRouterStreamChunk};
+use crate::models::stream_event::StreamEvent;
 use crate::db_utils::BackgroundJobRepository;
 use crate::jobs::job_processor_utils;
 use crate::api_clients::client_trait::ApiClient;
+use crate::utils::get_timestamp;
 
 /// Configuration for streaming handler
 #[derive(Debug, Clone)]
@@ -52,13 +54,13 @@ impl StreamedResponseHandler {
         }
     }
 
-    /// Process a stream of OpenRouter chunks and return the accumulated response and usage
+    /// Process a stream of events (content chunks or usage updates) and return the accumulated response and usage
     pub async fn process_stream<S>(
         &self,
         mut stream: S,
     ) -> AppResult<StreamResult>
     where
-        S: futures::Stream<Item = Result<OpenRouterStreamChunk, crate::error::AppError>> + Unpin,
+        S: futures::Stream<Item = Result<StreamEvent, crate::error::AppError>> + Unpin,
     {
         debug!("Starting stream processing for job {}", self.job_id);
         
@@ -66,88 +68,145 @@ impl StreamedResponseHandler {
         let mut accumulated_response = String::new();
         let mut final_usage: Option<OpenRouterUsage> = None;
         
-        // Process stream chunks
-        while let Some(chunk_result) = stream.next().await {
-            match chunk_result {
-                Ok(chunk) => {
+        // Process stream events
+        while let Some(event_result) = stream.next().await {
+            match event_result {
+                Ok(event) => {
                     // Check if job has been canceled
                     if job_processor_utils::check_job_canceled(&self.repo, &self.job_id).await? {
                         info!("Job {} canceled during streaming", self.job_id);
                         return Err(AppError::JobError("Job was canceled".to_string()));
                     }
                     
-                    // Extract content from streaming response
-                    let mut chunk_content = String::new();
-                    for choice in &chunk.choices {
-                        if let Some(content) = &choice.delta.content {
-                            if !content.is_empty() {
-                                chunk_content.push_str(content);
+                    match event {
+                        StreamEvent::ContentChunk(chunk) => {
+                            // Extract content from streaming response
+                            let mut chunk_content = String::new();
+                            for choice in &chunk.choices {
+                                if let Some(content) = &choice.delta.content {
+                                    if !content.is_empty() {
+                                        chunk_content.push_str(content);
+                                    }
+                                }
                             }
-                        }
-                    }
-                    
-                    if !chunk_content.is_empty() {
-                        accumulated_response.push_str(&chunk_content);
-                        
-                        // Update job stream progress with server-calculated tokens
-                        let new_metadata = self.repo.update_job_stream_progress(
-                            &self.job_id,
-                            &chunk_content,
-                            0, // Server will provide accurate token counts
-                            accumulated_response.len() as i32,
-                            self.initial_db_job_metadata.as_deref(),
-                            self.app_handle.as_ref(),
-                            None, // Server will provide cost in final usage
-                        ).await?;
-                        current_metadata_str = Some(new_metadata);
-                    }
-                    
-                    // Check for final usage information including server-calculated cost
-                    if let Some(ref usage) = chunk.usage {
-                        final_usage = Some(usage.clone());
-                        info!("Received server-authoritative usage information for job {}: tokens={}, cost={:?}", 
-                              self.job_id, usage.total_tokens, usage.cost);
-                        
-                        // Process server-calculated cost if available
-                        if let Some(cost) = usage.cost {
-                            info!("Processing server-calculated cost ${:.6} for job {}", cost, self.job_id);
                             
-                            // Emit job status change event with server-calculated cost
+                            if !chunk_content.is_empty() {
+                                accumulated_response.push_str(&chunk_content);
+                                
+                                // Update job stream progress with server-calculated tokens
+                                let new_metadata = self.repo.update_job_stream_progress(
+                                    &self.job_id,
+                                    &chunk_content,
+                                    0, // Server will provide accurate token counts
+                                    accumulated_response.len() as i32,
+                                    self.initial_db_job_metadata.as_deref(),
+                                    self.app_handle.as_ref(),
+                                    None, // Server will provide cost in final usage
+                                    None, // cache_write_tokens
+                                    None, // cache_read_tokens
+                                ).await?;
+                                current_metadata_str = Some(new_metadata);
+                            }
+                            
+                            // Check for final usage information including server-calculated cost
+                            if let Some(ref usage) = chunk.usage {
+                                final_usage = Some(usage.clone());
+                                info!("Received server-authoritative usage information for job {}: tokens={}, cost={:?}", 
+                                      self.job_id, usage.total_tokens, usage.cost);
+                                
+                                // Process server-calculated cost if available
+                                if let Some(cost) = usage.cost {
+                                    info!("Processing server-calculated cost ${:.6} for job {}", cost, self.job_id);
+                                    
+                                    // Emit job status change event with server-calculated cost
+                                    if let Some(ref app_handle) = self.app_handle {
+                                        if let Err(e) = job_processor_utils::emit_job_status_change(
+                                            app_handle,
+                                            &self.job_id,
+                                            "running",
+                                            Some("Received server-calculated cost information."),
+                                            Some(cost),
+                                        ) {
+                                            error!("Failed to emit cost update event for job {}: {}", self.job_id, e);
+                                        }
+                                    }
+                                    
+                                    // Update metadata with server-calculated cost and cache tokens
+                                    match self.update_metadata_with_cost_and_cache_tokens(
+                                        current_metadata_str.as_deref(), 
+                                        cost, 
+                                        usage.cache_write_tokens as i64, 
+                                        usage.cache_read_tokens as i64
+                                    ).await {
+                                        Ok(updated_metadata_str) => {
+                                            current_metadata_str = Some(updated_metadata_str);
+                                            debug!("Successfully updated job {} metadata with server cost ${:.6} and cache tokens", self.job_id, cost);
+                                        }
+                                        Err(e) => {
+                                            error!("Failed to update metadata with server cost and cache tokens for job {}: {}", self.job_id, e);
+                                            // Continue processing - cost and cache tokens will still be captured in final_usage
+                                        }
+                                    }
+                                } else {
+                                    debug!("Server usage information received for job {} but no cost field present", self.job_id);
+                                }
+                            }
+                            
+                            // Check for completion
+                            let is_finished = chunk.choices.iter()
+                                .any(|choice| choice.finish_reason.is_some());
+                            
+                            if is_finished {
+                                debug!("Stream finished with reason: {:?}", 
+                                    chunk.choices.iter().filter_map(|c| c.finish_reason.clone()).collect::<Vec<String>>());
+                            }
+                        },
+                        StreamEvent::UsageUpdate(usage_update) => {
+                            // Process cumulative usage update from server
+                            info!("Processing usage update for job {}: input={}, output={}, total={}, cost={}", 
+                                  self.job_id, 
+                                  usage_update.tokens_input, 
+                                  usage_update.tokens_output, 
+                                  usage_update.tokens_total, 
+                                  usage_update.estimated_cost);
+                            
+                            // Parse estimated cost from string
+                            let estimated_cost = usage_update.estimated_cost.parse::<f64>().unwrap_or(0.0);
+                            
+                            // Update job metadata with latest cumulative values
+                            // The server sends cumulative counts, so we need to store them directly
+                            let update_query = sqlx::query(
+                                r#"
+                                UPDATE background_jobs SET
+                                    tokens_sent = $1,
+                                    tokens_received = $2,
+                                    actual_cost = $3,
+                                    updated_at = $4
+                                WHERE id = $5
+                                "#)
+                                .bind(usage_update.tokens_input)
+                                .bind(usage_update.tokens_output)
+                                .bind(estimated_cost)
+                                .bind(get_timestamp())
+                                .bind(&self.job_id);
+                            
+                            if let Err(e) = update_query.execute(&*self.repo.get_pool()).await {
+                                error!("Failed to update job with cumulative usage: {}", e);
+                            }
+                            
+                            // Emit event for UI updates if AppHandle is provided  
                             if let Some(ref app_handle) = self.app_handle {
                                 if let Err(e) = job_processor_utils::emit_job_status_change(
                                     app_handle,
                                     &self.job_id,
                                     "running",
-                                    Some("Received server-calculated cost information."),
-                                    Some(cost),
+                                    Some(&format!("Tokens: {} (cost: ${})", usage_update.tokens_total, usage_update.estimated_cost)),
+                                    Some(estimated_cost),
                                 ) {
-                                    error!("Failed to emit cost update event for job {}: {}", self.job_id, e);
+                                    error!("Failed to emit usage update event for job {}: {}", self.job_id, e);
                                 }
                             }
-                            
-                            // Update metadata with server-calculated cost
-                            match self.update_metadata_with_cost(current_metadata_str.as_deref(), cost).await {
-                                Ok(updated_metadata_str) => {
-                                    current_metadata_str = Some(updated_metadata_str);
-                                    debug!("Successfully updated job {} metadata with server cost ${:.6}", self.job_id, cost);
-                                }
-                                Err(e) => {
-                                    error!("Failed to update metadata with server cost for job {}: {}", self.job_id, e);
-                                    // Continue processing - cost will still be captured in final_usage
-                                }
-                            }
-                        } else {
-                            debug!("Server usage information received for job {} but no cost field present", self.job_id);
                         }
-                    }
-                    
-                    // Check for completion
-                    let is_finished = chunk.choices.iter()
-                        .any(|choice| choice.finish_reason.is_some());
-                    
-                    if is_finished {
-                        debug!("Stream finished with reason: {:?}", 
-                            chunk.choices.iter().filter_map(|c| c.finish_reason.clone()).collect::<Vec<String>>());
                     }
                 }
                 Err(e) => {
@@ -191,14 +250,17 @@ impl StreamedResponseHandler {
         })
     }
 
-    /// Helper method to update job metadata with server-calculated cost
+    /// Helper method to update job metadata with server-calculated cost and cache tokens
     /// Returns the updated metadata string on success
-    async fn update_metadata_with_cost(
+    async fn update_metadata_with_cost_and_cache_tokens(
         &self,
         current_metadata: Option<&str>,
         server_cost: f64,
+        cache_write_tokens: i64,
+        cache_read_tokens: i64,
     ) -> AppResult<String> {
-        debug!("Updating metadata with server-calculated cost ${:.6} for job {}", server_cost, self.job_id);
+        debug!("Updating metadata with server-calculated cost ${:.6} and cache tokens (write: {}, read: {}) for job {}", 
+              server_cost, cache_write_tokens, cache_read_tokens, self.job_id);
         
         let updated_metadata = match current_metadata {
             Some(metadata_str) => {
@@ -246,7 +308,7 @@ impl StreamedResponseHandler {
             }
         };
         
-        // Update job with the server-calculated cost information
+        // Update job with the server-calculated cost information and cache tokens
         let new_metadata = self.repo.update_job_stream_progress(
             &self.job_id,
             "", // Empty chunk - just updating metadata
@@ -255,9 +317,26 @@ impl StreamedResponseHandler {
             Some(&updated_metadata),
             self.app_handle.as_ref(),
             Some(server_cost), // Server-calculated cost
-        ).await.map_err(|e| AppError::DatabaseError(format!("Failed to update job metadata with cost: {}", e)))?;
+            Some(cache_write_tokens),
+            Some(cache_read_tokens),
+        ).await.map_err(|e| AppError::DatabaseError(format!("Failed to update job metadata with cost and cache tokens: {}", e)))?;
         
         Ok(new_metadata)
+    }
+
+    /// Helper method to update job metadata with server-calculated cost
+    /// Returns the updated metadata string on success
+    async fn update_metadata_with_cost(
+        &self,
+        current_metadata: Option<&str>,
+        server_cost: f64,
+    ) -> AppResult<String> {
+        self.update_metadata_with_cost_and_cache_tokens(
+            current_metadata,
+            server_cost,
+            0, // default cache_write_tokens
+            0, // default cache_read_tokens
+        ).await
     }
 
     

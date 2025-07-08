@@ -4,7 +4,6 @@ import { H3 } from "@/ui/typography";
 
 import { useCorePromptContext } from "./_contexts/core-prompt-context";
 import { NoActiveSessionState } from "./no-active-session-state";
-import { useTaskContext } from "./_contexts/task-context";
 import ProjectSection from "./_sections/project-section";
 import TaskSection from "./_sections/task-section";
 import FileSection from "./_sections/file-section";
@@ -27,9 +26,6 @@ function GeneratePromptFormContent() {
   const {
     state: { lifecycleStatus },
   } = useCorePromptContext();
-
-  // Initialize task context
-  useTaskContext();
 
 
   return (

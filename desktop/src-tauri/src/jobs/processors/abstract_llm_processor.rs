@@ -23,16 +23,8 @@ pub struct LlmTaskConfig {
     pub stream: bool,
 }
 
-impl Default for LlmTaskConfig {
-    fn default() -> Self {
-        Self {
-            model: "gpt-3.5-turbo".to_string(),
-            temperature: 0.7,
-            max_tokens: 4000,
-            stream: false,
-        }
-    }
-}
+// REMOVED: No default implementation with hardcoded values
+// Configuration must be explicitly provided to ensure no silent fallbacks
 
 /// Result of an LLM task execution
 #[derive(Debug, Clone)]
@@ -99,12 +91,15 @@ impl LlmTaskRunner {
         let messages = llm_api_utils::create_openrouter_messages(&system_prompt, &user_prompt);
         
         // Create API options
-        let api_options = llm_api_utils::create_api_client_options(
+        let mut api_options = llm_api_utils::create_api_client_options(
             self.config.model.clone(),
             self.config.temperature,
             self.config.max_tokens,
             self.config.stream,
         )?;
+        
+        // Add task type for web mode detection
+        api_options.task_type = Some(self.job.task_type.to_string());
         
         info!("Making LLM API call with model: {}", self.config.model);
         
@@ -173,6 +168,9 @@ impl LlmTaskRunner {
         )?;
         api_options.request_id = Some(request_id.clone());
         
+        // Add task type for web mode detection
+        api_options.task_type = Some(self.job.task_type.to_string());
+        
         // Log full prompt to file for debugging
         self.log_prompt_to_file(&system_prompt, &user_prompt, "streaming").await;
         
@@ -206,11 +204,11 @@ impl LlmTaskRunner {
         
         // Poll for final cost if no cost was received in the stream
         let final_usage = if let Some(usage) = &stream_result.final_usage {
-            if usage.cost.is_some() {
-                // Cost already received in stream, use it
+            if usage.cost.is_some() && usage.cost.unwrap_or(0.0) > 0.0 {
+                // Cost already received in stream and is non-zero, use it
                 stream_result.final_usage.clone()
             } else {
-                // No cost in stream, poll for final cost from server
+                // No cost in stream or cost is zero, poll for final cost from server
                 self.poll_and_update_final_cost(&request_id, usage.clone(), repo.clone(), job_id).await
                     .unwrap_or_else(|e| {
                         warn!("Failed to poll for final cost for job {}: {}", job_id, e);
@@ -219,17 +217,24 @@ impl LlmTaskRunner {
             }
         } else {
             // No usage data at all, try to poll for final cost
-            if let Ok(Some(final_cost)) = self.poll_for_final_cost_only(&request_id).await {
-                info!("Retrieved final cost via polling for job {}: ${:.4}", job_id, final_cost);
-                // Create minimal usage data with the final cost
+            if let Ok(Some(cost_data)) = self.poll_for_final_cost_only(&request_id).await {
+                info!("Retrieved final cost via polling for job {}: ${:.4}, tokens: input={}, output={}", 
+                      job_id, cost_data.cost, cost_data.tokens_input, cost_data.tokens_output);
+                
+                // Update job metadata with final cost and usage details
+                if let Err(e) = self.update_job_with_final_cost_and_usage(&repo, job_id, &cost_data).await {
+                    warn!("Failed to update job {} metadata with final cost and usage: {}", job_id, e);
+                }
+                
+                // Create usage data with the final cost and token counts
                 Some(OpenRouterUsage {
-                    prompt_tokens: 0,
-                    completion_tokens: 0,
-                    total_tokens: 0,
-                    cost: Some(final_cost),
-                    cached_input_tokens: None,
-                    cache_write_tokens: None,
-                    cache_read_tokens: None,
+                    prompt_tokens: cost_data.tokens_input as i32,
+                    completion_tokens: cost_data.tokens_output as i32,
+                    total_tokens: (cost_data.tokens_input + cost_data.tokens_output) as i32,
+                    cost: Some(cost_data.cost),
+                    cached_input_tokens: 0,
+                    cache_write_tokens: 0,
+                    cache_read_tokens: 0,
                 })
             } else {
                 stream_result.final_usage.clone()
@@ -271,53 +276,11 @@ impl LlmTaskRunner {
     }
 
 
-    /// Finalize the job with success status and usage information
-    /// Uses centralized job_processor_utils for consistent finalization
-    pub async fn finalize_success(
-        &self,
-        repo: &Arc<BackgroundJobRepository>,
-        job_id: &str,
-        result: &LlmTaskResult,
-        metadata: Option<Value>,
-    ) -> AppResult<()> {
-        job_processor_utils::finalize_job_success(
-            job_id,
-            repo,
-            &result.response,
-            result.usage.clone(),
-            &self.config.model,
-            &result.system_prompt_id,
-            &result.system_prompt_template,
-            metadata,
-            &self.app_handle,
-        ).await
-    }
-
-    /// Finalize the job with failure status
-    /// Uses centralized job_processor_utils for consistent finalization
-    pub async fn finalize_failure(
-        &self,
-        repo: &Arc<BackgroundJobRepository>,
-        job_id: &str,
-        error_message: &str,
-        app_error_opt: Option<&AppError>,
-        llm_usage: Option<OpenRouterUsage>,
-    ) -> AppResult<()> {
-        job_processor_utils::finalize_job_failure(
-            job_id, 
-            repo, 
-            error_message, 
-            app_error_opt,
-            llm_usage,
-            Some(self.config.model.clone()),
-            &self.app_handle,
-        ).await
-    }
 
     /// Log prompt to temporary file for debugging
     async fn log_prompt_to_file(&self, system_prompt: &str, user_prompt: &str, prompt_type: &str) {
         let base_dir = std::path::Path::new("/path/to/project/tmp");
-        let task_type_dir = base_dir.join("llm_logs").join(format!("{:?}", self.job.job_type));
+        let task_type_dir = base_dir.join("llm_logs").join(format!("{:?}", self.job.task_type));
         
         if let Err(_) = fs::create_dir_all(&task_type_dir).await {
             // Silently fail if can't create directory
@@ -330,7 +293,7 @@ impl LlmTaskRunner {
         
         let full_prompt = format!(
             "=== JOB ID: {} ===\n=== TASK TYPE: {:?} ===\n=== MODEL: {} ===\n=== TEMPERATURE: {} ===\n=== PROMPT TYPE: {} ===\n\n=== SYSTEM PROMPT ===\n{}\n\n=== USER PROMPT ===\n{}\n\n=== END ===\n",
-            self.job.id, self.job.job_type, self.config.model, self.config.temperature, prompt_type, system_prompt, user_prompt
+            self.job.id, self.job.task_type, self.config.model, self.config.temperature, prompt_type, system_prompt, user_prompt
         );
         
         let _ = fs::write(&filepath, full_prompt).await;
@@ -339,7 +302,7 @@ impl LlmTaskRunner {
     /// Log complete LLM interaction (prompt + response) to temporary file for debugging
     async fn log_complete_interaction(&self, system_prompt: &str, user_prompt: &str, response: &str, usage: &Option<crate::models::OpenRouterUsage>, prompt_type: &str) {
         let base_dir = std::path::Path::new("/path/to/project/tmp");
-        let task_type_dir = base_dir.join("llm_interactions").join(format!("{:?}", self.job.job_type));
+        let task_type_dir = base_dir.join("llm_interactions").join(format!("{:?}", self.job.task_type));
         
         if let Err(_) = fs::create_dir_all(&task_type_dir).await {
             // Silently fail if can't create directory
@@ -365,7 +328,7 @@ impl LlmTaskRunner {
         
         let full_interaction = format!(
             "=== LLM INTERACTION LOG ===\n=== JOB ID: {} ===\n=== TASK TYPE: {:?} ===\n=== MODEL: {} ===\n=== TEMPERATURE: {} ===\n=== PROMPT TYPE: {} ===\n\n{}\n=== SYSTEM PROMPT ===\n{}\n\n=== USER PROMPT ===\n{}\n\n=== LLM RESPONSE ===\n{}\n\n=== END INTERACTION ===\n",
-            self.job.id, self.job.job_type, self.config.model, self.config.temperature, prompt_type, usage_info, system_prompt, user_prompt, response
+            self.job.id, self.job.task_type, self.config.model, self.config.temperature, prompt_type, usage_info, system_prompt, user_prompt, response
         );
         
         let _ = fs::write(&filepath, full_interaction).await;
@@ -389,17 +352,21 @@ impl LlmTaskRunner {
             .downcast_ref::<crate::api_clients::server_proxy_client::ServerProxyClient>()
             .ok_or_else(|| AppError::InternalError("Cannot poll for final cost with non-server proxy client".to_string()))?;
         
-        // Poll for final cost with retry (5 attempts, 1 second delay)
-        match proxy_client.poll_final_streaming_cost_with_retry(request_id, 5, 1000).await {
-            Ok(Some(final_cost)) => {
-                info!("Final cost retrieved for job {}: ${:.4}", job_id, final_cost);
+        // Poll for final cost with exponential backoff retry
+        match proxy_client.poll_final_streaming_cost_with_retry(request_id).await {
+            Ok(Some(cost_data)) => {
+                info!("Final cost retrieved for job {}: ${:.4}, tokens_input: {}, tokens_output: {}", 
+                      job_id, cost_data.cost, cost_data.tokens_input, cost_data.tokens_output);
                 
-                // Update usage with final cost
-                usage.cost = Some(final_cost);
+                // Update usage with final cost and token counts
+                usage.cost = Some(cost_data.cost);
+                usage.prompt_tokens = cost_data.tokens_input as i32;
+                usage.completion_tokens = cost_data.tokens_output as i32;
+                usage.total_tokens = (cost_data.tokens_input + cost_data.tokens_output) as i32;
                 
-                // Update job metadata with final cost
-                if let Err(e) = self.update_job_with_final_cost(&repo, job_id, final_cost).await {
-                    warn!("Failed to update job {} metadata with final cost: {}", job_id, e);
+                // Update job metadata with final cost and usage details
+                if let Err(e) = self.update_job_with_final_cost_and_usage(&repo, job_id, &cost_data).await {
+                    warn!("Failed to update job {} metadata with final cost and usage: {}", job_id, e);
                 }
                 
                 Ok(Some(usage))
@@ -416,7 +383,7 @@ impl LlmTaskRunner {
     }
     
     /// Poll for final cost only (when no usage data is available)
-    async fn poll_for_final_cost_only(&self, request_id: &str) -> AppResult<Option<f64>> {
+    async fn poll_for_final_cost_only(&self, request_id: &str) -> AppResult<Option<crate::models::FinalCostData>> {
         info!("Polling for final cost only with request_id: {}", request_id);
         
         // Get API client for polling
@@ -427,8 +394,8 @@ impl LlmTaskRunner {
             .downcast_ref::<crate::api_clients::server_proxy_client::ServerProxyClient>()
             .ok_or_else(|| AppError::InternalError("Cannot poll for final cost with non-server proxy client".to_string()))?;
         
-        // Poll for final cost with retry (5 attempts, 1 second delay)
-        proxy_client.poll_final_streaming_cost_with_retry(request_id, 5, 1000).await
+        // Poll for final cost with exponential backoff retry
+        proxy_client.poll_final_streaming_cost_with_retry(request_id).await
     }
     
     /// Update job metadata with final cost
@@ -475,9 +442,70 @@ impl LlmTaskRunner {
             Some(&updated_metadata),
             None, // No app_handle
             Some(final_cost),
+            None, // cache_write_tokens
+            None, // cache_read_tokens
         ).await?;
         
         info!("Successfully updated job {} with final cost: ${:.4}", job_id, final_cost);
+        Ok(())
+    }
+    
+    /// Update job metadata with final cost and detailed usage data
+    async fn update_job_with_final_cost_and_usage(
+        &self,
+        repo: &Arc<BackgroundJobRepository>,
+        job_id: &str,
+        cost_data: &crate::models::FinalCostData,
+    ) -> AppResult<()> {
+        info!("Updating job {} metadata with final cost and usage: ${:.4}, tokens_input: {}, tokens_output: {}", 
+              job_id, cost_data.cost, cost_data.tokens_input, cost_data.tokens_output);
+        
+        // Get current job to update metadata
+        let job = repo.get_job_by_id(job_id).await?
+            .ok_or_else(|| AppError::InternalError(format!("Job {} not found", job_id)))?;
+        
+        // Parse existing metadata or create new
+        let mut metadata: serde_json::Value = if let Some(meta_str) = &job.metadata {
+            serde_json::from_str(meta_str).unwrap_or_else(|_| serde_json::json!({}))
+        } else {
+            serde_json::json!({})
+        };
+        
+        // Add final cost and usage data to metadata
+        if let Some(task_data) = metadata.get_mut("task_data") {
+            task_data["finalCost"] = serde_json::json!(cost_data.cost);
+            task_data["actualCost"] = serde_json::json!(cost_data.cost);
+            task_data["finalTokensInput"] = serde_json::json!(cost_data.tokens_input);
+            task_data["finalTokensOutput"] = serde_json::json!(cost_data.tokens_output);
+            task_data["finalServiceName"] = serde_json::json!(cost_data.service_name);
+        } else {
+            metadata["task_data"] = serde_json::json!({
+                "finalCost": cost_data.cost,
+                "actualCost": cost_data.cost,
+                "finalTokensInput": cost_data.tokens_input,
+                "finalTokensOutput": cost_data.tokens_output,
+                "finalServiceName": cost_data.service_name
+            });
+        }
+        
+        // Update job metadata
+        let updated_metadata = serde_json::to_string(&metadata)
+            .map_err(|e| AppError::InternalError(format!("Failed to serialize metadata: {}", e)))?;
+        
+        // Use the existing update_job_stream_progress method to update metadata
+        repo.update_job_stream_progress(
+            job_id,
+            "", // No new response content
+            0,  // No new tokens
+            0,  // Current response length  
+            Some(&updated_metadata),
+            None, // No app_handle
+            Some(cost_data.cost),
+            None, // cache_write_tokens
+            None, // cache_read_tokens
+        ).await?;
+        
+        info!("Successfully updated job {} with final cost and usage data", job_id);
         Ok(())
     }
 }
@@ -488,9 +516,16 @@ pub struct LlmTaskConfigBuilder {
 }
 
 impl LlmTaskConfigBuilder {
-    pub fn new() -> Self {
+    /// Create a new builder with required configuration parameters
+    /// NO defaults allowed - all parameters must be explicitly set
+    pub fn new(model: String, temperature: f32, max_tokens: u32) -> Self {
         Self {
-            config: LlmTaskConfig::default(),
+            config: LlmTaskConfig {
+                model,
+                temperature,
+                max_tokens,
+                stream: false, // Only acceptable default since it's boolean operational parameter
+            },
         }
     }
 
@@ -519,8 +554,5 @@ impl LlmTaskConfigBuilder {
     }
 }
 
-impl Default for LlmTaskConfigBuilder {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+// REMOVED: No Default implementation to prevent hardcoded fallbacks
+// LlmTaskConfigBuilder must be created with explicit parameters via new(model, temperature, max_tokens)

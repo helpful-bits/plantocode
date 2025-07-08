@@ -40,7 +40,7 @@ impl JobRegistry {
         }
         
         // Create a more specific error with job_type as a String
-        Err(AppError::JobError(format!("No processor found for job type: {:?}", job.job_type)))
+        Err(AppError::JobError(format!("No processor found for job type: {:?}", job.task_type)))
     }
 }
 

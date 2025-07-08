@@ -16,6 +16,8 @@ pub mod services;
 pub mod api_clients;
 pub mod app_setup;
 pub mod auth;
+pub mod validation;
+pub mod error_recovery;
 
 use std::sync::{Arc, Mutex};
 use std::collections::HashMap;
@@ -115,6 +117,25 @@ fn main() {
             tauri::async_runtime::spawn(async move {
                 if let Err(e) = app_setup::run_async_initialization(&app_handle_clone).await {
                     error!("Async initialization failed: {}", e);
+                }
+            });
+
+            // Initialize auto-sync cache service
+            let app_handle_auto_sync = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                use crate::services::config_cache_service::auto_sync_cache_with_server;
+                info!("Starting auto-sync cache service");
+                auto_sync_cache_with_server(app_handle_auto_sync).await;
+            });
+
+            // Initialize cache health monitoring
+            let app_handle_health = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                use crate::services::cache_health_monitor::initialize_cache_health_monitor;
+                if let Err(e) = initialize_cache_health_monitor(&app_handle_health).await {
+                    error!("Cache health monitor initialization failed: {}", e);
+                } else {
+                    info!("Cache health monitor initialized successfully");
                 }
             });
 
@@ -240,6 +261,7 @@ fn main() {
             commands::implementation_plan_commands::update_implementation_plan_content_command,
             commands::implementation_plan_commands::get_prompt_command,
             commands::implementation_plan_commands::estimate_prompt_tokens_command,
+            commands::implementation_plan_commands::create_merged_implementation_plan_command,
 
             // Workflow commands (new stage-based approach)
             commands::workflow_commands::start_file_finder_workflow,

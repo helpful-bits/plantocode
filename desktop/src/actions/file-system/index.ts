@@ -20,5 +20,5 @@ export * from "./validation.actions";
 // Export directory tree operations
 export * from "./directory-tree.actions";
 
-// Export file finder workflow
-export * from "../workflows/workflow.actions";
+// Export workflow actions
+export * from "../workflows/index";

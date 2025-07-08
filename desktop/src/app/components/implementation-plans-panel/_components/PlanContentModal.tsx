@@ -16,6 +16,7 @@ import { getStreamingProgressValue } from "../../background-jobs-sidebar/utils";
 import { getJobDisplaySessionName } from "../../background-jobs-sidebar/_utils/job-display-utils";
 import { parsePlanResponseContent, getContentForStep } from "../_utils/plan-content-parser";
 import { replacePlaceholders } from "@/utils/placeholder-utils";
+import { normalizeJobResponse, safeResponseTrim } from '@/utils/response-utils';
 
 interface PlanContentModalProps {
   plan?: BackgroundJob;
@@ -39,7 +40,7 @@ const useLiveProgress = (
   isRunning: boolean
 ): number | undefined => {
   const [progress, setProgress] = useState<number | undefined>(() => 
-    isRunning ? getStreamingProgressValue(metadata, startTime, taskType) : undefined
+    isRunning ? getStreamingProgressValue(metadata) : undefined
   );
 
   useEffect(() => {
@@ -49,7 +50,7 @@ const useLiveProgress = (
     }
 
     const updateProgress = () => {
-      const newProgress = getStreamingProgressValue(metadata, startTime, taskType);
+      const newProgress = getStreamingProgressValue(metadata);
       setProgress(newProgress);
     };
 
@@ -97,14 +98,14 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
 
   if (plan) {
     if (isStreaming) { 
-      displayContent = plan.response || "Streaming content...";
+      displayContent = normalizeJobResponse(plan.response).content || "Streaming content...";
       // viewerLanguage remains "xml" as LLM is instructed to output XML
     } else if (plan.status === "completed") {
       // Use edited content if available and has changes, otherwise use original
-      displayContent = hasUnsavedChanges ? editedContent : parsePlanResponseContent(plan.response);
+      displayContent = hasUnsavedChanges ? editedContent : parsePlanResponseContent(normalizeJobResponse(plan.response).content);
       // viewerLanguage remains "xml" for the parsed original content
     } else if (plan.response) { // For other non-streaming, non-completed states with a response
-      displayContent = hasUnsavedChanges ? editedContent : plan.response;
+      displayContent = hasUnsavedChanges ? editedContent : normalizeJobResponse(plan.response).content;
       // Potentially could be error messages, but stick to "xml" or "markdown"
       // if error, it might not be XML. For now, assume "xml" is fine.
     }
@@ -112,7 +113,7 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
 
   // Determine if we should show the loading indicator
   // Only show loading when streaming AND no content has arrived yet
-  const showLoadingIndicator = isStreaming && (!plan.response || plan.response.trim() === "");
+  const showLoadingIndicator = isStreaming && (!plan.response || safeResponseTrim(plan.response) === "");
 
   // Use centralized utility function for consistent sessionName logic
   const sessionName = getJobDisplaySessionName(plan);
@@ -142,8 +143,8 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
   React.useEffect(() => {
     if (plan && !isStreaming) {
       const currentContent = plan.status === "completed" 
-        ? parsePlanResponseContent(plan.response)
-        : plan.response || "";
+        ? parsePlanResponseContent(normalizeJobResponse(plan.response).content)
+        : normalizeJobResponse(plan.response).content || "";
       setEditedContent(currentContent);
       setHasUnsavedChanges(false);
     }
@@ -154,8 +155,8 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
     if (newContent !== undefined && plan) {
       setEditedContent(newContent);
       const originalContent = plan.status === "completed" 
-        ? parsePlanResponseContent(plan.response)
-        : plan.response || "";
+        ? parsePlanResponseContent(normalizeJobResponse(plan.response).content)
+        : normalizeJobResponse(plan.response).content || "";
       setHasUnsavedChanges(newContent !== originalContent);
     }
   }, [plan?.response, plan?.status]);

@@ -10,7 +10,7 @@ export type WorkflowStage =
   | 'FILE_RELEVANCE_ASSESSMENT'
   | 'EXTENDED_PATH_FINDER'
   | 'PATH_CORRECTION'
-  | 'WEB_SEARCH_QUERY_GENERATION'
+  | 'WEB_SEARCH_PROMPTS_GENERATION'
   | 'WEB_SEARCH_EXECUTION';
 
 // Workflow status - matches backend WorkflowStatus string representations
@@ -74,7 +74,7 @@ export interface WorkflowStageJob {
   startedAt?: number;
   completedAt?: number;
   executionTimeMs?: number;
-  duration_ms?: number; // Duration of LLM API call in milliseconds
+  durationMs?: number; // Duration of LLM API call in milliseconds
   errorMessage?: string;
   subStatusMessage?: string;
   actualCost?: number | null | undefined; // Server-provided cost from API responses
@@ -132,7 +132,8 @@ export interface WorkflowStatusResponse {
 // Stage status from backend - matches StageStatus struct in file_finder_workflow_commands.rs
 export interface StageStatus {
   stageName: string; // Human-readable display name from WorkflowStage::display_name()
-  jobId?: string; // Populated from WorkflowStageJob.job_id for active/completed stages
+  taskType: string;
+  jobId?: string; // Populated from WorkflowStageJob.jobId for active/completed stages
   status: string; // String representation of JobStatus from backend
   progressPercentage: number;
   startedAt?: string; // ISO string timestamp
@@ -141,7 +142,7 @@ export interface StageStatus {
   createdAt?: string; // ISO string timestamp
   errorMessage?: string;
   executionTimeMs?: number; // Calculated execution time for this specific stage
-  duration_ms?: number; // Duration of LLM API call in milliseconds
+  durationMs?: number; // Duration of LLM API call in milliseconds
   subStatusMessage?: string; // Detailed stage progress message
   actualCost?: number | null | undefined; // Server-provided cost from API responses
 }
@@ -168,8 +169,8 @@ export interface WorkflowIntermediateData {
   extendedVerifiedPaths: string[];
   extendedUnverifiedPaths: string[];
   extendedCorrectedPaths: string[];
-  webSearchQueries?: string[];
-  webSearchResults?: string;
+  webSearchPrompts?: string[];
+  webSearchResults?: string[];
 }
 
 // Progress event payload from backend
@@ -184,7 +185,7 @@ export interface WorkflowProgressEvent {
 // Status event from backend (file-finder-workflow-status)
 export interface WorkflowStatusEvent {
   workflowId: string;
-  status: WorkflowStatus;
+  status: (typeof WORKFLOW_STATUSES.BACKEND)[keyof typeof WORKFLOW_STATUSES.BACKEND];
   progress: number;
   currentStage?: string;
   message: string;

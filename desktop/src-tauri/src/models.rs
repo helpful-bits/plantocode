@@ -3,6 +3,12 @@ use serde_with::skip_serializing_none;
 use std::collections::HashMap;
 use std::str::FromStr;
 
+pub mod usage_update;
+pub mod stream_event;
+
+pub use stream_event::StreamEvent;
+pub use usage_update::UsageUpdate;
+
 // Common response for job-creating commands
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -168,6 +174,7 @@ impl ToString for ApiType {
 #[serde(rename_all = "snake_case")]
 pub enum TaskType {
     ImplementationPlan,
+    ImplementationPlanMerge,
     VoiceTranscription,
     TextImprovement,
     PathCorrection,
@@ -178,8 +185,9 @@ pub enum TaskType {
     // New individual workflow stage types
     FileRelevanceAssessment,
     ExtendedPathFinder,
-    WebSearchQueryGeneration,
+    WebSearchPromptsGeneration,
     WebSearchExecution,
+    WebSearchWorkflow,
     Streaming,
     Unknown,
 }
@@ -188,6 +196,7 @@ impl ToString for TaskType {
     fn to_string(&self) -> String {
         match self {
             TaskType::ImplementationPlan => "implementation_plan".to_string(),
+            TaskType::ImplementationPlanMerge => "implementation_plan_merge".to_string(),
             TaskType::VoiceTranscription => "voice_transcription".to_string(),
             TaskType::TextImprovement => "text_improvement".to_string(),
             TaskType::PathCorrection => "path_correction".to_string(),
@@ -197,8 +206,9 @@ impl ToString for TaskType {
             TaskType::FileFinderWorkflow => "file_finder_workflow".to_string(),
             TaskType::FileRelevanceAssessment => "file_relevance_assessment".to_string(),
             TaskType::ExtendedPathFinder => "extended_path_finder".to_string(),
-            TaskType::WebSearchQueryGeneration => "web_search_query_generation".to_string(),
+            TaskType::WebSearchPromptsGeneration => "web_search_prompts_generation".to_string(),
             TaskType::WebSearchExecution => "web_search_execution".to_string(),
+            TaskType::WebSearchWorkflow => "web_search_workflow".to_string(),
             TaskType::Streaming => "streaming".to_string(),
             TaskType::Unknown => "unknown".to_string(),
         }
@@ -211,6 +221,7 @@ impl std::str::FromStr for TaskType {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "implementation_plan" => Ok(TaskType::ImplementationPlan),
+            "implementation_plan_merge" => Ok(TaskType::ImplementationPlanMerge),
             "voice_transcription" => Ok(TaskType::VoiceTranscription),
             "text_improvement" => Ok(TaskType::TextImprovement),
             "path_correction" => Ok(TaskType::PathCorrection),
@@ -220,8 +231,9 @@ impl std::str::FromStr for TaskType {
             "file_finder_workflow" => Ok(TaskType::FileFinderWorkflow),
             "file_relevance_assessment" => Ok(TaskType::FileRelevanceAssessment),
             "extended_path_finder" => Ok(TaskType::ExtendedPathFinder),
-            "web_search_query_generation" => Ok(TaskType::WebSearchQueryGeneration),
+            "web_search_prompts_generation" => Ok(TaskType::WebSearchPromptsGeneration),
             "web_search_execution" => Ok(TaskType::WebSearchExecution),
+            "web_search_workflow" => Ok(TaskType::WebSearchWorkflow),
             "streaming" => Ok(TaskType::Streaming),
             "unknown" => Ok(TaskType::Unknown),
             _ => Err(format!("Invalid task type: {}", s)),
@@ -233,20 +245,22 @@ impl TaskType {
     /// Returns true if this task type requires LLM configuration (model, tokens, temperature)
     pub fn requires_llm(&self) -> bool {
         match self {
-            // Local/filesystem tasks that don't use LLMs
-            TaskType::FileFinderWorkflow => false,
             // LLM tasks that require configuration
             TaskType::VoiceTranscription
             | TaskType::FileRelevanceAssessment
             | TaskType::ExtendedPathFinder
             | TaskType::ImplementationPlan
+            | TaskType::ImplementationPlanMerge
             | TaskType::TextImprovement
             | TaskType::PathCorrection
             | TaskType::TaskRefinement
             | TaskType::GenericLlmStream
             | TaskType::RegexFileFilter
-            | TaskType::WebSearchQueryGeneration
+            | TaskType::WebSearchPromptsGeneration
             | TaskType::WebSearchExecution => true,
+            // Workflows don't require LLM - they are orchestrated, not processed
+            TaskType::FileFinderWorkflow
+            | TaskType::WebSearchWorkflow => false,
             // Streaming and Unknown default to true for safety
             TaskType::Streaming
             | TaskType::Unknown => true,
@@ -257,11 +271,11 @@ impl TaskType {
     pub fn api_type(&self) -> ApiType {
         match self {
             // Local/filesystem tasks use filesystem API
-            TaskType::FileFinderWorkflow
-            | TaskType::VoiceTranscription => ApiType::FileSystem,
+            TaskType::VoiceTranscription => ApiType::FileSystem,
             // Extended workflow stages use OpenRouter API
             TaskType::FileRelevanceAssessment
             | TaskType::ExtendedPathFinder
+            | TaskType::ImplementationPlanMerge
             => ApiType::OpenRouter,
             // All other LLM tasks use OpenRouter API
             _ => ApiType::OpenRouter,
@@ -281,6 +295,8 @@ pub struct BackgroundJob {
     pub error_message: Option<String>,
     pub tokens_sent: Option<i32>,
     pub tokens_received: Option<i32>,
+    pub cache_write_tokens: Option<i64>,
+    pub cache_read_tokens: Option<i64>,
     pub model_used: Option<String>,
     pub actual_cost: Option<f64>,
     pub duration_ms: Option<i64>,
@@ -415,9 +431,11 @@ pub struct OpenRouterRequest {
     pub temperature: Option<f32>,
     pub duration_ms: Option<i64>,
     pub request_id: Option<String>,
+    pub task_type: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct OpenRouterResponse {
     pub id: String,
     pub choices: Vec<OpenRouterChoice>,
@@ -441,21 +459,23 @@ pub struct OpenRouterResponseMessage {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct OpenRouterUsage {
     pub prompt_tokens: i32,
     pub completion_tokens: i32,
     pub total_tokens: i32,
     pub cost: Option<f64>,
     #[serde(default)]
-    pub cached_input_tokens: Option<i32>,
+    pub cached_input_tokens: i32,
     #[serde(default)]
-    pub cache_write_tokens: Option<i32>,
+    pub cache_write_tokens: i32,
     #[serde(default)]
-    pub cache_read_tokens: Option<i32>,
+    pub cache_read_tokens: i32,
 }
 
 // OpenRouter streaming response chunks
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct OpenRouterStreamChunk {
     pub id: String,
     pub choices: Vec<OpenRouterStreamChoice>,
@@ -584,10 +604,6 @@ pub struct RuntimeAIConfig {
     pub tasks: HashMap<String, TaskSpecificModelConfig>,
     pub providers: Vec<ProviderWithModels>,
     
-    // PathFinder specific configuration with optional fields (uses constants as fallbacks)
-    #[serde(default)]
-    pub path_finder_settings: PathFinderSettings,
-    
     // Limits for token usage
     #[serde(default)]
     pub limits: TokenLimits,
@@ -609,18 +625,6 @@ pub struct TokenLimits {
     pub max_tokens_per_month: Option<u32>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct PathFinderSettings {
-    // Max number of files to include content from
-    pub max_files_with_content: Option<usize>,
-    // Whether to include file contents by default
-    pub include_file_contents: Option<bool>,
-    // Maximum number of paths to return in results
-    pub max_file_count: Option<usize>,
-    // Buffer to leave room in context window
-    pub token_limit_buffer: Option<u32>,
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
@@ -757,4 +761,24 @@ pub struct ListInvoicesResponse {
     pub invoices: Vec<Invoice>,
     pub total_invoices: i32,
     pub has_more: bool,
+}
+
+/// Response structure for final cost API endpoint
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FinalCostResponse {
+    pub cost: f64,
+    pub tokens_input: i64,
+    pub tokens_output: i64,
+    pub service_name: String,
+}
+
+/// Final cost data structure for internal use
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FinalCostData {
+    pub cost: f64,
+    pub tokens_input: i64,
+    pub tokens_output: i64,
+    pub service_name: String,
 }

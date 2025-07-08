@@ -9,7 +9,7 @@ import { LoadingSkeleton, ErrorState } from "./loading-and-error-states";
 import { 
   getPaymentMethods, 
   openBillingPortal
-} from "@/actions/billing/payment-method.actions";
+} from "@/actions/billing";
 import type { PaymentMethodsResponse } from "@/types/tauri-commands";
 import { getErrorMessage } from "@/utils/error-handling";
 import { useNotification } from "@/contexts/notification-context";

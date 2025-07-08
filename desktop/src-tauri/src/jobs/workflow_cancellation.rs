@@ -9,8 +9,7 @@ use log::{error, warn, info, debug};
 use crate::error::{AppError, AppResult};
 use crate::db_utils::background_job_repository::BackgroundJobRepository;
 use crate::models::{JobStatus, BackgroundJob};
-use super::workflow_types::{CancellationResult, FailedCancellation, WorkflowDefinition};
-use super::types::WorkflowStage;
+use super::workflow_types::{CancellationResult, FailedCancellation, WorkflowDefinition, WorkflowStage};
 
 /// Service for handling workflow-wide cancellation propagation
 pub struct WorkflowCancellationHandler {

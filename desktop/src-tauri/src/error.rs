@@ -31,6 +31,15 @@ pub enum AppError {
     #[error("Configuration error: {0}")]
     ConfigError(String),
     
+    #[error("Configuration validation error: {0}")]
+    ConfigurationError(String),
+    
+    #[error("Invalid task type: {0}")]
+    InvalidTaskTypeError(String),
+    
+    #[error("Cache validation error: {0}")]
+    CacheValidationError(String),
+    
     #[error("Job error: {0}")]
     JobError(String),
     
@@ -239,6 +248,9 @@ impl From<AppError> for SerializableError {
             AppError::TauriError(_) => "TAURI_ERROR",
             AppError::KeyringError(_) => "KEYRING_ERROR",
             AppError::ConfigError(_) => "CONFIG_ERROR",
+            AppError::ConfigurationError(_) => "CONFIGURATION_ERROR",
+            AppError::InvalidTaskTypeError(_) => "INVALID_TASK_TYPE_ERROR",
+            AppError::CacheValidationError(_) => "CACHE_VALIDATION_ERROR",
             AppError::JobError(_) => "JOB_ERROR",
             AppError::FileSystemError(_) => "FILE_SYSTEM_ERROR",
             AppError::GitError(_) => "GIT_ERROR",
@@ -298,3 +310,144 @@ impl From<AppError> for SerializableError {
 
 // Define a Result type alias using our AppError
 pub type AppResult<T> = Result<T, AppError>;
+
+/// Error construction utilities for creating actionable error messages
+impl AppError {
+    /// Create a detailed configuration error with context and suggestions
+    pub fn config_error_with_context(
+        error_type: &str,
+        description: &str,
+        suggestion: &str,
+        context: Option<&str>,
+    ) -> Self {
+        let message = if let Some(ctx) = context {
+            format!(
+                "{} Error: {}\nContext: {}\nSuggestion: {}",
+                error_type, description, ctx, suggestion
+            )
+        } else {
+            format!(
+                "{} Error: {}\nSuggestion: {}",
+                error_type, description, suggestion
+            )
+        };
+        AppError::ConfigurationError(message)
+    }
+    
+    /// Create a detailed invalid task type error with available options
+    pub fn invalid_task_type_error(
+        provided_task: &str,
+        available_tasks: &[&str],
+        context: Option<&str>,
+    ) -> Self {
+        let available_list = available_tasks.join(", ");
+        let message = if let Some(ctx) = context {
+            format!(
+                "Invalid task type '{}' provided.\nContext: {}\nAvailable task types: {}\nSuggestion: Use one of the valid task types listed above.",
+                provided_task, ctx, available_list
+            )
+        } else {
+            format!(
+                "Invalid task type '{}' provided.\nAvailable task types: {}\nSuggestion: Use one of the valid task types listed above.",
+                provided_task, available_list
+            )
+        };
+        AppError::InvalidTaskTypeError(message)
+    }
+    
+    /// Create a detailed cache validation error
+    pub fn cache_validation_error(
+        validation_type: &str,
+        details: &str,
+        recovery_action: &str,
+    ) -> Self {
+        let message = format!(
+            "Cache Validation Failed: {}\nDetails: {}\nRecovery Action: {}",
+            validation_type, details, recovery_action
+        );
+        AppError::CacheValidationError(message)
+    }
+    
+    /// Create a missing model configuration error
+    pub fn missing_model_config_error(
+        task_type: &str,
+        available_models: &[String],
+    ) -> Self {
+        let available_list = available_models.join(", ");
+        let message = format!(
+            "Missing Model Configuration for task '{}'.\nThis task requires a valid model to be configured.\nAvailable models: {}\nSuggestion: Configure a model for this task in the server settings.",
+            task_type, 
+            if available_list.is_empty() { "No models available" } else { &available_list }
+        );
+        AppError::ConfigurationError(message)
+    }
+    
+    /// Create a missing task configuration error
+    pub fn missing_task_config_error(
+        task_type: &str,
+        required_fields: &[&str],
+    ) -> Self {
+        let fields_list = required_fields.join(", ");
+        let message = format!(
+            "Missing Task Configuration for '{}'.\nRequired fields: {}\nSuggestion: Add complete configuration for this task in the server settings including all required fields.",
+            task_type, fields_list
+        );
+        AppError::ConfigurationError(message)
+    }
+    
+    /// Create an invalid configuration value error
+    pub fn invalid_config_value_error(
+        field_name: &str,
+        current_value: &str,
+        valid_range: &str,
+        task_context: Option<&str>,
+    ) -> Self {
+        let message = if let Some(task) = task_context {
+            format!(
+                "Invalid Configuration Value for '{}' in task '{}'.\nCurrent value: {}\nValid range: {}\nSuggestion: Update the configuration to use a value within the valid range.",
+                field_name, task, current_value, valid_range
+            )
+        } else {
+            format!(
+                "Invalid Configuration Value for '{}'.\nCurrent value: {}\nValid range: {}\nSuggestion: Update the configuration to use a value within the valid range.",
+                field_name, current_value, valid_range
+            )
+        };
+        AppError::ConfigurationError(message)
+    }
+    
+    /// Create a model availability error
+    pub fn model_not_available_error(
+        model_id: &str,
+        task_type: &str,
+        available_models: &[String],
+    ) -> Self {
+        let available_list = available_models.join(", ");
+        let message = format!(
+            "Model '{}' is not available for task '{}'.\nThis model is either not configured or not accessible.\nAvailable models: {}\nSuggestion: Either configure the missing model or update the task to use an available model.",
+            model_id, 
+            task_type, 
+            if available_list.is_empty() { "No models available" } else { &available_list }
+        );
+        AppError::ConfigurationError(message)
+    }
+    
+    /// Create a configuration consistency error
+    pub fn configuration_consistency_error(
+        inconsistency_type: &str,
+        details: &str,
+        resolution_steps: &[&str],
+    ) -> Self {
+        let steps_list = resolution_steps.iter()
+            .enumerate()
+            .map(|(i, step)| format!("{}. {}", i + 1, step))
+            .collect::<Vec<_>>()
+            .join("\n");
+        
+        let message = format!(
+            "Configuration Consistency Error: {}\nDetails: {}\nResolution Steps:\n{}\nSuggestion: Follow the resolution steps above to fix the configuration inconsistency.",
+            inconsistency_type, details, steps_list
+        );
+        AppError::ConfigurationError(message)
+    }
+}

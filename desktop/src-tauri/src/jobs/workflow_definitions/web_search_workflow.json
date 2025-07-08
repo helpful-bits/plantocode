@@ -1,20 +1,18 @@
 {
   "name": "WebSearchWorkflow",
-  "description": "Performs web search with query generation and execution stages.",
+  "description": "Performs sophisticated web search research using two-stage architecture.",
   "stages": [
     {
-      "stage_name": "WebSearchQueryGeneration",
-      "task_type": "web_search_query_generation",
-      "processor_name": null,
-      "dependencies": [],
-      "allow_parallel_execution": false
+      "stageName": "WebSearchPromptsGeneration",
+      "taskType": "web_search_prompts_generation",
+      "processorName": null,
+      "dependencies": []
     },
     {
-      "stage_name": "WebSearchExecution",
-      "task_type": "web_search_execution",
-      "processor_name": null,
-      "dependencies": ["WebSearchQueryGeneration"],
-      "allow_parallel_execution": false
+      "stageName": "WebSearchExecution",
+      "taskType": "web_search_execution",
+      "processorName": null,
+      "dependencies": ["WebSearchPromptsGeneration"]
     }
   ]
 }

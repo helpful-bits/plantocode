@@ -15,6 +15,8 @@ use serde_json::{json, Value};
 use tracing::{debug, error, info};
 use uuid::Uuid;
 use chrono;
+use bigdecimal::BigDecimal;
+use std::str::FromStr;
 
 use crate::handlers::streaming_handler::{StreamChunkTransformer, TransformResult, StreamError};
 use crate::clients::google_client::GoogleStreamChunk;
@@ -71,6 +73,9 @@ impl GoogleStreamTransformer {
             completion_tokens: metadata.candidates_token_count,
             total_tokens: metadata.total_token_count,
             cost: None, // Will be filled by billing system
+            cached_input_tokens: 0,
+            cache_write_tokens: 0,
+            cache_read_tokens: 0,
         });
 
         OpenRouterStreamChunk {
@@ -181,6 +186,20 @@ impl StreamChunkTransformer for GoogleStreamTransformer {
         
         None
     }
+    
+    fn extract_text_delta(&self, chunk: &Value) -> Option<String> {
+        // Google sends text in candidates[0].content.parts[0].text
+        chunk.get("candidates")
+            .and_then(|candidates| candidates.as_array())
+            .and_then(|arr| arr.first())
+            .and_then(|candidate| candidate.get("content"))
+            .and_then(|content| content.get("parts"))
+            .and_then(|parts| parts.as_array())
+            .and_then(|arr| arr.first())
+            .and_then(|part| part.get("text"))
+            .and_then(|text| text.as_str())
+            .map(|s| s.to_string())
+    }
 }
 
 /// Anthropic stream transformer - injects OpenRouter fields into native format
@@ -189,12 +208,14 @@ impl StreamChunkTransformer for GoogleStreamTransformer {
 /// - type field instead of object
 /// - Missing required id field for OpenRouter compatibility
 /// - Different structure for content deltas
+/// - message_delta events containing incremental usage
 /// 
 /// This transformer robustly handles:
 /// - Anthropic API error chunks (converts to StreamError)
 /// - Native format detection and field injection
 /// - Malformed chunks (returns Ignore, never forwards)
 /// - Final chunks with usage information (extracts for billing)
+/// - Incremental usage updates from message_delta events
 pub struct AnthropicStreamTransformer {
     model_id: String,
 }
@@ -316,6 +337,57 @@ impl StreamChunkTransformer for AnthropicStreamTransformer {
         
         None
     }
+    
+    fn extract_text_delta(&self, chunk: &Value) -> Option<String> {
+        // Anthropic can send text in different formats depending on the chunk type
+        
+        // First try the standard OpenRouter format (choices[0].delta.content)
+        if let Some(content) = chunk.get("choices")
+            .and_then(|choices| choices.as_array())
+            .and_then(|arr| arr.first())
+            .and_then(|choice| choice.get("delta"))
+            .and_then(|delta| delta.get("content"))
+            .and_then(|content| content.as_str()) {
+            return Some(content.to_string());
+        }
+        
+        // Try Anthropic native format (delta.text for content_block_delta)
+        if chunk.get("type") == Some(&Value::String("content_block_delta".to_string())) {
+            if let Some(text) = chunk.get("delta")
+                .and_then(|delta| delta.get("text"))
+                .and_then(|text| text.as_str()) {
+                return Some(text.to_string());
+            }
+        }
+        
+        // Try message delta format
+        if chunk.get("type") == Some(&Value::String("message_delta".to_string())) {
+            if let Some(text) = chunk.get("delta")
+                .and_then(|delta| delta.get("content"))
+                .and_then(|content| content.as_str()) {
+                return Some(text.to_string());
+            }
+        }
+        
+        None
+    }
+    
+    fn extract_incremental_usage(&self, chunk: &Value) -> Option<(i32, i32)> {
+        // Anthropic sends incremental usage in message_delta events
+        if chunk.get("type") == Some(&Value::String("message_delta".to_string())) {
+            if let Some(usage) = chunk.get("usage") {
+                let input_tokens = usage.get("input_tokens").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+                let output_tokens = usage.get("output_tokens").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+                
+                if input_tokens > 0 || output_tokens > 0 {
+                    debug!("Extracted incremental usage from Anthropic message_delta: input={}, output={}", input_tokens, output_tokens);
+                    return Some((input_tokens, output_tokens));
+                }
+            }
+        }
+        
+        None
+    }
 }
 
 /// OpenAI stream transformer - validates and passes through compatible format
@@ -431,6 +503,17 @@ impl StreamChunkTransformer for OpenAIStreamTransformer {
         }
         
         None
+    }
+    
+    fn extract_text_delta(&self, chunk: &Value) -> Option<String> {
+        // OpenAI sends text in choices[0].delta.content
+        chunk.get("choices")
+            .and_then(|choices| choices.as_array())
+            .and_then(|arr| arr.first())
+            .and_then(|choice| choice.get("delta"))
+            .and_then(|delta| delta.get("content"))
+            .and_then(|content| content.as_str())
+            .map(|s| s.to_string())
     }
 }
 
@@ -549,12 +632,23 @@ impl StreamChunkTransformer for OpenRouterStreamTransformer {
                     cache_read_tokens: 0,
                     model_id: model_id.to_string(),
                     duration_ms: None,
-                    cost: usage_obj.get("cost").and_then(|v| v.as_f64()),
+                    cost: usage_obj.get("cost").and_then(|v| v.as_f64()).map(|f| BigDecimal::from_str(&f.to_string()).unwrap_or_default()),
                 });
             }
         }
         
         None
+    }
+    
+    fn extract_text_delta(&self, chunk: &Value) -> Option<String> {
+        // OpenRouter sends text in choices[0].delta.content (same as OpenAI)
+        chunk.get("choices")
+            .and_then(|choices| choices.as_array())
+            .and_then(|arr| arr.first())
+            .and_then(|choice| choice.get("delta"))
+            .and_then(|delta| delta.get("content"))
+            .and_then(|content| content.as_str())
+            .map(|s| s.to_string())
     }
 }
 

@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { Loader2, CheckCircle, XCircle, AlertCircle } from "lucide-react";
 import { Button } from "@/ui/button";
 import { Alert, AlertDescription } from "@/ui/alert";
-import { getCheckoutSessionStatus } from "@/actions/billing/checkout.actions";
+import { getCheckoutSessionStatus } from "@/actions/billing";
 import { getErrorMessage } from "@/utils/error-handling";
 
 interface PaymentPollingScreenProps {

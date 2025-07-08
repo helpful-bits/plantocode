@@ -6,7 +6,7 @@ use tokio::fs;
 use crate::utils::config_resolver;
 
 use crate::error::{AppError, AppResult};
-use crate::jobs::types::{Job, JobPayload, JobProcessResult};
+use crate::jobs::types::{Job, JobPayload, JobProcessResult, JobResultData};
 use crate::jobs::processor_trait::JobProcessor;
 use crate::models::TaskType;
 use crate::jobs::job_processor_utils;
@@ -56,13 +56,13 @@ impl JobProcessor for TaskRefinementProcessor {
         // Get model settings using centralized config resolution
         let model_settings = config_resolver::resolve_model_settings(
             &app_handle,
-            job.job_type,
+            job.task_type,
             &session.project_directory,
             None, // model_override
             None, // temperature_override  
             None, // max_tokens_override
         ).await?
-        .ok_or_else(|| AppError::ConfigError(format!("Task {:?} requires LLM configuration", job.job_type)))?;
+        .ok_or_else(|| AppError::ConfigError(format!("Task {:?} requires LLM configuration", job.task_type)))?;
 
         let (model_used, temperature, max_output_tokens) = model_settings;
         
@@ -84,10 +84,7 @@ impl JobProcessor for TaskRefinementProcessor {
         }
         
         // Setup LLM task configuration
-        let llm_config = LlmTaskConfigBuilder::new()
-            .model(model_used.clone())
-            .temperature(temperature)
-            .max_tokens(max_output_tokens)
+        let llm_config = LlmTaskConfigBuilder::new(model_used.clone(), temperature, max_output_tokens)
             .stream(false)
             .build();
         
@@ -109,7 +106,6 @@ impl JobProcessor for TaskRefinementProcessor {
             Err(e) => {
                 error!("Task Refinement LLM task execution failed: {}", e);
                 let error_msg = format!("LLM task execution failed: {}", e);
-                task_runner.finalize_failure(&repo, &job_id, &error_msg, Some(&e), None).await?;
                 return Ok(JobProcessResult::failure(job_id, error_msg));
             }
         };
@@ -126,27 +122,20 @@ impl JobProcessor for TaskRefinementProcessor {
             refined_content
         );
         
-        // Extract usage before moving it
+        // Extract usage and system prompt template before moving it
         let usage_for_result = llm_result.usage.clone();
-        
-        // Use task runner's finalize_success method to ensure consistent template handling
-        task_runner.finalize_success(
-            &repo,
-            &job_id,
-            &llm_result,
-            None,
-        ).await?;
+        let system_prompt_template = llm_result.system_prompt_template.clone();
+        let actual_cost = llm_result.usage.as_ref().and_then(|u| u.cost).unwrap_or(0.0);
         
         info!("Completed Task Refinement job {}", job_id);
         
-        let task_len = structured_response.len() as i32;
-        
-        Ok(JobProcessResult::success(job_id, structured_response)
+        // Return success result with structured text data
+        Ok(JobProcessResult::success(job_id, JobResultData::Text(structured_response))
             .with_tokens(
-                usage_for_result.as_ref().map(|u| u.prompt_tokens as i32),
-                usage_for_result.as_ref().map(|u| u.completion_tokens as i32),
-                usage_for_result.as_ref().map(|u| u.total_tokens as i32),
-                Some(task_len),
-            ))
+                usage_for_result.as_ref().map(|u| u.prompt_tokens as u32),
+                usage_for_result.as_ref().map(|u| u.completion_tokens as u32)
+            )
+            .with_system_prompt_template(system_prompt_template)
+            .with_actual_cost(actual_cost))
     }
 }

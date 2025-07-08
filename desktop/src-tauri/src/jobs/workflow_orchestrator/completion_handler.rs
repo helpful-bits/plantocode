@@ -11,6 +11,7 @@ pub(super) async fn handle_stage_completion_internal(
     orchestrator: &super::WorkflowOrchestrator,
     workflow_id: &str,
     job_id: &str,
+    job_result_data: Option<crate::jobs::types::JobResultData>,
     store_stage_data_fn: impl Fn(&str, serde_json::Value) -> std::pin::Pin<Box<dyn std::future::Future<Output = crate::error::AppResult<()>> + Send>>
 ) -> AppResult<()> {
     info!("Handling stage completion for job: {}", job_id);
@@ -32,32 +33,19 @@ pub(super) async fn handle_stage_completion_internal(
     };
 
     // Extract and store stage data from the completed job
-    // If data extraction fails, try to complete workflow anyway if possible
+    // If data extraction fails, explicitly fail the stage
     if let Err(e) = data_extraction::extract_and_store_stage_data_internal(
         &orchestrator.app_handle,
         job_id,
         &workflow_state_for_dependency_check,
+        job_result_data,
         store_stage_data_fn
     ).await {
-        warn!("Stage data extraction failed for job {}: {} - checking if workflow can complete anyway", job_id, e);
+        warn!("Stage data extraction failed for job {}: {} - failing the stage", job_id, e);
         
-        // Re-fetch workflow state and check if workflow can complete despite extraction failure
-        let current_workflow_state = {
-            let workflows_guard = workflows.lock().await;
-            workflows_guard.get(workflow_id)
-                .ok_or_else(|| AppError::JobError(format!("Workflow not found: {}", workflow_id)))?
-                .clone()
-        };
-        
-        // Check if workflow is complete even without the extracted data
-        if super::workflow_utils::is_workflow_complete(&current_workflow_state, &workflow_definition) {
-            info!("Workflow {} can complete despite data extraction failure - marking as completed", workflow_id);
-            orchestrator.mark_workflow_completed(workflow_id).await?;
-            return Ok(());
-        } else {
-            // Data extraction failure is critical for workflow progression
-            return Err(AppError::JobError(format!("Stage data extraction failed for stage {}: {}", job_id, e)));
-        }
+        // Explicitly fail the stage
+        orchestrator.handle_stage_failure(&workflow_id, job_id, Some(e.to_string())).await?;
+        return Err(AppError::JobError(format!("Stage data extraction failed for stage {}: {}", job_id, e)));
     }
     
     debug!("Successfully extracted and stored stage data from job {}", job_id);
@@ -75,7 +63,7 @@ pub(super) async fn handle_stage_completion_internal(
     // Lock is released here
 
     // Get the TaskType of the job that just finished
-    let task_type = workflow_state_for_payload_building.stage_jobs.iter()
+    let task_type = workflow_state_for_payload_building.stages.iter()
         .find(|stage_job| stage_job.job_id == job_id)
         .map(|stage_job| stage_job.task_type.clone())
         .ok_or_else(|| AppError::JobError(format!("Stage job not found for job_id: {}", job_id)))?;
@@ -93,6 +81,7 @@ pub(super) async fn handle_stage_completion_internal(
             return Ok(());
         }
     }
+
 
     // Find next stages that can be executed based on the workflow definition (use updated state after data extraction)
     let next_stages = super::stage_scheduler::find_next_abstract_stages_to_execute_internal(&workflow_state_for_payload_building, &workflow_definition).await;
@@ -122,9 +111,12 @@ pub(super) async fn handle_stage_completion_internal(
                 info!("Workflow {} completed successfully", workflow_id);
             } else {
                 debug!("Workflow {} not complete - checking individual stage status", workflow_id);
-                for stage_job in &workflow_state_for_payload_building.stage_jobs {
+                for stage_job in &workflow_state_for_payload_building.stages {
                     debug!("Stage {:?} ({}): status={:?}", stage_job.task_type, stage_job.job_id, stage_job.status);
                 }
+                
+                // If workflow is stalled (no stages can progress and workflow isn't complete), explicitly fail it
+                orchestrator.mark_workflow_failed(workflow_id, "Workflow stalled: no new stages can be started, but workflow is not complete.").await?;
             }
         }
     } else {

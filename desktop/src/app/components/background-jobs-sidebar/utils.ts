@@ -1,6 +1,7 @@
 import { type ApiType, type JobMetadata } from "@/types/session-types";
 import { type TaskType, TaskTypeDetails } from "@/types/task-type-defs";
 import { formatTimeAgo as formatTimeAgoUtil } from "@/utils/date-utils";
+import { validateTaskTypeWithConfiguration } from "@/utils/task-type-validation";
 
 /**
  * Helper function to safely parse job metadata
@@ -135,19 +136,13 @@ export function formatApiType(apiType: ApiType): string {
 
 /**
  * Returns human-readable task type using consolidated TaskTypeDetails
+ * STRICT: NO FALLBACKS - Invalid task types cause immediate failure
  */
 export function formatTaskType(taskType: TaskType): string {
-  // If taskType is undefined or null, return 'Unknown Task'
-  if (!taskType) return "Unknown Task";
-
-  // Use the displayName from TaskTypeDetails if available
-  const taskDetails = TaskTypeDetails[taskType];
-  if (taskDetails?.displayName) {
-    return taskDetails.displayName;
-  }
-
-  // All task types should be defined in TaskTypeDetails
-  throw new Error(`Task type '${taskType}' not found in TaskTypeDetails - add it to the enum`);
+  // STRICT: Use comprehensive validation - NO FALLBACKS
+  const validatedTaskType = validateTaskTypeWithConfiguration(taskType);
+  const taskDetails = TaskTypeDetails[validatedTaskType];
+  return taskDetails.displayName;
 }
 
 /**
@@ -209,13 +204,11 @@ export function truncateText(text: string, maxLength = 50): string {
 
 /**
  * Calculate streaming progress value based on available metadata
- * Used for progress bars to show consistent progress across components
- * Robustly accesses fields from the standardized JobMetadata structure
+ * Simplified to rely primarily on streamProgress from job metadata
+ * Shows indeterminate progress if unavailable
  */
 export function getStreamingProgressValue(
-  metadataInput: JobMetadata | string | null | undefined,
-  startTime?: number | null,
-  taskType?: string
+  metadataInput: JobMetadata | string | null | undefined
 ): number | undefined {
   // Parse metadata to ensure consistent structure
   const parsedMetadata = getParsedMetadata(metadataInput);
@@ -232,50 +225,11 @@ export function getStreamingProgressValue(
     streamProgress >= 0 &&
     streamProgress <= 100
   ) {
-    // Don't cap at 99% - show actual progress for better UX
     return Math.min(streamProgress, 100);
   }
 
-  // Priority 2: Calculate based on responseLength and estimatedTotalLength
-  const responseLength = taskData?.responseLength ?? topLevel?.responseLength;
-  const estimatedTotalLength = taskData?.estimatedTotalLength ?? topLevel?.estimatedTotalLength;
-  
-  if (
-    typeof responseLength === "number" &&
-    typeof estimatedTotalLength === "number" &&
-    estimatedTotalLength > 0 &&
-    responseLength >= 0 &&
-    !isNaN(responseLength) &&
-    !isNaN(estimatedTotalLength)
-  ) {
-    const calculatedProgress = (responseLength / estimatedTotalLength) * 100;
-    if (calculatedProgress >= 0 && calculatedProgress <= 200 && !isNaN(calculatedProgress)) {
-      return Math.min(calculatedProgress, 100);
-    }
-  }
-
-  // Priority 3: Calculate based on tokensReceived from metadata (check both levels)
-  const tokensReceived = taskData?.tokensReceived ?? topLevel?.tokensReceived;
-  const maxTokens = taskData?.maxTokens ?? taskData?.maxOutputTokens ?? topLevel?.maxTokens ?? topLevel?.maxOutputTokens;
-  
-  if (
-    typeof tokensReceived === "number" &&
-    typeof maxTokens === "number" &&
-    maxTokens > 0 &&
-    tokensReceived >= 0 &&
-    !isNaN(tokensReceived) &&
-    !isNaN(maxTokens)
-  ) {
-    const calculatedProgress = (tokensReceived / maxTokens) * 100;
-    if (calculatedProgress >= 0 && calculatedProgress <= 200 && !isNaN(calculatedProgress)) {
-      return Math.min(calculatedProgress, 100);
-    }
-  }
-
-  // Priority 4: For workflow jobs, check if there's a stage-based progress
+  // Priority 2: For workflow jobs, check if there's a stage-based progress
   if (topLevel?.workflowId) {
-    // Workflow jobs might have progress based on stage completion
-    const workflowStage = topLevel.workflowStage;
     const progressPercentage = topLevel.progressPercentage;
     
     if (typeof progressPercentage === "number" && progressPercentage >= 0 && progressPercentage <= 100) {
@@ -283,6 +237,7 @@ export function getStreamingProgressValue(
     }
     
     // Estimate progress based on workflow stage
+    const workflowStage = topLevel.workflowStage;
     if (typeof workflowStage === "string") {
       const stageProgressMap: Record<string, number> = {
         "REGEX_FILE_FILTER": 25,
@@ -294,59 +249,10 @@ export function getStreamingProgressValue(
     }
   }
 
-  // Priority 5: Enhanced time-based fallback with task-specific timing
-  return getTimeBasedFallbackProgress(startTime, taskType);
-}
-
-/**
- * Helper function for time-based progress fallback
- * Uses task-specific timing estimates for more realistic progress
- */
-function getTimeBasedFallbackProgress(startTime?: number | null, taskType?: string): number | undefined {
-  if (typeof startTime === "number" && startTime > 0 && !isNaN(startTime)) {
-    const elapsedMs = Date.now() - startTime;
-    if (elapsedMs > 0) {
-      const elapsedSeconds = elapsedMs / 1000;
-      
-      // Task-specific estimated durations (in seconds)
-      const taskDurations: Record<string, number> = {
-        "file_relevance_assessment": 15,    // 15 seconds for AI file relevance
-        "regex_file_filter": 10,           // 10 seconds for regex generation
-        "extended_path_finder": 20,        // 20 seconds for extended path finding
-        "path_correction": 12,             // 12 seconds for path correction
-        "task_refinement": 8,              // 8 seconds for task refinement
-        "implementation_plan": 60,         // 60 seconds for implementation plans (increased from 25)
-        "text_improvement": 12,            // 12 seconds for text improvement
-        "voice_transcription": 30,         // 30 seconds for voice processing
-      };
-      
-      const estimatedDuration = taskDurations[taskType || ""] || 15; // Default 15 seconds
-      
-      // Calculate progress with realistic curve - ensure continuous progression
-      const progressRatio = elapsedSeconds / estimatedDuration;
-      
-      if (progressRatio <= 0.05) {
-        // First 5% of time: 5-15% progress (quick start)
-        return Math.min(5 + (progressRatio / 0.05) * 10, 15);
-      } else if (progressRatio <= 0.3) {
-        // Next 25% of time: 15-40% progress (early work)
-        return Math.min(15 + ((progressRatio - 0.05) / 0.25) * 25, 40);
-      } else if (progressRatio <= 0.7) {
-        // Next 40% of time: 40-75% progress (main work)
-        return Math.min(40 + ((progressRatio - 0.3) / 0.4) * 35, 75);
-      } else if (progressRatio <= 1.0) {
-        // Last 30% of time: 75-90% progress (finishing up)
-        return Math.min(75 + ((progressRatio - 0.7) / 0.3) * 15, 90);
-      } else {
-        // Overtime: slowly approach 95% but never 100% until completion
-        const overtime = Math.min(progressRatio - 1.0, 1.0); // Cap overtime at 1.0
-        return Math.min(90 + (overtime * 5), 95);
-      }
-    }
-  }
-  
+  // Return undefined to show indeterminate progress if no progress data available
   return undefined;
 }
+
 
 /**
  * Get streaming status from metadata

@@ -15,6 +15,7 @@ export interface TaskSettings {
   textImprovement: TaskModelSettings;
   taskRefinement: TaskModelSettings;
   implementationPlan: TaskModelSettings;
+  implementationPlanMerge: TaskModelSettings;
   genericLlmStream: TaskModelSettings;
   fileFinderWorkflow: TaskModelSettings;
   webSearchWorkflow: TaskModelSettings;
@@ -22,6 +23,6 @@ export interface TaskSettings {
   unknown: TaskModelSettings;
   fileRelevanceAssessment: TaskModelSettings;
   extendedPathFinder: TaskModelSettings;
-  webSearchQueryGeneration: TaskModelSettings;
-  webSearchExecution: TaskModelSettings;
+  webSearchPromptsGeneration?: TaskModelSettings;
+  webSearchExecution?: TaskModelSettings;
 }

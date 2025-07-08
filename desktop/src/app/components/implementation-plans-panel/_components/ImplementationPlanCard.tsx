@@ -15,6 +15,7 @@ import {
   CardTitle,
 } from "@/ui/card";
 import { Progress } from "@/ui/progress";
+// Note: Using native checkbox as there's no Checkbox component in the UI library
 
 import { getStreamingProgressValue, getParsedMetadata } from "../../background-jobs-sidebar/utils";
 import { getJobDisplaySessionName } from "../../background-jobs-sidebar/_utils/job-display-utils";
@@ -27,11 +28,14 @@ interface ImplementationPlanCardProps {
   isDeleting: boolean;
   copyButtons?: CopyButtonConfig[];
   onCopyButtonClick?: (buttonConfig: CopyButtonConfig, plan: BackgroundJob) => void;
+  isSelected?: boolean;
+  onToggleSelection?: (jobId: string) => void;
 }
 
 /**
  * Custom hook for live progress updates in Implementation Plan cards
  * Updates progress every second for running jobs
+ * Reflects accurate streamProgress from metadata
  */
 const useLiveProgress = (
   metadata: any,
@@ -40,7 +44,7 @@ const useLiveProgress = (
   isRunning: boolean
 ): number | undefined => {
   const [progress, setProgress] = useState<number | undefined>(() => 
-    isRunning ? getStreamingProgressValue(metadata, startTime, taskType) : undefined
+    isRunning ? getStreamingProgressValue(metadata) : undefined
   );
 
   useEffect(() => {
@@ -50,7 +54,7 @@ const useLiveProgress = (
     }
 
     const updateProgress = () => {
-      const newProgress = getStreamingProgressValue(metadata, startTime, taskType);
+      const newProgress = getStreamingProgressValue(metadata);
       setProgress(newProgress);
     };
 
@@ -74,8 +78,19 @@ const ImplementationPlanCard = React.memo<ImplementationPlanCardProps>(({
   isDeleting,
   copyButtons = [],
   onCopyButtonClick,
+  isSelected = false,
+  onToggleSelection,
 }) => {
   const parsedMeta = getParsedMetadata(plan.metadata);
+  
+  // Extract the plan title from metadata
+  const planTitle = String(parsedMeta?.planTitle || parsedMeta?.generated_title || "");
+  
+  // Helper function to truncate long titles
+  const truncateTitle = (title: string, maxLength: number = 80) => {
+    if (title.length <= maxLength) return title;
+    return `${title.substring(0, maxLength - 3)}...`;
+  };
   const isStreaming = JOB_STATUSES.ACTIVE.includes(plan.status) &&
                      ["running", "processing_stream", "generating_stream"].includes(plan.status);
   
@@ -92,23 +107,15 @@ const ImplementationPlanCard = React.memo<ImplementationPlanCardProps>(({
     const model = plan.modelUsed || parsedMeta?.taskData?.modelUsed;
     if (!model || typeof model !== 'string') return 'Unknown Model';
     
-    // Format common model names for better display
-    if (model.includes("gemini")) {
-      return model.replace("gemini-", "Google Gemini ");
-    } else if (model.includes("claude")) {
-      return model.replace(/-\d{8}$/, ""); // Remove date suffix
-    } else if (model.includes("gpt")) {
-      return model.toUpperCase();
-    }
+    // Return raw model name without formatting
     return model;
   })();
 
-  // Calculate estimated token count if available - check job fields first, then metadata
+  // Display token count directly from plan object (server-provided data)
   let tokenCountDisplay = "N/A";
-  const tokensSent = Number(plan.tokensSent || parsedMeta?.taskData?.tokensSent || 0);
-  const tokensReceived = Number(plan.tokensReceived || parsedMeta?.taskData?.tokensReceived || 0);
-  const totalTokens = (tokensSent + tokensReceived) || 
-                     Number(parsedMeta?.taskData?.totalTokens || parsedMeta?.taskData?.tokensUsed || 0);
+  const tokensSent = Number(plan.tokensSent || 0);
+  const tokensReceived = Number(plan.tokensReceived || 0);
+  const totalTokens = tokensSent + tokensReceived;
   
   if (totalTokens > 0) {
     tokenCountDisplay = totalTokens.toLocaleString();
@@ -143,15 +150,35 @@ const ImplementationPlanCard = React.memo<ImplementationPlanCardProps>(({
       />
 
       <CardHeader className="pb-2">
-        <div className="flex justify-between">
-          <CardTitle className="text-base">{sessionName}</CardTitle>
+        <div className="flex justify-between items-start">
+          <div className="flex items-start gap-2 flex-1">
+            {onToggleSelection && JOB_STATUSES.COMPLETED.includes(plan.status) && (
+              <input
+                type="checkbox"
+                checked={isSelected}
+                onChange={() => onToggleSelection(plan.id)}
+                className="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+              />
+            )}
+            <div className="flex-1">
+              <CardTitle className="text-base">
+                {truncateTitle(planTitle || plan.prompt || sessionName || "Implementation Plan")}
+              </CardTitle>
+              <CardDescription className="flex flex-wrap gap-x-2 text-xs mt-1">
+                {plan.taskType === "implementation_plan_merge" && (
+                  <>
+                    <span className="text-primary font-medium">Merged</span>
+                    <span>•</span>
+                  </>
+                )}
+                <span>{modelInfo}</span>
+                <span>•</span>
+                <span>{tokenCountDisplay} tokens</span>
+              </CardDescription>
+            </div>
+          </div>
           <div className="text-xs text-muted-foreground">{timeAgo}</div>
         </div>
-        <CardDescription className="flex flex-wrap gap-x-2 text-xs">
-          <span>{modelInfo}</span>
-          <span>•</span>
-          <span>{tokenCountDisplay} tokens</span>
-        </CardDescription>
       </CardHeader>
 
       <CardContent className="pb-4 pt-0">
@@ -159,18 +186,31 @@ const ImplementationPlanCard = React.memo<ImplementationPlanCardProps>(({
         {isStreaming && (
           <div className="mb-3">
             {(() => {
-              // Ensure we always show some progress for active jobs, consistent with sidebar
-              const displayProgress = progress !== undefined ? progress : 10;
+              // Show indeterminate progress if no accurate progress available
+              const displayProgress = progress;
               
-              return (
-                <React.Fragment key="progress-fragment">
-                  <Progress value={displayProgress} className="h-1.5" />
-                  <div className="flex justify-between mt-1 text-xs text-muted-foreground">
-                    <span>Generating implementation plan...</span>
-                    <span>{Math.round(displayProgress)}%</span>
-                  </div>
-                </React.Fragment>
-              );
+              if (displayProgress !== undefined) {
+                return (
+                  <React.Fragment key="progress-fragment">
+                    <Progress value={displayProgress} className="h-1.5" />
+                    <div className="flex justify-between mt-1 text-xs text-muted-foreground">
+                      <span>Generating implementation plan...</span>
+                      <span>{Math.round(displayProgress)}%</span>
+                    </div>
+                  </React.Fragment>
+                );
+              } else {
+                // Show indeterminate progress when no progress data available
+                return (
+                  <React.Fragment key="progress-fragment">
+                    <Progress value={undefined} className="h-1.5" />
+                    <div className="flex justify-between mt-1 text-xs text-muted-foreground">
+                      <span>Generating implementation plan...</span>
+                      <span>Processing...</span>
+                    </div>
+                  </React.Fragment>
+                );
+              }
             })()}
           </div>
         )}

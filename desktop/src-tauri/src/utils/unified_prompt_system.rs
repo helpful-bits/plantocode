@@ -10,6 +10,14 @@ use tauri::{AppHandle, Manager};
 use std::sync::Arc;
 use chrono::{Utc, Datelike};
 
+/// Simple token estimation for local use only (not for billing)
+/// Uses a basic character-to-token ratio heuristic
+fn estimate_tokens(text: &str) -> i32 {
+    let char_count = text.chars().count();
+    // Roughly 4 characters per token for general text
+    ((char_count + 3) / 4) as i32
+}
+
 /// **UNIFIED PROMPT SYSTEM**
 /// This provides a single, comprehensive prompt processing system that handles
 /// placeholder substitution, template processing, and prompt composition with
@@ -187,8 +195,8 @@ impl UnifiedPromptProcessor {
         
         
         // Estimate tokens
-        let system_tokens = crate::utils::token_estimator::estimate_tokens(&processed_system) as usize;
-        let user_tokens = crate::utils::token_estimator::estimate_tokens(&user_prompt) as usize;
+        let system_tokens = estimate_tokens(&processed_system) as usize;
+        let user_tokens = estimate_tokens(&user_prompt) as usize;
         let total_tokens = system_tokens + user_tokens;
         
         // Track context sections used

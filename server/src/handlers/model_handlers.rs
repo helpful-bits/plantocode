@@ -2,11 +2,13 @@ use actix_web::{web, HttpResponse};
 use tracing::{info, instrument};
 use serde::{Deserialize, Serialize};
 use bigdecimal::BigDecimal;
+use std::str::FromStr;
 
 use crate::error::AppError;
 use crate::db::repositories::{ModelRepository, ModelWithProvider};
 use crate::models::runtime_config::AppState;
 use crate::models::model_pricing::ModelPricing;
+use crate::clients::usage_extractor::ProviderUsage;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -38,12 +40,21 @@ pub struct ProviderInfo {
 
 impl From<ModelWithProvider> for ModelResponse {
     fn from(model: ModelWithProvider) -> Self {
+        let default_pricing = serde_json::Value::Object(serde_json::Map::new());
+        let pricing_info = model.pricing_info.as_ref().unwrap_or(&default_pricing);
+        
         Self {
             id: model.id,
             name: model.name,
             context_window: model.context_window,
-            price_input: model.price_input.to_string(),
-            price_output: model.price_output.to_string(),
+            price_input: pricing_info.get("input_per_million")
+                .and_then(|v| v.as_f64())
+                .map(|v| v.to_string())
+                .unwrap_or_else(|| "0".to_string()),
+            price_output: pricing_info.get("output_per_million")
+                .and_then(|v| v.as_f64())
+                .map(|v| v.to_string())
+                .unwrap_or_else(|| "0".to_string()),
             model_type: model.model_type,
             capabilities: model.capabilities,
             status: model.status,
@@ -179,49 +190,68 @@ pub async fn estimate_cost(
         .await?
         .ok_or_else(|| AppError::NotFound(format!("Model '{}' not found", req.model_id)))?;
     
-    // Calculate input cost with cache token support
+    // Create ProviderUsage for cost calculation
     let cache_write_tokens = req.cache_write_tokens.unwrap_or(0);
     let cache_read_tokens = req.cache_read_tokens.unwrap_or(0);
     
-    let input_cost = model.calculate_input_cost(
-        req.input_tokens,
-        cache_write_tokens,
-        cache_read_tokens
-    ).map_err(|e| AppError::InvalidArgument(format!("Input cost calculation failed: {}", e)))?;
+    let usage = ProviderUsage::with_cache(
+        req.input_tokens as i32,
+        req.output_tokens as i32,
+        cache_write_tokens as i32,
+        cache_read_tokens as i32,
+        req.model_id.clone()
+    );
     
-    // Calculate output cost
-    let output_cost = if let Some(rate) = model.get_output_cost_per_million_tokens() {
-        let million = BigDecimal::from(1_000_000);
-        let output_tokens_bd = BigDecimal::from(req.output_tokens);
-        (&rate * &output_tokens_bd) / &million
+    // Calculate total cost using the new method
+    let total_cost = model.calculate_total_cost(&usage)
+        .map_err(|e| AppError::InvalidArgument(format!("Cost calculation failed: {}", e)))?;
+    
+    // Extract pricing info for breakdown
+    let pricing_info = model.get_pricing_info();
+    let million = BigDecimal::from(1_000_000);
+    
+    // Calculate breakdown components
+    let input_rate = pricing_info.get("input_per_million")
+        .and_then(|v| v.as_f64())
+        .and_then(|f| BigDecimal::from_str(&f.to_string()).ok())
+        .unwrap_or_else(|| BigDecimal::from(0));
+    
+    let output_rate = pricing_info.get("output_per_million")
+        .and_then(|v| v.as_f64())
+        .and_then(|f| BigDecimal::from_str(&f.to_string()).ok())
+        .unwrap_or_else(|| BigDecimal::from(0));
+    
+    // Calculate input cost (excluding cache tokens for breakdown)
+    let pure_input_tokens = req.input_tokens - cache_write_tokens - cache_read_tokens;
+    let input_cost = if pure_input_tokens > 0 {
+        (&input_rate * &BigDecimal::from(pure_input_tokens)) / &million
     } else {
         BigDecimal::from(0)
     };
     
-    // Calculate total cost
-    let total_cost = &input_cost + &output_cost;
+    let output_cost = (&output_rate * &BigDecimal::from(req.output_tokens)) / &million;
     
     // Prepare cache cost breakdown
     let cache_write_cost = if cache_write_tokens > 0 {
-        if let Some(rate) = model.get_cache_write_cost_per_million_tokens() {
-            let million = BigDecimal::from(1_000_000);
-            let tokens_bd = BigDecimal::from(cache_write_tokens);
-            Some(((&rate * &tokens_bd) / &million).to_string())
-        } else {
-            None
-        }
+        pricing_info.get("cache_write_per_million")
+            .and_then(|v| v.as_f64())
+            .and_then(|rate| {
+                let rate_bd = BigDecimal::from_str(&rate.to_string()).ok()?;
+                let tokens_bd = BigDecimal::from(cache_write_tokens);
+                Some(((&rate_bd * &tokens_bd) / &million).to_string())
+            })
     } else {
         None
     };
     
     let cache_read_cost = if cache_read_tokens > 0 {
-        if let Some(rate) = model.get_cache_read_cost_per_million_tokens() {
-            let million = BigDecimal::from(1_000_000);
-            let tokens_bd = BigDecimal::from(cache_read_tokens);
-            Some(((&rate * &tokens_bd) / &million).to_string())
-        } else {
-            None
-        }
+        pricing_info.get("cache_read_per_million")
+            .and_then(|v| v.as_f64())
+            .and_then(|rate| {
+                let rate_bd = BigDecimal::from_str(&rate.to_string()).ok()?;
+                let tokens_bd = BigDecimal::from(cache_read_tokens);
+                Some(((&rate_bd * &tokens_bd) / &million).to_string())
+            })
     } else {
         None
     };
@@ -279,51 +309,70 @@ pub async fn estimate_batch_cost(
             .await?
             .ok_or_else(|| AppError::NotFound(format!("Model '{}' not found", cost_req.model_id)))?;
         
-        // Calculate input cost with cache token support
+        // Create ProviderUsage for cost calculation
         let cache_write_tokens = cost_req.cache_write_tokens.unwrap_or(0);
         let cache_read_tokens = cost_req.cache_read_tokens.unwrap_or(0);
         
-        let input_cost = model.calculate_input_cost(
-            cost_req.input_tokens,
-            cache_write_tokens,
-            cache_read_tokens
-        ).map_err(|e| AppError::InvalidArgument(format!("Input cost calculation failed: {}", e)))?;
+        let usage = ProviderUsage::with_cache(
+            cost_req.input_tokens as i32,
+            cost_req.output_tokens as i32,
+            cache_write_tokens as i32,
+            cache_read_tokens as i32,
+            cost_req.model_id.clone()
+        );
         
-        // Calculate output cost
-        let output_cost = if let Some(rate) = model.get_output_cost_per_million_tokens() {
-            let million = BigDecimal::from(1_000_000);
-            let output_tokens_bd = BigDecimal::from(cost_req.output_tokens);
-            (&rate * &output_tokens_bd) / &million
+        // Calculate total cost using the new method
+        let request_total_cost = model.calculate_total_cost(&usage)
+            .map_err(|e| AppError::InvalidArgument(format!("Cost calculation failed: {}", e)))?;
+        
+        total_cost = total_cost + &request_total_cost;
+        
+        // Extract pricing info for breakdown
+        let pricing_info = model.get_pricing_info();
+        let million = BigDecimal::from(1_000_000);
+        
+        // Calculate breakdown components
+        let input_rate = pricing_info.get("input_per_million")
+            .and_then(|v| v.as_f64())
+            .and_then(|f| BigDecimal::from_str(&f.to_string()).ok())
+            .unwrap_or_else(|| BigDecimal::from(0));
+        
+        let output_rate = pricing_info.get("output_per_million")
+            .and_then(|v| v.as_f64())
+            .and_then(|f| BigDecimal::from_str(&f.to_string()).ok())
+            .unwrap_or_else(|| BigDecimal::from(0));
+        
+        // Calculate input cost (excluding cache tokens for breakdown)
+        let pure_input_tokens = cost_req.input_tokens - cache_write_tokens - cache_read_tokens;
+        let input_cost = if pure_input_tokens > 0 {
+            (&input_rate * &BigDecimal::from(pure_input_tokens)) / &million
         } else {
             BigDecimal::from(0)
         };
         
-        // Calculate total cost for this request
-        let request_total_cost = &input_cost + &output_cost;
-        
-        total_cost = total_cost + &request_total_cost;
+        let output_cost = (&output_rate * &BigDecimal::from(cost_req.output_tokens)) / &million;
         
         // Prepare cache cost breakdown
         let cache_write_cost = if cache_write_tokens > 0 {
-            if let Some(rate) = model.get_cache_write_cost_per_million_tokens() {
-                let million = BigDecimal::from(1_000_000);
-                let tokens_bd = BigDecimal::from(cache_write_tokens);
-                Some(((&rate * &tokens_bd) / &million).to_string())
-            } else {
-                None
-            }
+            pricing_info.get("cache_write_per_million")
+                .and_then(|v| v.as_f64())
+                .and_then(|rate| {
+                    let rate_bd = BigDecimal::from_str(&rate.to_string()).ok()?;
+                    let tokens_bd = BigDecimal::from(cache_write_tokens);
+                    Some(((&rate_bd * &tokens_bd) / &million).to_string())
+                })
         } else {
             None
         };
         
         let cache_read_cost = if cache_read_tokens > 0 {
-            if let Some(rate) = model.get_cache_read_cost_per_million_tokens() {
-                let million = BigDecimal::from(1_000_000);
-                let tokens_bd = BigDecimal::from(cache_read_tokens);
-                Some(((&rate * &tokens_bd) / &million).to_string())
-            } else {
-                None
-            }
+            pricing_info.get("cache_read_per_million")
+                .and_then(|v| v.as_f64())
+                .and_then(|rate| {
+                    let rate_bd = BigDecimal::from_str(&rate.to_string()).ok()?;
+                    let tokens_bd = BigDecimal::from(cache_read_tokens);
+                    Some(((&rate_bd * &tokens_bd) / &million).to_string())
+                })
         } else {
             None
         };
