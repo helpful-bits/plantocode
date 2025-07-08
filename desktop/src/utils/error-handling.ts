@@ -994,7 +994,7 @@ export function createUserFriendlyErrorMessage(
           ? ` (retry attempt ${workflowContext.retryAttempt})` 
           : '';
         // STANDARDIZED: Convert any format to SCREAMING_SNAKE_CASE, then to display name
-        const stageEnum = WorkflowUtils.mapStageNameToEnum(workflowContext.stageName);
+        const stageEnum = WorkflowUtils.mapTaskTypeToEnum(workflowContext.stageName);
         const stageName = stageEnum ? WorkflowUtils.getStageName(stageEnum) : workflowContext.stageName;
         
         // Provide stage-specific guidance using standardized enum values

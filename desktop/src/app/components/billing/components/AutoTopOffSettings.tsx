@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/ui/card";
 import { Label } from "@/ui/label";
 import { Alert, AlertDescription } from "@/ui/alert";
 import { Loader2, DollarSign, Zap } from "lucide-react";
-import { getAutoTopOffSettings, updateAutoTopOffSettings, type AutoTopOffSettings as Settings, type UpdateAutoTopOffRequest } from "@/actions/billing/plan.actions";
+import { getAutoTopOffSettings, updateAutoTopOffSettings, type AutoTopOffSettings as Settings, type UpdateAutoTopOffRequest } from "@/actions/billing";
 import { formatUsdCurrency } from "@/utils/currency-utils";
 import { useNotification } from "@/contexts/notification-context";
 

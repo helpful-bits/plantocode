@@ -196,7 +196,7 @@ pub(super) async fn reset_subsequent_stages_internal(
         for task_type in subsequent_task_types {
             // Find corresponding WorkflowStage for this task type
             if let Some(workflow_stage) = task_type_to_workflow_stage(task_type) {
-                if let Some(stage_job) = workflow.stage_jobs.iter_mut().find(|job| job.stage_name == workflow_stage.to_string()) {
+                if let Some(stage_job) = workflow.stages.iter_mut().find(|job| job.name == workflow_stage.to_string()) {
                     if matches!(stage_job.status, JobStatus::Queued | JobStatus::Running) {
                         stage_job.status = JobStatus::Canceled;
                         stage_job.error_message = Some("Cancelled due to retry of earlier stage".to_string());
@@ -253,7 +253,7 @@ fn stage_to_task_type_for_retry(stage: &WorkflowStage) -> TaskType {
         WorkflowStage::FileRelevanceAssessment => TaskType::FileRelevanceAssessment,
         WorkflowStage::ExtendedPathFinder => TaskType::ExtendedPathFinder,
         WorkflowStage::PathCorrection => TaskType::PathCorrection,
-        WorkflowStage::WebSearchQueryGeneration => TaskType::WebSearchQueryGeneration,
+        WorkflowStage::WebSearchPromptsGeneration => TaskType::WebSearchPromptsGeneration,
         WorkflowStage::WebSearchExecution => TaskType::WebSearchExecution,
     }
 }
@@ -265,7 +265,7 @@ fn task_type_to_workflow_stage(task_type: TaskType) -> Option<WorkflowStage> {
         TaskType::FileRelevanceAssessment => Some(WorkflowStage::FileRelevanceAssessment),
         TaskType::ExtendedPathFinder => Some(WorkflowStage::ExtendedPathFinder),
         TaskType::PathCorrection => Some(WorkflowStage::PathCorrection),
-        TaskType::WebSearchQueryGeneration => Some(WorkflowStage::WebSearchQueryGeneration),
+        TaskType::WebSearchPromptsGeneration => Some(WorkflowStage::WebSearchPromptsGeneration),
         TaskType::WebSearchExecution => Some(WorkflowStage::WebSearchExecution),
         _ => None, // Other task types don't correspond to workflow stages
     }

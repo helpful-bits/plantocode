@@ -57,7 +57,7 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig, strict_rate_limiter: RateL
             .route("/streaming-cost", web::post().to(handlers::billing::webhook_handlers::streaming_cost_update_authenticated))
             .route("/cancelled-job-cost", web::post().to(handlers::billing::webhook_handlers::cancelled_job_cost_authenticated))
             // Final cost polling endpoint for desktop clients
-            .route("/final-cost/{request_id}", web::get().to(handlers::billing::webhook_handlers::get_final_cost_authenticated))
+            .route("/final-cost/{request_id}", web::get().to(handlers::billing::cost_handlers::get_final_streaming_cost))
             // Customer billing lifecycle actions (cancel, resume, update) are handled by the billing portal
             // This prevents future additions of direct billing modification endpoints
     );

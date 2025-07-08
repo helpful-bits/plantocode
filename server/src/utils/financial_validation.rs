@@ -6,12 +6,15 @@
 use bigdecimal::{BigDecimal, RoundingMode};
 use crate::error::AppError;
 
-/// Maximum allowed decimal places for financial amounts (4 for USD cents precision)
-pub const MAX_DECIMAL_PLACES: u64 = 4;
+/// Maximum allowed decimal places for financial amounts (6 for high precision calculations)
+pub const MAX_DECIMAL_PLACES: u64 = 6;
 
-/// Normalizes a BigDecimal amount to 4 decimal places using HALF_UP rounding
+/// Normalizes a BigDecimal amount to 6 decimal places using HALF_EVEN rounding
+/// 
+/// Uses banker's rounding (round to even) which provides better distribution
+/// of rounding errors in financial calculations
 pub fn normalized(amount: &BigDecimal) -> BigDecimal {
-    amount.with_scale_round(MAX_DECIMAL_PLACES as i64, RoundingMode::HalfUp)
+    amount.with_scale_round(MAX_DECIMAL_PLACES as i64, RoundingMode::HalfEven)
 }
 
 /// Validates that a BigDecimal amount is non-negative and has appropriate precision
@@ -170,7 +173,7 @@ mod tests {
     
     #[test]
     fn test_validate_financial_amount_valid() {
-        let amount = BigDecimal::from_str("10.1234").unwrap();
+        let amount = BigDecimal::from_str("10.123456").unwrap();
         assert!(validate_financial_amount(&amount, "Test").is_ok());
     }
     
@@ -182,7 +185,7 @@ mod tests {
     
     #[test]
     fn test_validate_financial_amount_too_many_decimals() {
-        let amount = BigDecimal::from_str("10.12345").unwrap();
+        let amount = BigDecimal::from_str("10.1234567").unwrap();
         assert!(validate_financial_amount(&amount, "Test").is_err());
     }
     

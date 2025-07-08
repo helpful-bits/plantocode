@@ -146,7 +146,9 @@
       "WebFetch(domain:platform.openai.com)",
       "WebFetch(domain:help.openai.com)",
       "Bash(dig:*)",
-      "Bash(timeout 30 cargo check --lib)"
+      "Bash(timeout 30 cargo check --lib)",
+      "Bash(./test_parsing)",
+      "Bash(npm install:*)"
     ],
     "deny": []
   },

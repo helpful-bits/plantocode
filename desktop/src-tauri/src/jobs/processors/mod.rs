@@ -11,8 +11,9 @@ pub mod regex_file_filter_processor;
 // Individual workflow stage processors
 pub mod extended_path_finder_processor;
 pub mod file_relevance_assessment_processor;
-pub mod web_search_query_generator_processor;
+pub mod web_search_prompts_generator_processor;
 pub mod web_search_executor_processor;
+pub mod implementation_plan_merge_processor;
 
 pub use base_processor::BaseProcessor;
 pub use abstract_llm_processor::{LlmTaskRunner, LlmTaskConfig, LlmTaskConfigBuilder, LlmTaskResult, LlmPromptContext};
@@ -25,5 +26,6 @@ pub use regex_file_filter_processor::RegexFileFilterProcessor;
 // Individual workflow stage processors
 pub use extended_path_finder_processor::ExtendedPathFinderProcessor;
 pub use file_relevance_assessment_processor::FileRelevanceAssessmentProcessor;
-pub use web_search_query_generator_processor::WebSearchQueryGeneratorProcessor;
+pub use web_search_prompts_generator_processor::WebSearchPromptsGeneratorProcessor;
 pub use web_search_executor_processor::WebSearchExecutorProcessor;
+pub use implementation_plan_merge_processor::ImplementationPlanMergeProcessor;

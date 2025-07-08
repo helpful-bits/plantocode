@@ -1,6 +1,3 @@
-// Step 3: Cached Token Pricing Implementation
-// This file implements cached token counting for Google API.
-// Token extraction functions return: (uncached_input, cache_write, cache_read, output)
 use crate::error::AppError;
 use actix_web::web;
 use futures_util::{Stream, StreamExt, TryStreamExt};
@@ -125,6 +122,8 @@ pub struct GoogleUsageMetadata {
     pub total_token_count: i32,
     #[serde(rename = "cachedContentTokenCount")]
     pub cached_content_token_count: Option<i32>,
+    #[serde(flatten)]
+    pub other: Option<serde_json::Value>,
 }
 
 // Google Streaming Structs
@@ -297,8 +296,8 @@ impl GoogleClient {
             debug!("Response candidates count: {}", result.candidates.len());
             
             let (input_tokens, cache_write_tokens, cache_read_tokens, output_tokens) = if let Some(usage) = &result.usage_metadata {
-                let cached = usage.cached_content_token_count.unwrap_or(0);
-                (usage.prompt_token_count, 0, cached, usage.candidates_token_count)
+                // Google's prompt_token_count is already the total input tokens
+                (usage.prompt_token_count, 0, usage.cached_content_token_count.unwrap_or(0), usage.candidates_token_count)
             } else {
                 (0, 0, 0, 0)
             };
@@ -634,7 +633,7 @@ impl GoogleClient {
     }
     
     /// Extract usage from Google SSE (Server-Sent Events) streaming body
-    /// Processes streaming responses line by line to find usage metadata
+    /// Processes streaming responses line by line to find usage metadata from final chunks only
     fn extract_usage_from_sse_body(&self, body: &str, model_id: &str) -> Option<ProviderUsage> {
         // Process streaming body line by line to find usage information
         for line in body.lines() {
@@ -646,16 +645,26 @@ impl GoogleClient {
                 
                 // Try to parse the chunk as JSON
                 if let Ok(chunk_json) = serde_json::from_str::<serde_json::Value>(json_str.trim()) {
-                    // Look for usage information in this chunk
-                    if let Some(usage) = self.extract_usage_from_json(&chunk_json, model_id) {
-                        return Some(usage);
+                    // Only extract usage from chunks that have finish_reason (final chunks)
+                    if let Some(candidates) = chunk_json.get("candidates").and_then(|c| c.as_array()) {
+                        if let Some(first_candidate) = candidates.first() {
+                            if first_candidate.get("finishReason").is_some() {
+                                // This is a final chunk, extract usage
+                                if let Some(usage) = self.extract_usage_from_json(&chunk_json, model_id) {
+                                    return Some(usage);
+                                }
+                            }
+                        }
                     }
                 }
             } else if !line.trim().is_empty() {
                 // Try parsing non-SSE lines as JSON (some Google responses might not use SSE)
                 if let Ok(json) = serde_json::from_str::<serde_json::Value>(line.trim()) {
-                    if let Some(usage) = self.extract_usage_from_json(&json, model_id) {
-                        return Some(usage);
+                    // Check if this is a complete response with usage metadata
+                    if json.get("usageMetadata").is_some() {
+                        if let Some(usage) = self.extract_usage_from_json(&json, model_id) {
+                            return Some(usage);
+                        }
                     }
                 }
             }
@@ -668,6 +677,7 @@ impl GoogleClient {
         let usage_metadata = json_value.get("usageMetadata")?;
         
         // Handle Google format: {"promptTokenCount", "candidatesTokenCount", "cachedContentTokenCount"}
+        // IMPORTANT: Google's promptTokenCount is the TOTAL input tokens, not just uncached
         let prompt_token_count = match usage_metadata.get("promptTokenCount").and_then(|v| v.as_i64()) {
             Some(tokens) => tokens as i32,
             None => {
@@ -684,19 +694,17 @@ impl GoogleClient {
             }
         };
         
-        // Map cache_read from cachedContentTokenCount, cache_write = 0 (Google doesn't separate cache writes)
+        // Extract cached tokens count
         let cached_content_token_count = usage_metadata.get("cachedContentTokenCount")
             .and_then(|v| v.as_i64())
             .unwrap_or(0) as i32;
         
-        // Calculate uncached prompt tokens to prevent double-counting
-        let uncached_prompt_tokens = prompt_token_count - cached_content_token_count;
-        
-        // Google API doesn't provide cost information - leave as None
+        // Google API's promptTokenCount is already the total input tokens
+        // No need to add cached tokens again
         Some(ProviderUsage {
-            prompt_tokens: uncached_prompt_tokens,
+            prompt_tokens: prompt_token_count,  // Total input tokens (already includes cached)
             completion_tokens: candidates_token_count,
-            cache_write_tokens: 0, // Google doesn't provide this metric
+            cache_write_tokens: 0, // Google doesn't provide cache write information
             cache_read_tokens: cached_content_token_count,
             model_id: model_id.to_string(),
             duration_ms: None,

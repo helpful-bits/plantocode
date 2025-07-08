@@ -14,8 +14,6 @@ pub mod workflow_cleanup;
 pub mod workflow_cancellation;
 pub mod workflow_error_handler;
 // Data flow utilities for workflow stage transitions
-pub mod stage_data_extractors;
-pub mod stage_data_injectors;
 
 use std::sync::Arc;
 use log::{info, debug, error, warn};
@@ -38,8 +36,9 @@ use self::processors::{
     ExtendedPathFinderProcessor,
     // File relevance assessment processor
     FileRelevanceAssessmentProcessor,
-    WebSearchQueryGeneratorProcessor,
+    WebSearchPromptsGeneratorProcessor,
     WebSearchExecutorProcessor,
+    ImplementationPlanMergeProcessor,
 };
 use self::registry::get_job_registry;
 use self::workflow_orchestrator::{init_workflow_orchestrator, get_workflow_orchestrator};
@@ -75,8 +74,9 @@ pub async fn register_job_processors(app_handle: &AppHandle) -> AppResult<()> {
     // File relevance assessment processor
     let file_relevance_assessment_processor = Arc::new(FileRelevanceAssessmentProcessor::new());
     
-    let web_search_query_generator = Arc::new(WebSearchQueryGeneratorProcessor::new());
+    let web_search_prompts_generator = Arc::new(WebSearchPromptsGeneratorProcessor::new());
     let web_search_executor = Arc::new(WebSearchExecutorProcessor::new());
+    let implementation_plan_merge_processor = Arc::new(ImplementationPlanMergeProcessor::new());
     
     // Register processors
     registry.register(implementation_plan_processor).await;
@@ -89,8 +89,9 @@ pub async fn register_job_processors(app_handle: &AppHandle) -> AppResult<()> {
     registry.register(extended_path_finder_processor).await;
     // File relevance assessment processor
     registry.register(file_relevance_assessment_processor).await;
-    registry.register(web_search_query_generator).await;
+    registry.register(web_search_prompts_generator).await;
     registry.register(web_search_executor).await;
+    registry.register(implementation_plan_merge_processor).await;
     
     debug!("Job processors registered");
     Ok(())

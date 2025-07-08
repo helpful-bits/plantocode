@@ -1,6 +1,6 @@
 "use client";
 
-import { RefreshCw, Trash2, ChevronRight, ChevronLeft, Clock, Calendar, CalendarDays } from "lucide-react";
+import { RefreshCw, Trash2, ChevronRight, ChevronLeft } from "lucide-react";
 import { FC, ComponentType } from "react";
 
 import { Button } from "@/ui/button";
@@ -74,40 +74,20 @@ export const SidebarHeader: FC<SidebarHeaderProps> = ({
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 <DropdownMenuItem
-                  onClick={() => onClearHistory()}
-                  disabled={isClearing}
-                >
-                  <Calendar className="mr-2 h-4 w-4 text-foreground" />
-                  <span>Delete jobs older than 90 days</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => onClearHistory(7)}
-                  disabled={isClearing}
-                >
-                  <CalendarDays className="mr-2 h-4 w-4 text-foreground" />
-                  <span>Delete jobs older than 7 days</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => onClearHistory(3)}
-                  disabled={isClearing}
-                >
-                  <CalendarDays className="mr-2 h-4 w-4 text-foreground" />
-                  <span>Delete jobs older than 3 days</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => onClearHistory(1)}
-                  disabled={isClearing}
-                >
-                  <Clock className="mr-2 h-4 w-4 text-foreground" />
-                  <span>Delete jobs older than 1 day</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem
                   onClick={() => onClearHistory(-1)}
                   disabled={isClearing}
                   className="text-destructive"
                 >
                   <Trash2 className="mr-2 h-4 w-4 text-foreground" />
-                  <span>Delete all completed jobs</span>
+                  <span>Delete all Jobs</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => onClearHistory(-2)}
+                  disabled={isClearing}
+                  className="text-destructive"
+                >
+                  <Trash2 className="mr-2 h-4 w-4 text-foreground" />
+                  <span>Delete all Jobs and Implementation Plans</span>
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>

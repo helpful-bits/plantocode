@@ -4,7 +4,9 @@ use chrono::{DateTime, Utc};
 use std::sync::Arc;
 use tracing::{info, instrument};
 use bigdecimal::BigDecimal;
+use std::str::FromStr;
 use crate::models::model_pricing::ModelPricing;
+use once_cell::sync::Lazy;
 
 use crate::error::{AppResult, AppError};
 
@@ -13,21 +15,13 @@ pub struct Model {
     pub id: String,
     pub name: String,
     pub context_window: i32,
-    pub price_input: BigDecimal,
-    pub price_output: BigDecimal,
+    pub pricing_info: Option<serde_json::Value>,
     pub provider_id: Option<i32>,
     pub model_type: String,
     pub capabilities: serde_json::Value,
     pub status: String,
     pub description: Option<String>,
     pub created_at: DateTime<Utc>,
-    // Tiered pricing support for models like Gemini 2.5 Pro
-    pub price_input_long_context: Option<BigDecimal>,
-    pub price_output_long_context: Option<BigDecimal>,
-    pub long_context_threshold: Option<i32>,
-    // Cached token pricing support
-    pub price_cache_write: Option<BigDecimal>,
-    pub price_cache_read: Option<BigDecimal>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -36,20 +30,12 @@ pub struct ModelWithProvider {
     pub api_model_id: String, // Model ID for API calls (without provider prefix)
     pub name: String,
     pub context_window: i32,
-    pub price_input: BigDecimal,
-    pub price_output: BigDecimal,
+    pub pricing_info: Option<serde_json::Value>,
     pub model_type: String,
     pub capabilities: serde_json::Value,
     pub status: String,
     pub description: Option<String>,
     pub created_at: DateTime<Utc>,
-    // Tiered pricing support for models like Gemini 2.5 Pro
-    pub price_input_long_context: Option<BigDecimal>,
-    pub price_output_long_context: Option<BigDecimal>,
-    pub long_context_threshold: Option<i32>,
-    // Cached token pricing support
-    pub price_cache_write: Option<BigDecimal>,
-    pub price_cache_read: Option<BigDecimal>,
     // Provider information
     pub provider_id: i32,
     pub provider_code: String,
@@ -61,63 +47,31 @@ pub struct ModelWithProvider {
     pub provider_status: String,
 }
 
+// Default empty pricing JSON for fallback
+static DEFAULT_PRICING: Lazy<serde_json::Value> = Lazy::new(|| {
+    serde_json::json!({})
+});
+
 impl ModelPricing for ModelWithProvider {
-    fn get_input_cost_per_million_tokens(&self) -> Option<BigDecimal> {
-        Some(self.price_input.clone())
+    fn get_pricing_info(&self) -> &serde_json::Value {
+        self.pricing_info.as_ref().unwrap_or(&DEFAULT_PRICING)
     }
     
-    fn get_output_cost_per_million_tokens(&self) -> Option<BigDecimal> {
-        Some(self.price_output.clone())
-    }
-    
-    fn get_cache_write_cost_per_million_tokens(&self) -> Option<BigDecimal> {
-        self.price_cache_write.clone()
-    }
-    
-    fn get_cache_read_cost_per_million_tokens(&self) -> Option<BigDecimal> {
-        self.price_cache_read.clone()
-    }
-
-    fn get_input_long_context_cost_per_million_tokens(&self) -> Option<BigDecimal> {
-        self.price_input_long_context.clone()
-    }
-
-    fn get_output_long_context_cost_per_million_tokens(&self) -> Option<BigDecimal> {
-        self.price_output_long_context.clone()
-    }
-
-    fn get_long_context_threshold(&self) -> Option<i32> {
-        self.long_context_threshold
+    fn get_provider_code(&self) -> String {
+        self.provider_code.clone()
     }
 }
 
+
 impl ModelPricing for Model {
-    fn get_input_cost_per_million_tokens(&self) -> Option<BigDecimal> {
-        Some(self.price_input.clone())
+    fn get_pricing_info(&self) -> &serde_json::Value {
+        self.pricing_info.as_ref().unwrap_or(&DEFAULT_PRICING)
     }
     
-    fn get_output_cost_per_million_tokens(&self) -> Option<BigDecimal> {
-        Some(self.price_output.clone())
-    }
-    
-    fn get_cache_write_cost_per_million_tokens(&self) -> Option<BigDecimal> {
-        self.price_cache_write.clone()
-    }
-    
-    fn get_cache_read_cost_per_million_tokens(&self) -> Option<BigDecimal> {
-        self.price_cache_read.clone()
-    }
-
-    fn get_input_long_context_cost_per_million_tokens(&self) -> Option<BigDecimal> {
-        self.price_input_long_context.clone()
-    }
-
-    fn get_output_long_context_cost_per_million_tokens(&self) -> Option<BigDecimal> {
-        self.price_output_long_context.clone()
-    }
-
-    fn get_long_context_threshold(&self) -> Option<i32> {
-        self.long_context_threshold
+    fn get_provider_code(&self) -> String {
+        // For the Model struct, we need to infer provider from the ID
+        // Format is typically "provider/model-name"
+        self.id.split('/').next().unwrap_or("unknown").to_string()
     }
 }
 
@@ -134,11 +88,15 @@ impl ModelRepository {
     }
 
     /// Extract and clean the API model ID from a full model ID
-    /// For :web models, strips the :web suffix for API calls
+    /// Strips provider prefix (everything before the first '/')
+    /// Strips suffixes like :web, :2024-05-13, etc.
     fn extract_api_model_id(model_id: &str) -> String {
+        // First, get the part after the provider prefix (after the first '/')
         let model_name = model_id.split('/').last().unwrap_or(model_id);
-        if model_name.contains(":web") {
-            model_name.replace(":web", "")
+        
+        // Then, strip any suffix that starts with ':'
+        if let Some(colon_pos) = model_name.find(':') {
+            model_name[..colon_pos].to_string()
         } else {
             model_name.to_string()
         }
@@ -156,11 +114,9 @@ impl ModelRepository {
         
         let models = sqlx::query!(
             r#"
-            SELECT m.id, m.name, m.context_window, m.price_input, m.price_output,
+            SELECT m.id, m.name, m.context_window, m.pricing_info,
                    m.model_type, m.capabilities, m.status,
                    m.description, m.created_at,
-                   m.price_input_long_context, m.price_output_long_context, m.long_context_threshold,
-                   m.price_cache_write, m.price_cache_read,
                    p.id as provider_id, p.code as provider_code, p.name as provider_name,
                    p.description as provider_description, p.website_url as provider_website,
                    p.api_base_url as provider_api_base, p.capabilities as provider_capabilities,
@@ -180,18 +136,12 @@ impl ModelRepository {
             id: row.id,
             name: row.name,
             context_window: row.context_window,
-            price_input: row.price_input,
-            price_output: row.price_output,
+            pricing_info: Some(row.pricing_info),
             model_type: row.model_type,
             capabilities: row.capabilities,
             status: row.status,
             description: row.description,
             created_at: row.created_at,
-            price_input_long_context: row.price_input_long_context,
-            price_output_long_context: row.price_output_long_context,
-            long_context_threshold: row.long_context_threshold,
-            price_cache_write: row.price_cache_write,
-            price_cache_read: row.price_cache_read,
             provider_id: row.provider_id,
             provider_code: row.provider_code,
             provider_name: row.provider_name,
@@ -214,13 +164,11 @@ impl ModelRepository {
         
         let model = sqlx::query!(
             r#"
-            SELECT m.id, m.name, m.context_window, m.price_input, m.price_output,
+            SELECT m.id, m.name, m.context_window, m.pricing_info,
                    m.model_type,
                    m.capabilities,
                    m.status,
                    m.description, m.created_at,
-                   m.price_input_long_context, m.price_output_long_context, m.long_context_threshold,
-                   m.price_cache_write, m.price_cache_read,
                    p.id as provider_id, p.code as provider_code, p.name as provider_name,
                    p.description as provider_description, p.website_url as provider_website,
                    p.api_base_url as provider_api_base, p.capabilities as provider_capabilities,
@@ -242,18 +190,12 @@ impl ModelRepository {
             id: row.id,
             name: row.name,
             context_window: row.context_window,
-            price_input: row.price_input,
-            price_output: row.price_output,
+            pricing_info: Some(row.pricing_info),
             model_type: row.model_type,
             capabilities: row.capabilities,
             status: row.status,
             description: row.description,
             created_at: row.created_at,
-            price_input_long_context: row.price_input_long_context,
-            price_output_long_context: row.price_output_long_context,
-            long_context_threshold: row.long_context_threshold,
-            price_cache_write: row.price_cache_write,
-            price_cache_read: row.price_cache_read,
             provider_id: row.provider_id,
             provider_code: row.provider_code,
             provider_name: row.provider_name,
@@ -276,7 +218,7 @@ impl ModelRepository {
     #[instrument(skip(self))]
     pub async fn find_by_id(&self, id: &str) -> AppResult<Option<Model>> {
         let model = query_as::<_, Model>(
-            "SELECT id, name, context_window, price_input, price_output, provider_id, model_type, capabilities, status, description, created_at, price_input_long_context, price_output_long_context, long_context_threshold, price_cache_write, price_cache_read FROM models WHERE id = $1 AND status = 'active'"
+            "SELECT id, name, context_window, pricing_info, provider_id, model_type, capabilities, status, description, created_at FROM models WHERE id = $1 AND status = 'active'"
         )
             .bind(id)
             .fetch_optional(&*self.pool)
@@ -292,13 +234,11 @@ impl ModelRepository {
         
         let models = sqlx::query!(
             r#"
-            SELECT m.id, m.name, m.context_window, m.price_input, m.price_output,
+            SELECT m.id, m.name, m.context_window, m.pricing_info,
                    m.model_type,
                    m.capabilities,
                    m.status,
                    m.description, m.created_at,
-                   m.price_input_long_context, m.price_output_long_context, m.long_context_threshold,
-                   m.price_cache_write, m.price_cache_read,
                    p.id as provider_id, p.code as provider_code, p.name as provider_name,
                    p.description as provider_description, p.website_url as provider_website,
                    p.api_base_url as provider_api_base, p.capabilities as provider_capabilities,
@@ -321,18 +261,12 @@ impl ModelRepository {
             id: row.id,
             name: row.name,
             context_window: row.context_window,
-            price_input: row.price_input,
-            price_output: row.price_output,
+            pricing_info: Some(row.pricing_info),
             model_type: row.model_type,
             capabilities: row.capabilities,
             status: row.status,
             description: row.description,
             created_at: row.created_at,
-            price_input_long_context: row.price_input_long_context,
-            price_output_long_context: row.price_output_long_context,
-            long_context_threshold: row.long_context_threshold,
-            price_cache_write: row.price_cache_write,
-            price_cache_read: row.price_cache_read,
             provider_id: row.provider_id,
             provider_code: row.provider_code,
             provider_name: row.provider_name,
@@ -354,13 +288,11 @@ impl ModelRepository {
         
         let models = sqlx::query!(
             r#"
-            SELECT m.id, m.name, m.context_window, m.price_input, m.price_output,
+            SELECT m.id, m.name, m.context_window, m.pricing_info,
                    m.model_type,
                    m.capabilities,
                    m.status,
                    m.description, m.created_at,
-                   m.price_input_long_context, m.price_output_long_context, m.long_context_threshold,
-                   m.price_cache_write, m.price_cache_read,
                    p.id as provider_id, p.code as provider_code, p.name as provider_name,
                    p.description as provider_description, p.website_url as provider_website,
                    p.api_base_url as provider_api_base, p.capabilities as provider_capabilities,
@@ -383,18 +315,12 @@ impl ModelRepository {
             id: row.id,
             name: row.name,
             context_window: row.context_window,
-            price_input: row.price_input,
-            price_output: row.price_output,
+            pricing_info: Some(row.pricing_info),
             model_type: row.model_type,
             capabilities: row.capabilities,
             status: row.status,
             description: row.description,
             created_at: row.created_at,
-            price_input_long_context: row.price_input_long_context,
-            price_output_long_context: row.price_output_long_context,
-            long_context_threshold: row.long_context_threshold,
-            price_cache_write: row.price_cache_write,
-            price_cache_read: row.price_cache_read,
             provider_id: row.provider_id,
             provider_code: row.provider_code,
             provider_name: row.provider_name,
@@ -414,38 +340,19 @@ impl ModelRepository {
     pub async fn update_model_pricing(
         &self,
         model_id: &str,
-        price_input: Option<&BigDecimal>,
-        price_output: Option<&BigDecimal>,
-        price_cache_write: Option<&BigDecimal>,
-        price_cache_read: Option<&BigDecimal>,
-        price_input_long_context: Option<&BigDecimal>,
-        price_output_long_context: Option<&BigDecimal>,
-        long_context_threshold: Option<i32>,
+        pricing_info: &serde_json::Value,
     ) -> AppResult<bool> {
         info!("Updating pricing for model: {}", model_id);
         
         let query = r#"
             UPDATE models 
-            SET 
-                price_input = COALESCE($2, price_input),
-                price_output = COALESCE($3, price_output),
-                price_cache_write = COALESCE($4, price_cache_write),
-                price_cache_read = COALESCE($5, price_cache_read),
-                price_input_long_context = COALESCE($6, price_input_long_context),
-                price_output_long_context = COALESCE($7, price_output_long_context),
-                long_context_threshold = COALESCE($8, long_context_threshold)
+            SET pricing_info = $2
             WHERE id = $1 AND status = 'active'
         "#;
         
         let result = sqlx::query(query)
             .bind(model_id)
-            .bind(price_input)
-            .bind(price_output)
-            .bind(price_cache_write)
-            .bind(price_cache_read)
-            .bind(price_input_long_context)
-            .bind(price_output_long_context)
-            .bind(long_context_threshold)
+            .bind(pricing_info)
             .execute(&*self.pool)
             .await
             .map_err(|e| AppError::Database(format!("Failed to update model pricing for {}: {}", model_id, e)))?;

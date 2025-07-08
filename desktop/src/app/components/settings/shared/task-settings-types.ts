@@ -12,6 +12,7 @@ export const taskSettingsKeyToTaskType: Record<keyof TaskSettings, TaskType> = {
   pathCorrection: "path_correction",
   textImprovement: "text_improvement",
   implementationPlan: "implementation_plan",
+  implementationPlanMerge: "implementation_plan_merge",
   fileFinderWorkflow: "file_finder_workflow",
   webSearchWorkflow: "web_search_workflow",
   extendedPathFinder: "extended_path_finder",
@@ -21,7 +22,7 @@ export const taskSettingsKeyToTaskType: Record<keyof TaskSettings, TaskType> = {
   regexFileFilter: "regex_file_filter",
   streaming: "streaming",
   unknown: "unknown",
-  webSearchQueryGeneration: "web_search_query_generation",
+  webSearchPromptsGeneration: "web_search_prompts_generation",
   webSearchExecution: "web_search_execution",
 };
 

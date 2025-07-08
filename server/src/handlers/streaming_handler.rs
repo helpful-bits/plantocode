@@ -25,7 +25,9 @@ use crate::db::repositories::model_repository::ModelWithProvider;
 use crate::services::billing_service::BillingService;
 use crate::db::repositories::api_usage_repository::ApiUsageEntryDto;
 use crate::services::cost_resolver::CostResolver;
+use crate::utils::token_estimator;
 use bigdecimal::BigDecimal;
+use std::str::FromStr;
 
 /// Result of chunk transformation operations
 /// 
@@ -153,6 +155,39 @@ pub trait StreamChunkTransformer {
     /// * `Some(ProviderUsage)` - Successfully extracted usage information
     /// * `None` - No usage information in this chunk (normal for non-final chunks)
     fn extract_usage_if_final(&self, chunk: &[u8], model_id: &str) -> Option<ProviderUsage>;
+    
+    /// Extract text content delta from a streaming chunk
+    /// 
+    /// This method extracts the incremental text content from a streaming chunk
+    /// to enable real-time token counting and usage tracking.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `chunk` - Parsed chunk as JSON Value
+    /// 
+    /// # Returns
+    /// 
+    /// * `Some(String)` - Text content delta from this chunk
+    /// * `None` - No text content in this chunk
+    fn extract_text_delta(&self, chunk: &Value) -> Option<String>;
+    
+    /// Extract incremental usage data from a streaming chunk
+    /// 
+    /// This method extracts incremental usage information from provider-specific
+    /// usage update events (e.g., Anthropic's message_delta).
+    /// 
+    /// # Arguments
+    /// 
+    /// * `chunk` - Parsed chunk as JSON Value
+    /// 
+    /// # Returns
+    /// 
+    /// * `Some((input_tokens, output_tokens))` - Incremental token counts
+    /// * `None` - No incremental usage in this chunk
+    fn extract_incremental_usage(&self, chunk: &Value) -> Option<(i32, i32)> {
+        // Default implementation returns None - providers can override
+        None
+    }
 }
 
 /// Core robust chunk parsing function
@@ -246,6 +281,17 @@ pub struct StandardizedStreamHandler<S> {
     billing_service: Arc<BillingService>,
     request_id: String,
     stream_completed: bool,
+    // Real-time usage tracking fields
+    running_input_tokens: Arc<tokio::sync::Mutex<i64>>,
+    running_output_tokens: Arc<tokio::sync::Mutex<i64>>,
+    running_cost_total: Arc<tokio::sync::Mutex<BigDecimal>>,
+    last_update_time: Arc<tokio::sync::Mutex<std::time::Instant>>,
+    tokens_since_last_update: Arc<tokio::sync::Mutex<u32>>,
+    // Thresholds for updates
+    token_update_threshold: u32,
+    time_update_threshold_ms: u64,
+    // Queue for pending usage update events
+    pending_usage_update: Arc<tokio::sync::Mutex<Option<web::Bytes>>>,
 }
 
 impl<S> StandardizedStreamHandler<S> 
@@ -279,7 +325,31 @@ where
             billing_service,
             request_id,
             stream_completed: false,
+            // Initialize real-time tracking
+            running_input_tokens: Arc::new(tokio::sync::Mutex::new(0)),
+            running_output_tokens: Arc::new(tokio::sync::Mutex::new(0)),
+            running_cost_total: Arc::new(tokio::sync::Mutex::new(BigDecimal::from(0))),
+            last_update_time: Arc::new(tokio::sync::Mutex::new(std::time::Instant::now())),
+            tokens_since_last_update: Arc::new(tokio::sync::Mutex::new(0)),
+            // Set thresholds
+            token_update_threshold: 20,
+            time_update_threshold_ms: 500,
+            pending_usage_update: Arc::new(tokio::sync::Mutex::new(None)),
         }
+    }
+    
+    /// Set initial prompt tokens for accurate usage tracking
+    /// 
+    /// This should be called before streaming begins if the prompt token count
+    /// is known (e.g., from a non-streaming token count endpoint).
+    /// 
+    /// # Arguments
+    /// 
+    /// * `prompt_tokens` - Number of tokens in the initial prompt
+    pub async fn set_initial_prompt_tokens(&self, prompt_tokens: i64) {
+        let mut input_tokens = self.running_input_tokens.lock().await;
+        *input_tokens = prompt_tokens;
+        info!("Set initial prompt tokens to {} for request {}", prompt_tokens, self.request_id);
     }
 }
 
@@ -293,6 +363,15 @@ where
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
     ) -> Poll<Option<Self::Item>> {
+        // Check if we have a pending usage update to send
+        if let Ok(mut pending) = self.pending_usage_update.try_lock() {
+            if let Some(usage_update) = pending.take() {
+                // After sending usage update, immediately re-poll to check for more chunks
+                cx.waker().wake_by_ref();
+                return Poll::Ready(Some(Ok(usage_update)));
+            }
+        }
+        
         // Poll the inner stream
         match Pin::new(&mut self.inner_stream).poll_next(cx) {
             Poll::Ready(Some(Ok(chunk))) => {
@@ -308,6 +387,130 @@ where
                 // Process chunk through standardized pipeline
                 match parse_and_validate_chunk(&chunk, self.transformer.as_ref()) {
                     Ok(TransformResult::Transformed(transformed_chunk)) => {
+                        // Try to extract text delta and incremental usage for real-time tracking
+                        let chunk_str = std::str::from_utf8(&chunk).unwrap_or("");
+                        let json_str = if chunk_str.starts_with("data: ") {
+                            &chunk_str[6..]
+                        } else {
+                            chunk_str
+                        };
+                        
+                        if let Ok(chunk_value) = serde_json::from_str::<Value>(json_str) {
+                            let mut should_update = false;
+                            let mut delta_input_tokens = 0i64;
+                            let mut delta_output_tokens = 0i64;
+                            
+                            // First check for incremental usage from provider (most accurate)
+                            if let Some((input_delta, output_delta)) = self.transformer.extract_incremental_usage(&chunk_value) {
+                                delta_input_tokens = input_delta as i64;
+                                delta_output_tokens = output_delta as i64;
+                                
+                                // Update running totals with provider-reported incremental usage
+                                if let Ok(mut input_tokens) = self.running_input_tokens.try_lock() {
+                                    *input_tokens += delta_input_tokens;
+                                }
+                                if let Ok(mut output_tokens) = self.running_output_tokens.try_lock() {
+                                    *output_tokens += delta_output_tokens;
+                                }
+                                
+                                // Always send usage update when provider reports incremental usage
+                                should_update = true;
+                                debug!("Provider reported incremental usage: input={}, output={}", delta_input_tokens, delta_output_tokens);
+                            }
+                            // Otherwise, estimate from text delta
+                            else if let Some(text_delta) = self.transformer.extract_text_delta(&chunk_value) {
+                                // Estimate tokens in the delta
+                                let estimated_tokens = token_estimator::estimate_tokens(&text_delta);
+                                delta_output_tokens = estimated_tokens as i64;
+                                
+                                // Update tracking and check if we should emit usage update
+                                should_update = match (
+                                    self.tokens_since_last_update.try_lock(),
+                                    self.last_update_time.try_lock()
+                                ) {
+                                    (Ok(mut tokens_since_update), Ok(mut last_update_time)) => {
+                                        *tokens_since_update += estimated_tokens;
+                                        let time_since_update = last_update_time.elapsed();
+                                        
+                                        // Check thresholds
+                                        let should_update = *tokens_since_update >= self.token_update_threshold ||
+                                            time_since_update.as_millis() >= self.time_update_threshold_ms as u128;
+                                        
+                                        if should_update {
+                                            *tokens_since_update = 0;
+                                            *last_update_time = std::time::Instant::now();
+                                        }
+                                        
+                                        should_update
+                                    }
+                                    _ => false
+                                };
+                                
+                                // Update running output tokens
+                                if let Ok(mut output_tokens) = self.running_output_tokens.try_lock() {
+                                    *output_tokens += delta_output_tokens;
+                                }
+                            }
+                            
+                            if should_update {
+                                // Queue usage update for the next poll (UI-only, no billing)
+                                let model = self.model.clone();
+                                let billing_service = self.billing_service.clone();
+                                let running_output_tokens = self.running_output_tokens.clone();
+                                let running_input_tokens = self.running_input_tokens.clone();
+                                let pending_usage_update = self.pending_usage_update.clone();
+                                let waker = cx.waker().clone();
+                                
+                                // Spawn async task to calculate estimated cost and queue update
+                                tokio::spawn(async move {
+                                    // Get cumulative token counts
+                                    let output_tokens = match running_output_tokens.try_lock() {
+                                        Ok(tokens) => *tokens,
+                                        Err(_) => 0
+                                    };
+                                    let input_tokens = match running_input_tokens.try_lock() {
+                                        Ok(tokens) => *tokens,
+                                        Err(_) => 0
+                                    };
+                                    
+                                    // Calculate estimated cost using server pricing (UI-only)
+                                    match billing_service.estimate_streaming_cost(
+                                        &model.id,
+                                        input_tokens,
+                                        output_tokens,
+                                        0, // cache_write_tokens
+                                        0, // cache_read_tokens
+                                    ).await {
+                                        Ok(estimated_cost) => {
+                                            // Create SSE usage update event with cumulative counts
+                                            let usage_update = serde_json::json!({
+                                                "type": "usage_update",
+                                                "tokens_input": input_tokens,
+                                                "tokens_output": output_tokens,
+                                                "tokens_total": input_tokens + output_tokens,
+                                                "estimated_cost": estimated_cost.to_string()
+                                            });
+                                            
+                                            let event_data = format!("event: usage_update\ndata: {}\n\n", usage_update);
+                                            
+                                            // Queue the update
+                                            if let Ok(mut pending) = pending_usage_update.try_lock() {
+                                                *pending = Some(web::Bytes::from(event_data));
+                                                // Wake the stream to send the update
+                                                waker.wake();
+                                            }
+                                            
+                                            info!("Queued usage update: input={}, output={}, estimated_cost={}", 
+                                                 input_tokens, output_tokens, estimated_cost);
+                                        }
+                                        Err(e) => {
+                                            warn!("Failed to estimate streaming cost: {}", e);
+                                        }
+                                    }
+                                });
+                            }
+                        }
+                        
                         Poll::Ready(Some(Ok(transformed_chunk)))
                     }
                     Ok(TransformResult::Ignore) => {
@@ -380,15 +583,15 @@ impl<S> StandardizedStreamHandler<S> {
 
 /// Process billing after stream completion
 /// 
-/// This function handles the standardized post-stream billing workflow:
-/// 1. Calculate final cost using CostResolver
+/// This function is the ONLY place where billing occurs for a stream. It handles:
+/// 1. Calculate final cost using CostResolver with complete ProviderUsage
 /// 2. Create API usage entry with comprehensive token tracking
-/// 3. Charge user account via BillingService
+/// 3. Charge user account via BillingService (ONCE with final usage)
 /// 4. Store final cost for desktop client retrieval
 /// 
 /// # Arguments
 /// 
-/// * `usage` - Extracted usage information from final stream chunk
+/// * `usage` - Complete usage information from final stream chunk
 /// * `model` - Model configuration for pricing calculations  
 /// * `user_id` - User identifier for billing attribution
 /// * `billing_service` - Service for processing charges
@@ -405,27 +608,30 @@ async fn process_post_stream_billing(
     billing_service: &BillingService,
     request_id: &str,
 ) -> Result<BigDecimal, AppError> {
-    info!("Processing post-stream billing: input={}, output={}, model={}, request_id={}", 
+    info!("Processing post-stream billing (ONLY billing point): input={}, output={}, model={}, request_id={}", 
         usage.prompt_tokens, usage.completion_tokens, model.id, request_id);
     
-    // Calculate cost using the cost resolver
+    // Calculate final cost using the cost resolver with complete usage
     let final_cost = CostResolver::resolve(usage.clone(), &model);
     
-    // Create API usage entry
+    // Create API usage entry with final, complete token counts
     let api_usage = ApiUsageEntryDto {
         user_id,
         service_name: model.id.clone(),
         tokens_input: usage.prompt_tokens as i64,
         tokens_output: usage.completion_tokens as i64,
-        cached_input_tokens: (usage.cache_write_tokens + usage.cache_read_tokens) as i64,
         cache_write_tokens: usage.cache_write_tokens as i64,
         cache_read_tokens: usage.cache_read_tokens as i64,
         request_id: Some(request_id.to_string()),
-        metadata: None,
+        metadata: Some(serde_json::json!({
+            "streaming": true,
+            "final_billing": true
+        })),
+        provider_reported_cost: usage.cost.map(|c| BigDecimal::from_str(&c.to_string()).unwrap_or_default()),
     };
     
-    // Charge for the API usage
-    billing_service.charge_for_api_usage(api_usage, final_cost.clone()).await
+    // SINGLE billing charge with complete usage
+    let (api_usage_record, _user_credit) = billing_service.charge_for_api_usage(api_usage, final_cost.clone()).await
         .map_err(|e| {
             error!("Billing failed for post-stream request {}: {}", request_id, e);
             AppError::Internal(format!("Billing failed: {}", e))
@@ -449,7 +655,7 @@ async fn process_post_stream_billing(
         }
     }
     
-    info!("Post-stream billing completed successfully for request: {}", request_id);
+    info!("Post-stream billing completed successfully (single charge) for request: {}", request_id);
     Ok(final_cost)
 }
 
@@ -474,6 +680,9 @@ pub fn create_openrouter_usage(tokens_input: i32, tokens_output: i32, cost: &Big
         completion_tokens: tokens_output,
         total_tokens: tokens_input + tokens_output,
         cost: Some(cost.to_string().parse::<f64>().unwrap_or(0.0)),
+        cached_input_tokens: 0,
+        cache_write_tokens: 0,
+        cache_read_tokens: 0,
     })
 }
 
@@ -548,6 +757,10 @@ mod tests {
         }
         
         fn extract_usage_if_final(&self, _chunk: &[u8], _model_id: &str) -> Option<ProviderUsage> {
+            None
+        }
+        
+        fn extract_text_delta(&self, _chunk: &Value) -> Option<String> {
             None
         }
     }

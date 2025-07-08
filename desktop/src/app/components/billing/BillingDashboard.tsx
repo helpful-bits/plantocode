@@ -17,7 +17,7 @@ import { useBillingData } from "@/hooks/use-billing-data";
 import { CreditManager, PaymentMethodsList, InvoicesList, BillingHistory } from "./billing-components";
 import { AutoTopOffSettings } from "./components/AutoTopOffSettings";
 import { formatUsdCurrency } from "@/utils/currency-utils";
-import { openBillingPortal } from "@/actions/billing/payment-method.actions";
+import { openBillingPortal } from "@/actions/billing";
 import { open } from "@tauri-apps/plugin-shell";
 
 interface BillingDashboardProps {}

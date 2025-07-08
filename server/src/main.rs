@@ -40,7 +40,6 @@ use crate::services::auth::oauth::Auth0OAuthService;
 use crate::services::billing_service::BillingService;
 use crate::services::credit_service::CreditService;
 use crate::services::reconciliation_service::ReconciliationService;
-use crate::services::price_sync_service::PriceSyncService;
 use crate::routes::{configure_routes, configure_public_api_routes, configure_public_auth_routes, configure_webhook_routes};
 
 /// Validates AI model configurations at startup to catch misconfigurations early
@@ -158,20 +157,6 @@ async fn start_reconciliation_scheduler(db_pools: DatabasePools) -> Result<(), S
     Ok(())
 }
 
-/// Initialize and start the price sync service for automated provider pricing updates
-async fn start_price_sync_service(db_pools: DatabasePools) -> Result<(), String> {
-    info!("Initializing price sync service for automated provider pricing updates");
-    
-    let price_sync_service = PriceSyncService::new(db_pools);
-    
-    // Start the background sync service
-    price_sync_service.start_background_sync()
-        .await
-        .map_err(|e| format!("Failed to start price sync service: {}", e))?;
-    
-    info!("Price sync service started successfully - will run daily at 3 AM UTC");
-    Ok(())
-}
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -257,11 +242,6 @@ async fn main() -> std::io::Result<()> {
         log::error!("Continuing without automated reconciliation - manual verification required");
     }
     
-    // Initialize and start price sync service for automated provider pricing updates
-    if let Err(e) = start_price_sync_service(db_pools.clone()).await {
-        log::error!("Failed to start price sync service: {}", e);
-        log::error!("Continuing without automated price synchronization - manual updates required");
-    }
     
     // Get server host and port from settings
     let host = &app_settings.server.host;
@@ -332,6 +312,19 @@ async fn main() -> std::io::Result<()> {
         log::info!("Rate limit memory store cleanup task started.");
     }
 
+    // Initialize billing service with Redis before creating the server
+    let mut billing_service = BillingService::new(db_pools.clone(), app_settings.clone());
+    
+    // Initialize Redis for billing service if configured
+    if app_settings.rate_limit.use_redis {
+        if let Some(redis_url) = &app_settings.rate_limit.redis_url {
+            match billing_service.set_redis_client(redis_url).await {
+                Ok(_) => log::info!("Redis initialized for billing service final cost caching"),
+                Err(e) => log::warn!("Failed to initialize Redis for billing service: {}. Final cost caching will be unavailable.", e),
+            }
+        }
+    }
+
     let server = HttpServer::new(move || {
         // Clone the data for the factory closure
         let db_pools = db_pools.clone();
@@ -342,6 +335,7 @@ async fn main() -> std::io::Result<()> {
         let polling_store = web::Data::new(polling_store.clone());
         let auth0_state_store = web::Data::new(auth0_state_store.clone());
         let http_client = web::Data::new(http_client.clone());
+        let billing_service = billing_service.clone();
         
         // Initialize repositories with appropriate pools
         // User-specific operations use user pool (with RLS)
@@ -351,8 +345,6 @@ async fn main() -> std::io::Result<()> {
         let model_repository_for_proxy = std::sync::Arc::new(ModelRepository::new(std::sync::Arc::new(db_pools.system_pool.clone())));
         let settings_repository_for_proxy = std::sync::Arc::new(SettingsRepository::new(db_pools.system_pool.clone()));
         
-        // Initialize services with dual pools
-        let billing_service = BillingService::new(db_pools.clone(), app_settings.clone());
         let api_usage_repository = std::sync::Arc::new(api_usage_repository);
         let credit_service = crate::services::credit_service::CreditService::new(db_pools.clone());
         

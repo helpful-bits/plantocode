@@ -12,13 +12,10 @@ interface JobContentProps {
   allJobsSorted: BackgroundJob[];
   handleCancel: (jobId: string) => Promise<void>;
   handleDelete: (jobId: string) => Promise<void>;
-  handleRetry?: (workflowId: string, jobId: string) => Promise<void>;
   isCancelling: Record<string, boolean>;
   isDeleting: Record<string, boolean>;
-  isRetrying?: Record<string, boolean>;
   onSelect: (job: BackgroundJob) => void;
   onApplyFiles?: (job: BackgroundJob) => void;
-  onApplyText?: (job: BackgroundJob) => void;
   currentSessionId?: string;
 }
 
@@ -31,13 +28,10 @@ export const JobContent = ({
   allJobsSorted,
   handleCancel,
   handleDelete,
-  handleRetry,
   isCancelling,
   isDeleting,
-  isRetrying,
   onSelect,
   onApplyFiles,
-  onApplyText,
   currentSessionId,
 }: JobContentProps) => {
   return (
@@ -54,13 +48,10 @@ export const JobContent = ({
               job={job}
               handleCancel={handleCancel}
               handleDelete={handleDelete}
-              handleRetry={handleRetry}
               isCancelling={isCancelling}
               isDeleting={isDeleting}
-              isRetrying={isRetrying}
               onSelect={onSelect}
               onApplyFiles={onApplyFiles}
-              onApplyText={onApplyText}
               currentSessionId={currentSessionId}
             />
           ))}

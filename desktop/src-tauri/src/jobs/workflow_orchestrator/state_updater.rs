@@ -24,6 +24,10 @@ pub(super) fn update_intermediate_data_internal(
                        workflow_state.intermediate_data.locally_filtered_files.len());
             } else {
                 warn!("RegexFileFilter stage_data is not a valid JSON array of file paths");
+                return Err(AppError::JobError(format!(
+                    "Invalid stage data format for RegexFileFilter: expected array, got {:?}", 
+                    stage_data
+                )));
             }
         }
         WorkflowStage::FileRelevanceAssessment => {
@@ -74,20 +78,29 @@ pub(super) fn update_intermediate_data_internal(
                 warn!("PathCorrection stage_data missing or invalid 'correctedPaths' field");
             }
         }
-        WorkflowStage::WebSearchQueryGeneration => {
-            if let Some(prompt) = stage_data.get("prompt").and_then(|v| v.as_str()) {
-                workflow_state.intermediate_data.web_search_prompt = Some(prompt.to_string());
-                debug!("Stored web search prompt in intermediate_data");
+        WorkflowStage::WebSearchPromptsGeneration => {
+            // Extract prompts from the prompts generation stage
+            if let Some(prompts_array) = stage_data.get("prompts").and_then(|v| v.as_array()) {
+                workflow_state.intermediate_data.web_search_prompts = prompts_array.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect();
+                debug!("Stored {} sophisticated research prompts in intermediate_data", 
+                       workflow_state.intermediate_data.web_search_prompts.len());
             } else {
-                warn!("WebSearchQueryGeneration stage_data missing or invalid 'prompt' field");
+                warn!("WebSearchPromptsGeneration stage_data missing 'prompts' array");
             }
         }
         WorkflowStage::WebSearchExecution => {
-            if let Some(results) = stage_data.get("searchResults").and_then(|v| v.as_str()) {
-                workflow_state.intermediate_data.web_search_results = Some(results.to_string());
-                debug!("Stored web search results in intermediate_data");
+            // Extract search results from the execution stage
+            if let Some(results_array) = stage_data.get("searchResults").and_then(|v| v.as_array()) {
+                // Convert JSON objects to strings for storage (can be enhanced later if needed)
+                workflow_state.intermediate_data.web_search_results = results_array.iter()
+                    .map(|v| serde_json::to_string(v).unwrap_or_else(|_| v.to_string()))
+                    .collect();
+                debug!("Stored {} sophisticated research results in intermediate_data", 
+                       workflow_state.intermediate_data.web_search_results.len());
             } else {
-                warn!("WebSearchExecution stage_data missing or invalid 'searchResults' field");
+                warn!("WebSearchExecution stage_data missing 'searchResults' array");
             }
         }
     }
@@ -147,22 +160,27 @@ pub(super) async fn update_job_status_internal(
     workflows: &Arc<Mutex<HashMap<String, WorkflowState>>>,
     job_id: &str,
     status: JobStatus,
-    error_message: Option<String>
+    error_message: Option<String>,
+    actual_cost: Option<f64>
 ) -> AppResult<Option<String>> { // Returns workflow_id if found
     let mut workflows_guard = workflows.lock().await;
     
     // Find the workflow containing this job
     for (workflow_id, workflow_state) in workflows_guard.iter_mut() {
-        if let Some(stage_job) = workflow_state.stage_jobs.iter_mut().find(|job| job.job_id == job_id) {
+        if let Some(stage_job) = workflow_state.stages.iter_mut().find(|job| job.job_id == job_id) {
             // Atomic timestamp for consistency
             let current_time = chrono::Utc::now().timestamp_millis();
             
             // Update all job fields atomically
             stage_job.status = status.clone();
             stage_job.error_message = error_message.clone();
+            stage_job.actual_cost = actual_cost;
             if status == JobStatus::Completed || status == JobStatus::Failed {
                 stage_job.completed_at = Some(current_time);
             }
+            
+            // Recalculate total workflow cost
+            workflow_state.total_actual_cost = Some(workflow_state.stages.iter().filter_map(|j| j.actual_cost).sum());
             
             // Update workflow timestamp atomically
             workflow_state.updated_at = current_time;
@@ -173,7 +191,7 @@ pub(super) async fn update_job_status_internal(
     }
     
     // Return explicit error instead of warning if job not found
-    error!("Job {} not found in any workflow's stage_jobs list", job_id);
+    error!("Job {} not found in any workflow's stages list", job_id);
     Err(AppError::JobError(format!("Job {} not found in any workflow", job_id)))
 }
 
@@ -187,7 +205,7 @@ pub(super) async fn store_stage_data_internal(
     
     // Find the workflow containing this job
     for (workflow_id, workflow_state) in workflows_guard.iter_mut() {
-        if let Some(stage_job) = workflow_state.stage_jobs.iter().find(|job| job.job_id == job_id) {
+        if let Some(stage_job) = workflow_state.stages.iter().find(|job| job.job_id == job_id) {
             // Create a backup of current state for rollback capability
             let original_intermediate_data = workflow_state.intermediate_data.clone();
             let original_updated_at = workflow_state.updated_at;
@@ -233,7 +251,7 @@ pub(super) async fn atomic_stage_completion_update(
     // Find the workflow containing this job
     for (workflow_id, workflow_state) in workflows_guard.iter_mut() {
         // First, find the job and get its task type without holding a mutable borrow
-        let stage_job_info = workflow_state.stage_jobs.iter()
+        let stage_job_info = workflow_state.stages.iter()
             .find(|job| job.job_id == job_id)
             .map(|job| (job.task_type.clone(), job.status.clone(), job.error_message.clone(), job.completed_at));
         
@@ -246,7 +264,7 @@ pub(super) async fn atomic_stage_completion_update(
             let current_time = chrono::Utc::now().timestamp_millis();
             
             // Update job status first
-            let stage_job = workflow_state.stage_jobs.iter_mut().find(|job| job.job_id == job_id).unwrap();
+            let stage_job = workflow_state.stages.iter_mut().find(|job| job.job_id == job_id).unwrap();
             stage_job.status = status.clone();
             stage_job.error_message = error_message.clone();
             if status == JobStatus::Completed || status == JobStatus::Failed {
@@ -266,7 +284,7 @@ pub(super) async fn atomic_stage_completion_update(
                         }
                         Err(e) => {
                             // Rollback all changes on stage data failure
-                            let stage_job = workflow_state.stage_jobs.iter_mut().find(|job| job.job_id == job_id).unwrap();
+                            let stage_job = workflow_state.stages.iter_mut().find(|job| job.job_id == job_id).unwrap();
                             stage_job.status = original_job_status;
                             stage_job.error_message = original_job_error;
                             stage_job.completed_at = original_job_completed_at;
@@ -277,7 +295,7 @@ pub(super) async fn atomic_stage_completion_update(
                     }
                 } else {
                     // Rollback job status changes on stage conversion failure
-                    let stage_job = workflow_state.stage_jobs.iter_mut().find(|job| job.job_id == job_id).unwrap();
+                    let stage_job = workflow_state.stages.iter_mut().find(|job| job.job_id == job_id).unwrap();
                     stage_job.status = original_job_status;
                     stage_job.error_message = original_job_error;
                     stage_job.completed_at = original_job_completed_at;

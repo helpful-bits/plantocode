@@ -8,7 +8,8 @@ use tauri::{AppHandle, Manager, Emitter};
 use crate::error::{AppError, AppResult};
 use crate::db_utils::background_job_repository::BackgroundJobRepository;
 use crate::models::{JobStatus, BackgroundJob};
-use crate::jobs::types::{CleanupResult, WorkflowStage};
+use crate::jobs::types::CleanupResult;
+use crate::jobs::workflow_types::WorkflowStage;
 
 /// Service for cleaning up workflow resources and orphaned jobs
 pub struct WorkflowCleanupHandler {

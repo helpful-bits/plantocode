@@ -3,7 +3,6 @@ use std::collections::HashMap;
 use log::{info, warn, error, debug};
 use tokio::sync::Mutex;
 use tauri::{AppHandle, Manager};
-use uuid::Uuid;
 
 use crate::error::{AppError, AppResult};
 use crate::models::{JobStatus, TaskType};
@@ -27,6 +26,7 @@ pub async fn start_workflow_internal(
     workflows: &Mutex<HashMap<String, WorkflowState>>,
     app_handle: &AppHandle,
     workflow_definitions: &Mutex<HashMap<String, Arc<WorkflowDefinition>>>,
+    workflow_id: String,
     workflow_definition_name: String,
     session_id: String,
     task_description: String,
@@ -34,7 +34,6 @@ pub async fn start_workflow_internal(
     excluded_paths: Vec<String>,
     timeout_ms: Option<u64>,
 ) -> AppResult<String> {
-    let workflow_id = Uuid::new_v4().to_string();
     info!("Starting workflow '{}': {}", workflow_definition_name, workflow_id);
 
     // Get the workflow definition
@@ -71,6 +70,10 @@ pub async fn start_workflow_internal(
         return Err(AppError::JobError(format!("No entry stages found in workflow definition: {}", workflow_definition_name)));
     }
 
+    debug!("Found {} entry stages for workflow '{}': {:?}", 
+           entry_stages.len(), workflow_definition_name, 
+           entry_stages.iter().map(|s| &s.stage_name).collect::<Vec<_>>());
+
     // Store the workflow state and create entry stage jobs in the same lock scope
     {
         let mut workflows_guard = workflows.lock().await;
@@ -78,6 +81,7 @@ pub async fn start_workflow_internal(
 
         // Create all entry stage jobs while holding the lock
         for entry_stage in entry_stages {
+            debug!("Creating entry stage '{}' for workflow '{}'", entry_stage.stage_name, workflow_definition_name);
             create_abstract_stage_job_with_lock(&mut workflows_guard, app_handle, &workflow_state, entry_stage, &workflow_definition).await?;
         }
     }
@@ -121,20 +125,48 @@ pub async fn cancel_workflow_with_reason_internal(
           cancellation_result.failed_cancellations.len());
 
     // Update the workflow state to canceled
-    let mut workflows_guard = workflows.lock().await;
-    if let Some(workflow_state) = workflows_guard.get_mut(workflow_id) {
-        workflow_state.status = WorkflowStatus::Canceled;
-        workflow_state.updated_at = chrono::Utc::now().timestamp_millis();
-        workflow_state.completed_at = Some(workflow_state.updated_at);
-        workflow_state.error_message = Some(reason.to_string());
-        
-        info!("Workflow {} marked as canceled: {}", workflow_id, reason);
-    } else {
-        return Err(AppError::JobError(format!("Workflow not found: {}", workflow_id)));
-    }
+    let workflow_state = {
+        let mut workflows_guard = workflows.lock().await;
+        if let Some(workflow_state) = workflows_guard.get_mut(workflow_id) {
+            workflow_state.status = WorkflowStatus::Canceled;
+            workflow_state.updated_at = chrono::Utc::now().timestamp_millis();
+            workflow_state.completed_at = Some(workflow_state.updated_at);
+            workflow_state.error_message = Some(reason.to_string());
+            
+            info!("Workflow {} marked as canceled: {}", workflow_id, reason);
+            workflow_state.clone()
+        } else {
+            return Err(AppError::JobError(format!("Workflow not found: {}", workflow_id)));
+        }
+    };
+    
+    // Get the BackgroundJobRepository to update the master workflow job
+    let background_job_repo = match app_handle.try_state::<Arc<crate::db_utils::BackgroundJobRepository>>() {
+        Some(repo) => repo.inner().clone(),
+        None => {
+            return Err(AppError::InitializationError(
+                "BackgroundJobRepository not available in app state".to_string()
+            ));
+        }
+    };
+    
+    // Mark the master workflow job as canceled
+    background_job_repo.mark_job_canceled(
+        workflow_id,
+        reason,
+        workflow_state.total_actual_cost
+    ).await?;
+    
+    // Emit generic job status change event for UI updates
+    crate::jobs::job_processor_utils::emit_job_status_change(
+        app_handle,
+        workflow_id,
+        "canceled",
+        Some(reason),
+        workflow_state.total_actual_cost
+    )?;
     
     // Emit workflow canceled event
-    let workflow_state = query_service::get_workflow_status_internal(workflows, workflow_id).await?;
     event_emitter::emit_workflow_status_event_internal(app_handle, &workflow_state, &format!("Workflow canceled: {}", reason)).await;
     
     Ok(())
@@ -233,7 +265,7 @@ async fn create_abstract_stage_job_with_lock(
         TaskType::FileRelevanceAssessment => WorkflowStage::FileRelevanceAssessment,
         TaskType::ExtendedPathFinder => WorkflowStage::ExtendedPathFinder,
         TaskType::PathCorrection => WorkflowStage::PathCorrection,
-        TaskType::WebSearchQueryGeneration => WorkflowStage::WebSearchQueryGeneration,
+        TaskType::WebSearchPromptsGeneration => WorkflowStage::WebSearchPromptsGeneration,
         TaskType::WebSearchExecution => WorkflowStage::WebSearchExecution,
         _ => return Err(AppError::JobError(format!("Unsupported task type for workflow stage: {:?}", task_type))),
     };
@@ -272,25 +304,30 @@ async fn create_abstract_stage_job_with_lock(
     // Add the stage job to workflow state using the provided mutable reference
     if let Some(workflow) = workflows.get_mut(&workflow_state.workflow_id) {
         let depends_on = if stage_definition.dependencies.is_empty() {
+            debug!("Stage '{}' has no dependencies", stage_definition.stage_name);
             None
         } else {
+            debug!("Stage '{}' depends on: {:?}", stage_definition.stage_name, stage_definition.dependencies);
             // Find the job ID of the first dependency
             stage_definition.dependencies.first()
                 .and_then(|dep_stage_name| {
                     workflow_definition.get_stage(dep_stage_name)
                 })
                 .and_then(|dep_stage_def| {
-                    workflow.stage_jobs.iter()
+                    workflow.stages.iter()
                         .find(|job| job.task_type == dep_stage_def.task_type)
                 })
                 .map(|job| job.job_id.clone())
         };
         
+        debug!("Adding stage job '{}' to workflow '{}' with dependency: {:?}", 
+               stage_definition.stage_name, workflow_state.workflow_id, depends_on);
+        
         workflow.add_stage_job(stage_definition.stage_name.clone(), task_type, job_id.clone(), depends_on);
         
         // Verify the job was added successfully
-        if workflow.stage_jobs.iter().any(|job| job.job_id == job_id) {
-            info!("Successfully registered job {} in workflow {} stage_jobs", job_id, workflow_state.workflow_id);
+        if workflow.stages.iter().any(|job| job.job_id == job_id) {
+            debug!("Successfully registered job {} in workflow {} stage_jobs", job_id, workflow_state.workflow_id);
         } else {
             error!("Failed to register job {} in workflow {} stage_jobs", job_id, workflow_state.workflow_id);
         }

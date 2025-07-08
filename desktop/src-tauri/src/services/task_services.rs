@@ -6,7 +6,7 @@ use crate::error::AppResult;
 use crate::commands::text_commands::ImproveTextArgs;
 use crate::models::{PathFinderRequestArgs, JobCommandResponse};
 use crate::db_utils::SessionRepository;
-use crate::jobs::types::{JobPayload, PathFinderPayload};
+use crate::jobs::types::{JobPayload, RegexFileFilterPayload};
 use std::sync::Arc;
 
 
@@ -98,18 +98,13 @@ pub async fn create_path_finder_job_service(
         excluded_files: args.excluded_files,
     };
     
-    // Create path finder payload (the format expected by the processor)
-    let payload = PathFinderPayload {
+    // Create regex file filter payload (the format expected by the processor)
+    let payload = RegexFileFilterPayload {
         task_description: args.task_description.clone(),
-        system_prompt: String::new(), // Will be populated by the processor
-        directory_tree: None, // Will be populated by the processor
-        relevant_file_contents: std::collections::HashMap::new(), // Will be populated by the processor
-        estimated_input_tokens: None, // Will be calculated by the processor
-        options,
     };
     
     // Wrap in JobPayload enum
-    let typed_payload = JobPayload::PathFinder(payload);
+    let typed_payload = JobPayload::RegexFileFilter(payload);
     
     // Convert AppError to CommandError for job_creation_utils
     let job_id = job_creation_utils::create_and_queue_background_job(

@@ -3,7 +3,6 @@ pub mod fs_utils;
 pub mod git_utils;
 pub mod hash_utils;
 pub mod path_utils;
-pub mod token_estimator;
 pub mod error_utils;
 pub mod file_lock_types;
 pub mod file_lock_manager;
@@ -27,11 +26,6 @@ pub use path_utils::{
     get_project_output_files_directory, get_project_implementation_plans_directory, sanitize_filename,
     create_unique_output_filepath, create_custom_unique_filepath, get_project_custom_directory
 };
-pub use token_estimator::{
-    estimate_tokens, estimate_code_tokens, estimate_structured_data_tokens,
-    estimate_tokens_for_texts, estimate_conversation_tokens, estimate_path_finder_tokens,
-    get_model_context_window as get_model_context_window_fallback
-};
 pub use file_lock_types::{FileLockId, LockMode, FileLockGuard};
 pub use file_lock_manager::FileLockManager;
 pub use job_creation_utils::create_and_queue_background_job;
@@ -40,7 +34,7 @@ pub use job_ui_metadata_builder::{JobUIMetadataBuilder, create_simple_job_ui_met
 pub use date_utils::get_timestamp;
 pub use error_utils::*;
 pub use env_utils::{read_env, read_env_bool, read_env_i64, read_env_f64};
-pub use xml_utils::extract_xml_from_markdown;
+pub use xml_utils::{extract_xml_from_markdown, extract_research_tasks, extract_query_from_task, extract_task_title};
 pub use markdown_utils::extract_json_from_markdown;
 pub use config_resolver::resolve_model_settings;
 pub use context_resolver::{get_project_directory_from_session, get_directory_tree_from_session, get_api_type_from_task_type, calculate_total_tokens, get_response_length, resolve_job_context, JobContext};
@@ -51,10 +45,6 @@ pub use config_helpers::{
     get_default_transcription_model_id,
     get_model_context_window,
     get_max_concurrent_jobs,
-    get_path_finder_max_files_with_content,
-    get_path_finder_include_file_contents,
-    get_path_finder_max_file_count,
-    get_path_finder_token_limit_buffer,
     get_model_info
 };
 // UNIFIED PROMPT SYSTEM - CONSOLIDATES LEGACY PROMPT SYSTEMS

@@ -158,7 +158,9 @@ pub async fn cancel_session_jobs_command(session_id: String, app_handle: AppHand
                     if let Err(e) = orchestrator.update_job_status(
                         &job.id, 
                         crate::models::JobStatus::Canceled, 
-                        Some("Canceled by session action".to_string())
+                        Some("Canceled by session action".to_string()),
+                        None,
+                        None
                     ).await {
                         log::warn!("Failed to cancel workflow job {} via orchestrator: {}. Falling back to direct cancellation.", job.id, e);
                         if let Err(e2) = repo.cancel_job(&job.id, "Canceled by session action").await {

@@ -1,15 +1,14 @@
 "use client";
 
-import { useContext, useRef } from "react";
+import { useContext, useRef, useCallback } from "react";
 
 import { BackgroundJobsContext } from "@/contexts/background-jobs";
 import { SidebarHeader, StatusMessages } from "@/ui";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/ui/collapsible";
 import { getSidebarStyle } from "@/utils/ui-utils";
 import { FileBrowser, type FileBrowserHandle } from "../generate-prompt/file-browser";
-import { emit } from "@tauri-apps/api/event";
 import { type BackgroundJob } from "@/types/session-types";
-import { useSessionStateContext } from "@/contexts/session";
+import { useSessionStateContext, useSessionActionsContext } from "@/contexts/session";
 
 import { JobContent } from "./_components/job-content";
 import { useJobFiltering } from "./hooks/use-job-filtering";
@@ -25,7 +24,8 @@ import { JobDetailsModal } from "./job-details-modal";
  */
 export const BackgroundJobsSidebar = () => {
   const { jobs, isLoading, error } = useContext(BackgroundJobsContext);
-  const { activeSessionId } = useSessionStateContext();
+  const { activeSessionId, currentSession } = useSessionStateContext();
+  const { updateCurrentSessionFields } = useSessionActionsContext();
   const fileBrowserRef = useRef<FileBrowserHandle>(null);
 
   // Use the extracted sidebar state manager hook
@@ -37,7 +37,6 @@ export const BackgroundJobsSidebar = () => {
     isCancelling,
     isDeleting,
     isRefreshing,
-    isRetrying,
     refreshClickedRef,
     handleRefresh,
     handleClearHistory,
@@ -45,7 +44,6 @@ export const BackgroundJobsSidebar = () => {
     handleDeleteJob,
     handleSelectJob,
     handleCollapseChange,
-    handleRetry,
     setSelectedJob,
   } = useSidebarStateManager();
 
@@ -56,62 +54,121 @@ export const BackgroundJobsSidebar = () => {
     shouldShowEmpty,
   } = useJobFiltering(jobs, isLoading);
 
-  // Function to extract file paths from job response
-  const extractFilePathsFromJob = (job: any): string[] => {
-    if (!job.response) return [];
+  // Function to apply web search results to the session
+  const applyWebSearchResultsToSession = useCallback((results: any[]) => {
+    if (!currentSession || !results || results.length === 0) return;
     
-    try {
-      const parsed = JSON.parse(job.response);
+    const taskDescription = currentSession.taskDescription || "";
+    
+    // Format results with XML tags - extract findings from each result object
+    const xmlFormattedResults = results.map((result, index) => {
+      // Handle both string results and object results with title/findings structure
+      let content: string;
+      if (typeof result === 'string') {
+        content = result;
+      } else if (result && typeof result === 'object') {
+        // Extract just the findings - title is not useful
+        content = result.findings || '';
+      } else {
+        content = String(result);
+      }
       
-      // Handle path finder specific format with verified/unverified paths
-      if (parsed && typeof parsed === 'object' && 'verifiedPaths' in parsed && 'unverifiedPaths' in parsed) {
-        const verifiedPaths = Array.isArray(parsed.verifiedPaths) ? parsed.verifiedPaths : [];
-        const unverifiedPaths = Array.isArray(parsed.unverifiedPaths) ? parsed.unverifiedPaths : [];
-        return [...verifiedPaths, ...unverifiedPaths];
-      }
-      // Handle array responses (most common format)
-      else if (Array.isArray(parsed)) {
-        return parsed;
-      }
-      // Handle object responses with file arrays
-      else if (parsed && typeof parsed === 'object') {
-        // Check for all possible field names used by different task types
-        const filePaths = parsed.filePaths || parsed.paths || parsed.files || 
-                         parsed.filteredFiles || parsed.relevantFiles;
-        
-        if (Array.isArray(filePaths)) {
-          return filePaths;
-        }
-      }
-    } catch {
-      // If parsing fails, return empty array
-    }
+      return `<research_finding_${index + 1}>\n${content}\n</research_finding_${index + 1}>`;
+    }).join("\n\n");
     
-    return [];
-  };
+    // Prepare the new task description
+    const updatedTaskDescription = taskDescription.trim() 
+      ? `${taskDescription}\n\n${xmlFormattedResults}`
+      : xmlFormattedResults;
+    
+    // Update the session
+    updateCurrentSessionFields({
+      taskDescription: updatedTaskDescription
+    });
+    
+    console.log(`Applied ${results.length} web search results to task description`);
+  }, [currentSession, updateCurrentSessionFields]);
 
   // Function to apply files from job to session
-  const handleApplyFilesFromJob = (job: any) => {
-    const paths = extractFilePathsFromJob(job);
+  const handleApplyFilesFromJob = (job: BackgroundJob) => {
+    // Handle web search execution jobs specially
+    if (job.taskType === 'web_search_execution' && job.status === 'completed' && job.response) {
+      try {
+        let responseData: any;
+        if (typeof job.response === 'string') {
+          responseData = JSON.parse(job.response);
+        } else {
+          responseData = job.response;
+        }
+        
+        // Extract search results and apply them
+        if (responseData.searchResults && Array.isArray(responseData.searchResults)) {
+          // Apply web search results directly to the session
+          applyWebSearchResultsToSession(responseData.searchResults);
+          return;
+        }
+      } catch (e) {
+        console.error('Failed to parse web search results:', e);
+      }
+      return;
+    }
+    
+    let paths: string[] = [];
+    
+    // Check if this is a completed file_finder_workflow
+    if (job.taskType === 'file_finder_workflow' && job.status === 'completed' && job.response) {
+      try {
+        // Parse workflow result to get final_paths
+        const workflowResult = typeof job.response === 'string' ? JSON.parse(job.response) : job.response;
+        if (workflowResult.selectedFiles && Array.isArray(workflowResult.selectedFiles)) {
+          paths = workflowResult.selectedFiles;
+        }
+      } catch (e) {
+        console.error('Failed to parse workflow result:', e);
+      }
+    } else {
+      // Get file paths from structured job.metadata directly - no parsing needed
+      if (job.metadata && typeof job.metadata === 'object') {
+        // Look for structured fields in metadata (camelCase)
+        const metadata = job.metadata as any;
+        paths = metadata.verifiedPaths || metadata.relevantFiles || metadata.correctedPaths || [];
+      } else if (job.response) {
+        // Check response data if available
+        if (typeof job.response === 'string') {
+          // Try to parse string response
+          try {
+            const parsed = JSON.parse(job.response);
+            if (Array.isArray(parsed)) {
+              paths = parsed;
+            } else if (parsed.verifiedPaths && parsed.unverifiedPaths) {
+              paths = [...(parsed.verifiedPaths || []), ...(parsed.unverifiedPaths || [])];
+            } else if (parsed.filePaths || parsed.paths || parsed.files || parsed.filteredFiles || parsed.relevantFiles) {
+              paths = parsed.filePaths || parsed.paths || parsed.files || parsed.filteredFiles || parsed.relevantFiles || [];
+            }
+          } catch (e) {
+            // If parsing fails, leave paths empty
+          }
+        } else if (typeof job.response === 'object' && job.response !== null) {
+          // Handle various response formats
+          const response = job.response as any;
+          if (response.verifiedPaths && response.unverifiedPaths) {
+            paths = [...(response.verifiedPaths || []), ...(response.unverifiedPaths || [])];
+          } else if (Array.isArray(response)) {
+            paths = response;
+          } else if (response.filePaths || response.paths || response.files || response.filteredFiles || response.relevantFiles) {
+            paths = response.filePaths || response.paths || response.files || response.filteredFiles || response.relevantFiles || [];
+          }
+        }
+      }
+    }
+    
     if (paths.length > 0 && fileBrowserRef.current) {
       fileBrowserRef.current.handleApplyFilesFromJob(paths, `job ${job.id}`);
     }
   };
 
-  // Function to apply text from job to task description
-  const handleApplyTextFromJob = (job: BackgroundJob) => {
-    if (job.response) {
-      // For web search execution jobs, we need to format the response with XML tags
-      if (job.taskType === 'web_search_execution') {
-        // We'll emit a special event that the task description component can handle
-        // to preserve the original task and format with XML tags
-        emit('apply-web-search-to-task-description', job.response);
-      } else {
-        // For other job types, apply the response directly
-        emit('apply-text-to-task-description', job.response);
-      }
-    }
-  };
+  // Removed handleApplyTextFromJob as web search workflows are now filtered out
+  // This functionality is no longer needed since workflow jobs don't appear in the sidebar
 
   // Get container style from utility function
   const containerStyle = getSidebarStyle(activeCollapsed);
@@ -155,11 +212,8 @@ export const BackgroundJobsSidebar = () => {
               handleDelete={handleDeleteJob}
               isCancelling={isCancelling}
               isDeleting={isDeleting}
-              isRetrying={isRetrying}
-              handleRetry={handleRetry}
               onSelect={handleSelectJob}
               onApplyFiles={handleApplyFilesFromJob}
-              onApplyText={handleApplyTextFromJob}
               currentSessionId={activeSessionId || undefined}
             />
           </CollapsibleContent>

@@ -7,6 +7,8 @@ import { useProject } from "@/contexts/project-context";
 import { type BackgroundJob, JOB_STATUSES } from "@/types/session-types";
 import { useNotification } from "@/contexts/notification-context";
 import { createLogger } from "@/utils/logger";
+import { deleteBackgroundJobAction } from "@/actions/background-jobs/jobs.actions";
+import { createMergedImplementationPlanAction } from "@/actions/ai/implementation-plan.actions";
 
 const logger = createLogger({ namespace: "ImplPlansLogic" });
 
@@ -17,15 +19,20 @@ interface UseImplementationPlansLogicProps {
 export function useImplementationPlansLogic({
   sessionId,
 }: UseImplementationPlansLogicProps) {
-  const { jobs, isLoading, deleteJob, refreshJobs } = useBackgroundJobs();
+  const { jobs, isLoading, refreshJobs } = useBackgroundJobs();
   const { projectDirectory } = useProject();
   const { showNotification } = useNotification();
 
   // UI state
   const [copiedPlanId, setCopiedPlanId] = useState<string | undefined>(undefined);
   const [jobForModal, setJobForModal] = useState<BackgroundJob | undefined>(undefined);
-  const [jobToDelete, setJobToDelete] = useState<string | undefined>(undefined);
+  const [jobToDelete, setJobToDelete] = useState<BackgroundJob | undefined>(undefined);
   const [isDeleting, setIsDeleting] = useState<Record<string, boolean>>({});
+  
+  // State for selection and merging
+  const [selectedPlanIds, setSelectedPlanIds] = useState<string[]>([]);
+  const [mergeInstructions, setMergeInstructions] = useState("");
+  const [isMerging, setIsMerging] = useState(false);
 
   // Filter implementation plans for the current project and optionally session
   const implementationPlans = useMemo(() => {
@@ -33,7 +40,7 @@ export function useImplementationPlansLogic({
 
     return jobs
       .filter((job: BackgroundJob) => {
-        if (job.taskType !== "implementation_plan") return false;
+        if (job.taskType !== "implementation_plan" && job.taskType !== "implementation_plan_merge") return false;
 
 
         if (sessionId && job.sessionId !== sessionId) {
@@ -81,41 +88,104 @@ export function useImplementationPlansLogic({
     []
   );
 
-  // Delete implementation plan job
-  const handleDeletePlan = useCallback(
-    async (jobId: string) => {
-      if (!jobId) return;
-
-      setIsDeleting((prev) => ({ ...prev, [jobId]: true }));
-
-      try {
-        await deleteJob(jobId);
-
-        // Optimistic UI update
-        setIsDeleting((prev) => ({ ...prev, [jobId]: false }));
-        setJobToDelete(undefined);
-
+  // Toggle plan selection
+  const handleTogglePlanSelection = useCallback((jobId: string) => {
+    setSelectedPlanIds(prev => {
+      if (prev.includes(jobId)) {
+        return prev.filter(id => id !== jobId);
+      } else {
+        return [...prev, jobId];
+      }
+    });
+  }, []);
+  
+  // Handle merge plans
+  const handleMergePlans = useCallback(async () => {
+    if (!sessionId || selectedPlanIds.length < 2) {
+      showNotification({
+        title: "Cannot merge plans",
+        message: "Please select at least 2 plans to merge",
+        type: "error",
+      });
+      return;
+    }
+    
+    setIsMerging(true);
+    
+    try {
+      const result = await createMergedImplementationPlanAction(
+        sessionId,
+        selectedPlanIds,
+        mergeInstructions || undefined
+      );
+      
+      if (result.isSuccess) {
         showNotification({
-          title: "Success",
-          message: "Implementation plan deleted successfully.",
+          title: "Merge started",
+          message: "Your implementation plans are being merged",
           type: "success",
         });
-
-        // Refresh jobs list
+        
+        // Reset selection and instructions
+        setSelectedPlanIds([]);
+        setMergeInstructions("");
+        
+        // Refresh jobs to show the new merged plan
         await refreshJobs();
+      } else {
+        showNotification({
+          title: "Merge failed",
+          message: result.message || "Failed to merge implementation plans",
+          type: "error",
+        });
+      }
+    } catch (error) {
+      showNotification({
+        title: "Merge failed",
+        message: "An unexpected error occurred",
+        type: "error",
+      });
+    } finally {
+      setIsMerging(false);
+    }
+  }, [sessionId, selectedPlanIds, mergeInstructions, showNotification, refreshJobs]);
+
+  // Delete implementation plan job
+  const handleDeletePlan = useCallback(
+    async () => {
+      if (!jobToDelete) return;
+
+      setIsDeleting((prev) => ({ ...prev, [jobToDelete.id]: true }));
+
+      try {
+        const result = await deleteBackgroundJobAction(jobToDelete.id);
+        if (result.isSuccess) {
+          showNotification({
+            title: "Plan deleted",
+            message: "The implementation plan has been deleted",
+            type: "success",
+          });
+          setJobToDelete(undefined);
+          await refreshJobs();
+        } else {
+          showNotification({
+            title: "Failed to delete plan",
+            message: result.message || "An error occurred",
+            type: "error",
+          });
+        }
       } catch (error) {
         logger.error("Error deleting job:", error);
-
         showNotification({
           title: "Error",
           message: "Failed to delete implementation plan.",
           type: "error",
         });
-
-        setIsDeleting((prev) => ({ ...prev, [jobId]: false }));
+      } finally {
+        setIsDeleting((prev) => ({ ...prev, [jobToDelete.id]: false }));
       }
     },
-    [deleteJob, refreshJobs]
+    [jobToDelete, showNotification, refreshJobs]
   );
 
 
@@ -136,6 +206,9 @@ export function useImplementationPlansLogic({
     jobForModal,
     jobToDelete,
     isDeleting,
+    selectedPlanIds,
+    mergeInstructions,
+    isMerging,
 
     // Actions
     handleCopyToClipboard,
@@ -144,6 +217,9 @@ export function useImplementationPlansLogic({
     handleClosePlanDetails,
     setJobToDelete,
     refreshJobs,
+    handleTogglePlanSelection,
+    setMergeInstructions,
+    handleMergePlans,
   };
 }
 

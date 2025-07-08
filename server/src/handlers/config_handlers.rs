@@ -4,7 +4,7 @@ use tracing::{info, instrument};
 use bigdecimal::ToPrimitive;
 
 use crate::error::AppError;
-use crate::models::runtime_config::{TaskSpecificModelConfig, PathFinderSettings, AppState};
+use crate::models::runtime_config::{TaskSpecificModelConfig, AppState};
 use serde::{Serialize, Deserialize};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -27,7 +27,7 @@ pub struct ProviderWithModels {
 pub struct DesktopRuntimeAIConfig {
     pub tasks: std::collections::HashMap<String, TaskSpecificModelConfig>,
     pub providers: Vec<ProviderWithModels>,
-    pub path_finder_settings: PathFinderSettings,
+    pub max_concurrent_jobs: Option<u32>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -80,6 +80,9 @@ pub async fn get_desktop_runtime_ai_config(
     let mut provider_models: HashMap<String, ProviderWithModels> = HashMap::new();
     
     for model in regular_models.iter() {
+        let default_pricing = serde_json::Value::Object(serde_json::Map::new());
+        let pricing_info = model.pricing_info.as_ref().unwrap_or(&default_pricing);
+        
         let desktop_model = DesktopModelInfo {
             id: model.id.clone(),
             name: model.name.clone(),
@@ -87,10 +90,20 @@ pub async fn get_desktop_runtime_ai_config(
             provider_name: model.provider_name.clone(),
             description: model.description.clone(),
             context_window: Some(model.context_window as u32),
-            price_input_per_million: model.price_input.to_string(),
-            price_output_per_million: model.price_output.to_string(),
-            price_cache_read: model.price_cache_read.as_ref().map(|v| v.to_string()),
-            price_cache_write: model.price_cache_write.as_ref().map(|v| v.to_string())
+            price_input_per_million: pricing_info.get("input_per_million")
+                .and_then(|v| v.as_f64())
+                .map(|v| v.to_string())
+                .unwrap_or_else(|| "0".to_string()),
+            price_output_per_million: pricing_info.get("output_per_million")
+                .and_then(|v| v.as_f64())
+                .map(|v| v.to_string())
+                .unwrap_or_else(|| "0".to_string()),
+            price_cache_read: pricing_info.get("cache_read_per_million")
+                .and_then(|v| v.as_f64())
+                .map(|v| v.to_string()),
+            price_cache_write: pricing_info.get("cache_write_per_million")
+                .and_then(|v| v.as_f64())
+                .map(|v| v.to_string())
         };
         
         provider_models.entry(model.provider_name.clone())
@@ -111,6 +124,9 @@ pub async fn get_desktop_runtime_ai_config(
         let mut transcription_provider_models = Vec::new();
         
         for model in transcription_models.iter() {
+            let default_pricing = serde_json::Value::Object(serde_json::Map::new());
+            let pricing_info = model.pricing_info.as_ref().unwrap_or(&default_pricing);
+            
             let desktop_model = DesktopModelInfo {
                 id: model.id.clone(),
                 name: model.name.clone(),
@@ -118,10 +134,20 @@ pub async fn get_desktop_runtime_ai_config(
                 provider_name: model.provider_name.clone(),
                 description: model.description.clone(),
                 context_window: Some(model.context_window as u32),
-                price_input_per_million: model.price_input.to_string(),
-                price_output_per_million: model.price_output.to_string(),
-                price_cache_read: model.price_cache_read.as_ref().map(|v| v.to_string()),
-                price_cache_write: model.price_cache_write.as_ref().map(|v| v.to_string())
+                price_input_per_million: pricing_info.get("input_per_million")
+                    .and_then(|v| v.as_f64())
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "0".to_string()),
+                price_output_per_million: pricing_info.get("output_per_million")
+                    .and_then(|v| v.as_f64())
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "0".to_string()),
+                price_cache_read: pricing_info.get("cache_read_per_million")
+                    .and_then(|v| v.as_f64())
+                    .map(|v| v.to_string()),
+                price_cache_write: pricing_info.get("cache_write_per_million")
+                    .and_then(|v| v.as_f64())
+                    .map(|v| v.to_string())
             };
             
             transcription_provider_models.push(desktop_model);
@@ -157,19 +183,10 @@ pub async fn get_desktop_runtime_ai_config(
         .collect();
 
 
-    let path_finder_settings = PathFinderSettings {
-        max_files_with_content: task_configs.path_finder_settings.max_files_with_content,
-        include_file_contents: task_configs.path_finder_settings.include_file_contents,
-        max_content_size_per_file: task_configs.path_finder_settings.max_content_size_per_file,
-        max_file_count: task_configs.path_finder_settings.max_file_count,
-        file_content_truncation_chars: task_configs.path_finder_settings.file_content_truncation_chars,
-        token_limit_buffer: task_configs.path_finder_settings.token_limit_buffer,
-    };
-
     let response = DesktopRuntimeAIConfig {
         tasks,
         providers,
-        path_finder_settings,
+        max_concurrent_jobs: task_configs.max_concurrent_jobs,
     };
     
     info!("Returning desktop runtime AI configuration with {} providers (NO JSON storage used)", response.providers.len());

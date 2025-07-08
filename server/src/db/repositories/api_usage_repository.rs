@@ -23,13 +23,13 @@ pub struct ApiUsageRecord {
     pub service_name: String,
     pub tokens_input: i64,
     pub tokens_output: i64,
-    pub cached_input_tokens: i64,
     pub cache_write_tokens: i64,
     pub cache_read_tokens: i64,
     pub cost: BigDecimal,
     pub request_id: Option<String>,
     pub metadata: Option<serde_json::Value>,
     pub timestamp: DateTime<Utc>,
+    pub provider_reported_cost: Option<BigDecimal>,
 }
 
 #[derive(Debug, Serialize, FromRow)]
@@ -71,11 +71,11 @@ pub struct ApiUsageEntryDto {
     pub service_name: String,
     pub tokens_input: i64,
     pub tokens_output: i64,
-    pub cached_input_tokens: i64,
     pub cache_write_tokens: i64,
     pub cache_read_tokens: i64,
     pub request_id: Option<String>,
     pub metadata: Option<serde_json::Value>,
+    pub provider_reported_cost: Option<BigDecimal>,
 }
 
 #[derive(Debug)]
@@ -100,20 +100,20 @@ impl ApiUsageRepository {
 
         let result = query!(
             r#"
-            INSERT INTO api_usage (user_id, service_name, tokens_input, tokens_output, cached_input_tokens, cache_write_tokens, cache_read_tokens, cost, request_id, metadata)
+            INSERT INTO api_usage (user_id, service_name, tokens_input, tokens_output, cache_write_tokens, cache_read_tokens, cost, request_id, metadata, provider_reported_cost)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-            RETURNING id, user_id, service_name, tokens_input, tokens_output, cached_input_tokens, cache_write_tokens, cache_read_tokens, cost, request_id, metadata, timestamp
+            RETURNING id, user_id, service_name, tokens_input, tokens_output, cache_write_tokens, cache_read_tokens, cost, request_id, metadata, timestamp, provider_reported_cost
             "#,
             entry.user_id,
             entry.service_name,
             entry.tokens_input as i32,
             entry.tokens_output as i32,
-            entry.cached_input_tokens as i32,
             entry.cache_write_tokens as i32,
             entry.cache_read_tokens as i32,
             cost,
             entry.request_id,
-            metadata_to_store
+            metadata_to_store,
+            entry.provider_reported_cost
         )
         .fetch_one(&mut **executor)
         .await
@@ -125,13 +125,13 @@ impl ApiUsageRepository {
             service_name: result.service_name,
             tokens_input: result.tokens_input as i64,
             tokens_output: result.tokens_output as i64,
-            cached_input_tokens: result.cached_input_tokens.unwrap_or(0) as i64,
             cache_write_tokens: result.cache_write_tokens.unwrap_or(0) as i64,
             cache_read_tokens: result.cache_read_tokens.unwrap_or(0) as i64,
             cost: result.cost,
             request_id: result.request_id,
             metadata: result.metadata,
             timestamp: result.timestamp,
+            provider_reported_cost: result.provider_reported_cost,
         })
     }
 
@@ -157,7 +157,6 @@ impl ApiUsageRepository {
             SELECT 
                 COALESCE(SUM(tokens_input), 0) as total_input,
                 COALESCE(SUM(tokens_output), 0) as total_output, 
-                COALESCE(SUM(cached_input_tokens), 0) as total_cached_input,
                 COALESCE(SUM(cache_write_tokens), 0) as total_cache_write,
                 COALESCE(SUM(cache_read_tokens), 0) as total_cache_read,
                 COALESCE(SUM(cost), 0) as total_cost
@@ -195,7 +194,6 @@ impl ApiUsageRepository {
             SELECT 
                 COALESCE(SUM(tokens_input), 0) as tokens_input,
                 COALESCE(SUM(tokens_output), 0) as tokens_output,
-                COALESCE(SUM(cached_input_tokens), 0) as cached_input_tokens,
                 COALESCE(SUM(cache_write_tokens), 0) as cache_write_tokens,
                 COALESCE(SUM(cache_read_tokens), 0) as cache_read_tokens,
                 COALESCE(SUM(cost), 0) as total_cost
@@ -283,7 +281,7 @@ impl ApiUsageRepository {
             r#"
             WITH usage_with_model_id AS (
                 SELECT
-                    id, cost, tokens_input, tokens_output, cached_input_tokens, cache_write_tokens, cache_read_tokens, request_id,
+                    id, cost, tokens_input, tokens_output, cache_write_tokens, cache_read_tokens, request_id,
                     CASE
                         WHEN service_name LIKE '%/%' THEN service_name
                         WHEN metadata->>'modelId' IS NOT NULL THEN metadata->>'modelId'
@@ -301,7 +299,7 @@ impl ApiUsageRepository {
                 COUNT(DISTINCT COALESCE(u.request_id, u.id::text))::bigint as total_requests,
                 COALESCE(SUM(u.tokens_input), 0)::bigint as total_input_tokens,
                 COALESCE(SUM(u.tokens_output), 0)::bigint as total_output_tokens,
-                COALESCE(SUM(u.cached_input_tokens), 0)::bigint as total_cached_input_tokens,
+                0::bigint as total_cached_input_tokens,
                 COALESCE(SUM(u.cache_write_tokens), 0)::bigint as total_cache_write_tokens,
                 COALESCE(SUM(u.cache_read_tokens), 0)::bigint as total_cache_read_tokens,
                 0::bigint as total_duration_ms
@@ -404,7 +402,6 @@ impl ApiUsageRepository {
                     service_name,
                     tokens_input,
                     tokens_output,
-                    cached_input_tokens,
                     cache_write_tokens,
                     cache_read_tokens,
                     cost,

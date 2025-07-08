@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useSessionStateContext, useSessionActionsContext } from "@/contexts/session";
 import { listProjectFilesAction } from "@/actions/file-system/list-project-files.action";
 import { WorkflowTracker } from "@/utils/workflow-utils";
+import { useNotification } from "@/contexts/notification-context";
 
 // Extended interface for UI state - includes selection state
 interface ExtendedFileInfo {
@@ -25,6 +26,7 @@ interface ExtendedFileInfo {
 export function useFileSelection(projectDirectory?: string) {
   const { currentSession, activeSessionId } = useSessionStateContext();
   const { updateCurrentSessionFields } = useSessionActionsContext();
+  const { showNotification } = useNotification();
   
   const [files, setFiles] = useState<ExtendedFileInfo[]>([]);
   const [loading, setLoading] = useState(false);
@@ -310,35 +312,49 @@ export function useFileSelection(projectDirectory?: string) {
   // Apply workflow results to file selection
   const applyWorkflowResultsToSession = useCallback((paths: string[], source: string) => {
     if (paths && paths.length > 0) {
-      // Schedule the updates to avoid setState during render
-      setTimeout(() => {
-        // Save current state to history before applying results
-        const currentState = {
-          includedFiles: currentSession?.includedFiles || [],
-          forceExcludedFiles: currentSession?.forceExcludedFiles || []
-        };
-        
-        setHistory(prev => {
-          const newHistory = prev.slice(0, historyIndex + 1);
-          newHistory.push(currentState);
-          return newHistory.slice(-50);
-        });
-        setHistoryIndex(prev => Math.min(prev + 1, 49));
-        
-        // Replace session files with workflow results (don't merge, replace)
-        const pathsSet = new Set(paths);
-        const currentExcluded = currentSession?.forceExcludedFiles || [];
-        const newExcludedFiles = currentExcluded.filter(path => !pathsSet.has(path));
-        
-        updateCurrentSessionFields({ 
-          includedFiles: paths,
-          forceExcludedFiles: newExcludedFiles
-        });
-        
-        console.log(`Applied ${paths.length} files from ${source}`);
-      }, 0);
+      // Save current state to history before applying
+      saveToHistory();
+      
+      // ADD workflow results to existing selection (merge, don't replace)
+      const pathsSet = new Set(paths);
+      const currentIncluded = currentSession?.includedFiles || [];
+      const currentExcluded = currentSession?.forceExcludedFiles || [];
+      
+      // Update the files state to reflect the new additions
+      const updatedFiles = files.map(file => {
+        if (pathsSet.has(file.path)) {
+          return { ...file, included: true, excluded: false };
+        }
+        return file;
+      });
+      
+      setFiles(updatedFiles);
+      
+      // Merge new paths with existing included files
+      const mergedIncluded = [...new Set([...currentIncluded, ...paths])];
+      
+      // Remove any of the new paths from excluded list
+      const newExcludedFiles = currentExcluded.filter(path => !pathsSet.has(path));
+      
+      // Update session with debouncing
+      updateCurrentSessionFields({ 
+        includedFiles: mergedIncluded,
+        forceExcludedFiles: newExcludedFiles
+      });
+      
+      // Mark that we have unsaved changes
+      setHasUnsavedChanges(true);
+      
+      const addedCount = mergedIncluded.length - currentIncluded.length;
+      console.log(`Added ${addedCount} new files from ${source} (${mergedIncluded.length} total selected)`);
+      
+      showNotification({
+        title: "Files added",
+        message: `Added ${addedCount} files to selection`,
+        type: "success",
+      });
     }
-  }, [currentSession, historyIndex, updateCurrentSessionFields]);
+  }, [currentSession, files, updateCurrentSessionFields, saveToHistory, showNotification, setFiles, setHasUnsavedChanges]);
 
   // Find function - triggers file finder workflow with completion handling
   const triggerFind = useCallback(async () => {

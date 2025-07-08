@@ -33,7 +33,7 @@ const NewSessionForm = ({
                 onSessionNameInputChange(e.target.value)
               }
               placeholder="Session name"
-              disabled={isLoading || globalIsSwitching || disabled}
+              disabled={isLoading || globalIsSwitching}
               className="w-full h-9"
             />
           </div>

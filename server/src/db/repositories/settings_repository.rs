@@ -9,7 +9,7 @@ use tracing::{info, instrument};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DatabaseAIModelSettings {
     pub tasks: HashMap<String, TaskConfig>,
-    pub path_finder_settings: DatabasePathFinderSettings,
+    pub max_concurrent_jobs: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -21,15 +21,6 @@ pub struct TaskConfig {
     pub allowed_models: Option<Vec<String>>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DatabasePathFinderSettings {
-    pub max_files_with_content: Option<u32>,
-    pub include_file_contents: Option<bool>,
-    pub max_content_size_per_file: Option<u32>,
-    pub max_file_count: Option<u32>,
-    pub file_content_truncation_chars: Option<u32>,
-    pub token_limit_buffer: Option<u32>,
-}
 
 impl DatabaseAIModelSettings {
     pub fn get_model_for_task(&self, task_name: &str) -> Result<&str, AppError> {

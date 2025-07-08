@@ -16,7 +16,7 @@ pub fn convert_db_job_to_job(db_job: &BackgroundJob) -> AppResult<Job> {
     
     Ok(Job {
         id: db_job.id.clone(),
-        job_type: task_type,
+        task_type: task_type,
         payload: ui_metadata.job_payload_for_worker,
         session_id: db_job.session_id.clone(),
         process_after: None,
@@ -32,10 +32,12 @@ pub fn deserialize_value_to_job_payload(json_value: &serde_json::Value, task_typ
         JobPayload, RegexFileFilterPayload, 
         PathCorrectionPayload, 
         ExtendedPathFinderPayload, ImplementationPlanPayload,
+        ImplementationPlanMergePayload,
         TaskRefinementPayload,
         TextImprovementPayload, GenericLlmStreamPayload,
         OpenRouterLlmPayload, FileRelevanceAssessmentPayload,
-        WebSearchQueryGenerationPayload, WebSearchExecutionPayload
+        WebSearchPromptsGenerationPayload, WebSearchExecutionPayload,
+        FileFinderWorkflowPayload, WebSearchWorkflowPayload
     };
     use crate::models::TaskType;
     
@@ -80,23 +82,37 @@ pub fn deserialize_value_to_job_payload(json_value: &serde_json::Value, task_typ
                 .map_err(|e| AppError::JobError(format!("Failed to deserialize FileRelevanceAssessmentPayload: {}", e)))?;
             Ok(JobPayload::FileRelevanceAssessment(payload))
         }
-        TaskType::WebSearchQueryGeneration => {
-            let payload: WebSearchQueryGenerationPayload = serde_json::from_value(json_value.clone())
-                .map_err(|e| AppError::JobError(format!("Failed to deserialize WebSearchQueryGenerationPayload: {}", e)))?;
-            Ok(JobPayload::WebSearchQueryGeneration(payload))
+        TaskType::WebSearchPromptsGeneration => {
+            let payload: WebSearchPromptsGenerationPayload = serde_json::from_value(json_value.clone())
+                .map_err(|e| AppError::JobError(format!("Failed to deserialize WebSearchPromptsGenerationPayload: {}", e)))?;
+            Ok(JobPayload::WebSearchPromptsGeneration(payload))
         }
         TaskType::WebSearchExecution => {
             let payload: WebSearchExecutionPayload = serde_json::from_value(json_value.clone())
                 .map_err(|e| AppError::JobError(format!("Failed to deserialize WebSearchExecutionPayload: {}", e)))?;
             Ok(JobPayload::WebSearchExecution(payload))
         }
-        // FileFinderWorkflow is handled by workflow orchestrator, not individual payload deserialization
+        // FileFinderWorkflow is now a job type
         TaskType::FileFinderWorkflow => {
-            Err(AppError::JobError("FileFinderWorkflow should be handled by WorkflowOrchestrator, not individual payload deserialization".to_string()))
+            let payload: FileFinderWorkflowPayload = serde_json::from_value(json_value.clone())
+                .map_err(|e| AppError::JobError(format!("Failed to deserialize FileFinderWorkflowPayload: {}", e)))?;
+            Ok(JobPayload::FileFinderWorkflow(payload))
+        }
+        // WebSearchWorkflow is a job type
+        TaskType::WebSearchWorkflow => {
+            let payload: WebSearchWorkflowPayload = serde_json::from_value(json_value.clone())
+                .map_err(|e| AppError::JobError(format!("Failed to deserialize WebSearchWorkflowPayload: {}", e)))?;
+            Ok(JobPayload::WebSearchWorkflow(payload))
         }
         // VoiceTranscription uses direct API calls, not background jobs
         TaskType::VoiceTranscription => {
             Err(AppError::JobError("VoiceTranscription uses direct API calls instead of background job system".to_string()))
+        }
+        // ImplementationPlanMerge task type
+        TaskType::ImplementationPlanMerge => {
+            let payload: ImplementationPlanMergePayload = serde_json::from_value(json_value.clone())
+                .map_err(|e| AppError::JobError(format!("Failed to deserialize ImplementationPlanMergePayload: {}", e)))?;
+            Ok(JobPayload::ImplementationPlanMerge(payload))
         }
         // Streaming and Unknown are not retryable job types
         TaskType::Streaming | TaskType::Unknown => {

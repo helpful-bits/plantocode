@@ -157,6 +157,9 @@ pub fn format_user_error(error: &AppError) -> String {
         AppError::TooManyRequests(_) => "Too many requests. Please wait a moment before trying again.".to_string(),
         AppError::NotImplemented(_) => "This feature is not yet implemented. Please contact support.".to_string(),
         AppError::LockPoisoned(_) => "System resource lock error. Please try again.".to_string(),
+        AppError::ConfigurationError(msg) => format!("Configuration error: {}", msg),
+        AppError::InvalidTaskTypeError(msg) => format!("Invalid task type: {}", msg),
+        AppError::CacheValidationError(msg) => format!("Cache validation error: {}", msg),
     }
 }
 

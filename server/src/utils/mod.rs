@@ -3,3 +3,4 @@ pub mod multipart_utils;
 pub mod admin_alerting;
 pub mod transcription_validation;
 pub mod financial_validation;
+pub mod token_estimator;

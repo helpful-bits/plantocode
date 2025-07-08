@@ -113,6 +113,8 @@ CREATE TABLE IF NOT EXISTS background_jobs (
   error_message TEXT,
   tokens_sent INTEGER DEFAULT 0,
   tokens_received INTEGER DEFAULT 0,
+  cache_write_tokens INTEGER DEFAULT 0,
+  cache_read_tokens INTEGER DEFAULT 0,
   model_used TEXT,
   actual_cost REAL,
   metadata TEXT,

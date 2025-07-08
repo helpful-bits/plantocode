@@ -9,6 +9,7 @@
 // Base TaskType string union (synced with Rust TaskType enum)
 export type TaskType =
   | "implementation_plan"
+  | "implementation_plan_merge"
   | "voice_transcription"
   | "text_improvement"
   | "path_correction"
@@ -22,7 +23,7 @@ export type TaskType =
   | "local_file_filtering"
   | "file_relevance_assessment"
   | "extended_path_finder"
-  | "web_search_query_generation"
+  | "web_search_prompts_generation"
   | "web_search_execution"
   | "unknown";
 
@@ -31,18 +32,20 @@ export type TaskTypeSupportingSystemPrompts =
   | "voice_transcription"
   | "text_improvement"
   | "implementation_plan"
+  | "implementation_plan_merge"
   | "path_correction"
   | "task_refinement"
   | "regex_file_filter"
   | "generic_llm_stream"
   | "extended_path_finder"
   | "file_relevance_assessment"
-  | "web_search_query_generation"
+  | "web_search_prompts_generation"
   | "web_search_execution";
 
 // Runtime array of all task types (synced with Rust TaskType enum)
 export const ALL_TASK_TYPES: readonly TaskType[] = [
   "implementation_plan",
+  "implementation_plan_merge",
   "voice_transcription",
   "text_improvement",
   "path_correction",
@@ -55,7 +58,7 @@ export const ALL_TASK_TYPES: readonly TaskType[] = [
   "local_file_filtering",
   "file_relevance_assessment",
   "extended_path_finder",
-  "web_search_query_generation",
+  "web_search_prompts_generation",
   "web_search_execution",
   "unknown",
 ] as const;
@@ -65,13 +68,14 @@ export const SYSTEM_PROMPT_TASK_TYPES: readonly TaskTypeSupportingSystemPrompts[
   "voice_transcription",
   "text_improvement",
   "implementation_plan",
+  "implementation_plan_merge",
   "path_correction",
   "task_refinement",
   "regex_file_filter",
   "generic_llm_stream",
   "extended_path_finder",
   "file_relevance_assessment",
-  "web_search_query_generation",
+  "web_search_prompts_generation",
   "web_search_execution",
 ] as const;
 
@@ -107,6 +111,13 @@ export const TaskTypeDetails: Record<TaskType, {
     displayName: "Implementation Plans", 
     category: "Development",
     description: "Create detailed implementation plans for features",
+    defaultProvider: "google"
+  },
+  implementation_plan_merge: { 
+    requiresLlm: true, 
+    displayName: "Merge Implementation Plans", 
+    category: "Development",
+    description: "Merge multiple implementation plans into a unified plan",
     defaultProvider: "google"
   },
   voice_transcription: { 
@@ -197,19 +208,19 @@ export const TaskTypeDetails: Record<TaskType, {
     description: "Comprehensive file discovery with deeper analysis",
     defaultProvider: "google"
   },
-  web_search_query_generation: {
+  web_search_prompts_generation: {
     requiresLlm: true,
-    displayName: 'Web Search Query Generation',
+    displayName: 'Web Search Prompts Generation',
     category: 'Workflow Stage',
     defaultProvider: 'google',
-    description: 'Generate optimized search queries for web-enhanced task refinement'
+    description: 'Generate sophisticated research prompts for web search execution'
   },
   web_search_execution: {
     requiresLlm: true,
     displayName: 'Web Search Execution',
     category: 'Workflow Stage',
-    defaultProvider: 'openai',
-    description: 'Execute web searches and synthesize results into actionable insights'
+    defaultProvider: 'google',
+    description: 'Execute web searches using generated prompts and synthesize results'
   },
   
   // Fallback

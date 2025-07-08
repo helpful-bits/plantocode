@@ -66,45 +66,9 @@ function SimpleCopyButton({ content }: { content: string }) {
   );
 }
 
-// Simple content display component for non-implementation plan content
-function SimpleContentDisplay({ content, isLoading, placeholder }: { 
-  content: string; 
-  isLoading?: boolean; 
-  placeholder?: string;
-}) {
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-40 border border-border/60 bg-muted/20 rounded-md">
-        <div className="flex items-center gap-2">
-          <Loader2 className="h-4 w-4 animate-spin text-info" />
-          <span className="text-sm text-info">Streaming response...</span>
-        </div>
-      </div>
-    );
-  }
-
-  if (!content && placeholder) {
-    return (
-      <div className="flex items-center justify-center h-40 border border-border/60 bg-muted/20 rounded-md">
-        <span className="text-sm text-muted-foreground">{placeholder}</span>
-      </div>
-    );
-  }
-
-  return (
-    <div className="relative">
-      <div className="absolute top-2 right-2 z-10">
-        <SimpleCopyButton content={content} />
-      </div>
-      <pre className="whitespace-pre-wrap font-mono text-xs text-balance w-full p-4 pr-20 bg-muted/20 rounded-md border border-border/60 text-foreground overflow-auto max-h-[70vh]">
-        {content}
-      </pre>
-    </div>
-  );
-}
 
 export function JobDetailsResponseSection() {
-  const { job, responseContent, parsedMetadata, copyButtons = [] } = useJobDetailsContext();
+  const { job, responseContent, parsedMetadata, copyButtons = [], formatStructuredResponse } = useJobDetailsContext();
   const [isResponseOpen, setIsResponseOpen] = useState(false);
   const [openedJobId, setOpenedJobId] = useState<string | null>(null);
   const { showNotification } = useNotification();
@@ -120,6 +84,7 @@ export function JobDetailsResponseSection() {
 
   const isImplementationPlan = job.taskType === "implementation_plan";
 
+  // Response content is now pre-formatted from context, no additional parsing needed
   let displayContentForViewer = responseContent || "";
 
   const isJobStreaming = (job.status === "running" || job.status === "processingStream") && Boolean(parsedMetadata?.taskData?.isStreaming);
@@ -128,7 +93,7 @@ export function JobDetailsResponseSection() {
     if (!isJobStreaming && job.status === "completed") {
       displayContentForViewer = parsePlanResponseContent(responseContent);
     }
-    // For streaming or other states of implementation_plan, responseContent (raw job.response) is used directly.
+    // For streaming or other states of implementation_plan, responseContent is used directly.
   }
 
 
@@ -247,10 +212,7 @@ export function JobDetailsResponseSection() {
                 <div className="mb-3">
                   <Progress
                     value={
-                      getStreamingProgressValue(
-                        job.metadata,
-                        job.startTime
-                      ) ?? 10
+                      getStreamingProgressValue(job.metadata) ?? 10
                     }
                     className="h-1 mb-2"
                   />
@@ -275,11 +237,49 @@ export function JobDetailsResponseSection() {
                 </div>
               ) : null}
 
-              <SimpleContentDisplay
-                content={displayContentForViewer}
-                isLoading={isJobStreaming}
-                placeholder="No response content available"
-              />
+              {/* Check if there's a formatted response available */}
+              {(() => {
+                const formattedResponse = formatStructuredResponse?.(job);
+                
+                if (formattedResponse) {
+                  return (
+                    <div className="rounded-md bg-gray-50 dark:bg-gray-800 p-4">
+                      {formattedResponse}
+                    </div>
+                  );
+                }
+                
+                // Fall back to raw response display for other task types
+                if (isJobStreaming) {
+                  return (
+                    <div className="flex items-center justify-center h-40 border border-border/60 bg-muted/20 rounded-md">
+                      <div className="flex items-center gap-2">
+                        <Loader2 className="h-4 w-4 animate-spin text-info" />
+                        <span className="text-sm text-info">Streaming response...</span>
+                      </div>
+                    </div>
+                  );
+                }
+
+                if (!displayContentForViewer) {
+                  return (
+                    <div className="flex items-center justify-center h-40 border border-border/60 bg-muted/20 rounded-md">
+                      <span className="text-sm text-muted-foreground">No response content available</span>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="relative">
+                    <div className="absolute top-2 right-2 z-10">
+                      <SimpleCopyButton content={displayContentForViewer} />
+                    </div>
+                    <pre className="whitespace-pre-wrap font-mono text-xs text-balance w-full p-4 pr-20 bg-muted/20 rounded-md border border-border/60 text-foreground overflow-auto max-h-[70vh]">
+                      {displayContentForViewer}
+                    </pre>
+                  </div>
+                );
+              })()}
             </CardContent>
           </CollapsibleContent>
         </Collapsible>

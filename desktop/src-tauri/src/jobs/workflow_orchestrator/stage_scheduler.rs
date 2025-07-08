@@ -18,7 +18,7 @@ pub(super) async fn find_next_abstract_stages_to_execute_internal<'a>(
     workflow_definition: &'a WorkflowDefinition
 ) -> Vec<&'a WorkflowStageDefinition> {
     debug!("Finding next stages for workflow {} with {} existing stage jobs", 
-           workflow_state.workflow_id, workflow_state.stage_jobs.len());
+           workflow_state.workflow_id, workflow_state.stages.len());
     
     let mut eligible_stages = Vec::new();
     
@@ -27,7 +27,7 @@ pub(super) async fn find_next_abstract_stages_to_execute_internal<'a>(
         
         // Check if this stage already has an active or completed job
         // If any job was cancelled or failed, the workflow should stop
-        let stage_job_status = workflow_state.stage_jobs.iter()
+        let stage_job_status = workflow_state.stages.iter()
             .filter(|job| job.task_type == stage_def.task_type)
             .map(|job| &job.status)
             .next();
@@ -93,7 +93,7 @@ pub(super) fn abstract_stage_dependencies_met_internal(
     for dep_stage_name in &stage_def.dependencies {
         if let Some(dep_stage_def) = workflow_definition.get_stage(dep_stage_name) {
             // Find if this dependency stage has been completed
-            let dep_completed = workflow_state.stage_jobs.iter().any(|job| {
+            let dep_completed = workflow_state.stages.iter().any(|job| {
                 // Match by task type and check if completed
                 job.task_type == dep_stage_def.task_type && job.status == JobStatus::Completed
             });
@@ -125,7 +125,7 @@ pub(super) async fn count_running_jobs_in_workflow_internal(
     use crate::models::JobStatus;
     let workflows_guard = workflows.lock().await;
     if let Some(workflow_state) = workflows_guard.get(workflow_id) {
-        workflow_state.stage_jobs.iter()
+        workflow_state.stages.iter()
             .filter(|job| job.status == JobStatus::Running)
             .count()
     } else {
@@ -141,7 +141,7 @@ pub(super) fn stage_to_task_type_internal(stage: &WorkflowStage) -> TaskType {
         WorkflowStage::FileRelevanceAssessment => TaskType::FileRelevanceAssessment,
         WorkflowStage::ExtendedPathFinder => TaskType::ExtendedPathFinder,
         WorkflowStage::PathCorrection => TaskType::PathCorrection,
-        WorkflowStage::WebSearchQueryGeneration => TaskType::WebSearchQueryGeneration,
+        WorkflowStage::WebSearchPromptsGeneration => TaskType::WebSearchPromptsGeneration,
         WorkflowStage::WebSearchExecution => TaskType::WebSearchExecution,
     }
 }

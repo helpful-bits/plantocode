@@ -4,7 +4,7 @@ use async_trait::async_trait;
 
 
 use crate::error::{AppError, AppResult};
-use crate::jobs::types::{Job, JobPayload, JobProcessResult};
+use crate::jobs::types::{Job, JobPayload, JobProcessResult, JobResultData};
 use crate::jobs::processor_trait::JobProcessor;
 use crate::jobs::job_processor_utils;
 use crate::jobs::processors::{LlmTaskRunner, LlmTaskConfigBuilder, LlmPromptContext};
@@ -51,10 +51,7 @@ impl JobProcessor for GenericLlmStreamProcessor {
         job_processor_utils::log_job_start(&job.id, "generic LLM stream");
         
         // Setup LLM task configuration for streaming
-        let llm_config = LlmTaskConfigBuilder::new()
-            .model(model_used.clone())
-            .temperature(temperature)
-            .max_tokens(max_output_tokens)
+        let llm_config = LlmTaskConfigBuilder::new(model_used.clone(), temperature, max_output_tokens)
             .stream(true) // Enable streaming for this processor
             .build();
         
@@ -80,7 +77,6 @@ impl JobProcessor for GenericLlmStreamProcessor {
             Err(e) => {
                 error!("Generic LLM Stream task execution failed: {}", e);
                 let error_msg = format!("Streaming LLM task execution failed: {}", e);
-                task_runner.finalize_failure(&repo, &job.id, &error_msg, Some(&e), None).await?;
                 return Ok(JobProcessResult::failure(job.id.clone(), error_msg));
             }
         };
@@ -96,33 +92,33 @@ impl JobProcessor for GenericLlmStreamProcessor {
         if response_content.is_empty() {
             let error_msg = "No content received from LLM stream";
             error!("Generic stream job {} failed: {}", job.id, error_msg);
-            task_runner.finalize_failure(&repo, &job.id, &error_msg, None, llm_result.usage).await?;
             return Ok(JobProcessResult::failure(job.id.clone(), error_msg.to_string()));
         }
         
-        // Extract usage before moving it
+        // Extract usage and system prompt template before moving it
         let usage_for_result = llm_result.usage.clone();
-        
-        // Use task runner's finalize_success method to ensure consistent template handling
-        task_runner.finalize_success(
-            &repo,
-            &job.id,
-            &llm_result,
-            None,
-        ).await?;
+        let system_prompt_template = llm_result.system_prompt_template.clone();
+        let actual_cost = llm_result.usage.as_ref().and_then(|u| u.cost).unwrap_or(0.0);
         
         // Create and return the result
-        let mut result = JobProcessResult::success(job.id.to_string(), response_content);
+        let mut result = JobProcessResult::success(job.id.to_string(), JobResultData::Text(response_content));
         
         // Add token information if usage is available
         if let Some(usage) = &usage_for_result {
             result = result.with_tokens(
-                Some(usage.prompt_tokens as i32),
-                Some(usage.completion_tokens as i32),
-                Some(usage.total_tokens as i32),
-                Some(response_len)
+                Some(usage.prompt_tokens as u32),
+                Some(usage.completion_tokens as u32)
+            )
+            .with_cache_tokens(
+                Some(usage.cache_write_tokens as i64),
+                Some(usage.cache_read_tokens as i64)
             );
         }
+        
+        // Add system prompt template and actual cost
+        result = result
+            .with_system_prompt_template(system_prompt_template)
+            .with_actual_cost(actual_cost);
         
         info!("Completed generic LLM stream job {}", job.id);
         Ok(result)
