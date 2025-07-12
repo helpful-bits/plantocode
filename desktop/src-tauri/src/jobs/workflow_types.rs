@@ -228,16 +228,16 @@ impl WorkflowState {
     /// NOTE: This method only considers created stage jobs, which may be misleading
     /// Use calculate_progress_with_definition() for accurate progress calculation
     pub fn calculate_progress(&self) -> f32 {
-        if self.stages.is_empty() {
+        let total_stages = self.stages.len() as f32;
+        if total_stages == 0.0 {
             return 0.0;
         }
-
-        let total_stages = self.stages.len() as f32;
+        
         let completed_stages = self.stages.iter()
             .filter(|job| job.status == JobStatus::Completed)
             .count() as f32;
-
-        (completed_stages / total_stages) * 100.0
+        
+        (completed_stages / total_stages * 100.0).min(100.0)
     }
 
     /// Calculate overall workflow progress with accurate total stage count from definition

@@ -16,7 +16,7 @@ use uuid::Uuid;
 use dashmap::DashMap;
 
 use crate::config::settings::RateLimitConfig;
-use crate::middleware::secure_auth::UserId;
+use crate::models::AuthenticatedUser;
 
 /// Rate limiting strategy
 #[derive(Debug, Clone)]
@@ -324,9 +324,9 @@ impl RateLimitMiddleware {
             }
             RateLimitStrategy::ByUser => {
                 // Extract user ID from request extensions (set by auth middleware)
-                if let Some(user_id) = req.extensions().get::<UserId>() {
+                if let Some(user) = req.extensions().get::<AuthenticatedUser>() {
                     self.storage
-                        .check_user_rate_limit(&user_id.0, max_requests, window_duration, &self.config.redis_key_prefix)
+                        .check_user_rate_limit(&user.user_id, max_requests, window_duration, &self.config.redis_key_prefix)
                         .await
                 } else {
                     // No user context, allow request (should be handled by auth middleware)
@@ -344,9 +344,9 @@ impl RateLimitMiddleware {
                 }
 
                 // Also check user limit if authenticated
-                if let Some(user_id) = req.extensions().get::<UserId>() {
+                if let Some(user) = req.extensions().get::<AuthenticatedUser>() {
                     self.storage
-                        .check_user_rate_limit(&user_id.0, max_requests, window_duration, &self.config.redis_key_prefix)
+                        .check_user_rate_limit(&user.user_id, max_requests, window_duration, &self.config.redis_key_prefix)
                         .await
                 } else {
                     true
@@ -433,23 +433,24 @@ where
 }
 
 /// Initialize rate limiting storage based on configuration
-pub async fn create_rate_limit_storage(config: &RateLimitConfig) -> Result<RateLimitStorage, String> {
-    if config.use_redis {
-        if let Some(redis_url) = &config.redis_url {
-            match RateLimitStorage::new_redis(redis_url).await {
-                Ok(storage) => Ok(storage),
+pub async fn create_rate_limit_storage(config: &RateLimitConfig, redis_url: &Option<String>) -> Result<RateLimitStorage, String> {
+    match redis_url {
+        Some(url) => {
+            match RateLimitStorage::new_redis(url).await {
+                Ok(storage) => {
+                    info!("Redis connected for rate limiting");
+                    Ok(storage)
+                },
                 Err(e) => {
                     error!("Failed to connect to Redis for rate limiting: {}", e);
-                    Err(String::from("Failed to connect to Redis for rate limiting, and Redis is configured as mandatory."))
+                    Err(format!("Failed to connect to Redis: {}. Redis is required for rate limiting.", e))
                 }
             }
-        } else {
-            error!("RATE_LIMIT_USE_REDIS is true but RATE_LIMIT_REDIS_URL is not set.");
-            Err(String::from("Redis is configured for rate limiting but RATE_LIMIT_REDIS_URL is not set."))
+        },
+        None => {
+            error!("REDIS_URL is not set. Redis is required for the application to run.");
+            Err(String::from("REDIS_URL must be set. Redis is required for the application."))
         }
-    } else {
-        info!("Using in-memory rate limiting storage");
-        Ok(RateLimitStorage::new_memory())
     }
 }
 

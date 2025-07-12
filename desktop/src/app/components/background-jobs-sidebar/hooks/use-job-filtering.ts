@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 
 import { type BackgroundJob } from "@/types/session-types";
 import { createLogger } from "@/utils/logger";
+import { getParsedMetadata } from '../utils';
 
 const logger = createLogger({ namespace: "JobFiltering" });
 
@@ -29,12 +30,28 @@ export function useJobFiltering(jobs: BackgroundJob[], isLoading: boolean) {
       // Use cached jobs during loading to prevent UI flicker
       const jobsToUse = isLoading && cachedJobs.length > 0 ? cachedJobs : jobs;
 
+      // Deduplicate jobs by ID, keeping the most recent version
+      const uniqueJobs = Array.from(
+        jobsToUse.reduce((map, job) => {
+          const existing = map.get(job.id);
+          if (!existing || (job.updatedAt && existing.updatedAt && new Date(job.updatedAt) > new Date(existing.updatedAt))) {
+            map.set(job.id, job);
+          } else if (!existing) {
+            map.set(job.id, job);
+          }
+          return map;
+        }, new Map<string, BackgroundJob>()).values()
+      );
+
+      // No filtering needed - workflow jobs are already filtered at the state level
+      const filteredJobs = uniqueJobs;
+
       logger.debug(
-        `Sorting ${jobsToUse.length} jobs (cached=${isLoading && cachedJobs.length > 0})`
+        `Sorting ${filteredJobs.length} jobs (filtered from ${uniqueJobs.length} unique jobs, original count: ${jobsToUse.length}, cached=${isLoading && cachedJobs.length > 0})`
       );
 
       // Log job status distribution for debugging
-      const statusCounts = jobsToUse.reduce(
+      const statusCounts = filteredJobs.reduce(
         (acc: Record<string, number>, job: BackgroundJob) => {
           acc[job.status] = (acc[job.status] || 0) + 1;
           return acc;
@@ -47,31 +64,78 @@ export function useJobFiltering(jobs: BackgroundJob[], isLoading: boolean) {
         statusCounts
       );
 
-      // Create a safe compare function for timestamps that handles undefined/null values
-      const safeCompare = (
-        a: BackgroundJob,
-        b: BackgroundJob,
-        // Array of property names to check in order of preference
-        props: Array<keyof BackgroundJob>
-      ) => {
-        // Find the first valid property to compare
-        for (const prop of props) {
-          const aVal = a[prop] as number | undefined | null;
-          const bVal = b[prop] as number | undefined | null;
-
-          // Only use this property if both values are valid numbers
-          if (typeof aVal === "number" && typeof bVal === "number") {
-            return bVal - aVal; // Descending order (newest first)
-          }
+      // Group jobs by workflowId
+      const workflowGroups = new Map<string, BackgroundJob[]>();
+      const standaloneJobs: BackgroundJob[] = [];
+      
+      filteredJobs.forEach((job: BackgroundJob) => {
+        const meta = getParsedMetadata(job.metadata);
+        const workflowId = meta?.workflowId;
+        if (workflowId) {
+          const group = workflowGroups.get(workflowId) || [];
+          group.push(job);
+          workflowGroups.set(workflowId, group);
+        } else {
+          standaloneJobs.push(job);
         }
-        // Fallback to creation time - every job should have this
-        return (b.createdAt || 0) - (a.createdAt || 0);
-      };
-
-      // Sort all jobs by most recent activity (endTime for completed jobs, updatedAt for others)
-      const sortedJobs = [...jobsToUse].sort((a: BackgroundJob, b: BackgroundJob) =>
-        safeCompare(a, b, ["endTime", "updatedAt", "startTime", "createdAt"])
+      });
+      
+      // Sort jobs within each workflow group by creation time (newest first, oldest at bottom)
+      workflowGroups.forEach((jobs) => {
+        jobs.sort((a: BackgroundJob, b: BackgroundJob) => 
+          (b.createdAt || 0) - (a.createdAt || 0)
+        );
+      });
+      
+      // Sort standalone jobs by creation time (newest first)
+      standaloneJobs.sort((a: BackgroundJob, b: BackgroundJob) =>
+        (b.createdAt || 0) - (a.createdAt || 0)
       );
+      
+      // Get the newest job from each workflow to determine workflow order
+      const workflowsWithNewest = Array.from(workflowGroups.entries()).map(([workflowId, jobs]) => ({
+        workflowId,
+        jobs,
+        newestTime: Math.max(...jobs.map(j => j.createdAt || 0))
+      }));
+      
+      // Sort workflows by their newest job time (newest first)
+      workflowsWithNewest.sort((a, b) => b.newestTime - a.newestTime);
+      
+      // Interleave workflow bundles with standalone jobs based on timing
+      const sortedJobs: BackgroundJob[] = [];
+      let workflowIndex = 0;
+      let standaloneIndex = 0;
+      
+      while (workflowIndex < workflowsWithNewest.length || standaloneIndex < standaloneJobs.length) {
+        // Check if we have jobs from both categories
+        const hasWorkflow = workflowIndex < workflowsWithNewest.length;
+        const hasStandalone = standaloneIndex < standaloneJobs.length;
+        
+        if (hasWorkflow && hasStandalone) {
+          // Compare newest times
+          const workflowNewest = workflowsWithNewest[workflowIndex].newestTime;
+          const standaloneNewest = standaloneJobs[standaloneIndex].createdAt || 0;
+          
+          if (workflowNewest >= standaloneNewest) {
+            // Add entire workflow bundle
+            sortedJobs.push(...workflowsWithNewest[workflowIndex].jobs);
+            workflowIndex++;
+          } else {
+            // Add standalone job
+            sortedJobs.push(standaloneJobs[standaloneIndex]);
+            standaloneIndex++;
+          }
+        } else if (hasWorkflow) {
+          // Only workflows left
+          sortedJobs.push(...workflowsWithNewest[workflowIndex].jobs);
+          workflowIndex++;
+        } else if (hasStandalone) {
+          // Only standalone jobs left
+          sortedJobs.push(standaloneJobs[standaloneIndex]);
+          standaloneIndex++;
+        }
+      }
 
       const duration = performance.now() - startTime;
       logger.debug(
@@ -80,7 +144,7 @@ export function useJobFiltering(jobs: BackgroundJob[], isLoading: boolean) {
 
       return {
         allJobsSorted: sortedJobs,
-        hasJobs: jobsToUse.length > 0,
+        hasJobs: filteredJobs.length > 0,
       };
     }, [jobs, cachedJobs, isLoading]);
 

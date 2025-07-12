@@ -3,6 +3,7 @@ use actix_cors::Cors;
 use dotenv::dotenv;
 use std::env;
 use std::net::TcpListener;
+use std::sync::Arc;
 use reqwest::Client;
 use tokio_cron_scheduler::{JobScheduler, Job};
 use log::{info, error};
@@ -27,7 +28,7 @@ use crate::config::AppSettings;
 use crate::db::connection::{create_dual_pools, verify_connection, DatabasePools};
 use crate::db::{ApiUsageRepository, CustomerBillingRepository, UserRepository, SettingsRepository, ModelRepository, SystemPromptsRepository};
 use crate::middleware::{
-    SecureAuthentication, 
+    auth_middleware,
     create_rate_limit_storage,
     create_ip_rate_limiter, 
     create_user_rate_limiter,
@@ -40,6 +41,7 @@ use crate::services::auth::oauth::Auth0OAuthService;
 use crate::services::billing_service::BillingService;
 use crate::services::credit_service::CreditService;
 use crate::services::reconciliation_service::ReconciliationService;
+use crate::services::request_tracker::RequestTracker;
 use crate::routes::{configure_routes, configure_public_api_routes, configure_public_auth_routes, configure_webhook_routes};
 
 /// Validates AI model configurations at startup to catch misconfigurations early
@@ -282,10 +284,10 @@ async fn main() -> std::io::Result<()> {
     log::info!("Polling store and Auth0 state store cleanup tasks started");
     
     // Initialize reqwest HTTP client
-    let http_client = reqwest::Client::new();
+    let http_client = crate::clients::http_client::new_api_client();
     
     // Initialize rate limiting storage (Redis or memory based on configuration)
-    let rate_limit_storage = match create_rate_limit_storage(&app_settings.rate_limit).await {
+    let rate_limit_storage = match create_rate_limit_storage(&app_settings.rate_limit, &Some(app_settings.redis.url.clone())).await {
         Ok(storage) => storage,
         Err(e) => {
             log::error!("Failed to initialize rate limiting storage: {}", e);
@@ -312,18 +314,49 @@ async fn main() -> std::io::Result<()> {
         log::info!("Rate limit memory store cleanup task started.");
     }
 
-    // Initialize billing service with Redis before creating the server
+    // Initialize request tracker
+    let request_tracker = RequestTracker::new();
+    log::info!("Request tracker initialized");
+    
+    // Start request tracker cleanup task
+    {
+        let tracker = request_tracker.clone();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(3600)); // Every hour
+            loop {
+                interval.tick().await;
+                tracker.cleanup_old_requests(24).await; // Clean up requests older than 24 hours
+                let active_count = tracker.get_active_request_count().await;
+                log::info!("Request tracker cleanup completed. Active requests: {}", active_count);
+            }
+        });
+    }
+    
+    // Initialize billing service
     let mut billing_service = BillingService::new(db_pools.clone(), app_settings.clone());
     
-    // Initialize Redis for billing service if configured
-    if app_settings.rate_limit.use_redis {
-        if let Some(redis_url) = &app_settings.rate_limit.redis_url {
-            match billing_service.set_redis_client(redis_url).await {
-                Ok(_) => log::info!("Redis initialized for billing service final cost caching"),
-                Err(e) => log::warn!("Failed to initialize Redis for billing service: {}. Final cost caching will be unavailable.", e),
+    // Set up Redis for billing service (mandatory)
+    match redis::Client::open(app_settings.redis.url.as_str()) {
+        Ok(client) => {
+            match redis::aio::ConnectionManager::new(client).await {
+                Ok(conn_mgr) => {
+                    billing_service.set_redis_client(Arc::new(conn_mgr));
+                    log::info!("Redis connected for billing service caching");
+                }
+                Err(e) => {
+                    log::error!("Failed to create Redis connection for billing: {}", e);
+                    std::process::exit(1);
+                }
             }
         }
+        Err(e) => {
+            log::error!("Failed to open Redis client for billing: {}", e);
+            std::process::exit(1);
+        }
     }
+    
+    // Clone app_settings for use outside the closure
+    let app_settings_for_server = app_settings.clone();
 
     let server = HttpServer::new(move || {
         // Clone the data for the factory closure
@@ -425,6 +458,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(json_config)
             .app_data(auth0_oauth_service)
             .app_data(web::Data::new(billing_service.clone()))
+            .app_data(web::Data::new(request_tracker.clone()))
             .app_data(app_state.clone())
             .app_data(tera.clone())
             .app_data(polling_store.clone())
@@ -456,7 +490,7 @@ async fn main() -> std::io::Result<()> {
             .service(
                 web::scope("/api")
                     .wrap(strict_rate_limiter.clone())
-                    .wrap(SecureAuthentication::new(db_pools.user_pool.clone()))
+                    .wrap(auth_middleware(db_pools.user_pool.clone()))
                     .configure(|cfg| configure_routes(cfg, strict_rate_limiter.clone()))
             )
             // Public webhook routes with IP-based rate limiting (no authentication)
@@ -473,6 +507,9 @@ async fn main() -> std::io::Result<()> {
                     .configure(configure_public_api_routes)
             )
     })
+    .keep_alive(std::time::Duration::from_secs(300)) // 5 minutes keep-alive
+    .client_request_timeout(std::time::Duration::from_secs(app_settings_for_server.server.client_request_timeout_secs)) // Configurable client timeout
+    .client_disconnect_timeout(std::time::Duration::from_secs(5)) // 5 seconds to detect client disconnect
     .listen(listener)?
     .run();
     

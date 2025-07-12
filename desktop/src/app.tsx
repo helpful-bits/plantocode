@@ -11,6 +11,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { listen } from "@tauri-apps/api/event";
+import { Routes, Route } from "react-router-dom";
 
 import { AppShell } from "@/app/components/app-shell";
 import { isTauriEnvironment } from "@/utils/platform";
@@ -20,6 +21,8 @@ import { ThemeProvider } from "@/app/components/theme-provider";
 import CoreHomePage from "@/app/page";
 import SettingsPage from "@/app/settings/page";
 import AccountPage from "@/app/account/page";
+import FeedbackPage from "@/app/feedback/page";
+import NotFoundPage from "@/app/not-found";
 import { AuthProvider } from "@/contexts/auth-context";
 import { UILayoutProvider } from "@/contexts/ui-layout-context";
 import { EmptyState, LoadingScreen } from "@/ui";
@@ -28,50 +31,6 @@ import { RuntimeConfigProvider } from "./contexts/runtime-config-context";
 // Custom provider for desktop-specific functionality
 import { TauriEnvironmentChecker } from "./providers/tauri-environment-checker";
 
-// Simple router component to handle path changes
-function Router() {
-  const [currentPath, setCurrentPath] = useState(window.location.pathname);
-
-  useEffect(() => {
-    let lastKnownPath = window.location.pathname; // Initialize with current path
-    
-    const handlePathChange = () => {
-      const newPath = window.location.pathname;
-      if (newPath !== lastKnownPath) { // Only if path truly changed
-        setCurrentPath(newPath);
-        lastKnownPath = newPath; // Update last known path
-        // Dispatch custom event for other components
-        window.dispatchEvent(new CustomEvent('routeChange', { detail: { path: newPath } }));
-      }
-    };
-
-    // Initial dispatch
-    handlePathChange();
-
-    window.addEventListener('popstate', handlePathChange);
-
-    const originalPushState = window.history.pushState;
-    window.history.pushState = function(state, title, url) {
-      originalPushState.call(window.history, state, title, url);
-      handlePathChange(); // This already calls dispatch
-    };
-
-    return () => {
-      window.removeEventListener('popstate', handlePathChange);
-      window.history.pushState = originalPushState;
-    };
-  }, []); // Empty dependency array for mount/unmount logic
-
-  switch (currentPath) {
-    case '/settings':
-      return <SettingsPage />;
-    case '/account':
-      return <AccountPage />;
-    case '/':
-    default:
-      return <CoreHomePage />;
-  }
-}
 
 // Safe app structure to ensure proper provider nesting and prevent remounting
 function SafeAppContent() {
@@ -86,8 +45,13 @@ function SafeAppContent() {
                 <ProvidersWrapper environmentConfig={{ isDesktop: true }}>
                   {/* App Shell Component */}
                   <AppShell>
-                    {/* Router handles different pages */}
-                    <Router />
+                    <Routes>
+                      <Route path="/" element={<CoreHomePage />} />
+                      <Route path="/settings" element={<SettingsPage />} />
+                      <Route path="/account" element={<AccountPage />} />
+                      <Route path="/feedback" element={<FeedbackPage />} />
+                      <Route path="*" element={<NotFoundPage />} />
+                    </Routes>
                   </AppShell>
                 </ProvidersWrapper>
               </AuthFlowManager>

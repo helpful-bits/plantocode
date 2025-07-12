@@ -3,35 +3,82 @@ use std::sync::{Arc, Mutex};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use serde_json::Value as JsonValue;
+use serde_json::{Map, Value};
 use tauri::{AppHandle, Manager};
 use tracing::{info, error, warn, instrument};
 use tokio::time::{interval, Duration};
 use crate::error::AppError;
 use crate::models::{TaskType, RuntimeAIConfig};
+use crate::api_clients::server_proxy_client::ServerProxyClient;
+
+/// Recursively sort JSON objects by keys and arrays by stable identifiers
+fn normalize_json_for_hashing(value: &Value) -> Value {
+    match value {
+        Value::Object(map) => {
+            let mut sorted_map = Map::new();
+            let mut entries: Vec<_> = map.iter().collect();
+            entries.sort_by_key(|(k, _)| k.as_str());
+            
+            for (k, v) in entries {
+                sorted_map.insert(k.clone(), normalize_json_for_hashing(v));
+            }
+            Value::Object(sorted_map)
+        }
+        Value::Array(arr) => {
+            let mut sorted_arr = arr.clone();
+            // Sort arrays by 'name' field if objects, otherwise keep order
+            sorted_arr.sort_by(|a, b| {
+                match (a.get("name"), b.get("name")) {
+                    (Some(Value::String(name_a)), Some(Value::String(name_b))) => name_a.cmp(name_b),
+                    _ => std::cmp::Ordering::Equal
+                }
+            });
+            Value::Array(sorted_arr.iter().map(normalize_json_for_hashing).collect())
+        }
+        _ => value.clone()
+    }
+}
 
 /// Cache structure to hold configurations
 pub type ConfigCache = Arc<Mutex<HashMap<String, JsonValue>>>;
 
 /// Fetches all server configurations and caches them in Tauri managed state
-#[instrument(skip(app_handle))]
-pub async fn fetch_and_cache_server_configurations(app_handle: &AppHandle) -> Result<(), AppError> {
+#[instrument(skip(app_handle, server_proxy_client))]
+pub async fn fetch_and_cache_server_configurations(app_handle: &AppHandle, server_proxy_client: &ServerProxyClient) -> Result<(), AppError> {
     info!("Fetching server configurations from API");
     
     // Get the config cache from managed state
     let cache = app_handle.state::<ConfigCache>();
     
     // Make authenticated request to server for all configurations
-    match fetch_server_configurations(app_handle).await {
+    let config_value = server_proxy_client.get_runtime_ai_config().await?;
+    let mut configurations = HashMap::new();
+    configurations.insert("runtime_ai_config".to_string(), config_value);
+    
+    match Ok(configurations) {
         Ok(configurations) => {
             // CRITICAL: Validate configurations before caching
             validate_runtime_config_before_cache(&configurations)?;
             
-            // Update the cache with validated configurations
+            // Update the cache with validated configurations atomically
             match cache.lock() {
                 Ok(mut cache_guard) => {
-                    cache_guard.clear();
-                    cache_guard.extend(configurations.clone());
-                    info!("Successfully cached {} validated server configurations", configurations.len());
+                    // Preserve critical configurations that may have been loaded separately
+                    let runtime_ai_config = cache_guard.get("runtime_ai_config").cloned();
+                    
+                    // Update with new configurations
+                    for (key, value) in configurations {
+                        cache_guard.insert(key, value);
+                    }
+                    
+                    // Restore runtime_ai_config if it was present and not in the new configurations
+                    if let Some(runtime_config) = runtime_ai_config {
+                        if !cache_guard.contains_key("runtime_ai_config") {
+                            cache_guard.insert("runtime_ai_config".to_string(), runtime_config);
+                        }
+                    }
+                    
+                    info!("Successfully updated {} server configurations", cache_guard.len());
                     Ok(())
                 }
                 Err(e) => {
@@ -87,72 +134,25 @@ pub fn get_all_cached_config_values(app_handle: &AppHandle) -> Result<HashMap<St
     }
 }
 
-/// Makes an authenticated HTTP request to fetch all server configurations
-#[instrument(skip(app_handle))]
-async fn fetch_server_configurations(app_handle: &AppHandle) -> Result<HashMap<String, JsonValue>, AppError> {
-    // Get the runtime config to determine server URL
-    let app_state = app_handle.state::<crate::AppState>();
-    let runtime_config = &app_state.settings;
-    
-    let server_url = &runtime_config.server_url;
-    let config_url = format!("{}/config/desktop-runtime-config", server_url);
-    
-    // Get access token for authentication
-    let auth_state = app_handle.state::<crate::auth::token_manager::TokenManager>();
-    let access_token = match auth_state.get().await {
-        Some(token) => token,
-        None => {
-            error!("No access token available for server configuration fetch");
-            return Err(AppError::AuthError("No access token available".to_string()));
-        }
-    };
-    
-    // Make authenticated HTTP request
-    let client = reqwest::Client::new();
-    let response = client
-        .get(&config_url)
-        .header("Authorization", format!("Bearer {}", access_token))
-        .header("Content-Type", "application/json")
-        .send()
-        .await
-        .map_err(|e| {
-            error!("HTTP request failed: {}", e);
-            AppError::HttpError(format!("Failed to fetch server configurations: {}", e))
-        })?;
-    
-    if !response.status().is_success() {
-        let status = response.status();
-        let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
-        error!("Server returned error {}: {}", status, error_text);
-        return Err(AppError::HttpError(format!("Server error {}: {}", status, error_text)));
-    }
-    
-    // Parse JSON response
-    let configurations: HashMap<String, JsonValue> = response
-        .json()
-        .await
-        .map_err(|e| {
-            error!("Failed to parse server configuration response: {}", e);
-            AppError::SerializationError(format!("Failed to parse server configurations: {}", e))
-        })?;
-    
-    info!("Successfully fetched {} server configurations", configurations.len());
-    Ok(configurations)
-}
 
 /// Refreshes the configuration cache on demand
 #[instrument(skip(app_handle))]
 pub async fn refresh_config_cache(app_handle: &AppHandle) -> Result<(), AppError> {
     info!("Refreshing configuration cache");
-    fetch_and_cache_server_configurations(app_handle).await
+    
+    // Get ServerProxyClient from app state
+    let server_proxy_client = app_handle.try_state::<Arc<ServerProxyClient>>()
+        .ok_or_else(|| AppError::ConfigError("ServerProxyClient not initialized".to_string()))?;
+    
+    fetch_and_cache_server_configurations(app_handle, server_proxy_client.as_ref()).await
 }
 
 /// Automatically synchronizes cache with server at 30-second intervals
 #[instrument(skip(app_handle))]
 pub async fn auto_sync_cache_with_server(app_handle: AppHandle) {
-    let mut sync_interval = interval(Duration::from_secs(30));
-    
     info!("Starting auto-sync cache service with 30-second intervals");
+    
+    let mut sync_interval = interval(Duration::from_secs(30));
     
     loop {
         sync_interval.tick().await;
@@ -202,21 +202,9 @@ pub async fn detect_server_configuration_changes(app_handle: &AppHandle) -> Resu
 pub async fn force_cache_refresh_on_mismatch(app_handle: &AppHandle) -> Result<(), AppError> {
     info!("Forcing cache refresh due to configuration mismatch");
     
-    // Clear existing cache
-    let cache = app_handle.state::<ConfigCache>();
-    match cache.lock() {
-        Ok(mut cache_guard) => {
-            cache_guard.clear();
-            info!("Cleared existing configuration cache");
-        }
-        Err(e) => {
-            error!("Failed to clear cache: {}", e);
-            return Err(AppError::ConfigError(format!("Failed to clear cache: {}", e)));
-        }
-    }
-    
-    // Fetch fresh configurations from server
-    fetch_and_cache_server_configurations(app_handle).await?;
+    // Fetch fresh configurations from server without clearing existing cache first
+    // This ensures critical configurations like runtime_ai_config are never lost
+    refresh_config_cache(app_handle).await?;
     
     info!("Successfully refreshed configuration cache");
     Ok(())
@@ -227,18 +215,33 @@ pub async fn force_cache_refresh_on_mismatch(app_handle: &AppHandle) -> Result<(
 pub async fn get_server_config_hash(app_handle: &AppHandle) -> Result<u64, AppError> {
     info!("Fetching server configuration hash");
     
-    let configurations = fetch_server_configurations(app_handle).await?;
+    // Get ServerProxyClient from app state
+    let server_proxy_client = app_handle.try_state::<Arc<ServerProxyClient>>()
+        .ok_or_else(|| AppError::ConfigError("ServerProxyClient not initialized".to_string()))?;
+    
+    let config_value = server_proxy_client.get_runtime_ai_config().await?;
+    let mut configurations = HashMap::new();
+    configurations.insert("runtime_ai_config".to_string(), config_value);
     
     // Create hash from all configuration keys and values
     let mut hasher = DefaultHasher::new();
     
+    // Normalize configurations before hashing to handle ordering differences
+    let mut normalized_configs = HashMap::new();
+    for (key, value) in configurations {
+        let normalized = normalize_json_for_hashing(&value);
+        normalized_configs.insert(key, normalized);
+    }
+    
     // Sort keys for consistent hashing
-    let mut sorted_configs: Vec<_> = configurations.iter().collect();
-    sorted_configs.sort_by_key(|&(k, _)| k);
+    let mut sorted_configs: Vec<_> = normalized_configs.iter().collect();
+    sorted_configs.sort_by_key(|(k, _)| k.as_str());
     
     for (key, value) in sorted_configs {
         key.hash(&mut hasher);
-        value.to_string().hash(&mut hasher);
+        // Serialize the normalized value
+        let serialized = serde_json::to_string(value).unwrap_or_else(|_| value.to_string());
+        serialized.hash(&mut hasher);
     }
     
     let hash = hasher.finish();
@@ -256,13 +259,21 @@ pub fn get_cached_config_hash(app_handle: &AppHandle) -> Result<u64, AppError> {
         Ok(cache_guard) => {
             let mut hasher = DefaultHasher::new();
             
+            // Normalize cached values before hashing
+            let mut normalized_cache = HashMap::new();
+            for (key, value) in cache_guard.iter() {
+                let normalized = normalize_json_for_hashing(value);
+                normalized_cache.insert(key.clone(), normalized);
+            }
+            
             // Sort keys for consistent hashing
-            let mut sorted_configs: Vec<_> = cache_guard.iter().collect();
-            sorted_configs.sort_by_key(|&(k, _)| k);
+            let mut sorted_configs: Vec<_> = normalized_cache.iter().collect();
+            sorted_configs.sort_by_key(|(k, _)| k.as_str());
             
             for (key, value) in sorted_configs {
                 key.hash(&mut hasher);
-                value.to_string().hash(&mut hasher);
+                let serialized = serde_json::to_string(value).unwrap_or_else(|_| value.to_string());
+                serialized.hash(&mut hasher);
             }
             
             let hash = hasher.finish();
@@ -276,15 +287,17 @@ pub fn get_cached_config_hash(app_handle: &AppHandle) -> Result<u64, AppError> {
 }
 
 /// Validates runtime configuration before caching - ZERO tolerance for invalid configs
-#[instrument]
+#[instrument(skip(configurations))]
 pub fn validate_runtime_config_before_cache(configurations: &HashMap<String, JsonValue>) -> Result<(), AppError> {
     info!("Validating runtime configuration before caching");
     
-    // Extract and validate RuntimeAIConfig if present
+    // Extract and validate RuntimeAIConfig
     if let Some(config_value) = configurations.get("runtime_ai_config") {
+        // Try to deserialize the runtime config
         let runtime_config: RuntimeAIConfig = serde_json::from_value(config_value.clone())
             .map_err(|e| {
                 error!("Failed to deserialize runtime AI config during validation: {}", e);
+                error!("Config value was: {}", serde_json::to_string_pretty(config_value).unwrap_or_else(|_| "Unable to serialize".to_string()));
                 AppError::ConfigError(format!("Invalid runtime AI config format: {}", e))
             })?;
         
@@ -296,7 +309,7 @@ pub fn validate_runtime_config_before_cache(configurations: &HashMap<String, Jso
         
         info!("Runtime configuration validation passed");
     } else {
-        error!("Runtime AI config missing from server response");
+        error!("Runtime AI config missing from configurations map");
         return Err(AppError::ConfigError("Runtime AI config missing from server response".to_string()));
     }
     
@@ -367,11 +380,12 @@ pub fn validate_configuration_consistency(runtime_config: &RuntimeAIConfig) -> R
 }
 
 /// Validates ALL TaskType enum variants have corresponding configurations
-#[instrument]
+#[instrument(skip(runtime_config))]
 pub fn validate_all_task_types_have_configs(runtime_config: &RuntimeAIConfig) -> Result<(), AppError> {
     // Get ALL TaskType variants that require LLM configuration
     let required_task_types = [
         TaskType::ImplementationPlan,
+        TaskType::ImplementationPlanMerge,
         TaskType::VoiceTranscription,
         TaskType::TextImprovement,
         TaskType::PathCorrection,

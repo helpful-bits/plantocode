@@ -39,6 +39,11 @@ interface JobDetailsModalProps {
 
 
 export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
+  // Handle null job case - don't render modal when no job is selected
+  if (!job) {
+    return null;
+  }
+
   // File-based content loading has been removed
   // All job output content is now stored directly in the job.response field
 
@@ -62,7 +67,7 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
       try {
         const settingsResult = await getProjectTaskModelSettings(currentSession.projectDirectory);
         
-        if (settingsResult.isSuccess && settingsResult.data) {
+        if (settingsResult.isSuccess && settingsResult.data && job.taskType) {
           // Extract settings for specific job taskType
           const toCamelCase = (s: string) => s.replace(/(_\w)/g, m => m[1].toUpperCase());
           const taskKey = toCamelCase(job.taskType) as keyof typeof settingsResult.data;
@@ -107,26 +112,49 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
       
       switch (job.taskType) {
         case 'regex_file_filter':
-          // Parse RegexFilterResult and display filtered_files and group_results
-          if (response.filteredFiles) {
+          // Parse standardized format from backend (files, count, summary)
+          if (response.files || response.filteredFiles) {
+            const files = response.files || response.filteredFiles;
+            const count = response.count || files.length;
+            const summary = response.summary;
+            
             return (
-              <div className="space-y-2">
-                <div className="text-sm font-medium">Filtered Files ({response.filteredFiles.length}):</div>
-                <ul className="list-disc list-inside space-y-1">
-                  {response.filteredFiles.map((file: string, idx: number) => (
-                    <li key={idx} className="text-sm">{file}</li>
-                  ))}
-                </ul>
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <div className="text-sm font-medium">Filtered Files</div>
+                  <div className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded">
+                    {count} files
+                  </div>
+                </div>
+                
+                {summary && (
+                  <div className="text-sm text-muted-foreground bg-muted/50 p-2 rounded">
+                    {summary}
+                  </div>
+                )}
+                
+                <div className="max-h-64 overflow-y-auto">
+                  <ul className="space-y-0.5">
+                    {files.map((file: string, idx: number) => (
+                      <li key={idx} className="text-sm font-mono text-foreground bg-muted/30 px-2 py-1 rounded">
+                        {file}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                
                 {response.groupResults && Object.keys(response.groupResults).length > 0 && (
-                  <div className="mt-4">
-                    <div className="text-sm font-medium">Group Results:</div>
-                    <div className="mt-2 space-y-2">
+                  <div className="mt-4 border-t pt-3">
+                    <div className="text-sm font-medium mb-2">Group Results:</div>
+                    <div className="space-y-3">
                       {Object.entries(response.groupResults).map(([groupName, files]: [string, any]) => (
-                        <div key={groupName} className="ml-4">
-                          <div className="text-sm font-medium text-muted-foreground">{groupName}:</div>
-                          <ul className="list-disc list-inside ml-4">
+                        <div key={groupName} className="border-l-2 border-muted pl-3">
+                          <div className="text-sm font-medium text-muted-foreground mb-1">{groupName}:</div>
+                          <ul className="space-y-0.5">
                             {(files as string[]).map((file: string, idx: number) => (
-                              <li key={idx} className="text-xs">{file}</li>
+                              <li key={idx} className="text-xs font-mono text-foreground bg-muted/20 px-2 py-1 rounded">
+                                {file}
+                              </li>
                             ))}
                           </ul>
                         </div>
@@ -140,58 +168,112 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
           break;
           
         case 'file_relevance_assessment':
-          // Parse FileRelevanceAssessmentResponse
-          if (response.relevantFiles) {
+          // Parse standardized format from backend (files, count, summary, metadata)
+          if (response.files || response.relevantFiles) {
+            const files = response.files || response.relevantFiles;
+            const count = response.count || files.length;
+            const summary = response.summary;
+            const metadata = response.metadata;
+            
             return (
-              <div className="space-y-2">
-                <div className="text-sm font-medium">Relevant Files ({response.relevantFiles.length}):</div>
-                <ul className="list-disc list-inside space-y-1">
-                  {response.relevantFiles.map((file: string, idx: number) => (
-                    <li key={idx} className="text-sm">{file}</li>
-                  ))}
-                </ul>
-                {response.summary && (
-                  <div className="mt-4">
-                    <div className="text-sm font-medium">Summary:</div>
-                    <p className="text-sm text-muted-foreground">{response.summary}</p>
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <div className="text-sm font-medium">Relevant Files</div>
+                  <div className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded">
+                    {count} files
+                  </div>
+                  {metadata?.tokenCount && (
+                    <div className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded">
+                      {metadata.tokenCount} tokens
+                    </div>
+                  )}
+                </div>
+                
+                {summary && (
+                  <div className="text-sm text-muted-foreground bg-muted/50 p-2 rounded">
+                    {summary}
                   </div>
                 )}
+                
+                <div className="max-h-64 overflow-y-auto">
+                  <ul className="space-y-0.5">
+                    {files.map((file: string, idx: number) => (
+                      <li key={idx} className="text-sm font-mono text-foreground bg-muted/30 px-2 py-1 rounded">
+                        {file}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               </div>
             );
           }
           break;
           
         case 'extended_path_finder':
-          // Parse ExtendedPathFinderResponse
-          if (response.directories || response.files) {
+          // Parse standardized format from backend (files, count, summary, metadata)  
+          if (response.files || response.directories) {
+            const files = response.files || [];
+            const directories = response.directories || [];
+            const count = response.count || files.length;
+            const summary = response.summary;
+            const metadata = response.metadata;
+            
             return (
-              <div className="space-y-4">
-                {response.directories && response.directories.length > 0 && (
-                  <div>
-                    <div className="text-sm font-medium">Directories ({response.directories.length}):</div>
-                    <ul className="list-disc list-inside space-y-1">
-                      {response.directories.map((dir: string, idx: number) => (
-                        <li key={idx} className="text-sm">{dir}</li>
-                      ))}
-                    </ul>
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <div className="text-sm font-medium">Found Paths</div>
+                  <div className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded">
+                    {count} total
+                  </div>
+                  {metadata?.verifiedCount !== undefined && (
+                    <div className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded">
+                      {metadata.verifiedCount} verified
+                    </div>
+                  )}
+                  {metadata?.unverifiedCount !== undefined && (
+                    <div className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded">
+                      {metadata.unverifiedCount} unverified
+                    </div>
+                  )}
+                </div>
+                
+                {summary && (
+                  <div className="text-sm text-muted-foreground bg-muted/50 p-2 rounded">
+                    {summary}
                   </div>
                 )}
-                {response.files && response.files.length > 0 && (
-                  <div>
-                    <div className="text-sm font-medium">Files ({response.files.length}):</div>
-                    <ul className="list-disc list-inside space-y-1">
-                      {response.files.map((file: string, idx: number) => (
-                        <li key={idx} className="text-sm">{file}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-                {response.summary && (
-                  <div className="mt-4">
-                    <div className="text-sm font-medium">Summary:</div>
-                    <p className="text-sm text-muted-foreground">{response.summary}</p>
-                  </div>
-                )}
+                
+                <div className="max-h-64 overflow-y-auto space-y-3">
+                  {directories.length > 0 && (
+                    <div>
+                      <div className="text-sm font-medium text-muted-foreground mb-2">
+                        Directories ({directories.length})
+                      </div>
+                      <ul className="space-y-0.5">
+                        {directories.map((dir: string, idx: number) => (
+                          <li key={idx} className="text-sm font-mono text-foreground bg-muted/30 px-2 py-1 rounded">
+                            {dir}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  
+                  {files.length > 0 && (
+                    <div>
+                      <div className="text-sm font-medium text-muted-foreground mb-2">
+                        Files ({files.length})
+                      </div>
+                      <ul className="space-y-0.5">
+                        {files.map((file: string, idx: number) => (
+                          <li key={idx} className="text-sm font-mono text-foreground bg-muted/30 px-2 py-1 rounded">
+                            {file}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
               </div>
             );
           }

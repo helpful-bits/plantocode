@@ -1,9 +1,11 @@
 pub mod auth_jwt_claims;
+pub mod authenticated_user;
 pub mod billing;
 pub mod model_pricing;
 pub mod runtime_config;
 pub mod standardized_usage_response;
 pub use auth_jwt_claims::*;
+pub use authenticated_user::*;
 pub use billing::*;
 pub use model_pricing::*;
 pub use runtime_config::*;

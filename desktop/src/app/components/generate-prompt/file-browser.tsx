@@ -1,12 +1,14 @@
 "use client";
 
-import { RefreshCw, X, AlertCircle, Loader2, Search, Undo, Redo, CheckSquare, Square, Sparkles, ChevronUp, ChevronDown } from "lucide-react";
-import React from "react";
+import { RefreshCw, X, AlertCircle, Loader2, Search, Undo, Redo, CheckSquare, Square, Sparkles, ChevronUp, ChevronDown, HelpCircle } from "lucide-react";
+import React, { useState } from "react";
 import { useProject } from "@/contexts/project-context";
 import { useSessionStateContext } from "@/contexts/session";
 import { Button } from "@/ui/button";
 import { FilterModeToggle } from "@/ui/filter-mode-toggle";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/ui/tooltip";
 import { useFileSelection } from "./_hooks/use-file-selection";
+import { useWorkflowState } from "./_hooks/use-workflow-state";
 import { FileItem } from "./_components/file-item";
 
 export interface FileBrowserHandle {
@@ -42,14 +44,27 @@ export const FileBrowser = React.forwardRef<FileBrowserHandle, {}>((_, ref) => {
     redo,
     canUndo,
     canRedo,
-    triggerFind,
-    findingFiles,
-    findingFilesError,
     selectFiltered,
     deselectFiltered,
     applyWorkflowResultsToSession,
-    cancelFind,
   } = useFileSelection(projectDirectory);
+  
+  const handleWorkflowComplete = React.useCallback((files: string[]) => {
+    applyWorkflowResultsToSession(files, "workflow completion");
+    if (files.length > 0) {
+      setFilterMode("selected");
+    }
+  }, [applyWorkflowResultsToSession, setFilterMode]);
+
+  const {
+    findingFiles,
+    findingFilesError,
+    triggerFind,
+    cancelFind,
+  } = useWorkflowState(handleWorkflowComplete);
+
+  // State for controlling tooltip visibility
+  const [showFindFilesHelpTooltip, setShowFindFilesHelpTooltip] = useState(false);
 
   const handleApplyFilesFromJob = React.useCallback((paths: string[], source: string) => {
     applyWorkflowResultsToSession(paths, source);
@@ -181,7 +196,7 @@ export const FileBrowser = React.forwardRef<FileBrowserHandle, {}>((_, ref) => {
           size="sm"
           onClick={triggerFind}
           disabled={!currentSession?.taskDescription?.trim() || findingFiles}
-          className={`w-full ${
+          className={`flex-1 ${
             findingFilesError
               ? "bg-destructive/90 hover:bg-destructive border-destructive"
               : ""
@@ -207,8 +222,33 @@ export const FileBrowser = React.forwardRef<FileBrowserHandle, {}>((_, ref) => {
             ? "Finding Files..."
             : findingFilesError
             ? "Retry File Search"
-            : "Find Relevant Files with AI"}
+            : "Find Relevant Files"}
         </Button>
+        
+        <Tooltip open={showFindFilesHelpTooltip} onOpenChange={setShowFindFilesHelpTooltip}>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="px-2"
+              disabled={false}
+              onClick={() => setShowFindFilesHelpTooltip(!showFindFilesHelpTooltip)}
+            >
+              <HelpCircle className="h-5 w-5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            <div className="max-w-xs space-y-2">
+              <p>
+                AI analyzes your task description and project structure to automatically find and select the most relevant files for your request
+              </p>
+              <p className="text-xs font-medium border-t border-primary-foreground/20 pt-2">
+                Saves time by intelligently filtering through your entire codebase
+              </p>
+            </div>
+          </TooltipContent>
+        </Tooltip>
+        
         {findingFiles && (
           <Button
             variant="outline"

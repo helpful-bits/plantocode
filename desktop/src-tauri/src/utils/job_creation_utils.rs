@@ -208,7 +208,15 @@ pub async fn create_and_queue_background_job(
             }
         }
         
-        builder = builder.task_data(task_data);
+        builder = builder.task_data(task_data)
+            .display_name(Some(
+                prompt_text.lines()
+                    .next()
+                    .unwrap_or("Untitled Job")
+                    .chars()
+                    .take(60)
+                    .collect::<String>()
+            ));
         builder.build()
     };
     
@@ -257,6 +265,7 @@ pub async fn create_and_queue_background_job(
         model_used,
         actual_cost: None,
         duration_ms: None,
+        is_finalized: None,
         metadata: Some(metadata_str),
         system_prompt_template: None,
         created_at: timestamp,
@@ -279,6 +288,14 @@ pub async fn create_and_queue_background_job(
     repo.create_job(&job_to_save)
         .await
         .map_err(|e| AppError::DatabaseError(format!("Failed to create background job: {}", e)))?;
+    
+    // Retrieve the job to get the complete database record
+    let new_job = repo.get_job_by_id(&job_id)
+        .await?
+        .ok_or_else(|| AppError::DatabaseError(format!("Failed to retrieve newly created job: {}", job_id)))?;
+    
+    // Emit job_created event
+    crate::jobs::job_processor_utils::emit_job_update(app_handle, "job_created", new_job.clone())?;
     
     // Create a Job struct for the queue using the already typed payload
     let job_for_queue = crate::jobs::types::Job {

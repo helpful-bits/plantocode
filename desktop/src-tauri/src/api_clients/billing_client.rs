@@ -7,7 +7,7 @@ use crate::commands::billing_commands::{
     CreditStats,
     PaymentMethodsResponse, PaymentMethod, PaymentMethodCard,
     BillingDashboardData, CustomerBillingInfo,
-    DetailedUsageResponse
+    DetailedUsageResponse, UnifiedCreditHistoryResponse
 };
 use crate::models::ListInvoicesResponse;
 use serde::{Deserialize, Serialize};
@@ -84,7 +84,7 @@ pub struct BillingClient {
 impl BillingClient {
     /// Create a new BillingClient instance
     pub fn new(token_manager: Arc<TokenManager>) -> Self {
-        let http_client = Client::new();
+        let http_client = crate::api_clients::client_factory::create_http_client();
         Self {
             http_client,
             token_manager,
@@ -341,7 +341,7 @@ impl BillingClient {
             .into_iter()
             .map(|server_transaction| {
                 // Parse string amounts to f64 with error handling
-                let amount = server_transaction.amount.parse::<f64>()
+                let price = server_transaction.amount.parse::<f64>()
                     .unwrap_or_else(|e| {
                         error!("Failed to parse amount '{}': {}. Using default value 0.0", server_transaction.amount, e);
                         0.0
@@ -353,21 +353,24 @@ impl BillingClient {
                         0.0
                     });
                 
-                // Handle empty description with default
-                let description = if server_transaction.description.trim().is_empty() {
-                    "No description".to_string()
+                // Map transaction type to model field or use default
+                let model = if server_transaction.transaction_type == "purchase" {
+                    Some("Credit Purchase".to_string())
                 } else {
-                    server_transaction.description
+                    // For API usage transactions, we'll need to get the model from the description
+                    // For now, use the description as a fallback
+                    Some(server_transaction.description.clone())
                 };
                 
                 crate::commands::billing_commands::CreditTransactionEntry {
                     id: server_transaction.id,
-                    amount,
+                    price,
                     currency: server_transaction.currency,
-                    transaction_type: server_transaction.transaction_type,
-                    description,
-                    created_at: server_transaction.created_at,
+                    model,
+                    input_tokens: None,  // TODO: Extract from server response when available
+                    output_tokens: None,  // TODO: Extract from server response when available
                     balance_after,
+                    created_at: server_transaction.created_at,
                 }
             })
             .collect();
@@ -641,6 +644,44 @@ impl BillingClient {
         
         info!("Successfully reported cancelled job cost for request {}", request_id);
         Ok(())
+    }
+
+    /// Get unified credit history that includes API usage with token details
+    pub async fn get_unified_credit_history(
+        &self,
+        limit: Option<i32>,
+        offset: Option<i32>,
+        search: Option<String>,
+    ) -> Result<UnifiedCreditHistoryResponse, AppError> {
+        debug!("Getting unified credit history via BillingClient");
+        
+        let mut query_params = Vec::new();
+        if let Some(limit) = limit {
+            query_params.push(format!("limit={}", limit));
+        }
+        if let Some(offset) = offset {
+            query_params.push(format!("offset={}", offset));
+        }
+        if let Some(search) = search {
+            query_params.push(format!("search={}", urlencoding::encode(&search)));
+        }
+        
+        let query_string = if query_params.is_empty() {
+            String::new()
+        } else {
+            format!("?{}", query_params.join("&"))
+        };
+        
+        let endpoint = format!("/api/billing/credits/unified-history{}", query_string);
+        
+        let unified_history_response = self.make_authenticated_request(
+            "GET",
+            &endpoint,
+            None,
+        ).await?;
+        
+        info!("Successfully retrieved unified credit history");
+        Ok(unified_history_response)
     }
 
 }

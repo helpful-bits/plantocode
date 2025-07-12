@@ -3,7 +3,7 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 
 import { refineTaskDescriptionAction } from "@/actions/ai/task-refinement.actions";
-import { startWebSearchWorkflowOrchestratorAction } from "@/actions/workflows/workflow.actions";
+import { startWebSearchWorkflowOrchestratorAction, cancelWorkflowAction } from "@/actions/workflows/workflow.actions";
 import { getTaskDescriptionHistoryAction, syncTaskDescriptionHistoryAction } from "@/actions/session";
 import { useBackgroundJob } from "@/contexts/_hooks/use-background-job";
 import { useNotification } from "@/contexts/notification-context";
@@ -386,6 +386,50 @@ export function useTaskDescriptionState({
     projectDirectory,
   ]);
 
+  // Handle canceling web search workflow
+  const cancelWebSearch = useCallback(async (): Promise<void> => {
+    if (!webSearchWorkflowId) {
+      console.warn("No web search workflow ID to cancel");
+      return;
+    }
+
+    if (!isWebRefiningTask) {
+      console.warn("No active web search to cancel");
+      return;
+    }
+
+    try {
+      const result = await cancelWorkflowAction(webSearchWorkflowId);
+      
+      if (result.isSuccess) {
+        // Reset state immediately
+        setIsWebRefiningTask(false);
+        setWebSearchWorkflowId(undefined);
+        setWebSearchResults(null);
+        
+        showNotification({
+          title: "Web search canceled",
+          message: "The web search workflow has been canceled successfully.",
+          type: "success",
+        });
+      } else {
+        throw new Error(result.message || "Failed to cancel web search workflow.");
+      }
+    } catch (error) {
+      console.error("Error canceling web search:", error);
+      
+      // Extract error info and create user-friendly message
+      const errorInfo = extractErrorInfo(error);
+      const userFriendlyMessage = createUserFriendlyErrorMessage(errorInfo, 'cancel web search');
+      
+      showNotification({
+        title: "Error canceling web search",
+        message: userFriendlyMessage,
+        type: "error",
+      });
+    }
+  }, [webSearchWorkflowId, isWebRefiningTask, showNotification]);
+
   useEffect(() => {
     if (debounceTimerRef.current) {
       clearTimeout(debounceTimerRef.current);
@@ -586,6 +630,7 @@ ${formattedResults}
       // Actions
       handleRefineTask,
       handleWebRefineTask,
+      cancelWebSearch,
       copyTaskDescription,
       reset,
       undo,
@@ -603,6 +648,7 @@ ${formattedResults}
       webSearchResults,
       handleRefineTask,
       handleWebRefineTask,
+      cancelWebSearch,
       copyTaskDescription,
       reset,
       undo,

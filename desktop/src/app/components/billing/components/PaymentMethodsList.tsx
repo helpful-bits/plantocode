@@ -140,16 +140,25 @@ export function PaymentMethodsList({ className }: PaymentMethodsListProps) {
         </CardHeader>
         <CardContent>
           {!paymentMethodsData || paymentMethodsData.methods.length === 0 ? (
-            <div className="text-center py-8">
-              <CreditCard className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <h3 className="font-semibold mb-2">No Payment Methods</h3>
-              <p className="text-sm text-muted-foreground mb-4">
-                Add a payment method to manage your credit purchases.
-              </p>
-              <Button onClick={handleAddNewCard} className="flex items-center gap-2">
-                <Plus className="h-4 w-4" />
-                Add Your First Card
-              </Button>
+            <div className="space-y-4 p-4 bg-muted/20 rounded-lg border border-dashed">
+              <div className="text-center space-y-4">
+                <div className="mx-auto w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center">
+                  <CreditCard className="h-6 w-6 text-primary" />
+                </div>
+                <div className="space-y-2">
+                  <h4 className="font-medium text-sm">No Payment Methods</h4>
+                  <p className="text-xs text-muted-foreground max-w-xs mx-auto">
+                    Add a payment method to manage your credit purchases.
+                  </p>
+                </div>
+                <Button 
+                  onClick={handleAddNewCard} 
+                  className="mt-4 bg-primary hover:bg-primary/90 text-primary-foreground font-medium"
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Your First Card
+                </Button>
+              </div>
             </div>
           ) : (
             <div className="space-y-3">

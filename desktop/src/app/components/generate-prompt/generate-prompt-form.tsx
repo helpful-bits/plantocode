@@ -6,7 +6,7 @@ import { useCorePromptContext } from "./_contexts/core-prompt-context";
 import { NoActiveSessionState } from "./no-active-session-state";
 import ProjectSection from "./_sections/project-section";
 import TaskSection from "./_sections/task-section";
-import FileSection from "./_sections/file-section";
+import { FileBrowser } from "./file-browser";
 import { ErrorBoundary } from "@/components/error-boundary";
 
 /**
@@ -81,7 +81,7 @@ function GeneratePromptFormContent() {
               }
             >
               <div className="relative">
-                <FileSection />
+                <FileBrowser />
               </div>
             </ErrorBoundary>
           </>

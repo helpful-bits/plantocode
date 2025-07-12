@@ -1,11 +1,12 @@
 use actix_web::{web, HttpResponse};
-use std::collections::HashMap;
+use std::collections::{HashMap, BTreeMap};
 use tracing::{info, instrument};
 use bigdecimal::ToPrimitive;
 
 use crate::error::AppError;
 use crate::models::runtime_config::{TaskSpecificModelConfig, AppState};
 use serde::{Serialize, Deserialize};
+
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -25,7 +26,7 @@ pub struct ProviderWithModels {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DesktopRuntimeAIConfig {
-    pub tasks: std::collections::HashMap<String, TaskSpecificModelConfig>,
+    pub tasks: BTreeMap<String, TaskSpecificModelConfig>,
     pub providers: Vec<ProviderWithModels>,
     pub max_concurrent_jobs: Option<u32>,
 }
@@ -119,6 +120,14 @@ pub async fn get_desktop_runtime_ai_config(
     
     let mut providers: Vec<ProviderWithModels> = provider_models.into_values().collect();
     
+    // Sort providers by name to ensure consistent ordering in API responses
+    providers.sort_by(|a, b| a.provider.name.cmp(&b.provider.name));
+    
+    // Sort models within each provider for complete determinism
+    for provider in &mut providers {
+        provider.models.sort_by(|a, b| a.name.cmp(&b.name));
+    }
+    
     // Create synthetic transcription provider if there are transcription models
     if !transcription_models.is_empty() {
         let mut transcription_provider_models = Vec::new();
@@ -153,6 +162,9 @@ pub async fn get_desktop_runtime_ai_config(
             transcription_provider_models.push(desktop_model);
         }
         
+        // Sort transcription models for consistency
+        transcription_provider_models.sort_by(|a, b| a.name.cmp(&b.name));
+        
         let transcription_provider = ProviderWithModels {
             provider: ProviderInfo {
                 code: "openai_transcription".to_string(),
@@ -169,7 +181,7 @@ pub async fn get_desktop_runtime_ai_config(
         .map_err(|e| AppError::Internal(format!("Failed to get AI settings from database: {}", e)))?;
     
     // Convert database types to response types
-    let mut tasks: std::collections::HashMap<String, TaskSpecificModelConfig> = task_configs.tasks
+    let tasks: BTreeMap<String, TaskSpecificModelConfig> = task_configs.tasks
         .into_iter()
         .map(|(key, db_config)| {
             (key, TaskSpecificModelConfig {

@@ -1,17 +1,22 @@
-use reqwest::{Client, multipart::{Form, Part}, header::HeaderMap};
-use serde::{Deserialize, Serialize};
-use serde_with::skip_serializing_none;
 use crate::config::settings::AppSettings;
 use crate::error::AppError;
-use base64::Engine;
-use tracing::{debug, info, instrument};
 use actix_web::web;
+use base64::Engine;
+use chrono;
 use futures_util::{Stream, StreamExt};
+use rand;
+use reqwest::{
+    Client,
+    header::HeaderMap,
+    multipart::{Form, Part},
+};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use serde_with::skip_serializing_none;
 use std::pin::Pin;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use chrono;
+use tracing::{debug, error, info, instrument, warn};
 use uuid;
 
 // OpenAI API base URL
@@ -22,6 +27,12 @@ use crate::clients::usage_extractor::{ProviderUsage, UsageExtractor};
 #[derive(Debug, Serialize, Deserialize)]
 pub struct OpenAITranscriptionResponse {
     pub text: String,
+}
+
+// Stream Options for including usage in streaming responses
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct StreamOptions {
+    pub include_usage: bool,
 }
 
 // OpenAI Chat Completion Request Structs
@@ -38,6 +49,7 @@ pub struct OpenAIChatRequest {
     pub presence_penalty: Option<f32>,
     pub stop: Option<Vec<String>>,
     pub user: Option<String>,
+    pub stream_options: Option<StreamOptions>,
 }
 
 // OpenAI Responses API Request Structs
@@ -46,7 +58,7 @@ pub struct OpenAIChatRequest {
 pub struct OpenAIResponsesRequest {
     pub model: String,
     pub input: Option<serde_json::Value>, // Can be string or array
-    pub instructions: Option<String>, // System/developer message
+    pub instructions: Option<String>,     // System/developer message
     pub stream: Option<bool>,
     pub background: Option<bool>,
     pub max_output_tokens: Option<u32>,
@@ -108,7 +120,6 @@ pub enum OpenAIResponsesTool {
     },
 }
 
-
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct OpenAIResponsesTextFormat {
     pub format: OpenAIResponsesFormatType,
@@ -133,7 +144,6 @@ pub struct OpenAIResponsesInputItem {
     pub role: Option<String>,
     pub content: Option<Vec<OpenAIResponsesContentPart>>,
 }
-
 
 #[skip_serializing_none]
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -259,7 +269,7 @@ impl OpenAIClient {
             .ok_or_else(|| AppError::Configuration("OPENAI_API_KEY must be set".to_string()))?
             .clone();
 
-        let client = Client::new();
+        let client = crate::clients::http_client::new_api_client();
         let base_url = OPENAI_BASE_URL.to_string();
 
         Ok(Self {
@@ -280,42 +290,50 @@ impl OpenAIClient {
         "responses"
     }
 
-    fn convert_messages_to_responses_input(messages: &[OpenAIMessage]) -> Vec<OpenAIResponsesInputItem> {
-        messages.iter().map(|message| {
-            let content = match &message.content {
-                OpenAIContent::Text(text) => {
-                    vec![OpenAIResponsesContentPart {
-                        part_type: "input_text".to_string(),
-                        text: Some(text.clone()),
-                        image_url: None,
-                    }]
-                },
-                OpenAIContent::Parts(parts) => {
-                    parts.iter().map(|part| {
-                        let part_type = match part.part_type.as_str() {
-                            "text" => "input_text",
-                            "image_url" => "input_image",
-                            _ => "input_text", // fallback
-                        };
-                        OpenAIResponsesContentPart {
-                            part_type: part_type.to_string(),
-                            text: part.text.clone(),
-                            image_url: part.image_url.clone(),
-                        }
-                    }).collect()
-                }
-            };
+    fn convert_messages_to_responses_input(
+        messages: &[OpenAIMessage],
+    ) -> Vec<OpenAIResponsesInputItem> {
+        messages
+            .iter()
+            .map(|message| {
+                let content = match &message.content {
+                    OpenAIContent::Text(text) => {
+                        vec![OpenAIResponsesContentPart {
+                            part_type: "input_text".to_string(),
+                            text: Some(text.clone()),
+                            image_url: None,
+                        }]
+                    }
+                    OpenAIContent::Parts(parts) => {
+                        parts
+                            .iter()
+                            .map(|part| {
+                                let part_type = match part.part_type.as_str() {
+                                    "text" => "input_text",
+                                    "image_url" => "input_image",
+                                    _ => "input_text", // fallback
+                                };
+                                OpenAIResponsesContentPart {
+                                    part_type: part_type.to_string(),
+                                    text: part.text.clone(),
+                                    image_url: part.image_url.clone(),
+                                }
+                            })
+                            .collect()
+                    }
+                };
 
-            OpenAIResponsesInputItem {
-                item_type: "message".to_string(),
-                role: Some(if message.role == "system" {
-                    "developer".to_string()
-                } else {
-                    message.role.clone()
-                }),
-                content: Some(content),
-            }
-        }).collect()
+                OpenAIResponsesInputItem {
+                    item_type: "message".to_string(),
+                    role: Some(if message.role == "system" {
+                        "developer".to_string()
+                    } else {
+                        message.role.clone()
+                    }),
+                    content: Some(content),
+                }
+            })
+            .collect()
     }
 
     fn model_requires_tools(model: &str, web_mode: bool) -> Option<Vec<OpenAIResponsesTool>> {
@@ -345,222 +363,406 @@ impl OpenAIClient {
         model: String,
     ) -> impl Stream<Item = Result<web::Bytes, AppError>> + Send + 'static {
         use futures_util::stream::{self, StreamExt};
-        use tokio::time::{sleep, Duration, Instant};
-        
+        use tokio::time::{Duration, Instant, sleep};
+
         // State for the streaming process
         #[derive(Debug)]
         enum StreamState {
             Starting,
-            Polling { last_update: Instant, poll_count: u32 },
-            ContentReady { content: String, usage: Option<OpenAIResponsesUsage> },
-            ContentStreaming { remaining: String, chunk_size: usize, usage: Option<OpenAIResponsesUsage> },
+            Polling {
+                last_update: Instant,
+                poll_count: u32,
+                start_time: Instant,
+                consecutive_queued: u32,
+            },
+            ContentReady {
+                content: String,
+                usage: Option<OpenAIResponsesUsage>,
+            },
+            ContentStreaming {
+                remaining: String,
+                chunk_size: usize,
+                usage: Option<OpenAIResponsesUsage>,
+            },
             Completed,
         }
-        
-        stream::unfold(
-            StreamState::Starting,
-            move |state| {
-                let client = client.clone();
-                let api_key = api_key.clone();
-                let base_url = base_url.clone();
-                let response_id = response_id.clone();
-                let model = model.clone();
-                
-                async move {
-                    match state {
-                        StreamState::Starting => {
-                            // Send initial chunk
-                            let initial_chunk = Self::create_chat_completion_chunk(
+
+        stream::unfold(StreamState::Starting, move |state| {
+            let client = client.clone();
+            let api_key = api_key.clone();
+            let base_url = base_url.clone();
+            let response_id = response_id.clone();
+            let model = model.clone();
+
+            async move {
+                match state {
+                    StreamState::Starting => {
+                        // Log the start of web search polling
+                        info!(
+                            "Starting web search polling for response_id: {}",
+                            response_id
+                        );
+
+                        // Send initial chunk
+                        let initial_chunk = Self::create_chat_completion_chunk(
+                            &response_id,
+                            &model,
+                            "Deep research analysis starting...",
+                            false,
+                            None,
+                        );
+                        Some((
+                            Ok(web::Bytes::from(initial_chunk)),
+                            StreamState::Polling {
+                                last_update: Instant::now(),
+                                poll_count: 0,
+                                start_time: Instant::now(),
+                                consecutive_queued: 0,
+                            },
+                        ))
+                    }
+
+                    StreamState::Polling {
+                        last_update,
+                        poll_count,
+                        start_time,
+                        consecutive_queued,
+                    } => {
+                        // Check for early timeout (2 minutes) if stuck in queued
+                        if start_time.elapsed() > Duration::from_secs(120)
+                            && consecutive_queued > 30
+                        {
+                            error!(
+                                "Request appears stuck in queued state after 2 minutes: response_id={}",
+                                response_id
+                            );
+
+                            // Try to cancel the stuck request
+                            let cancel_url =
+                                format!("{}/responses/{}/cancel", base_url, response_id);
+                            let _ = client.post(&cancel_url).bearer_auth(&api_key).send().await;
+
+                            let error_chunk = Self::create_chat_completion_chunk(
                                 &response_id,
                                 &model,
-                                "Deep research analysis starting...",
-                                false,
+                                "Search request appears stuck. This may be due to high API load or rate limits. The request has been cancelled - please try again.",
+                                true,
                                 None,
                             );
-                            Some((
-                                Ok(web::Bytes::from(initial_chunk)),
-                                StreamState::Polling { last_update: Instant::now(), poll_count: 0 }
-                            ))
-                        },
-                        
-                        StreamState::Polling { last_update, poll_count } => {
-                            // Wait between polls
-                            if last_update.elapsed() < Duration::from_secs(3) {
-                                sleep(Duration::from_millis(500)).await;
-                                return Some((
-                                    Ok(web::Bytes::from("")), // Empty chunk to keep connection alive
-                                    StreamState::Polling { last_update, poll_count }
-                                ));
-                            }
-                            
-                            // Poll the background job
-                            let poll_url = format!("{}/responses/{}", base_url, response_id);
-                            match client.get(&poll_url).bearer_auth(&api_key).send().await {
-                                Ok(poll_response) => {
-                                    if let Ok(response_text) = poll_response.text().await {
-                                        if let Ok(responses_response) = serde_json::from_str::<OpenAIResponsesResponse>(&response_text) {
-                                            match responses_response.status.as_str() {
-                                                "completed" => {
-                                                    // Extract content and prepare for streaming
-                                                    let content = Self::extract_content_from_responses(&responses_response);
-                                                    
-                                                    
-                                                    Some((
-                                                        Ok(web::Bytes::from("")), // Transition chunk
-                                                        StreamState::ContentReady { 
-                                                            content, 
-                                                            usage: responses_response.usage 
-                                                        }
-                                                    ))
-                                                },
-                                                "failed" | "cancelled" => {
-                                                    let error_chunk = Self::create_chat_completion_chunk(
+                            return Some((
+                                Ok(web::Bytes::from(error_chunk)),
+                                StreamState::Completed,
+                            ));
+                        }
+
+                        // Check for maximum polling duration (30 minutes)
+                        if start_time.elapsed() > Duration::from_secs(1800) {
+                            error!(
+                                "Web search polling timeout after 30 minutes for response_id: {}",
+                                response_id
+                            );
+                            let error_chunk = Self::create_chat_completion_chunk(
+                                &response_id,
+                                &model,
+                                "Web search timeout: The search took longer than the maximum allowed time. Please try a more specific query.",
+                                true,
+                                None,
+                            );
+                            return Some((
+                                Ok(web::Bytes::from(error_chunk)),
+                                StreamState::Completed,
+                            ));
+                        }
+
+                        // Send keep-alive comment every 500ms
+                        if last_update.elapsed() < Duration::from_secs(3) {
+                            sleep(Duration::from_millis(500)).await;
+                            // Send SSE comment for keep-alive
+                            return Some((
+                                Ok(web::Bytes::from(": keepalive\n\n")),
+                                StreamState::Polling {
+                                    last_update,
+                                    poll_count,
+                                    start_time,
+                                    consecutive_queued,
+                                },
+                            ));
+                        }
+
+                        // Poll the background job
+                        let poll_url = format!("{}/responses/{}", base_url, response_id);
+                        match client.get(&poll_url).bearer_auth(&api_key).send().await {
+                            Ok(poll_response) => {
+                                if let Ok(response_text) = poll_response.text().await {
+                                    if let Ok(responses_response) =
+                                        serde_json::from_str::<OpenAIResponsesResponse>(
+                                            &response_text,
+                                        )
+                                    {
+                                        match responses_response.status.as_str() {
+                                            "completed" => {
+                                                // Extract content and prepare for streaming
+                                                let content = Self::extract_content_from_responses(
+                                                    &responses_response,
+                                                );
+
+                                                Some((
+                                                    Ok(web::Bytes::from("")), // Transition chunk
+                                                    StreamState::ContentReady {
+                                                        content,
+                                                        usage: responses_response.usage,
+                                                    },
+                                                ))
+                                            }
+                                            "failed" | "cancelled" => {
+                                                let error_chunk =
+                                                    Self::create_chat_completion_chunk(
                                                         &response_id,
                                                         &model,
-                                                        &format!("Research failed: {}", responses_response.status),
+                                                        &format!(
+                                                            "Research failed: {}",
+                                                            responses_response.status
+                                                        ),
                                                         true,
                                                         None,
                                                     );
-                                                    Some((
-                                                        Ok(web::Bytes::from(error_chunk)),
-                                                        StreamState::Completed
-                                                    ))
-                                                },
-                                                _ => {
-                                                    // Still in progress, send progress update
-                                                    let progress_messages = [
-                                                        "Conducting web research...",
-                                                        "Analyzing information...", 
-                                                        "Processing research findings...",
-                                                        "Synthesizing comprehensive response...",
-                                                    ];
-                                                    let message_idx = (poll_count / 3) as usize % progress_messages.len();
-                                                    let progress_chunk = Self::create_chat_completion_chunk(
+                                                Some((
+                                                    Ok(web::Bytes::from(error_chunk)),
+                                                    StreamState::Completed,
+                                                ))
+                                            }
+                                            _ => {
+                                                // Still in progress, send progress update
+                                                // Enhanced progress messages with timing info
+                                                let elapsed_mins = (poll_count * 3) / 60;
+                                                let progress_messages = if elapsed_mins > 5 {
+                                                    vec![
+                                                        format!(
+                                                            "Deep research in progress ({} minutes)...",
+                                                            elapsed_mins
+                                                        ),
+                                                        format!(
+                                                            "Complex web search ongoing ({} minutes)...",
+                                                            elapsed_mins
+                                                        ),
+                                                        format!(
+                                                            "Extensive analysis running ({} minutes)...",
+                                                            elapsed_mins
+                                                        ),
+                                                        format!(
+                                                            "Comprehensive search active ({} minutes)...",
+                                                            elapsed_mins
+                                                        ),
+                                                    ]
+                                                } else if elapsed_mins > 2 {
+                                                    vec![
+                                                        "Searching multiple sources...".to_string(),
+                                                        "Analyzing search results...".to_string(),
+                                                        "Processing web content...".to_string(),
+                                                        "Gathering comprehensive data..."
+                                                            .to_string(),
+                                                    ]
+                                                } else {
+                                                    vec![
+                                                        "Conducting web research...".to_string(),
+                                                        "Analyzing information...".to_string(),
+                                                        "Processing research findings..."
+                                                            .to_string(),
+                                                        "Synthesizing comprehensive response..."
+                                                            .to_string(),
+                                                    ]
+                                                };
+                                                let message_idx = (poll_count / 3) as usize
+                                                    % progress_messages.len();
+                                                let progress_chunk =
+                                                    Self::create_chat_completion_chunk(
                                                         &response_id,
                                                         &model,
-                                                        progress_messages[message_idx],
+                                                        &progress_messages[message_idx],
                                                         false,
                                                         None,
                                                     );
-                                                    Some((
-                                                        Ok(web::Bytes::from(progress_chunk)),
-                                                        StreamState::Polling { 
-                                                            last_update: Instant::now(), 
-                                                            poll_count: poll_count + 1 
-                                                        }
-                                                    ))
+
+                                                // Log polling status
+                                                if poll_count % 10 == 0 {
+                                                    info!(
+                                                        "Web search polling: response_id={}, attempt={}, elapsed_mins={}",
+                                                        response_id, poll_count, elapsed_mins
+                                                    );
                                                 }
+                                                Some((
+                                                    Ok(web::Bytes::from(progress_chunk)),
+                                                    StreamState::Polling {
+                                                        last_update: Instant::now(),
+                                                        poll_count: poll_count + 1,
+                                                        start_time,
+                                                        consecutive_queued,
+                                                    },
+                                                ))
                                             }
-                                        } else {
-                                            // Parsing error, continue polling
-                                            Some((
-                                                Ok(web::Bytes::from("")),
-                                                StreamState::Polling { last_update, poll_count }
-                                            ))
                                         }
                                     } else {
-                                        // Response read error, continue polling
+                                        // Parsing error, continue polling
                                         Some((
-                                            Ok(web::Bytes::from("")),
-                                            StreamState::Polling { last_update, poll_count }
+                                            Ok(web::Bytes::from(": parsing error, continuing\n\n")),
+                                            StreamState::Polling {
+                                                last_update,
+                                                poll_count,
+                                                start_time,
+                                                consecutive_queued,
+                                            },
                                         ))
                                     }
-                                },
-                                Err(_) => {
-                                    // Network error, continue polling
+                                } else {
+                                    // Response read error, continue polling
                                     Some((
-                                        Ok(web::Bytes::from("")),
-                                        StreamState::Polling { last_update, poll_count }
+                                        Ok(web::Bytes::from(": response error, continuing\n\n")),
+                                        StreamState::Polling {
+                                            last_update,
+                                            poll_count,
+                                            start_time,
+                                            consecutive_queued,
+                                        },
                                     ))
                                 }
                             }
-                        },
-                        
-                        StreamState::ContentReady { content, usage } => {
-                            // Start streaming the actual content
-                            Some((
-                                Ok(web::Bytes::from("")), // Transition chunk
-                                StreamState::ContentStreaming { 
-                                    remaining: content, 
-                                    chunk_size: 50, // Characters per chunk
-                                    usage 
-                                }
-                            ))
-                        },
-                        
-                        StreamState::ContentStreaming { remaining, chunk_size, usage } => {
-                            if remaining.is_empty() {
-                                // Send final completion chunk with usage
-                                let usage_info = usage.map(|u| (u.input_tokens, u.output_tokens));
-                                let final_chunk = Self::create_chat_completion_chunk(
-                                    &response_id,
-                                    &model,
-                                    "",
-                                    true,
-                                    usage_info,
-                                );
+                            Err(_) => {
+                                // Network error, continue polling
                                 Some((
-                                    Ok(web::Bytes::from(final_chunk)),
-                                    StreamState::Completed
-                                ))
-                            } else {
-                                // Send next content chunk
-                                let chunk_text = if remaining.chars().count() <= chunk_size {
-                                    remaining.clone()
-                                } else {
-                                    // Find a good break point (space, newline, etc.)
-                                    let mut end_pos = chunk_size.min(remaining.chars().count());
-                                    let remaining_chars: Vec<char> = remaining.chars().collect();
-                                    
-                                    // Look for whitespace within the chunk size
-                                    for i in (chunk_size / 2..end_pos).rev() {
-                                        if i < remaining_chars.len() && remaining_chars[i].is_whitespace() {
-                                            end_pos = i + 1;
-                                            break;
-                                        }
-                                    }
-                                    
-                                    remaining_chars[..end_pos].iter().collect()
-                                };
-                                
-                                let new_remaining = remaining.chars().skip(chunk_text.chars().count()).collect::<String>();
-                                let content_chunk = Self::create_chat_completion_chunk(
-                                    &response_id,
-                                    &model,
-                                    &chunk_text,
-                                    false,
-                                    None,
-                                );
-                                
-                                // Small delay to simulate natural typing
-                                sleep(Duration::from_millis(50)).await;
-                                
-                                Some((
-                                    Ok(web::Bytes::from(content_chunk)),
-                                    StreamState::ContentStreaming { 
-                                        remaining: new_remaining, 
-                                        chunk_size, 
-                                        usage 
-                                    }
+                                    Ok(web::Bytes::from(": network error, retrying\n\n")),
+                                    StreamState::Polling {
+                                        last_update,
+                                        poll_count,
+                                        start_time,
+                                        consecutive_queued,
+                                    },
                                 ))
                             }
-                        },
-                        
-                        StreamState::Completed => {
-                            None // End the stream
                         }
+                    }
+
+                    StreamState::ContentReady { content, usage } => {
+                        // Start streaming the actual content
+                        Some((
+                            Ok(web::Bytes::from("")), // Transition chunk
+                            StreamState::ContentStreaming {
+                                remaining: content,
+                                chunk_size: 50, // Characters per chunk
+                                usage,
+                            },
+                        ))
+                    }
+
+                    StreamState::ContentStreaming {
+                        remaining,
+                        chunk_size,
+                        usage,
+                    } => {
+                        if remaining.is_empty() {
+                            // Send final completion chunk with usage
+                            let usage_info = usage.map(|u| (u.input_tokens, u.output_tokens));
+                            let final_chunk = Self::create_chat_completion_chunk(
+                                &response_id,
+                                &model,
+                                "",
+                                true,
+                                usage_info,
+                            );
+                            Some((Ok(web::Bytes::from(final_chunk)), StreamState::Completed))
+                        } else {
+                            // Send next content chunk
+                            let chunk_text = if remaining.chars().count() <= chunk_size {
+                                remaining.clone()
+                            } else {
+                                // Find a good break point (space, newline, etc.)
+                                let mut end_pos = chunk_size.min(remaining.chars().count());
+                                let remaining_chars: Vec<char> = remaining.chars().collect();
+
+                                // Look for whitespace within the chunk size
+                                for i in (chunk_size / 2..end_pos).rev() {
+                                    if i < remaining_chars.len()
+                                        && remaining_chars[i].is_whitespace()
+                                    {
+                                        end_pos = i + 1;
+                                        break;
+                                    }
+                                }
+
+                                remaining_chars[..end_pos].iter().collect()
+                            };
+
+                            let new_remaining = remaining
+                                .chars()
+                                .skip(chunk_text.chars().count())
+                                .collect::<String>();
+                            let content_chunk = Self::create_chat_completion_chunk(
+                                &response_id,
+                                &model,
+                                &chunk_text,
+                                false,
+                                None,
+                            );
+
+                            // Small delay to simulate natural typing
+                            sleep(Duration::from_millis(50)).await;
+
+                            Some((
+                                Ok(web::Bytes::from(content_chunk)),
+                                StreamState::ContentStreaming {
+                                    remaining: new_remaining,
+                                    chunk_size,
+                                    usage,
+                                },
+                            ))
+                        }
+                    }
+
+                    StreamState::Completed => {
+                        None // End the stream
                     }
                 }
             }
-        )
+        })
     }
 
-    async fn wait_until_complete(&self, response_id: &str) -> Result<OpenAIResponsesResponse, AppError> {
-        use tokio::time::{sleep, Duration};
-        
+    async fn wait_until_complete(
+        &self,
+        response_id: &str,
+    ) -> Result<OpenAIResponsesResponse, AppError> {
+        use tokio::time::{Duration, Instant, sleep};
+
+        let start_time = Instant::now();
+        let max_duration = Duration::from_secs(1800); // 30 minutes total
+        let early_timeout = Duration::from_secs(120); // 2 minutes for detecting stuck requests
+        let mut retry_count = 0;
+        let max_retries = 900; // 30 minutes / 2 seconds = 900 attempts
+        let mut consecutive_queued_count = 0;
+
         loop {
+            // Check if we've exceeded maximum duration
+            if start_time.elapsed() > max_duration {
+                error!(
+                    "Web search polling timeout after 30 minutes for response_id: {}",
+                    response_id
+                );
+                return Err(AppError::External(format!(
+                    "Web search timeout after 30 minutes. The search is taking longer than expected."
+                )));
+            }
+
+            // Check retry count
+            if retry_count >= max_retries {
+                error!(
+                    "Web search polling exceeded maximum retries ({}) for response_id: {}",
+                    max_retries, response_id
+                );
+                return Err(AppError::External(format!(
+                    "Web search exceeded maximum polling attempts. Please try again."
+                )));
+            }
             let url = format!("{}/responses/{}", self.base_url, response_id);
-            let response = self.client
+            let response = self
+                .client
                 .get(&url)
                 .bearer_auth(&self.api_key)
                 .send()
@@ -569,67 +771,164 @@ impl OpenAIClient {
 
             let status = response.status();
             if !status.is_success() {
-                let error_text = response.text().await
+                let error_text = response
+                    .text()
+                    .await
                     .unwrap_or_else(|_| "Failed to get polling error response".to_string());
-                return Err(AppError::External(format!(
-                    "Polling failed with status {}: {}",
-                    status, error_text
-                )));
+
+                // Provide helpful error messages based on status code
+                let error_message = match status.as_u16() {
+                    429 => format!(
+                        "Rate limit exceeded during web search polling.\n\n\
+                        Details: {}\n\n\
+                        The search request is queued but cannot proceed due to rate limits.\n\
+                        Please wait a few minutes and try again.",
+                        error_text
+                    ),
+                    503 => format!(
+                        "OpenAI service temporarily unavailable during web search.\n\n\
+                        Details: {}\n\n\
+                        The service is experiencing high load. Please try again in a few minutes.",
+                        error_text
+                    ),
+                    _ => format!(
+                        "Web search polling failed (status {}).\n\n\
+                        Details: {}",
+                        status, error_text
+                    ),
+                };
+
+                return Err(AppError::External(error_message));
             }
 
             // Debug: log the raw response before parsing
-            let response_text = response.text().await
-                .map_err(|e| AppError::Internal(format!("Failed to read polling response: {}", e)))?;
-            
-            tracing::debug!("Polling response body: {}", response_text);
-            
+            let response_text = response.text().await.map_err(|e| {
+                AppError::Internal(format!("Failed to read polling response: {}", e))
+            })?;
+
             let responses_response: OpenAIResponsesResponse = serde_json::from_str(&response_text)
-                .map_err(|e| AppError::Internal(format!("Failed to parse polling response: {} - Body: {}", e, response_text)))?;
+                .map_err(|e| {
+                    AppError::Internal(format!(
+                        "Failed to parse polling response: {} - Body: {}",
+                        e, response_text
+                    ))
+                })?;
+
+            // Log polling status periodically
+            if retry_count % 30 == 0 && retry_count > 0 {
+                let elapsed_mins = start_time.elapsed().as_secs() / 60;
+                info!(
+                    "Web search still polling: response_id={}, status={}, elapsed_mins={}, attempts={}",
+                    response_id, responses_response.status, elapsed_mins, retry_count
+                );
+            }
 
             match responses_response.status.as_str() {
-                "completed" => return Ok(responses_response),
+                "completed" => {
+                    let elapsed_secs = start_time.elapsed().as_secs();
+                    info!(
+                        "Web search completed: response_id={}, elapsed_secs={}, attempts={}",
+                        response_id, elapsed_secs, retry_count
+                    );
+                    return Ok(responses_response);
+                }
                 "failed" | "cancelled" => {
-                    return Err(AppError::External(format!("Response job failed with status: {}", responses_response.status)));
-                },
-                "queued" | "in_progress" => {
-                    sleep(Duration::from_secs(2)).await;
+                    return Err(AppError::External(format!(
+                        "Response job failed with status: {}",
+                        responses_response.status
+                    )));
+                }
+                "queued" => {
+                    consecutive_queued_count += 1;
+
+                    // Check for early timeout - if still queued after 2 minutes, likely stuck
+                    if start_time.elapsed() > early_timeout && consecutive_queued_count > 30 {
+                        warn!(
+                            "Request appears stuck in queued state after 2 minutes: response_id={}",
+                            response_id
+                        );
+
+                        // Try to cancel the stuck request
+                        let cancel_url =
+                            format!("{}/responses/{}/cancel", self.base_url, response_id);
+                        let _ = self
+                            .client
+                            .post(&cancel_url)
+                            .bearer_auth(&self.api_key)
+                            .send()
+                            .await;
+
+                        return Err(AppError::External(format!(
+                            "Web search request appears stuck (queued for {} minutes). This may be due to:\n\n\
+                            • High API load - Please try again in a few minutes\n\
+                            • Rate limits on your account\n\
+                            • Service degradation\n\n\
+                            The request has been cancelled. Please retry your search.",
+                            start_time.elapsed().as_secs() / 60
+                        )));
+                    }
+                    // Use exponential backoff with jitter, capped at 5 seconds
+                    let base_delay: f64 = 2.0;
+                    let backoff_factor: f64 = 1.1;
+                    let max_delay: f64 = 5.0;
+                    let jitter: f64 = 0.5;
+
+                    let delay = (base_delay
+                        * backoff_factor.powi((retry_count / 10).min(5) as i32))
+                    .min(max_delay)
+                        + (rand::random::<f64>() * jitter);
+
+                    sleep(Duration::from_secs_f64(delay)).await;
+                    retry_count += 1;
                     continue;
-                },
+                }
+                "in_progress" => {
+                    // Reset queued counter when we see progress
+                    consecutive_queued_count = 0;
+                }
                 _ => {
+                    warn!(
+                        "Unexpected response status '{}' for response_id: {}",
+                        responses_response.status, response_id
+                    );
                     sleep(Duration::from_secs(2)).await;
+                    retry_count += 1;
                     continue;
                 }
             }
         }
     }
 
-
-    fn prepare_request_body(request: &OpenAIChatRequest, web_mode: bool, force_background: Option<bool>) -> Result<(String, serde_json::Value), AppError> {
+    fn prepare_request_body(
+        request: &OpenAIChatRequest,
+        web_mode: bool,
+        force_background: Option<bool>,
+    ) -> Result<(String, serde_json::Value), AppError> {
         let max_output_tokens = if web_mode {
             None // Don't set max_output_tokens for web search models
         } else {
-            request.max_completion_tokens
+            request
+                .max_completion_tokens
                 .or(request.max_tokens)
                 .or(Some(512))
         };
-        
+
         // Extract system/developer message and user messages
         let (instructions, user_messages): (Option<String>, Vec<&OpenAIMessage>) = {
             let mut instructions = None;
             let mut user_msgs = Vec::new();
-            
+
             for msg in &request.messages {
                 if msg.role == "system" || msg.role == "developer" {
                     // Combine system messages into instructions
                     let text = match &msg.content {
                         OpenAIContent::Text(t) => t.clone(),
-                        OpenAIContent::Parts(parts) => {
-                            parts.iter()
-                                .filter_map(|p| p.text.as_ref())
-                                .cloned()
-                                .collect::<Vec<_>>()
-                                .join("\n")
-                        }
+                        OpenAIContent::Parts(parts) => parts
+                            .iter()
+                            .filter_map(|p| p.text.as_ref())
+                            .cloned()
+                            .collect::<Vec<_>>()
+                            .join("\n"),
                     };
                     instructions = Some(match instructions {
                         Some(existing) => format!("{} {}", existing, text),
@@ -641,68 +940,72 @@ impl OpenAIClient {
             }
             (instructions, user_msgs)
         };
-        
+
         // For web search, input is typically just the user's query as a string
         // For regular requests, it's the conversation array (excluding system/developer messages)
         let input = if web_mode {
             // Extract just the last user message for web search
-            user_messages.last()
-                .and_then(|msg| match &msg.content {
-                    OpenAIContent::Text(text) => Some(serde_json::Value::String(text.clone())),
-                    OpenAIContent::Parts(parts) => {
-                        let text = parts.iter()
-                            .filter_map(|p| p.text.as_ref())
-                            .cloned()
-                            .collect::<Vec<_>>()
-                            .join(" ");
-                        Some(serde_json::Value::String(text))
-                    }
-                })
+            user_messages.last().and_then(|msg| match &msg.content {
+                OpenAIContent::Text(text) => Some(serde_json::Value::String(text.clone())),
+                OpenAIContent::Parts(parts) => {
+                    let text = parts
+                        .iter()
+                        .filter_map(|p| p.text.as_ref())
+                        .cloned()
+                        .collect::<Vec<_>>()
+                        .join(" ");
+                    Some(serde_json::Value::String(text))
+                }
+            })
         } else {
             // For non-web requests, convert only non-system messages to the input array format
-            let non_system_messages: Vec<OpenAIMessage> = request.messages
+            let non_system_messages: Vec<OpenAIMessage> = request
+                .messages
                 .iter()
                 .filter(|msg| msg.role != "system" && msg.role != "developer")
                 .cloned()
                 .collect();
-            Some(serde_json::to_value(Self::convert_messages_to_responses_input(&non_system_messages))?)
+            Some(serde_json::to_value(
+                Self::convert_messages_to_responses_input(&non_system_messages),
+            )?)
         };
-        
+
         let tools = Self::model_requires_tools(&request.model, web_mode);
-        
+
         // Only use background when explicitly forced
         let background = force_background;
-        
-        // Use cleaned model ID for API call (strip provider prefix and :web suffix)
-        let api_model_id = if web_mode {
-            let cleaned = request.model.replace(":web", "");
-            cleaned.split('/').last().unwrap_or(&cleaned).to_string()
-        } else {
-            request.model.split('/').last().unwrap_or(&request.model).to_string()
-        };
-        
+
+        // Use model ID directly as it's already resolved by the mapping service
+        let resolved_model_id = request.model.clone();
+
         // Web search specific configurations
-        let (text_format, reasoning_config, store_config, tool_choice, parallel_tool_calls, truncation) = 
-            if web_mode {
-                (
-                    Some(OpenAIResponsesTextFormat {
-                        format: OpenAIResponsesFormatType {
-                            format_type: "text".to_string(),
-                        },
-                    }),
-                    Some(OpenAIResponsesReasoning {
-                        effort: "high".to_string(),
-                        summary: "auto".to_string(),
-                    }),
-                    Some(true), // Store is typically true for web search
-                    Some("auto".to_string()),
-                    Some(true),
-                    Some("disabled".to_string()),
-                )
-            } else {
-                (None, None, None, None, None, None)
-            };
-        
+        let (
+            text_format,
+            reasoning_config,
+            store_config,
+            tool_choice,
+            parallel_tool_calls,
+            truncation,
+        ) = if web_mode {
+            (
+                Some(OpenAIResponsesTextFormat {
+                    format: OpenAIResponsesFormatType {
+                        format_type: "text".to_string(),
+                    },
+                }),
+                Some(OpenAIResponsesReasoning {
+                    effort: "medium".to_string(),
+                    summary: "auto".to_string(),
+                }),
+                Some(true), // Store is typically true for web search
+                Some("auto".to_string()),
+                Some(true),
+                Some("disabled".to_string()),
+            )
+        } else {
+            (None, None, None, None, None, None)
+        };
+
         // Ensure request uniqueness to prevent OpenAI response ID deduplication
         let unique_user_id = if background.unwrap_or(false) || web_mode {
             // For background requests and web mode, append unique timestamp and UUID to prevent deduplication
@@ -718,7 +1021,7 @@ impl OpenAIClient {
                         existing_user
                     };
                     format!("{}{}", truncated_user, unique_suffix)
-                },
+                }
                 None => format!("user{}", unique_suffix),
             }
         } else {
@@ -726,7 +1029,7 @@ impl OpenAIClient {
         };
 
         let responses_request = OpenAIResponsesRequest {
-            model: api_model_id,
+            model: resolved_model_id,
             input,
             instructions,
             stream: request.stream,
@@ -752,30 +1055,46 @@ impl OpenAIClient {
     // Chat Completions
     #[instrument(skip(self, request), fields(model = %request.model))]
     pub async fn chat_completion(
-        &self, 
+        &self,
         request: OpenAIChatRequest,
-        web_mode: bool
-    ) -> Result<(OpenAIChatResponse, HeaderMap, i32, i32, i32, i32), AppError> {
+        web_mode: bool,
+    ) -> Result<
+        (
+            OpenAIChatResponse,
+            HeaderMap,
+            i32,
+            i32,
+            i32,
+            i32,
+            Option<String>,
+        ),
+        AppError,
+    > {
         let request_id = self.get_next_request_id().await;
-        
+
         // Determine endpoint based on web_mode
         let (endpoint, use_responses_api) = if web_mode {
             ("/v1/responses", true)
         } else {
             ("/v1/chat/completions", false)
         };
-        
+
         let url = format!("{}{}", self.base_url.trim_end_matches("/v1"), endpoint);
-        
+
         if use_responses_api {
             // Use responses API for web mode
             let requires_background = Self::model_requires_background(&request.model, web_mode);
-            
+
             let mut non_streaming_request = request.clone();
             non_streaming_request.stream = Some(false);
-            let (_, request_body) = Self::prepare_request_body(&non_streaming_request, web_mode, Some(requires_background))?;
-            
-            let response = self.client
+            let (_, request_body) = Self::prepare_request_body(
+                &non_streaming_request,
+                web_mode,
+                Some(requires_background),
+            )?;
+
+            let response = self
+                .client
                 .post(&url)
                 .bearer_auth(&self.api_key)
                 .header("Content-Type", "application/json")
@@ -784,36 +1103,41 @@ impl OpenAIClient {
                 .send()
                 .await
                 .map_err(|e| AppError::External(format!("OpenAI request failed: {}", e)))?;
-            
+
             let status = response.status();
             let headers = response.headers().clone();
-            
+
             if !status.is_success() {
-                let error_text = response.text().await
+                let error_text = response
+                    .text()
+                    .await
                     .unwrap_or_else(|_| "Failed to get error response".to_string());
                 return Err(AppError::External(format!(
                     "OpenAI request failed with status {}: {}",
                     status, error_text
                 )));
             }
-            
-            let responses_response: OpenAIResponsesResponse = response.json().await
+
+            let responses_response: OpenAIResponsesResponse = response
+                .json()
+                .await
                 .map_err(|e| AppError::Internal(format!("OpenAI deserialization failed: {}", e)))?;
-            
+
             let final_response = if requires_background {
                 self.wait_until_complete(&responses_response.id).await?
             } else {
                 responses_response
             };
-            
-            let (prompt_tokens, cache_write, cache_read, completion_tokens) = if let Some(usage) = &final_response.usage {
-                (usage.input_tokens, 0, 0, usage.output_tokens)
-            } else {
-                (0, 0, 0, 0)
-            };
-            
+
+            let (prompt_tokens, cache_write, cache_read, completion_tokens) =
+                if let Some(usage) = &final_response.usage {
+                    (usage.input_tokens, 0, 0, usage.output_tokens)
+                } else {
+                    (0, 0, 0, 0)
+                };
+
             let content = Self::extract_content_from_responses(&final_response);
-            
+
             let chat_usage = final_response.usage.map(|responses_usage| OpenAIUsage {
                 prompt_tokens: responses_usage.input_tokens,
                 completion_tokens: responses_usage.output_tokens,
@@ -821,7 +1145,8 @@ impl OpenAIClient {
                 prompt_tokens_details: None,
                 other: None,
             });
-            
+
+            let response_id = final_response.id.clone();
             let chat_response = OpenAIChatResponse {
                 id: final_response.id,
                 choices: vec![OpenAIChoice {
@@ -837,14 +1162,23 @@ impl OpenAIClient {
                 object: Some("chat.completion".to_string()),
                 usage: chat_usage,
             };
-            
-            Ok((chat_response, headers, prompt_tokens, cache_write, cache_read, completion_tokens))
+
+            Ok((
+                chat_response,
+                headers,
+                prompt_tokens,
+                cache_write,
+                cache_read,
+                completion_tokens,
+                Some(response_id),
+            ))
         } else {
             // Use chat completions API for non-web mode
             let mut non_streaming_request = request.clone();
             non_streaming_request.stream = Some(false);
-            
-            let response = self.client
+
+            let response = self
+                .client
                 .post(&url)
                 .bearer_auth(&self.api_key)
                 .header("Content-Type", "application/json")
@@ -853,61 +1187,86 @@ impl OpenAIClient {
                 .send()
                 .await
                 .map_err(|e| AppError::External(format!("OpenAI request failed: {}", e)))?;
-            
+
             let status = response.status();
             let headers = response.headers().clone();
-            
+
             if !status.is_success() {
-                let error_text = response.text().await
+                let error_text = response
+                    .text()
+                    .await
                     .unwrap_or_else(|_| "Failed to get error response".to_string());
                 return Err(AppError::External(format!(
                     "OpenAI request failed with status {}: {}",
                     status, error_text
                 )));
             }
-            
-            let chat_response: OpenAIChatResponse = response.json().await
+
+            let chat_response: OpenAIChatResponse = response
+                .json()
+                .await
                 .map_err(|e| AppError::Internal(format!("OpenAI deserialization failed: {}", e)))?;
-            
+
             // Extract usage data from UsageExtractor
             let response_body = serde_json::to_string(&chat_response)
                 .map_err(|e| AppError::Internal(format!("Failed to serialize response: {}", e)))?;
-            let usage = self.extract_from_http_body(response_body.as_bytes(), &request.model, false).await?;
-            
-            Ok((chat_response, headers, usage.prompt_tokens, usage.cache_write_tokens, usage.cache_read_tokens, usage.completion_tokens))
+            let usage = self
+                .extract_from_http_body(response_body.as_bytes(), &request.model, false)
+                .await?;
+
+            Ok((
+                chat_response,
+                headers,
+                usage.prompt_tokens,
+                usage.cache_write_tokens,
+                usage.cache_read_tokens,
+                usage.completion_tokens,
+                None,
+            ))
         }
     }
 
     // Streaming Chat Completions for actix-web compatibility
     #[instrument(skip(self, request), fields(model = %request.model))]
     pub async fn stream_chat_completion(
-        &self, 
+        &self,
         request: OpenAIChatRequest,
-        web_mode: bool
-    ) -> Result<(HeaderMap, Pin<Box<dyn Stream<Item = Result<web::Bytes, AppError>> + Send + 'static>>), AppError> {
+        web_mode: bool,
+    ) -> Result<
+        (
+            HeaderMap,
+            Pin<Box<dyn Stream<Item = Result<web::Bytes, AppError>> + Send + 'static>>,
+            Option<String>,
+        ),
+        AppError,
+    > {
         // Clone necessary parts for 'static lifetime
         let client = self.client.clone();
         let api_key = self.api_key.clone();
         let base_url = self.base_url.clone();
         let request_id_counter = self.request_id_counter.clone();
-        
+
         // Determine endpoint based on web_mode
         let (endpoint, use_responses_api) = if web_mode {
             ("/v1/responses", true)
         } else {
             ("/v1/chat/completions", false)
         };
-        
+
         if use_responses_api && Self::model_requires_background(&request.model, web_mode) {
             // For deep research models with web mode, use immediate streaming with progress updates
-            tracing::info!("Using immediate synthetic streaming for deep research model: {}", request.model);
-            
+            tracing::info!(
+                "Using immediate synthetic streaming for deep research model: {}",
+                request.model
+            );
+
             // Step 1: Create background job (non-blocking)
             let mut background_request = request.clone();
             background_request.stream = Some(false);
-            let (_, background_body) = Self::prepare_request_body(&background_request, web_mode, Some(true))?;
+            let (_, background_body) =
+                Self::prepare_request_body(&background_request, web_mode, Some(true))?;
             let create_url = format!("{}/responses", base_url);
-            
+
             let create_response = client
                 .post(&create_url)
                 .bearer_auth(&api_key)
@@ -915,45 +1274,61 @@ impl OpenAIClient {
                 .json(&background_body)
                 .send()
                 .await
-                .map_err(|e| AppError::External(format!("OpenAI background request failed: {}", e)))?;
-                
+                .map_err(|e| {
+                    AppError::External(format!("OpenAI background request failed: {}", e))
+                })?;
+
             let create_status = create_response.status();
             if !create_status.is_success() {
-                let error_text = create_response.text().await
+                let error_text = create_response
+                    .text()
+                    .await
                     .unwrap_or_else(|_| "Failed to get error response".to_string());
                 return Err(AppError::External(format!(
                     "OpenAI background request failed with status {}: {}",
                     create_status, error_text
                 )));
             }
-            
-            let create_response_text = create_response.text().await
-                .map_err(|e| AppError::Internal(format!("Failed to read background response: {}", e)))?;
-            
-            let background_response: OpenAIResponsesResponse = serde_json::from_str(&create_response_text)
-                .map_err(|e| AppError::Internal(format!("Failed to parse background response: {} - Body: {}", e, create_response_text)))?;
-                
+
+            let create_response_text = create_response.text().await.map_err(|e| {
+                AppError::Internal(format!("Failed to read background response: {}", e))
+            })?;
+
+            let background_response: OpenAIResponsesResponse =
+                serde_json::from_str(&create_response_text).map_err(|e| {
+                    AppError::Internal(format!(
+                        "Failed to parse background response: {} - Body: {}",
+                        e, create_response_text
+                    ))
+                })?;
+
             let response_id = background_response.id.clone();
             let response_model = request.model.clone();
-            
+
             // Step 2: Create immediate streaming response with progress updates
             let synthetic_stream = Self::create_deep_research_stream(
                 client,
                 api_key,
                 base_url,
-                response_id,
+                response_id.clone(),
                 response_model,
             );
-            
+
             let headers = HeaderMap::new(); // Default headers for synthetic stream
-            let boxed_stream: Pin<Box<dyn Stream<Item = Result<web::Bytes, AppError>> + Send + 'static>> = Box::pin(synthetic_stream);
-            return Ok((headers, boxed_stream));
+            let boxed_stream: Pin<
+                Box<dyn Stream<Item = Result<web::Bytes, AppError>> + Send + 'static>,
+            > = Box::pin(synthetic_stream);
+            return Ok((headers, boxed_stream, Some(response_id)));
         }
-        
+
         // Standard streaming flow
         let mut streaming_request = request.clone();
         streaming_request.stream = Some(true);
-        
+        // Add stream_options to include usage in streaming responses
+        streaming_request.stream_options = Some(StreamOptions {
+            include_usage: true,
+        });
+
         // Create the stream in an async move block to ensure 'static lifetime
         let result = async move {
             let request_id = {
@@ -961,13 +1336,13 @@ impl OpenAIClient {
                 *counter += 1;
                 *counter
             };
-            
+
             let url = format!("{}{}", base_url.trim_end_matches("/v1"), endpoint);
-            
+
             if use_responses_api {
                 // Use responses API for web mode streaming
                 let (_, request_body) = Self::prepare_request_body(&streaming_request, true, None)?;
-                
+
                 let response = client
                     .post(&url)
                     .bearer_auth(&api_key)
@@ -977,78 +1352,72 @@ impl OpenAIClient {
                     .send()
                     .await
                     .map_err(|e| AppError::External(format!("OpenAI request failed: {}", e)))?;
-                
+
                 let status = response.status();
                 let headers = response.headers().clone();
-                
+
                 if !status.is_success() {
-                    let error_text = response.text().await
+                    let error_text = response
+                        .text()
+                        .await
                         .unwrap_or_else(|_| "Failed to get error response".to_string());
                     return Err(AppError::External(format!(
                         "OpenAI streaming request failed with status {}: {}",
                         status, error_text
                     )));
                 }
-                
+
                 // Return a stream that can be consumed by actix-web
-                let stream = response.bytes_stream()
-                    .map(|result| {
-                        match result {
-                            Ok(bytes) => Ok(web::Bytes::from(bytes)),
-                            Err(e) => Err(AppError::External(format!("OpenAI network error: {}", e))),
-                        }
-                    });
-                    
-                let boxed_stream: Pin<Box<dyn Stream<Item = Result<web::Bytes, AppError>> + Send + 'static>> = Box::pin(stream);
-                Ok((headers, boxed_stream))
+                let stream = response.bytes_stream().map(|result| match result {
+                    Ok(bytes) => Ok(web::Bytes::from(bytes)),
+                    Err(e) => Err(AppError::External(format!("OpenAI network error: {}", e))),
+                });
+
+                let boxed_stream: Pin<
+                    Box<dyn Stream<Item = Result<web::Bytes, AppError>> + Send + 'static>,
+                > = Box::pin(stream);
+                Ok((headers, boxed_stream, None))
             } else {
                 // Use chat completions API for non-web mode streaming
-                // Add stream_options for usage tracking
-                let mut request_json = serde_json::to_value(&streaming_request)
-                    .map_err(|e| AppError::Internal(format!("Failed to serialize request: {}", e)))?;
-                
-                // Add stream_options to include usage
-                request_json["stream_options"] = serde_json::json!({
-                    "include_usage": true
-                });
-                
                 let response = client
                     .post(&url)
                     .bearer_auth(&api_key)
                     .header("Content-Type", "application/json")
                     .header("X-Request-ID", request_id.to_string())
-                    .json(&request_json)
+                    .json(&streaming_request)
                     .send()
                     .await
                     .map_err(|e| AppError::External(format!("OpenAI request failed: {}", e)))?;
-                
+
                 let status = response.status();
                 let headers = response.headers().clone();
-                
+
                 if !status.is_success() {
-                    let error_text = response.text().await
+                    let error_text = response
+                        .text()
+                        .await
                         .unwrap_or_else(|_| "Failed to get error response".to_string());
                     return Err(AppError::External(format!(
                         "OpenAI streaming request failed with status {}: {}",
                         status, error_text
                     )));
                 }
-                
+
                 // Return a stream that can be consumed by actix-web
-                let stream = response.bytes_stream()
-                    .map(|result| {
-                        match result {
-                            Ok(bytes) => Ok(web::Bytes::from(bytes)),
-                            Err(e) => Err(AppError::External(format!("OpenAI network error: {}", e))),
-                        }
-                    });
-                    
-                let boxed_stream: Pin<Box<dyn Stream<Item = Result<web::Bytes, AppError>> + Send + 'static>> = Box::pin(stream);
-                Ok((headers, boxed_stream))
+                let stream = response.bytes_stream().map(|result| match result {
+                    Ok(bytes) => Ok(web::Bytes::from(bytes)),
+                    Err(e) => Err(AppError::External(format!("OpenAI network error: {}", e))),
+                });
+
+                let boxed_stream: Pin<
+                    Box<dyn Stream<Item = Result<web::Bytes, AppError>> + Send + 'static>,
+                > = Box::pin(stream);
+                Ok((headers, boxed_stream, None))
             }
-        }.await?;
+        }
+        .await?;
         
-        Ok((result.0, result.1))
+        Ok(result)
     }
 
     /// Transcribe audio using OpenAI's direct API with GPT-4o-transcribe
@@ -1070,7 +1439,9 @@ impl OpenAIClient {
 
         // Validate audio data
         if audio_data.is_empty() {
-            return Err(AppError::Validation("Audio data cannot be empty".to_string()));
+            return Err(AppError::Validation(
+                "Audio data cannot be empty".to_string(),
+            ));
         }
 
         // Validate minimum size to filter out malformed chunks
@@ -1094,17 +1465,38 @@ impl OpenAIClient {
         // Basic WebM header validation
         if filename.ends_with(".webm") && audio_data.len() >= 4 {
             // WebM files should start with EBML header (0x1A, 0x45, 0xDF, 0xA3)
-            if audio_data[0] != 0x1A || audio_data[1] != 0x45 || audio_data[2] != 0xDF || audio_data[3] != 0xA3 {
-                debug!("WebM header validation failed for {}: {:02X} {:02X} {:02X} {:02X}", 
-                       filename, audio_data[0], audio_data[1], audio_data[2], audio_data[3]);
-                return Err(AppError::Validation("Invalid WebM file format - missing EBML header".to_string()));
+            if audio_data[0] != 0x1A
+                || audio_data[1] != 0x45
+                || audio_data[2] != 0xDF
+                || audio_data[3] != 0xA3
+            {
+                debug!(
+                    "WebM header validation failed for {}: {:02X} {:02X} {:02X} {:02X}",
+                    filename, audio_data[0], audio_data[1], audio_data[2], audio_data[3]
+                );
+                return Err(AppError::Validation(
+                    "Invalid WebM file format - missing EBML header".to_string(),
+                ));
             }
         }
 
         // Create multipart form with proper filename - this is critical!
+        // Ensure filename has correct extension
+        let filename_with_ext = if !filename.contains('.') {
+            // Add extension based on mime type if missing
+            match mime_type {
+                "audio/webm" => format!("{}.webm", filename),
+                "audio/mpeg" => format!("{}.mp3", filename),
+                "audio/wav" => format!("{}.wav", filename),
+                _ => filename.to_string(),
+            }
+        } else {
+            filename.to_string()
+        };
+
         let file_part = Part::bytes(audio_data.to_vec())
-            .file_name(filename.to_string())  // Critical: GPT-4o needs the .webm extension
-            .mime_str(mime_type)           // Keep MIME simple, no codec parameters
+            .file_name(filename_with_ext.clone()) // Critical: GPT-4o needs the correct extension
+            .mime_str(mime_type) // Keep MIME simple, no codec parameters
             .map_err(|e| AppError::Validation(format!("Invalid audio mime type: {}", e)))?;
 
         let mut form = Form::new()
@@ -1122,11 +1514,23 @@ impl OpenAIClient {
             form = form.text("temperature", temp.to_string());
         }
 
-        info!("Sending transcription request to OpenAI: {} ({} bytes)", filename, audio_data.len());
-        debug!("Using model: {}, language: {:?}, prompt: {:?}, temperature: {:?}, mime_type: {}", 
-               model, language, prompt, temperature, mime_type);
-        debug!("Audio data header (first 16 bytes): {:02X?}", &audio_data[..audio_data.len().min(16)]);
-        debug!("Multipart form will be sent with filename: {} and mime_type: {}", filename, mime_type);
+        info!(
+            "Sending transcription request to OpenAI: {} ({} bytes)",
+            filename_with_ext,
+            audio_data.len()
+        );
+        debug!(
+            "Using model: {}, language: {:?}, prompt: {:?}, temperature: {:?}, mime_type: {}",
+            model, language, prompt, temperature, mime_type
+        );
+        debug!(
+            "Audio data header (first 16 bytes): {:02X?}",
+            &audio_data[..audio_data.len().min(16)]
+        );
+        debug!(
+            "Multipart form will be sent with filename: {} and mime_type: {}",
+            filename_with_ext, mime_type
+        );
 
         let response = self
             .client
@@ -1135,24 +1539,33 @@ impl OpenAIClient {
             .multipart(form)
             .send()
             .await
-            .map_err(|e| AppError::External(format!("OpenAI transcription request failed: {}", e)))?;
+            .map_err(|e| {
+                AppError::External(format!("OpenAI transcription request failed: {}", e))
+            })?;
 
         if !response.status().is_success() {
             let status = response.status();
-            let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
             return Err(AppError::External(format!(
                 "OpenAI transcription error ({}): {}",
-                status,
-                error_text
+                status, error_text
             )));
         }
 
-        let transcription: OpenAITranscriptionResponse = response
-            .json()
-            .await
-            .map_err(|e| AppError::External(format!("Failed to parse OpenAI transcription response: {}", e)))?;
+        let transcription: OpenAITranscriptionResponse = response.json().await.map_err(|e| {
+            AppError::External(format!(
+                "Failed to parse OpenAI transcription response: {}",
+                e
+            ))
+        })?;
 
-        info!("Transcription successful: {} characters", transcription.text.len());
+        info!(
+            "Transcription successful: {} characters",
+            transcription.text.len()
+        );
         Ok(transcription.text)
     }
 
@@ -1177,10 +1590,21 @@ impl OpenAIClient {
         // Decode base64 to bytes
         let audio_data = base64::engine::general_purpose::STANDARD
             .decode(b64)
-            .map_err(|e| AppError::Validation(format!("Failed to decode base64 audio data: {}", e)))?;
+            .map_err(|e| {
+                AppError::Validation(format!("Failed to decode base64 audio data: {}", e))
+            })?;
 
         // Use the main transcription method
-        self.transcribe_audio(&audio_data, filename, model, language, prompt, temperature, mime_type).await
+        self.transcribe_audio(
+            &audio_data,
+            filename,
+            model,
+            language,
+            prompt,
+            temperature,
+            mime_type,
+        )
+        .await
     }
 
     /// Transcribe audio from raw bytes
@@ -1202,15 +1626,13 @@ impl OpenAIClient {
             prompt,
             temperature,
             mime_type,
-        ).await
+        )
+        .await
     }
 
     /// Validate that the model is a supported transcription model
     pub fn validate_transcription_model(model: &str) -> Result<(), AppError> {
-        const SUPPORTED_MODELS: &[&str] = &[
-            "gpt-4o-transcribe",
-            "gpt-4o-mini-transcribe",
-        ];
+        const SUPPORTED_MODELS: &[&str] = &["gpt-4o-transcribe", "gpt-4o-mini-transcribe"];
 
         if !SUPPORTED_MODELS.contains(&model) {
             return Err(AppError::Validation(format!(
@@ -1223,27 +1645,29 @@ impl OpenAIClient {
         Ok(())
     }
 
-    
-
-
-
-
     // Convert a generic JSON Value into an OpenAIChatRequest
     pub fn convert_to_openai_request(&self, payload: Value) -> Result<OpenAIChatRequest, AppError> {
-        let mut request: OpenAIChatRequest = serde_json::from_value(payload)
-            .map_err(|e| AppError::BadRequest(format!("Failed to convert payload to OpenAI chat request: {}", e)))?;
-        
+        let mut request: OpenAIChatRequest = serde_json::from_value(payload).map_err(|e| {
+            AppError::BadRequest(format!(
+                "Failed to convert payload to OpenAI chat request: {}",
+                e
+            ))
+        })?;
+
         // Smart parameter mapping for OpenAI API compatibility
-        
-        // 1. Handle max_tokens vs max_completion_tokens
-        if request.max_completion_tokens.is_none() && request.max_tokens.is_some() {
+
+        // 1. Handle max_tokens vs max_completion_tokens based on model
+        // Map max_tokens to max_completion_tokens for newer models
+        let is_new_model = request.model.contains("gpt-4o")
+            || request.model.contains("gpt-4-turbo")
+            || request.model.contains("gpt-3.5-turbo-0125");
+
+        if is_new_model && request.max_completion_tokens.is_none() && request.max_tokens.is_some() {
             request.max_completion_tokens = request.max_tokens.take();
         }
-        
+
         Ok(request)
     }
-    
-
 
     /// Creates a Chat Completions format SSE chunk for streaming
     fn create_chat_completion_chunk(
@@ -1286,7 +1710,10 @@ impl OpenAIClient {
             })
         };
 
-        format!("data: {}\n\n", serde_json::to_string(&chunk).unwrap_or_default())
+        format!(
+            "data: {}\n\n",
+            serde_json::to_string(&chunk).unwrap_or_default()
+        )
     }
 
     /// Extracts content from OpenAI Responses API output structure
@@ -1295,23 +1722,42 @@ impl OpenAIClient {
         if let Some(tool_calls) = &response.built_in_tool_calls {
             tracing::debug!("Built-in tool calls: {:?}", tool_calls);
         }
-        
+
         // Log reasoning for debugging
         if let Some(reasoning) = &response.reasoning {
-            tracing::debug!("Reasoning: {:?}", reasoning);
+            // Check if reasoning summary is empty and log appropriately
+            if let Some(summary_value) = reasoning.get("summary") {
+                if let Some(summary_array) = summary_value.as_array() {
+                    if summary_array.is_empty() {
+                        tracing::warn!(
+                            "Reasoning summary is empty array - model may not be populating reasoning correctly"
+                        );
+                    } else {
+                        tracing::debug!("Reasoning summary contains {} items", summary_array.len());
+                    }
+                } else {
+                    tracing::debug!("Reasoning: {:?}", reasoning);
+                }
+            } else {
+                tracing::debug!("Reasoning: {:?}", reasoning);
+            }
         }
-        
-        response.output
+
+        response
+            .output
             .as_ref()
             .and_then(|outputs| {
                 // Find message output type with content
                 outputs.iter().find_map(|output| {
                     if output.get("type").and_then(|t| t.as_str()) == Some("message") {
-                        output.get("content")
+                        output
+                            .get("content")
                             .and_then(|content_array| content_array.as_array())
                             .and_then(|array| {
                                 array.iter().find_map(|content_item| {
-                                    if content_item.get("type").and_then(|t| t.as_str()) == Some("output_text") {
+                                    if content_item.get("type").and_then(|t| t.as_str())
+                                        == Some("output_text")
+                                    {
                                         content_item.get("text").and_then(|text| text.as_str())
                                     } else {
                                         None
@@ -1331,7 +1777,7 @@ impl OpenAIClient {
 impl Clone for OpenAIClient {
     fn clone(&self) -> Self {
         Self {
-            client: Client::new(),
+            client: crate::clients::http_client::new_api_client(),
             api_key: self.api_key.clone(),
             base_url: self.base_url.clone(),
             request_id_counter: self.request_id_counter.clone(),
@@ -1342,10 +1788,15 @@ impl Clone for OpenAIClient {
 impl UsageExtractor for OpenAIClient {
     /// Extract usage information from OpenAI HTTP response body (2025-07 format)
     /// Supports both streaming and non-streaming responses with provider cost extraction
-    async fn extract_from_http_body(&self, body: &[u8], model_id: &str, is_streaming: bool) -> Result<ProviderUsage, AppError> {
+    async fn extract_from_http_body(
+        &self,
+        body: &[u8],
+        model_id: &str,
+        is_streaming: bool,
+    ) -> Result<ProviderUsage, AppError> {
         let body_str = std::str::from_utf8(body)
             .map_err(|e| AppError::InvalidArgument(format!("Invalid UTF-8: {}", e)))?;
-        
+
         if is_streaming {
             // Handle streaming SSE format
             if body_str.contains("data: ") {
@@ -1354,25 +1805,33 @@ impl UsageExtractor for OpenAIClient {
                         usage.model_id = model_id.to_string();
                         usage
                     })
-                    .ok_or_else(|| AppError::External("Failed to extract usage from OpenAI streaming response".to_string()));
+                    .ok_or_else(|| {
+                        AppError::External(
+                            "Failed to extract usage from OpenAI streaming response".to_string(),
+                        )
+                    });
             }
         }
-        
+
         // Handle regular JSON response
         let json_value: serde_json::Value = serde_json::from_str(body_str)
             .map_err(|e| AppError::External(format!("Failed to parse JSON: {}", e)))?;
-        
+
         // Extract usage from JSON response
-        Self::extract_usage_from_json(&json_value, model_id)
-            .ok_or_else(|| AppError::External("Failed to extract usage from OpenAI response".to_string()))
+        Self::extract_usage_from_json(&json_value, model_id).ok_or_else(|| {
+            AppError::External("Failed to extract usage from OpenAI response".to_string())
+        })
     }
-    
+
     fn extract_usage(&self, raw_json: &serde_json::Value) -> Option<ProviderUsage> {
         Self::extract_usage_from_json(raw_json, "unknown")
     }
-    
+
     /// Extract usage information from OpenAI streaming chunk
-    fn extract_usage_from_stream_chunk(&self, chunk_json: &serde_json::Value) -> Option<ProviderUsage> {
+    fn extract_usage_from_stream_chunk(
+        &self,
+        chunk_json: &serde_json::Value,
+    ) -> Option<ProviderUsage> {
         // For OpenAI streaming, usage info comes in the final chunk
         Self::extract_usage_from_json(chunk_json, "unknown")
     }
@@ -1383,85 +1842,110 @@ impl OpenAIClient {
     /// Processes streaming responses line by line to find final usage chunk
     fn extract_usage_from_sse_body(body: &str, model_id: &str) -> Option<ProviderUsage> {
         // Process streaming body line by line to find usage information
+        // OpenAI sends usage in the final chunk that has usage field
+        let mut final_usage: Option<ProviderUsage> = None;
+
         for line in body.lines() {
             if line.starts_with("data: ") {
                 let json_str = &line[6..]; // Remove "data: " prefix
                 if json_str.trim() == "[DONE]" {
                     continue;
                 }
-                
+
                 // Try to parse the chunk as JSON
                 if let Ok(chunk_json) = serde_json::from_str::<serde_json::Value>(json_str.trim()) {
-                    // Only extract usage from chunks with finish_reason
-                    if let Some(choices) = chunk_json.get("choices").and_then(|c| c.as_array()) {
-                        if let Some(first_choice) = choices.first() {
-                            if first_choice.get("finish_reason").is_some() {
-                                // This is a final chunk, extract usage
-                                if let Some(usage) = Self::extract_usage_from_json(&chunk_json, model_id) {
-                                    return Some(usage);
-                                }
-                            }
+                    // Check if this chunk has usage information
+                    if chunk_json.get("usage").is_some() {
+                        // Extract usage from this chunk - this is typically the final chunk
+                        if let Some(usage) = Self::extract_usage_from_json(&chunk_json, model_id) {
+                            final_usage = Some(usage);
                         }
                     }
                 }
             }
         }
-        None
+
+        final_usage
     }
-    
+
     /// Extract usage from parsed JSON (handles all OpenAI response formats)
-    fn extract_usage_from_json(json_value: &serde_json::Value, model_id: &str) -> Option<ProviderUsage> {
+    fn extract_usage_from_json(
+        json_value: &serde_json::Value,
+        model_id: &str,
+    ) -> Option<ProviderUsage> {
         let usage = json_value.get("usage")?;
-        
+
         // Handle Chat Completions API format: {"prompt_tokens", "completion_tokens", "prompt_tokens_details": {"cached_tokens"}}
         if let (Some(prompt_tokens), Some(completion_tokens)) = (
             usage.get("prompt_tokens").and_then(|v| v.as_i64()),
-            usage.get("completion_tokens").and_then(|v| v.as_i64())
+            usage.get("completion_tokens").and_then(|v| v.as_i64()),
         ) {
             // Extract cached tokens from prompt_tokens_details if available
-            let cache_read_tokens = usage.get("prompt_tokens_details")
+            let cache_read_tokens = usage
+                .get("prompt_tokens_details")
                 .and_then(|details| details.get("cached_tokens"))
                 .and_then(|v| v.as_i64())
                 .unwrap_or(0) as i32;
-                
+
             // For OpenAI API:
             // - prompt_tokens is already the total input tokens (no calculation needed)
             // - cache_read_tokens comes from prompt_tokens_details.cached_tokens
-            // - cache_write_tokens = 0 (OpenAI doesn't expose cache write information)
-            
-            return Some(ProviderUsage {
-                prompt_tokens: prompt_tokens as i32,  // Total input tokens
+            // - cache_write_tokens is derived as prompt_tokens - cache_read_tokens when cache_read_tokens are present
+
+            // Derive cache_write_tokens as prompt_tokens - cache_read_tokens
+            // This represents the uncached tokens that were potentially written to cache
+            let cache_write_tokens = if cache_read_tokens > 0 {
+                // When we have cache reads, the remaining tokens are uncached (and potentially written to cache)
+                ((prompt_tokens as i32) - cache_read_tokens).max(0)
+            } else {
+                // No cache reads means all tokens are uncached, but we don't know if they were written to cache
+                0
+            };
+
+            let mut usage = ProviderUsage {
+                prompt_tokens: prompt_tokens as i32, // Total input tokens
                 completion_tokens: completion_tokens as i32,
-                cache_write_tokens: 0, // OpenAI doesn't provide cache write info
+                cache_write_tokens,
                 cache_read_tokens,
                 model_id: model_id.to_string(),
                 duration_ms: None,
                 cost: None, // OpenAI doesn't provide cost in responses
-            });
+            };
+
+            // Validate usage data before returning
+            usage.validate().ok()?;
+
+            return Some(usage);
         }
-        
+
         // Handle Responses API format: {"input_tokens", "output_tokens", "input_tokens_details", "total_tokens"}
         if let (Some(input_tokens), Some(output_tokens)) = (
             usage.get("input_tokens").and_then(|v| v.as_i64()),
-            usage.get("output_tokens").and_then(|v| v.as_i64())
+            usage.get("output_tokens").and_then(|v| v.as_i64()),
         ) {
             // Extract cached tokens from input_tokens_details if available
-            let cache_read_tokens = usage.get("input_tokens_details")
+            let cache_read_tokens = usage
+                .get("input_tokens_details")
                 .and_then(|details| details.get("cached_tokens"))
                 .and_then(|v| v.as_i64())
                 .unwrap_or(0) as i32;
-                
-            return Some(ProviderUsage {
-                prompt_tokens: input_tokens as i32,  // Total input tokens
+
+            let mut usage = ProviderUsage {
+                prompt_tokens: input_tokens as i32, // Total input tokens
                 completion_tokens: output_tokens as i32,
                 cache_write_tokens: 0, // Responses API doesn't provide cache write details
                 cache_read_tokens,
                 model_id: model_id.to_string(),
                 duration_ms: None,
                 cost: None, // OpenAI doesn't provide cost in responses
-            });
+            };
+
+            // Validate usage data before returning
+            usage.validate().ok()?;
+
+            return Some(usage);
         }
-        
+
         tracing::warn!("Unable to extract usage from OpenAI response: unknown format");
         None
     }

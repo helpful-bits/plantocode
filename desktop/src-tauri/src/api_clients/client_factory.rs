@@ -33,3 +33,13 @@ pub fn get_transcription_client(app_handle: &AppHandle) -> AppResult<Arc<dyn Tra
         .ok_or_else(|| AppError::InternalError("TranscriptionClient not managed in application state".to_string()))
         .map(|s| s.inner().clone())
 }
+
+pub fn create_http_client() -> reqwest::Client {
+    reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(1800)) // 30 minute request timeout
+        .connect_timeout(std::time::Duration::from_secs(600)) // 10 minute connection timeout
+        .pool_idle_timeout(None) // Keep idle connections in the pool indefinitely
+        .tcp_keepalive(Some(std::time::Duration::from_secs(120))) // Send TCP keepalives every 2 minutes
+        .build()
+        .expect("Failed to create HTTP client")
+}

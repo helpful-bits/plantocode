@@ -1,14 +1,14 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { DollarSign, ChevronLeft, ChevronRight, Search, Loader2, Calendar } from "lucide-react";
+import { DollarSign, ChevronLeft, ChevronRight, Search, Loader2, Calendar, X } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/ui/card";
 import { Button } from "@/ui/button";
 import { Input } from "@/ui/input";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/ui/tabs";
 import { Slider } from "@/ui/slider";
 import { LoadingSkeleton, ErrorState } from "./loading-and-error-states";
-import { getCreditHistory, type CreditHistoryResponse, getDetailedUsageWithSummary, type DetailedUsage, type UsageSummary } from "@/actions/billing";
+import { getCreditHistory, type UnifiedCreditHistoryResponse, type UnifiedCreditHistoryEntry, getDetailedUsageWithSummary, type DetailedUsage, type UsageSummary } from "@/actions/billing";
 import { getProvidersWithModels } from "@/actions/config.actions";
 import { type ProviderWithModels } from "@/types/config-types";
 import { getErrorMessage } from "@/utils/error-handling";
@@ -31,12 +31,13 @@ function formatTransactionDate(dateString: string): string {
 }
 
 export function BillingHistory({ className }: BillingHistoryProps) {
-  const [transactionHistoryData, setTransactionHistoryData] = useState<CreditHistoryResponse | null>(null);
+  const [transactionHistoryData, setTransactionHistoryData] = useState<UnifiedCreditHistoryResponse | null>(null);
   const [isTransactionsLoading, setIsTransactionsLoading] = useState(true);
   const [isTransactionsLoadingPage, setIsTransactionsLoadingPage] = useState(false);
   const [transactionsError, setTransactionsError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [searchTerm, setSearchTerm] = useState("");
+  const [isSearchActive, setIsSearchActive] = useState(false);
 
   const [usageData, setUsageData] = useState<DetailedUsage[]>([]);
   const [usageSummary, setUsageSummary] = useState<UsageSummary | null>(null);
@@ -44,7 +45,7 @@ export function BillingHistory({ className }: BillingHistoryProps) {
   const [usageError, setUsageError] = useState<string | null>(null);
   const [startDate, setStartDate] = useState(() => {
     const date = new Date();
-    date.setDate(date.getDate() - 7);
+    date.setDate(date.getDate() - 1); // Changed to 24h default
     return date.toISOString().split('T')[0];
   });
   const [endDate, setEndDate] = useState(() => {
@@ -55,6 +56,7 @@ export function BillingHistory({ className }: BillingHistoryProps) {
   const [hasLoadedUsage, setHasLoadedUsage] = useState(false);
   const [sliderPage, setSliderPage] = useState(1);
   const [providers, setProviders] = useState<ProviderWithModels[]>([]);
+  const [selectedPreset, setSelectedPreset] = useState<'last1hour' | 'last24hours' | 'last7days' | 'thismonth' | null>('last24hours');
 
   const getProviderDisplayName = (providerCode: string): string => {
     const provider = providers.find(p => p.provider.code === providerCode);
@@ -111,7 +113,6 @@ export function BillingHistory({ className }: BillingHistoryProps) {
 
   useEffect(() => {
     loadCreditHistory(1);
-    
     // Load provider information for display names
     getProvidersWithModels().then(setProviders).catch(console.error);
   }, [loadCreditHistory]);
@@ -143,7 +144,16 @@ export function BillingHistory({ className }: BillingHistoryProps) {
   const handleSearch = () => {
     setCurrentPage(1);
     setSliderPage(1);
+    setIsSearchActive(searchTerm.trim().length > 0);
     loadCreditHistory(1, searchTerm);
+  };
+
+  const handleClearSearch = () => {
+    setSearchTerm("");
+    setCurrentPage(1);
+    setSliderPage(1);
+    setIsSearchActive(false);
+    loadCreditHistory(1, "");
   };
 
   const handleSliderChange = useCallback((value: number[]) => {
@@ -169,11 +179,19 @@ export function BillingHistory({ className }: BillingHistoryProps) {
     return () => clearTimeout(timer);
   }, [sliderPage, debouncedPageChange]);
 
-  const handlePresetClick = (preset: 'last24hours' | 'last7days' | 'thismonth') => {
+  const handlePresetClick = (preset: 'last1hour' | 'last24hours' | 'last7days' | 'thismonth') => {
     const end = new Date();
     const endStr = end.toISOString().split('T')[0];
     
-    if (preset === 'last24hours') {
+    setSelectedPreset(preset);
+    
+    if (preset === 'last1hour') {
+      // For 1 hour, we still need to use the current day since date inputs only support day precision
+      const start = new Date();
+      start.setHours(start.getHours() - 1);
+      setStartDate(start.toISOString().split('T')[0]);
+      setEndDate(endStr);
+    } else if (preset === 'last24hours') {
       const start = new Date();
       start.setDate(start.getDate() - 1);
       setStartDate(start.toISOString().split('T')[0]);
@@ -191,7 +209,7 @@ export function BillingHistory({ className }: BillingHistoryProps) {
   };
 
   const renderTransactionSkeletonRows = () => (
-    Array.from({ length: transactionHistoryData ? transactionHistoryData.transactions.length : ITEMS_PER_PAGE }).map((_, index) => (
+    Array.from({ length: transactionHistoryData ? transactionHistoryData.entries.length : ITEMS_PER_PAGE }).map((_, index) => (
       <tr key={`skeleton-${index}`} className="hover:bg-muted/30 transition-colors">
         <td className="py-3 px-1">
           <span className="h-5 w-16 bg-muted/30 rounded animate-pulse inline-block" />
@@ -200,10 +218,16 @@ export function BillingHistory({ className }: BillingHistoryProps) {
           <span className="h-3 w-32 bg-muted/30 rounded animate-pulse inline-block" />
         </td>
         <td className="py-3 px-1">
-          <span className="h-3 w-full bg-muted/30 rounded animate-pulse inline-block" />
+          <span className="h-3 w-24 bg-muted/30 rounded animate-pulse inline-block" />
         </td>
-        <td className="py-3 px-1">
-          <span className="h-3 w-20 bg-muted/30 rounded animate-pulse inline-block" />
+        <td className="py-3 px-1 text-right">
+          <span className="h-3 w-16 bg-muted/30 rounded animate-pulse inline-block ml-auto" />
+        </td>
+        <td className="py-3 px-1 text-right">
+          <span className="h-3 w-16 bg-muted/30 rounded animate-pulse inline-block ml-auto" />
+        </td>
+        <td className="py-3 px-1 text-right">
+          <span className="h-3 w-20 bg-muted/30 rounded animate-pulse inline-block ml-auto" />
         </td>
       </tr>
     ))
@@ -230,6 +254,12 @@ export function BillingHistory({ className }: BillingHistoryProps) {
         <td className="py-3 px-1 text-right">
           <span className="h-3 w-20 bg-muted/30 rounded animate-pulse inline-block ml-auto" />
         </td>
+        <td className="py-3 px-1 text-right">
+          <span className="h-3 w-16 bg-muted/30 rounded animate-pulse inline-block ml-auto" />
+        </td>
+        <td className="py-3 px-1 text-right">
+          <span className="h-3 w-16 bg-muted/30 rounded animate-pulse inline-block ml-auto" />
+        </td>
       </tr>
     ))
   );
@@ -237,20 +267,24 @@ export function BillingHistory({ className }: BillingHistoryProps) {
   return (
     <Card className={className}>
       <CardHeader>
-        <CardTitle className="text-xl font-bold flex items-center gap-3">
-          <div className="h-10 w-10 bg-primary/10 rounded-full flex items-center justify-center">
-            <Calendar className="h-5 w-5 text-primary" />
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle className="text-xl font-bold flex items-center gap-3">
+              <div className="h-10 w-10 bg-primary/10 rounded-full flex items-center justify-center">
+                <Calendar className="h-5 w-5 text-primary" />
+              </div>
+              API Usage History
+            </CardTitle>
+            <CardDescription>
+              Track your API usage and costs
+            </CardDescription>
           </div>
-          Billing & Usage History
-        </CardTitle>
-        <CardDescription>
-          View your credit transactions and detailed usage reports
-        </CardDescription>
+        </div>
       </CardHeader>
       <CardContent>
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="transactions">Credit Transactions</TabsTrigger>
+            <TabsTrigger value="transactions">Transactions</TabsTrigger>
             <TabsTrigger value="usage">Usage Details</TabsTrigger>
           </TabsList>
 
@@ -259,7 +293,7 @@ export function BillingHistory({ className }: BillingHistoryProps) {
               <LoadingSkeleton />
             ) : transactionsError ? (
               <ErrorState message={transactionsError} onRetry={handleTransactionsRetry} />
-            ) : !transactionHistoryData || transactionHistoryData.transactions.length === 0 ? (
+            ) : !transactionHistoryData || transactionHistoryData.entries.length === 0 ? (
               <div className="text-center py-8">
                 <DollarSign className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                 <h3 className="font-semibold mb-2">No Credit Transactions</h3>
@@ -272,14 +306,23 @@ export function BillingHistory({ className }: BillingHistoryProps) {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <div className="relative">
-                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Search className="absolute left-2.5 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                       <Input
                         placeholder="Search transactions..."
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
-                        className="pl-10"
+                        className="pl-8 pr-10"
                         onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
                       />
+                      {searchTerm && (
+                        <button
+                          onClick={handleClearSearch}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 h-6 w-6 rounded-full hover:bg-muted/80 flex items-center justify-center transition-colors cursor-pointer"
+                          type="button"
+                        >
+                          <X className="h-3 w-3 text-muted-foreground" />
+                        </button>
+                      )}
                     </div>
                     <Button 
                       variant="outline" 
@@ -291,44 +334,51 @@ export function BillingHistory({ className }: BillingHistoryProps) {
                     </Button>
                   </div>
                   <span className="text-xs text-muted-foreground">
-                    {transactionHistoryData.totalCount} total
+                    {isSearchActive 
+                      ? `${transactionHistoryData.totalCount} found` 
+                      : `${transactionHistoryData.totalCount} total`
+                    }
                   </span>
                 </div>
 
                 <table className="w-full">
                   <thead>
                     <tr className="border-b border-border/30">
-                      <th className="text-left text-xs font-medium text-muted-foreground py-2 px-1">Amount</th>
+                      <th className="text-left text-xs font-medium text-muted-foreground py-2 px-1">Price</th>
                       <th className="text-left text-xs font-medium text-muted-foreground py-2 px-1">Date</th>
-                      <th className="text-left text-xs font-medium text-muted-foreground py-2 px-1">Description</th>
-                      <th className="text-left text-xs font-medium text-muted-foreground py-2 px-1">Balance</th>
+                      <th className="text-left text-xs font-medium text-muted-foreground py-2 px-1">Model</th>
+                      <th className="text-right text-xs font-medium text-muted-foreground py-2 px-1">Input Tokens</th>
+                      <th className="text-right text-xs font-medium text-muted-foreground py-2 px-1">Output Tokens</th>
+                      <th className="text-right text-xs font-medium text-muted-foreground py-2 px-1">Balance</th>
                     </tr>
                   </thead>
                   <tbody>
                     {isTransactionsLoadingPage ? (
                       renderTransactionSkeletonRows()
                     ) : (
-                      transactionHistoryData.transactions.map((transaction) => (
+                      transactionHistoryData.entries.map((transaction: UnifiedCreditHistoryEntry) => (
                         <tr
                           key={transaction.id}
                           className="border-b border-border/30 last:border-b-0 hover:bg-muted/30 transition-colors"
                         >
                           <td className="py-3 px-1">
-                            <span className={`font-medium text-sm ${transaction.amount >= 0 ? 'text-green-600' : 'text-foreground'}`}>
-                              {transaction.amount >= 0 ? '+' : ''}{formatUsdCurrencyPrecise(transaction.amount)}
+                            <span className={`font-medium text-sm ${transaction.price >= 0 ? 'text-green-600' : 'text-foreground'}`}>
+                              {transaction.price >= 0 ? '+' : ''}{formatUsdCurrencyPrecise(transaction.price)}
                             </span>
                           </td>
                           <td className="py-3 px-1 text-xs text-muted-foreground">
-                            {formatTransactionDate(transaction.createdAt)}
+                            {formatTransactionDate(transaction.date)}
                           </td>
                           <td className="py-3 px-1 text-xs text-muted-foreground">
-                            {transaction.description && (
-                              <span className="truncate">
-                                {transaction.description}
-                              </span>
-                            )}
+                            {transaction.model || 'Credit Purchase'}
                           </td>
-                          <td className="py-3 px-1 text-xs text-muted-foreground">
+                          <td className="py-3 px-1 text-xs text-muted-foreground text-right">
+                            {transaction.inputTokens ? transaction.inputTokens.toLocaleString() : '-'}
+                          </td>
+                          <td className="py-3 px-1 text-xs text-muted-foreground text-right">
+                            {transaction.outputTokens ? transaction.outputTokens.toLocaleString() : '-'}
+                          </td>
+                          <td className="py-3 px-1 text-xs text-muted-foreground text-right">
                             {formatUsdCurrencyPrecise(transaction.balanceAfter)}
                           </td>
                         </tr>
@@ -337,7 +387,7 @@ export function BillingHistory({ className }: BillingHistoryProps) {
                   </tbody>
                 </table>
 
-                {Math.ceil(transactionHistoryData.totalCount / ITEMS_PER_PAGE) > 1 && (
+                {Math.ceil(transactionHistoryData.totalCount / ITEMS_PER_PAGE) > 1 && transactionHistoryData.totalCount > 0 && (
                   <div className="pt-4 border-t">
                     <div className="flex items-center gap-3">
                       <span className="text-xs text-muted-foreground whitespace-nowrap">
@@ -407,26 +457,34 @@ export function BillingHistory({ className }: BillingHistoryProps) {
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-sm font-medium text-muted-foreground whitespace-nowrap">Quick Select:</span>
                 <Button
-                  variant="ghost"
+                  variant={selectedPreset === 'last1hour' ? 'default' : 'ghost'}
+                  size="sm"
+                  onClick={() => handlePresetClick('last1hour')}
+                  className={`h-8 text-xs ${selectedPreset === 'last1hour' ? 'bg-primary text-primary-foreground' : 'hover:bg-primary/10 hover:text-primary'}`}
+                >
+                  1h
+                </Button>
+                <Button
+                  variant={selectedPreset === 'last24hours' ? 'default' : 'ghost'}
                   size="sm"
                   onClick={() => handlePresetClick('last24hours')}
-                  className="h-8 text-xs hover:bg-primary/10 hover:text-primary"
+                  className={`h-8 text-xs ${selectedPreset === 'last24hours' ? 'bg-primary text-primary-foreground' : 'hover:bg-primary/10 hover:text-primary'}`}
                 >
                   24h
                 </Button>
                 <Button
-                  variant="ghost"
+                  variant={selectedPreset === 'last7days' ? 'default' : 'ghost'}
                   size="sm"
                   onClick={() => handlePresetClick('last7days')}
-                  className="h-8 text-xs hover:bg-primary/10 hover:text-primary"
+                  className={`h-8 text-xs ${selectedPreset === 'last7days' ? 'bg-primary text-primary-foreground' : 'hover:bg-primary/10 hover:text-primary'}`}
                 >
                   7d
                 </Button>
                 <Button
-                  variant="ghost"
+                  variant={selectedPreset === 'thismonth' ? 'default' : 'ghost'}
                   size="sm"
                   onClick={() => handlePresetClick('thismonth')}
-                  className="h-8 text-xs hover:bg-primary/10 hover:text-primary"
+                  className={`h-8 text-xs ${selectedPreset === 'thismonth' ? 'bg-primary text-primary-foreground' : 'hover:bg-primary/10 hover:text-primary'}`}
                 >
                   1m
                 </Button>
@@ -445,7 +503,10 @@ export function BillingHistory({ className }: BillingHistoryProps) {
                       id="start-date"
                       type="date"
                       value={startDate}
-                      onChange={(e) => setStartDate(e.target.value)}
+                      onChange={(e) => {
+                        setStartDate(e.target.value);
+                        setSelectedPreset(null); // Clear preset when manually changing dates
+                      }}
                       max={endDate}
                       className="h-8 text-xs pl-9 min-w-[140px] font-mono"
                     />
@@ -461,7 +522,10 @@ export function BillingHistory({ className }: BillingHistoryProps) {
                       id="end-date"
                       type="date"
                       value={endDate}
-                      onChange={(e) => setEndDate(e.target.value)}
+                      onChange={(e) => {
+                        setEndDate(e.target.value);
+                        setSelectedPreset(null); // Clear preset when manually changing dates
+                      }}
                       min={startDate}
                       className="h-8 text-xs pl-9 min-w-[140px] font-mono"
                     />
@@ -511,6 +575,12 @@ export function BillingHistory({ className }: BillingHistoryProps) {
                       <th className="text-right text-xs font-medium text-muted-foreground py-3 px-1">
                         Output Tokens
                       </th>
+                      <th className="text-right text-xs font-medium text-muted-foreground py-3 px-1">
+                        Cache Write
+                      </th>
+                      <th className="text-right text-xs font-medium text-muted-foreground py-3 px-1">
+                        Cache Read
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
@@ -538,6 +608,12 @@ export function BillingHistory({ className }: BillingHistoryProps) {
                             <td className="py-3 px-1 text-xs text-muted-foreground text-right">
                               {usage.totalOutputTokens.toLocaleString()}
                             </td>
+                            <td className="py-3 px-1 text-xs text-muted-foreground text-right">
+                              {(usage.totalCacheWriteTokens ?? 0) > 0 ? usage.totalCacheWriteTokens.toLocaleString() : '-'}
+                            </td>
+                            <td className="py-3 px-1 text-xs text-muted-foreground text-right">
+                              {(usage.totalCacheReadTokens ?? 0) > 0 ? usage.totalCacheReadTokens.toLocaleString() : '-'}
+                            </td>
                           </tr>
                         ))}
                         {usageData.length > 0 && usageSummary && (
@@ -559,6 +635,12 @@ export function BillingHistory({ className }: BillingHistoryProps) {
                             </td>
                             <td className="py-3 px-1 text-xs font-semibold text-right">
                               {usageSummary.totalOutputTokens.toLocaleString()}
+                            </td>
+                            <td className="py-3 px-1 text-xs font-semibold text-right">
+                              {(usageSummary.totalCacheWriteTokens ?? 0) > 0 ? usageSummary.totalCacheWriteTokens.toLocaleString() : '-'}
+                            </td>
+                            <td className="py-3 px-1 text-xs font-semibold text-right">
+                              {(usageSummary.totalCacheReadTokens ?? 0) > 0 ? usageSummary.totalCacheReadTokens.toLocaleString() : '-'}
                             </td>
                           </tr>
                         )}

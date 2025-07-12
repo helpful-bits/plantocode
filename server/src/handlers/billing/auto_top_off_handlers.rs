@@ -2,7 +2,7 @@ use actix_web::{web, HttpResponse, get, post};
 use serde::{Deserialize, Serialize};
 use crate::error::AppError;
 use crate::services::billing_service::BillingService;
-use crate::middleware::secure_auth::UserId;
+use crate::models::AuthenticatedUser;
 use crate::models::billing::{AutoTopOffSettings, UpdateAutoTopOffRequest};
 use log::{debug, info};
 use bigdecimal::{BigDecimal, FromPrimitive};
@@ -16,25 +16,25 @@ use bigdecimal::{BigDecimal, FromPrimitive};
 /// Get auto top-off settings for the user
 #[get("/auto-top-off-settings")]
 pub async fn get_auto_top_off_settings_handler(
-    user_id: UserId,
+    user: web::ReqData<AuthenticatedUser>,
     billing_service: web::Data<BillingService>,
 ) -> Result<HttpResponse, AppError> {
-    debug!("Getting auto top-off settings for user: {}", user_id.0);
+    debug!("Getting auto top-off settings for user: {}", user.user_id);
     
-    let settings = billing_service.get_auto_top_off_settings(&user_id.0).await?;
+    let settings = billing_service.get_auto_top_off_settings(&user.user_id).await?;
     
-    info!("Successfully retrieved auto top-off settings for user: {}", user_id.0);
+    info!("Successfully retrieved auto top-off settings for user: {}", user.user_id);
     Ok(HttpResponse::Ok().json(settings))
 }
 
 /// Update auto top-off settings for the user
 #[post("/auto-top-off-settings")]
 pub async fn update_auto_top_off_settings_handler(
-    user_id: UserId,
+    user: web::ReqData<AuthenticatedUser>,
     request: web::Json<UpdateAutoTopOffRequest>,
     billing_service: web::Data<BillingService>,
 ) -> Result<HttpResponse, AppError> {
-    debug!("Updating auto top-off settings for user: {}", user_id.0);
+    debug!("Updating auto top-off settings for user: {}", user.user_id);
     
     // Validate the request
     let threshold_decimal = if request.enabled {
@@ -68,13 +68,13 @@ pub async fn update_auto_top_off_settings_handler(
     };
     
     let settings = billing_service.update_auto_top_off_settings(
-        &user_id.0,
+        &user.user_id,
         request.enabled,
         threshold_decimal,
         amount_decimal,
     ).await?;
     
-    info!("Successfully updated auto top-off settings for user: {}", user_id.0);
+    info!("Successfully updated auto top-off settings for user: {}", user.user_id);
     Ok(HttpResponse::Ok().json(settings))
 }
 

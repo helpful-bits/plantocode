@@ -788,15 +788,6 @@ impl WorkflowOrchestrator {
             None   // cache_read_tokens
         ).await?;
         
-        // Emit generic job status change event for UI updates
-        crate::jobs::job_processor_utils::emit_job_status_change(
-            &self.app_handle,
-            workflow_id,
-            "completed",
-            None,
-            workflow_state.total_actual_cost
-        )?;
-        
         // Emit event to frontend
         event_emitter::emit_workflow_status_event_internal(&self.app_handle, &workflow_state, "Workflow completed successfully").await;
         
@@ -840,15 +831,6 @@ impl WorkflowOrchestrator {
             None,  // model_used
             workflow_state.total_actual_cost   // actual_cost
         ).await?;
-        
-        // Emit generic job status change event for UI updates
-        crate::jobs::job_processor_utils::emit_job_status_change(
-            &self.app_handle,
-            workflow_id,
-            "failed",
-            Some(error_message),
-            workflow_state.total_actual_cost
-        )?;
         
         // Emit event to frontend
         event_emitter::emit_workflow_status_event_internal(&self.app_handle, &workflow_state, &format!("Workflow failed: {}", error_message)).await;

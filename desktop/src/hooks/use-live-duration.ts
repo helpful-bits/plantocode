@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { formatJobDuration } from '@/utils/date-utils';
+import { JOB_STATUSES } from '@/types/session-types';
 
 /**
  * Custom hook that provides live duration updates for running jobs
@@ -14,7 +15,7 @@ export function useLiveDuration(
   status: string
 ): string {
   // For non-running jobs, calculate once and return static duration
-  const isRunning = ['running', 'preparing', 'processingStream', 'acknowledgedByWorker', 'preparingInput', 'generatingStream'].includes(status);
+  const isRunning = JOB_STATUSES.ACTIVE.includes(status as any);
   
   const [liveDuration, setLiveDuration] = useState(() => 
     formatJobDuration(startTime, endTime, status)

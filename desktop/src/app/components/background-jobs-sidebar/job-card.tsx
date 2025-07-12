@@ -49,13 +49,11 @@ export interface JobCardProps {
  * Reflects accurate streamProgress from metadata
  */
 const useLiveProgress = (
-  metadata: any,
-  startTime: number | null | undefined,
-  taskType: string | undefined,
+  job: BackgroundJob,
   isRunning: boolean
 ): number | undefined => {
   const [progress, setProgress] = useState<number | undefined>(() => 
-    isRunning ? getStreamingProgressValue(metadata) : undefined
+    isRunning ? getStreamingProgressValue(job.metadata, job.startTime) : undefined
   );
 
   useEffect(() => {
@@ -65,18 +63,52 @@ const useLiveProgress = (
     }
 
     const updateProgress = () => {
-      const newProgress = getStreamingProgressValue(metadata);
-      setProgress(newProgress);
+      // First check if job has progressPercentage field (for workflow jobs)
+      if (job.progressPercentage !== undefined && job.progressPercentage !== null) {
+        setProgress(job.progressPercentage);
+        return;
+      }
+
+      // Check for stream progress from metadata
+      const streamProgress = getStreamingProgressValue(job.metadata, job.startTime);
+      if (streamProgress !== undefined) {
+        setProgress(streamProgress);
+        return;
+      }
+
+      // Fall back to time-based progress animation with different durations per task type
+      if (job.startTime || job.createdAt) {
+        const elapsed = Date.now() - new Date(job.startTime || job.createdAt).getTime();
+        let estimatedDuration = 30000; // Default 30 seconds
+        
+        const taskDurations: Record<string, number> = {
+          'extended_path_finder': 20000,
+          'file_relevance_assessment': 20000,
+          'regex_file_filter': 20000,
+          'path_correction': 20000,
+          'implementation_plan': 90000,
+          'implementation_plan_merge': 90000,
+          'web_search_prompts_generation': 30000,
+          'web_search_execution': 120000,
+          'text_improvement': 45000,
+          'task_refinement': 30000,
+          'generic_llm_stream': 60000,
+        };
+        
+        estimatedDuration = taskDurations[job.taskType] || estimatedDuration;
+        const progress = Math.min(90, (elapsed / estimatedDuration) * 90);
+        setProgress(Math.round(progress));
+      }
     };
 
     // Update immediately
     updateProgress();
 
-    // Set up interval to update every second
-    const interval = setInterval(updateProgress, 1000);
+    // Set up interval to update every 500ms for smoother animation
+    const interval = setInterval(updateProgress, 500);
 
     return () => clearInterval(interval);
-  }, [metadata, startTime, taskType, isRunning]);
+  }, [job, isRunning]);
 
   return progress;
 };
@@ -93,11 +125,17 @@ const getErrorPreview = (errorMessage?: string) => {
 export const JobCard = React.memo(
   ({ job, handleCancel, handleDelete, isCancelling, isDeleting, onSelect, onApplyFiles, currentSessionId }: JobCardProps) => {
     
+    // Hide workflow orchestrator jobs
+    const isWorkflowJob = ['file_finder_workflow', 'web_search_workflow'].includes(job.taskType);
+    if (isWorkflowJob) {
+      return null;
+    }
+    
     // Determine if job is running for live progress updates  
     const isJobRunning = ["running", "processingStream", "generatingStream", "preparing", "preparing_input"].includes(job.status);
     
     // Use live progress hook for running jobs
-    const liveProgress = useLiveProgress(job.metadata, job.startTime, job.taskType, isJobRunning);
+    const liveProgress = useLiveProgress(job, isJobRunning);
     
     // Use live duration hook for real-time duration updates
     const liveDuration = useLiveDuration(job.startTime, job.endTime, job.status);
@@ -260,6 +298,11 @@ export const JobCard = React.memo(
                       className="h-1"
                     />
                     <div className="flex justify-between items-center min-w-0 overflow-hidden">
+                      {job.subStatusMessage ? (
+                        <p className="text-[9px] text-muted-foreground mt-0.5 truncate">
+                          {job.subStatusMessage}
+                        </p>
+                      ) : null}
                       <p className="text-[9px] text-muted-foreground mt-0.5 text-right">
                         {Math.round(displayProgress)}%
                       </p>
@@ -275,6 +318,11 @@ export const JobCard = React.memo(
                       className="h-1"
                     />
                     <div className="flex justify-between items-center min-w-0 overflow-hidden">
+                      {job.subStatusMessage ? (
+                        <p className="text-[9px] text-muted-foreground mt-0.5 truncate">
+                          {job.subStatusMessage}
+                        </p>
+                      ) : null}
                       <p className="text-[9px] text-muted-foreground mt-0.5 text-right">
                         Processing...
                       </p>
@@ -294,6 +342,8 @@ export const JobCard = React.memo(
                 // Display token counts directly from job object (server-provided data)
                 const tokensSent = Number(job.tokensSent || 0);
                 const tokensReceived = Number(job.tokensReceived || 0);
+                const cacheReadTokens = Number(job.cacheReadTokens || 0);
+                const cacheWriteTokens = Number(job.cacheWriteTokens || 0);
                 
                 return (tokensSent > 0 || tokensReceived > 0) ? (
                   <span className="flex items-center gap-1 overflow-hidden min-w-0">
@@ -307,6 +357,27 @@ export const JobCard = React.memo(
                     <span className="font-mono text-foreground text-[9px] flex-shrink-0">
                       {formatTokenCount(tokensReceived)}
                     </span>
+                    {(cacheReadTokens > 0 || cacheWriteTokens > 0) && (
+                      <>
+                        <span className="text-[9px] text-muted-foreground flex-shrink-0 ml-1">
+                          (cache:
+                        </span>
+                        {cacheReadTokens > 0 && (
+                          <span className="font-mono text-teal-600 dark:text-teal-400 text-[9px] flex-shrink-0">
+                            R{formatTokenCount(cacheReadTokens)}
+                          </span>
+                        )}
+                        {cacheWriteTokens > 0 && (
+                          <>
+                            {cacheReadTokens > 0 && <span className="text-[9px] text-muted-foreground flex-shrink-0">/</span>}
+                            <span className="font-mono text-amber-600 dark:text-amber-400 text-[9px] flex-shrink-0">
+                              W{formatTokenCount(cacheWriteTokens)}
+                            </span>
+                          </>
+                        )}
+                        <span className="text-[9px] text-muted-foreground flex-shrink-0">)</span>
+                      </>
+                    )}
                   </span>
                 ) : (
                   <span className="h-3"></span>
@@ -362,102 +433,28 @@ export const JobCard = React.memo(
                         ];
                         
                         if (fileFindingTasks.includes(job.taskType)) {
-                          // Get file paths from structured job.metadata or job.response
-                          let filePaths: string[] = [];
-                          
-                          // Check structured metadata first
-                          if (parsedMeta?.verifiedPaths && Array.isArray(parsedMeta.verifiedPaths)) {
-                            filePaths = parsedMeta.verifiedPaths;
-                          } else if (parsedMeta?.relevantFiles && Array.isArray(parsedMeta.relevantFiles)) {
-                            filePaths = parsedMeta.relevantFiles;
-                          } else if (parsedMeta?.correctedPaths && Array.isArray(parsedMeta.correctedPaths)) {
-                            filePaths = parsedMeta.correctedPaths;
-                          }
-                          
-                          // If no paths in metadata, check response
-                          if (filePaths.length === 0 && job.response) {
-                            if (typeof job.response === 'object' && job.response !== null) {
-                              // Handle path finder specific format with verified/unverified paths
-                              if ('verifiedPaths' in job.response && 'unverifiedPaths' in job.response) {
-                                const verifiedPaths = Array.isArray((job.response as any).verifiedPaths) ? (job.response as any).verifiedPaths : [];
-                                const unverifiedPaths = Array.isArray((job.response as any).unverifiedPaths) ? (job.response as any).unverifiedPaths : [];
-                                const verifiedCount = verifiedPaths.length;
-                                const unverifiedCount = unverifiedPaths.length;
-                                const totalCount = verifiedCount + unverifiedCount;
-                                
-                                if (totalCount > 0) {
-                                  return (
-                                    <span className="font-medium text-foreground">
-                                      {verifiedCount} verified, {unverifiedCount} unverified
-                                    </span>
-                                  );
-                                }
+                          // Use standardized response format from backend
+                          if (job.response) {
+                            try {
+                              let responseObj: any;
+                              if (typeof job.response === 'string') {
+                                responseObj = JSON.parse(job.response);
                               } else {
-                                // Use standardized response format from backend
-                                const responseObj = job.response as any;
-                                
-                                // Backend now standardizes all file-finding responses to have 'files' and 'count'
-                                if (responseObj.files && Array.isArray(responseObj.files)) {
-                                  filePaths = responseObj.files;
-                                }
-                                
-                                // Use the standardized count field
-                                if (typeof responseObj.count === 'number' && responseObj.count > 0) {
-                                  const summary = responseObj.summary || `${responseObj.count} file${responseObj.count !== 1 ? "s" : ""} found`;
-                                  return (
-                                    <span className="font-medium text-foreground">
-                                      {summary}
-                                    </span>
-                                  );
-                                }
+                                responseObj = job.response;
                               }
-                            } else if (typeof job.response === 'string') {
-                              try {
-                                const parsed = JSON.parse(job.response);
-                                if (Array.isArray(parsed)) {
-                                  filePaths = parsed;
-                                } else if (typeof parsed === 'object' && parsed !== null) {
-                                  // Use standardized response format from backend
-                                  if (parsed.files && Array.isArray(parsed.files)) {
-                                    filePaths = parsed.files;
-                                  }
-                                  
-                                  // Use the standardized count and summary if available
-                                  if (typeof parsed.count === 'number' && parsed.count > 0) {
-                                    const summary = parsed.summary || `${parsed.count} file${parsed.count !== 1 ? "s" : ""} found`;
-                                    return (
-                                      <span className="font-medium text-foreground">
-                                        {summary}
-                                      </span>
-                                    );
-                                  }
-                                }
-                              } catch {
-                                // Ignore parsing errors
+                              
+                              // Backend standardizes all file-finding responses to have 'files' and 'count'
+                              if (typeof responseObj.count === 'number') {
+                                const summary = responseObj.summary || `${responseObj.count} file${responseObj.count !== 1 ? "s" : ""} found`;
+                                return (
+                                  <span className="font-medium text-foreground">
+                                    {summary}
+                                  </span>
+                                );
                               }
+                            } catch (e) {
+                              // Fall through to "No files found"
                             }
-                          }
-                          
-                          // Display file count if any files found
-                          if (filePaths.length > 0) {
-                            const actionWord = job.taskType === "regex_file_filter" ? "filtered" :
-                                             job.taskType === "file_relevance_assessment" ? "relevant" : "found";
-                            return (
-                              <span className="font-medium text-foreground">
-                                {filePaths.length} {actionWord} file{filePaths.length !== 1 ? "s" : ""}
-                              </span>
-                            );
-                          }
-                          
-                          // Check metadata before showing "No files found"
-                          const count = (typeof parsedMeta?.finalVerifiedPaths === 'number') ? parsedMeta.finalVerifiedPaths : 
-                                       (typeof parsedMeta?.taskData?.pathCount === 'number') ? parsedMeta.taskData.pathCount : 0;
-                          if (count > 0) {
-                            return (
-                              <span className="font-medium text-foreground">
-                                {count} file{count !== 1 ? "s" : ""} found
-                              </span>
-                            );
                           }
                           
                           // Show "No files found" for all file finding tasks
@@ -500,51 +497,18 @@ export const JobCard = React.memo(
                         
                         // Handle path correction tasks
                         if (job.taskType === "path_correction") {
+                          // Use standardized response format from backend
                           if (job.response) {
-                            if (typeof job.response === 'string') {
-                              try {
-                                const parsed = JSON.parse(job.response);
-                                
-                                // Handle array responses (corrected paths) - legacy format
-                                if (Array.isArray(parsed)) {
-                                  const count = parsed.length;
-                                  if (count > 0) {
-                                    return (
-                                      <span className="font-medium text-foreground">
-                                        {count} corrected path{count !== 1 ? "s" : ""}
-                                      </span>
-                                    );
-                                  }
-                                }
-                                // Use standardized response format from backend
-                                else if (parsed && typeof parsed === 'object') {
-                                  // Backend now standardizes to 'files' and 'count'
-                                  if (parsed.files && Array.isArray(parsed.files) && parsed.count > 0) {
-                                    const summary = parsed.summary || `${parsed.count} corrected path${parsed.count !== 1 ? "s" : ""}`;
-                                    return (
-                                      <span className="font-medium text-foreground">
-                                        {summary}
-                                      </span>
-                                    );
-                                  }
-                                }
-                              } catch {
-                                // Fallback to metadata
-                                const count = (typeof parsedMeta?.pathCount === 'number') ? parsedMeta.pathCount : 0;
-                                if (count > 0) {
-                                  return (
-                                    <span className="font-medium text-foreground">
-                                      {count} corrected path{count !== 1 ? "s" : ""}
-                                    </span>
-                                  );
-                                }
+                            try {
+                              let responseObj: any;
+                              if (typeof job.response === 'string') {
+                                responseObj = JSON.parse(job.response);
+                              } else {
+                                responseObj = job.response;
                               }
-                            } else if (typeof job.response === 'object' && job.response !== null) {
-                              // Use standardized response format from backend
-                              const responseObj = job.response as any;
                               
-                              // Backend now standardizes to 'files' and 'count'
-                              if (responseObj.files && Array.isArray(responseObj.files) && responseObj.count > 0) {
+                              // Backend standardizes to 'files' and 'count'
+                              if (typeof responseObj.count === 'number' && responseObj.count > 0) {
                                 const summary = responseObj.summary || `${responseObj.count} corrected path${responseObj.count !== 1 ? "s" : ""}`;
                                 return (
                                   <span className="font-medium text-foreground">
@@ -552,6 +516,8 @@ export const JobCard = React.memo(
                                   </span>
                                 );
                               }
+                            } catch (e) {
+                              // Fall through to "No paths corrected"
                             }
                           }
                           
@@ -619,30 +585,40 @@ export const JobCard = React.memo(
                         
                         const shouldShowAddFiles = onApplyFiles && (
                           // File finding tasks with results
-                          (fileFindingTasks.includes(job.taskType) && (
-                            // Check various response formats for file results
-                            (job.response && (
-                              (typeof job.response === 'object' && job.response !== null && 
-                                ((job.response as any).files?.length > 0 || 
-                                 (job.response as any).verifiedPaths?.length > 0 ||
-                                 (job.response as any).unverifiedPaths?.length > 0)) ||
-                              (typeof job.response === 'string' && job.response.length > 2)
-                            )) ||
-                            // Or metadata indicates files found
-                            (parsedMeta && (
-                              (parsedMeta.verifiedPaths as any)?.length > 0 ||
-                              (parsedMeta.relevantFiles as any)?.length > 0 ||
-                              (parsedMeta.correctedPaths as any)?.length > 0 ||
-                              (parsedMeta.finalVerifiedPaths as any) > 0 ||
-                              parsedMeta.taskData?.pathCount > 0
-                            ))
-                          )) ||
-                          // Web search with results (only for current session)
+                          (fileFindingTasks.includes(job.taskType) && 
+                            job.response && (() => {
+                              try {
+                                let responseData: any;
+                                if (typeof job.response === 'string') {
+                                  responseData = JSON.parse(job.response);
+                                } else {
+                                  responseData = job.response;
+                                }
+                                return responseData.count > 0;
+                              } catch (e) {
+                                return false;
+                              }
+                            })()
+                          ) ||
+                          // Web search with results
                           (job.taskType === "web_search_execution" && 
-                           job.sessionId === currentSessionId &&
-                           job.response && 
-                           ((typeof job.response === 'object' && (job.response as any).searchResults?.length > 0) ||
-                            (typeof job.response === 'string' && job.response.includes('searchResults')))
+                           job.response && (() => {
+                             try {
+                               let responseData: any;
+                               if (typeof job.response === 'string') {
+                                 responseData = JSON.parse(job.response);
+                               } else {
+                                 responseData = job.response;
+                               }
+                               
+                               // Check for searchResults array with actual results
+                               return responseData.searchResults && 
+                                      Array.isArray(responseData.searchResults) && 
+                                      responseData.searchResults.length > 0;
+                             } catch (e) {
+                               return false;
+                             }
+                           })()
                           )
                         );
                         

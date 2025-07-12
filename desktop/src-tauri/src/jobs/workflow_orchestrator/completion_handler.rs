@@ -3,7 +3,7 @@ use log::{debug, error, info, warn};
 use crate::error::{AppError, AppResult};
 use crate::jobs::workflow_orchestrator::data_extraction;
 use crate::jobs::workflow_types::{WorkflowState, WorkflowStage, WorkflowDefinition};
-use crate::models::TaskType;
+use crate::models::{TaskType, JobStatus};
 
 /// Handle successful completion of a stage
 pub(super) async fn handle_stage_completion_internal(
@@ -101,6 +101,9 @@ pub(super) async fn handle_stage_completion_internal(
                 orchestrator.mark_workflow_failed(workflow_id, "Workflow stopped due to stage failure").await?;
                 info!("Workflow {} stopped due to failure", workflow_id);
             }
+        } else if workflow_state_for_payload_building.has_failed() {
+            orchestrator.mark_workflow_failed(workflow_id, "Workflow stopped due to stage failure").await?;
+            info!("Workflow {} stopped due to failure", workflow_id);
         } else {
             // Check if workflow is complete
             let is_complete = super::workflow_utils::is_workflow_complete(&workflow_state_for_payload_building, &workflow_definition);

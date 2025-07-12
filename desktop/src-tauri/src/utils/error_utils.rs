@@ -160,6 +160,8 @@ pub fn format_user_error(error: &AppError) -> String {
         AppError::ConfigurationError(msg) => format!("Configuration error: {}", msg),
         AppError::InvalidTaskTypeError(msg) => format!("Invalid task type: {}", msg),
         AppError::CacheValidationError(msg) => format!("Cache validation error: {}", msg),
+        AppError::TaskInitiationFailed(msg) => format!("Task initiation failed: {}", msg),
+        AppError::TaskFinalizationFailed(msg) => format!("Task finalization failed: {}", msg),
     }
 }
 

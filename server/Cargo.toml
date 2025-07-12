@@ -25,6 +25,7 @@ sqlx = { version = "0.8.6", features = ["runtime-tokio-rustls", "postgres", "uui
 tokio = { version = "1.45.1", features = ["full"] }
 
 # Authentication
+actix-web-httpauth = "0.8"
 jsonwebtoken = "9.3.1"
 argon2 = "0.5.3"
 base64 = "0.22.1"
@@ -86,6 +87,7 @@ tokio-cron-scheduler = "0.14.0"
 
 hmac = "0.12.1"
 hex = "0.4.3"
+subtle = "2.5.0"
 
 [features]
 default = []

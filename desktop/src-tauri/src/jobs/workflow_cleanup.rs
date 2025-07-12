@@ -520,7 +520,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_cleanup_handler_creation() {
-        let repo = Arc::new(BackgroundJobRepository::new("test.db".to_string()));
+        use sqlx::SqlitePool;
+        let pool = Arc::new(SqlitePool::connect(":memory:").await.unwrap());
+        let repo = Arc::new(BackgroundJobRepository::new(pool));
         let handler = WorkflowCleanupHandler::new(repo);
         
         // Basic creation test
@@ -537,7 +539,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_workflow_temp_dir_path() {
-        let repo = Arc::new(BackgroundJobRepository::new("test.db".to_string()));
+        use sqlx::SqlitePool;
+        let pool = Arc::new(SqlitePool::connect(":memory:").await.unwrap());
+        let repo = Arc::new(BackgroundJobRepository::new(pool));
         let handler = WorkflowCleanupHandler::new(repo);
         
         let temp_dir = handler.get_workflow_temp_dir("workflow_123");

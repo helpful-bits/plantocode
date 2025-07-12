@@ -42,6 +42,8 @@ export enum ErrorType {
   INVALID_CREDIT_AMOUNT = "INVALID_CREDIT_AMOUNT",
   PAYMENT_SETUP_REQUIRED = "PAYMENT_SETUP_REQUIRED",
   CREDIT_LIMIT_EXCEEDED = "CREDIT_LIMIT_EXCEEDED",
+  TASK_INITIATION_FAILED = "TASK_INITIATION_FAILED",
+  TASK_FINALIZATION_FAILED = "TASK_FINALIZATION_FAILED",
 }
 
 
@@ -489,10 +491,16 @@ function applyContextSpecificTransformations(
         return "Your account has been suspended. You can reactivate it anytime by visiting your billing page.";
       
       case ErrorType.CREDIT_INSUFFICIENT:
-        return "Insufficient credits to complete this operation. Please purchase additional credits to continue.";
+        return "Cannot start task - insufficient credits. Please top up your account.";
       
       case ErrorType.CREDIT_UPGRADE_REQUIRED:
         return "This feature requires additional credits. Please visit your billing page to add credits and access this functionality.";
+      
+      case ErrorType.TASK_INITIATION_FAILED:
+        return "Cannot start task - insufficient credits. Please top up your account.";
+      
+      case ErrorType.TASK_FINALIZATION_FAILED:
+        return "Task completed but final cost exceeded available credits. Please top up.";
       
       case ErrorType.PAYMENT_METHOD_REQUIRED:
         return "A valid payment method is required. Please visit your billing page to add a payment method to your account.";
@@ -877,6 +885,10 @@ export function mapRustErrorCodeToErrorType(code: string): ErrorType {
     case "CREDIT_LIMIT_EXCEEDED":
     case "LIMIT_EXCEEDED":
       return ErrorType.CREDIT_LIMIT_EXCEEDED;
+    case "TASK_INITIATION_FAILED":
+      return ErrorType.TASK_INITIATION_FAILED;
+    case "TASK_FINALIZATION_FAILED":
+      return ErrorType.TASK_FINALIZATION_FAILED;
     case "SERIALIZATION_ERROR":
     case "SERIALIZATION":
       return ErrorType.INTERNAL_ERROR;
@@ -938,10 +950,16 @@ export function createUserFriendlyErrorMessage(
       return "Your account has been suspended. You can reactivate it anytime by visiting your billing page.";
     
     case ErrorType.CREDIT_INSUFFICIENT:
-      return "Insufficient credits to complete this operation. Please purchase additional credits to continue.";
+      return "Cannot start task - insufficient credits. Please top up your account.";
     
     case ErrorType.CREDIT_UPGRADE_REQUIRED:
       return "This feature requires additional credits. Please visit your billing page to add credits and access this functionality.";
+    
+    case ErrorType.TASK_INITIATION_FAILED:
+      return "Cannot start task - insufficient credits. Please top up your account.";
+    
+    case ErrorType.TASK_FINALIZATION_FAILED:
+      return "Task completed but final cost exceeded available credits. Please top up.";
     
     case ErrorType.PAYMENT_METHOD_REQUIRED:
       return "A valid payment method is required. Please visit your billing page to add a payment method to your account.";

@@ -1,15 +1,18 @@
 "use client";
 
 import { invoke } from "@tauri-apps/api/core";
-import { listen, emit } from "@tauri-apps/api/event";
+import { listen } from "@tauri-apps/api/event";
 import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 
 import {
   type BackgroundJob,
   JOB_STATUSES,
 } from "@/types/session-types";
-import { areJobArraysEqual, areJobsEqual } from "@/utils/job-comparison-utils";
+import { areJobArraysEqual, areJobsEqual } from "../_utils/job-state-helpers";
 import { logError, getErrorMessage } from "@/utils/error-handling";
+import { isTauriAvailable, safeCleanupListenerPromise } from "@/utils/tauri-utils";
+import { getAllVisibleJobsAction } from "@/actions/background-jobs/jobs.actions";
+import { getParsedMetadata } from "@/app/components/background-jobs-sidebar/utils";
 
 export interface UseOrchestratedBackgroundJobsStateParams {
   initialJobs?: BackgroundJob[];
@@ -29,13 +32,8 @@ export interface UseOrchestratedBackgroundJobsStateParams {
 export function useOrchestratedBackgroundJobsState({
   initialJobs = [],
 }: UseOrchestratedBackgroundJobsStateParams = {}) {
-  // Maintain state for jobs and activeJobs
+  // Maintain state for jobs only - activeJobs will be derived
   const [jobs, setJobs] = useState<BackgroundJob[]>(initialJobs);
-  const [activeJobs, setActiveJobs] = useState<BackgroundJob[]>(
-    initialJobs.filter((job) =>
-      JOB_STATUSES.ACTIVE.includes(job.status)
-    )
-  );
 
   // Track loading and error states
   const [isLoading, setIsLoading] = useState(false);
@@ -47,8 +45,8 @@ export function useOrchestratedBackgroundJobsState({
   const isFetchingRef = useRef(false);
   const consecutiveErrorsRef = useRef(0);
   
-  // State for triggering timestamp updates
-  const [timestampUpdateTrigger, setTimestampUpdateTrigger] = useState(0);
+  // Derive activeJobs from jobs
+  const activeJobs = useMemo(() => jobs.filter((job) => JOB_STATUSES.ACTIVE.includes(job.status)), [jobs]);
 
   // Fetch jobs using Tauri command
   const fetchJobs = useCallback(async () => {
@@ -69,8 +67,14 @@ export function useOrchestratedBackgroundJobsState({
         setIsLoading(true);
       }
 
-      // Use Tauri command
-      const response = await invoke<BackgroundJob[]>("get_active_jobs_command");
+      // Use action to get all visible jobs
+      const result = await getAllVisibleJobsAction();
+      
+      if (!result.isSuccess) {
+        throw new Error(result.error?.message || result.error?.toString() || 'Failed to fetch jobs');
+      }
+      
+      const response = result.data || [];
 
       // Record fetch time
       setLastFetchTime(Date.now());
@@ -130,27 +134,13 @@ export function useOrchestratedBackgroundJobsState({
     try {
       const jobsData = await fetchJobs();
 
-      // Update state if we got data back - batch updates for better performance
+      // Update state if we got data back
       if (jobsData) {
-        // Calculate active jobs once
-        const activeJobsList = jobsData.filter((job: BackgroundJob) =>
-          JOB_STATUSES.ACTIVE.includes(job.status)
-        );
-        
-        // Ensure jobs and activeJobs are correctly updated atomically
         setJobs((prevJobs) => {
           if (!areJobArraysEqual(prevJobs, jobsData)) {
             return jobsData;
           }
           return prevJobs;
-        });
-
-        // Update active jobs separately but consistently
-        setActiveJobs((prevActiveJobs) => {
-          if (!areJobArraysEqual(prevActiveJobs, activeJobsList)) {
-            return activeJobsList;
-          }
-          return prevActiveJobs;
         });
       }
     } finally {
@@ -162,36 +152,10 @@ export function useOrchestratedBackgroundJobsState({
   const cancelJob = useCallback(
     async (jobId: string): Promise<void> => {
       try {
-        // Use Tauri command
         await invoke("cancel_background_job_command", { jobId });
-
-        // Update local state optimistically
-        setJobs((prev) =>
-          prev.map((job) =>
-            job.id === jobId
-              ? {
-                  ...job,
-                  status: "canceled" as const,
-                  errorMessage: "Canceled by user",
-                  endTime: job.endTime || Date.now(),
-                  updatedAt: Date.now(),
-                }
-              : job
-          )
-        );
-
-        // Remove from active jobs
-        setActiveJobs((prev) => prev.filter((job) => job.id !== jobId));
-
-        // Refresh jobs to get updated state
-        await refreshJobs();
       } catch (err) {
         await logError(err, "Background Jobs - Cancel Job Failed", { jobId });
         
-        // Refresh to get current state after error
-        await refreshJobs();
-        
-        // Create user-friendly error message
         const userMessage = getErrorMessage(err).includes("not found") 
           ? "Job not found or already completed"
           : "Failed to cancel job. Please try again.";
@@ -199,29 +163,17 @@ export function useOrchestratedBackgroundJobsState({
         throw new Error(userMessage);
       }
     },
-    [refreshJobs]
+    []
   );
 
   // Delete a job using Tauri command
   const deleteJob = useCallback(
     async (jobId: string): Promise<void> => {
       try {
-        // Use Tauri command
         await invoke("delete_background_job_command", { jobId });
-
-        // Update local state
-        setJobs((prev) => prev.filter((job) => job.id !== jobId));
-        setActiveJobs((prev) => prev.filter((job) => job.id !== jobId));
-
-        // Refresh jobs to get updated state
-        await refreshJobs();
       } catch (err) {
         await logError(err, "Background Jobs - Delete Job Failed", { jobId });
         
-        // Refresh to get current state after error
-        await refreshJobs();
-        
-        // Create user-friendly error message
         const userMessage = getErrorMessage(err).includes("not found")
           ? "Job not found or already deleted"
           : "Failed to delete job. Please try again.";
@@ -229,224 +181,183 @@ export function useOrchestratedBackgroundJobsState({
         throw new Error(userMessage);
       }
     },
-    [refreshJobs]
+    []
   );
 
   // Clear job history using Tauri command
   const clearHistory = useCallback(
     async (daysToKeep: number = 0): Promise<void> => {
       try {
-        // Use Tauri command
         await invoke("clear_job_history_command", { daysToKeep });
-
-        // Refresh jobs to get updated state
-        await refreshJobs();
       } catch (err) {
         await logError(err, "Background Jobs - Clear History Failed", { daysToKeep });
         
-        // Refresh to get current state after error
-        await refreshJobs();
-        
-        // Create user-friendly error message
         const userMessage = "Failed to clear job history. Please try again.";
         throw new Error(userMessage);
       }
     },
-    [refreshJobs]
-  );
+    []
+  )
 
-  // Optimized job update function to reduce state setter calls
-  const updateJobInState = useCallback((updatedJob: BackgroundJob) => {
-    // Batch both state updates in a single effect
+  // Idempotent job upsert function that handles all update cases
+  const upsertJob = useCallback((jobUpdate: Partial<BackgroundJob> & { id: string }, prepend = false) => {
+    // Filter out workflow orchestrator jobs
+    const workflowTypes = ['file_finder_workflow', 'web_search_workflow'];
+    if (jobUpdate.taskType && workflowTypes.includes(jobUpdate.taskType)) {
+      return;
+    }
+    
     setJobs(prevJobs => {
-      const existingJobIndex = prevJobs.findIndex(j => j.id === updatedJob.id);
-      let newJobs = prevJobs;
+      const existingJobIndex = prevJobs.findIndex(j => j.id === jobUpdate.id);
       
       if (existingJobIndex !== -1) {
-        if (!areJobsEqual(prevJobs[existingJobIndex], updatedJob)) {
-          newJobs = [...prevJobs];
-          newJobs[existingJobIndex] = updatedJob;
+        // Job exists - merge the update
+        const existingJob = prevJobs[existingJobIndex];
+        
+        // Handle metadata merging for partial updates with deep merge for taskData
+        let mergedMetadata = existingJob.metadata;
+        if (jobUpdate.metadata !== undefined) {
+          const existingMetadata = getParsedMetadata(existingJob.metadata);
+          const updateMetadata = getParsedMetadata(jobUpdate.metadata);
+          
+          if (existingMetadata && updateMetadata) {
+            // Deep merge metadata objects to preserve existing fields while updating new ones
+            const merged = { ...existingMetadata, ...updateMetadata };
+            
+            // Deep merge taskData if both exist
+            if (existingMetadata.taskData && updateMetadata.taskData) {
+              merged.taskData = { ...existingMetadata.taskData, ...updateMetadata.taskData };
+            }
+            
+            mergedMetadata = merged;
+          } else if (updateMetadata) {
+            mergedMetadata = updateMetadata;
+          } else if (existingMetadata) {
+            mergedMetadata = existingMetadata;
+          }
         }
-      } else {
-        newJobs = [...prevJobs, updatedJob];
+        
+        const mergedJob: BackgroundJob = {
+          ...existingJob,
+          ...jobUpdate,
+          // Preserve merged metadata
+          metadata: mergedMetadata,
+          // Handle response with proper null checking
+          response: jobUpdate.response !== undefined 
+            ? jobUpdate.response 
+            : existingJob.response,
+        };
+        
+        // Only update if job actually changed
+        if (!areJobsEqual(existingJob, mergedJob)) {
+          const newJobs = [...prevJobs];
+          newJobs[existingJobIndex] = mergedJob;
+          return newJobs;
+        }
+        return prevJobs;
+      } else if (jobUpdate.status) {
+        // Job doesn't exist and we have enough info to create it
+        const newJob = jobUpdate as BackgroundJob;
+        return prepend ? [newJob, ...prevJobs] : [...prevJobs, newJob];
       }
       
-      // Update active jobs in the same cycle
-      setActiveJobs(prevActiveJobs => {
-        const isJobActive = JOB_STATUSES.ACTIVE.includes(updatedJob.status);
-        const existingActiveIndex = prevActiveJobs.findIndex((job) => job.id === updatedJob.id);
-        const jobExistsInActive = existingActiveIndex !== -1;
-
-        if (isJobActive && !jobExistsInActive) {
-          return [...prevActiveJobs, updatedJob];
-        }
-
-        if (!isJobActive && jobExistsInActive) {
-          return prevActiveJobs.filter((job) => job.id !== updatedJob.id);
-        }
-
-        if (isJobActive && jobExistsInActive) {
-          if (areJobsEqual(prevActiveJobs[existingActiveIndex], updatedJob)) return prevActiveJobs;
-          const newActiveJobs = [...prevActiveJobs];
-          newActiveJobs[existingActiveIndex] = updatedJob;
-          return newActiveJobs;
-        }
-
-        return prevActiveJobs;
-      });
-      
-      return newJobs;
+      return prevJobs;
     });
   }, []);
   
-  // Listen for job status change events from the Rust backend
+  // Listen for SSE events from the Rust backend
   useEffect(() => {
-    let unlistenStatusPromise: Promise<() => void> | null = null;
+    let unlistenUsageUpdatePromise: Promise<() => void> | null = null;
     let unlistenResponseUpdatePromise: Promise<() => void> | null = null;
+    let unlistenJobCreatedPromise: Promise<() => void> | null = null;
+    let unlistenJobDeletedPromise: Promise<() => void> | null = null;
+    let unlistenJobUpdatedPromise: Promise<() => void> | null = null;
     
     const setupListeners = async () => {
       try {
-        // Listen for job status changes
-        unlistenStatusPromise = listen("job_status_change", async (event) => {
+        // Listen for job created events
+        unlistenJobCreatedPromise = listen("job_created", async (event) => {
           try {
-            // The payload should include the job ID and potentially other metadata including actualCost
-            const payload = event.payload as { 
-              jobId: string; 
-              status: string; 
-              message?: string;
-              actualCost?: number | null; // Server-provided cost from API responses
-            };
-            const jobId = payload.jobId;
-
-            if (!jobId) {
-              console.error(
-                "[BackgroundJobs] Received job_status_change event without jobId",
-                event.payload
-              );
-              return;
-            }
-
-            // Fetch the updated job details using Tauri command
-            try {
-              const updatedJob = await invoke<BackgroundJob>(
-                "get_background_job_by_id_command",
-                { jobId }
-              );
-
-              if (!updatedJob) {
-                console.warn(`[BackgroundJobs] Job ${jobId} not found, may have been deleted`);
-                // Remove from local state if it doesn't exist
-                setJobs(prev => prev.filter(j => j.id !== jobId));
-                setActiveJobs(prev => prev.filter(j => j.id !== jobId));
-                return;
-              }
-
-              // If actualCost is provided in the event payload, ensure it's included in the job
-              if (payload.actualCost !== undefined && updatedJob.actualCost !== payload.actualCost) {
-                updatedJob.actualCost = payload.actualCost;
-              }
-
-              // Use optimized update function
-              updateJobInState(updatedJob);
-
-              // Check if job has transitioned to terminal state and emit job-terminated event
-              if (JOB_STATUSES.TERMINAL.includes(updatedJob.status)) {
-                try {
-                  await emit('job-terminated', { 
-                    jobId: payload.jobId, 
-                    actualCost: payload.actualCost || updatedJob.actualCost 
-                  });
-                } catch (err) {
-                  console.error(`[BackgroundJobs] Error emitting job-terminated event for job ${payload.jobId}:`, err);
-                }
-              }
-
-              // Special handling for workflow jobs: If this job belongs to a workflow,
-              // the workflow state managed by useWorkflowTracker should be refreshed
-              // However, we rely on useWorkflowTracker's polling mechanism for workflow updates
-              // since it has more complete workflow context. The individual job updates here
-              // are sufficient for non-workflow-specific job display needs.
-            } catch (err) {
-              console.error(
-                `[BackgroundJobs] Error fetching updated job ${jobId}:`,
-                err
-              );
+            const newJob = event.payload as BackgroundJob;
+            // Filter out workflow orchestrator jobs
+            const workflowTypes = ['file_finder_workflow', 'web_search_workflow'];
+            if (!workflowTypes.includes(newJob.taskType)) {
+              upsertJob(newJob, true); // prepend new jobs
             }
           } catch (err) {
-            console.error(
-              "[BackgroundJobs] Error processing job_status_change event:",
-              err
-            );
+            console.error("[BackgroundJobs] Error processing job_created:", err);
           }
         });
 
-        // Listen for streaming response updates
-        unlistenResponseUpdatePromise = listen("VIBE_MANAGER_JOB_RESPONSE_UPDATE_EVENT", async (event) => {
+        // Listen for job deleted events
+        unlistenJobDeletedPromise = listen("job_deleted", async (event) => {
+          try {
+            const payload = event.payload as { jobId: string };
+            setJobs((prev) => prev.filter((job) => job.id !== payload.jobId));
+          } catch (err) {
+            console.error("[BackgroundJobs] Error processing job_deleted:", err);
+          }
+        });
+
+        // Listen for job updated events
+        unlistenJobUpdatedPromise = listen("job_updated", async (event) => {
+          try {
+            const jobUpdate = event.payload as Partial<BackgroundJob> & { id: string };
+            // Filter out workflow orchestrator jobs
+            const workflowTypes = ['file_finder_workflow', 'web_search_workflow'];
+            if (!jobUpdate.taskType || !workflowTypes.includes(jobUpdate.taskType)) {
+              upsertJob(jobUpdate);
+            }
+          } catch (err) {
+            console.error("[BackgroundJobs] Error processing job_updated:", err);
+          }
+        });
+
+        // Listen for real-time usage updates (SSE event)
+        unlistenUsageUpdatePromise = listen("job_usage_update", async (event) => {
           try {
             const payload = event.payload as { 
-              jobId: string; 
-              responseChunk: string; 
-              tokensReceived: number; 
-              metadata: string;
-              actualCost?: number | null; // Server-provided cost from API responses
+              job_id: string;
+              tokens_sent: number;      // Input tokens
+              tokens_received: number;  // Output tokens
+              estimated_cost: number;
+              cache_write_tokens?: number;
+              cache_read_tokens?: number;
             };
             
-            if (!payload.jobId) {
-              console.error(
-                "[BackgroundJobs] Received VIBE_MANAGER_JOB_RESPONSE_UPDATE_EVENT without jobId",
-                event.payload
-              );
-              return;
-            }
-
-            // Update the job in state with new response chunk
-            setJobs(prevJobs => {
-              const jobIndex = prevJobs.findIndex(j => j.id === payload.jobId);
-              if (jobIndex === -1) {
-                // Job not found in current state, ignore
-                return prevJobs;
-              }
-
-              const existingJob = prevJobs[jobIndex];
-              const currentResponse = existingJob.response || "";
-              const updatedResponse = currentResponse + payload.responseChunk;
-
-              const updatedJob: BackgroundJob = {
-                ...existingJob,
-                response: updatedResponse,
-                tokensReceived: payload.tokensReceived,
-                updatedAt: Date.now(),
-                metadata: payload.metadata,
-                // Extract actualCost from payload if provided
-                actualCost: payload.actualCost !== undefined ? payload.actualCost : existingJob.actualCost,
-              };
-
-              // Check if this is actually a change to avoid unnecessary re-renders
-              if (areJobsEqual(existingJob, updatedJob)) {
-                return prevJobs;
-              }
-
-              const newJobs = [...prevJobs];
-              newJobs[jobIndex] = updatedJob;
-
-              // Also update active jobs if this job is active
-              setActiveJobs(prevActiveJobs => {
-                const activeJobIndex = prevActiveJobs.findIndex(j => j.id === payload.jobId);
-                if (activeJobIndex !== -1) {
-                  const newActiveJobs = [...prevActiveJobs];
-                  newActiveJobs[activeJobIndex] = updatedJob;
-                  return newActiveJobs;
-                }
-                return prevActiveJobs;
-              });
-
-              return newJobs;
+            upsertJob({
+              id: payload.job_id,
+              tokensSent: payload.tokens_sent,
+              tokensReceived: payload.tokens_received,
+              cacheWriteTokens: payload.cache_write_tokens || null,
+              cacheReadTokens: payload.cache_read_tokens || null,
+              actualCost: payload.estimated_cost,
+              isFinalized: false, // This is estimated cost
+              updatedAt: Date.now(),
             });
           } catch (err) {
-            console.error(
-              "[BackgroundJobs] Error processing VIBE_MANAGER_JOB_RESPONSE_UPDATE_EVENT:",
-              err
-            );
+            console.error("[BackgroundJobs] Error processing usage update:", err);
+          }
+        });
+
+        // Listen for response update events
+        unlistenResponseUpdatePromise = listen("job_response_update", async (event) => {
+          try {
+            const payload = event.payload as {
+              job_id: string;
+              response_chunk: string;
+              chars_received: number;
+              estimated_tokens: number;
+              visual_update: boolean;
+            };
+            
+            upsertJob({
+              id: payload.job_id,
+              response: (jobs.find(j => j.id === payload.job_id)?.response || '') + payload.response_chunk,
+              updatedAt: Date.now(),
+            });
+          } catch (err) {
+            console.error("[BackgroundJobs] Error processing job_response_update:", err);
           }
         });
       } catch (err) {
@@ -458,14 +369,28 @@ export function useOrchestratedBackgroundJobsState({
 
     // Clean up the listeners when component unmounts
     return () => {
-      if (unlistenStatusPromise) {
-        void unlistenStatusPromise.then((cleanupFn) => cleanupFn());
+      if (!isTauriAvailable()) {
+        // Tauri context already destroyed, skip cleanup
+        return;
+      }
+
+      if (unlistenUsageUpdatePromise) {
+        safeCleanupListenerPromise(unlistenUsageUpdatePromise);
       }
       if (unlistenResponseUpdatePromise) {
-        void unlistenResponseUpdatePromise.then((cleanupFn) => cleanupFn());
+        safeCleanupListenerPromise(unlistenResponseUpdatePromise);
+      }
+      if (unlistenJobCreatedPromise) {
+        safeCleanupListenerPromise(unlistenJobCreatedPromise);
+      }
+      if (unlistenJobDeletedPromise) {
+        safeCleanupListenerPromise(unlistenJobDeletedPromise);
+      }
+      if (unlistenJobUpdatedPromise) {
+        safeCleanupListenerPromise(unlistenJobUpdatedPromise);
       }
     };
-  }, [updateJobInState]);
+  }, [upsertJob]);
 
   // Initial job fetch on mount
   useEffect(() => {
@@ -477,33 +402,6 @@ export function useOrchestratedBackgroundJobsState({
     void refreshJobs();
   }, [initialJobs.length, initialLoad, refreshJobs]);
 
-  // Event-driven timestamp updates instead of polling
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      // Update timestamps when user returns to see fresh relative times
-      if (document.visibilityState === 'visible') {
-        setTimestampUpdateTrigger(prev => prev + 1);
-      }
-    };
-
-    const handleUserInteraction = () => {
-      // Update timestamps on user interaction to show current relative times
-      setTimestampUpdateTrigger(prev => prev + 1);
-    };
-
-    // Listen for meaningful events instead of arbitrary intervals
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    window.addEventListener('focus', handleUserInteraction);
-    
-    // Update timestamps when jobs actually change (more relevant)
-    window.addEventListener('job-status-change', handleUserInteraction);
-
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      window.removeEventListener('focus', handleUserInteraction);
-      window.removeEventListener('job-status-change', handleUserInteraction);
-    };
-  }, []);
 
   // Get job by ID helper
   const getJobById = useCallback(
@@ -530,7 +428,6 @@ export function useOrchestratedBackgroundJobsState({
       isFetchingRef,
       consecutiveErrorsRef,
       lastFetchTime,
-      timestampUpdateTrigger,
     }),
     [
       // Core state
@@ -539,7 +436,6 @@ export function useOrchestratedBackgroundJobsState({
       isLoading,
       error,
       lastFetchTime,
-      timestampUpdateTrigger,
       
       // Action callbacks
       cancelJob,

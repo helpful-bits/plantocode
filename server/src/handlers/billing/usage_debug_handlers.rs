@@ -2,11 +2,11 @@ use actix_web::{web, HttpResponse, HttpRequest, HttpMessage};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
+use crate::models::AuthenticatedUser;
 use bigdecimal::BigDecimal;
 use sqlx::Row;
 use crate::error::AppError;
 use crate::db::repositories::api_usage_repository::ApiUsageRepository;
-use crate::middleware::secure_auth::UserId;
 use crate::models::auth_jwt_claims::Claims;
 use log::{debug, info, error};
 
@@ -67,7 +67,7 @@ pub struct UsageDebugQuery {
 
 /// Admin-only endpoint to get raw usage data for debugging
 pub async fn get_usage_debug_data(
-    user_id: UserId,
+    user: web::ReqData<AuthenticatedUser>,
     req: HttpRequest,
     query: web::Query<UsageDebugQuery>,
     api_usage_repo: web::Data<ApiUsageRepository>,
@@ -79,11 +79,11 @@ pub async fn get_usage_debug_data(
     
     // Check if user has admin role
     if claims.role != "admin" {
-        error!("User {} attempted to access admin-only usage debug endpoint", user_id.0);
+        error!("User {} attempted to access admin-only usage debug endpoint", user.user_id);
         return Err(AppError::Forbidden("Admin access required".to_string()));
     }
     
-    debug!("Admin user {} accessing usage debug data", user_id.0);
+    debug!("Admin user {} accessing usage debug data", user.user_id);
     
     let limit = query.limit.unwrap_or(200).min(1000); // Cap at 1000 records
     let user_filter = query.user_id.as_ref().and_then(|s| Uuid::parse_str(s).ok());
@@ -97,7 +97,7 @@ pub async fn get_usage_debug_data(
         service_filter,
     ).await?;
     
-    info!("Admin user {} retrieved {} usage debug records", user_id.0, debug_data.records.len());
+    info!("Admin user {} retrieved {} usage debug records", user.user_id, debug_data.records.len());
     
     Ok(HttpResponse::Ok().json(debug_data))
 }

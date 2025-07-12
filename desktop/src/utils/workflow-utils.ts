@@ -252,9 +252,9 @@ export class WorkflowTracker {
     let stageUnlisten: UnlistenFn | null = null;
     
     try {
-      // Listen for workflow status events (file-finder-workflow-status)
+      // Listen for workflow status events (workflow-status)
       statusUnlisten = await listen<WorkflowStatusEvent>(
-        'file-finder-workflow-status',
+        'workflow-status',
         (event) => {
           const statusEvent = event.payload;
           if (statusEvent.workflowId === this.workflowId) {
@@ -275,9 +275,9 @@ export class WorkflowTracker {
         }
       );
       
-      // Also listen for stage events (file-finder-workflow-stage) 
+      // Also listen for stage events (workflow-stage) 
       stageUnlisten = await listen<WorkflowStageEvent>(
-        'file-finder-workflow-stage',
+        'workflow-stage',
         (event) => {
           const stageEvent = event.payload;
           if (stageEvent.workflowId === this.workflowId) {

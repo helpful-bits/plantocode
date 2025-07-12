@@ -43,6 +43,9 @@ export interface BackgroundJob {
   endTime?: number;
   cacheWriteTokens: number | null; // Cache tokens written during the request
   cacheReadTokens: number | null; // Cache tokens read from previous context
+  isFinalized?: boolean; // Whether the cost is final (true) or estimated (false)
+  progressPercentage?: number; // Progress percentage for workflow jobs
+  subStatusMessage?: string; // Detailed progress message for workflow stages
 }
 
 // Session structure - stores user context and preferences, NOT workflow artifacts

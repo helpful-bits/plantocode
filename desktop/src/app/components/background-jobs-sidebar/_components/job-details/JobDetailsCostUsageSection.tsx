@@ -1,12 +1,24 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card";
 import { useJobDetailsContext } from "../../_contexts/job-details-context";
 import { TaskTypeDetails, type TaskType } from "@/types/task-type-defs";
-import { formatUsdCurrencyPrecise } from "@/utils/currency-utils";
+import { JOB_STATUSES } from "@/types/session-types";
 import { AnimatedNumber } from "@/components/ui/animated-number";
+import { formatUsdCurrencyPrecise } from "@/utils/currency-utils";
+import { useMemo } from "react";
 
 export function JobDetailsCostUsageSection() {
   const { job } = useJobDetailsContext();
   const isLocalTask = (job.taskType && TaskTypeDetails[job.taskType as TaskType]?.requiresLlm === false);
+  
+  const costLabel = useMemo(() => {
+    if (job.isFinalized === true) {
+      return 'Final Cost';
+    }
+    if (JOB_STATUSES.ACTIVE.includes(job.status) || job.isFinalized === false) {
+      return 'Estimated Cost';
+    }
+    return 'Cost';
+  }, [job.status, job.isFinalized]);
   
   if (isLocalTask) {
     return (
@@ -139,17 +151,22 @@ export function JobDetailsCostUsageSection() {
             <div>
               <div className="flex items-center gap-2 mb-1">
                 <div className="w-2 h-2 rounded-full bg-orange-500"></div>
-                <div className="text-xs text-muted-foreground">Cost</div>
+                <div className="text-xs text-muted-foreground">
+                  {costLabel}
+                  {job.isFinalized === false && (
+                    <span className="ml-1 text-yellow-500">●</span>
+                  )}
+                </div>
               </div>
               <div className="text-sm font-mono font-medium text-foreground">
                 {job.actualCost !== null && job.actualCost !== undefined ? (
                   <AnimatedNumber 
                     value={job.actualCost} 
                     duration={800}
-                    format={formatUsdCurrencyPrecise}
+                    format={(v) => formatUsdCurrencyPrecise(v)}
                   />
                 ) : (
-                  'N/A'
+                  'Calculating...'
                 )}
               </div>
             </div>

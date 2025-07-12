@@ -11,6 +11,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use tokio::sync::Mutex;
 use crate::config::settings::AppSettings;
 use crate::clients::usage_extractor::{UsageExtractor, ProviderUsage};
+use crate::services::model_mapping_service::ModelWithMapping;
 use tracing::{debug, info, error, instrument};
 
 // Base URL for Google AI API
@@ -114,11 +115,13 @@ pub struct GoogleSafetyRating {
 }
 
 #[skip_serializing_none]
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, Default)]
+#[serde(default)]
 #[serde(rename_all = "camelCase")]
 pub struct GoogleUsageMetadata {
     pub prompt_token_count: i32,
-    pub candidates_token_count: i32,
+    #[serde(default)]
+    pub candidates_token_count: Option<i32>,
     pub total_token_count: i32,
     #[serde(rename = "cachedContentTokenCount")]
     pub cached_content_token_count: Option<i32>,
@@ -172,7 +175,7 @@ impl GoogleClient {
             return Err(crate::error::AppError::Configuration("Google API keys list cannot be empty".to_string()));
         }
         
-        let client = Client::new();
+        let client = crate::clients::http_client::new_api_client();
         
         Ok(Self {
             client,
@@ -210,16 +213,12 @@ impl GoogleClient {
     }
 
     // Chat Completions
-    #[instrument(skip(self, request, model_id), fields(model = %model_id))]
-    pub async fn chat_completion(&self, request: GoogleChatRequest, model_id: &str, user_id: &str) -> Result<(GoogleChatResponse, HeaderMap, i32, i32, i32, i32), AppError> {
+    #[instrument(skip(self, request, model), fields(model = %model.resolved_model_id))]
+    pub async fn chat_completion(&self, request: GoogleChatRequest, model: &ModelWithMapping, user_id: &str) -> Result<(GoogleChatResponse, HeaderMap, i32, i32, i32, i32), AppError> {
         let request_id = self.get_next_request_id().await;
         
-        // Clean up model name - remove any provider prefix if present
-        let clean_model_id = if model_id.starts_with("google/") {
-            model_id.strip_prefix("google/").unwrap()
-        } else {
-            model_id
-        };
+        // Use the resolved model ID from the mapping service
+        let clean_model_id = &model.resolved_model_id;
         
         let num_keys = self.api_keys.len();
         let start_index = self.current_key_index.fetch_add(1, Ordering::Relaxed) % num_keys;
@@ -228,12 +227,13 @@ impl GoogleClient {
         for i in 0..num_keys {
             let key_index = (start_index + i) % num_keys;
             let api_key = &self.api_keys[key_index];
-            let url = format!("{}/models/{}:generateContent?key={}", self.base_url, clean_model_id, api_key);
+            let url = format!("{}/models/{}:generateContent", self.base_url, clean_model_id);
             
             debug!("Attempting Google API request with key {} (attempt {} of {})", key_index + 1, i + 1, num_keys);
             
             let response_result = self.client
                 .post(&url)
+                .header("x-goog-api-key", api_key)
                 .header("Content-Type", "application/json")
                 .header("X-Request-ID", request_id.to_string())
                 .json(&request)
@@ -297,7 +297,7 @@ impl GoogleClient {
             
             let (input_tokens, cache_write_tokens, cache_read_tokens, output_tokens) = if let Some(usage) = &result.usage_metadata {
                 // Google's prompt_token_count is already the total input tokens
-                (usage.prompt_token_count, 0, usage.cached_content_token_count.unwrap_or(0), usage.candidates_token_count)
+                (usage.prompt_token_count, 0, usage.cached_content_token_count.unwrap_or(0), usage.candidates_token_count.unwrap_or(0))
             } else {
                 (0, 0, 0, 0)
             };
@@ -310,11 +310,11 @@ impl GoogleClient {
     }
 
     // Streaming Chat Completions for actix-web compatibility
-    #[instrument(skip(self, request, model_id), fields(model = %model_id, user_id = %user_id))]
+    #[instrument(skip(self, request, model), fields(model = %model.resolved_model_id, user_id = %user_id))]
     pub async fn stream_chat_completion(
         &self, 
         request: GoogleChatRequest,
-        model_id: String,
+        model: &ModelWithMapping,
         user_id: String
     ) -> Result<(HeaderMap, Pin<Box<dyn Stream<Item = Result<web::Bytes, AppError>> + Send + 'static>>), AppError> {
         // Get the next key index upfront
@@ -326,6 +326,7 @@ impl GoogleClient {
         let api_keys = self.api_keys.clone();
         let base_url = self.base_url.clone();
         let request_id_counter = self.request_id_counter.clone();
+        let resolved_model_id = model.resolved_model_id.clone();
         
         // Create the stream in an async move block to ensure 'static lifetime
         let result = async move {
@@ -334,21 +335,18 @@ impl GoogleClient {
                 *counter += 1;
                 *counter
             };
-            // Clean up model name - remove any provider prefix if present
-            let clean_model_id = if model_id.starts_with("google/") {
-                model_id.strip_prefix("google/").unwrap()
-            } else {
-                &model_id
-            };
+            // Use the resolved model ID from the mapping service
+            let clean_model_id = &resolved_model_id;
             let mut last_error = None;
             
             for i in 0..num_keys {
                 let key_index = (start_index + i) % num_keys;
                 let api_key = &api_keys[key_index];
-                let url = format!("{}/models/{}:streamGenerateContent?key={}&alt=sse", base_url, clean_model_id, api_key);
+                let url = format!("{}/models/{}:streamGenerateContent?alt=sse", base_url, clean_model_id);
                 
                 let response_result = client
                     .post(&url)
+                    .header("x-goog-api-key", api_key)
                     .header("Content-Type", "application/json")
                     .header("X-Request-ID", request_id.to_string())
                     .json(&request)
@@ -635,7 +633,11 @@ impl GoogleClient {
     /// Extract usage from Google SSE (Server-Sent Events) streaming body
     /// Processes streaming responses line by line to find usage metadata from final chunks only
     fn extract_usage_from_sse_body(&self, body: &str, model_id: &str) -> Option<ProviderUsage> {
-        // Process streaming body line by line to find usage information
+        // Google provides cumulative token counts in streaming responses
+        // We need to track the last seen usageMetadata which contains the final totals
+        let mut last_usage_metadata: Option<serde_json::Value> = None;
+        
+        // Process streaming body line by line
         for line in body.lines() {
             if line.starts_with("data: ") {
                 let json_str = &line[6..]; // Remove "data: " prefix
@@ -645,31 +647,59 @@ impl GoogleClient {
                 
                 // Try to parse the chunk as JSON
                 if let Ok(chunk_json) = serde_json::from_str::<serde_json::Value>(json_str.trim()) {
-                    // Only extract usage from chunks that have finish_reason (final chunks)
-                    if let Some(candidates) = chunk_json.get("candidates").and_then(|c| c.as_array()) {
-                        if let Some(first_candidate) = candidates.first() {
-                            if first_candidate.get("finishReason").is_some() {
-                                // This is a final chunk, extract usage
-                                if let Some(usage) = self.extract_usage_from_json(&chunk_json, model_id) {
-                                    return Some(usage);
-                                }
-                            }
-                        }
+                    // Check for usage metadata in this chunk
+                    if let Some(usage_metadata) = chunk_json.get("usageMetadata") {
+                        // Store the last seen usage metadata
+                        last_usage_metadata = Some(usage_metadata.clone());
                     }
                 }
             } else if !line.trim().is_empty() {
                 // Try parsing non-SSE lines as JSON (some Google responses might not use SSE)
                 if let Ok(json) = serde_json::from_str::<serde_json::Value>(line.trim()) {
                     // Check if this is a complete response with usage metadata
-                    if json.get("usageMetadata").is_some() {
-                        if let Some(usage) = self.extract_usage_from_json(&json, model_id) {
-                            return Some(usage);
-                        }
+                    if let Some(usage_metadata) = json.get("usageMetadata") {
+                        last_usage_metadata = Some(usage_metadata.clone());
                     }
                 }
             }
         }
-        None
+        
+        // Process the last seen usage metadata to get final totals
+        if let Some(usage_metadata) = last_usage_metadata {
+            // Extract token counts from the final usage metadata
+            let prompt_tokens = usage_metadata.get("promptTokenCount")
+                .and_then(|v| v.as_i64())
+                .map(|v| v as i32)
+                .unwrap_or(0);
+            
+            let completion_tokens = usage_metadata.get("candidatesTokenCount")
+                .and_then(|v| v.as_i64())
+                .map(|v| v as i32)
+                .unwrap_or(0);
+            
+            let cached_tokens = usage_metadata.get("cachedContentTokenCount")
+                .and_then(|v| v.as_i64())
+                .map(|v| v as i32)
+                .unwrap_or(0);
+            
+            // Google's promptTokenCount is already the total input tokens
+            let mut usage = ProviderUsage {
+                prompt_tokens,  // Total input tokens (already includes cached)
+                completion_tokens,  // Total output tokens
+                cache_write_tokens: 0,  // Google doesn't support cache write
+                cache_read_tokens: cached_tokens,
+                model_id: model_id.to_string(),
+                duration_ms: None,
+                cost: None,  // Google doesn't provide cost in responses
+            };
+            
+            // Validate usage data before returning
+            usage.validate().ok()?;
+            
+            Some(usage)
+        } else {
+            None
+        }
     }
     
     /// Extract usage from parsed JSON (handles Google response format)
@@ -701,15 +731,20 @@ impl GoogleClient {
         
         // Google API's promptTokenCount is already the total input tokens
         // No need to add cached tokens again
-        Some(ProviderUsage {
+        let mut usage = ProviderUsage {
             prompt_tokens: prompt_token_count,  // Total input tokens (already includes cached)
             completion_tokens: candidates_token_count,
-            cache_write_tokens: 0, // Google doesn't provide cache write information
+            cache_write_tokens: 0, // Google doesn't support cache write
             cache_read_tokens: cached_content_token_count,
             model_id: model_id.to_string(),
             duration_ms: None,
             cost: None, // Google doesn't provide cost in responses
-        })
+        };
+        
+        // Validate usage data before returning
+        usage.validate().ok()?;
+        
+        Some(usage)
     }
 }
 
@@ -756,7 +791,7 @@ impl UsageExtractor for GoogleClient {
 impl Clone for GoogleClient {
     fn clone(&self) -> Self {
         Self {
-            client: Client::new(),
+            client: crate::clients::http_client::new_api_client(),
             api_keys: self.api_keys.clone(),
             current_key_index: AtomicUsize::new(0),
             base_url: self.base_url.clone(),

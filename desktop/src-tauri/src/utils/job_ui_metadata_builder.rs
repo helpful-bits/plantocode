@@ -5,6 +5,7 @@ pub struct JobUIMetadataBuilder {
     job_payload: JobPayload,
     workflow_id: Option<String>,
     task_data: Value,
+    display_name: Option<String>,
 }
 
 impl JobUIMetadataBuilder {
@@ -13,6 +14,7 @@ impl JobUIMetadataBuilder {
             job_payload,
             workflow_id: None,
             task_data: json!({}),
+            display_name: None,
         }
     }
 
@@ -56,12 +58,18 @@ impl JobUIMetadataBuilder {
         }
         self
     }
+    
+    pub fn display_name(mut self, display_name: Option<String>) -> Self {
+        self.display_name = display_name;
+        self
+    }
 
     pub fn build(self) -> JobUIMetadata {
         JobUIMetadata {
             job_payload_for_worker: self.job_payload,
             workflow_id: self.workflow_id,
             task_data: self.task_data,
+            display_name: self.display_name,
         }
     }
 }

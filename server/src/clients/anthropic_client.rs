@@ -14,6 +14,7 @@ use crate::config::settings::AppSettings;
 use tracing::{debug, info, warn, error, instrument};
 
 use crate::clients::usage_extractor::{ProviderUsage, UsageExtractor};
+use crate::services::model_mapping_service::ModelWithMapping;
 
 // Base URL for Anthropic API
 const ANTHROPIC_BASE_URL: &str = "https://api.anthropic.com/v1";
@@ -155,7 +156,7 @@ impl AnthropicClient {
         let api_key = app_settings.api_keys.anthropic_api_key.clone()
             .ok_or_else(|| crate::error::AppError::Configuration("Anthropic API key must be configured".to_string()))?;
         
-        let client = Client::new();
+        let client = crate::clients::http_client::new_api_client();
         
         Ok(Self {
             client,
@@ -177,10 +178,13 @@ impl AnthropicClient {
     }
 
     // Chat Completions
-    #[instrument(skip(self, request), fields(model = %request.model))]
-    pub async fn chat_completion(&self, request: AnthropicChatRequest, user_id: &str) -> Result<(AnthropicChatResponse, HeaderMap, i32, i32, i32, i32), AppError> {
+    #[instrument(skip(self, request, model), fields(model = %model.resolved_model_id))]
+    pub async fn chat_completion(&self, mut request: AnthropicChatRequest, model: &ModelWithMapping, user_id: &str) -> Result<(AnthropicChatResponse, HeaderMap, i32, i32, i32, i32), AppError> {
         let request_id = self.get_next_request_id().await;
         let url = format!("{}/messages", self.base_url);
+        
+        // Use the resolved model ID from the mapping service
+        request.model = model.resolved_model_id.clone();
         
         let response = self.client
             .post(&url)
@@ -217,12 +221,16 @@ impl AnthropicClient {
     }
 
     // Streaming Chat Completions for actix-web compatibility
-    #[instrument(skip(self, request), fields(model = %request.model, user_id = %user_id))]
+    #[instrument(skip(self, request, model), fields(model = %model.resolved_model_id, user_id = %user_id))]
     pub async fn stream_chat_completion(
         &self, 
-        request: AnthropicChatRequest,
+        mut request: AnthropicChatRequest,
+        model: &ModelWithMapping,
         user_id: String
     ) -> Result<(HeaderMap, Pin<Box<dyn Stream<Item = Result<web::Bytes, AppError>> + Send + 'static>>), AppError> {
+        // Use the resolved model ID from the mapping service
+        request.model = model.resolved_model_id.clone();
+        
         // Clone necessary parts for 'static lifetime
         let client = self.client.clone();
         let api_key = self.api_key.clone();
@@ -381,8 +389,8 @@ impl UsageExtractor for AnthropicClient {
         // Extract usage from parsed JSON
         let usage = json_value.get("usage")?;
         
-        // Anthropic's input_tokens is the total input tokens (uncached + cache_creation + cache_read)
-        let total_input_tokens = match usage.get("input_tokens").and_then(|v| v.as_i64()) {
+        // Anthropic's input_tokens is the base input tokens (not including cache tokens)
+        let input_tokens = match usage.get("input_tokens").and_then(|v| v.as_i64()) {
             Some(tokens) => tokens as i32,
             None => {
                 tracing::warn!("Missing or invalid input_tokens in Anthropic response");
@@ -406,56 +414,113 @@ impl UsageExtractor for AnthropicClient {
             .and_then(|v| v.as_i64())
             .unwrap_or(0) as i32;
         
-        Some(ProviderUsage {
-            prompt_tokens: total_input_tokens,  // Total input tokens as per API contract
+        // Calculate prompt_tokens as input_tokens + cache_creation_input_tokens + cache_read_input_tokens
+        let prompt_tokens = input_tokens + cache_creation_input_tokens + cache_read_input_tokens;
+        
+        let mut usage = ProviderUsage {
+            prompt_tokens,  // Total of all input tokens
             completion_tokens: output_tokens,
             cache_write_tokens: cache_creation_input_tokens,
             cache_read_tokens: cache_read_input_tokens,
             model_id: "unknown".to_string(), // Will be set by caller
             duration_ms: None,
             cost: None, // Anthropic doesn't provide cost in responses
-        })
+        };
+        
+        // Validate usage data before returning
+        usage.validate().ok()?;
+        
+        Some(usage)
     }
     
     /// Extract usage information from Anthropic streaming chunk
     /// Handles both individual chunks and complete responses
     fn extract_usage_from_stream_chunk(&self, chunk_json: &serde_json::Value) -> Option<ProviderUsage> {
-        // For Anthropic streaming, usage info comes only in message_stop event type
+        // For Anthropic streaming, usage info comes in message_stop event type
+        // Also check for message_delta events which may contain incremental usage
         let chunk_type = chunk_json.get("type")?.as_str()?;
-        if chunk_type != "message_stop" {
-            return None;
+        
+        match chunk_type {
+            "message_stop" => {
+                // Extract final usage from message_stop event
+                let usage = chunk_json.get("usage")?;
+                
+                let input_tokens = usage.get("input_tokens")?.as_i64()? as i32;
+                let output_tokens = usage.get("output_tokens")?.as_i64()? as i32;
+                
+                let cache_creation_input_tokens = usage.get("cache_creation_input_tokens")
+                    .and_then(|v| v.as_i64())
+                    .unwrap_or(0) as i32;
+                let cache_read_input_tokens = usage.get("cache_read_input_tokens")
+                    .and_then(|v| v.as_i64())
+                    .unwrap_or(0) as i32;
+                
+                // Calculate prompt_tokens as input_tokens + cache_creation_input_tokens + cache_read_input_tokens
+                let prompt_tokens = input_tokens + cache_creation_input_tokens + cache_read_input_tokens;
+                
+                let mut usage = ProviderUsage {
+                    prompt_tokens,  // Total of all input tokens
+                    completion_tokens: output_tokens,
+                    cache_write_tokens: cache_creation_input_tokens,
+                    cache_read_tokens: cache_read_input_tokens,
+                    model_id: "unknown".to_string(), // Will be set by caller
+                    duration_ms: None,
+                    cost: None, // Anthropic doesn't provide cost in responses
+                };
+                
+                // Validate usage data before returning
+                usage.validate().ok()?;
+                
+                Some(usage)
+            },
+            "message_delta" => {
+                // Track usage from message_delta events
+                if let Some(usage) = chunk_json.get("usage") {
+                    let input_tokens = usage.get("input_tokens").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+                    let output_tokens = usage.get("output_tokens").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+                    
+                    // Extract cache tokens with proper error handling
+                    let cache_creation_input_tokens = usage.get("cache_creation_input_tokens")
+                        .and_then(|v| v.as_i64())
+                        .unwrap_or(0) as i32;
+                    let cache_read_input_tokens = usage.get("cache_read_input_tokens")
+                        .and_then(|v| v.as_i64())
+                        .unwrap_or(0) as i32;
+                    
+                    // Calculate prompt_tokens as input_tokens + cache_creation_input_tokens + cache_read_input_tokens
+                    let prompt_tokens = input_tokens + cache_creation_input_tokens + cache_read_input_tokens;
+                    
+                    if prompt_tokens > 0 || output_tokens > 0 {
+                        debug!("Extracted incremental usage from message_delta: input={}, cache_creation={}, cache_read={}, output={}, total_prompt={}", 
+                               input_tokens, cache_creation_input_tokens, cache_read_input_tokens, output_tokens, prompt_tokens);
+                        
+                        let mut usage = ProviderUsage {
+                            prompt_tokens,  // Total of all input tokens
+                            completion_tokens: output_tokens,
+                            cache_write_tokens: cache_creation_input_tokens,
+                            cache_read_tokens: cache_read_input_tokens,
+                            model_id: "unknown".to_string(),
+                            duration_ms: None,
+                            cost: None,
+                        };
+                        
+                        // Validate usage data before returning
+                        usage.validate().ok()?;
+                        
+                        return Some(usage);
+                    }
+                }
+                None
+            },
+            _ => None
         }
-        
-        // Extract usage from message_stop event
-        let usage = chunk_json.get("usage")?;
-        
-        // Anthropic's input_tokens is the total input tokens (uncached + cache_creation + cache_read)
-        let total_input_tokens = usage.get("input_tokens")?.as_i64()? as i32;
-        let output_tokens = usage.get("output_tokens")?.as_i64()? as i32;
-        
-        let cache_creation_input_tokens = usage.get("cache_creation_input_tokens")
-            .and_then(|v| v.as_i64())
-            .unwrap_or(0) as i32;
-        let cache_read_input_tokens = usage.get("cache_read_input_tokens")
-            .and_then(|v| v.as_i64())
-            .unwrap_or(0) as i32;
-        
-        Some(ProviderUsage {
-            prompt_tokens: total_input_tokens,  // Total input tokens as per API contract
-            completion_tokens: output_tokens,
-            cache_write_tokens: cache_creation_input_tokens,
-            cache_read_tokens: cache_read_input_tokens,
-            model_id: "unknown".to_string(), // Will be set by caller
-            duration_ms: None,
-            cost: None, // Anthropic doesn't provide cost in responses
-        })
     }
 }
 
 impl Clone for AnthropicClient {
     fn clone(&self) -> Self {
         Self {
-            client: Client::new(),
+            client: crate::clients::http_client::new_api_client(),
             api_key: self.api_key.clone(),
             base_url: self.base_url.clone(),
             request_id_counter: self.request_id_counter.clone(),

@@ -1,4 +1,4 @@
-use sqlx::{PgConnection, PgPool, Postgres, Transaction};
+use sqlx::{Connection, PgConnection, PgPool, Postgres, Transaction};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -79,7 +79,10 @@ impl RLSSessionManager {
         request_id: Option<String>,
     ) -> Result<sqlx::pool::PoolConnection<Postgres>, AppError> {
         let start_time = Instant::now();
-        let req_id = request_id.unwrap_or_else(|| Uuid::new_v4().to_string());
+        let req_id = match &request_id {
+            Some(id) => id.clone(),
+            None => Uuid::new_v4().to_string(),
+        };
         
         debug!("RLS: Getting connection for user {} (request: {})", user_id, req_id);
 
@@ -89,6 +92,12 @@ impl RLSSessionManager {
                    user_id, req_id, e);
             AppError::Database(format!("Failed to acquire database connection: {}", e))
         })?;
+
+        // For read-only configuration endpoints, we can skip the expensive RLS setup
+        if request_id.as_deref() == Some("config-read-only") {
+            debug!("RLS: Skipping RLS setup for read-only configuration request");
+            return Ok(conn);
+        }
 
         // Generate unique connection ID for tracking
         let connection_id = format!("conn_{}", self.connection_counter.fetch_add(1, Ordering::SeqCst));
@@ -150,24 +159,40 @@ impl RLSSessionManager {
     ) -> Result<(), AppError> {
         debug!("RLS: Resetting connection state (conn: {})", connection_id);
 
-        // Reset all session variables that could leak between requests
-        let reset_queries = vec![
-            "RESET ALL",
-            "SELECT set_config('app.current_user_id', '', false)",
-            "SELECT set_config('app.request_id', '', false)",
-            "SELECT set_config('app.session_start', '', false)",
-        ];
+        // Execute all reset commands in sequence
+        // Note: We can't use transactions with &mut PgConnection, but these operations
+        // are idempotent and safe to execute sequentially
+        sqlx::query("RESET ALL")
+            .execute(&mut *conn)
+            .await
+            .map_err(|e| {
+                error!("RLS: Failed to RESET ALL (conn: {}): {}", connection_id, e);
+                AppError::Database(format!("Connection reset failed: {}", e))
+            })?;
 
-        for query in reset_queries {
-            sqlx::query(query)
-                .execute(&mut *conn)
-                .await
-                .map_err(|e| {
-                    error!("RLS: Failed to execute reset query '{}' (conn: {}): {}", 
-                           query, connection_id, e);
-                    AppError::Database(format!("Connection reset failed: {}", e))
-                })?;
-        }
+        sqlx::query("SELECT set_config('app.current_user_id', '', false)")
+            .execute(&mut *conn)
+            .await
+            .map_err(|e| {
+                error!("RLS: Failed to reset user_id (conn: {}): {}", connection_id, e);
+                AppError::Database(format!("Failed to reset user_id: {}", e))
+            })?;
+
+        sqlx::query("SELECT set_config('app.request_id', '', false)")
+            .execute(&mut *conn)
+            .await
+            .map_err(|e| {
+                error!("RLS: Failed to reset request_id (conn: {}): {}", connection_id, e);
+                AppError::Database(format!("Failed to reset request_id: {}", e))
+            })?;
+
+        sqlx::query("SELECT set_config('app.session_start', '', false)")
+            .execute(&mut *conn)
+            .await
+            .map_err(|e| {
+                error!("RLS: Failed to reset session_start (conn: {}): {}", connection_id, e);
+                AppError::Database(format!("Failed to reset session_start: {}", e))
+            })?;
 
         debug!("RLS: Connection state reset completed (conn: {})", connection_id);
         Ok(())
@@ -186,36 +211,43 @@ impl RLSSessionManager {
 
         let session_start = chrono::Utc::now().to_rfc3339();
 
-        // Set session variables required for RLS policies
-        let context_queries = vec![
-            ("app.current_user_id", user_id.to_string()),
-            ("app.request_id", request_id.to_string()),
-            ("app.session_start", session_start),
-            ("app.connection_id", connection_id.to_string()),
-        ];
+        // Set session variables using parameterized queries
+        // Note: These operations are executed sequentially but are safe and idempotent
+        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
+            .bind(user_id.to_string())
+            .execute(&mut *conn)
+            .await
+            .map_err(|e| {
+                error!("RLS: CRITICAL - Failed to set user_id for {} (conn: {}): {}", user_id, connection_id, e);
+                AppError::Auth(format!("Failed to set user context for Row Level Security: {}. This is a critical security failure.", e))
+            })?;
 
-        for (key, value) in context_queries {
-            let result = sqlx::query("SELECT set_config($1, $2, false)")
-                .bind(key)
-                .bind(&value)
-                .fetch_one(&mut *conn)
-                .await;
+        sqlx::query("SELECT set_config('app.request_id', $1, false)")
+            .bind(request_id)
+            .execute(&mut *conn)
+            .await
+            .map_err(|e| {
+                error!("RLS: Failed to set request_id (conn: {}): {}", connection_id, e);
+                AppError::Auth(format!("Failed to set request context: {}", e))
+            })?;
 
-            match result {
-                Ok(_) => {
-                    debug!("RLS: Set session variable '{}' = '{}' (conn: {}, user: {})", 
-                           key, value, connection_id, user_id);
-                }
-                Err(e) => {
-                    error!("RLS: CRITICAL - Failed to set session variable '{}' for user {} (conn: {}, request: {}): {}", 
-                           key, user_id, connection_id, request_id, e);
-                    return Err(AppError::Auth(format!(
-                        "Failed to set user context for Row Level Security: {}. This is a critical security failure.",
-                        e
-                    )));
-                }
-            }
-        }
+        sqlx::query("SELECT set_config('app.session_start', $1, false)")
+            .bind(&session_start)
+            .execute(&mut *conn)
+            .await
+            .map_err(|e| {
+                error!("RLS: Failed to set session_start (conn: {}): {}", connection_id, e);
+                AppError::Auth(format!("Failed to set session context: {}", e))
+            })?;
+
+        sqlx::query("SELECT set_config('app.connection_id', $1, false)")
+            .bind(connection_id)
+            .execute(&mut *conn)
+            .await
+            .map_err(|e| {
+                error!("RLS: Failed to set connection_id (conn: {}): {}", connection_id, e);
+                AppError::Auth(format!("Failed to set connection context: {}", e))
+            })?;
 
         info!("RLS: User context successfully configured for user {} (conn: {}, request: {})", 
               user_id, connection_id, request_id);

@@ -6,12 +6,24 @@ use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation, deco
 use log::{debug, error, info, trace};
 use uuid::Uuid;
 use std::sync::OnceLock;
+use serde::{Deserialize, Serialize};
 
 // Default JWT duration in days
 pub const DEFAULT_JWT_DURATION_DAYS: i64 = 30;
 
 // Issuer name for JWT tokens
 pub const JWT_ISSUER: &str = "vibe-manager";
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct FeaturebaseClaims {
+    #[serde(rename = "userId")]
+    pub user_id: String,
+    pub email: Option<String>,
+    pub name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub role: Option<String>,
+    pub exp: i64,
+}
 
 // Global static holders for JWT keys
 static JWT_ENCODING_KEY: OnceLock<EncodingKey> = OnceLock::new();
@@ -164,5 +176,35 @@ pub fn create_token(
         .map_err(|e| {
             error!("Failed to create JWT token: {}", e);
             AppError::Internal(format!("Token creation failed: {}", e))
+        })
+}
+
+pub fn create_featurebase_sso_token(
+    user_id: Uuid,
+    email: &str,
+    name: Option<&str>,
+    role: &str,
+    secret: &str,
+) -> Result<String, AppError> {
+    let iat = Utc::now();
+    let exp = iat
+        .checked_add_signed(Duration::try_minutes(5).unwrap())
+        .ok_or_else(|| AppError::Internal("Failed to calculate JWT expiration time".to_string()))?;
+
+    let claims = FeaturebaseClaims {
+        user_id: user_id.to_string(),
+        email: Some(email.to_string()),
+        name: name.map(|s| s.to_string()),
+        role: Some(role.to_string()),
+        exp: exp.timestamp(),
+    };
+
+    let encoding_key = EncodingKey::from_secret(secret.as_bytes());
+    let header = Header::new(Algorithm::HS256);
+
+    encode(&header, &claims, &encoding_key)
+        .map_err(|e| {
+            error!("Failed to create Featurebase SSO token: {}", e);
+            AppError::Internal(format!("Featurebase SSO token creation failed: {}", e))
         })
 }

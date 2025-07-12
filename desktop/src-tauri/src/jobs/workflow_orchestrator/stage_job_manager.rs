@@ -70,7 +70,8 @@ pub async fn create_abstract_stage_job_with_lock_internal(
         Some(serde_json::json!({
             "workflowId": workflow_state.workflow_id,
             "workflowStage": serde_json::to_value(&stage).unwrap().as_str().unwrap(),
-            "stageName": stage_definition.stage_name
+            "stageName": stage_definition.stage_name,
+            "workflowTaskDescription": workflow_state.task_description.clone()
         })),
         app_handle,
     ).await?;

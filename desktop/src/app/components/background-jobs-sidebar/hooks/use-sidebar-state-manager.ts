@@ -7,7 +7,7 @@ import { useUILayout } from "@/contexts/ui-layout-context";
 import { useNotification } from "@/contexts/notification-context";
 import { type BackgroundJob } from "@/types/session-types";
 import { setSidebarWidth } from "@/utils/ui-utils";
-import { retryWorkflowStageAction } from "@/actions/workflows/workflow.actions";
+import { retryWorkflowStageAction, retryWorkflowAction } from "@/actions/workflows/workflow.actions";
 
 export interface SidebarState {
   selectedJob: BackgroundJob | null;
@@ -30,6 +30,7 @@ export interface SidebarManager extends SidebarState {
   handleCollapseChange: (open: boolean) => void;
   setSelectedJob: (job: BackgroundJob | null) => void;
   handleRetry: (workflowId: string, jobId: string) => Promise<void>;
+  handleRetryWorkflow: (workflowId: string) => Promise<void>;
 }
 
 /**
@@ -199,6 +200,9 @@ export function useSidebarStateManager(): SidebarManager {
       try {
         await clearHistory(daysToKeep);
 
+        // Refresh the jobs list after clearing
+        await refreshJobs();
+
         // Set appropriate feedback message based on the clearing operation
         const feedbackMessage =
           daysToKeep === -2
@@ -220,7 +224,7 @@ export function useSidebarStateManager(): SidebarManager {
         setState((prev: SidebarState) => ({ ...prev, isClearing: false }));
       }
     },
-    [clearHistory]
+    [clearHistory, refreshJobs]
   );
 
   // Handle job cancellation
@@ -315,6 +319,36 @@ export function useSidebarStateManager(): SidebarManager {
     [showNotification, refreshJobs]
   );
 
+  // Handle workflow retry
+  const handleRetryWorkflow = useCallback(
+    async (workflowId: string) => {
+      setState((prev: SidebarState) => ({
+        ...prev,
+        isRetrying: { ...prev.isRetrying, [workflowId]: true },
+      }));
+
+      try {
+        const result = await retryWorkflowAction(workflowId);
+        
+        if (result.isSuccess) {
+          showNotification({ title: "Workflow retry initiated successfully", type: "success" });
+          await refreshJobs();
+        } else {
+          showNotification({ title: (result.error instanceof Error ? result.error.message : result.message) || "Failed to retry workflow", type: "error" });
+        }
+      } catch (error) {
+        showNotification({ title: "An unexpected error occurred while retrying the workflow", type: "error" });
+        console.error("[SidebarStateManager] Error retrying workflow:", error);
+      } finally {
+        setState((prev: SidebarState) => ({
+          ...prev,
+          isRetrying: { ...prev.isRetrying, [workflowId]: false },
+        }));
+      }
+    },
+    [showNotification, refreshJobs]
+  );
+
   return {
     ...state,
     refreshClickedRef,
@@ -326,5 +360,6 @@ export function useSidebarStateManager(): SidebarManager {
     handleCollapseChange,
     setSelectedJob,
     handleRetry,
+    handleRetryWorkflow,
   };
 }

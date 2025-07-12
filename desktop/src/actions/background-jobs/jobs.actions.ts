@@ -72,16 +72,60 @@ export async function getBackgroundJobAction(
 }
 
 /**
- * Gets all active background jobs
+ * Gets all visible background jobs
  */
-export async function getActiveJobsAction(): Promise<ActionState<BackgroundJob[]>> {
+export async function getAllVisibleJobsAction(): Promise<ActionState<BackgroundJob[]>> {
   try {
-    const jobs = await invoke("get_active_jobs_command");
+    const jobs = await invoke("get_all_visible_jobs_command");
     return {
       isSuccess: true,
       data: jobs as BackgroundJob[],
     };
   } catch (e) {
     return handleActionError(e) as ActionState<BackgroundJob[]>;
+  }
+}
+
+/**
+ * Cancel a specific job (alias for cancelBackgroundJobAction)
+ */
+export async function cancelJobAction(jobId: string): Promise<ActionState<null>> {
+  return cancelBackgroundJobAction(jobId);
+}
+
+/**
+ * Delete a specific job (alias for deleteBackgroundJobAction)
+ */
+export async function deleteJobAction(jobId: string): Promise<ActionState<null>> {
+  return deleteBackgroundJobAction(jobId);
+}
+
+/**
+ * Cancel all running jobs for a session
+ */
+export async function cancelSessionRequestsAction(sessionId: string): Promise<ActionState<number>> {
+  if (!sessionId || typeof sessionId !== "string" || !sessionId.trim()) {
+    return { 
+      isSuccess: false, 
+      error: new Error("Invalid session ID"), 
+      data: 0 
+    };
+  }
+
+  try {
+    const cancelledCount = await invoke<number>("cancel_session_jobs_command", {
+      sessionId: sessionId,
+    });
+
+    return {
+      isSuccess: true,
+      data: cancelledCount,
+    };
+  } catch (e) {
+    const errorResult = handleActionError(e) as ActionState<number>;
+    return {
+      ...errorResult,
+      data: 0,
+    };
   }
 }

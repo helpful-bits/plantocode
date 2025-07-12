@@ -306,6 +306,7 @@ pub struct BackgroundJob {
     pub updated_at: Option<i64>,
     pub start_time: Option<i64>,
     pub end_time: Option<i64>,
+    pub is_finalized: Option<bool>,
 }
 
 // Task settings model (DB struct - no camelCase conversion)
@@ -604,38 +605,10 @@ pub struct RuntimeAIConfig {
     pub tasks: HashMap<String, TaskSpecificModelConfig>,
     pub providers: Vec<ProviderWithModels>,
     
-    // Limits for token usage
-    #[serde(default)]
-    pub limits: TokenLimits,
-    
     // Job concurrency configuration
     pub max_concurrent_jobs: Option<u32>,
-    
-    // Job system configuration
-    #[serde(default)]
-    pub job_settings: Option<JobSettings>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct TokenLimits {
-    // Maximum tokens per request
-    pub max_tokens_per_request: Option<u32>,
-    // Maximum tokens per month
-    pub max_tokens_per_month: Option<u32>,
-}
-
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct JobSettings {
-    // Timeout for stale acknowledged jobs in seconds
-    pub stale_job_timeout_seconds: Option<u64>,
-    // Maximum number of retry attempts for failed jobs
-    pub max_retry_attempts: Option<u32>,
-    // Base delay for exponential backoff in seconds
-    pub retry_base_delay_seconds: Option<u64>,
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -763,22 +736,26 @@ pub struct ListInvoicesResponse {
     pub has_more: bool,
 }
 
-/// Response structure for final cost API endpoint
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FinalCostResponse {
-    pub cost: f64,
-    pub tokens_input: i64,
-    pub tokens_output: i64,
-    pub service_name: String,
+    pub status: String,
+    pub request_id: String,
+    pub final_cost: Option<f64>,
+    pub tokens_input: Option<i64>,
+    pub tokens_output: Option<i64>,
+    pub cache_write_tokens: Option<i64>,
+    pub cache_read_tokens: Option<i64>,
 }
 
-/// Final cost data structure for internal use
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FinalCostData {
-    pub cost: f64,
+    pub request_id: String,
+    pub service_name: String,
+    pub final_cost: f64,
     pub tokens_input: i64,
     pub tokens_output: i64,
-    pub service_name: String,
+    pub cache_write_tokens: i64,
+    pub cache_read_tokens: i64,
 }

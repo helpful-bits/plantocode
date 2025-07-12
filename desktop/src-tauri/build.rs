@@ -3,5 +3,5 @@
 
 /// Main build function that initializes the Tauri build process.
 fn main() {
-    tauri_build::build()
+    tauri_build::build();
 }

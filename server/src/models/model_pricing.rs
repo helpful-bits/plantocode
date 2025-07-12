@@ -4,6 +4,51 @@ use serde_json::Value;
 use crate::clients::usage_extractor::ProviderUsage;
 use tracing::{debug, warn};
 
+// Extension trait for checked arithmetic operations on BigDecimal
+trait CheckedBigDecimal {
+    fn checked_add(&self, other: &Self) -> Option<Self> where Self: Sized;
+    fn checked_mul(&self, other: &Self) -> Option<Self> where Self: Sized;
+    fn checked_div(&self, other: &Self) -> Option<Self> where Self: Sized;
+}
+
+impl CheckedBigDecimal for BigDecimal {
+    fn checked_add(&self, other: &Self) -> Option<Self> {
+        // BigDecimal addition doesn't overflow in the traditional sense,
+        // but we check the result is within reasonable bounds
+        let result = self + other;
+        if result.to_string().len() > 100 { // Reasonable precision limit
+            None
+        } else {
+            Some(result)
+        }
+    }
+    
+    fn checked_mul(&self, other: &Self) -> Option<Self> {
+        // BigDecimal multiplication doesn't overflow traditionally,
+        // but we check the result is within reasonable bounds
+        let result = self * other;
+        if result.to_string().len() > 100 { // Reasonable precision limit
+            None
+        } else {
+            Some(result)
+        }
+    }
+    
+    fn checked_div(&self, other: &Self) -> Option<Self> {
+        use bigdecimal::Zero;
+        if other.is_zero() {
+            None
+        } else {
+            let result = self / other;
+            if result.to_string().len() > 100 { // Reasonable precision limit
+                None
+            } else {
+                Some(result)
+            }
+        }
+    }
+}
+
 // Security constants for cost calculation validation
 // These constants prevent cost calculation manipulation and ensure financial data integrity
 /// Maximum allowed token count to prevent overflow attacks
@@ -99,11 +144,16 @@ pub trait ModelPricing {
                 .or_else(|_| parse_pricing_field(pricing_info, "completion_per_million", &min_price, &max_price))
         }?;
         
-        // Calculate base input cost
-        let base_input_tokens = usage.prompt_tokens - usage.cache_write_tokens - usage.cache_read_tokens;
+        // Calculate base input cost with checked arithmetic
+        let base_input_tokens = usage.prompt_tokens
+            .checked_sub(usage.cache_write_tokens)
+            .and_then(|v| v.checked_sub(usage.cache_read_tokens))
+            .ok_or_else(|| "Token arithmetic overflow: cache tokens exceed prompt tokens".to_string())?;
+        
         if base_input_tokens > 0 {
             let input_cost = calculate_token_cost(base_input_tokens as i64, &input_rate, &million)?;
-            total_cost += input_cost;
+            total_cost = total_cost.checked_add(&input_cost)
+                .ok_or_else(|| "Cost arithmetic overflow in base input calculation".to_string())?;
         }
         
         // Calculate cache write cost (if available)
@@ -111,7 +161,8 @@ pub trait ModelPricing {
             let cache_write_rate = parse_pricing_field(pricing_info, "cache_write_per_million", &min_price, &max_price)
                 .unwrap_or_else(|_| input_rate.clone());
             let cache_write_cost = calculate_token_cost(usage.cache_write_tokens as i64, &cache_write_rate, &million)?;
-            total_cost += cache_write_cost;
+            total_cost = total_cost.checked_add(&cache_write_cost)
+                .ok_or_else(|| "Cost arithmetic overflow in cache write calculation".to_string())?;
         }
         
         // Calculate cache read cost (if available)
@@ -120,13 +171,15 @@ pub trait ModelPricing {
                 .or_else(|_| parse_pricing_field(pricing_info, "cached_input_per_million", &min_price, &max_price))
                 .unwrap_or_else(|_| input_rate.clone());
             let cache_read_cost = calculate_token_cost(usage.cache_read_tokens as i64, &cache_read_rate, &million)?;
-            total_cost += cache_read_cost;
+            total_cost = total_cost.checked_add(&cache_read_cost)
+                .ok_or_else(|| "Cost arithmetic overflow in cache read calculation".to_string())?;
         }
         
         // Calculate output cost
         if usage.completion_tokens > 0 {
             let output_cost = calculate_token_cost(usage.completion_tokens as i64, &output_rate, &million)?;
-            total_cost += output_cost;
+            total_cost = total_cost.checked_add(&output_cost)
+                .ok_or_else(|| "Cost arithmetic overflow in output calculation".to_string())?;
         }
         
         validate_total_cost(&total_cost, &max_price)?;
@@ -190,7 +243,7 @@ fn parse_pricing_field_i64(pricing_info: &Value, key: &str) -> Option<i64> {
     pricing_info.get(key).and_then(|v| v.as_i64())
 }
 
-/// Calculate cost for a specific token count
+/// Calculate cost for a specific token count with checked arithmetic
 fn calculate_token_cost(
     token_count: i64,
     rate: &BigDecimal,
@@ -201,14 +254,22 @@ fn calculate_token_cost(
     }
     
     let tokens_bd = BigDecimal::from(token_count);
-    let product = rate * &tokens_bd;
     
-    // Check for overflow
-    if &product > &(BigDecimal::from(MAX_PRICE) * million) {
+    // Use checked multiplication to prevent overflow
+    let product = rate.checked_mul(&tokens_bd)
+        .ok_or_else(|| "Token cost multiplication overflow".to_string())?;
+    
+    // Check for overflow against maximum allowed cost
+    let max_allowed = BigDecimal::from(MAX_PRICE).checked_mul(million)
+        .ok_or_else(|| "Maximum price calculation overflow".to_string())?;
+    
+    if product > max_allowed {
         return Err("Token cost calculation would overflow maximum allowed cost".to_string());
     }
     
-    Ok(product / million)
+    // Safe division
+    Ok(product.checked_div(million)
+        .ok_or_else(|| "Token cost division error".to_string())?)
 }
 
 /// Validate that a token count is within bounds
@@ -277,7 +338,7 @@ mod tests {
             provider_code: "test".to_string(),
         };
         
-        let usage = ProviderUsage::with_cache(1000, 500, 0, 200, "test-model".to_string());
+        let usage = ProviderUsage::with_total_input(1000, 500, 0, 200, "test-model".to_string());
         let result = model.calculate_total_cost(&usage);
         assert!(result.is_ok());
         
@@ -300,7 +361,7 @@ mod tests {
             provider_code: "test".to_string(),
         };
         
-        let usage = ProviderUsage::with_cache(1000, 500, 200, 300, "test-model".to_string());
+        let usage = ProviderUsage::with_total_input(1000, 500, 200, 300, "test-model".to_string());
         let result = model.calculate_total_cost(&usage);
         assert!(result.is_ok());
         
@@ -390,5 +451,45 @@ mod tests {
             provider_code: "test".to_string(),
         };
         assert!(!null_model.has_valid_pricing());
+    }
+
+    #[test]
+    fn test_checked_arithmetic_overflow_protection() {
+        let model = MockModel {
+            pricing_info: json!({
+                "input_per_million": 999.99,
+                "output_per_million": 999.99
+            }),
+            provider_code: "test".to_string(),
+        };
+        
+        // Test with very large token counts near MAX_TOKENS
+        let usage = ProviderUsage::new(999_999_999, 999_999_999, "test-model".to_string());
+        let result = model.calculate_total_cost(&usage);
+        
+        // Should handle large numbers without overflow
+        assert!(result.is_ok());
+        let cost = result.unwrap();
+        assert!(cost > BigDecimal::from(0));
+    }
+
+    #[test]
+    fn test_cache_tokens_exceed_prompt_tokens() {
+        let model = MockModel {
+            pricing_info: json!({
+                "input_per_million": 1.0,
+                "output_per_million": 2.0,
+                "cache_write_per_million": 0.5,
+                "cache_read_per_million": 0.25
+            }),
+            provider_code: "test".to_string(),
+        };
+        
+        // Cache tokens exceed prompt tokens - this should fail
+        let usage = ProviderUsage::with_total_input(1000, 500, 600, 600, "test-model".to_string());
+        let result = model.calculate_total_cost(&usage);
+        
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Token arithmetic overflow"));
     }
 }

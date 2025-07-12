@@ -1,7 +1,4 @@
 //! Custom Stripe types module
-//! 
-//! This module replaces the async-stripe dependency with custom types
-//! containing only the fields actually used in the codebase.
 
 pub mod billing_portal_session;
 pub mod checkout_session;

@@ -15,7 +15,7 @@ const logger = createLogger({ namespace: "AuthTokenRefresher" });
  * refreshing 5 minutes before expiry. Falls back to 50-minute intervals if expiry is unknown.
  */
 export function useAuthTokenRefresher(user: FrontendUser | undefined) {
-  const { token, tokenExpiresAt, signOut } = useAuth();
+  const { token, tokenExpiresAt, setTokenExpired } = useAuth();
   const refreshIntervalRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -109,8 +109,8 @@ export function useAuthTokenRefresher(user: FrontendUser | undefined) {
                   refreshIntervalRef.current = null;
                 }
                 
-                // Sign out to update AuthContext state and guide user to re-authentication
-                signOut();
+                // Mark token as expired to trigger re-authentication
+                setTokenExpired(true);
               } catch (clearTokenError) {
                 await logError(clearTokenError as Error, '[AuthTokenRefresher] Failed to clear invalid JWT token');
               }

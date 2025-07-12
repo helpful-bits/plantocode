@@ -267,6 +267,7 @@ export function GeneratePromptFeatureProvider({
         // Task description actions
         handleRefineTask: taskState.handleRefineTask,
         handleWebSearch: taskState.handleWebSearch,
+        cancelWebSearch: taskState.cancelWebSearch,
         flushPendingTaskChanges,
         reset: taskState.resetTaskState,
         undo: taskState.undo,

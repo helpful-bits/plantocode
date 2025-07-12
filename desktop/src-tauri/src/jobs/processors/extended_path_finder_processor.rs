@@ -185,8 +185,8 @@ impl JobProcessor for ExtendedPathFinderProcessor {
             }
         }
         
-        info!("Extended path finding completed for workflow {}: {} AI-filtered initial + {} validated = {} total verified paths", 
-            job.id, payload.initial_paths.len(), validated_extended_paths.len(), combined_validated_paths.len());
+        info!("Extended path finding completed for workflow {}: extended by {} files", 
+            job.id, validated_extended_paths.len());
         
         // Check for cancellation after LLM processing using standardized utility
         if job_processor_utils::check_job_canceled(&repo, &job.id).await? {
@@ -210,10 +210,8 @@ impl JobProcessor for ExtendedPathFinderProcessor {
             "taskDescription": payload.task_description,
             "projectDirectory": project_directory.clone(),
             "modelUsed": model_used,
-            "summary": format!("{} AI-filtered initial + {} validated = {} total verified paths", 
-                payload.initial_paths.len(), 
-                validated_extended_paths.len(),
-                combined_validated_paths.len())
+            "summary": format!("Extended by {} files", 
+                validated_extended_paths.len())
         });
         
         debug!("Extended path finding completed for workflow {}", job.id);
@@ -231,10 +229,8 @@ impl JobProcessor for ExtendedPathFinderProcessor {
                 "verifiedPaths": combined_validated_paths,
                 "unverifiedPaths": unverified_extended_paths,
                 "count": combined_validated_paths.len(),
-                "summary": format!("{} AI-filtered initial + {} validated = {} total verified paths", 
-                    payload.initial_paths.len(), 
-                    validated_extended_paths.len(),
-                    combined_validated_paths.len())
+                "summary": format!("Extended by {} files", 
+                    validated_extended_paths.len())
             }))
         )
         .with_tokens(

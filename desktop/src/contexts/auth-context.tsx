@@ -1,4 +1,4 @@
-import { createContext, useContext, useMemo } from "react";
+import { createContext, useContext, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 
 import { type AuthContextType } from "../auth/auth-context-interface";
@@ -18,20 +18,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     loading,
     error,
     token,
+    tokenExpiresAt,
     signIn,
     signOut: auth0SignOut,
     getToken,
   } = useAuth0AuthHandler();
+
+  const [isTokenExpired, setTokenExpired] = useState(false);
 
   const value: DesktopAuthContextType = useMemo(() => ({
     user,
     loading,
     error,
     token,
+    tokenExpiresAt,
+    isTokenExpired,
+    setTokenExpired,
     signIn,
     signOut: auth0SignOut,
     getToken,
-  }), [user, loading, error, token, signIn, auth0SignOut, getToken]);
+  }), [user, loading, error, token, tokenExpiresAt, isTokenExpired, signIn, auth0SignOut, getToken]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

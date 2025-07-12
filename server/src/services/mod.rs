@@ -6,6 +6,8 @@ pub mod stripe_service;
 pub mod email_notification_service;
 pub mod reconciliation_service;
 pub mod cost_resolver;
+pub mod model_mapping_service;
+pub mod request_tracker;
 
 // Re-export commonly used types
 pub use billing_service::FinalCostData;

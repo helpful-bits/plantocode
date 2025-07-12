@@ -73,7 +73,7 @@ export function ProvidersWrapper({
           </div>
         }
       >
-        <TooltipProvider>
+        <TooltipProvider delayDuration={200}>
           <NotificationProvider>
             <DatabaseProvider>
               <ProjectProvider>

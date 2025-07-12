@@ -115,50 +115,21 @@ export const BackgroundJobsSidebar = () => {
     
     let paths: string[] = [];
     
-    // Check if this is a completed file_finder_workflow
-    if (job.taskType === 'file_finder_workflow' && job.status === 'completed' && job.response) {
+    // Use standardized response format from backend
+    if (job.response) {
       try {
-        // Parse workflow result to get final_paths
-        const workflowResult = typeof job.response === 'string' ? JSON.parse(job.response) : job.response;
-        if (workflowResult.selectedFiles && Array.isArray(workflowResult.selectedFiles)) {
-          paths = workflowResult.selectedFiles;
+        let response: any;
+        if (typeof job.response === 'string') {
+          response = JSON.parse(job.response);
+        } else {
+          response = job.response;
+        }
+        // Backend standardizes all file-finding responses to have 'files' array
+        if (response.files && Array.isArray(response.files)) {
+          paths = response.files;
         }
       } catch (e) {
-        console.error('Failed to parse workflow result:', e);
-      }
-    } else {
-      // Get file paths from structured job.metadata directly - no parsing needed
-      if (job.metadata && typeof job.metadata === 'object') {
-        // Look for structured fields in metadata (camelCase)
-        const metadata = job.metadata as any;
-        paths = metadata.verifiedPaths || metadata.relevantFiles || metadata.correctedPaths || [];
-      } else if (job.response) {
-        // Check response data if available
-        if (typeof job.response === 'string') {
-          // Try to parse string response
-          try {
-            const parsed = JSON.parse(job.response);
-            if (Array.isArray(parsed)) {
-              paths = parsed;
-            } else if (parsed.verifiedPaths && parsed.unverifiedPaths) {
-              paths = [...(parsed.verifiedPaths || []), ...(parsed.unverifiedPaths || [])];
-            } else if (parsed.filePaths || parsed.paths || parsed.files || parsed.filteredFiles || parsed.relevantFiles) {
-              paths = parsed.filePaths || parsed.paths || parsed.files || parsed.filteredFiles || parsed.relevantFiles || [];
-            }
-          } catch (e) {
-            // If parsing fails, leave paths empty
-          }
-        } else if (typeof job.response === 'object' && job.response !== null) {
-          // Handle various response formats
-          const response = job.response as any;
-          if (response.verifiedPaths && response.unverifiedPaths) {
-            paths = [...(response.verifiedPaths || []), ...(response.unverifiedPaths || [])];
-          } else if (Array.isArray(response)) {
-            paths = response;
-          } else if (response.filePaths || response.paths || response.files || response.filteredFiles || response.relevantFiles) {
-            paths = response.filePaths || response.paths || response.files || response.filteredFiles || response.relevantFiles || [];
-          }
-        }
+        console.error('Failed to parse job response:', e);
       }
     }
     

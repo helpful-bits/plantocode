@@ -28,6 +28,7 @@ pub struct Invoice {
     pub metadata: Option<HashMap<String, String>>,
     pub number: Option<String>,
     pub payment_intent: Option<String>,
+    pub charge: Option<String>,
     pub status: InvoiceStatus,
     pub subtotal: i64,
     pub tax: Option<i64>,

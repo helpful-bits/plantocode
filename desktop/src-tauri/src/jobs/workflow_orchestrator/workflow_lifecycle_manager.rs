@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use log::{info, warn, error, debug};
 use tokio::sync::Mutex;
 use tauri::{AppHandle, Manager};
+use serde_json;
 
 use crate::error::{AppError, AppResult};
 use crate::models::{JobStatus, TaskType};
@@ -157,13 +158,16 @@ pub async fn cancel_workflow_with_reason_internal(
         workflow_state.total_actual_cost
     ).await?;
     
-    // Emit generic job status change event for UI updates
-    crate::jobs::job_processor_utils::emit_job_status_change(
+    // Emit generic job update event for UI updates
+    crate::jobs::job_processor_utils::emit_job_update(
         app_handle,
-        workflow_id,
-        "canceled",
-        Some(reason),
-        workflow_state.total_actual_cost
+        "job_updated",
+        serde_json::json!({
+            "id": workflow_id,
+            "status": "Canceled",
+            "errorMessage": reason,
+            "actual_cost": workflow_state.total_actual_cost
+        })
     )?;
     
     // Emit workflow canceled event

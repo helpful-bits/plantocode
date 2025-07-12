@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use std::pin::Pin;
 use std::sync::Arc;
+use std::time::Duration;
 use futures::{Stream, StreamExt};
 use reqwest::{Client, header, multipart};
 use reqwest_eventsource::{EventSource, Event};
@@ -20,6 +21,7 @@ use super::client_trait::{ApiClient, ApiClientOptions, TranscriptionClient};
 use super::error_handling::map_server_proxy_error;
 
 /// Server proxy API client for LLM requests
+#[derive(Debug)]
 pub struct ServerProxyClient {
     http_client: Client,
     app_handle: AppHandle,
@@ -30,14 +32,7 @@ pub struct ServerProxyClient {
 impl ServerProxyClient {
     /// Create a new server proxy client
     pub fn new(app_handle: AppHandle, server_url: String, token_manager: Arc<TokenManager>) -> Self {
-        let http_client = Client::builder()
-            .timeout(std::time::Duration::from_secs(300)) // 5 minute request timeout
-            .connect_timeout(std::time::Duration::from_secs(30)) // 30-second connection timeout
-            .pool_idle_timeout(None) // Keep idle connections in the pool indefinitely
-            .tcp_keepalive(Some(std::time::Duration::from_secs(120))) // Send TCP keepalives every 2 minutes
-            .build()
-            .expect("Failed to create HTTP client");
-            
+        let http_client = crate::api_clients::client_factory::create_http_client();
         Self {
             http_client,
             app_handle,
@@ -46,20 +41,6 @@ impl ServerProxyClient {
         }
     }
     
-    /// Create a new server proxy client with a custom HTTP client
-    pub fn new_with_client(
-        app_handle: AppHandle, 
-        server_url: String, 
-        token_manager: Arc<TokenManager>,
-        http_client: Client
-    ) -> Self {
-        Self {
-            http_client,
-            app_handle,
-            server_url,
-            token_manager,
-        }
-    }
     
     /// Get the server URL
     pub fn server_url(&self) -> &str {
@@ -75,8 +56,6 @@ impl ServerProxyClient {
         
         let response = self.http_client
             .get(&config_url)
-            .header("HTTP-Referer", APP_HTTP_REFERER)
-            .header("X-Title", APP_X_TITLE)
             .send()
             .await
             .map_err(|e| AppError::HttpError(format!("Failed to fetch runtime AI config: {}", e)))?;
@@ -90,7 +69,7 @@ impl ServerProxyClient {
         
         // Parse the response
         let config: Value = response.json().await
-            .map_err(|e| AppError::ServerProxyError(format!("Failed to parse runtime AI config response: {}", e)))?;
+            .map_err(|e| AppError::SerializationError(format!("Failed to parse runtime AI config response: {}", e)))?;
             
         info!("Successfully fetched runtime AI configuration from server");
         trace!("Runtime AI config: {:?}", config);
@@ -286,7 +265,8 @@ impl ServerProxyClient {
     async fn log_api_request_details(&self, request: &OpenRouterRequest, endpoint_url: &str, is_streaming: bool) {
         use chrono;
         
-        let base_dir = std::path::Path::new("/path/to/project/tmp");
+        let base_dir = self.app_handle.path().app_log_dir()
+            .unwrap_or_else(|_| std::path::PathBuf::from("/tmp"));
         let api_logs_dir = base_dir.join("api_requests");
         
         if let Err(_) = tokio::fs::create_dir_all(&api_logs_dir).await {
@@ -409,7 +389,14 @@ impl ServerProxyClient {
             .json(&request)
             .send()
             .await
-            .map_err(|e| AppError::HttpError(e.to_string()))?;
+            .map_err(|e| {
+                error!("Failed to send request to {}: {}", proxy_url, e);
+                
+                // Use e.to_string() to capture full error details from reqwest
+                let error_msg = e.to_string();
+                
+                AppError::HttpError(error_msg)
+            })?;
         
         // Record actual duration
         let actual_duration = start_time.elapsed();
@@ -541,7 +528,10 @@ impl ServerProxyClient {
             .json(&request);
         
         let event_source = EventSource::new(request_builder)
-            .map_err(|e| AppError::HttpError(format!("Failed to create EventSource: {}", e)))?;
+            .map_err(|e| {
+                error!("Failed to create EventSource for {}: {}", proxy_url, e);
+                AppError::HttpError(format!("Failed to create EventSource: {}", e))
+            })?;
         
         // Track stream start time for actual duration measurement
         let stream_start_time = std::time::Instant::now();
@@ -556,10 +546,9 @@ impl ServerProxyClient {
                                 // Parse usage update event
                                 match serde_json::from_str::<crate::models::usage_update::UsageUpdate>(&message.data) {
                                     Ok(usage_update) => {
-                                        debug!("Received usage_update event: input={}, output={}, total={}, cost={}", 
+                                        debug!("Received usage_update event: input={}, output={}, cost={}", 
                                               usage_update.tokens_input, 
                                               usage_update.tokens_output, 
-                                              usage_update.tokens_total, 
                                               usage_update.estimated_cost);
                                         
                                         // Return the usage update as a stream event
@@ -572,7 +561,7 @@ impl ServerProxyClient {
                                 }
                             },
                             _ => {
-                                // Handle regular message events (no special event type)
+                                // Handle regular message events (no special event type or content chunks)
                                 if message.data == "[DONE]" {
                                     if !stream_ended {
                                         let actual_duration = start_time.elapsed();
@@ -584,6 +573,7 @@ impl ServerProxyClient {
                                     return None;
                                 }
                                 
+                                // Try to parse as content chunk
                                 match serde_json::from_str::<OpenRouterStreamChunk>(&message.data) {
                                     Ok(chunk) => {
                                         trace!("Successfully parsed stream chunk");
@@ -828,66 +818,35 @@ impl ApiClient for ServerProxyClient {
 }
 
 impl ServerProxyClient {
-    /// Poll for final streaming cost after stream completion
-    /// Returns the final cost if available, or None if not yet processed
-    pub async fn poll_final_streaming_cost(&self, request_id: &str) -> AppResult<Option<f64>> {
-        info!("Polling for final streaming cost: request_id={}", request_id);
-        
-        let auth_token = self.get_auth_token().await?;
-        let url = format!("{}/api/billing/final-cost/{}", self.server_url, request_id);
-        
-        let response = self.http_client
-            .get(&url)
-            .header(header::CONTENT_TYPE, "application/json")
-            .header("Authorization", format!("Bearer {}", auth_token))
-            .header("HTTP-Referer", APP_HTTP_REFERER)
-            .header("X-Title", APP_X_TITLE)
-            .send()
-            .await
-            .map_err(|e| AppError::HttpError(e.to_string()))?;
-            
-        if !response.status().is_success() {
-            let status = response.status();
-            let error_text = response.text().await.unwrap_or_else(|_| "Failed to get error text".to_string());
-            return Err(self.handle_auth_error(status.as_u16(), &error_text).await);
-        }
-        
-        let result: serde_json::Value = response.json().await
-            .map_err(|e| AppError::ServerProxyError(format!("Failed to parse final cost response: {}", e)))?;
-        
-        if let Some(found) = result.get("found").and_then(|v| v.as_bool()) {
-            if found {
-                if let Some(cost) = result.get("final_cost").and_then(|v| v.as_f64()) {
-                    info!("Final cost retrieved for request {}: ${:.4}", request_id, cost);
-                    return Ok(Some(cost));
-                }
-            }
-        }
-        
-        debug!("Final cost not yet available for request {}", request_id);
-        Ok(None)
-    }
-    
     /// Poll for final streaming cost with exponential backoff retry
-    /// Retries with exponential backoff (1s, 2s, 4s) up to 3 times
+    /// Polls /api/billing/final-cost/{request_id} endpoint
+    /// Uses exponential backoff (start at 100ms, max 2s)
+    /// Maximum 10 retries
+    /// Returns FinalCostData struct
+    /// Handles 404 gracefully (cost not yet available)
     pub async fn poll_final_streaming_cost_with_retry(
         &self, 
         request_id: &str
     ) -> AppResult<Option<crate::models::FinalCostData>> {
         info!("Polling for final streaming cost with exponential backoff: request_id={}", request_id);
         
-        let max_attempts = 3;
-        let base_delay_ms = 1000; // Start with 1 second
+        let max_attempts = 10;
+        let base_delay_ms = 100; // Start at 100ms
+        let max_delay_ms = 2000; // Max 2s
         
         for attempt in 1..=max_attempts {
             match self.poll_final_streaming_cost_detailed(request_id).await {
                 Ok(Some(cost_data)) => {
-                    info!("Final cost retrieved on attempt {}: ${:.4}", attempt, cost_data.cost);
+                    info!("Final cost retrieved on attempt {}: ${:.4}", attempt, cost_data.final_cost);
                     return Ok(Some(cost_data));
                 }
                 Ok(None) => {
                     if attempt < max_attempts {
-                        let delay_ms = base_delay_ms * (1 << (attempt - 1)); // Exponential backoff: 1s, 2s, 4s
+                        // Exponential backoff with cap at max_delay_ms
+                        let delay_ms = std::cmp::min(
+                            base_delay_ms * (1 << (attempt - 1)), 
+                            max_delay_ms
+                        );
                         debug!("Final cost not available, waiting {}ms before attempt {}", delay_ms, attempt + 1);
                         tokio::time::sleep(tokio::time::Duration::from_millis(delay_ms)).await;
                     }
@@ -895,7 +854,11 @@ impl ServerProxyClient {
                 Err(e) => {
                     warn!("Error polling for final cost on attempt {}: {}", attempt, e);
                     if attempt < max_attempts {
-                        let delay_ms = base_delay_ms * (1 << (attempt - 1)); // Exponential backoff: 1s, 2s, 4s
+                        // Exponential backoff with cap at max_delay_ms
+                        let delay_ms = std::cmp::min(
+                            base_delay_ms * (1 << (attempt - 1)), 
+                            max_delay_ms
+                        );
                         tokio::time::sleep(tokio::time::Duration::from_millis(delay_ms)).await;
                     } else {
                         return Err(e);
@@ -939,11 +902,132 @@ impl ServerProxyClient {
         let cost_response: crate::models::FinalCostResponse = response.json().await
             .map_err(|e| AppError::ServerProxyError(format!("Failed to parse final cost response: {}", e)))?;
         
+        if cost_response.status != "success" {
+            debug!("Final cost not yet available for request_id: {}", request_id);
+            return Ok(None);
+        }
+        
         Ok(Some(crate::models::FinalCostData {
-            cost: cost_response.cost,
-            tokens_input: cost_response.tokens_input,
-            tokens_output: cost_response.tokens_output,
-            service_name: cost_response.service_name,
+            request_id: cost_response.request_id.clone(),
+            service_name: "streaming".to_string(), // Default service name for streaming requests
+            final_cost: cost_response.final_cost.unwrap_or(0.0),
+            tokens_input: cost_response.tokens_input.unwrap_or(0),
+            tokens_output: cost_response.tokens_output.unwrap_or(0),
+            cache_write_tokens: cost_response.cache_write_tokens.unwrap_or(0),
+            cache_read_tokens: cost_response.cache_read_tokens.unwrap_or(0),
         }))
+    }
+    
+    /// Get Featurebase SSO token
+    pub async fn get_featurebase_sso_token(&self) -> AppResult<String> {
+        info!("Fetching Featurebase SSO token via server proxy");
+        
+        let auth_token = self.get_auth_token().await?;
+        let url = format!("{}/api/featurebase/sso-token", self.server_url);
+        
+        let response = self.http_client
+            .get(&url)
+            .header("Authorization", format!("Bearer {}", auth_token))
+            .header("HTTP-Referer", APP_HTTP_REFERER)
+            .header("X-Title", APP_X_TITLE)
+            .send()
+            .await
+            .map_err(|e| AppError::HttpError(e.to_string()))?;
+            
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_text = response.text().await.unwrap_or_else(|_| "Failed to get error text".to_string());
+            return Err(self.handle_auth_error(status.as_u16(), &error_text).await);
+        }
+        
+        #[derive(serde::Deserialize)]
+        struct FeaturebaseSsoResponse {
+            token: String,
+        }
+        
+        let sso_response: FeaturebaseSsoResponse = response.json().await
+            .map_err(|e| AppError::ServerProxyError(format!("Failed to parse Featurebase SSO response: {}", e)))?;
+        
+        info!("Successfully fetched Featurebase SSO token");
+        Ok(sso_response.token)
+    }
+    
+    /// Get user info using app JWT
+    pub async fn get_user_info(&self) -> AppResult<crate::models::FrontendUser> {
+        info!("Fetching user info via server proxy");
+        
+        let auth_token = self.get_auth_token().await?;
+        let url = format!("{}/api/auth/userinfo", self.server_url);
+        
+        let response = self.http_client
+            .get(&url)
+            .header("Authorization", format!("Bearer {}", auth_token))
+            .header("HTTP-Referer", APP_HTTP_REFERER)
+            .header("X-Title", APP_X_TITLE)
+            .send()
+            .await
+            .map_err(|e| AppError::HttpError(e.to_string()))?;
+            
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_text = response.text().await.unwrap_or_else(|_| "Failed to get error text".to_string());
+            return Err(self.handle_auth_error(status.as_u16(), &error_text).await);
+        }
+        
+        let user_info: crate::models::FrontendUser = response.json().await
+            .map_err(|e| AppError::ServerProxyError(format!("Failed to parse user info response: {}", e)))?;
+        
+        info!("Successfully fetched user info for: {}", user_info.email);
+        Ok(user_info)
+    }
+    
+    /// Cancel an LLM request that's in progress
+    pub async fn cancel_llm_request(&self, request_id: &str) -> AppResult<()> {
+        info!("Cancelling LLM request: request_id={}", request_id);
+        
+        let auth_token = self.get_auth_token().await?;
+        let url = format!("{}/api/llm/cancel", self.server_url);
+        
+        let cancel_payload = json!({
+            "request_id": request_id
+        });
+        
+        let response = self.http_client
+            .post(&url)
+            .header(header::CONTENT_TYPE, "application/json")
+            .header("Authorization", format!("Bearer {}", auth_token))
+            .header("HTTP-Referer", APP_HTTP_REFERER)
+            .header("X-Title", APP_X_TITLE)
+            .json(&cancel_payload)
+            .send()
+            .await
+            .map_err(|e| AppError::HttpError(e.to_string()))?;
+            
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_text = response.text().await.unwrap_or_else(|_| "Failed to get error text".to_string());
+            
+            if status == 404 {
+                // Request not found or already completed
+                info!("Request {} not found or already completed", request_id);
+                return Ok(());
+            }
+            
+            return Err(self.handle_auth_error(status.as_u16(), &error_text).await);
+        }
+        
+        let cancel_response: serde_json::Value = response.json().await
+            .map_err(|e| AppError::ServerProxyError(format!("Failed to parse cancel response: {}", e)))?;
+        
+        if cancel_response.get("success").and_then(|v| v.as_bool()).unwrap_or(false) {
+            info!("Successfully cancelled request: {}", request_id);
+        } else {
+            let message = cancel_response.get("message")
+                .and_then(|v| v.as_str())
+                .unwrap_or("Unknown error");
+            warn!("Cancel request returned success=false: {}", message);
+        }
+        
+        Ok(())
     }
 }

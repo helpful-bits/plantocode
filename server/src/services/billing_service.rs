@@ -5,11 +5,12 @@ use crate::db::repositories::UserCredit;
 use crate::db::repositories::customer_billing_repository::{CustomerBillingRepository, CustomerBilling};
 use crate::db::repositories::user_credit_repository::UserCreditRepository;
 use crate::db::repositories::credit_transaction_repository::CreditTransactionRepository;
-use crate::db::repositories::model_repository::ModelRepository;
+use crate::db::repositories::model_repository::{ModelRepository, ModelWithProvider};
 use crate::models::model_pricing::ModelPricing;
 use crate::clients::usage_extractor::ProviderUsage;
 use crate::services::credit_service::CreditService;
 use crate::services::audit_service::AuditService;
+use crate::services::cost_resolver::CostResolver;
 use uuid::Uuid;
 use log::{debug, error, info, warn};
 use std::env;
@@ -25,8 +26,6 @@ use crate::services::stripe_service::StripeService;
 // Import custom Stripe types
 use crate::stripe_types::*;
 use serde::{Serialize, Deserialize};
-
-
 
 #[derive(Clone)]
 pub struct BillingService {
@@ -96,26 +95,9 @@ impl BillingService {
     }
     
     /// Set Redis client for caching final costs
-    pub async fn set_redis_client(&mut self, redis_url: &str) -> Result<(), AppError> {
-        match redis::Client::open(redis_url) {
-            Ok(client) => {
-                match redis::aio::ConnectionManager::new(client).await {
-                    Ok(connection_manager) => {
-                        self.redis_client = Some(Arc::new(connection_manager));
-                        info!("Redis client initialized for billing service");
-                        Ok(())
-                    }
-                    Err(e) => {
-                        warn!("Failed to create Redis connection manager: {}", e);
-                        Err(AppError::Internal(format!("Redis connection failed: {}", e)))
-                    }
-                }
-            }
-            Err(e) => {
-                warn!("Failed to open Redis client: {}", e);
-                Err(AppError::Internal(format!("Redis client initialization failed: {}", e)))
-            }
-        }
+    pub fn set_redis_client(&mut self, redis_client: Arc<redis::aio::ConnectionManager>) {
+        self.redis_client = Some(redis_client);
+        info!("Redis client set for billing service");
     }
     
     pub async fn check_service_access(
@@ -652,6 +634,7 @@ impl BillingService {
         let session = stripe_service.create_checkout_session(
             &idempotency_key,
             &customer_id,
+            user_id,
             CHECKOUT_SESSION_MODE_PAYMENT,
             None, // No line_items when using price_data
             success_url,
@@ -725,6 +708,7 @@ impl BillingService {
         let session = stripe_service.create_checkout_session(
             &idempotency_key,
             &customer_id,
+            user_id,
             CHECKOUT_SESSION_MODE_SETUP,
             None, // No line items for setup mode
             success_url,
@@ -835,7 +819,7 @@ impl BillingService {
             .ok_or_else(|| AppError::NotFound(format!("Model '{}' not found", model_id)))?;
         
         // Create ProviderUsage for cost calculation
-        let usage = ProviderUsage::with_cache(
+        let usage = ProviderUsage::with_total_input(
             input_tokens as i32,
             output_tokens as i32,
             cache_write_tokens as i32,
@@ -850,6 +834,99 @@ impl BillingService {
         Ok(total_cost)
     }
 
+    /// Initiate an API charge with estimated cost
+    pub async fn initiate_api_charge(
+        &self,
+        entry: ApiUsageEntryDto,
+    ) -> Result<(String, UserCredit), AppError> {
+        debug!("Initiating API charge with estimates for user: {}", entry.user_id);
+        
+        // Ensure request_id is present
+        let request_id = entry.request_id.as_ref()
+            .ok_or_else(|| AppError::InvalidArgument("request_id is required for two-phase billing".to_string()))?;
+        
+        // Get model for cost estimation
+        let model_repository = Arc::new(crate::db::repositories::ModelRepository::new(
+            Arc::new(self.db_pools.system_pool.clone())
+        ));
+        
+        let model = model_repository
+            .find_by_id_with_provider(&entry.service_name)
+            .await?
+            .ok_or_else(|| AppError::NotFound(format!("Model '{}' not found", entry.service_name)))?;
+        
+        // Create ProviderUsage for estimated cost calculation
+        let estimated_usage = ProviderUsage::with_total_input(
+            entry.tokens_input as i32,
+            entry.tokens_output as i32,
+            entry.cache_write_tokens as i32,
+            entry.cache_read_tokens as i32,
+            entry.service_name.clone()
+        );
+        
+        // Use CostResolver to calculate estimated cost
+        let estimated_cost = crate::services::cost_resolver::CostResolver::resolve(estimated_usage, &model);
+        
+        // Start transaction
+        let pool = self.credit_service.get_user_credit_repository().get_pool();
+        let mut tx = pool.begin().await.map_err(AppError::from)?;
+        
+        // Initiate charge with credit service
+        let (request_id, user_credit) = self.credit_service
+            .initiate_charge_in_transaction(entry, estimated_cost, &mut tx)
+            .await?;
+        
+        // Commit transaction
+        tx.commit().await.map_err(AppError::from)?;
+        
+        info!("Successfully initiated charge for request {}", request_id);
+        Ok((request_id, user_credit))
+    }
+    
+    /// Finalize an API charge with actual usage
+    pub async fn finalize_api_charge(
+        &self,
+        request_id: &str,
+        final_usage: ProviderUsage,
+    ) -> Result<(ApiUsageRecord, UserCredit), AppError> {
+        debug!("Finalizing API charge for request: {}", request_id);
+        
+        // Get model for final cost calculation
+        let model_repository = Arc::new(crate::db::repositories::ModelRepository::new(
+            Arc::new(self.db_pools.system_pool.clone())
+        ));
+        
+        let model = model_repository
+            .find_by_id_with_provider(&final_usage.model_id)
+            .await?
+            .ok_or_else(|| AppError::NotFound(format!("Model '{}' not found", final_usage.model_id)))?;
+        
+        // Use CostResolver to calculate final cost
+        let final_cost = crate::services::cost_resolver::CostResolver::resolve(final_usage.clone(), &model);
+        
+        // Start transaction
+        let pool = self.credit_service.get_user_credit_repository().get_pool();
+        let mut tx = pool.begin().await.map_err(AppError::from)?;
+        
+        // Finalize charge with credit service
+        let (api_usage_record, user_credit) = self.credit_service
+            .finalize_charge_in_transaction(request_id, final_cost, &final_usage, &mut tx)
+            .await?;
+        
+        // Commit transaction
+        tx.commit().await.map_err(AppError::from)?;
+        
+        info!("Successfully finalized charge for request {} - user {} for model {} (cost: {})", 
+              request_id, api_usage_record.user_id, api_usage_record.service_name, api_usage_record.cost);
+        
+        // After successful billing, check and trigger auto top-off if needed
+        if let Err(e) = self.check_and_trigger_auto_top_off(&api_usage_record.user_id).await {
+            warn!("Auto top-off check failed for user {}: {}", api_usage_record.user_id, e);
+        }
+        
+        Ok((api_usage_record, user_credit))
+    }
+    
     /// Record API usage with pre-resolved cost (simplified billing flow)
     /// This method takes a cost that has already been resolved by the CostResolver
     pub async fn charge_for_api_usage(
@@ -859,8 +936,11 @@ impl BillingService {
     ) -> Result<(ApiUsageRecord, UserCredit), AppError> {
         debug!("Processing API usage with pre-resolved cost for user: {}", entry.user_id);
         
-        // Record the API usage and bill credits using the pre-resolved cost
-        let (api_usage_record, user_credit) = self.credit_service.record_and_bill_usage_with_cost(entry, final_cost).await?;
+        // Use the new centralized billing method that accepts pre-resolved cost
+        // This ensures CostResolver remains the single source of truth for cost calculation
+        let (api_usage_record, user_credit) = self.credit_service
+            .record_and_bill_usage_with_cost(entry, final_cost)
+            .await?;
         
         info!("Successfully billed user {} for API usage: {} (cost: {})", 
               api_usage_record.user_id, api_usage_record.service_name, api_usage_record.cost);
@@ -875,7 +955,7 @@ impl BillingService {
     }
     
     /// Check if auto top-off should be triggered and execute it if needed
-    async fn check_and_trigger_auto_top_off(&self, user_id: &Uuid) -> Result<(), AppError> {
+    pub async fn check_and_trigger_auto_top_off(&self, user_id: &Uuid) -> Result<(), AppError> {
         debug!("Checking auto top-off conditions for user: {}", user_id);
         
         // Start transaction to check user's billing settings and balance atomically
@@ -1059,26 +1139,9 @@ impl BillingService {
             warn!("Auto top-off execution flow: FAILED at step 9 - Stripe invoice creation/payment failed for user {}: {}", user_id, e);
             AppError::External(format!("Failed to create and pay auto top-off invoice: {}", e))
         })?;
-        info!("Auto top-off execution flow: step 9 completed - Stripe invoice created and paid successfully: {}", invoice.id);
+        info!("Auto top-off execution flow: step 9 completed - Stripe invoice created successfully: {} - relying on webhooks for credit fulfillment", invoice.id);
 
-        debug!("Auto top-off execution flow: step 10 - adding credits to user account");
-        // If successful, add credits to the user's account
-        self.credit_service.adjust_credits(
-            user_id,
-            amount,
-            format!("Auto top-off via Stripe invoice {}", invoice.id),
-            Some(serde_json::json!({
-                "type": "auto_top_off",
-                "stripe_invoice_id": invoice.id.to_string(),
-                "amount": amount.to_string()
-            })),
-        ).await.map_err(|e| {
-            warn!("Auto top-off execution flow: FAILED at step 10 - credit adjustment failed for user {}: {}", user_id, e);
-            e
-        })?;
-        info!("Auto top-off execution flow: step 10 completed - credits added successfully to user {} account", user_id);
-
-        info!("Auto top-off execution flow: COMPLETED SUCCESSFULLY - user {} topped off with amount {}", user_id, amount);
+        info!("Auto top-off execution flow: COMPLETED SUCCESSFULLY - user {} auto top-off invoice created with amount {} - webhooks will handle credit fulfillment", user_id, amount);
         Ok(())
     }
 
@@ -1143,60 +1206,6 @@ impl BillingService {
         }))
     }
 
-    /// Record final cost for cancelled streaming jobs that incurred charges
-    /// This replaces partial billing with post-stream authoritative billing
-    pub async fn record_cancelled_job_cost(
-        &self,
-        user_id: &Uuid,
-        request_id: &str,
-        service_name: &str,
-        final_cost: &BigDecimal,
-        tokens_input: i64,
-        tokens_output: i64,
-    ) -> Result<(), AppError> {
-        info!("Recording cancelled job final cost: user_id={}, request_id={}, cost=${:.4}", 
-              user_id, request_id, final_cost);
-        
-        // Store final cost in Redis for desktop polling
-        self.store_streaming_final_cost(
-            user_id,
-            request_id,
-            service_name,
-            final_cost,
-            tokens_input,
-            tokens_output,
-        ).await?;
-        
-        // Perform single atomic billing for the full final cost
-        let metadata = serde_json::json!({
-            "request_id": request_id,
-            "streaming": true,
-            "cancelled": true,
-            "final_cost": final_cost,
-            "billing_type": "authoritative_post_stream",
-            "recorded_at": Utc::now().to_rfc3339()
-        });
-        
-        let entry = ApiUsageEntryDto {
-            user_id: *user_id,
-            service_name: service_name.to_string(),
-            tokens_input,
-            tokens_output,
-            cache_write_tokens: 0,
-            cache_read_tokens: 0,
-            request_id: Some(request_id.to_string()),
-            metadata: Some(metadata),
-            provider_reported_cost: None,
-        };
-        
-        // Use the existing atomic billing method
-        let (api_usage_record, user_credit) = self.charge_for_api_usage(entry, final_cost.clone()).await?;
-        
-        info!("Successfully recorded cancelled job final cost: user_id={}, request_id={}, cost=${:.4}, new_balance=${:.4}", 
-              user_id, request_id, final_cost, user_credit.balance);
-        
-        Ok(())
-    }
 
     /// Check billing readiness requirements for a user
     async fn _check_billing_readiness(&self, user_id: &Uuid) -> Result<(bool, bool), AppError> {
@@ -1281,117 +1290,25 @@ impl BillingService {
 
 
 
-    /// Centralized cost resolution function that provides authoritative cost calculation
-    /// 
-    /// This function calculates cost using local pricing data and handles cache tokens properly.
-    /// 
-    /// # Arguments
-    /// * `model_id` - Model identifier for pricing lookup
-    /// * `tokens_input` - Number of input tokens (uncached)
-    /// * `tokens_output` - Number of output tokens
-    /// * `cache_write_tokens` - Number of cache write tokens
-    /// * `cache_read_tokens` - Number of cache read tokens
-    /// 
-    /// # Returns
-    /// Resolved cost as BigDecimal, ensuring consistent and secure billing
-    pub async fn resolve_cost(
-        &self,
-        model_id: &str,
-        tokens_input: i64,
-        tokens_output: i64,
-        cache_write_tokens: i64,
-        cache_read_tokens: i64,
-    ) -> Result<BigDecimal, AppError> {
-        // Validate input parameters
-        if tokens_input < 0 || tokens_output < 0 || cache_write_tokens < 0 || cache_read_tokens < 0 {
-            return Err(AppError::InvalidArgument("Token counts cannot be negative".to_string()));
-        }
-
-        // Maximum token limits for security
-        const MAX_TOKENS: i64 = 1_000_000_000;
-        if tokens_input > MAX_TOKENS || tokens_output > MAX_TOKENS || 
-           cache_write_tokens > MAX_TOKENS || cache_read_tokens > MAX_TOKENS {
-            return Err(AppError::InvalidArgument(
-                format!("Token counts exceed maximum allowed limits ({})", MAX_TOKENS)
-            ));
-        }
-
-        // Calculate cost using model pricing
-        info!("Using server-side model pricing calculation for model {}", model_id);
-        
-        // Get model pricing information
-        let model_repository = Arc::new(crate::db::repositories::ModelRepository::new(
-            Arc::new(self.db_pools.system_pool.clone())
-        ));
-        
-        let model = model_repository
-            .find_by_id_with_provider(model_id)
-            .await?
-            .ok_or_else(|| AppError::NotFound(format!("Model '{}' not found", model_id)))?;
-
-        // Create ProviderUsage for the new calculate_total_cost method
-        let usage = crate::clients::usage_extractor::ProviderUsage {
-            prompt_tokens: (tokens_input + cache_write_tokens + cache_read_tokens) as i32,
-            completion_tokens: tokens_output as i32,
-            cache_write_tokens: cache_write_tokens as i32,
-            cache_read_tokens: cache_read_tokens as i32,
-            model_id: model_id.to_string(),
-            duration_ms: None,
-            cost: None,
-        };
-        
-        // Calculate total cost using the unified method
-        let total_cost = model.calculate_total_cost(&usage)
-            .map_err(|e| AppError::InvalidArgument(format!("Cost calculation failed: {}", e)))?;
-        
-        // Validate total cost
-        let max_cost = BigDecimal::from(1000);
-        if total_cost > max_cost {
-            return Err(AppError::InvalidArgument(
-                "Total cost calculation would exceed maximum allowed cost".to_string()
-            ));
-        }
-
-        // Ensure cost is non-negative
-        if total_cost < BigDecimal::from(0) {
-            return Err(AppError::InvalidArgument(
-                "Calculated cost cannot be negative".to_string()
-            ));
-        }
-
-        info!("Calculated cost for model {} using server pricing: {}", model_id, total_cost);
-        Ok(total_cost)
-    }
 
     /// Store final cost for later retrieval by desktop clients
     /// This allows desktop clients to poll for final streaming costs after post-stream billing completes
+    
+    /// Store final streaming cost in Redis for desktop client retrieval
     pub async fn store_streaming_final_cost(
         &self,
-        user_id: &Uuid,
         request_id: &str,
-        service_name: &str,
-        final_cost: &BigDecimal,
-        tokens_input: i64,
-        tokens_output: i64,
+        final_cost_data: &FinalCostData,
     ) -> Result<(), AppError> {
-        info!("Storing final streaming cost in Redis for desktop retrieval: user_id={}, request_id={}, cost=${:.4}", 
-              user_id, request_id, final_cost);
+        info!("Storing final streaming cost in Redis for desktop retrieval: request_id={}, cost=${:.4}", 
+              request_id, final_cost_data.final_cost);
         
         // Check if Redis is available
         if let Some(redis_client) = &self.redis_client {
             use redis::AsyncCommands;
             
-            // Create data structure for storage
-            let cost_data = FinalCostData {
-                cost: final_cost.clone(),
-                tokens_input,
-                tokens_output,
-                service_name: service_name.to_string(),
-                recorded_at: chrono::Utc::now(),
-            };
-            
             // Serialize to JSON
-            let json_data = serde_json::to_string(&cost_data)
+            let json_data = serde_json::to_string(&final_cost_data)
                 .map_err(|e| AppError::Internal(format!("Failed to serialize cost data: {}", e)))?;
             
             // Store in Redis with 5 minute TTL
@@ -1402,7 +1319,7 @@ impl BillingService {
             match conn.set_ex::<_, _, ()>(&redis_key, json_data, ttl_seconds).await {
                 Ok(_) => {
                     info!("Final cost successfully stored in Redis: request_id={}, cost=${:.4}", 
-                          request_id, final_cost);
+                          request_id, final_cost_data.final_cost);
                     Ok(())
                 }
                 Err(e) => {
@@ -1437,7 +1354,7 @@ impl BillingService {
                     match serde_json::from_str::<FinalCostData>(&json_data) {
                         Ok(cost_data) => {
                             info!("Final cost retrieved from Redis: request_id={}, cost=${:.4}", 
-                                  request_id, cost_data.cost);
+                                  request_id, cost_data.final_cost);
                             Ok(Some(cost_data))
                         }
                         Err(e) => {
@@ -1463,12 +1380,14 @@ impl BillingService {
 
 }
 
-/// Data structure for final cost information
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FinalCostData {
-    pub cost: BigDecimal,
+    pub request_id: String,
+    pub user_id: Uuid,
+    pub final_cost: f64,
     pub tokens_input: i64,
     pub tokens_output: i64,
+    pub cache_write_tokens: i64,
+    pub cache_read_tokens: i64,
     pub service_name: String,
-    pub recorded_at: DateTime<Utc>,
 }

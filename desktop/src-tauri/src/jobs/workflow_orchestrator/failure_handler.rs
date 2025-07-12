@@ -93,7 +93,8 @@ pub(super) async fn handle_stage_failure_internal(
                                 ).await;
                             }
                             
-                            if let Err(e) = start_next_stages_internal(workflows, app_handle, workflow_id).await {
+                            let orchestrator = app_handle.state::<Arc<workflow_orchestrator::WorkflowOrchestrator>>();
+                            if let Err(e) = orchestrator.start_next_abstract_stages(workflow_id).await {
                                 error!("Failed to start next stages after skip recovery: {}", e);
                             }
                             return Ok(());
@@ -151,15 +152,3 @@ pub(super) async fn handle_stage_failure_internal(
     Ok(())
 }
 
-/// Helper function to start next stages by calling orchestrator's method
-async fn start_next_stages_internal(
-    workflows: &Arc<Mutex<HashMap<String, WorkflowState>>>,
-    app_handle: &AppHandle,
-    workflow_id: &str
-) -> AppResult<()> {
-    // Get the global workflow orchestrator
-    let orchestrator = app_handle.state::<Arc<workflow_orchestrator::WorkflowOrchestrator>>();
-    
-    // Call the public method to start next stages
-    orchestrator.start_next_abstract_stages(workflow_id).await
-}
