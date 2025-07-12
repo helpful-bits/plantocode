@@ -24,7 +24,7 @@ pub(super) async fn emit_workflow_status_event_internal(
         error_message: workflow_state.error_message.clone(),
     };
 
-    if let Err(e) = app_handle.emit("file-finder-workflow-status", &event) {
+    if let Err(e) = app_handle.emit("workflow-status", &event) {
         warn!("Failed to emit workflow status event: {}", e);
     }
 }
@@ -48,7 +48,8 @@ pub(super) async fn emit_workflow_stage_event_internal(
         data: None,
     };
 
-    if let Err(e) = app_handle.emit("file-finder-workflow-stage", &event) {
+    if let Err(e) = app_handle.emit("workflow-stage", &event) {
         warn!("Failed to emit workflow stage event: {}", e);
     }
 }
+

@@ -1,7 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import { type ActionState } from "@/types";
-import { handleActionError } from "@/utils/action-utils";
+import { createSuccessActionState, handleActionError } from "@/utils/action-utils";
 import { invoke as invokeFs } from "@/utils/tauri-fs";
+import { logError } from "@/utils/error-handling";
 
 export interface FileFinderWorkflowArgs {
   sessionId: string;
@@ -149,7 +150,7 @@ export async function cancelWorkflowAction(
     }
 
     // Invoke the cancel workflow command
-    await invoke<void>("cancel_file_finder_workflow", {
+    await invoke<void>("cancel_workflow", {
       workflowId: workflowId,
     });
 
@@ -212,6 +213,16 @@ export async function cancelWorkflowStageAction(
       message: 'Workflow stage cancellation initiated successfully',
     };
   } catch (error) {
+    return handleActionError(error) as ActionState<void>;
+  }
+}
+
+export async function retryWorkflowAction(workflowId: string): Promise<ActionState<void>> {
+  try {
+    await invoke("retry_workflow_command", { workflowId });
+    return createSuccessActionState(undefined, "Workflow retry initiated successfully");
+  } catch (error) {
+    await logError(error, "Retry Workflow Failed", { workflowId });
     return handleActionError(error) as ActionState<void>;
   }
 }

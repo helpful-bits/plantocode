@@ -38,6 +38,7 @@ export function useGeneratePromptTaskState({
     isWebRefiningTask: isDoingWebSearch,
     handleRefineTask,
     handleWebRefineTask: handleWebSearch,
+    cancelWebSearch,
     canUndo,
     canRedo,
     undo,
@@ -68,6 +69,7 @@ export function useGeneratePromptTaskState({
       isDoingWebSearch,
       handleRefineTask,
       handleWebSearch,
+      cancelWebSearch,
       canUndo,
       canRedo,
       undo,
@@ -84,6 +86,7 @@ export function useGeneratePromptTaskState({
       isDoingWebSearch,
       handleRefineTask, // memoized with useCallback
       handleWebSearch, // memoized with useCallback
+      cancelWebSearch, // memoized with useCallback
       canUndo,
       canRedo,
       undo, // memoized with useCallback

@@ -156,7 +156,7 @@ impl OpenRouterClient {
         let api_key = app_settings.api_keys.openrouter_api_key.clone()
             .ok_or_else(|| crate::error::AppError::Configuration("OpenRouter API key must be configured".to_string()))?;
         
-        let client = Client::new();
+        let client = crate::clients::http_client::new_api_client();
         
         Ok(Self {
             client,
@@ -407,10 +407,19 @@ impl OpenRouterClient {
             .unwrap_or(0) as i32;
         
         // Extract cost from OpenRouter response with improved error handling
+        // OpenRouter can send cost as either a number or a string
         let cost = usage.get("cost")
             .and_then(|v| match v {
                 serde_json::Value::Number(n) => n.as_f64(),
-                serde_json::Value::String(s) => s.parse::<f64>().ok(),
+                serde_json::Value::String(s) => {
+                    // Try to parse string as float
+                    s.parse::<f64>()
+                        .map_err(|e| {
+                            tracing::warn!("Failed to parse cost string '{}': {}", s, e);
+                            e
+                        })
+                        .ok()
+                },
                 _ => {
                     tracing::warn!("Invalid cost format in OpenRouter response: {:?}", v);
                     None
@@ -421,8 +430,12 @@ impl OpenRouterClient {
                 if f < 0.0 {
                     tracing::warn!("Negative cost value in OpenRouter response: {}", f);
                     None
+                } else if f.is_nan() || f.is_infinite() {
+                    tracing::warn!("Invalid cost value (NaN or Infinite) in OpenRouter response: {}", f);
+                    None
                 } else {
-                    BigDecimal::from_str(&f.to_string())
+                    // Convert to BigDecimal with proper precision handling
+                    BigDecimal::from_str(&format!("{:.10}", f))  // Use fixed precision to avoid scientific notation
                         .map_err(|e| {
                             tracing::warn!("Failed to convert cost to BigDecimal: {} - {}", f, e);
                             e
@@ -443,15 +456,23 @@ impl OpenRouterClient {
             }
         }
         
-        // Use the with_cost constructor for consistency with other providers
-        Some(ProviderUsage::with_cost(
+        // Use the with_total_input_and_cost constructor for consistency with other providers
+        let usage = ProviderUsage::with_total_input_and_cost(
             prompt_tokens,      // Total input tokens (already correct semantics)
             completion_tokens,  // Output tokens
             0,                  // No cache write support in OpenRouter
             cache_read_tokens,  // Cache read tokens from prompt_tokens_details if available
             model_id.to_string(),
             cost                // Provider-calculated cost
-        ))
+        );
+        
+        // Validate usage data before returning
+        if let Err(e) = usage.validate() {
+            tracing::warn!("Invalid usage data from OpenRouter: {}", e);
+            return None;
+        }
+        
+        Some(usage)
     }
 }
 
@@ -512,7 +533,7 @@ impl UsageExtractor for OpenRouterClient {
 impl Clone for OpenRouterClient {
     fn clone(&self) -> Self {
         Self {
-            client: Client::new(),
+            client: crate::clients::http_client::new_api_client(),
             api_key: self.api_key.clone(),
             base_url: self.base_url.clone(),
             request_id_counter: self.request_id_counter.clone(),

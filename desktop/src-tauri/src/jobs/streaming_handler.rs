@@ -1,6 +1,8 @@
 use std::sync::Arc;
 use futures::StreamExt;
 use log::{debug, info, error, warn};
+use tauri::Emitter;
+use serde_json;
 
 use crate::error::{AppError, AppResult};
 use crate::models::{OpenRouterUsage, OpenRouterStreamChunk};
@@ -72,14 +74,14 @@ impl StreamedResponseHandler {
         while let Some(event_result) = stream.next().await {
             match event_result {
                 Ok(event) => {
-                    // Check if job has been canceled
-                    if job_processor_utils::check_job_canceled(&self.repo, &self.job_id).await? {
-                        info!("Job {} canceled during streaming", self.job_id);
-                        return Err(AppError::JobError("Job was canceled".to_string()));
-                    }
-                    
                     match event {
                         StreamEvent::ContentChunk(chunk) => {
+                            // Check if job has been canceled before processing chunk
+                            if job_processor_utils::check_job_canceled(&self.repo, &self.job_id).await? {
+                                info!("Job {} canceled during streaming", self.job_id);
+                                return Err(AppError::JobError("Job was canceled".to_string()));
+                            }
+                            
                             // Extract content from streaming response
                             let mut chunk_content = String::new();
                             for choice in &chunk.choices {
@@ -93,24 +95,28 @@ impl StreamedResponseHandler {
                             if !chunk_content.is_empty() {
                                 accumulated_response.push_str(&chunk_content);
                                 
-                                // Update job stream progress with server-calculated tokens
-                                let new_metadata = self.repo.update_job_stream_progress(
-                                    &self.job_id,
-                                    &chunk_content,
-                                    0, // Server will provide accurate token counts
-                                    accumulated_response.len() as i32,
-                                    self.initial_db_job_metadata.as_deref(),
-                                    self.app_handle.as_ref(),
-                                    None, // Server will provide cost in final usage
-                                    None, // cache_write_tokens
-                                    None, // cache_read_tokens
-                                ).await?;
-                                current_metadata_str = Some(new_metadata);
+                                // Optionally use token estimator for visual updates only
+                                // This is not used for billing - server provides authoritative counts
+                                if let Some(ref app_handle) = self.app_handle {
+                                    let estimated_tokens = crate::utils::token_estimator::estimate_tokens(&chunk_content);
+                                    
+                                    let event_payload = serde_json::json!({
+                                        "job_id": self.job_id,
+                                        "response_chunk": chunk_content,
+                                        "chars_received": accumulated_response.len(),
+                                        "estimated_tokens": estimated_tokens,
+                                        "visual_update": true
+                                    });
+                                    
+                                    if let Err(e) = app_handle.emit("job_response_update", &event_payload) {
+                                        warn!("Failed to emit response update event for job {}: {}", self.job_id, e);
+                                    }
+                                }
                             }
                             
                             // Check for final usage information including server-calculated cost
                             if let Some(ref usage) = chunk.usage {
-                                final_usage = Some(usage.clone());
+                                final_usage = Some((*usage).clone());
                                 info!("Received server-authoritative usage information for job {}: tokens={}, cost={:?}", 
                                       self.job_id, usage.total_tokens, usage.cost);
                                 
@@ -120,12 +126,15 @@ impl StreamedResponseHandler {
                                     
                                     // Emit job status change event with server-calculated cost
                                     if let Some(ref app_handle) = self.app_handle {
-                                        if let Err(e) = job_processor_utils::emit_job_status_change(
+                                        if let Err(e) = job_processor_utils::emit_job_update(
                                             app_handle,
-                                            &self.job_id,
-                                            "running",
-                                            Some("Received server-calculated cost information."),
-                                            Some(cost),
+                                            "job_updated",
+                                            serde_json::json!({
+                                                "id": self.job_id,
+                                                "status": "Running",
+                                                "errorMessage": "Received server-calculated cost information.",
+                                                "actual_cost": cost
+                                            })
                                         ) {
                                             error!("Failed to emit cost update event for job {}: {}", self.job_id, e);
                                         }
@@ -162,49 +171,17 @@ impl StreamedResponseHandler {
                             }
                         },
                         StreamEvent::UsageUpdate(usage_update) => {
-                            // Process cumulative usage update from server
+                            // Process server-authoritative usage update
                             info!("Processing usage update for job {}: input={}, output={}, total={}, cost={}", 
                                   self.job_id, 
                                   usage_update.tokens_input, 
                                   usage_update.tokens_output, 
-                                  usage_update.tokens_total, 
+                                  usage_update.tokens_total,
                                   usage_update.estimated_cost);
                             
-                            // Parse estimated cost from string
-                            let estimated_cost = usage_update.estimated_cost.parse::<f64>().unwrap_or(0.0);
-                            
-                            // Update job metadata with latest cumulative values
-                            // The server sends cumulative counts, so we need to store them directly
-                            let update_query = sqlx::query(
-                                r#"
-                                UPDATE background_jobs SET
-                                    tokens_sent = $1,
-                                    tokens_received = $2,
-                                    actual_cost = $3,
-                                    updated_at = $4
-                                WHERE id = $5
-                                "#)
-                                .bind(usage_update.tokens_input)
-                                .bind(usage_update.tokens_output)
-                                .bind(estimated_cost)
-                                .bind(get_timestamp())
-                                .bind(&self.job_id);
-                            
-                            if let Err(e) = update_query.execute(&*self.repo.get_pool()).await {
-                                error!("Failed to update job with cumulative usage: {}", e);
-                            }
-                            
-                            // Emit event for UI updates if AppHandle is provided  
-                            if let Some(ref app_handle) = self.app_handle {
-                                if let Err(e) = job_processor_utils::emit_job_status_change(
-                                    app_handle,
-                                    &self.job_id,
-                                    "running",
-                                    Some(&format!("Tokens: {} (cost: ${})", usage_update.tokens_total, usage_update.estimated_cost)),
-                                    Some(estimated_cost),
-                                ) {
-                                    error!("Failed to emit usage update event for job {}: {}", self.job_id, e);
-                                }
+                            // Call the repository update method which handles database update and event emission
+                            if let Err(e) = self.repo.update_job_stream_progress(&self.job_id, &usage_update).await {
+                                error!("Failed to update job stream progress: {}", e);
                             }
                         }
                     }
@@ -308,8 +285,8 @@ impl StreamedResponseHandler {
             }
         };
         
-        // Update job with the server-calculated cost information and cache tokens
-        let new_metadata = self.repo.update_job_stream_progress(
+        // Update job with the server-calculated cost information and cache tokens using legacy method
+        let new_metadata = self.repo.update_job_stream_progress_legacy(
             &self.job_id,
             "", // Empty chunk - just updating metadata
             0,  // Server provides accurate token counts

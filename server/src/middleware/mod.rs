@@ -1,7 +1,7 @@
 pub mod secure_auth;
 pub mod rate_limiting;
 
-pub use secure_auth::SecureAuthentication;
+pub use secure_auth::auth_middleware;
 pub use rate_limiting::{
     RateLimitMiddleware, 
     create_rate_limit_storage,

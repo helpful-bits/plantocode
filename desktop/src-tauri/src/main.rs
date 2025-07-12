@@ -21,6 +21,7 @@ pub mod error_recovery;
 
 use std::sync::{Arc, Mutex};
 use std::collections::HashMap;
+use std::time::Duration;
 use tauri::Manager;
 use log::{info, error, warn, debug};
 use tokio::sync::OnceCell;
@@ -59,7 +60,11 @@ impl Default for AppState {
     fn default() -> Self {
         Self {
             config_load_error: Mutex::new(None),
-            client: reqwest::Client::new(),
+            client: reqwest::Client::builder()
+                .connect_timeout(Duration::from_secs(10))
+                .timeout(Duration::from_secs(30))
+                .build()
+                .expect("Failed to build reqwest client"),
             settings: RuntimeConfig::default(),
             auth0_state_store: Auth0StateStore::default(),
         }
@@ -89,12 +94,7 @@ fn main() {
     info!("App identifier: {}", app_identifier);
 
     tauri::Builder::default()
-        .manage(AppState {
-            config_load_error: Mutex::new(None),
-            client: reqwest::Client::new(),
-            settings: RuntimeConfig::default(), // Now called AFTER dotenv
-            auth0_state_store: Auth0StateStore::default(),
-        })
+        .manage(AppState::default())
         .manage(ConfigCache::new(Mutex::new(HashMap::new())))
         // TokenManager will be created in initialize_api_clients with the AppHandle
         .plugin(tauri_plugin_single_instance::init(|_app, _argv, _cwd| {
@@ -120,24 +120,9 @@ fn main() {
                 }
             });
 
-            // Initialize auto-sync cache service
-            let app_handle_auto_sync = app.handle().clone();
-            tauri::async_runtime::spawn(async move {
-                use crate::services::config_cache_service::auto_sync_cache_with_server;
-                info!("Starting auto-sync cache service");
-                auto_sync_cache_with_server(app_handle_auto_sync).await;
-            });
-
-            // Initialize cache health monitoring
-            let app_handle_health = app.handle().clone();
-            tauri::async_runtime::spawn(async move {
-                use crate::services::cache_health_monitor::initialize_cache_health_monitor;
-                if let Err(e) = initialize_cache_health_monitor(&app_handle_health).await {
-                    error!("Cache health monitor initialization failed: {}", e);
-                } else {
-                    info!("Cache health monitor initialized successfully");
-                }
-            });
+            // NOTE: Auto-sync cache service and cache health monitoring are now initialized
+            // in app_setup::services::initialize_api_clients after TokenManager is registered
+            // to avoid race conditions where these services try to access TokenManager before it exists
 
             // Spawn background task for Auth0 state cleanup
             let auth0_store = app.state::<AppState>().auth0_state_store.clone();
@@ -183,6 +168,9 @@ fn main() {
             commands::auth0_commands::set_app_jwt,
             commands::auth0_commands::clear_stored_app_jwt,
             
+            // Featurebase commands
+            commands::featurebase_commands::get_featurebase_sso_token,
+            
             // Billing commands
             commands::billing_commands::get_billing_dashboard_data_command,
             commands::billing_commands::get_customer_billing_info_command,
@@ -209,7 +197,6 @@ fn main() {
             
             
             // Customer billing lifecycle management
-            commands::billing_commands::get_usage_summary_command,
             commands::billing_commands::get_detailed_usage_with_summary_command,
             commands::billing_commands::create_billing_portal_session_command,
             commands::billing_commands::list_invoices_command,
@@ -226,6 +213,7 @@ fn main() {
             // Job commands
             commands::job_commands::clear_job_history_command,
             commands::job_commands::get_active_jobs_command,
+            commands::job_commands::get_all_visible_jobs_command,
             commands::job_commands::cancel_background_job_command,
             commands::job_commands::cancel_session_jobs_command,
             commands::job_commands::delete_background_job_command,
@@ -267,7 +255,6 @@ fn main() {
             commands::workflow_commands::start_file_finder_workflow,
             commands::workflow_commands::start_web_search_workflow,
             commands::workflow_commands::get_file_finder_workflow_status,
-            commands::workflow_commands::cancel_file_finder_workflow,
             commands::workflow_commands::cancel_workflow,
             commands::workflow_commands::pause_file_finder_workflow,
             commands::workflow_commands::resume_file_finder_workflow,

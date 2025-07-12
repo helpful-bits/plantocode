@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useSessionStateContext, useSessionActionsContext } from "@/contexts/session";
 import { listProjectFilesAction } from "@/actions/file-system/list-project-files.action";
-import { WorkflowTracker } from "@/utils/workflow-utils";
 import { useNotification } from "@/contexts/notification-context";
 
 // Extended interface for UI state - includes selection state
@@ -24,7 +23,7 @@ interface ExtendedFileInfo {
  * Just files, selection state, and direct database saves
  */
 export function useFileSelection(projectDirectory?: string) {
-  const { currentSession, activeSessionId } = useSessionStateContext();
+  const { currentSession } = useSessionStateContext();
   const { updateCurrentSessionFields } = useSessionActionsContext();
   const { showNotification } = useNotification();
   
@@ -33,14 +32,9 @@ export function useFileSelection(projectDirectory?: string) {
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterMode, setFilterMode] = useState<"all" | "selected">("all");
-  const [findingFiles, setFindingFiles] = useState(false);
-  const [findingFilesError, setFindingFilesError] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<"name" | "size" | "modified">("name");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-  
-  // Track active workflow to handle completion
-  const activeWorkflowTracker = useRef<WorkflowTracker | null>(null);
   
   // History for undo/redo
   const [history, setHistory] = useState<{ includedFiles: string[], forceExcludedFiles: string[] }[]>([]);
@@ -252,25 +246,6 @@ export function useFileSelection(projectDirectory?: string) {
   // Count from all files, not just filtered
   const includedCount = files.filter(f => f.included && !f.excluded).length;
 
-  // Clean up workflow tracker on unmount
-  useEffect(() => {
-    return () => {
-      if (activeWorkflowTracker.current) {
-        activeWorkflowTracker.current.destroy();
-        activeWorkflowTracker.current = null;
-      }
-    };
-  }, []);
-
-  // Clean up workflow tracker when session changes
-  useEffect(() => {
-    if (activeWorkflowTracker.current) {
-      activeWorkflowTracker.current.destroy();
-      activeWorkflowTracker.current = null;
-      setFindingFiles(false);
-    }
-  }, [activeSessionId]);
-
   const saveSelectionsToSession = useCallback(async () => {
     if (!currentSession) return;
     
@@ -356,71 +331,6 @@ export function useFileSelection(projectDirectory?: string) {
     }
   }, [currentSession, files, updateCurrentSessionFields, saveToHistory, showNotification, setFiles, setHasUnsavedChanges]);
 
-  // Find function - triggers file finder workflow with completion handling
-  const triggerFind = useCallback(async () => {
-    if (!activeSessionId || !projectDirectory || !currentSession?.taskDescription) {
-      console.warn("Missing required data for file finder workflow");
-      return;
-    }
-
-    // Clean up any existing workflow tracker
-    if (activeWorkflowTracker.current) {
-      activeWorkflowTracker.current.destroy();
-      activeWorkflowTracker.current = null;
-    }
-
-    setFindingFiles(true);
-    setFindingFilesError(null);
-    setError(null);
-
-    try {
-      // Start workflow using WorkflowTracker for full lifecycle management
-      const tracker = await WorkflowTracker.startWorkflow(
-        activeSessionId,
-        currentSession.taskDescription,
-        projectDirectory,
-        currentSession.forceExcludedFiles || [],
-        { timeoutMs: 300000 } // 5 minutes
-      );
-
-      activeWorkflowTracker.current = tracker;
-
-      // Listen for workflow completion
-      tracker.onComplete(async (results) => {
-        try {
-          applyWorkflowResultsToSession(results.selectedFiles || [], "workflow completion");
-          // Switch to "selected" filter mode to show the newly found files
-          if (results.selectedFiles && results.selectedFiles.length > 0) {
-            setFilterMode("selected");
-          }
-        } catch (error) {
-          console.error("Failed to apply workflow completion results:", error);
-          setError("Failed to apply workflow results");
-        } finally {
-          setFindingFiles(false);
-          activeWorkflowTracker.current = null;
-        }
-      });
-
-      // Listen for workflow errors
-      tracker.onError((error) => {
-        console.error("Workflow error:", error);
-        const errorMessage = error.message || "Unknown workflow error";
-        setFindingFilesError(errorMessage);
-        setError(`Workflow failed: ${errorMessage}`);
-        setFindingFiles(false);
-        activeWorkflowTracker.current = null;
-      });
-
-      console.log("File finder workflow started:", tracker.getWorkflowId());
-    } catch (error) {
-      console.error("Error starting file finder workflow:", error);
-      const errorMessage = error instanceof Error ? error.message : "Failed to start workflow";
-      setFindingFilesError(errorMessage);
-      setError(errorMessage);
-      setFindingFiles(false);
-    }
-  }, [activeSessionId, projectDirectory, currentSession?.taskDescription, currentSession?.forceExcludedFiles, applyWorkflowResultsToSession]);
 
   // Select filtered files only
   const selectFiltered = useCallback(() => {
@@ -470,21 +380,6 @@ export function useFileSelection(projectDirectory?: string) {
     updateCurrentSessionFields({ includedFiles: newIncluded });
   }, [saveToHistory, updateCurrentSessionFields, filteredAndSortedFiles, files]);
 
-  // Cancel find function - cancels active workflow and resets state
-  const cancelFind = useCallback(() => {
-    try {
-      if (activeWorkflowTracker.current) {
-        activeWorkflowTracker.current.cancel();
-        activeWorkflowTracker.current = null;
-      }
-      setFindingFiles(false);
-      setFindingFilesError(null);
-    } catch (error) {
-      console.error("Error canceling workflow:", error);
-      setFindingFiles(false);
-      activeWorkflowTracker.current = null;
-    }
-  }, []);
 
   return {
     files: filteredAndSortedFiles,
@@ -507,10 +402,6 @@ export function useFileSelection(projectDirectory?: string) {
     redo,
     canUndo: historyIndex > 0,
     canRedo: historyIndex < history.length - 1,
-    triggerFind,
-    cancelFind,
-    findingFiles,
-    findingFilesError,
     selectFiltered,
     deselectFiltered,
     hasUnsavedChanges,

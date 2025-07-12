@@ -123,6 +123,8 @@ CREATE TABLE IF NOT EXISTS background_jobs (
   updated_at INTEGER DEFAULT (strftime('%s', 'now')),
   start_time INTEGER,
   end_time INTEGER,
+  is_finalized INTEGER DEFAULT 0,
+  server_request_id TEXT DEFAULT NULL,
   FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
 );
 
@@ -130,6 +132,8 @@ CREATE TABLE IF NOT EXISTS background_jobs (
 CREATE INDEX IF NOT EXISTS idx_background_jobs_session_id ON background_jobs(session_id);
 CREATE INDEX IF NOT EXISTS idx_background_jobs_status ON background_jobs(status);
 CREATE INDEX IF NOT EXISTS idx_background_jobs_task_type ON background_jobs(task_type);
+CREATE INDEX IF NOT EXISTS idx_background_jobs_request_id ON background_jobs(server_request_id) WHERE server_request_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_background_jobs_finalized ON background_jobs(is_finalized) WHERE is_finalized = 0;
 
 -- Task settings table removed in favor of server-side configuration
 -- All AI task configuration will be fetched exclusively from the server
@@ -166,9 +170,10 @@ CREATE INDEX IF NOT EXISTS idx_project_system_prompts_is_custom ON project_syste
 -- User preferences stored as JSON in key_value_store by voice_commands.rs
 
 INSERT OR REPLACE INTO key_value_store (key, value, updated_at)
-VALUES ('schema_version', '2025-06-11-enhanced-transcription-configuration', strftime('%s', 'now')),
+VALUES ('schema_version', '2025-01-10-two-phase-billing', strftime('%s', 'now')),
        ('last_model_update', strftime('%s', 'now'), strftime('%s', 'now')),
        ('initial_setup_with_2025_models', 'true', strftime('%s', 'now')),
        ('enhanced_system_prompts_migration_applied', strftime('%s', 'now'), strftime('%s', 'now')),
        ('transcription_configuration_migration_applied', strftime('%s', 'now'), strftime('%s', 'now')),
-       ('system_prompts_table_removed', strftime('%s', 'now'), strftime('%s', 'now'));
+       ('system_prompts_table_removed', strftime('%s', 'now'), strftime('%s', 'now')),
+       ('two_phase_billing_migration_applied', strftime('%s', 'now'), strftime('%s', 'now'));

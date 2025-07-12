@@ -185,9 +185,10 @@ impl ValidationRule for TaskTypeConfigurationRule {
         let mut errors = Vec::new();
         let mut warnings = Vec::new();
         
-        // Get all TaskType variants that require LLM configuration
-        let required_task_types = [
+        // Get all TaskType variants - we'll filter by requires_llm() below
+        let all_task_types = [
             TaskType::ImplementationPlan,
+            TaskType::ImplementationPlanMerge,
             TaskType::VoiceTranscription,
             TaskType::TextImprovement,
             TaskType::PathCorrection,
@@ -199,11 +200,16 @@ impl ValidationRule for TaskTypeConfigurationRule {
             TaskType::ExtendedPathFinder,
             TaskType::WebSearchPromptsGeneration,
             TaskType::WebSearchExecution,
+            TaskType::WebSearchWorkflow,
             TaskType::Streaming,
             TaskType::Unknown,
         ];
         
-        for task_type in required_task_types.iter() {
+        for task_type in all_task_types.iter() {
+            // Skip task types that don't require LLM configuration
+            if !task_type.requires_llm() {
+                continue;
+            }
             let task_key = task_type.to_string();
             
             match config.tasks.get(&task_key) {
@@ -252,7 +258,7 @@ impl ValidationRule for TaskTypeConfigurationRule {
         }
         
         // Check for unknown configurations
-        let known_task_keys: std::collections::HashSet<String> = required_task_types
+        let known_task_keys: std::collections::HashSet<String> = all_task_types
             .iter()
             .map(|t| t.to_string())
             .collect();

@@ -5,6 +5,7 @@ use tera::Tera;
 use crate::auth_stores::{PollingStore, Auth0StateStore, Auth0PendingCodeInfo, Auth0StateStoreValue};
 use crate::services::auth::oauth::Auth0OAuthService;
 use crate::error::AppError;
+use crate::models::AuthenticatedUser;
 use log::{info, error, warn};
 use chrono::Utc;
 use crate::models::runtime_config::AppState;
@@ -170,11 +171,11 @@ pub async fn finalize_auth0_login(
 }
 
 pub async fn refresh_app_token_auth0(
-    user_id_from_jwt: web::ReqData<crate::middleware::secure_auth::UserId>,
+    user: web::ReqData<AuthenticatedUser>,
     auth_service: web::Data<Auth0OAuthService>,
     user_repo: web::Data<std::sync::Arc<crate::db::repositories::user_repository::UserRepository>>,
 ) -> Result<HttpResponse, AppError> {
-    let app_user_id = user_id_from_jwt.into_inner().0;
+    let app_user_id = user.user_id;
     
     let refresh_token = match user_repo.get_auth0_refresh_token(&app_user_id).await? {
         Some(token) => token,

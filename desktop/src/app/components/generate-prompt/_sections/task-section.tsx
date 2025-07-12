@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useCallback } from "react";
-import { Sparkles } from "lucide-react";
+import React, { useCallback, useState } from "react";
+import { Sparkles, X, Search, HelpCircle } from "lucide-react";
 
 import TaskDescriptionArea from "../_components/task-description";
 import { useCorePromptContext } from "../_contexts/core-prompt-context";
@@ -20,6 +20,10 @@ interface TaskSectionProps {
 const TaskSection = React.memo(function TaskSection({
   disabled = false,
 }: TaskSectionProps) {
+  // State for controlling tooltip visibility
+  const [showHelpTooltip, setShowHelpTooltip] = useState(false);
+  const [showRefineHelpTooltip, setShowRefineHelpTooltip] = useState(false);
+  
   // Get task description from SessionContext
   const sessionState = useSessionStateContext();
   const sessionActions = useSessionActionsContext();
@@ -42,6 +46,7 @@ const TaskSection = React.memo(function TaskSection({
     // New actions for task refinement and undo/redo
     handleRefineTask,
     handleWebSearch,
+    cancelWebSearch,
     undo,
     redo,
   } = taskActions;
@@ -77,52 +82,107 @@ const TaskSection = React.memo(function TaskSection({
       />
 
       {/* Web Search Enhancement - always available */}
-      <div className="mt-4">
+      <div className="mt-4 flex gap-2">
         <Button
           onClick={handleWebSearch}
           isLoading={isDoingWebSearch}
           disabled={disabled || isRefiningTask || isDoingWebSearch || !sessionState.currentSession?.taskDescription?.trim()}
           variant="secondary"
           size="sm"
-          className="w-full"
+          className="flex-1"
         >
-          Enhance with Web Search
+          <>
+            <Search className="h-4 w-4 mr-2" />
+            Deep Research
+            <span className="text-xs ml-1 opacity-70">(can be expensive)</span>
+          </>
         </Button>
+        
+        <Tooltip open={showHelpTooltip} onOpenChange={setShowHelpTooltip}>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="px-2"
+              disabled={disabled}
+              onClick={() => setShowHelpTooltip(!showHelpTooltip)}
+            >
+              <HelpCircle className="h-5 w-5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            <div className="max-w-xs space-y-2">
+              <p>
+                Enhances your task description with relevant information from the web, including latest documentation, best practices, and implementation examples
+              </p>
+              <p className="text-xs font-medium border-t border-primary-foreground/20 pt-2">
+                High token usage - but results are often worth it!
+              </p>
+            </div>
+          </TooltipContent>
+        </Tooltip>
+        
+        {/* Cancel button - only shown when web search is running */}
+        {isDoingWebSearch && (
+          <Button
+            onClick={cancelWebSearch}
+            disabled={disabled}
+            variant="outline"
+            size="sm"
+            className="px-3"
+            aria-label="Cancel web search"
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        )}
       </div>
 
       {/* AI Refine Task button - only shown when tokens exceed 100,000 */}
       {shouldShowRefineTask && (
-        <div className="mt-2 space-y-2">
+        <div className="mt-2 flex gap-2">
           <Button
-            variant="default"
+            variant="secondary"
             size="sm"
             onClick={handleRefineTask}
             disabled={disabled || isDoingWebSearch}
             isLoading={isRefiningTask}
             loadingText="AI is refining..."
-            className="w-full"
+            className="flex-1"
           >
             <>
               <Sparkles className="h-4 w-4 mr-2" />
-              Refine Task with AI
+              Refine Task
             </>
           </Button>
-          <Tooltip>
+          
+          <Tooltip open={showRefineHelpTooltip} onOpenChange={setShowRefineHelpTooltip}>
             <TooltipTrigger asChild>
-              <p className="text-xs text-muted-foreground text-center">
-                <span className="underline decoration-dashed cursor-help">
-                  The estimated prompt size (task + files) is large ({tokenEstimate?.totalTokens?.toLocaleString()} tokens). AI can help refine it for better results.
-                </span>
-              </p>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="px-2"
+                disabled={disabled}
+                onClick={() => setShowRefineHelpTooltip(!showRefineHelpTooltip)}
+              >
+                <HelpCircle className="h-5 w-5" />
+              </Button>
             </TooltipTrigger>
-            {tokenEstimate && (
-              <TooltipContent>
-                <div>
-                  System Prompt (files, etc.): {tokenEstimate.systemPromptTokens.toLocaleString()} tokens<br />
-                  User Prompt (task): {tokenEstimate.userPromptTokens.toLocaleString()} tokens
-                </div>
-              </TooltipContent>
-            )}
+            <TooltipContent>
+              <div className="max-w-xs space-y-2">
+                <p>
+                  AI will analyze and optimize your task description to improve clarity and results when working with large contexts
+                </p>
+                {tokenEstimate && (
+                  <div className="text-xs border-t border-primary-foreground/20 pt-2">
+                    <p className="font-medium mb-1">Current token usage ({tokenEstimate.totalTokens.toLocaleString()} total):</p>
+                    <div className="space-y-0.5 opacity-90">
+                      <p>• Files & context: {tokenEstimate.systemPromptTokens.toLocaleString()} tokens</p>
+                      <p>• Task description: {tokenEstimate.userPromptTokens.toLocaleString()} tokens</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </TooltipContent>
           </Tooltip>
         </div>
       )}

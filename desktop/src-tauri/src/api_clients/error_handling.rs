@@ -94,6 +94,8 @@ pub fn map_server_proxy_error(status_code: u16, response_text: &str) -> AppError
             "authorization_error" | "unauthorized" => AppError::AccessDenied(format!("Access denied: {}", message)),
             "credit_insufficient" | "insufficient_credits" => AppError::CreditInsufficient(message),
             "credit_purchase_required" | "upgrade_required" => AppError::CreditPurchaseRequired(message),
+            "task_initiation_failed" => AppError::TaskInitiationFailed(message),
+            "task_finalization_failed" => AppError::TaskFinalizationFailed(message),
             "payment_failed" | "payment_error" => AppError::PaymentFailed(message),
             "payment_declined" | "card_declined" => AppError::PaymentDeclined(message),
             "payment_authentication_required" | "authentication_required" => AppError::PaymentAuthenticationRequired(message),

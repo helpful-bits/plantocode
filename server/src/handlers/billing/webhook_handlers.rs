@@ -6,6 +6,7 @@ use crate::services::audit_service::{AuditService, AuditContext};
 use crate::db::repositories::webhook_idempotency_repository::WebhookIdempotencyRepository;
 use crate::db::repositories::user_credit_repository::UserCreditRepository;
 use crate::db::repositories::credit_transaction_repository::{CreditTransactionRepository, CreditTransaction};
+use crate::db::repositories::user_repository::UserRepository;
 use uuid::Uuid;
 use log::{error, info, warn};
 use chrono::Utc;
@@ -14,7 +15,7 @@ use crate::stripe_types::*;
 use serde::{Deserialize, Serialize};
 
 
-/// Handle Stripe webhook events (simplified for Customer Portal integration)
+/// Handle Stripe webhook events with enhanced security
 #[post("/stripe")]
 pub async fn stripe_webhook(
     req: HttpRequest,
@@ -22,33 +23,84 @@ pub async fn stripe_webhook(
     billing_service: web::Data<BillingService>,
     app_state: web::Data<crate::models::runtime_config::AppState>,
 ) -> Result<HttpResponse, AppError> {
+    // Step 1: Extract Stripe-Signature header
     let stripe_signature = req.headers()
         .get("Stripe-Signature")
-        .ok_or(AppError::InvalidArgument("Missing Stripe-Signature header".to_string()))?
+        .ok_or_else(|| {
+            error!("Missing Stripe-Signature header in webhook request");
+            AppError::BadRequest("Missing Stripe-Signature header".to_string())
+        })?
         .to_str()
-        .map_err(|_| AppError::InvalidArgument("Invalid Stripe-Signature header".to_string()))?;
+        .map_err(|e| {
+            error!("Invalid Stripe-Signature header encoding: {}", e);
+            AppError::BadRequest("Invalid Stripe-Signature header".to_string())
+        })?;
     
-    let webhook_secret = &app_state.settings.stripe.webhook_secret;
+    // Step 2: Get raw request body as string for signature verification
     let body_str = std::str::from_utf8(&body)
-        .map_err(|_| AppError::InvalidArgument("Invalid UTF-8 in webhook body".to_string()))?;
-
-    // Verify webhook signature and parse event using StripeService
-    let stripe_service = billing_service.get_stripe_service()
-        .map_err(|e| AppError::Configuration(format!("Failed to get stripe service: {}", e)))?;
+        .map_err(|e| {
+            error!("Invalid UTF-8 in webhook body: {}", e);
+            AppError::BadRequest("Invalid webhook body encoding".to_string())
+        })?;
     
+    // Step 3: Use StripeService to verify signature and construct event
+    let stripe_service = billing_service.get_stripe_service()
+        .map_err(|e| {
+            error!("Failed to get stripe service: {}", e);
+            AppError::Configuration(format!("Failed to get stripe service: {}", e))
+        })?;
+    
+    // Verify webhook signature and construct event using the secure construct_event method
     let event = stripe_service.construct_event(body_str, stripe_signature)
         .map_err(|e| {
-            error!("Stripe webhook signature verification or event parsing failed: {}", e);
-            AppError::Auth(format!("Invalid Stripe webhook signature or event format: {}", e))
+            error!("Stripe webhook signature verification failed: {}", e);
+            // Return 400 Bad Request for signature verification failures
+            AppError::BadRequest(format!("Invalid webhook signature: {}", e))
         })?;
-
-    info!("Webhook security hardening Step 2: Successfully verified webhook signature and timestamp for event {} (type: {})", 
+    
+    info!("Successfully verified Stripe webhook signature for event {} (type: {})", 
           event.id, event.type_);
 
+    // Step 4: Idempotency check before processing
     let webhook_repo = WebhookIdempotencyRepository::new(billing_service.get_system_db_pool());
     let worker_id = format!("webhook-handler-{}", uuid::Uuid::new_v4().to_string()[..8].to_string());
     
-    // Enhanced idempotency check with event replay cache (24-hour TTL implemented in repository)
+    // Check if event was already processed
+    match webhook_repo.get_by_event_id(&event.id).await? {
+        Some(record) => {
+            match record.status.as_str() {
+                "completed" => {
+                    info!("Webhook event {} already processed successfully, returning 200 OK", event.id);
+                    return Ok(HttpResponse::Ok().finish());
+                }
+                "processing" => {
+                    // Check if lock is still valid
+                    if let Some(lock_expires) = record.lock_expires_at {
+                        if lock_expires > Utc::now() {
+                            info!("Webhook event {} is currently being processed by {}, returning 200 OK", 
+                                  event.id, record.locked_by.unwrap_or_default());
+                            return Ok(HttpResponse::Ok().finish());
+                        }
+                    }
+                    // Lock expired, we can try to acquire it
+                }
+                "failed" => {
+                    // Check if we should retry
+                    if record.retry_count >= record.max_retries {
+                        warn!("Webhook event {} has permanently failed, returning 200 OK to prevent retries", event.id);
+                        return Ok(HttpResponse::Ok().finish());
+                    }
+                    // Otherwise, we'll try to process it again
+                }
+                _ => {}
+            }
+        }
+        None => {
+            // New event, will be created when we acquire the lock
+        }
+    }
+    
+    // Try to acquire lock for processing
     let _webhook_record = match webhook_repo.acquire_webhook_lock(
         &event.id,
         "stripe",
@@ -61,31 +113,25 @@ pub async fn stripe_webhook(
             "created": event.created,
             "livemode": event.livemode,
             "api_version": event.api_version,
-            "security_hardening": "step_2_complete",
-            "timestamp_validated": true,
-            "replay_protection": true
+            "signature_verified": true,
+            "worker_id": worker_id
         }))
     ).await {
         Ok(record) => {
             info!("Acquired lock for webhook event {} (worker: {})", event.id, worker_id);
             record
         }
-        Err(AppError::Database(msg)) if msg.contains("already locked") => {
-            info!("Webhook event {} already being processed, skipping", event.id);
-            return Ok(HttpResponse::Ok().finish());
-        }
-        Err(AppError::Database(msg)) if msg.contains("Webhook event has already been completed") => {
-            info!("Webhook event {} is a duplicate and is being skipped", event.id);
-            return Ok(HttpResponse::Ok().finish());
-        }
         Err(e) => {
             error!("Failed to acquire lock for webhook event {}: {}", event.id, e);
-            return Err(e);
+            // Return 200 OK to prevent Stripe from retrying
+            return Ok(HttpResponse::Ok().finish());
         }
     };
     
+    // Step 5: Process the event
     match process_stripe_webhook_event(&event, &billing_service, &app_state).await {
         Ok(response) => {
+            // Mark as completed
             if let Err(e) = webhook_repo.mark_as_completed(
                 &event.id,
                 Some(serde_json::json!({
@@ -103,7 +149,7 @@ pub async fn stripe_webhook(
             let error_message = format!("{}", e);
             error!("Failed to process webhook event {} (type: {}): {}", event.id, event.type_, error_message);
             
-            // Send admin alert with metered billing context
+            // Send admin alert
             crate::utils::admin_alerting::send_stripe_webhook_failure_alert(
                 &event.id,
                 &error_message,
@@ -113,10 +159,11 @@ pub async fn stripe_webhook(
             let should_retry = !is_permanent_error(&e);
             
             if should_retry {
+                // Release lock and schedule retry
                 if let Err(mark_error) = webhook_repo.release_webhook_lock_with_failure(
                     &event.id,
                     &error_message,
-                    5,
+                    5, // Retry in 5 minutes
                     Some(serde_json::json!({
                         "failed_at": Utc::now().to_rfc3339(),
                         "error": error_message,
@@ -125,10 +172,9 @@ pub async fn stripe_webhook(
                     }))
                 ).await {
                     warn!("Failed to schedule retry for webhook event {}: {}", event.id, mark_error);
-                } else {
-                    info!("Scheduled retry for webhook event {} (worker: {})", event.id, worker_id);
                 }
             } else {
+                // Mark as permanently failed
                 if let Err(mark_error) = webhook_repo.mark_as_failed(
                     &event.id,
                     &error_message,
@@ -140,12 +186,12 @@ pub async fn stripe_webhook(
                     }))
                 ).await {
                     warn!("Failed to mark webhook as permanently failed for event {}: {}", event.id, mark_error);
-                } else {
-                    info!("Marked webhook event {} as permanently failed (worker: {})", event.id, worker_id);
                 }
             }
             
-            Err(e)
+            // Always return 200 OK to prevent Stripe from retrying
+            // We handle our own retry logic
+            Ok(HttpResponse::Ok().finish())
         }
     }
 }
@@ -250,7 +296,10 @@ async fn process_stripe_webhook_event(
             }
         },
         "invoice.payment_succeeded" => {
-            info!("Processing invoice.payment_succeeded for event {}. Acknowledged.", event.id);
+            info!("Processing invoice.payment_succeeded for event {}", event.id);
+            let invoice: Invoice = serde_json::from_value(event.data["object"].clone())
+                .map_err(|e| AppError::InvalidArgument(format!("Failed to parse invoice: {}", e)))?;
+            handle_invoice_payment_succeeded(&invoice, billing_service).await?;
         },
         "payment_method.attached" => {
             info!("Processing payment method attached: {}", event.id);
@@ -672,6 +721,132 @@ async fn handle_checkout_session_completed(
     Ok(())
 }
 
+/// Handle invoice payment succeeded event for auto_topoff invoices
+async fn handle_invoice_payment_succeeded(
+    invoice: &Invoice,
+    billing_service: &BillingService,
+) -> Result<(), AppError> {
+    info!("Processing invoice.payment_succeeded for invoice: {}", invoice.id);
+    
+    // Check if this is an auto_topoff invoice
+    let invoice_type = invoice.metadata.as_ref()
+        .and_then(|metadata| metadata.get("type"))
+        .map(|t| t.as_str())
+        .unwrap_or("unknown");
+    
+    if invoice_type != "auto_topoff" {
+        info!("Invoice {} is not an auto_topoff invoice (type: {}), skipping processing", 
+              invoice.id, invoice_type);
+        return Ok(());
+    }
+    
+    info!("Processing auto_topoff invoice: {}", invoice.id);
+    
+    // Extract customer ID from invoice
+    let customer_id = &invoice.customer;
+    info!("Found customer ID for invoice {}: {}", invoice.id, customer_id);
+    
+    // Find the associated application user
+    let user_repo = UserRepository::new(billing_service.get_system_db_pool());
+    let user = match user_repo.get_by_stripe_customer_id(customer_id).await {
+        Ok(user) => {
+            info!("Found user {} for customer ID {} in invoice {}", 
+                  user.id, customer_id, invoice.id);
+            user
+        },
+        Err(e) => {
+            error!("Could not find user for customer ID {} in invoice {}: {}", 
+                   customer_id, invoice.id, e);
+            return Err(AppError::NotFound(format!(
+                "User not found for customer ID {} in invoice {}", 
+                customer_id, invoice.id
+            )));
+        }
+    };
+    
+    // Extract charge ID (serves as idempotency key)
+    let charge_id = match &invoice.charge {
+        Some(charge_id) => {
+            info!("Found charge ID for invoice {}: {}", invoice.id, charge_id);
+            charge_id
+        },
+        None => {
+            error!("Missing charge ID in invoice {} - cannot process payment", invoice.id);
+            return Err(AppError::InvalidArgument(format!(
+                "Missing charge ID in invoice {} - this is required for idempotency", 
+                invoice.id
+            )));
+        }
+    };
+    
+    // Extract amount paid (in cents) and convert to dollars
+    let amount_paid_cents = invoice.amount_paid;
+    let amount_paid_dollars = BigDecimal::from(amount_paid_cents) / BigDecimal::from(100);
+    
+    info!("Processing auto_topoff payment for user {} - amount: ${} (charge: {})", 
+          user.id, amount_paid_dollars, charge_id);
+    
+    // Get currency from invoice
+    let currency = &invoice.currency;
+    
+    // Validate currency is USD
+    if currency.to_uppercase() != "USD" {
+        error!("Invoice {} uses unsupported currency: {}. Only USD is supported for auto_topoff", 
+               invoice.id, currency);
+        return Err(AppError::InvalidArgument(format!(
+            "Only USD currency is supported for auto_topoff, got: {} in invoice {}", 
+            currency, invoice.id
+        )));
+    }
+    
+    // Prepare metadata for the credit transaction
+    let metadata = serde_json::json!({
+        "invoice_id": invoice.id,
+        "charge_id": charge_id,
+        "customer_id": customer_id,
+        "invoice_type": invoice_type,
+        "amount_paid_cents": amount_paid_cents,
+        "currency": currency,
+        "processed_via": "invoice.payment_succeeded_webhook"
+    });
+    
+    info!("Recording credit purchase for auto_topoff invoice {}: user {}, amount ${}, charge {}", 
+          invoice.id, user.id, amount_paid_dollars, charge_id);
+    
+    // Record the credit purchase
+    let credit_service = billing_service.get_credit_service();
+    let audit_context = AuditContext::new(user.id);
+    
+    match credit_service.record_credit_purchase(
+        &user.id,
+        &amount_paid_dollars,
+        currency,
+        charge_id,
+        metadata,
+        &audit_context,
+    ).await {
+        Ok(updated_balance) => {
+            info!("Successfully processed auto_topoff credit purchase for invoice {}: user {} new balance: ${}", 
+                  invoice.id, user.id, updated_balance.balance);
+        },
+        Err(AppError::AlreadyExists(_)) => {
+            info!("Auto_topoff credit purchase for invoice {} (charge {}) was already processed (duplicate)", 
+                  invoice.id, charge_id);
+        },
+        Err(e) => {
+            error!("Failed to record auto_topoff credit purchase for invoice {}: {}", 
+                   invoice.id, e);
+            return Err(AppError::Payment(format!(
+                "Failed to record auto_topoff credit purchase for invoice {}: {}", 
+                invoice.id, e
+            )));
+        }
+    }
+    
+    info!("Successfully processed invoice.payment_succeeded for auto_topoff invoice {}", invoice.id);
+    Ok(())
+}
+
 /// Determine if an error is permanent and should not be retried
 fn is_permanent_error(error: &AppError) -> bool {
     match error {
@@ -696,103 +871,5 @@ fn is_permanent_error(error: &AppError) -> bool {
         // Other errors should be retried by default
         _ => false,
     }
-}
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct StreamingCostUpdateRequest {
-    pub request_id: String,
-    pub service_name: String,
-    pub incremental_cost: BigDecimal, // NOTE: Despite the name, this now contains the final total cost for authoritative post-stream billing
-    pub total_tokens_input: i64,
-    pub total_tokens_output: i64,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CancelledJobCostRequest {
-    pub request_id: String,
-    pub service_name: String,
-    pub final_cost: BigDecimal,
-    pub tokens_input: i64,
-    pub tokens_output: i64,
-}
-
-
-/// Handle final streaming cost for authoritative post-stream billing
-pub async fn streaming_cost_update_authenticated(
-    user_id: crate::middleware::secure_auth::UserId,
-    payload: web::Json<StreamingCostUpdateRequest>,
-    billing_service: web::Data<BillingService>,
-) -> Result<HttpResponse, AppError> {
-    info!("Processing final streaming cost for authenticated user {} request {}", 
-          user_id.0, payload.request_id);
-    
-    // Store final cost in Redis for desktop client polling
-    billing_service.store_streaming_final_cost(
-        &user_id.0,
-        &payload.request_id,
-        &payload.service_name,
-        &payload.incremental_cost, // This is now the final cost, not incremental
-        payload.total_tokens_input,
-        payload.total_tokens_output,
-    ).await?;
-    
-    // Perform single atomic billing for the complete final cost
-    let metadata = serde_json::json!({
-        "request_id": payload.request_id,
-        "streaming": true,
-        "cancelled": false,
-        "final_cost": payload.incremental_cost,
-        "billing_type": "authoritative_post_stream",
-        "recorded_at": chrono::Utc::now().to_rfc3339()
-    });
-    
-    let entry = ApiUsageEntryDto {
-        user_id: user_id.0,
-        service_name: payload.service_name.clone(),
-        tokens_input: payload.total_tokens_input,
-        tokens_output: payload.total_tokens_output,
-        cache_write_tokens: 0,
-        cache_read_tokens: 0,
-        request_id: Some(payload.request_id.clone()),
-        metadata: Some(metadata),
-        provider_reported_cost: None,
-    };
-    
-    // Use the existing atomic billing method
-    let (api_usage_record, user_credit) = billing_service.charge_for_api_usage(entry, payload.incremental_cost.clone()).await?;
-    
-    info!("Successfully processed final streaming cost: user_id={}, request_id={}, cost=${:.4}, new_balance=${:.4}", 
-          user_id.0, payload.request_id, payload.incremental_cost, user_credit.balance);
-    
-    Ok(HttpResponse::Ok().json(serde_json::json!({
-        "status": "success",
-        "message": "Final streaming cost processed and cached"
-    })))
-}
-
-
-/// Authenticated version of cancelled job cost handler for billing routes
-pub async fn cancelled_job_cost_authenticated(
-    user_id: crate::middleware::secure_auth::UserId,
-    payload: web::Json<CancelledJobCostRequest>,
-    billing_service: web::Data<BillingService>,
-) -> Result<HttpResponse, AppError> {
-    info!("Processing cancelled job final cost for authenticated user {} request {}", 
-          user_id.0, payload.request_id);
-    
-    billing_service.record_cancelled_job_cost(
-        &user_id.0,
-        &payload.request_id,
-        &payload.service_name,
-        &payload.final_cost,
-        payload.tokens_input,
-        payload.tokens_output,
-    ).await?;
-    
-    Ok(HttpResponse::Ok().json(serde_json::json!({
-        "status": "success",
-        "message": "Cancelled job final cost processed and cached"
-    })))
 }
 

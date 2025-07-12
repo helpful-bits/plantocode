@@ -93,3 +93,38 @@ pub struct UpdateAutoTopOffRequest {
     pub threshold: Option<String>,
     pub amount: Option<String>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FinalCostResponse {
+    pub status: String,
+    pub request_id: String,
+    pub final_cost: Option<f64>,
+    pub tokens_input: Option<i64>,
+    pub tokens_output: Option<i64>,
+    pub cache_write_tokens: Option<i64>,
+    pub cache_read_tokens: Option<i64>,
+}
+
+// New unified credit history entry that includes API usage token details
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UnifiedCreditHistoryEntry {
+    pub id: String,
+    pub price: f64,  // Negative for usage, positive for purchases
+    pub date: String,
+    pub model: String,  // Model name or "Credit Purchase" for purchases
+    pub input_tokens: Option<i64>,
+    pub output_tokens: Option<i64>,
+    pub balance_after: f64,
+    pub description: String,
+    pub transaction_type: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UnifiedCreditHistoryResponse {
+    pub entries: Vec<UnifiedCreditHistoryEntry>,
+    pub total_count: i64,
+    pub has_more: bool,
+}

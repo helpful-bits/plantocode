@@ -1,11 +1,10 @@
-use serde::{Deserialize, Serialize};
 use super::{OpenRouterStreamChunk, usage_update::UsageUpdate};
+use serde::Deserialize;
 
-/// Represents different types of events that can occur during streaming
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize)]
+#[serde(tag = "event", content = "data")]
+#[serde(rename_all = "snake_case")]
 pub enum StreamEvent {
-    /// Regular content chunk from the LLM
     ContentChunk(OpenRouterStreamChunk),
-    /// Usage update with incremental token and cost information
     UsageUpdate(UsageUpdate),
 }

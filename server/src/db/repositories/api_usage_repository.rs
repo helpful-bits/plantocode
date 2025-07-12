@@ -55,6 +55,8 @@ pub struct UsageSummary {
     pub total_requests: i64,
     pub total_input_tokens: i64,
     pub total_output_tokens: i64,
+    pub total_cache_write_tokens: i64,
+    pub total_cache_read_tokens: i64,
     pub total_duration_ms: i64,
 }
 
@@ -100,8 +102,8 @@ impl ApiUsageRepository {
 
         let result = query!(
             r#"
-            INSERT INTO api_usage (user_id, service_name, tokens_input, tokens_output, cache_write_tokens, cache_read_tokens, cost, request_id, metadata, provider_reported_cost)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            INSERT INTO api_usage (user_id, service_name, tokens_input, tokens_output, cache_write_tokens, cache_read_tokens, cost, request_id, metadata, provider_reported_cost, status)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'pending')
             RETURNING id, user_id, service_name, tokens_input, tokens_output, cache_write_tokens, cache_read_tokens, cost, request_id, metadata, timestamp, provider_reported_cost
             "#,
             entry.user_id,
@@ -133,6 +135,51 @@ impl ApiUsageRepository {
             timestamp: result.timestamp,
             provider_reported_cost: result.provider_reported_cost,
         })
+    }
+
+    /// Updates API usage with final token counts and cost after provider response
+    pub async fn update_usage_with_executor(
+        &self,
+        request_id: &str,
+        tokens_input: i64,
+        tokens_output: i64,
+        cache_write_tokens: i64,
+        cache_read_tokens: i64,
+        final_cost: BigDecimal,
+        status: &str,
+        executor: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    ) -> Result<(), AppError> {
+        let rows_updated = query!(
+            r#"
+            UPDATE api_usage
+            SET tokens_input = $1,
+                tokens_output = $2,
+                cache_write_tokens = $3,
+                cache_read_tokens = $4,
+                cost = $5,
+                status = $6
+            WHERE request_id = $7
+            "#,
+            tokens_input as i32,
+            tokens_output as i32,
+            cache_write_tokens as i32,
+            cache_read_tokens as i32,
+            final_cost,
+            status,
+            request_id
+        )
+        .execute(&mut **executor)
+        .await
+        .map_err(|e| AppError::Database(format!("Failed to update API usage: {}", e)))?;
+
+        if rows_updated.rows_affected() == 0 {
+            return Err(AppError::Database(format!(
+                "No API usage record found with request_id: {}",
+                request_id
+            )));
+        }
+
+        Ok(())
     }
 
     /// Records API usage for billing purposes (private - use record_usage_with_executor in transactions)
@@ -249,6 +296,8 @@ impl ApiUsageRepository {
                 total_requests: 0,
                 total_input_tokens: 0,
                 total_output_tokens: 0,
+                total_cache_write_tokens: 0,
+                total_cache_read_tokens: 0,
                 total_duration_ms: 0,
             },
             |mut acc, usage| {
@@ -256,6 +305,8 @@ impl ApiUsageRepository {
                 acc.total_requests += usage.total_requests;
                 acc.total_input_tokens += usage.total_input_tokens;
                 acc.total_output_tokens += usage.total_output_tokens;
+                acc.total_cache_write_tokens += usage.total_cache_write_tokens;
+                acc.total_cache_read_tokens += usage.total_cache_read_tokens;
                 acc.total_duration_ms += usage.total_duration_ms;
                 acc
             }

@@ -10,13 +10,13 @@ import { Button } from "@/ui/button";
 import { Badge } from "@/ui/badge";
 import { useNotification } from "@/contexts/notification-context";
 import { openBillingPortal } from "@/actions/billing";
-import { useCustomerBillingInfo } from "@/hooks/use-customer-billing-info";
+import { useBillingData } from "@/hooks/use-billing-data";
 
 import { BillingDashboard } from "@/app/components/billing/BillingDashboard";
 export default function AccountPage() {
   const { user, signOut } = useAuth();
   const { showNotification } = useNotification();
-  const { billingInfo, isLoading: billingLoading } = useCustomerBillingInfo();
+  const { customerBillingInfo: billingInfo, isLoading: billingLoading } = useBillingData();
   const [isOpeningPortal, setIsOpeningPortal] = useState(false);
 
   const handleSignOut = async () => {

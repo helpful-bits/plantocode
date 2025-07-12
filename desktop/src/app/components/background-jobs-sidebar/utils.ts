@@ -208,7 +208,8 @@ export function truncateText(text: string, maxLength = 50): string {
  * Shows indeterminate progress if unavailable
  */
 export function getStreamingProgressValue(
-  metadataInput: JobMetadata | string | null | undefined
+  metadataInput: JobMetadata | string | null | undefined,
+  startTime?: number | null
 ): number | undefined {
   // Parse metadata to ensure consistent structure
   const parsedMetadata = getParsedMetadata(metadataInput);
@@ -217,7 +218,7 @@ export function getStreamingProgressValue(
   const taskData = parsedMetadata?.taskData;
   const topLevel = parsedMetadata;
   
-  // Priority 1: Use explicit streamProgress if available and valid
+  // Check for explicit streamProgress
   const streamProgress = taskData?.streamProgress ?? topLevel?.streamProgress;
   if (
     typeof streamProgress === "number" &&
@@ -228,25 +229,12 @@ export function getStreamingProgressValue(
     return Math.min(streamProgress, 100);
   }
 
-  // Priority 2: For workflow jobs, check if there's a stage-based progress
-  if (topLevel?.workflowId) {
-    const progressPercentage = topLevel.progressPercentage;
-    
-    if (typeof progressPercentage === "number" && progressPercentage >= 0 && progressPercentage <= 100) {
-      return progressPercentage;
-    }
-    
-    // Estimate progress based on workflow stage
-    const workflowStage = topLevel.workflowStage;
-    if (typeof workflowStage === "string") {
-      const stageProgressMap: Record<string, number> = {
-        "REGEX_FILE_FILTER": 25,
-        "FILE_RELEVANCE_ASSESSMENT": 50,
-        "EXTENDED_PATH_FINDER": 75,
-        "PATH_CORRECTION": 90
-      };
-      return stageProgressMap[workflowStage] ?? 10;
-    }
+  // For non-streaming jobs, estimate progress based on time (20 seconds per job)
+  if (startTime && typeof startTime === 'number' && startTime > 0) {
+    const elapsedMs = Date.now() - startTime;
+    const expectedDurationMs = 20000; // 20 seconds
+    const estimatedProgress = Math.min((elapsedMs / expectedDurationMs) * 100, 95); // Cap at 95% to avoid showing 100% before completion
+    return Math.round(estimatedProgress);
   }
 
   // Return undefined to show indeterminate progress if no progress data available

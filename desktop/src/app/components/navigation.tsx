@@ -1,56 +1,22 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Home, Settings, User, RotateCcw, Loader2 } from "lucide-react";
+import { useState } from "react";
+import { NavLink } from "react-router-dom";
+import { Home, Settings, User, MessageSquare, RotateCcw, Loader2 } from "lucide-react";
 
 import { useSessionStateContext } from "@/contexts/session";
 import { useUILayout } from "@/contexts/ui-layout-context";
+import { useResetApp } from "@/hooks/use-reset-app";
 import { ThemeToggle } from "@/ui";
 import { Button } from "@/ui/button";
 import { CostUsageIndicator } from "@/ui/cost-usage-indicator";
 import { BillingHistoryModal } from "@/app/components/billing/billing-components";
 
 export function Navigation() {
-  // Track current pathname and update on route changes
-  const [pathname, setPathname] = useState(() => {
-    // Safe initialization for SSR compatibility
-    if (typeof window !== 'undefined') {
-      return window.location.pathname;
-    }
-    return '/';
-  });
-
   const [isBillingHistoryModalOpen, setIsBillingHistoryModalOpen] = useState(false);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-
-    const handlePathChange = (event?: Event) => {
-      let newPath = window.location.pathname;
-      if (event && 'detail' in event) {
-        const customEvent = event as CustomEvent<{ path: string }>;
-        newPath = customEvent.detail?.path || window.location.pathname;
-      }
-      setPathname(newPath);
-    };
-    
-    // Set initial pathname
-    handlePathChange();
-
-    // Listen for browser navigation events
-    window.addEventListener('popstate', handlePathChange);
-    
-    // Custom event for programmatic navigation
-    window.addEventListener('routeChange', handlePathChange);
-
-    return () => {
-      window.removeEventListener('popstate', handlePathChange);
-      window.removeEventListener('routeChange', handlePathChange);
-    };
-  }, []);
   const { isAppBusy, busyMessage } = useUILayout();
-  // Using useSessionStateContext for potential future usage
   useSessionStateContext();
+  const resetApp = useResetApp();
 
   const isBusy = isAppBusy;
 
@@ -61,19 +27,14 @@ export function Navigation() {
             {[
               { path: '/', icon: Home, label: 'Home' },
               { path: '/settings', icon: Settings, label: 'Settings' },
-              { path: '/account', icon: User, label: 'Account' }
+              { path: '/account', icon: User, label: 'Account' },
+              { path: '/feedback', icon: MessageSquare, label: 'Feedback' }
             ].map(({ path, icon: Icon, label }) => {
-              const isActive = pathname === path;
               return (
-                <button
+                <NavLink
                   key={path}
-                  onClick={() => {
-                    if (typeof window !== 'undefined') {
-                      window.history.pushState({}, '', path);
-                      window.dispatchEvent(new CustomEvent('routeChange', { detail: { path } }));
-                    }
-                  }}
-                  className={`
+                  to={path}
+                  className={({ isActive }) => `
                     flex items-center px-4 py-3 text-sm font-medium transition-all duration-200 relative cursor-pointer
                     focus-ring rounded-t-md
                     ${isActive
@@ -81,11 +42,10 @@ export function Navigation() {
                       : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
                     }
                   `}
-                  aria-current={isActive ? 'page' : undefined}
                 >
                   <Icon className="h-4 w-4 mr-2 text-current" />
                   {label}
-                </button>
+                </NavLink>
               );
             })}
           </div>
@@ -111,11 +71,11 @@ export function Navigation() {
             <Button 
               variant="ghost" 
               size="icon"
-              onClick={() => (window.location.href = "/")}
-              title="Reload application"
+              onClick={resetApp}
+              title="Reset application"
             >
               <RotateCcw className="h-[1.2rem] w-[1.2rem] text-foreground" />
-              <span className="sr-only">Reload application</span>
+              <span className="sr-only">Reset application</span>
             </Button>
           </div>
         </div>

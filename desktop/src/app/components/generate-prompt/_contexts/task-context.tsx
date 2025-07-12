@@ -22,6 +22,7 @@ const defaultValue: TaskContextValue = {
     // These default implementations will be replaced by actual implementations
     handleRefineTask: async () => Promise.resolve(),
     handleWebSearch: async () => Promise.resolve(),
+    cancelWebSearch: async () => Promise.resolve(),
     flushPendingTaskChanges: () => null,
     reset: () => {},
     undo: () => {},

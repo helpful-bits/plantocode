@@ -174,6 +174,12 @@ pub enum AppError {
     
     #[error("Lock poisoned: {0}")]
     LockPoisoned(String),
+    
+    #[error("Task initiation failed: {0}")]
+    TaskInitiationFailed(String),
+    
+    #[error("Task finalization failed: {0}")]
+    TaskFinalizationFailed(String),
 }
 
 impl From<std::io::Error> for AppError {
@@ -295,6 +301,8 @@ impl From<AppError> for SerializableError {
             AppError::TooManyRequests(_) => "TOO_MANY_REQUESTS",
             AppError::NotImplemented(_) => "NOT_IMPLEMENTED",
             AppError::LockPoisoned(_) => "LOCK_POISONED",
+            AppError::TaskInitiationFailed(_) => "TASK_INITIATION_FAILED",
+            AppError::TaskFinalizationFailed(_) => "TASK_FINALIZATION_FAILED",
         }.to_string();
         
         SerializableError {

@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use tauri::State;
 use std::sync::Arc;
 use log::{debug, info, warn, error};
+use chrono::{Utc, Duration};
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -317,18 +318,42 @@ pub struct CreditBalanceResponse {
 #[serde(rename_all = "camelCase")]
 pub struct CreditTransactionEntry {
     pub id: String,
-    pub amount: f64,
+    pub price: f64,  // renamed from amount
     pub currency: String,
-    pub transaction_type: String,
-    pub description: String,
-    pub created_at: String,
+    pub model: Option<String>,  // new field - model name or "Credit Purchase"
+    pub input_tokens: Option<i64>,  // new field
+    pub output_tokens: Option<i64>,  // new field
     pub balance_after: f64,
+    pub created_at: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreditHistoryResponse {
     pub transactions: Vec<CreditTransactionEntry>,
+    pub total_count: i64,
+    pub has_more: bool,
+}
+
+// New unified credit history entry that includes API usage token details
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UnifiedCreditHistoryEntry {
+    pub id: String,
+    pub price: f64,  // Negative for usage, positive for purchases
+    pub date: String,
+    pub model: String,  // Model name or "Credit Purchase" for purchases
+    pub input_tokens: Option<i64>,
+    pub output_tokens: Option<i64>,
+    pub balance_after: f64,
+    pub description: String,
+    pub transaction_type: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UnifiedCreditHistoryResponse {
+    pub entries: Vec<UnifiedCreditHistoryEntry>,
     pub total_count: i64,
     pub has_more: bool,
 }
@@ -354,6 +379,7 @@ pub struct CreditStats {
     pub transaction_count: i64,
     pub currency: String,
 }
+
 
 
 
@@ -444,20 +470,20 @@ pub async fn get_spending_forecast_command(
 
 
 
-/// Get credit transaction history
+/// Get credit transaction history with unified API usage and token details
 #[tauri::command]
 pub async fn get_credit_history_command(
     billing_client: State<'_, Arc<BillingClient>>,
     limit: Option<i32>,
     offset: Option<i32>,
     search: Option<String>,
-) -> Result<CreditHistoryResponse, AppError> {
-    debug!("Getting credit history via Tauri command");
+) -> Result<UnifiedCreditHistoryResponse, AppError> {
+    debug!("Getting unified credit history via Tauri command");
     
-    let credit_history = billing_client.get_credit_history(limit, offset, search).await?;
+    let unified_credit_history = billing_client.get_unified_credit_history(limit, offset, search).await?;
     
-    info!("Successfully retrieved credit history");
-    Ok(credit_history)
+    info!("Successfully retrieved unified credit history");
+    Ok(unified_credit_history)
 }
 
 
@@ -561,20 +587,6 @@ pub async fn get_checkout_session_status_command(
     Ok(status)
 }
 
-
-
-/// Get usage summary
-#[tauri::command]
-pub async fn get_usage_summary_command(
-    billing_client: State<'_, Arc<BillingClient>>,
-) -> Result<serde_json::Value, AppError> {
-    debug!("Getting usage summary via Tauri command");
-    
-    let usage_summary = billing_client.get_usage_summary().await?;
-    
-    info!("Successfully retrieved usage summary");
-    Ok(usage_summary)
-}
 
 /// Create a billing portal session
 #[tauri::command]
@@ -878,5 +890,6 @@ pub async fn update_auto_top_off_settings_command(
     info!("Successfully updated auto top-off settings");
     Ok(settings)
 }
+
 
 

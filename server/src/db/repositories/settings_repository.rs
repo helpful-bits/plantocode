@@ -1,14 +1,14 @@
 use sqlx::PgPool;
 use serde_json::Value as JsonValue;
 use crate::error::AppError;
-use std::collections::HashMap;
+use std::collections::{HashMap, BTreeMap};
 use serde::{Serialize, Deserialize};
 use tracing::{info, instrument};
 
 /// Database-driven AI model settings (pure task-driven configuration)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DatabaseAIModelSettings {
-    pub tasks: HashMap<String, TaskConfig>,
+    pub tasks: BTreeMap<String, TaskConfig>,
     pub max_concurrent_jobs: Option<u32>,
 }
 

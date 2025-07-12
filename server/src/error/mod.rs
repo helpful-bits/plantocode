@@ -26,6 +26,8 @@ pub enum AppError {
     BillingCancelled(String),
     CreditInsufficient(String),
     CreditPurchaseRequired(String),
+    TaskInitiationFailed(String),
+    TaskFinalizationFailed(String),
     PaymentMethodRequired(String),
     BillingAddressRequired(String),
     BillingConflict(String),
@@ -36,6 +38,7 @@ pub enum AppError {
     TooManyRequests(String),
     Billing(String),
     AlreadyExists(String),
+    DataIntegrity(String),
 }
 
 #[derive(Serialize, Deserialize)]
@@ -68,6 +71,8 @@ impl fmt::Display for AppError {
             AppError::BillingCancelled(e) => write!(f, "Billing cancelled: {}", e),
             AppError::CreditInsufficient(e) => write!(f, "Insufficient credits: {}", e),
             AppError::CreditPurchaseRequired(e) => write!(f, "Credit purchase required: {}", e),
+            AppError::TaskInitiationFailed(e) => write!(f, "Task initiation failed: {}", e),
+            AppError::TaskFinalizationFailed(e) => write!(f, "Task finalization failed: {}", e),
             AppError::PaymentMethodRequired(e) => write!(f, "Payment method required: {}", e),
             AppError::BillingAddressRequired(e) => write!(f, "Billing address required: {}", e),
             AppError::BillingConflict(e) => write!(f, "Billing conflict: {}", e),
@@ -78,6 +83,7 @@ impl fmt::Display for AppError {
             AppError::TooManyRequests(e) => write!(f, "Too many requests: {}", e),
             AppError::Billing(e) => write!(f, "Billing error: {}", e),
             AppError::AlreadyExists(e) => write!(f, "Already exists: {}", e),
+            AppError::DataIntegrity(e) => write!(f, "Data integrity error: {}", e),
         }
     }
 }
@@ -107,6 +113,8 @@ impl ResponseError for AppError {
             AppError::BillingCancelled(_) => (StatusCode::PAYMENT_REQUIRED, "billing_cancelled"),
             AppError::CreditInsufficient(_) => (StatusCode::PAYMENT_REQUIRED, "credit_insufficient"),
             AppError::CreditPurchaseRequired(_) => (StatusCode::PAYMENT_REQUIRED, "credit_purchase_required"),
+            AppError::TaskInitiationFailed(_) => (StatusCode::PAYMENT_REQUIRED, "task_initiation_failed"),
+            AppError::TaskFinalizationFailed(_) => (StatusCode::PAYMENT_REQUIRED, "task_finalization_failed"),
             AppError::PaymentMethodRequired(_) => (StatusCode::PAYMENT_REQUIRED, "payment_method_required"),
             AppError::BillingAddressRequired(_) => (StatusCode::BAD_REQUEST, "billing_address_required"),
             AppError::BillingConflict(_) => (StatusCode::CONFLICT, "billing_conflict"),
@@ -117,6 +125,7 @@ impl ResponseError for AppError {
             AppError::TooManyRequests(_) => (StatusCode::TOO_MANY_REQUESTS, "too_many_requests"),
             AppError::Billing(_) => (StatusCode::PAYMENT_REQUIRED, "billing_error"),
             AppError::AlreadyExists(_) => (StatusCode::CONFLICT, "already_exists"),
+            AppError::DataIntegrity(_) => (StatusCode::INTERNAL_SERVER_ERROR, "data_integrity_error"),
         };
 
         let error_response = ErrorResponse {
@@ -150,6 +159,8 @@ impl ResponseError for AppError {
             AppError::BillingCancelled(_) => StatusCode::PAYMENT_REQUIRED,
             AppError::CreditInsufficient(_) => StatusCode::PAYMENT_REQUIRED,
             AppError::CreditPurchaseRequired(_) => StatusCode::PAYMENT_REQUIRED,
+            AppError::TaskInitiationFailed(_) => StatusCode::PAYMENT_REQUIRED,
+            AppError::TaskFinalizationFailed(_) => StatusCode::PAYMENT_REQUIRED,
             AppError::PaymentMethodRequired(_) => StatusCode::PAYMENT_REQUIRED,
             AppError::BillingAddressRequired(_) => StatusCode::BAD_REQUEST,
             AppError::BillingConflict(_) => StatusCode::CONFLICT,
@@ -160,6 +171,7 @@ impl ResponseError for AppError {
             AppError::TooManyRequests(_) => StatusCode::TOO_MANY_REQUESTS,
             AppError::Billing(_) => StatusCode::PAYMENT_REQUIRED,
             AppError::AlreadyExists(_) => StatusCode::CONFLICT,
+            AppError::DataIntegrity(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 }

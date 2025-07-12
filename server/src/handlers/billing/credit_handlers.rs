@@ -8,9 +8,9 @@ use crate::services::credit_service::CreditService;
 use crate::db::repositories::user_credit_repository::UserCreditRepository;
 use crate::db::repositories::credit_transaction_repository::CreditTransactionRepository;
 use crate::db::repositories::UserCredit;
-use crate::middleware::secure_auth::UserId;
+use crate::models::AuthenticatedUser;
 use crate::models::auth_jwt_claims::Claims;
-use crate::models::billing::{CreditTransactionEntry, CreditHistoryResponse};
+use crate::models::billing::{CreditTransactionEntry, CreditHistoryResponse, UnifiedCreditHistoryResponse};
 use log::{debug, info};
 
 // ========================================
@@ -49,19 +49,19 @@ pub struct ExtendedPaginationQuery {
 /// Get user's current credit balance
 #[get("/balance")]
 pub async fn get_credit_balance(
-    user_id: UserId,
+    user: web::ReqData<AuthenticatedUser>,
     billing_service: web::Data<BillingService>,
 ) -> Result<HttpResponse, AppError> {
-    debug!("Getting credit balance for user: {}", user_id.0);
+    debug!("Getting credit balance for user: {}", user.user_id);
     
     let credit_repo = UserCreditRepository::new(billing_service.get_system_db_pool());
-    let balance = credit_repo.get_balance(&user_id.0).await?;
+    let balance = credit_repo.get_balance(&user.user_id).await?;
     
     let response = match balance {
         Some(credit) => credit,
         None => {
             let default_credit = UserCredit {
-                user_id: user_id.0,
+                user_id: user.user_id,
                 balance: BigDecimal::from(0),
                 currency: "USD".to_string(),
                 created_at: Some(chrono::Utc::now()),
@@ -76,7 +76,7 @@ pub async fn get_credit_balance(
 
 /// Get user's credit transaction history (renamed from get_credit_transaction_history to match frontend)
 pub async fn get_credit_history(
-    user_id: UserId,
+    user: web::ReqData<AuthenticatedUser>,
     query: web::Query<ExtendedPaginationQuery>,
     credit_service: web::Data<CreditService>,
 ) -> Result<HttpResponse, AppError> {
@@ -85,7 +85,7 @@ pub async fn get_credit_history(
     let search = query.search.clone();
     
     let credit_details = credit_service
-        .get_credit_details(&user_id.0, Some(limit), Some(offset), search.as_deref())
+        .get_credit_details(&user.user_id, Some(limit), Some(offset), search.as_deref())
         .await?;
     
     
@@ -111,6 +111,26 @@ pub async fn get_credit_history(
     };
     
     Ok(HttpResponse::Ok().json(response))
+}
+
+/// Get unified credit history that includes API usage with token details
+pub async fn get_unified_credit_history(
+    user: web::ReqData<AuthenticatedUser>,
+    query: web::Query<ExtendedPaginationQuery>,
+    credit_service: web::Data<CreditService>,
+) -> Result<HttpResponse, AppError> {
+    debug!("Getting unified credit history for user: {}", user.user_id);
+    
+    let limit = query.limit.unwrap_or(20);
+    let offset = query.offset.unwrap_or(0);
+    let search = query.search.clone();
+    
+    let unified_history = credit_service
+        .get_unified_credit_history(&user.user_id, Some(limit), Some(offset), search.as_deref())
+        .await?;
+    
+    info!("Successfully retrieved unified credit history for user: {}", user.user_id);
+    Ok(HttpResponse::Ok().json(unified_history))
 }
 
 
@@ -139,7 +159,7 @@ pub struct PaymentIntentResponse {
 
 /// Get comprehensive credit details with stats, balance, and transaction history
 pub async fn get_credit_details(
-    user_id: UserId,
+    user: web::ReqData<AuthenticatedUser>,
     query: web::Query<ExtendedPaginationQuery>,
     credit_service: web::Data<CreditService>,
 ) -> Result<HttpResponse, AppError> {
@@ -147,7 +167,7 @@ pub async fn get_credit_details(
     let offset = query.offset.unwrap_or(0);
     
     let credit_details = credit_service
-        .get_credit_details(&user_id.0, Some(limit), Some(offset), None)
+        .get_credit_details(&user.user_id, Some(limit), Some(offset), None)
         .await?;
     
     Ok(HttpResponse::Ok().json(credit_details))
@@ -157,12 +177,12 @@ pub async fn get_credit_details(
 // Admin-only authorization middleware required
 /// Admin endpoint to adjust credits
 pub async fn admin_adjust_credits(
-    user_id: UserId,
+    user: web::ReqData<AuthenticatedUser>,
     payload: web::Json<AdminAdjustCreditsRequest>,
     credit_service: web::Data<CreditService>,
 ) -> Result<HttpResponse, AppError> {
     // User ID is already extracted by authentication middleware
-    let _admin_user_id = user_id.0;
+    let _admin_user_id = user.user_id;
     
     let request = payload.into_inner();
     

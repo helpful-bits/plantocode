@@ -3,6 +3,7 @@ pub mod regex_commands;
 pub mod file_system_commands;
 pub mod app_commands;
 pub mod auth0_commands;
+pub mod featurebase_commands;
 pub mod billing_commands;
 pub mod config_commands;
 pub mod job_commands;
@@ -98,6 +99,11 @@ pub use auth0_commands::{
     clear_stored_app_jwt,
 };
 
+// Re-exports from featurebase commands module
+pub use featurebase_commands::{
+    get_featurebase_sso_token,
+};
+
 // Re-exports from config commands module
 pub use config_commands::{
     get_providers_with_models,
@@ -188,9 +194,12 @@ pub use billing_commands::{
     create_setup_checkout_session_command,
     get_checkout_session_status_command,
     // Customer billing lifecycle management now handled via Stripe Portal
-    get_usage_summary_command,
+    get_detailed_usage_with_summary_command,
     create_billing_portal_session_command,
     list_invoices_command,
+    download_invoice_pdf_command,
+    reveal_file_in_explorer_command,
+    get_customer_billing_info_command,
     get_auto_top_off_settings_command,
     update_auto_top_off_settings_command,
 };

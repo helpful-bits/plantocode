@@ -6,20 +6,47 @@ use crate::error::{AppError, AppResult};
 use crate::models::{BackgroundJob, JobStatus, TaskType};
 use crate::utils::get_timestamp;
 use log::{info, warn, debug};
-use serde_json::Value;
+use serde_json::{Value, json};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct BackgroundJobRepository {
     pool: Arc<SqlitePool>,
+    app_handle: Option<tauri::AppHandle>,
+    proxy_client: Option<Arc<crate::api_clients::server_proxy_client::ServerProxyClient>>,
 }
 
 impl BackgroundJobRepository {
     pub fn new(pool: Arc<SqlitePool>) -> Self {
-        Self { pool }
+        Self { pool, app_handle: None, proxy_client: None }
+    }
+    
+    pub fn new_with_app_handle(pool: Arc<SqlitePool>, app_handle: tauri::AppHandle) -> Self {
+        Self { pool, app_handle: Some(app_handle), proxy_client: None }
     }
     
     pub fn get_pool(&self) -> Arc<SqlitePool> {
         self.pool.clone()
+    }
+    
+    pub fn set_proxy_client(&mut self, proxy_client: Arc<crate::api_clients::server_proxy_client::ServerProxyClient>) {
+        self.proxy_client = Some(proxy_client);
+    }
+    
+    pub async fn extract_request_id_from_job(&self, job_id: &str) -> AppResult<Option<String>> {
+        let query = "SELECT metadata FROM background_jobs WHERE id = $1";
+        let row = sqlx::query(query)
+            .bind(job_id)
+            .fetch_optional(&*self.pool)
+            .await?;
+        
+        if let Some(row) = row {
+            if let Some(metadata_str) = row.get::<Option<String>, _>(0) {
+                if let Ok(metadata) = serde_json::from_str::<serde_json::Value>(&metadata_str) {
+                    return Ok(metadata.get("request_id").and_then(|v| v.as_str()).map(|s| s.to_string()));
+                }
+            }
+        }
+        Ok(None)
     }
     
     /// Cancel a specific job by ID\n    /// \n    /// This is the canonical method for cancelling individual jobs. For workflow jobs,\n    /// consider using WorkflowOrchestrator::update_job_status() to allow proper \n    /// workflow state management and cancellation handling.
@@ -50,12 +77,12 @@ impl BackgroundJobRepository {
             }
         }
         
-        // Check if this is a workflow job and log a warning\n        if let Some(metadata_str) = &job.metadata {\n            if let Ok(metadata_json) = serde_json::from_str::<serde_json::Value>(metadata_str) {\n                if metadata_json.get(\"workflowId\").is_some() {\n                    warn!(\"Job {} belonging to a workflow is being cancelled directly - workflow state may not be properly updated\", job_id);\n                }\n            }\n        }\n        \n        // Extract cost from current job metadata if available
-        let cost = if let Some(metadata_str) = &job.metadata {
+        // Extract request_id from job metadata if available
+        let request_id = if let Some(metadata_str) = &job.metadata {
             if let Ok(metadata_json) = serde_json::from_str::<serde_json::Value>(metadata_str) {
-                metadata_json.get("task_data")
-                    .and_then(|task_data| task_data.get("actual_cost"))
-                    .and_then(|v| v.as_f64())
+                metadata_json.get("request_id")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string())
             } else {
                 None
             }
@@ -63,11 +90,101 @@ impl BackgroundJobRepository {
             None
         };
         
-        // Use the new consolidated method
-        self.mark_job_canceled(job_id, reason, cost).await
+        // If we have a request_id and proxy client, cancel the server request first
+        if let (Some(req_id), Some(proxy_client)) = (request_id.as_ref(), &self.proxy_client) {
+            info!("Attempting to cancel server request for job {}: request_id={}", job_id, req_id);
+            match proxy_client.cancel_llm_request(req_id).await {
+                Ok(()) => info!("Successfully cancelled server request for job {}", job_id),
+                Err(e) => warn!("Failed to cancel server request for job {}: {}. Proceeding with local cancellation.", job_id, e),
+            }
+        }
+        
+        // Mark job as canceled first
+        self.mark_job_canceled(job_id, reason, None).await?;
+        
+        // If we have a request_id, spawn background task to poll and update final cost
+        if let Some(req_id) = request_id {
+            let job_id_clone = job_id.to_string();
+            let repo_clone = self.clone();
+            
+            tokio::spawn(async move {
+                if let Some(proxy_client) = &repo_clone.proxy_client {
+                    match proxy_client.poll_final_streaming_cost_with_retry(&req_id).await {
+                        Ok(Some(final_cost_data)) => {
+                            if let Err(e) = repo_clone.update_job_with_final_cost(&job_id_clone, &final_cost_data).await {
+                                warn!("Failed to update job {} with final cost: {}", job_id_clone, e);
+                            }
+                        },
+                        Ok(None) => {
+                            debug!("No final cost found for canceled job {}", job_id_clone);
+                        },
+                        Err(e) => {
+                            warn!("Failed to poll final cost for canceled job {}: {}", job_id_clone, e);
+                        }
+                    }
+                } else {
+                    debug!("No proxy client available for final cost polling for job {}", job_id_clone);
+                }
+            });
+        }
+        
+        Ok(())
     }
     
-    /// Update job streaming progress by appending response chunk and updating metadata.
+    /// Update job streaming progress with server-provided usage data
+    /// This method performs atomic UPDATE using server-authoritative token counts
+    /// 
+    /// # Arguments
+    /// * `job_id` - The ID of the job to update
+    /// * `usage_update` - UsageUpdate payload from server with cumulative counts
+    pub async fn update_job_stream_progress(&self, job_id: &str, usage_update: &crate::models::usage_update::UsageUpdate) -> AppResult<()> {
+        let now = get_timestamp();
+        
+        // Perform atomic UPDATE with server-authoritative token counts (replace, not add)
+        sqlx::query(
+            r#"
+            UPDATE background_jobs SET
+                tokens_sent = $2,
+                tokens_received = $3,
+                actual_cost = $4,
+                cache_write_tokens = COALESCE($5, cache_write_tokens),
+                cache_read_tokens = COALESCE($6, cache_read_tokens),
+                updated_at = $7
+            WHERE id = $1
+            "#)
+            .bind(job_id)
+            .bind(usage_update.tokens_input as i64)
+            .bind(usage_update.tokens_output as i64)
+            .bind(usage_update.estimated_cost)
+            .bind(usage_update.cache_write_tokens.map(|v| v as i64))
+            .bind(usage_update.cache_read_tokens.map(|v| v as i64))
+            .bind(now)
+            .execute(&*self.pool)
+            .await
+            .map_err(|e| AppError::DatabaseError(format!("Failed to update job stream progress: {}", e)))?;
+        
+        // Emit event for UI updates if app handle is available
+        if let Some(ref app_handle) = self.app_handle {
+            let event_payload = serde_json::json!({
+                "job_id": job_id,
+                "tokens_sent": usage_update.tokens_input,
+                "tokens_received": usage_update.tokens_output,
+                "tokens_total": usage_update.tokens_total,
+                "estimated_cost": usage_update.estimated_cost
+            });
+            
+            if let Err(e) = app_handle.emit("job_usage_update", &event_payload) {
+                warn!("Failed to emit job usage update event for job {}: {}", job_id, e);
+            }
+        }
+        
+        debug!("Updated job {} stream progress: input={}, output={}, cost={}", 
+               job_id, usage_update.tokens_input, usage_update.tokens_output, usage_update.estimated_cost);
+        
+        Ok(())
+    }
+
+    /// Legacy method for streaming progress updates (kept for backward compatibility)
     /// This method is used for streaming responses from API clients.
     /// 
     /// # Arguments
@@ -80,7 +197,7 @@ impl BackgroundJobRepository {
     /// * `cost` - Optional cost value to store in both metadata and database
     /// * `cache_write_tokens` - Optional cache write tokens to update
     /// * `cache_read_tokens` - Optional cache read tokens to update
-    pub async fn update_job_stream_progress(&self, job_id: &str, chunk: &str, new_tokens_received: i32, current_total_response_length: i32, current_metadata_str: Option<&str>, app_handle: Option<&tauri::AppHandle>, cost: Option<f64>, cache_write_tokens: Option<i64>, cache_read_tokens: Option<i64>) -> AppResult<String> {
+    pub async fn update_job_stream_progress_legacy(&self, job_id: &str, chunk: &str, new_tokens_received: i32, current_total_response_length: i32, current_metadata_str: Option<&str>, app_handle: Option<&tauri::AppHandle>, cost: Option<f64>, cache_write_tokens: Option<i64>, cache_read_tokens: Option<i64>) -> AppResult<String> {
         // First check if the job exists and is in running status
         let job = self.get_job_by_id(job_id).await?
             .ok_or_else(|| AppError::DatabaseError(format!("Job not found: {}", job_id)))?;
@@ -119,6 +236,14 @@ impl BackgroundJobRepository {
                         // Add start time if not present
                         if !task_map.contains_key("stream_start_time") {
                             task_map.insert("stream_start_time".to_string(), serde_json::json!(now));
+                        }
+                        
+                        // Calculate streamProgress if estimatedTotalLength exists
+                        if let Some(estimated_total_length) = task_map.get("estimatedTotalLength").and_then(|v| v.as_f64()) {
+                            if estimated_total_length > 0.0 {
+                                let progress = ((current_total_response_length as f64 / estimated_total_length) * 100.0).min(100.0);
+                                task_map.insert("streamProgress".to_string(), serde_json::json!(progress));
+                            }
                         }
                     } else {
                         // If task_data is not an object, create it with flattened streaming fields
@@ -280,7 +405,7 @@ impl BackgroundJobRepository {
                 event_payload["actual_cost"] = serde_json::json!(cost);
             }
             
-            if let Err(e) = handle.emit("VIBE_MANAGER_JOB_RESPONSE_UPDATE_EVENT", &event_payload) {
+            if let Err(e) = handle.emit("job_response_update", &event_payload) {
                 log::warn!("Failed to emit job response update event for job {}: {}", job_id, e);
                 // Don't fail the whole operation if event emission fails
             }
@@ -402,7 +527,6 @@ impl BackgroundJobRepository {
             r#"
             SELECT * FROM background_jobs 
             WHERE status IN ($1, $2) 
-            AND (metadata IS NULL OR json_extract(metadata, '$.workflowId') IS NULL)
             ORDER BY created_at ASC
             "#)
             .bind(JobStatus::Queued.to_string())
@@ -426,30 +550,26 @@ impl BackgroundJobRepository {
         let rows = sqlx::query(
             r#"
             SELECT * FROM background_jobs 
-            WHERE task_type NOT IN ($1, $2)
-            AND (metadata IS NULL OR json_extract(metadata, '$.workflowId') IS NULL)
             ORDER BY 
                 CASE 
-                    WHEN status IN ($3, $4, $5, $6, $7, $8) THEN 0
+                    WHEN status IN ($1, $2, $3, $4, $5, $6) THEN 0
                     ELSE 1
                 END,
                 CASE 
-                    WHEN status = $9 THEN 0
-                    WHEN status = $10 THEN 1
-                    WHEN status = $11 THEN 2
-                    WHEN status = $12 THEN 3
-                    WHEN status = $13 THEN 4
-                    WHEN status = $14 THEN 5
-                    WHEN status = $15 THEN 6
-                    WHEN status = $16 THEN 7
-                    WHEN status = $17 THEN 8
+                    WHEN status = $7 THEN 0
+                    WHEN status = $8 THEN 1
+                    WHEN status = $9 THEN 2
+                    WHEN status = $10 THEN 3
+                    WHEN status = $11 THEN 4
+                    WHEN status = $12 THEN 5
+                    WHEN status = $13 THEN 6
+                    WHEN status = $14 THEN 7
+                    WHEN status = $15 THEN 8
                     ELSE 9
                 END,
                 updated_at DESC
             LIMIT 500
             "#)
-            .bind(TaskType::FileFinderWorkflow.to_string())
-            .bind(TaskType::WebSearchWorkflow.to_string())
             .bind(JobStatus::Running.to_string())
             .bind(JobStatus::Preparing.to_string()) 
             .bind(JobStatus::Queued.to_string())
@@ -487,8 +607,8 @@ impl BackgroundJobRepository {
                 id, session_id, task_type, status, prompt, response, error_message,
                 tokens_sent, tokens_received, cache_write_tokens, cache_read_tokens,
                 model_used, actual_cost, metadata, system_prompt_template,
-                created_at, updated_at, start_time, end_time
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+                created_at, updated_at, start_time, end_time, is_finalized
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
             "#)
             .bind(&job.id)
             .bind(&job.session_id)
@@ -509,6 +629,7 @@ impl BackgroundJobRepository {
             .bind(job.updated_at)
             .bind(job.start_time)
             .bind(job.end_time)
+            .bind(job.is_finalized)
             .execute(&*self.pool)
             .await
             .map_err(|e| AppError::DatabaseError(format!("Failed to insert job: {}", e)))?;
@@ -537,8 +658,9 @@ impl BackgroundJobRepository {
                 model_used = $14,
                 actual_cost = $15,
                 metadata = $16,
-                system_prompt_template = $17
-            WHERE id = $18
+                system_prompt_template = $17,
+                is_finalized = $18
+            WHERE id = $19
             "#)
             .bind(&job.session_id)
             .bind(&job.task_type)
@@ -557,10 +679,18 @@ impl BackgroundJobRepository {
             .bind(job.actual_cost)
             .bind(&job.metadata)
             .bind(&job.system_prompt_template)
+            .bind(job.is_finalized)
             .bind(&job.id)
             .execute(&*self.pool)
             .await
             .map_err(|e| AppError::DatabaseError(format!("Failed to update job: {}", e)))?;
+        
+        // Emit job_updated event if we have an app handle
+        if let Some(app_handle) = &self.app_handle {
+            if let Err(e) = app_handle.emit("job_updated", job) {
+                warn!("Failed to emit job_updated event for job {}: {}", job.id, e);
+            }
+        }
             
         Ok(())
     }
@@ -587,6 +717,16 @@ impl BackgroundJobRepository {
         };
         
         result.map_err(|e| AppError::DatabaseError(format!("Failed to update job status: {}", e)))?;
+        
+        // Emit job_updated event if we have an app handle
+        if let Some(app_handle) = &self.app_handle {
+            // Fetch the updated job to emit complete data
+            if let Ok(Some(updated_job)) = self.get_job_by_id(job_id).await {
+                if let Err(e) = app_handle.emit("job_updated", &updated_job) {
+                    warn!("Failed to emit job_updated event for job {}: {}", job_id, e);
+                }
+            }
+        }
             
         Ok(())
     }
@@ -611,6 +751,16 @@ impl BackgroundJobRepository {
             .await;
         
         result.map_err(|e| AppError::DatabaseError(format!("Failed to update job status with metadata: {}", e)))?;
+        
+        // Emit job_updated event if we have an app handle
+        if let Some(app_handle) = &self.app_handle {
+            // Fetch the updated job to emit complete data
+            if let Ok(Some(updated_job)) = self.get_job_by_id(job_id).await {
+                if let Err(e) = app_handle.emit("job_updated", &updated_job) {
+                    warn!("Failed to emit job_updated event for job {}: {}", job_id, e);
+                }
+            }
+        }
             
         Ok(())
     }
@@ -629,6 +779,16 @@ impl BackgroundJobRepository {
         .execute(&*self.pool)
         .await
         .map_err(|e| AppError::DatabaseError(format!("Failed to mark job as running: {}", e)))?;
+        
+        // Emit job_updated event if we have an app handle
+        if let Some(app_handle) = &self.app_handle {
+            // Fetch the updated job to emit complete data
+            if let Ok(Some(updated_job)) = self.get_job_by_id(job_id).await {
+                if let Err(e) = app_handle.emit("job_updated", &updated_job) {
+                    warn!("Failed to emit job_updated event for job {}: {}", job_id, e);
+                }
+            }
+        }
         
         Ok(())
     }
@@ -776,6 +936,16 @@ impl BackgroundJobRepository {
             if let Some(cost) = actual_cost {
                 debug!("Cost ${:.6} stored in database for job {}", cost, job_id);
             }
+            
+            // Emit job_updated event if we have an app handle
+            if let Some(app_handle) = &self.app_handle {
+                // Fetch the completed job to emit complete data
+                if let Ok(Some(completed_job)) = self.get_job_by_id(job_id).await {
+                    if let Err(e) = app_handle.emit("job_updated", &completed_job) {
+                        warn!("Failed to emit job_updated event for completed job {}: {}", job_id, e);
+                    }
+                }
+            }
         } else {
             warn!("No rows affected when marking job {} as completed", job_id);
         }
@@ -887,6 +1057,16 @@ impl BackgroundJobRepository {
             if let Some(cost) = actual_cost {
                 debug!("Partial cost ${:.6} stored in database for failed job {}", cost, job_id);
             }
+            
+            // Emit job_updated event if we have an app handle
+            if let Some(app_handle) = &self.app_handle {
+                // Fetch the failed job to emit complete data
+                if let Ok(Some(failed_job)) = self.get_job_by_id(job_id).await {
+                    if let Err(e) = app_handle.emit("job_updated", &failed_job) {
+                        warn!("Failed to emit job_updated event for failed job {}: {}", job_id, e);
+                    }
+                }
+            }
         } else {
             warn!("No rows affected when marking job {} as failed", job_id);
         }
@@ -948,6 +1128,19 @@ impl BackgroundJobRepository {
             debug!("Successfully marked job {} as canceled", job_id);
             if let Some(cost_value) = cost {
                 debug!("Cost ${:.6} stored in database for canceled job {}", cost_value, job_id);
+            }
+            
+            // Emit job_updated event if app_handle available
+            if let Some(ref app_handle) = self.app_handle {
+                let event_payload = serde_json::json!({
+                    "id": job_id,
+                    "status": "Canceled",
+                    "errorMessage": reason,
+                    "endTime": now
+                });
+                if let Err(e) = app_handle.emit("job_updated", &event_payload) {
+                    warn!("Failed to emit job_updated event for canceled job {}: {}", job_id, e);
+                }
             }
         } else {
             warn!("No rows affected when marking job {} as canceled", job_id);
@@ -1214,6 +1407,7 @@ impl BackgroundJobRepository {
         let end_time: Option<i64> = row.try_get::<'_, Option<i64>, _>("end_time").unwrap_or(None);
         // Retrieve cost from database with proper error handling
         let actual_cost = row.try_get::<'_, Option<f64>, _>("actual_cost").unwrap_or(None);
+        let is_finalized = row.try_get::<'_, Option<bool>, _>("is_finalized").unwrap_or(None);
         
         // Log cost retrieval for debugging if present
         if let Some(cost) = actual_cost {
@@ -1234,13 +1428,14 @@ impl BackgroundJobRepository {
             cache_read_tokens,
             model_used,
             actual_cost,
-            duration_ms: row.try_get::<'_, Option<i64>, _>("duration_ms").unwrap_or(None),
+            duration_ms: None,
             metadata,
             system_prompt_template,
             created_at,
             updated_at,
             start_time,
             end_time,
+            is_finalized,
         })
     }
     
@@ -1611,84 +1806,104 @@ impl BackgroundJobRepository {
         Ok(())
     }
     
-    /// Increment job streaming progress atomically with delta values
-    /// This method is used for real-time usage updates during SSE streaming
-    /// 
-    /// # Arguments
-    /// * `job_id` - The ID of the job to update
-    /// * `response_chunk` - The text chunk to append to the response
-    /// * `tokens_input_delta` - Incremental input tokens to add
-    /// * `tokens_output_delta` - Incremental output tokens to add  
-    /// * `cost_delta` - Incremental cost to add
-    pub async fn increment_job_stream_progress(
+    
+    /// Update job with final cost and token counts after streaming completes
+    /// This method is called after polling the final cost endpoint
+    pub async fn update_job_final_cost_and_tokens(
         &self,
         job_id: &str,
-        response_chunk: &str,
-        tokens_input_delta: i32,
-        tokens_output_delta: i32,
-        cost_delta: f64,
-        app_handle: Option<&tauri::AppHandle>,
+        final_cost: f64,
+        tokens_input: i64,
+        tokens_output: i64,
+        cache_write_tokens: i64,
+        cache_read_tokens: i64,
     ) -> AppResult<()> {
-        // First check if the job exists and is in a streaming status
-        let job = self.get_job_by_id(job_id).await?
-            .ok_or_else(|| AppError::DatabaseError(format!("Job not found: {}", job_id)))?;
-            
-        // Only update jobs that are actively streaming
-        let status = JobStatus::from_str(&job.status).unwrap_or(JobStatus::Idle);
-        if !matches!(status, JobStatus::GeneratingStream | JobStatus::ProcessingStream | JobStatus::Running) {
-            return Err(AppError::DatabaseError(format!("Cannot update job with status {}", job.status)));
-        }
+        info!("Updating job {} with final cost: ${:.4} and token counts", job_id, final_cost);
         
         let now = get_timestamp();
         
-        // Perform atomic incremental update
+        // Update the database with final values
         sqlx::query(
             r#"
             UPDATE background_jobs SET
-                response = response || $1,
-                tokens_sent = COALESCE(tokens_sent, 0) + $2,
-                tokens_received = COALESCE(tokens_received, 0) + $3,
-                actual_cost = COALESCE(actual_cost, 0.0) + $4,
-                updated_at = $5
-            WHERE id = $6
+                actual_cost = $1,
+                tokens_sent = $2,
+                tokens_received = $3,
+                cache_write_tokens = $4,
+                cache_read_tokens = $5,
+                updated_at = $6
+            WHERE id = $7
             "#)
-            .bind(response_chunk)
-            .bind(tokens_input_delta as i64)
-            .bind(tokens_output_delta as i64)
-            .bind(cost_delta)
+            .bind(final_cost)
+            .bind(tokens_input)
+            .bind(tokens_output)
+            .bind(cache_write_tokens)
+            .bind(cache_read_tokens)
             .bind(now)
             .bind(job_id)
             .execute(&*self.pool)
             .await
-            .map_err(|e| AppError::DatabaseError(format!("Failed to increment job stream progress: {}", e)))?;
+            .map_err(|e| AppError::DatabaseError(format!("Failed to update job final cost: {}", e)))?;
             
-        // Emit event for UI updates if AppHandle is provided
-        if let Some(handle) = app_handle {
-            // Get updated totals for the event
-            let updated_job = self.get_job_by_id(job_id).await?
-                .ok_or_else(|| AppError::DatabaseError(format!("Job not found after update: {}", job_id)))?;
-                
+        debug!("Successfully updated job {} with final cost and token counts", job_id);
+        Ok(())
+    }
+
+    /// Update job with final cost data and mark as finalized
+    /// Performs single UPDATE query to set final cost, all token counts, and isFinalized flag
+    pub async fn update_job_with_final_cost(
+        &self,
+        job_id: &str,
+        final_cost_data: &crate::models::FinalCostData,
+    ) -> AppResult<()> {
+        info!("Updating job {} with final cost data: ${:.4} and marking as finalized", job_id, final_cost_data.final_cost);
+        
+        let now = get_timestamp();
+        
+        // Single UPDATE query to set final cost, all token counts, and isFinalized flag
+        sqlx::query(
+            r#"
+            UPDATE background_jobs SET
+                actual_cost = $1,
+                tokens_sent = $2,
+                tokens_received = $3,
+                cache_write_tokens = $4,
+                cache_read_tokens = $5,
+                is_finalized = $6,
+                updated_at = $7
+            WHERE id = $8
+            "#)
+            .bind(final_cost_data.final_cost)
+            .bind(final_cost_data.tokens_input as i64)
+            .bind(final_cost_data.tokens_output as i64)
+            .bind(final_cost_data.cache_write_tokens as i64)
+            .bind(final_cost_data.cache_read_tokens as i64)
+            .bind(true)
+            .bind(now)
+            .bind(job_id)
+            .execute(&*self.pool)
+            .await
+            .map_err(|e| AppError::DatabaseError(format!("Failed to update job with final cost: {}", e)))?;
+            
+        info!("Successfully updated job {} with final cost data and marked as finalized", job_id);
+        
+        // Emit job_updated event if app_handle available
+        if let Some(ref app_handle) = self.app_handle {
             let event_payload = serde_json::json!({
-                "job_id": job_id,
-                "response_chunk": response_chunk,
-                "tokens_sent": updated_job.tokens_sent.unwrap_or(0),
-                "tokens_received": updated_job.tokens_received.unwrap_or(0),
-                "actual_cost": updated_job.actual_cost.unwrap_or(0.0),
-                "incremental_update": true,
-                "tokens_input_delta": tokens_input_delta,
-                "tokens_output_delta": tokens_output_delta,
-                "cost_delta": cost_delta
+                "id": job_id,
+                "actual_cost": final_cost_data.final_cost,
+                "tokens_sent": final_cost_data.tokens_input,
+                "tokens_received": final_cost_data.tokens_output,
+                "cache_write_tokens": final_cost_data.cache_write_tokens,
+                "cache_read_tokens": final_cost_data.cache_read_tokens,
+                "is_finalized": true,
+                "updated_at": now
             });
-            
-            if let Err(e) = handle.emit("VIBE_MANAGER_JOB_USAGE_UPDATE_EVENT", &event_payload) {
-                log::warn!("Failed to emit job usage update event for job {}: {}", job_id, e);
-                // Don't fail the operation if event emission fails
+            if let Err(e) = app_handle.emit("job_updated", &event_payload) {
+                warn!("Failed to emit job_updated event for job {} with final cost: {}", job_id, e);
             }
         }
         
-        debug!("Incremented job {} stream progress: +{} input tokens, +{} output tokens, +${:.6} cost", 
-              job_id, tokens_input_delta, tokens_output_delta, cost_delta);
-            
         Ok(())
     }
 }
