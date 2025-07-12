@@ -1,12 +1,8 @@
 use tauri::{AppHandle, Manager};
 use crate::error::{AppError, AppResult};
-use crate::utils::hash_utils;
 use log::{info, debug, warn, error};
 use std::sync::Arc;
-use dirs;
-use uuid::Uuid;
-use reqwest::header::{HeaderMap, HeaderValue};
-use crate::constants::{SERVER_API_URL, HEADER_CLIENT_ID};
+use crate::constants::SERVER_API_URL;
 use crate::api_clients::{ApiClient, TranscriptionClient, server_proxy_client::ServerProxyClient, billing_client::BillingClient};
 use crate::auth::TokenManager;
 use crate::services::{BackupService, BackupConfig, initialize_cache_service};
@@ -40,37 +36,17 @@ pub async fn initialize_api_clients(app_handle: &AppHandle) -> AppResult<()> {
     // even if full client setup below fails.
     app_handle.manage(token_manager.clone());
     
-    // Generate a stable client identifier for token binding
-    let client_id = generate_stable_client_id()?;
-    debug!("Generated stable client ID for token binding");
-    
-    // Create default headers for all requests
-    let mut default_headers = HeaderMap::new();
-    default_headers.insert(
-        HEADER_CLIENT_ID, 
-        HeaderValue::from_str(&client_id).map_err(|e| {
-            AppError::ConfigError(format!("Invalid client ID for header: {}", e))
-        })?
-    );
-    
-    // Initialize Server Proxy API client with client ID binding
+    // Initialize Server Proxy API client
     // Use MAIN_SERVER_BASE_URL environment variable for consistency
     let server_url = std::env::var("MAIN_SERVER_BASE_URL")
         .or_else(|_| std::env::var("SERVER_URL"))
         .unwrap_or_else(|_| SERVER_API_URL.to_string());
     
-    // Configure reqwest client with default headers
-    let http_client = reqwest::Client::builder()
-        .default_headers(default_headers)
-        .build()
-        .map_err(|e| AppError::ConfigError(format!("Failed to build HTTP client: {}", e)))?;
-    
-    // Create the API client with custom HTTP client 
-    let server_proxy_client = ServerProxyClient::new_with_client(
+    // Create the API client - it will create its own HTTP client internally
+    let server_proxy_client = ServerProxyClient::new(
         app_handle.clone(), 
         server_url, 
-        token_manager.clone(), // Pass the initialized token_manager
-        http_client
+        token_manager.clone() // Pass the initialized token_manager
     );
     
     info!("ServerProxyClient initialized with server URL and client binding");
@@ -97,6 +73,28 @@ pub async fn initialize_api_clients(app_handle: &AppHandle) -> AppResult<()> {
     
     
     info!("API clients initialized and registered in app state.");
+    
+    // Initialize auto-sync cache service now that TokenManager is available
+    let app_handle_auto_sync = app_handle.clone();
+    tokio::spawn(async move {
+        use crate::services::config_cache_service::auto_sync_cache_with_server;
+        info!("Starting auto-sync cache service");
+        auto_sync_cache_with_server(app_handle_auto_sync).await;
+    });
+
+    // Initialize cache health monitoring now that TokenManager is available
+    let app_handle_health = app_handle.clone();
+    let token_manager_health = token_manager.clone();
+    tokio::spawn(async move {
+        use crate::services::cache_health_monitor::initialize_cache_health_monitor;
+        if let Err(e) = initialize_cache_health_monitor(&app_handle_health, token_manager_health).await {
+            error!("Cache health monitor initialization failed: {}", e);
+        } else {
+            info!("Cache health monitor initialized successfully");
+        }
+    });
+
+    info!("Cache services initialized after TokenManager registration");
     
     Ok(())
 }
@@ -154,29 +152,3 @@ pub async fn initialize_backup_service(app_handle: &AppHandle) -> AppResult<()> 
     Ok(())
 }
 
-/// Generate a stable client identifier based on machine-specific data
-/// This creates a deterministic but anonymous identifier that remains
-/// consistent across app restarts on the same device
-fn generate_stable_client_id() -> Result<String, AppError> {
-    // Attempt to get home directory as a stable reference point
-    let home_dir = dirs::home_dir()
-        .ok_or_else(|| AppError::ConfigError("Failed to determine home directory".to_string()))?
-        .to_string_lossy()
-        .to_string();
-    
-    // Get system hostname for additional uniqueness
-    let hostname = std::env::var("HOSTNAME")
-        .or_else(|_| std::env::var("COMPUTERNAME"))
-        .unwrap_or_else(|_| "unknown".to_string());
-    
-    // Create a stable identifier based on deterministic machine characteristics
-    // This provides stability across restarts while still being unique per device
-    let combined_string = format!("vibe-manager:{}:{}", home_dir, hostname);
-    
-    // Hash to create a fixed-length identifier that doesn't expose the path
-    let client_id = hash_utils::hash_string(&combined_string);
-    
-    debug!("Generated stable client ID for token binding (hash of machine characteristics)");
-    
-    Ok(client_id)
-}

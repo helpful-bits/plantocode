@@ -65,9 +65,7 @@ export function useAuth0AuthHandler() {
             if (abortController.signal.aborted) return;
             
             // Validate token by fetching user info
-            const userInfo = await invoke<FrontendUser>('get_user_info_with_app_jwt', { 
-              appToken: storedToken 
-            });
+            const userInfo = await invoke<FrontendUser>('get_user_info_with_app_jwt');
             
             if (abortController.signal.aborted) return;
             

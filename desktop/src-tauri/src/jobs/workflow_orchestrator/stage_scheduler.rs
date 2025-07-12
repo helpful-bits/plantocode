@@ -95,7 +95,8 @@ pub(super) fn abstract_stage_dependencies_met_internal(
             // Find if this dependency stage has been completed
             let dep_completed = workflow_state.stages.iter().any(|job| {
                 // Match by task type and check if completed
-                job.task_type == dep_stage_def.task_type && job.status == JobStatus::Completed
+                job.task_type == dep_stage_def.task_type && 
+                (job.status == JobStatus::Completed || job.status == JobStatus::CompletedByTag)
             });
 
             if !dep_completed {

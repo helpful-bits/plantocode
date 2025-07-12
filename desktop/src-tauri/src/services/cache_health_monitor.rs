@@ -38,9 +38,9 @@ impl CacheHealthMonitor {
     /// Monitors cache health continuously in background
     #[instrument(skip(self))]
     pub async fn monitor_cache_health(&self) {
-        let mut health_interval = interval(Duration::from_secs(self.health_check_interval_seconds));
-        
         info!("Starting cache health monitoring service");
+        
+        let mut health_interval = interval(Duration::from_secs(self.health_check_interval_seconds));
         
         loop {
             health_interval.tick().await;
@@ -279,8 +279,8 @@ impl CacheHealthMonitor {
 }
 
 /// Initializes cache health monitoring service
-#[instrument(skip(app_handle))]
-pub async fn initialize_cache_health_monitor(app_handle: &AppHandle) -> Result<(), AppError> {
+#[instrument(skip(app_handle, _token_manager))]
+pub async fn initialize_cache_health_monitor(app_handle: &AppHandle, _token_manager: Arc<crate::auth::token_manager::TokenManager>) -> Result<(), AppError> {
     info!("Initializing cache health monitor");
     
     let monitor = CacheHealthMonitor::new(app_handle.clone());

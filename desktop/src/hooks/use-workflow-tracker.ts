@@ -47,13 +47,12 @@ export interface UseWorkflowTrackerReturn {
   workflowTracker: WorkflowTracker | null;
 }
 
-export function useWorkflowTracker(
-  sessionId: string,
-  taskDescription: string,
-  projectDirectory: string,
-  excludedPaths: string[] = [],
-  options: UseWorkflowTrackerOptions = {}
-): UseWorkflowTrackerReturn {
+/**
+ * Base hook that provides common workflow tracking functionality
+ */
+function useBaseWorkflowTracker(
+  options: Omit<UseWorkflowTrackerOptions, 'autoStart'> = {}
+) {
   // Core state
   const [workflowState, setWorkflowState] = useState<WorkflowState | null>(null);
   const [error, setError] = useState<Error | null>(null);
@@ -61,23 +60,17 @@ export function useWorkflowTracker(
   
   // Internal refs
   const trackerRef = useRef<WorkflowTracker | null>(null);
-  const isInitializedRef = useRef(false);
   const eventCleanupRef = useRef<(() => void) | null>(null);
+  const terminalStateReachedRef = useRef(false);
   
   // Performance monitoring
   const performanceMonitor = useWorkflowPerformanceMonitor();
   
-  // Configuration
-  const config: WorkflowConfiguration = {
-    timeoutMs: 300000, // 5 minutes default
-  };
-
   // Computed state
   const isRunning = workflowState?.status === WORKFLOW_STATUSES.RUNNING || workflowState?.status === WORKFLOW_STATUSES.CREATED;
   const isCompleted = workflowState?.status === WORKFLOW_STATUSES.COMPLETED;
   const hasError = error !== null || workflowState?.status === WORKFLOW_STATUSES.FAILED;
   const progressPercentage = workflowState?.progressPercentage ?? 0;
-  // STANDARDIZED: workflowState.currentStage is now SCREAMING_SNAKE_CASE internally
   const currentStageName = workflowState?.currentStage 
     ? WorkflowUtils.getStageName(workflowState.currentStage)
     : '';
@@ -96,68 +89,38 @@ export function useWorkflowTracker(
       eventCleanupRef.current();
       eventCleanupRef.current = null;
     }
+    terminalStateReachedRef.current = false;
   }, []);
 
-  // Start workflow
-  const startWorkflow = useCallback(async () => {
-    try {
-      // Clean up any existing tracker
-      cleanup();
+  // Setup event handlers for a tracker
+  const setupEventHandlers = useCallback((tracker: WorkflowTracker) => {
+    tracker.onProgress((state) => {
+      // Check if we've already reached a terminal state and this is not a terminal state update
+      if (terminalStateReachedRef.current && 
+          !WORKFLOW_STATUSES.TERMINAL.includes(state.status)) {
+        return;
+      }
       
-      // Clear previous state
-      setError(null);
-      setResults(null);
-      setWorkflowState(null);
-
-      // Start new workflow
-      const tracker = await WorkflowTracker.startWorkflow(
-        sessionId,
-        taskDescription,
-        projectDirectory,
-        excludedPaths,
-        config
-      );
-
-      trackerRef.current = tracker;
-
-      // Set up event handlers
-      tracker.onProgress((state) => {
-        setWorkflowState(state);
-        // Update performance monitor with workflow state
-        performanceMonitor.updateFromState(state);
-        options.onProgress?.(state);
-      });
-
-      tracker.onComplete((workflowResults) => {
-        setResults(workflowResults);
-        options.onComplete?.(workflowResults);
-      });
-
-      tracker.onError((workflowError) => {
-        setError(workflowError);
-        options.onError?.(workflowError);
-      });
-
-      // Get initial status
-      const initialState = await tracker.getStatus();
-      setWorkflowState(initialState);
+      // Update terminal state flag if we've reached a terminal state
+      if (WORKFLOW_STATUSES.TERMINAL.includes(state.status)) {
+        terminalStateReachedRef.current = true;
+      }
       
-      // Initialize performance monitoring for this workflow
-      performanceMonitor.updateFromState(initialState);
+      setWorkflowState(state);
+      performanceMonitor.updateFromState(state);
+      options.onProgress?.(state);
+    });
 
-    } catch (err) {
-      const error = err instanceof Error 
-        ? createWorkflowError('Failed to start workflow', { 
-            workflowId: sessionId, // Use sessionId as temp identifier
-            stageName: 'workflow_start'
-          }, { cause: err })
-        : createWorkflowError('Failed to start workflow', { 
-            workflowId: sessionId 
-          });
-      setError(error);
-      options.onError?.(error);
-    }
-  }, [sessionId, taskDescription, projectDirectory, excludedPaths, options, cleanup]);
+    tracker.onComplete((workflowResults) => {
+      setResults(workflowResults);
+      options.onComplete?.(workflowResults);
+    });
+
+    tracker.onError((workflowError) => {
+      setError(workflowError);
+      options.onError?.(workflowError);
+    });
+  }, [performanceMonitor, options]);
 
   // Cancel workflow
   const cancelWorkflow = useCallback(async () => {
@@ -178,11 +141,6 @@ export function useWorkflowTracker(
       options.onError?.(error);
     }
   }, [options]);
-
-  // Retry workflow (restart with same parameters)
-  const retryWorkflow = useCallback(async () => {
-    await startWorkflow();
-  }, [startWorkflow]);
 
   // Get workflow results
   const getResults = useCallback(async (): Promise<WorkflowResultsResponse | null> => {
@@ -210,6 +168,115 @@ export function useWorkflowTracker(
     setError(null);
   }, []);
 
+  // Cleanup on unmount
+  useEffect(() => {
+    return cleanup;
+  }, [cleanup]);
+
+  return {
+    // State
+    workflowState,
+    error,
+    results,
+    setWorkflowState,
+    setError,
+    setResults,
+    
+    // Refs
+    trackerRef,
+    terminalStateReachedRef,
+    
+    // Computed state
+    isRunning,
+    isCompleted,
+    hasError,
+    progressPercentage,
+    currentStageName,
+    currentStageDescription,
+    executionTime,
+    
+    // Actions
+    cancelWorkflow,
+    getResults,
+    clearError,
+    cleanup,
+    setupEventHandlers,
+    
+    // Utils
+    performanceMonitor,
+  };
+}
+
+export function useWorkflowTracker(
+  sessionId: string,
+  taskDescription: string,
+  projectDirectory: string,
+  excludedPaths: string[] = [],
+  options: UseWorkflowTrackerOptions = {}
+): UseWorkflowTrackerReturn {
+  // Use base hook
+  const base = useBaseWorkflowTracker(options);
+  
+  // Internal refs
+  const isInitializedRef = useRef(false);
+  
+  // Configuration
+  const config: WorkflowConfiguration = {
+    timeoutMs: 300000, // 5 minutes default
+  };
+
+  // Start workflow
+  const startWorkflow = useCallback(async () => {
+    try {
+      // Clean up any existing tracker
+      base.cleanup();
+      
+      // Clear previous state
+      base.setError(null);
+      base.setResults(null);
+      base.setWorkflowState(null);
+      base.terminalStateReachedRef.current = false;
+
+      // Start new workflow
+      const tracker = await WorkflowTracker.startWorkflow(
+        sessionId,
+        taskDescription,
+        projectDirectory,
+        excludedPaths,
+        config
+      );
+
+      base.trackerRef.current = tracker;
+
+      // Set up event handlers
+      base.setupEventHandlers(tracker);
+
+      // Get initial status
+      const initialState = await tracker.getStatus();
+      base.setWorkflowState(initialState);
+      
+      // Initialize performance monitoring for this workflow
+      base.performanceMonitor.updateFromState(initialState);
+
+    } catch (err) {
+      const error = err instanceof Error 
+        ? createWorkflowError('Failed to start workflow', { 
+            workflowId: sessionId, // Use sessionId as temp identifier
+            stageName: 'workflow_start'
+          }, { cause: err })
+        : createWorkflowError('Failed to start workflow', { 
+            workflowId: sessionId 
+          });
+      base.setError(error);
+      options.onError?.(error);
+    }
+  }, [sessionId, taskDescription, projectDirectory, excludedPaths, options, base]);
+
+  // Retry workflow (restart with same parameters)
+  const retryWorkflow = useCallback(async () => {
+    await startWorkflow();
+  }, [startWorkflow]);
+
   // Auto-start effect
   useEffect(() => {
     if (options.autoStart && !isInitializedRef.current && sessionId && taskDescription && projectDirectory) {
@@ -218,11 +285,6 @@ export function useWorkflowTracker(
     }
   }, [options.autoStart, sessionId, taskDescription, projectDirectory, startWorkflow]);
 
-  // Cleanup on unmount
-  useEffect(() => {
-    return cleanup;
-  }, [cleanup]);
-
   // Reset initialized flag when key dependencies change
   useEffect(() => {
     isInitializedRef.current = false;
@@ -230,28 +292,28 @@ export function useWorkflowTracker(
 
   return {
     // State
-    workflowState,
-    isRunning,
-    isCompleted,
-    hasError,
-    error,
-    results,
+    workflowState: base.workflowState,
+    isRunning: base.isRunning,
+    isCompleted: base.isCompleted,
+    hasError: base.hasError,
+    error: base.error,
+    results: base.results,
     
     // Computed state
-    progressPercentage,
-    currentStageName,
-    currentStageDescription,
-    executionTime,
+    progressPercentage: base.progressPercentage,
+    currentStageName: base.currentStageName,
+    currentStageDescription: base.currentStageDescription,
+    executionTime: base.executionTime,
     
     // Actions
     startWorkflow,
-    cancelWorkflow,
+    cancelWorkflow: base.cancelWorkflow,
     retryWorkflow,
-    getResults,
-    clearError,
+    getResults: base.getResults,
+    clearError: base.clearError,
     
     // Advanced
-    workflowTracker: trackerRef.current,
+    workflowTracker: base.trackerRef.current,
   };
 }
 
@@ -263,101 +325,27 @@ export function useExistingWorkflowTracker(
   sessionId: string,
   options: Omit<UseWorkflowTrackerOptions, 'autoStart'> = {}
 ): Omit<UseWorkflowTrackerReturn, 'startWorkflow' | 'retryWorkflow'> & { refreshState?: () => Promise<void> } {
-  const [workflowState, setWorkflowState] = useState<WorkflowState | null>(null);
-  const [error, setError] = useState<Error | null>(null);
-  const [results, setResults] = useState<WorkflowResultsResponse | null>(null);
-  
-  const trackerRef = useRef<WorkflowTracker | null>(null);
-  
-  // Performance monitoring
-  const performanceMonitor = useWorkflowPerformanceMonitor();
-
-  // Computed state
-  const isRunning = workflowState?.status === WORKFLOW_STATUSES.RUNNING || workflowState?.status === WORKFLOW_STATUSES.CREATED;
-  const isCompleted = workflowState?.status === WORKFLOW_STATUSES.COMPLETED;
-  const hasError = error !== null || workflowState?.status === WORKFLOW_STATUSES.FAILED;
-  const progressPercentage = workflowState?.progressPercentage ?? 0;
-  // STANDARDIZED: workflowState.currentStage is now SCREAMING_SNAKE_CASE internally
-  const currentStageName = workflowState?.currentStage 
-    ? WorkflowUtils.getStageName(workflowState.currentStage)
-    : '';
-  const currentStageDescription = workflowState?.currentStage
-    ? WorkflowUtils.getStageDescription(workflowState.currentStage)
-    : '';
-  const executionTime = WorkflowUtils.formatExecutionTime(workflowState?.totalExecutionTimeMs);
-
-  // Cleanup function
-  const cleanup = useCallback(() => {
-    if (trackerRef.current) {
-      trackerRef.current.destroy();
-      trackerRef.current = null;
-    }
-  }, []);
-
-  // Cancel workflow
-  const cancelWorkflow = useCallback(async () => {
-    if (!trackerRef.current) return;
-
-    try {
-      await trackerRef.current.cancel();
-    } catch (err) {
-      const error = err instanceof Error 
-        ? createWorkflowError('Failed to cancel workflow', { 
-            workflowId: trackerRef.current?.getWorkflowId() || 'unknown',
-            stageName: 'workflow_cancel'
-          }, { cause: err })
-        : createWorkflowError('Failed to cancel workflow', { 
-            workflowId: trackerRef.current?.getWorkflowId() || 'unknown'
-          });
-      setError(error);
-      options.onError?.(error);
-    }
-  }, [options]);
-
-  // Get workflow results
-  const getResults = useCallback(async (): Promise<WorkflowResultsResponse | null> => {
-    if (!trackerRef.current) return null;
-
-    try {
-      return await trackerRef.current.getResults();
-    } catch (err) {
-      const error = err instanceof Error 
-        ? createWorkflowError('Failed to get workflow results', { 
-            workflowId: trackerRef.current?.getWorkflowId() || 'unknown',
-            stageName: 'results_fetch'
-          }, { cause: err })
-        : createWorkflowError('Failed to get workflow results', { 
-            workflowId: trackerRef.current?.getWorkflowId() || 'unknown'
-          });
-      setError(error);
-      options.onError?.(error);
-      return null;
-    }
-  }, [options]);
-
-  // Clear error state
-  const clearError = useCallback(() => {
-    setError(null);
-  }, []);
+  // Use base hook
+  const base = useBaseWorkflowTracker(options);
 
   // Manual refresh function
   const refreshState = useCallback(async () => {
-    if (!trackerRef.current) return;
+    if (!base.trackerRef.current) return;
     
     try {
       // Use the WorkflowTracker's refreshState method which calls getStatus and notifies progress callbacks
-      await trackerRef.current.refreshState();
+      await base.trackerRef.current.refreshState();
       
       // Get the current state for local state updates
-      const currentState = await trackerRef.current.getStatus();
-      setWorkflowState(currentState);
-      performanceMonitor.updateFromState(currentState);
+      const currentState = await base.trackerRef.current.getStatus();
+      base.setWorkflowState(currentState);
+      base.performanceMonitor.updateFromState(currentState);
       
       // If completed and we don't have results yet, fetch them
-      if (currentState.status === WORKFLOW_STATUSES.COMPLETED && !results) {
+      if (currentState.status === WORKFLOW_STATUSES.COMPLETED && !base.results) {
         try {
-          const workflowResults = await trackerRef.current.getResults();
-          setResults(workflowResults);
+          const workflowResults = await base.trackerRef.current.getResults();
+          base.setResults(workflowResults);
         } catch (resultsError) {
           console.warn('Could not fetch results during manual refresh:', resultsError);
         }
@@ -366,7 +354,7 @@ export function useExistingWorkflowTracker(
       console.error('Error during manual refresh:', error);
       // Don't set error state here as it might disrupt the UI unnecessarily
     }
-  }, [results, performanceMonitor]);
+  }, [base]);
 
   // Connect to existing workflow
   useEffect(() => {
@@ -374,44 +362,29 @@ export function useExistingWorkflowTracker(
 
     const connectToWorkflow = async () => {
       try {
-        cleanup();
+        base.cleanup();
         
         // Import createWorkflowTracker function
         const { createWorkflowTracker } = await import('@/utils/workflow-utils');
         const tracker = await createWorkflowTracker(workflowId, sessionId);
 
-        trackerRef.current = tracker;
+        base.trackerRef.current = tracker;
 
         // Set up event handlers
-        tracker.onProgress((state) => {
-          setWorkflowState(state);
-          // Update performance monitor with workflow state
-          performanceMonitor.updateFromState(state);
-          options.onProgress?.(state);
-        });
-
-        tracker.onComplete((workflowResults) => {
-          setResults(workflowResults);
-          options.onComplete?.(workflowResults);
-        });
-
-        tracker.onError((workflowError) => {
-          setError(workflowError);
-          options.onError?.(workflowError);
-        });
+        base.setupEventHandlers(tracker);
 
         // Get initial status
         const initialState = await tracker.getStatus();
-        setWorkflowState(initialState);
+        base.setWorkflowState(initialState);
         
         // Initialize performance monitoring for this workflow
-        performanceMonitor.updateFromState(initialState);
+        base.performanceMonitor.updateFromState(initialState);
 
         // If already completed, get results
         if (initialState.status === WORKFLOW_STATUSES.COMPLETED) {
           try {
             const workflowResults = await tracker.getResults();
-            setResults(workflowResults);
+            base.setResults(workflowResults);
           } catch (resultsError) {
             console.warn('Could not fetch results for completed workflow:', resultsError);
           }
@@ -426,42 +399,37 @@ export function useExistingWorkflowTracker(
           : createWorkflowError('Failed to connect to workflow', { 
               workflowId
             });
-        setError(error);
+        base.setError(error);
         options.onError?.(error);
       }
     };
 
     connectToWorkflow();
-  }, [workflowId, sessionId, options, cleanup]);
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return cleanup;
-  }, [cleanup]);
+  }, [workflowId, sessionId, options, base]);
 
   return {
     // State
-    workflowState,
-    isRunning,
-    isCompleted,
-    hasError,
-    error,
-    results,
+    workflowState: base.workflowState,
+    isRunning: base.isRunning,
+    isCompleted: base.isCompleted,
+    hasError: base.hasError,
+    error: base.error,
+    results: base.results,
     
     // Computed state
-    progressPercentage,
-    currentStageName,
-    currentStageDescription,
-    executionTime,
+    progressPercentage: base.progressPercentage,
+    currentStageName: base.currentStageName,
+    currentStageDescription: base.currentStageDescription,
+    executionTime: base.executionTime,
     
     // Actions
-    cancelWorkflow,
-    getResults,
-    clearError,
+    cancelWorkflow: base.cancelWorkflow,
+    getResults: base.getResults,
+    clearError: base.clearError,
     refreshState,
     
     // Advanced
-    workflowTracker: trackerRef.current,
+    workflowTracker: base.trackerRef.current,
   };
 }
 

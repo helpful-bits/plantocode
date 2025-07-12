@@ -46,6 +46,7 @@ use std::collections::HashMap;
 use uuid::Uuid;
 use log::{debug, error, info, warn};
 use hex;
+use subtle::ConstantTimeEq;
 
 #[derive(Debug, thiserror::Error)]
 pub enum StripeServiceError {
@@ -131,7 +132,11 @@ impl StripeService {
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/x-www-form-urlencoded"));
         headers.insert("Idempotency-Key", HeaderValue::from_str(idempotency_key)
             .map_err(|_| StripeServiceError::Configuration("Invalid idempotency key format".to_string()))?);
-        headers.insert("Stripe-Version", HeaderValue::from_static("2023-10-16"));
+        // Use configurable Stripe API version with fallback to latest stable version
+        let stripe_version = std::env::var("STRIPE_API_VERSION")
+            .unwrap_or_else(|_| "2024-06-20".to_string());
+        headers.insert("Stripe-Version", HeaderValue::from_str(&stripe_version)
+            .map_err(|_| StripeServiceError::Configuration("Invalid Stripe version format".to_string()))?);
         
         let mut request = self.http_client.request(method, &url).headers(headers);
         
@@ -145,9 +150,43 @@ impl StripeService {
             .map_err(|e| StripeServiceError::Configuration(format!("HTTP request failed: {}", e)))?;
         
         if !response.status().is_success() {
+            let status = response.status();
             let error_text = response.text().await
                 .unwrap_or_else(|_| "Unknown error".to_string());
-            return Err(StripeServiceError::Configuration(format!("Stripe API error: {}", error_text)));
+            
+            // Try to parse Stripe error response for better error messages
+            if let Ok(error_json) = serde_json::from_str::<serde_json::Value>(&error_text) {
+                if let Some(error_obj) = error_json.get("error") {
+                    let error_type = error_obj.get("type")
+                        .and_then(|t| t.as_str())
+                        .unwrap_or("unknown");
+                    let error_message = error_obj.get("message")
+                        .and_then(|m| m.as_str())
+                        .unwrap_or(&error_text);
+                    let error_code = error_obj.get("code")
+                        .and_then(|c| c.as_str())
+                        .unwrap_or("");
+                    
+                    error!("Stripe API error - Status: {}, Type: {}, Code: {}, Message: {}", 
+                           status, error_type, error_code, error_message);
+                    
+                    // Return appropriate error type based on the error
+                    return match error_type {
+                        "card_error" | "payment_method_error" => {
+                            Err(StripeServiceError::PaymentProcessing(error_message.to_string()))
+                        }
+                        "invalid_request_error" | "api_error" => {
+                            Err(StripeServiceError::StripeApi(format!("{}: {}", error_code, error_message)))
+                        }
+                        _ => {
+                            Err(StripeServiceError::Configuration(format!("Stripe API error: {}", error_message)))
+                        }
+                    };
+                }
+            }
+            
+            error!("Stripe API error - Status: {}, Response: {}", status, error_text);
+            return Err(StripeServiceError::StripeApi(format!("HTTP {}: {}", status, error_text)));
         }
         
         let response_json: serde_json::Value = response.json().await
@@ -225,12 +264,18 @@ impl StripeService {
             ));
         }
 
-        // Validate timestamp to prevent replay attacks - reject webhooks older than 5 minutes
+        // Validate timestamp to prevent replay attacks - reject webhooks older than 5 minutes or from the future
         let timestamp_int: i64 = timestamp.parse()
             .map_err(|e| StripeServiceError::WebhookVerification(format!("Invalid timestamp format: {}", e)))?;
         let now = chrono::Utc::now().timestamp();
-        let time_diff = (now - timestamp_int).abs();
+        let time_diff = now - timestamp_int;
         
+        // Reject timestamps from the future or older than 5 minutes
+        if time_diff < 0 {
+            return Err(StripeServiceError::WebhookVerification(
+                "Webhook timestamp is from the future".to_string()
+            ));
+        }
         if time_diff > 300 { // 5 minutes = 300 seconds
             return Err(StripeServiceError::WebhookVerification(
                 format!("Webhook timestamp outside allowed window: webhook is {} seconds old (maximum 300 seconds allowed)", time_diff)
@@ -246,7 +291,12 @@ impl StripeService {
         let expected_signature = hex::encode(mac.finalize().into_bytes());
 
         for signature in signatures {
-            if signature == expected_signature {
+            let decoded = hex::decode(signature)
+                .map_err(|e| StripeServiceError::WebhookVerification(format!("Invalid signature format: {}", e)))?;
+            let expected_bytes = hex::decode(&expected_signature)
+                .map_err(|e| StripeServiceError::WebhookVerification(format!("Invalid expected signature format: {}", e)))?;
+            
+            if decoded.len() == expected_bytes.len() && decoded.ct_eq(&expected_bytes).unwrap_u8() == 1 {
                 return Ok(());
             }
         }
@@ -333,9 +383,11 @@ impl StripeService {
             customer_data["name"] = serde_json::Value::String(name_value.to_string());
         }
         
-        // Add metadata
-        customer_data["metadata[user_id]"] = serde_json::Value::String(user_id.to_string());
-        customer_data["metadata[created_by]"] = serde_json::Value::String("vibe_manager".to_string());
+        // Add metadata as nested object
+        customer_data["metadata"] = serde_json::json!({
+            "user_id": user_id.to_string(),
+            "created_by": "vibe_manager"
+        });
         
         let response = self.make_stripe_request_with_idempotency(
             reqwest::Method::POST,
@@ -366,7 +418,7 @@ impl StripeService {
         Ok(customer)
     }
 
-    /// Create a payment intent for processing payments
+    /// Create a payment intent for processing payments using latest Stripe patterns
     pub async fn create_payment_intent(
         &self,
         idempotency_key: &str,
@@ -377,16 +429,27 @@ impl StripeService {
         metadata: HashMap<String, String>,
         save_payment_method: bool,
     ) -> Result<stripe_types::PaymentIntent, StripeServiceError> {
+        // Validate amount
+        if amount_cents <= 0 {
+            return Err(StripeServiceError::PaymentProcessing(
+                "Payment amount must be greater than 0".to_string()
+            ));
+        }
+        
         // Create payment intent using direct API call with idempotency key
         let mut payment_data = serde_json::json!({
             "amount": amount_cents,
             "currency": currency.to_lowercase(),
             "customer": customer_id,
-            "confirmation_method": "automatic"
+            "confirmation_method": "automatic",
+            // Enable automatic payment method handling for better conversion
+            "automatic_payment_methods": {
+                "enabled": true
+            }
         });
         
-        if let Some(desc) = Option::from(description) {
-            payment_data["description"] = serde_json::Value::String(desc.to_string());
+        if !description.is_empty() {
+            payment_data["description"] = serde_json::Value::String(description.to_string());
         }
         
         // Add metadata
@@ -403,13 +466,20 @@ impl StripeService {
             "payment_intents",
             Some(payment_data),
             idempotency_key,
-        ).await?;
+        ).await.map_err(|e| {
+            error!("Failed to create payment intent: {}", e);
+            StripeServiceError::PaymentProcessing(format!("Failed to create payment intent: {}", e))
+        })?;
         
         // Parse the response into a PaymentIntent struct
         let payment_intent: stripe_types::PaymentIntent = serde_json::from_value(response)
-            .map_err(|e| StripeServiceError::Configuration(format!("Failed to parse payment intent response: {}", e)))?;
+            .map_err(|e| {
+                error!("Failed to parse payment intent response: {}", e);
+                StripeServiceError::Configuration(format!("Failed to parse payment intent response: {}", e))
+            })?;
         
-        info!("Created PaymentIntent: {} for customer: {}", payment_intent.id, customer_id);
+        info!("Created PaymentIntent: {} for customer: {} with amount: {} {}", 
+              payment_intent.id, customer_id, amount_cents, currency);
         Ok(payment_intent)
     }
 
@@ -662,6 +732,7 @@ impl StripeService {
         &self,
         idempotency_key: &str,
         customer_id: &str,
+        user_id: &uuid::Uuid,
         mode: &str,
         line_items: Option<Vec<stripe_types::CreateCheckoutSessionLineItems>>,
         success_url: &str,
@@ -677,6 +748,7 @@ impl StripeService {
         
         let mut session_data = serde_json::json!({
             "customer": customer_id,
+            "client_reference_id": user_id.to_string(),
             "mode": mode_str,
             "success_url": success_url,
             "cancel_url": cancel_url,
@@ -793,7 +865,9 @@ impl StripeService {
         Ok(session)
     }
 
-    /// Create and immediately pay an invoice for auto top-off
+    /// Create and automatically charge an invoice for auto top-off
+    /// This method creates an invoice with auto_advance enabled, letting Stripe handle
+    /// the payment automatically - fire-and-forget approach relying on webhooks
     pub async fn create_and_pay_invoice(
         &self,
         idempotency_key: &str,
@@ -802,7 +876,7 @@ impl StripeService {
         currency: &str,
         description: &str,
     ) -> Result<stripe_types::Invoice, StripeServiceError> {
-        info!("Creating and paying invoice for customer: {} with amount: {} {}", customer_id, amount_cents, currency);
+        info!("Creating auto-charging invoice for customer: {} with amount: {} {}", customer_id, amount_cents, currency);
         
         // First, create an invoice item
         let invoice_item_data = serde_json::json!({
@@ -819,12 +893,18 @@ impl StripeService {
             &format!("{}_item", idempotency_key),
         ).await?;
 
-        // Create the invoice
+        // Create the invoice with automatic payment collection
+        // Setting auto_advance: true and collection_method: charge_automatically
+        // makes Stripe automatically finalize and charge the invoice
         let invoice_data = serde_json::json!({
             "customer": customer_id,
             "auto_advance": true, // Automatically finalize and attempt payment
-            "collection_method": "charge_automatically",
+            "collection_method": "charge_automatically", // Charge the default payment method
             "description": description,
+            "metadata": {
+                "type": "auto_topoff",
+                "created_by": "vibe_manager"
+            }
         });
 
         let invoice_response = self.make_stripe_request_with_idempotency(
@@ -834,22 +914,11 @@ impl StripeService {
             &format!("{}_invoice", idempotency_key),
         ).await?;
 
-        let invoice_id = invoice_response["id"].as_str()
-            .ok_or_else(|| StripeServiceError::Configuration("Invalid invoice response".to_string()))?;
-
-        // Pay the invoice
-        let pay_response = self.make_stripe_request_with_idempotency(
-            reqwest::Method::POST,
-            &format!("invoices/{}/pay", invoice_id),
-            Some(serde_json::json!({})),
-            &format!("{}_pay", idempotency_key),
-        ).await?;
-
-        // Parse the final invoice response
-        let invoice: stripe_types::Invoice = serde_json::from_value(pay_response)
+        // Parse the invoice response and return immediately
+        let invoice: stripe_types::Invoice = serde_json::from_value(invoice_response)
             .map_err(|e| StripeServiceError::Configuration(format!("Failed to parse invoice response: {}", e)))?;
 
-        info!("Successfully created and paid invoice: {} for customer: {}", invoice.id, customer_id);
+        info!("Successfully created auto-charging invoice: {} for customer: {} - relying on webhooks for fulfillment", invoice.id, customer_id);
         Ok(invoice)
     }
 

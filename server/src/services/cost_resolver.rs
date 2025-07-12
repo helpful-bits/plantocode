@@ -4,12 +4,12 @@
 /// It directly delegates to the model's calculate_total_cost method which now
 /// handles all the complexity of provider-specific pricing models.
 
-use bigdecimal::BigDecimal;
+use bigdecimal::{BigDecimal, Zero};
 use tracing::{info, warn};
 use crate::clients::usage_extractor::ProviderUsage;
 use crate::db::repositories::model_repository::ModelWithProvider;
 use crate::models::model_pricing::ModelPricing;
-use crate::utils::financial_validation::normalized;
+use crate::utils::financial_validation::normalize_cost;
 
 /// Simple cost resolver for server-side calculations
 pub struct CostResolver;
@@ -23,26 +23,45 @@ impl CostResolver {
     /// 
     /// Provider-reported costs are logged for auditing purposes but never used for billing.
     pub fn resolve(usage: ProviderUsage, model: &ModelWithProvider) -> BigDecimal {
-        // Log provider-reported cost for auditing (but don't use it)
-        if let Some(ref provider_cost) = usage.cost {
-            info!(
-                "Provider reported cost for model {}: ${:.6} (for auditing only)", 
-                usage.model_id, 
-                provider_cost
-            );
-        }
-        
         // Use the model's calculate_total_cost method which now handles all complexity
         match model.calculate_total_cost(&usage) {
             Ok(cost) => {
-                let normalized_cost = normalized(&cost);
-                info!(
-                    "Server-authoritative cost calculated: ${:.6} for {} tokens (model: {})",
-                    normalized_cost,
-                    usage.total_tokens(),
-                    usage.model_id
-                );
-                normalized_cost
+                let final_cost = normalize_cost(&cost);
+                
+                // Log detailed cost comparison for auditing
+                if let Some(ref provider_cost) = usage.cost {
+                    let diff = &final_cost - provider_cost;
+                    let diff_percent = if !provider_cost.is_zero() {
+                        ((&diff / provider_cost) * BigDecimal::from(100)).round(2)
+                    } else {
+                        BigDecimal::from(0)
+                    };
+                    
+                    info!(
+                        "Cost audit - Model: {} | Provider: ${:.6} | Calculated: ${:.6} | Diff: ${:.6} ({:.2}%) | Tokens: {} input ({} cache_write, {} cache_read), {} output",
+                        usage.model_id,
+                        provider_cost,
+                        final_cost,
+                        diff,
+                        diff_percent,
+                        usage.prompt_tokens,
+                        usage.cache_write_tokens,
+                        usage.cache_read_tokens,
+                        usage.completion_tokens
+                    );
+                } else {
+                    info!(
+                        "Cost calculated - Model: {} | Calculated: ${:.6} | Tokens: {} input ({} cache_write, {} cache_read), {} output",
+                        usage.model_id,
+                        final_cost,
+                        usage.prompt_tokens,
+                        usage.cache_write_tokens,
+                        usage.cache_read_tokens,
+                        usage.completion_tokens
+                    );
+                }
+                
+                final_cost
             },
             Err(e) => {
                 warn!(
@@ -70,7 +89,7 @@ mod tests {
     fn create_test_model() -> ModelWithProvider {
         ModelWithProvider {
             id: "test/model".to_string(),
-            api_model_id: "model".to_string(),
+            resolved_model_id: "model".to_string(),
             name: "Test Model".to_string(),
             context_window: 4096,
             pricing_info: Some(json!({

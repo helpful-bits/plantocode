@@ -14,19 +14,12 @@ pub struct JobUIMetadata {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub workflow_id: Option<String>,
     pub task_data: serde_json::Value,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
 }
 
 
 
-// Event emitted when a job status changes
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct JobStatusChangeEvent {
-    pub job_id: String,
-    pub status: String,
-    pub message: Option<String>,
-    pub actual_cost: Option<f64>,
-}
 
 // Event emitted when a job response is updated
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -36,6 +29,7 @@ pub struct JobResponseUpdateEvent {
     pub response_chunk: String,
     pub complete: bool,
 }
+
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

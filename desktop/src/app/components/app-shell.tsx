@@ -1,8 +1,18 @@
 "use client";
 
-
+import { useEffect } from "react";
 import { DatabaseErrorHandler } from "@/ui";
 import { TextImprovementPopover } from "@/contexts/text-improvement";
+import { useAuth } from "@/contexts/auth-context";
+import { 
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/ui/alert-dialog";
 
 import { BackgroundJobsSidebar, Navigation } from "../client-components";
 
@@ -15,9 +25,39 @@ import type { ReactNode } from "react";
  * This component is designed to work in both web and desktop environments.
  */
 export function AppShell({ children }: { children: ReactNode }) {
+  const { isTokenExpired, setTokenExpired, signIn } = useAuth();
+
+  useEffect(() => {
+    if (isTokenExpired) {
+      // Handle token expiry by prompting user to sign in again
+    }
+  }, [isTokenExpired]);
+
+  const handleReauthenticate = async () => {
+    setTokenExpired(false);
+    await signIn();
+  };
+
   // AuthFlowManager controls when this component renders, so we can proceed directly with the full UI
   return (
     <>
+      {/* Token expiry modal */}
+      <AlertDialog open={isTokenExpired}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Session Expired</AlertDialogTitle>
+            <AlertDialogDescription>
+              Your session has expired. Please sign in again to continue.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction onClick={handleReauthenticate}>
+              Sign In
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* Background jobs sidebar - positioned outside flex layout */}
       <BackgroundJobsSidebar />
 

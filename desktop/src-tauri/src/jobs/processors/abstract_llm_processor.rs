@@ -159,6 +159,30 @@ impl LlmTaskRunner {
         let request_id = uuid::Uuid::new_v4().to_string();
         info!("Generated request ID for streaming job {}: {}", self.job.id, request_id);
         
+        // Update job metadata to include request_id
+        let mut metadata: serde_json::Value = if let Some(meta_str) = &initial_db_job.metadata {
+            serde_json::from_str(meta_str).unwrap_or_else(|_| serde_json::json!({}))
+        } else {
+            serde_json::json!({})
+        };
+        metadata["request_id"] = serde_json::json!(request_id.clone());
+        
+        let updated_metadata = serde_json::to_string(&metadata)
+            .map_err(|e| AppError::SerializationError(format!("Failed to serialize metadata: {}", e)))?;
+        
+        // Update job metadata with request_id using the legacy method
+        repo.update_job_stream_progress_legacy(
+            job_id,
+            "", // No new response content
+            0,  // No new tokens
+            0,  // Current response length  
+            Some(&updated_metadata),
+            None, // No app_handle
+            None, // No cost update
+            None, // cache_write_tokens
+            None, // cache_read_tokens
+        ).await?;
+        
         // Create API options with streaming enabled and request ID
         let mut api_options = llm_api_utils::create_api_client_options(
             self.config.model.clone(),
@@ -197,49 +221,43 @@ impl LlmTaskRunner {
         // Process the stream using structured messages (preferred for LLM provider compliance)
         let stream_result = streaming_handler
             .process_stream_from_client_with_messages(&llm_client, messages, api_options)
-            .await?;
+            .await;
+        
+        // Handle the stream result - propagate errors but ensure final cost is still polled
+        let stream_result = match stream_result {
+            Ok(result) => {
+                // Poll for final cost after successful stream completion
+                if let Ok(Some(cost_data)) = self.poll_for_final_cost_only(&request_id).await {
+                    info!("Retrieved final cost via polling for job {}: ${:.4}, tokens: input={}, output={}", 
+                          job_id, cost_data.final_cost, cost_data.tokens_input, cost_data.tokens_output);
+                    
+                    // Update job with final cost and usage details
+                    if let Err(e) = self.update_job_with_final_cost_and_usage(&repo, job_id, &cost_data).await {
+                        warn!("Failed to update job {} with final cost and usage: {}", job_id, e);
+                    }
+                }
+                result
+            },
+            Err(e) => {
+                warn!("Stream processing failed for job {}", job_id);
+                // Still try to poll for final cost even on error
+                if let Ok(Some(cost_data)) = self.poll_for_final_cost_only(&request_id).await {
+                    info!("Retrieved final cost via polling for failed job {}: ${:.4}", job_id, cost_data.final_cost);
+                    
+                    // Update job with final cost even though streaming failed
+                    if let Err(update_err) = self.update_job_with_final_cost_and_usage(&repo, job_id, &cost_data).await {
+                        warn!("Failed to update failed job {} with final cost: {}", job_id, update_err);
+                    }
+                }
+                return Err(e);
+            }
+        };
         
         // Log server-authoritative usage data for billing audit trail
         debug!("Server-authoritative usage data from streaming LLM response: {:?}", stream_result.final_usage);
         
-        // Poll for final cost if no cost was received in the stream
-        let final_usage = if let Some(usage) = &stream_result.final_usage {
-            if usage.cost.is_some() && usage.cost.unwrap_or(0.0) > 0.0 {
-                // Cost already received in stream and is non-zero, use it
-                stream_result.final_usage.clone()
-            } else {
-                // No cost in stream or cost is zero, poll for final cost from server
-                self.poll_and_update_final_cost(&request_id, usage.clone(), repo.clone(), job_id).await
-                    .unwrap_or_else(|e| {
-                        warn!("Failed to poll for final cost for job {}: {}", job_id, e);
-                        stream_result.final_usage.clone()
-                    })
-            }
-        } else {
-            // No usage data at all, try to poll for final cost
-            if let Ok(Some(cost_data)) = self.poll_for_final_cost_only(&request_id).await {
-                info!("Retrieved final cost via polling for job {}: ${:.4}, tokens: input={}, output={}", 
-                      job_id, cost_data.cost, cost_data.tokens_input, cost_data.tokens_output);
-                
-                // Update job metadata with final cost and usage details
-                if let Err(e) = self.update_job_with_final_cost_and_usage(&repo, job_id, &cost_data).await {
-                    warn!("Failed to update job {} metadata with final cost and usage: {}", job_id, e);
-                }
-                
-                // Create usage data with the final cost and token counts
-                Some(OpenRouterUsage {
-                    prompt_tokens: cost_data.tokens_input as i32,
-                    completion_tokens: cost_data.tokens_output as i32,
-                    total_tokens: (cost_data.tokens_input + cost_data.tokens_output) as i32,
-                    cost: Some(cost_data.cost),
-                    cached_input_tokens: 0,
-                    cache_write_tokens: 0,
-                    cache_read_tokens: 0,
-                })
-            } else {
-                stream_result.final_usage.clone()
-            }
-        };
+        // Use the usage data from the stream result (final cost polling already happened above)
+        let final_usage = stream_result.final_usage.clone();
         
         // Log complete interaction (prompt + response) to file for debugging
         self.log_complete_interaction(&system_prompt, &user_prompt, &stream_result.accumulated_response, &final_usage, "streaming").await;
@@ -278,6 +296,7 @@ impl LlmTaskRunner {
 
 
     /// Log prompt to temporary file for debugging
+    #[cfg(debug_assertions)]
     async fn log_prompt_to_file(&self, system_prompt: &str, user_prompt: &str, prompt_type: &str) {
         let base_dir = std::path::Path::new("/Users/kirylkazlovich/dev/vibe-manager/tmp");
         let task_type_dir = base_dir.join("llm_logs").join(format!("{:?}", self.job.task_type));
@@ -299,7 +318,13 @@ impl LlmTaskRunner {
         let _ = fs::write(&filepath, full_prompt).await;
     }
     
+    #[cfg(not(debug_assertions))]
+    async fn log_prompt_to_file(&self, _system_prompt: &str, _user_prompt: &str, _prompt_type: &str) {
+        // No-op in release builds
+    }
+    
     /// Log complete LLM interaction (prompt + response) to temporary file for debugging
+    #[cfg(debug_assertions)]
     async fn log_complete_interaction(&self, system_prompt: &str, user_prompt: &str, response: &str, usage: &Option<crate::models::OpenRouterUsage>, prompt_type: &str) {
         let base_dir = std::path::Path::new("/Users/kirylkazlovich/dev/vibe-manager/tmp");
         let task_type_dir = base_dir.join("llm_interactions").join(format!("{:?}", self.job.task_type));
@@ -334,52 +359,9 @@ impl LlmTaskRunner {
         let _ = fs::write(&filepath, full_interaction).await;
     }
     
-    /// Poll for final cost and update usage data with resolved cost
-    async fn poll_and_update_final_cost(
-        &self,
-        request_id: &str,
-        mut usage: OpenRouterUsage,
-        repo: Arc<BackgroundJobRepository>,
-        job_id: &str,
-    ) -> AppResult<Option<OpenRouterUsage>> {
-        info!("Polling for final cost for job {} with request_id: {}", job_id, request_id);
-        
-        // Get API client for polling
-        let llm_client = llm_api_utils::get_api_client(&self.app_handle)?;
-        
-        // Cast to ServerProxyClient to access polling methods
-        let proxy_client = llm_client.as_any()
-            .downcast_ref::<crate::api_clients::server_proxy_client::ServerProxyClient>()
-            .ok_or_else(|| AppError::InternalError("Cannot poll for final cost with non-server proxy client".to_string()))?;
-        
-        // Poll for final cost with exponential backoff retry
-        match proxy_client.poll_final_streaming_cost_with_retry(request_id).await {
-            Ok(Some(cost_data)) => {
-                info!("Final cost retrieved for job {}: ${:.4}, tokens_input: {}, tokens_output: {}", 
-                      job_id, cost_data.cost, cost_data.tokens_input, cost_data.tokens_output);
-                
-                // Update usage with final cost and token counts
-                usage.cost = Some(cost_data.cost);
-                usage.prompt_tokens = cost_data.tokens_input as i32;
-                usage.completion_tokens = cost_data.tokens_output as i32;
-                usage.total_tokens = (cost_data.tokens_input + cost_data.tokens_output) as i32;
-                
-                // Update job metadata with final cost and usage details
-                if let Err(e) = self.update_job_with_final_cost_and_usage(&repo, job_id, &cost_data).await {
-                    warn!("Failed to update job {} metadata with final cost and usage: {}", job_id, e);
-                }
-                
-                Ok(Some(usage))
-            }
-            Ok(None) => {
-                info!("Final cost not available for job {} after polling", job_id);
-                Ok(Some(usage))
-            }
-            Err(e) => {
-                warn!("Error polling for final cost for job {}: {}", job_id, e);
-                Ok(Some(usage))
-            }
-        }
+    #[cfg(not(debug_assertions))]
+    async fn log_complete_interaction(&self, _system_prompt: &str, _user_prompt: &str, _response: &str, _usage: &Option<crate::models::OpenRouterUsage>, _prompt_type: &str) {
+        // No-op in release builds
     }
     
     /// Poll for final cost only (when no usage data is available)
@@ -433,8 +415,8 @@ impl LlmTaskRunner {
         let updated_metadata = serde_json::to_string(&metadata)
             .map_err(|e| AppError::InternalError(format!("Failed to serialize metadata: {}", e)))?;
         
-        // Use the existing update_job_stream_progress method to update metadata
-        repo.update_job_stream_progress(
+        // Use the legacy update_job_stream_progress method to update metadata
+        repo.update_job_stream_progress_legacy(
             job_id,
             "", // No new response content
             0,  // No new tokens
@@ -457,8 +439,9 @@ impl LlmTaskRunner {
         job_id: &str,
         cost_data: &crate::models::FinalCostData,
     ) -> AppResult<()> {
-        info!("Updating job {} metadata with final cost and usage: ${:.4}, tokens_input: {}, tokens_output: {}", 
-              job_id, cost_data.cost, cost_data.tokens_input, cost_data.tokens_output);
+        info!("Updating job {} metadata with final cost and usage: ${:.4}, tokens_input: {}, tokens_output: {}, cache_write: {}, cache_read: {}", 
+              job_id, cost_data.final_cost, cost_data.tokens_input, cost_data.tokens_output, 
+              cost_data.cache_write_tokens, cost_data.cache_read_tokens);
         
         // Get current job to update metadata
         let job = repo.get_job_by_id(job_id).await?
@@ -473,18 +456,22 @@ impl LlmTaskRunner {
         
         // Add final cost and usage data to metadata
         if let Some(task_data) = metadata.get_mut("task_data") {
-            task_data["finalCost"] = serde_json::json!(cost_data.cost);
-            task_data["actualCost"] = serde_json::json!(cost_data.cost);
+            task_data["finalCost"] = serde_json::json!(cost_data.final_cost);
+            task_data["actualCost"] = serde_json::json!(cost_data.final_cost);
             task_data["finalTokensInput"] = serde_json::json!(cost_data.tokens_input);
             task_data["finalTokensOutput"] = serde_json::json!(cost_data.tokens_output);
-            task_data["finalServiceName"] = serde_json::json!(cost_data.service_name);
+            task_data["finalCacheWriteTokens"] = serde_json::json!(cost_data.cache_write_tokens);
+            task_data["finalCacheReadTokens"] = serde_json::json!(cost_data.cache_read_tokens);
+            task_data["isFinalized"] = serde_json::json!(true);
         } else {
             metadata["task_data"] = serde_json::json!({
-                "finalCost": cost_data.cost,
-                "actualCost": cost_data.cost,
+                "finalCost": cost_data.final_cost,
+                "actualCost": cost_data.final_cost,
                 "finalTokensInput": cost_data.tokens_input,
                 "finalTokensOutput": cost_data.tokens_output,
-                "finalServiceName": cost_data.service_name
+                "finalCacheWriteTokens": cost_data.cache_write_tokens,
+                "finalCacheReadTokens": cost_data.cache_read_tokens,
+                "isFinalized": true
             });
         }
         
@@ -492,22 +479,44 @@ impl LlmTaskRunner {
         let updated_metadata = serde_json::to_string(&metadata)
             .map_err(|e| AppError::InternalError(format!("Failed to serialize metadata: {}", e)))?;
         
-        // Use the existing update_job_stream_progress method to update metadata
-        repo.update_job_stream_progress(
+        // Use the legacy update_job_stream_progress method to update metadata
+        repo.update_job_stream_progress_legacy(
             job_id,
             "", // No new response content
             0,  // No new tokens
             0,  // Current response length  
             Some(&updated_metadata),
             None, // No app_handle
-            Some(cost_data.cost),
-            None, // cache_write_tokens
-            None, // cache_read_tokens
+            Some(cost_data.final_cost),
+            Some(cost_data.cache_write_tokens),
+            Some(cost_data.cache_read_tokens),
+        ).await?;
+        
+        // Also update the database with final token counts
+        repo.update_job_final_cost_and_tokens(
+            job_id,
+            cost_data.final_cost,
+            cost_data.tokens_input,
+            cost_data.tokens_output,
+            cost_data.cache_write_tokens,
+            cost_data.cache_read_tokens,
         ).await?;
         
         info!("Successfully updated job {} with final cost and usage data", job_id);
         Ok(())
     }
+}
+
+/// Extract request_id from job metadata for final cost polling
+pub fn extract_request_id_from_metadata(metadata: &Option<String>) -> Option<String> {
+    if let Some(metadata_str) = metadata {
+        if let Ok(metadata_json) = serde_json::from_str::<serde_json::Value>(metadata_str) {
+            return metadata_json.get("request_id")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+        }
+    }
+    None
 }
 
 /// Builder for LlmTaskConfig

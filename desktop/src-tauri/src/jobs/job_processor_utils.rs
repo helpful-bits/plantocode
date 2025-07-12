@@ -29,7 +29,6 @@ use crate::models::BackgroundJob;
 use crate::api_clients::client_factory;
 use crate::jobs::types::JobUIMetadata;
 use crate::utils::job_metadata_builder::JobMetadataBuilder;
-use crate::jobs::types::JobStatusChangeEvent;
 
 /// Setup repositories from app state and fetch the job, marking it as running
 /// Returns (background_job_repo, session_repo, settings_repo, background_job)
@@ -135,41 +134,16 @@ pub async fn get_llm_task_config(
     }
 }
 
-/// Emit a job status change event with cost propagation
+/// Emit a job update event
 /// 
-/// Ensures that server-authoritative cost information is properly propagated to the frontend
-/// via job status change events. This allows the UI to display accurate, up-to-date cost
-/// information for both successful and failed jobs.
-pub fn emit_job_status_change(
-    app_handle: &AppHandle,
-    job_id: &str,
-    status: &str,
-    message: Option<&str>,
-    actual_cost: Option<f64>,
-) -> AppResult<()> {
-    let event = JobStatusChangeEvent {
-        job_id: job_id.to_string(),
-        status: status.to_string(),
-        message: message.map(|s| s.to_string()),
-        actual_cost,
-    };
-    
-    if let Err(e) = app_handle.emit("job_status_change", event) {
-        error!("Failed to emit job status change event for job {}: {}", job_id, e);
-        return Err(AppError::TauriError(format!("Failed to emit job status change event: {}", e)));
+/// Emits a generic job update event to the frontend with any serializable payload
+pub fn emit_job_update<T: serde::Serialize + Clone>(app_handle: &AppHandle, event_name: &str, payload: T) -> AppResult<()> {
+    if let Err(e) = app_handle.emit(event_name, payload.clone()) {
+        error!("Failed to emit {} event: {}", event_name, e);
+        return Err(AppError::TauriError(format!("Failed to emit {} event: {}", event_name, e)));
     }
     
-    // Log cost propagation for tracking
-    match actual_cost {
-        Some(cost) => {
-            debug!("Emitted job status change event for job {}: status={}, cost=${:.6}, message={:?}", 
-                job_id, status, cost, message);
-        }
-        None => {
-            debug!("Emitted job status change event for job {}: status={}, no_cost, message={:?}", 
-                job_id, status, message);
-        }
-    }
+    debug!("Emitted {} event", event_name);
         
     Ok(())
 }

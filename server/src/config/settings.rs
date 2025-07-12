@@ -14,12 +14,18 @@ pub struct AppSettings {
     pub billing: BillingConfig,
     pub stripe: StripeConfig,
     pub auth_stores: AuthStoreConfig,
+    pub redis: RedisConfig,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct AppConfig {
     pub name: String,
     pub environment: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RedisConfig {
+    pub url: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -35,6 +41,7 @@ pub struct ServerConfig {
     pub url: String,
     pub auth0_callback_url: String,
     pub auth0_logged_out_url: String,
+    pub client_request_timeout_secs: u64,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -53,14 +60,13 @@ pub struct ApiKeysConfig {
 pub struct AuthConfig {
     pub jwt_secret: String,
     pub token_duration_days: i64,
+    pub featurebase_sso_secret: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RateLimitConfig {
     pub window_ms: u64,
     pub max_requests: u64,
-    pub use_redis: bool,
-    pub redis_url: Option<String>,
     pub redis_key_prefix: Option<String>,
     pub cleanup_interval_secs: Option<u64>,
 }
@@ -122,6 +128,12 @@ impl AppSettings {
         let auth0_logged_out_url = env::var("SERVER_AUTH0_LOGGED_OUT_URL")
             .map_err(|_| AppError::Configuration("SERVER_AUTH0_LOGGED_OUT_URL must be set".to_string()))?;
         
+        // Client request timeout
+        let client_request_timeout_secs = env::var("SERVER_CLIENT_REQUEST_TIMEOUT_SECS")
+            .unwrap_or_else(|_| "300".to_string())
+            .parse::<u64>()
+            .map_err(|_| AppError::Configuration("SERVER_CLIENT_REQUEST_TIMEOUT_SECS must be a valid number".to_string()))?;
+        
         // API keys
         let openrouter_api_key = env::var("OPENROUTER_API_KEY").ok();
         let openai_api_key = env::var("OPENAI_API_KEY").ok();
@@ -154,6 +166,9 @@ impl AppSettings {
             .parse::<i64>()
             .map_err(|_| AppError::Configuration("JWT_ACCESS_TOKEN_DURATION_DAYS must be a valid number".to_string()))?;
         
+        let featurebase_sso_secret = env::var("FEATUREBASE_SSO_SECRET")
+            .map_err(|_| AppError::Configuration("FEATUREBASE_SSO_SECRET must be set".to_string()))?;
+        
         // Rate limiting
         let rate_limit_window_ms = env::var("RATE_LIMIT_WINDOW_MS")
             .unwrap_or_else(|_| "60000".to_string())
@@ -165,12 +180,9 @@ impl AppSettings {
             .parse::<u64>()
             .map_err(|_| AppError::Configuration("RATE_LIMIT_MAX_REQUESTS must be a valid number".to_string()))?;
         
-        let rate_limit_use_redis = env::var("RATE_LIMIT_USE_REDIS")
-            .unwrap_or_else(|_| "false".to_string())
-            .parse::<bool>()
-            .map_err(|_| AppError::Configuration("RATE_LIMIT_USE_REDIS must be true or false".to_string()))?;
-        
-        let rate_limit_redis_url = env::var("RATE_LIMIT_REDIS_URL").ok();
+        // Redis configuration (mandatory)
+        let redis_url = env::var("REDIS_URL")
+            .map_err(|_| AppError::Configuration("REDIS_URL must be set".to_string()))?;
         
         let rate_limit_redis_key_prefix = env::var("RATE_LIMIT_REDIS_KEY_PREFIX").ok();
         
@@ -235,6 +247,7 @@ impl AppSettings {
                 url: server_url,
                 auth0_callback_url,
                 auth0_logged_out_url,
+                client_request_timeout_secs,
             },
             api_keys: ApiKeysConfig {
                 openrouter_api_key,
@@ -249,12 +262,11 @@ impl AppSettings {
             auth: AuthConfig {
                 jwt_secret,
                 token_duration_days,
+                featurebase_sso_secret,
             },
             rate_limit: RateLimitConfig {
                 window_ms: rate_limit_window_ms,
                 max_requests: rate_limit_max_requests,
-                use_redis: rate_limit_use_redis,
-                redis_url: rate_limit_redis_url,
                 redis_key_prefix: rate_limit_redis_key_prefix,
                 cleanup_interval_secs: rate_limit_cleanup_interval_secs,
             },
@@ -273,6 +285,9 @@ impl AppSettings {
                 polling_store_expiry_mins,
                 auth0_state_store_expiry_mins,
                 cleanup_interval_secs: auth_store_cleanup_interval_secs,
+            },
+            redis: RedisConfig {
+                url: redis_url,
             },
         })
     }

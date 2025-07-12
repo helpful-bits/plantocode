@@ -194,7 +194,7 @@ pub async fn estimate_cost(
     let cache_write_tokens = req.cache_write_tokens.unwrap_or(0);
     let cache_read_tokens = req.cache_read_tokens.unwrap_or(0);
     
-    let usage = ProviderUsage::with_cache(
+    let usage = ProviderUsage::with_total_input(
         req.input_tokens as i32,
         req.output_tokens as i32,
         cache_write_tokens as i32,
@@ -313,7 +313,7 @@ pub async fn estimate_batch_cost(
         let cache_write_tokens = cost_req.cache_write_tokens.unwrap_or(0);
         let cache_read_tokens = cost_req.cache_read_tokens.unwrap_or(0);
         
-        let usage = ProviderUsage::with_cache(
+        let usage = ProviderUsage::with_total_input(
             cost_req.input_tokens as i32,
             cost_req.output_tokens as i32,
             cache_write_tokens as i32,

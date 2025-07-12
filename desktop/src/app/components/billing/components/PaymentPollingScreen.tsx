@@ -45,6 +45,8 @@ export function PaymentPollingScreen({
           setStatus('success');
           setMessage("Payment completed successfully!");
           cleanup();
+          // Dispatch billing-data-updated event to trigger reactive balance update
+          window.dispatchEvent(new Event('billing-data-updated'));
           onSuccess();
         } else if (result.status === 'expired') {
           setStatus('error');

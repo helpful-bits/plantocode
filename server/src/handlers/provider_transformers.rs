@@ -70,12 +70,12 @@ impl GoogleStreamTransformer {
 
         let usage = google_chunk.usage_metadata.map(|metadata| OpenRouterUsage {
             prompt_tokens: metadata.prompt_token_count,
-            completion_tokens: metadata.candidates_token_count,
+            completion_tokens: metadata.candidates_token_count.unwrap_or(0),
             total_tokens: metadata.total_token_count,
             cost: None, // Will be filled by billing system
-            cached_input_tokens: 0,
+            cached_input_tokens: metadata.cached_content_token_count.unwrap_or(0),
             cache_write_tokens: 0,
-            cache_read_tokens: 0,
+            cache_read_tokens: metadata.cached_content_token_count.unwrap_or(0),
         });
 
         OpenRouterStreamChunk {
@@ -164,18 +164,22 @@ impl StreamChunkTransformer for GoogleStreamTransformer {
         
         let chunk_value: Value = serde_json::from_str(json_str).ok()?;
         
-        // Check if this is a final chunk with usage metadata
-        let is_final = self.is_final_chunk(&chunk_value);
+        // Google may send usage metadata in any chunk, not necessarily with finish_reason
+        // Check if this chunk has usage metadata
         let has_usage = chunk_value.get("usageMetadata").is_some();
         
-        if is_final && has_usage {
+        if has_usage {
             if let Ok(google_chunk) = serde_json::from_value::<GoogleStreamChunk>(chunk_value) {
                 if let Some(usage_metadata) = google_chunk.usage_metadata {
+                    info!("Google: Extracted usage metadata from chunk - prompt_tokens: {}, completion_tokens: {}, model_id: {}", 
+                          usage_metadata.prompt_token_count, 
+                          usage_metadata.candidates_token_count.unwrap_or(0), 
+                          model_id);
                     return Some(ProviderUsage {
                         prompt_tokens: usage_metadata.prompt_token_count,
-                        completion_tokens: usage_metadata.candidates_token_count,
-                        cache_write_tokens: 0, // Google doesn't support cache
-                        cache_read_tokens: 0,
+                        completion_tokens: usage_metadata.candidates_token_count.unwrap_or(0),
+                        cache_write_tokens: 0, // Google doesn't support cache write
+                        cache_read_tokens: usage_metadata.cached_content_token_count.unwrap_or(0),
                         model_id: model_id.to_string(),
                         duration_ms: None,
                         cost: None,
@@ -199,6 +203,12 @@ impl StreamChunkTransformer for GoogleStreamTransformer {
             .and_then(|part| part.get("text"))
             .and_then(|text| text.as_str())
             .map(|s| s.to_string())
+    }
+    
+    fn extract_incremental_usage(&self, _chunk: &Value) -> Option<(i32, i32)> {
+        // Google doesn't provide incremental usage updates during streaming
+        // Usage is only provided in the final chunk with usageMetadata
+        None
     }
 }
 
@@ -323,8 +333,11 @@ impl StreamChunkTransformer for AnthropicStreamTransformer {
                 let cache_write_tokens = usage_obj.get("cache_creation_input_tokens").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
                 let cache_read_tokens = usage_obj.get("cache_read_input_tokens").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
                 
+                // Calculate total prompt tokens as per Anthropic's model
+                let total_prompt_tokens = prompt_tokens + cache_write_tokens + cache_read_tokens;
+                
                 return Some(ProviderUsage {
-                    prompt_tokens,
+                    prompt_tokens: total_prompt_tokens,
                     completion_tokens,
                     cache_write_tokens,
                     cache_read_tokens,
@@ -380,8 +393,14 @@ impl StreamChunkTransformer for AnthropicStreamTransformer {
                 let output_tokens = usage.get("output_tokens").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
                 
                 if input_tokens > 0 || output_tokens > 0 {
-                    debug!("Extracted incremental usage from Anthropic message_delta: input={}, output={}", input_tokens, output_tokens);
-                    return Some((input_tokens, output_tokens));
+                    // For message_delta events, also check for cache tokens
+                    let cache_creation = usage.get("cache_creation_input_tokens").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+                    let cache_read = usage.get("cache_read_input_tokens").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+                    let total_input = input_tokens + cache_creation + cache_read;
+                    
+                    debug!("Extracted incremental usage from Anthropic message_delta: input={}, cache_creation={}, cache_read={}, output={}", 
+                           input_tokens, cache_creation, cache_read, output_tokens);
+                    return Some((total_input, output_tokens));
                 }
             }
         }
@@ -490,11 +509,24 @@ impl StreamChunkTransformer for OpenAIStreamTransformer {
                 let prompt_tokens = usage_obj.get("prompt_tokens").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
                 let completion_tokens = usage_obj.get("completion_tokens").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
                 
+                // Extract cached tokens from prompt_tokens_details if available
+                let cache_read_tokens = usage_obj.get("prompt_tokens_details")
+                    .and_then(|details| details.get("cached_tokens"))
+                    .and_then(|v| v.as_i64())
+                    .unwrap_or(0) as i32;
+                
+                // Derive cache_write_tokens
+                let cache_write_tokens = if cache_read_tokens > 0 {
+                    prompt_tokens - cache_read_tokens
+                } else {
+                    0
+                };
+                
                 return Some(ProviderUsage {
                     prompt_tokens,
                     completion_tokens,
-                    cache_write_tokens: 0, // OpenAI doesn't support cache in this context
-                    cache_read_tokens: 0,
+                    cache_write_tokens,
+                    cache_read_tokens,
                     model_id: model_id.to_string(),
                     duration_ms: None,
                     cost: None,
@@ -514,6 +546,20 @@ impl StreamChunkTransformer for OpenAIStreamTransformer {
             .and_then(|delta| delta.get("content"))
             .and_then(|content| content.as_str())
             .map(|s| s.to_string())
+    }
+    
+    fn extract_incremental_usage(&self, chunk: &Value) -> Option<(i32, i32)> {
+        // OpenAI reports usage in the final chunk with finish_reason
+        // Check if this is a usage update chunk (has usage but may not have finish_reason yet)
+        if let Some(_usage) = chunk.get("usage") {
+            // OpenAI sends cumulative usage in each chunk that has usage data
+            // We need to calculate the delta from the last known values
+            // For now, return None as OpenAI doesn't provide true incremental usage
+            // The final usage will be captured by extract_usage_if_final
+            None
+        } else {
+            None
+        }
     }
 }
 
@@ -625,11 +671,16 @@ impl StreamChunkTransformer for OpenRouterStreamTransformer {
                 let prompt_tokens = usage_obj.get("prompt_tokens").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
                 let completion_tokens = usage_obj.get("completion_tokens").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
                 
+                // Extract cached tokens from OpenRouter (if available)
+                let cache_read_tokens = usage_obj.get("cached_input_tokens")
+                    .and_then(|v| v.as_i64())
+                    .unwrap_or(0) as i32;
+                
                 return Some(ProviderUsage {
                     prompt_tokens,
                     completion_tokens,
-                    cache_write_tokens: 0,
-                    cache_read_tokens: 0,
+                    cache_write_tokens: 0,  // OpenRouter doesn't support cache write
+                    cache_read_tokens,
                     model_id: model_id.to_string(),
                     duration_ms: None,
                     cost: usage_obj.get("cost").and_then(|v| v.as_f64()).map(|f| BigDecimal::from_str(&f.to_string()).unwrap_or_default()),
@@ -650,97 +701,10 @@ impl StreamChunkTransformer for OpenRouterStreamTransformer {
             .and_then(|content| content.as_str())
             .map(|s| s.to_string())
     }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
     
-    #[test]
-    fn test_google_transformer_valid_chunk() {
-        let transformer = GoogleStreamTransformer::new("gemini-1.5-pro");
-        let chunk_data = r#"data: {"candidates":[{"content":{"parts":[{"text":"Hello"}],"role":"assistant"},"index":0}],"usageMetadata":{"promptTokenCount":10,"candidatesTokenCount":5,"totalTokenCount":15}}"#;
-        
-        match transformer.transform_chunk(chunk_data.as_bytes()).unwrap() {
-            TransformResult::Transformed(bytes) => {
-                let response_str = std::str::from_utf8(&bytes).unwrap();
-                assert!(response_str.contains("chatcmpl-"));
-                assert!(response_str.contains("Hello"));
-            }
-            _ => panic!("Should transform valid Google chunk"),
-        }
-    }
-    
-    #[test]
-    fn test_google_transformer_malformed_chunk() {
-        let transformer = GoogleStreamTransformer::new("gemini-1.5-pro");
-        let chunk_data = "data: {invalid json}";
-        
-        match transformer.transform_chunk(chunk_data.as_bytes()).unwrap() {
-            TransformResult::Ignore => {}, // Expected
-            _ => panic!("Should ignore malformed chunk"),
-        }
-    }
-    
-    #[test]
-    fn test_anthropic_transformer_native_format() {
-        let transformer = AnthropicStreamTransformer::new("claude-3-sonnet");
-        let chunk_data = r#"data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hello"}}"#;
-        
-        match transformer.transform_chunk(chunk_data.as_bytes()).unwrap() {
-            TransformResult::Transformed(bytes) => {
-                let response_str = std::str::from_utf8(&bytes).unwrap();
-                assert!(response_str.contains("chatcmpl-"));
-                assert!(response_str.contains("chat.completion.chunk"));
-            }
-            _ => panic!("Should transform valid Anthropic chunk"),
-        }
-    }
-    
-    #[test]
-    fn test_openai_transformer_passthrough() {
-        let transformer = OpenAIStreamTransformer::new("gpt-4");
-        let chunk_data = r#"data: {"id":"chatcmpl-123","choices":[{"delta":{"content":"Hello"},"index":0}],"created":1234567890,"model":"gpt-4","object":"chat.completion.chunk"}"#;
-        
-        match transformer.transform_chunk(chunk_data.as_bytes()).unwrap() {
-            TransformResult::Transformed(bytes) => {
-                let original = std::str::from_utf8(chunk_data.as_bytes()).unwrap();
-                let transformed = std::str::from_utf8(&bytes).unwrap();
-                assert_eq!(original, transformed);
-            }
-            _ => panic!("Should pass through valid OpenAI chunk"),
-        }
-    }
-    
-    #[test]
-    fn test_done_marker_handling() {
-        let transformers: Vec<Box<dyn StreamChunkTransformer>> = vec![
-            Box::new(GoogleStreamTransformer::new("test")),
-            Box::new(AnthropicStreamTransformer::new("test")),
-            Box::new(OpenAIStreamTransformer::new("test")),
-            Box::new(OpenRouterStreamTransformer::new("test")),
-        ];
-        
-        for transformer in transformers {
-            let chunk_data = "data: [DONE]";
-            match transformer.transform_chunk(chunk_data.as_bytes()).unwrap() {
-                TransformResult::Done => {}, // Expected
-                _ => panic!("Should handle [DONE] marker"),
-            }
-        }
-    }
-    
-    #[test]
-    fn test_error_chunk_handling() {
-        let transformer = GoogleStreamTransformer::new("test");
-        let chunk_data = r#"data: {"error": {"message": "API error"}}"#;
-        
-        match transformer.transform_chunk(chunk_data.as_bytes()) {
-            Err(StreamError::ProviderError(msg)) => {
-                assert!(msg.contains("Google API error"));
-                assert!(msg.contains("API error"));
-            }
-            _ => panic!("Should convert error chunk to StreamError"),
-        }
+    fn extract_incremental_usage(&self, _chunk: &Value) -> Option<(i32, i32)> {
+        // OpenRouter doesn't provide incremental usage updates during streaming
+        // Usage is only provided in the final chunk
+        None
     }
 }

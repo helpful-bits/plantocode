@@ -460,7 +460,7 @@ export interface GetFileFinderWorkflowStatusCommandArgs {
   workflowId: string;
 }
 
-export interface CancelFileFinderWorkflowCommandArgs {
+export interface CancelWorkflowCommandArgs {
   workflowId: string;
 }
 
@@ -619,7 +619,7 @@ export type TauriInvoke = {
   "get_payment_methods_command": () => Promise<PaymentMethodsResponse>;
   
   // Credit system commands
-  "get_credit_history_command": (args: { limit?: number; offset?: number; search?: string }) => Promise<CreditHistoryResponse>;
+  "get_credit_history_command": (args: { limit?: number; offset?: number; search?: string }) => Promise<UnifiedCreditHistoryResponse>;
   "get_credit_balance_command": () => Promise<CreditBalanceResponse>;
   "get_credit_details_command": () => Promise<CreditDetailsResponse>;
   "get_credit_stats_command": () => Promise<CreditStats>;
@@ -646,11 +646,12 @@ export type TauriInvoke = {
   
   // Payment method management commands
   "get_detailed_usage_command": (args: { startDate: string; endDate: string }) => Promise<DetailedUsage[]>;
+  "get_detailed_usage_with_summary_command": (args: { startDate: string; endDate: string }) => Promise<import("@/actions/billing/billing.actions").DetailedUsageResponse>;
   
   // File Finder Workflow commands
   "start_file_finder_workflow": (args: StartFileFinderWorkflowCommandArgs) => Promise<import("@/types/workflow-types").WorkflowCommandResponse>;
   "get_file_finder_workflow_status": (args: GetFileFinderWorkflowStatusCommandArgs) => Promise<import("@/types/workflow-types").WorkflowStatusResponse>;
-  "cancel_file_finder_workflow": (args: CancelFileFinderWorkflowCommandArgs) => Promise<void>;
+  "cancel_workflow": (args: CancelWorkflowCommandArgs) => Promise<void>;
   "pause_file_finder_workflow": (args: PauseFileFinderWorkflowCommandArgs) => Promise<void>;
   "resume_file_finder_workflow": (args: ResumeFileFinderWorkflowCommandArgs) => Promise<void>;
   "get_file_finder_workflow_results": (args: GetFileFinderWorkflowResultsCommandArgs) => Promise<import("@/types/workflow-types").WorkflowResultsResponse>;
@@ -744,16 +745,35 @@ export interface CreditBalanceResponse {
 
 export interface CreditTransactionEntry {
   id: string;
-  amount: number;
+  price: number;  // renamed from amount
   currency: string;
-  transactionType: string;
-  description: string;
-  createdAt: string;
+  model?: string;  // new field - model name or "Credit Purchase"
+  inputTokens?: number;  // new field
+  outputTokens?: number;  // new field
   balanceAfter: number;
+  createdAt: string;
 }
 
 export interface CreditHistoryResponse {
   transactions: CreditTransactionEntry[];
+  totalCount: number;
+  hasMore: boolean;
+}
+
+export interface UnifiedCreditHistoryEntry {
+  id: string;
+  price: number;  // Negative for usage, positive for purchases
+  date: string;
+  model: string;  // Model name or "Credit Purchase" for purchases
+  inputTokens?: number | null;
+  outputTokens?: number | null;
+  balanceAfter: number;
+  description: string;
+  transactionType: string;
+}
+
+export interface UnifiedCreditHistoryResponse {
+  entries: UnifiedCreditHistoryEntry[];
   totalCount: number;
   hasMore: boolean;
 }

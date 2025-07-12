@@ -1,13 +1,16 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
-import { type BillingDashboardData } from '@/types/tauri-commands';
+import { type BillingDashboardData, type CustomerBillingInfo } from '@/types/tauri-commands';
+import { JOB_STATUSES, type JobStatus } from '@/types/session-types';
 import { useNotification } from '@/contexts/notification-context';
 import { getErrorMessage } from '@/utils/error-handling';
+import { isTauriAvailable, safeCleanupListenerPromise } from '@/utils/tauri-utils';
 
 
 export interface UseBillingDataReturn {
   dashboardData: BillingDashboardData | null;
+  customerBillingInfo: CustomerBillingInfo | null;
   creditBalance: number;
   creditBalanceUsd: number;
   isPaymentMethodRequired: boolean;
@@ -19,6 +22,7 @@ export interface UseBillingDataReturn {
 
 export function useBillingData(): UseBillingDataReturn {
   const [dashboardData, setDashboardData] = useState<BillingDashboardData | null>(null);
+  const [customerBillingInfo, setCustomerBillingInfo] = useState<CustomerBillingInfo | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { showNotification } = useNotification();
@@ -28,8 +32,14 @@ export function useBillingData(): UseBillingDataReturn {
       setIsLoading(true);
       setError(null);
       
-      const data = await invoke<BillingDashboardData>('get_billing_dashboard_data_command');
-      setDashboardData(data);
+      // Fetch both dashboard data and customer billing info in parallel
+      const [dashboardData, customerInfo] = await Promise.all([
+        invoke<BillingDashboardData>('get_billing_dashboard_data_command'),
+        invoke<CustomerBillingInfo | null>('get_customer_billing_info_command')
+      ]);
+      
+      setDashboardData(dashboardData);
+      setCustomerBillingInfo(customerInfo);
     } catch (err) {
       const errorMessage = getErrorMessage(err);
       setError(errorMessage);
@@ -60,26 +70,28 @@ export function useBillingData(): UseBillingDataReturn {
     fetchBillingData();
   }, [fetchBillingData]);
 
-  // Listen for job-terminated events to refresh billing data in real-time
+  // Listen for job_updated events to refresh billing data in real-time
   useEffect(() => {
     let unlistenPromise: Promise<() => void> | null = null;
 
     const setupListener = async () => {
       try {
-        unlistenPromise = listen('job-terminated', async (event) => {
+        unlistenPromise = listen('job_updated', async (event) => {
           try {
-            // Event payload includes jobId and actualCost
-            const payload = event.payload as { jobId: string; actualCost?: number | null };
-            console.log('[BillingData] Job terminated, refreshing billing data:', payload);
+            // Event payload includes job details
+            const payload = event.payload as { id: string; status: JobStatus; actualCost?: number | null };
             
-            // Refresh billing data when a job completes to update cost tracking
-            await refreshBillingData();
+            // Only refresh billing data if job reached a terminal state
+            if (JOB_STATUSES.TERMINAL.includes(payload.status)) {
+              console.log('[BillingData] Job reached terminal state, refreshing billing data:', payload);
+              await refreshBillingData();
+            }
           } catch (err) {
-            console.error('[BillingData] Error processing job-terminated event:', err);
+            console.error('[BillingData] Error processing job_updated event:', err);
           }
         });
       } catch (err) {
-        console.error('[BillingData] Error setting up job-terminated listener:', err);
+        console.error('[BillingData] Error setting up job_updated listener:', err);
       }
     };
 
@@ -87,8 +99,13 @@ export function useBillingData(): UseBillingDataReturn {
 
     // Cleanup listener on unmount
     return () => {
+      if (!isTauriAvailable()) {
+        // Tauri context already destroyed, skip cleanup
+        return;
+      }
+
       if (unlistenPromise) {
-        void unlistenPromise.then((cleanupFn) => cleanupFn());
+        safeCleanupListenerPromise(unlistenPromise);
       }
     };
   }, [refreshBillingData]);
@@ -123,6 +140,7 @@ export function useBillingData(): UseBillingDataReturn {
 
   return useMemo(() => ({
     dashboardData,
+    customerBillingInfo,
     creditBalance,
     creditBalanceUsd: creditBalance,
     isPaymentMethodRequired: dashboardData?.isPaymentMethodRequired || false,
@@ -132,6 +150,7 @@ export function useBillingData(): UseBillingDataReturn {
     refreshBillingData,
   }), [
     dashboardData,
+    customerBillingInfo,
     creditBalance,
     isLoading,
     error,

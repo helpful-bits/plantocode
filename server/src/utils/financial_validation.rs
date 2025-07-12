@@ -13,7 +13,7 @@ pub const MAX_DECIMAL_PLACES: u64 = 6;
 /// 
 /// Uses banker's rounding (round to even) which provides better distribution
 /// of rounding errors in financial calculations
-pub fn normalized(amount: &BigDecimal) -> BigDecimal {
+pub fn normalize_cost(amount: &BigDecimal) -> BigDecimal {
     amount.with_scale_round(MAX_DECIMAL_PLACES as i64, RoundingMode::HalfEven)
 }
 
@@ -43,7 +43,7 @@ pub fn validate_financial_amount(amount: &BigDecimal, operation_name: &str) -> R
     }
     
     // Check normalization - ensure no precision would be lost
-    if amount != &normalized(amount) {
+    if amount != &normalize_cost(amount) {
         return Err(AppError::InvalidArgument(
             format!("{} amount would lose precision during normalization: {}", operation_name, amount)
         ));
@@ -91,7 +91,7 @@ pub fn validate_credit_purchase_amount(amount: &BigDecimal) -> Result<(), AppErr
     validate_financial_amount(amount, "Credit purchase")?;
     
     // Check normalization - ensure no precision would be lost
-    if amount != &normalized(amount) {
+    if amount != &normalize_cost(amount) {
         return Err(AppError::InvalidArgument(
             format!("Credit purchase amount would lose precision during normalization: {}", amount)
         ));
@@ -117,7 +117,7 @@ pub fn validate_credit_purchase_amount(amount: &BigDecimal) -> Result<(), AppErr
 /// * `Err(AppError)` if validation fails
 pub fn validate_credit_refund_amount(amount: &BigDecimal) -> Result<(), AppError> {
     // Check for precision errors first
-    let normalized_amount = normalized(amount);
+    let normalized_amount = normalize_cost(amount);
     if amount != &normalized_amount {
         return Err(AppError::InvalidArgument(
             format!("Credit refund amount has precision errors. Original: {}, Normalized: {}", 
@@ -147,7 +147,7 @@ pub fn validate_credit_refund_amount(amount: &BigDecimal) -> Result<(), AppError
 /// * `Err(AppError)` if validation fails
 pub fn validate_credit_adjustment_amount(amount: &BigDecimal) -> Result<(), AppError> {
     // Check for precision errors first
-    let normalized_amount = normalized(amount);
+    let normalized_amount = normalize_cost(amount);
     if amount != &normalized_amount {
         return Err(AppError::InvalidArgument(
             format!("Credit adjustment amount has precision errors. Original: {}, Normalized: {}", 

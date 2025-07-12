@@ -327,40 +327,14 @@ pub async fn logout_auth0(
 /// Get user info with app JWT with timeout protection
 #[command]
 pub async fn get_user_info_with_app_jwt(
-    app_state: State<'_, AppState>,
-    app_token: String,
+    server_proxy_client: State<'_, Arc<crate::api_clients::server_proxy_client::ServerProxyClient>>,
 ) -> AppResult<FrontendUser> {
     use tokio::time::{timeout, Duration};
     
-    let server_url = &app_state.settings.server_url;
-    let client = &app_state.client;
-    let url = format!("{}/api/auth/userinfo", server_url);
-    
-    info!("Fetching user info with app JWT from URL: {}", url);
-    info!("Server URL from app_state.settings: {}", server_url);
-    
-    // Add timeout protection to prevent hanging on network requests
-    let fetch_user_info = async {
-        let response = client.get(&url)
-            .header("Authorization", format!("Bearer {}", app_token))
-            .timeout(Duration::from_secs(30)) // HTTP client timeout
-            .send()
-            .await
-            .map_err(|e| AppError::NetworkError(format!("Failed to connect to server: {}", e)))?;
-        
-        if !response.status().is_success() {
-            let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
-            return Err(AppError::ExternalServiceError(format!("Server error: {}", error_text)));
-        }
-        
-        let user_info = response.json::<FrontendUser>().await
-            .map_err(|e| AppError::SerdeError(format!("Failed to parse user info: {}", e)))?;
-        
-        Ok(user_info)
-    };
+    info!("Getting user info via server proxy");
     
     // Add overall timeout protection
-    match timeout(Duration::from_secs(45), fetch_user_info).await {
+    match timeout(Duration::from_secs(45), server_proxy_client.get_user_info()).await {
         Ok(result) => result,
         Err(_) => {
             error!("Timeout fetching user info from server");

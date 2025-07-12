@@ -46,10 +46,5 @@ export * from "./constants";
 export * from "./platform";
 export * from "./error-handling";
 export * from "./action-utils";
-export * from "./job-comparison-utils";
-// Export specific functions from job-status-utils
-export {
-  isJobTerminated,
-} from "./job-status-utils";
 export * from "./common-utils";
 export * from "./utils";

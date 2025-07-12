@@ -3,12 +3,14 @@ import type {
   CreditDetailsResponse,
   CreditHistoryResponse,
   CreditTransactionEntry,
+  UnifiedCreditHistoryResponse,
+  UnifiedCreditHistoryEntry,
   PaymentMethodsResponse,
   BillingPortalResponse
 } from '@/types/tauri-commands';
 
 // Credit types
-export type { CreditHistoryResponse, CreditTransactionEntry };
+export type { CreditHistoryResponse, CreditTransactionEntry, UnifiedCreditHistoryResponse, UnifiedCreditHistoryEntry };
 
 // Credit actions
 export async function getCreditDetails(): Promise<CreditDetailsResponse> {
@@ -19,8 +21,8 @@ export async function getCreditHistory(
   limit: number = 10,
   offset: number = 0,
   search?: string
-): Promise<CreditHistoryResponse> {
-  return await invoke<CreditHistoryResponse>('get_credit_history_command', {
+): Promise<UnifiedCreditHistoryResponse> {
+  return await invoke<UnifiedCreditHistoryResponse>('get_credit_history_command', {
     limit,
     offset,
     search,
@@ -36,6 +38,8 @@ export interface DetailedUsage {
   totalRequests: number;
   totalInputTokens: number;
   totalOutputTokens: number;
+  totalCacheWriteTokens: number;
+  totalCacheReadTokens: number;
 }
 
 export interface UsageSummary {
@@ -43,6 +47,8 @@ export interface UsageSummary {
   totalRequests: number;
   totalInputTokens: number;
   totalOutputTokens: number;
+  totalCacheWriteTokens: number;
+  totalCacheReadTokens: number;
 }
 
 export interface DetailedUsageResponse {
@@ -135,6 +141,7 @@ export async function downloadInvoicePdf(invoiceId: string, pdfUrl: string): Pro
 export async function revealFileInExplorer(filePath: string): Promise<void> {
   return await invoke<void>('reveal_file_in_explorer_command', { filePath });
 }
+
 
 // Payment method actions
 export async function getPaymentMethods(): Promise<PaymentMethodsResponse> {

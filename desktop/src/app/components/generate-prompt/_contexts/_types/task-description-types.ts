@@ -22,6 +22,7 @@ export interface TaskContextActions {
   // Task description actions
   handleRefineTask: () => Promise<void>;
   handleWebSearch: () => Promise<void>;
+  cancelWebSearch: () => Promise<void>;
   flushPendingTaskChanges: () => string | null; // Immediately flush any pending task description changes and return current value
   reset: () => void;
   undo: () => void;

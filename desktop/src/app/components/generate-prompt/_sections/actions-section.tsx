@@ -1,11 +1,12 @@
 "use client";
 
-import { Sparkles, Undo2, Redo2 } from "lucide-react";
-import React from "react";
+import { Sparkles, Undo2, Redo2, HelpCircle } from "lucide-react";
+import React, { useState } from "react";
 
 import { useSessionStateContext } from "@/contexts/session";
 import { SearchScopeToggle } from "@/ui";
 import { Button } from "@/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/ui/tooltip";
 
 import { useCorePromptContext } from "../_contexts/core-prompt-context";
 import FindModeToggle from "../_components/find-mode-toggle";
@@ -39,6 +40,9 @@ const ActionsSection = React.memo(function ActionsSection({
   redoSelection,
   cancelFind,
 }: ActionsSectionProps) {
+  // State for controlling tooltip visibility
+  const [showFindFilesHelpTooltip, setShowFindFilesHelpTooltip] = useState(false);
+  
   // Get states and actions from the granular contexts
   const { currentSession } = useSessionStateContext();
   const {
@@ -110,9 +114,34 @@ const ActionsSection = React.memo(function ActionsSection({
             >
               <>
                 <Sparkles className="h-4 w-4 mr-2" />
-                Find Relevant Files with AI
+                Find Relevant Files
               </>
             </Button>
+            
+            <Tooltip open={showFindFilesHelpTooltip} onOpenChange={setShowFindFilesHelpTooltip}>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="px-2"
+                  disabled={false}
+                  onClick={() => setShowFindFilesHelpTooltip(!showFindFilesHelpTooltip)}
+                >
+                  <HelpCircle className="h-5 w-5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <div className="max-w-xs space-y-2">
+                  <p>
+                    AI analyzes your task description and project structure to automatically find and select the most relevant files for your request
+                  </p>
+                  <p className="text-xs font-medium border-t border-primary-foreground/20 pt-2">
+                    Saves time by intelligently filtering through your entire codebase
+                  </p>
+                </div>
+              </TooltipContent>
+            </Tooltip>
+            
             {isFindingFiles && (
               <Button
                 variant="outline"

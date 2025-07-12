@@ -21,7 +21,7 @@ VALUES (
       },
       "implementation_plan_merge": {
         "model": "google/gemini-2.5-pro",
-        "allowed_models": ["google/gemini-2.5-flash", "google/gemini-2.5-flash", "openai/o4-mini"],
+        "allowed_models": ["google/gemini-2.5-flash", "google/gemini-2.5-pro", "openai/o4-mini"],
         "max_tokens": 35000,
         "temperature": 0.35
       },
@@ -46,7 +46,7 @@ VALUES (
       "regex_file_filter": {
         "model": "anthropic/claude-sonnet-4-20250514",
         "allowed_models": ["anthropic/claude-sonnet-4-20250514", "google/gemini-2.5-flash"],
-        "max_tokens": 1000,
+        "max_tokens": 6000,
         "temperature": 0.2
       },
       "task_refinement": {
@@ -66,11 +66,6 @@ VALUES (
         "allowed_models": ["google/gemini-2.5-flash", "openai/o4-mini"],
         "max_tokens": 24000,
         "temperature": 0.15
-      },
-      "file_finder_workflow": {
-        "model": "google/gemini-2.5-flash",
-        "max_tokens": 2048,
-        "temperature": 0.3
       },
       "web_search_prompts_generation": {
         "model": "google/gemini-2.5-flash",
