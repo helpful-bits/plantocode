@@ -172,7 +172,7 @@ export function useWorkflowManager(): UseWorkflowManagerReturn {
     try {
       setError(null);
       
-      await invoke('cancel_file_finder_workflow', { workflowId });
+      await invoke('cancel_workflow', { workflowId });
       
       // Refresh workflows to get updated status
       await refreshWorkflows();
@@ -189,7 +189,7 @@ export function useWorkflowManager(): UseWorkflowManagerReturn {
     try {
       setError(null);
       
-      await invoke('pause_file_finder_workflow', { workflowId });
+      await invoke('pause_workflow', { workflowId });
       
       // Refresh workflows to get updated status
       await refreshWorkflows();
@@ -206,7 +206,7 @@ export function useWorkflowManager(): UseWorkflowManagerReturn {
     try {
       setError(null);
       
-      await invoke('resume_file_finder_workflow', { workflowId });
+      await invoke('resume_workflow', { workflowId });
       
       // Refresh workflows to get updated status
       await refreshWorkflows();

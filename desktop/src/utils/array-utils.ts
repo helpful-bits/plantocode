@@ -319,11 +319,19 @@ export function areArraysEqual<T>(
   array2: T[],
   compareFn?: (a: T, b: T) => boolean
 ): boolean {
+  if (array1 == null || array2 == null) {
+    return array1 === array2;
+  }
+  // Handle null/undefined cases
+  if (!array1 || !array2) {
+    return array1 === array2;
+  }
+  
   if (array1 === array2) {
     return true;
   }
 
-  if (!array1 || !array2 || array1.length !== array2.length) {
+  if (array1.length !== array2.length) {
     return false;
   }
 

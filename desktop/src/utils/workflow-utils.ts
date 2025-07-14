@@ -103,7 +103,7 @@ export class WorkflowTracker {
 
     try {
       const response = await invoke<WorkflowStatusResponse>(
-        "get_file_finder_workflow_status",
+        "get_workflow_status",
         { workflowId: this.workflowId }
       );
 
@@ -162,7 +162,7 @@ export class WorkflowTracker {
 
     try {
       const results = await invoke<WorkflowResultsResponse>(
-        "get_file_finder_workflow_results",
+        "get_workflow_results",
         { workflowId: this.workflowId }
       );
       return results;

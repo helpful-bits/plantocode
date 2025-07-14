@@ -266,6 +266,14 @@ pub struct BillingDashboardData {
     pub is_billing_info_required: bool,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct TaxIdInfo {
+    pub r#type: String,
+    pub value: String,
+    pub country: Option<String>,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CustomerBillingInfo {
@@ -273,6 +281,7 @@ pub struct CustomerBillingInfo {
     pub customer_email: Option<String>,
     pub phone: Option<String>,
     pub tax_exempt: Option<String>,
+    pub tax_ids: Vec<TaxIdInfo>,
     pub address_line1: Option<String>,
     pub address_line2: Option<String>,
     pub address_city: Option<String>,
@@ -532,21 +541,30 @@ pub async fn get_credit_details_command(
 // ========================================
 
 
-/// Create a checkout session for credit purchase
+/// Create a checkout session for credit purchase with gross amount (includes processing fees)
 #[tauri::command]
 pub async fn create_credit_purchase_checkout_session_command(
     billing_client: State<'_, Arc<BillingClient>>,
     amount: f64,
 ) -> Result<CheckoutSessionResponse, AppError> {
-    debug!("Creating checkout session for credit amount: {}", amount);
+    debug!("Creating checkout session for gross amount: ${}", amount);
     
     // Security validation
     check_rate_limit("create_credit_purchase_checkout_session")?;
-    validate_payment_amount(amount, "amount")?;
+    validate_payment_amount(amount, "gross amount")?;
+    
+    // Additional validation for reasonable credit purchase amounts
+    if amount < 1.0 {
+        return Err(AppError::ValidationError("Minimum purchase amount is $1.00".to_string()));
+    }
+    
+    if amount > 1000.0 {
+        return Err(AppError::ValidationError("Maximum purchase amount is $1,000.00".to_string()));
+    }
     
     let checkout_response = billing_client.create_credit_purchase_checkout_session(amount).await?;
     
-    info!("Successfully created checkout session for credit purchase");
+    info!("Successfully created checkout session for credit purchase with gross amount ${}", amount);
     Ok(CheckoutSessionResponse {
         url: checkout_response.url,
         session_id: checkout_response.session_id,
@@ -830,8 +848,8 @@ pub type CreditDetails = CreditDetailsResponse;
 #[serde(rename_all = "camelCase")]
 pub struct AutoTopOffSettings {
     pub enabled: bool,
-    pub threshold: Option<f64>,
-    pub amount: Option<f64>,
+    pub threshold: Option<String>,
+    pub amount: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

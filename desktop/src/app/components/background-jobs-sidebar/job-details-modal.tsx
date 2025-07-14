@@ -17,6 +17,7 @@ import { getProjectTaskModelSettings } from "@/actions/project-settings.actions"
 import { useSessionStateContext } from "@/contexts/session";
 import { useLiveDuration } from "@/hooks/use-live-duration";
 import { normalizeJobResponse } from '@/utils/response-utils';
+import { invoke } from '@tauri-apps/api/core';
 
 
 // Import component sections
@@ -50,11 +51,47 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
   // State for job task settings
   const [jobTaskSettings, setJobTaskSettings] = useState<TaskModelSettings | null>(null);
   
+  // State for full job details (with prompt, response, etc.)
+  const [fullJobDetails, setFullJobDetails] = useState<BackgroundJob | null>(null);
+  const [isLoadingFullDetails, setIsLoadingFullDetails] = useState(false);
+  
   // Get current session context for project directory
   const { currentSession } = useSessionStateContext();
 
   // Get live duration that updates every second for running jobs
   const liveDuration = useLiveDuration(job?.startTime, job?.endTime, job?.status || '');
+  
+  // Fetch full job details when job changes
+  useEffect(() => {
+    const fetchFullJobDetails = async () => {
+      if (!job) {
+        setFullJobDetails(null);
+        return;
+      }
+      
+      setIsLoadingFullDetails(true);
+      try {
+        const result = await invoke<BackgroundJob | null>('get_background_job_by_id_command', {
+          jobId: job.id
+        });
+        
+        if (result) {
+          setFullJobDetails(result);
+        } else {
+          // Fallback to the provided job if fetch fails
+          setFullJobDetails(job);
+        }
+      } catch (error) {
+        console.error('Failed to fetch full job details:', error);
+        // Fallback to the provided job if fetch fails
+        setFullJobDetails(job);
+      } finally {
+        setIsLoadingFullDetails(false);
+      }
+    };
+    
+    fetchFullJobDetails();
+  }, [job?.id]); // Only re-fetch when job ID changes
 
   // Load task settings when job changes
   useEffect(() => {
@@ -85,6 +122,15 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
     loadTaskSettings();
   }, [job, currentSession?.projectDirectory]);
 
+
+  // Use fullJobDetails if available, but merge with the live job prop to get updates
+  const displayJob = useMemo(() => {
+    if (!fullJobDetails) {
+      return job;
+    }
+    // Merge the live job over the fetched details to ensure updates are reflected
+    return { ...fullJobDetails, ...job };
+  }, [fullJobDetails, job]);
 
   // Format metadata for display
   const formatMetadata = useCallback((metadata: any): string => {
@@ -402,27 +448,27 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
 
   // Create context value with useMemo (must be called before any conditional returns)
   const contextValue = useMemo(() => {
-    if (!job) return null;
+    if (!displayJob) return null;
 
     // Use live duration from hook that updates every second for running jobs
     const jobDuration = liveDuration;
 
     // Calculate derived values for context
-    const parsedMetadata = getParsedMetadata(job.metadata);
-    const isStreaming = (job.status === "running" || job.status === "processingStream") && parsedMetadata?.taskData?.isStreaming === true;
+    const parsedMetadata = getParsedMetadata(displayJob.metadata);
+    const isStreaming = (displayJob.status === "running" || displayJob.status === "processingStream") && parsedMetadata?.taskData?.isStreaming === true;
     const progress = isStreaming && parsedMetadata?.taskData?.streamProgress ? parsedMetadata.taskData.streamProgress : undefined;
 
     // Determine which content to show as the prompt
     // For merge jobs, check if we have the full prompt content in metadata
-    let promptContent = job.prompt || "No prompt data available";
-    if (job.taskType === "implementation_plan_merge" && parsedMetadata?.fullPromptContent) {
+    let promptContent = displayJob.prompt || "No prompt data available";
+    if (displayJob.taskType === "implementation_plan_merge" && parsedMetadata?.fullPromptContent) {
       promptContent = String(parsedMetadata.fullPromptContent);
     }
 
-    const responseContent = normalizeJobResponse(job.response).content;
+    const responseContent = normalizeJobResponse(displayJob.response).content;
 
     return {
-      job,
+      job: displayJob,
       parsedMetadata,
       isStreaming,
       progress,
@@ -433,7 +479,7 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
       formatStructuredResponse,
       copyButtons: jobTaskSettings?.copyButtons || [],
     };
-  }, [job, formatMetadata, formatStructuredResponse, jobTaskSettings, liveDuration]);
+  }, [displayJob, formatMetadata, formatStructuredResponse, jobTaskSettings, liveDuration]);
 
   if (!job || !contextValue) return null;
 
@@ -442,25 +488,25 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
       <DialogContent className="max-w-6xl h-[95vh] !flex !flex-col !gap-0 text-foreground !bg-background rounded-xl shadow-lg !backdrop-blur-none">
         <DialogHeader>
           <DialogTitle
-            className={`${job.taskType === "implementation_plan" ? "text-xl" : ""} text-foreground`}
+            className={`${displayJob.taskType === "implementation_plan" ? "text-xl" : ""} text-foreground`}
           >
             {(() => {
               const parsedMeta = contextValue.parsedMetadata;
 
               if (
-                job.taskType === "implementation_plan" &&
+                displayJob.taskType === "implementation_plan" &&
                 parsedMeta?.taskData?.showPureContent === true
               ) {
                 return (
                   <div className="flex items-center gap-2">
                     <span>Implementation Plan Content</span>
-                    {(job.status === "running" || job.status === "processingStream") && parsedMeta?.taskData?.isStreaming && (
+                    {(displayJob.status === "running" || displayJob.status === "processingStream") && parsedMeta?.taskData?.isStreaming && (
                       <Loader2 className="h-4 w-4 animate-spin text-primary" />
                     )}
                   </div>
                 );
               } else if (
-                job.taskType === "implementation_plan" &&
+                displayJob.taskType === "implementation_plan" &&
                 parsedMeta?.taskData?.sessionName
               ) {
                 return <>Implementation Plan: {parsedMeta.taskData.sessionName}</>;
@@ -474,17 +520,25 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
               const parsedMeta = contextValue.parsedMetadata;
 
               if (parsedMeta?.taskData?.showPureContent === true) {
-                if ((job.status === "running" || job.status === "processingStream") && parsedMeta?.taskData?.isStreaming) {
+                if ((displayJob.status === "running" || displayJob.status === "processingStream") && parsedMeta?.taskData?.isStreaming) {
                   return <>Live updates in progress</>;
                 } else {
                   return <>Content View</>;
                 }
               } else {
-                return <>Details for job ID: {job.id}</>;
+                return <>Details for job ID: {displayJob.id}</>;
               }
             })()}
           </DialogDescription>
         </DialogHeader>
+        {isLoadingFullDetails && (
+          <div className="absolute inset-0 bg-background/50 backdrop-blur-sm flex items-center justify-center z-10">
+            <div className="flex flex-col items-center gap-2">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              <p className="text-sm text-muted-foreground">Loading job details...</p>
+            </div>
+          </div>
+        )}
         <JobDetailsContextProvider value={contextValue}>
           <div
             className="flex-1 flex flex-col space-y-4 overflow-y-auto pr-2 mt-4 w-full min-h-0"

@@ -1,11 +1,12 @@
 use actix_web::{web, HttpResponse};
+use std::sync::Arc;
 use crate::error::AppError;
 use crate::services::billing_service::BillingService;
 use crate::models::AuthenticatedUser;
 
 pub async fn get_final_streaming_cost(
     path: web::Path<String>,
-    billing_service: web::Data<BillingService>,
+    billing_service: web::Data<Arc<BillingService>>,
     user: web::ReqData<AuthenticatedUser>,
 ) -> Result<HttpResponse, AppError> {
     let request_id = path.into_inner();

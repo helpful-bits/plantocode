@@ -71,6 +71,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
 
   // Memoize the onNeedsSave callback for useSessionLoader
   const handleNeedsSave = useCallback(async (sessionId: string) => {
+    window.dispatchEvent(new CustomEvent('flush-file-selection-history'));
     if (
       sessionStateHook.isSessionModified &&
       sessionStateHook.currentSession?.id === sessionId
@@ -192,6 +193,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
       deleteNonActiveSession: sessionActions.deleteNonActiveSession,
       renameActiveSession: sessionActions.renameActiveSession,
       renameSession: sessionActions.renameSession,
+      applyFileSelectionUpdate: sessionActions.applyFileSelectionUpdate,
     }),
     [
       // Stable function references from hooks that use useCallback internally
@@ -208,6 +210,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
       sessionActions.deleteNonActiveSession,
       sessionActions.renameActiveSession,
       sessionActions.renameSession,
+      sessionActions.applyFileSelectionUpdate,
       sessionLoader.loadSessionById,
     ]
   );
@@ -220,6 +223,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
     }
 
     const handleAppClose = async () => {
+      window.dispatchEvent(new CustomEvent("flush-file-selection-history"));
       if (sessionStateHook.isSessionModified && sessionStateHook.currentSession) {
         try {
           await sessionActions.saveCurrentSession();
