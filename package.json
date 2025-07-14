@@ -11,6 +11,10 @@
 		"build:desktop": "cd desktop && pnpm tauri build",
 		"build:server": "cd server && cargo build --release",
 		"build:shared": "cd shared && pnpm build",
+		"dev:website": "cd website && pnpm dev",
+		"build:website": "cd website && pnpm build",
+		"lint:website": "cd website && pnpm lint",
+		"typecheck:website": "cd website && pnpm typecheck",
 		"dev": "echo \"Running all components in dev mode is not supported yet. Run each component separately.\"",
 		"lint": "pnpm -r lint",
 		"typecheck": "pnpm -r typecheck"
@@ -19,6 +23,7 @@
 		"core",
 		"desktop",
 		"server",
-		"shared"
+		"shared",
+		"website"
 	]
 }

@@ -189,7 +189,7 @@ pub async fn llm_chat_completion_handler(
     let api_usage_entry = ApiUsageEntryDto {
         user_id,
         service_name: model_with_provider.id.clone(),
-        tokens_input: estimated_input_tokens as i64,
+        tokens_input: 0,
         tokens_output: 0,
         cache_write_tokens: 0,
         cache_read_tokens: 0,
@@ -249,7 +249,6 @@ pub async fn llm_chat_completion_handler(
                     web_mode,
                     request_id.clone(),
                     request_tracker.clone(),
-                    estimated_input_tokens,
                 )
                 .await
             } else {
@@ -278,7 +277,6 @@ pub async fn llm_chat_completion_handler(
                     billing_service.get_ref().clone(),
                     model_repository.clone(),
                     request_id.clone(),
-                    estimated_input_tokens,
                 )
                 .await
             } else {
@@ -306,7 +304,6 @@ pub async fn llm_chat_completion_handler(
                     billing_service.get_ref().clone(),
                     model_repository.clone(),
                     request_id.clone(),
-                    estimated_input_tokens,
                 )
                 .await
             } else {
@@ -334,7 +331,6 @@ pub async fn llm_chat_completion_handler(
                     billing_service.get_ref().clone(),
                     Arc::clone(&model_repository),
                     request_id.clone(),
-                    estimated_input_tokens,
                 )
                 .await
             } else {
@@ -361,7 +357,6 @@ pub async fn llm_chat_completion_handler(
                     billing_service.get_ref().clone(),
                     Arc::clone(&model_repository),
                     request_id.clone(),
-                    estimated_input_tokens,
                 )
                 .await
             } else {
@@ -479,7 +474,6 @@ async fn handle_openai_streaming_request(
     web_mode: bool,
     request_id: String,
     request_tracker: web::Data<RequestTracker>,
-    estimated_input_tokens: i32,
 ) -> Result<HttpResponse, AppError> {
     let payload_value_clone = payload.clone();
 
@@ -506,7 +500,6 @@ async fn handle_openai_streaming_request(
                         billing_service,
                         Arc::clone(&model_repository),
                         request_id,
-                        estimated_input_tokens,
                     )
                     .await;
                 }
@@ -532,7 +525,6 @@ async fn handle_openai_streaming_request(
         *user_id,
         billing_service.clone(),
         request_id,
-        estimated_input_tokens as i64,
     );
 
     Ok(HttpResponse::Ok()
@@ -629,7 +621,6 @@ async fn handle_anthropic_streaming_request(
     billing_service: Arc<BillingService>,
     model_repository: web::Data<ModelRepository>,
     request_id: String,
-    estimated_input_tokens: i32,
 ) -> Result<HttpResponse, AppError> {
     let payload_clone = payload.clone();
     let client = AnthropicClient::new(app_settings)?;
@@ -654,7 +645,6 @@ async fn handle_anthropic_streaming_request(
                     billing_service,
                     Arc::clone(&model_repository),
                     request_id,
-                    estimated_input_tokens,
                 )
                 .await;
             }
@@ -670,7 +660,6 @@ async fn handle_anthropic_streaming_request(
         *user_id,
         billing_service.clone(),
         request_id,
-        estimated_input_tokens as i64,
     );
 
     Ok(HttpResponse::Ok()
@@ -809,7 +798,6 @@ async fn handle_google_streaming_request(
     billing_service: Arc<BillingService>,
     model_repository: web::Data<ModelRepository>,
     request_id: String,
-    estimated_input_tokens: i32,
 ) -> Result<HttpResponse, AppError> {
     // Extract the original model ID from the payload before it gets transformed
     let original_model_id = payload["model"].as_str().unwrap_or_default().to_string();
@@ -872,7 +860,6 @@ async fn handle_google_streaming_request(
                     billing_service,
                     Arc::clone(&model_repository),
                     request_id,
-                    estimated_input_tokens,
                 )
                 .await;
             }
@@ -889,7 +876,6 @@ async fn handle_google_streaming_request(
         *user_id,
         billing_service,
         request_id,
-        estimated_input_tokens as i64,
     );
 
     Ok(HttpResponse::Ok()
@@ -950,7 +936,6 @@ async fn handle_openrouter_streaming_request(
     billing_service: Arc<BillingService>,
     model_repository: Arc<ModelRepository>,
     request_id: String,
-    estimated_input_tokens: i32,
 ) -> Result<HttpResponse, AppError> {
     let client = OpenRouterClient::new(app_settings, model_repository)?;
     let mut request = client.convert_to_chat_request(payload)?;
@@ -969,7 +954,6 @@ async fn handle_openrouter_streaming_request(
         *user_id,
         billing_service.clone(),
         request_id,
-        estimated_input_tokens as i64,
     );
 
     Ok(HttpResponse::Ok()

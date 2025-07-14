@@ -211,7 +211,7 @@ impl StreamChunkTransformer for GoogleStreamTransformer {
             .map(|s| s.to_string())
     }
     
-    fn extract_incremental_usage(&self, _chunk: &Value) -> Option<(i32, i32)> {
+    fn extract_usage_from_chunk(&self, _chunk: &Value) -> Option<(i32, i32)> {
         // Google doesn't provide incremental usage updates during streaming
         // Usage is only provided in the final chunk with usageMetadata
         None
@@ -380,8 +380,8 @@ impl StreamChunkTransformer for AnthropicStreamTransformer {
         None
     }
     
-    fn extract_incremental_usage(&self, chunk: &Value) -> Option<(i32, i32)> {
-        // Anthropic sends incremental usage in message_delta events
+    fn extract_usage_from_chunk(&self, chunk: &Value) -> Option<(i32, i32)> {
+        // Anthropic sends cumulative usage in message_delta events
         if chunk.get("type") == Some(&Value::String("message_delta".to_string())) {
             if let Some(usage) = chunk.get("usage") {
                 let input_tokens = usage.get("input_tokens").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
@@ -540,7 +540,7 @@ impl StreamChunkTransformer for OpenAIStreamTransformer {
             .map(|s| s.to_string())
     }
     
-    fn extract_incremental_usage(&self, chunk: &Value) -> Option<(i32, i32)> {
+    fn extract_usage_from_chunk(&self, chunk: &Value) -> Option<(i32, i32)> {
         // OpenAI reports usage in the final chunk with finish_reason
         // Check if this is a usage update chunk (has usage but may not have finish_reason yet)
         if let Some(_usage) = chunk.get("usage") {
@@ -687,7 +687,7 @@ impl StreamChunkTransformer for OpenRouterStreamTransformer {
             .map(|s| s.to_string())
     }
     
-    fn extract_incremental_usage(&self, _chunk: &Value) -> Option<(i32, i32)> {
+    fn extract_usage_from_chunk(&self, _chunk: &Value) -> Option<(i32, i32)> {
         // OpenRouter doesn't provide incremental usage updates during streaming
         // Usage is only provided in the final chunk
         None
