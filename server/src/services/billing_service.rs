@@ -1,5 +1,5 @@
 use crate::error::AppError;
-use crate::models::billing::{BillingDashboardData, AutoTopOffSettings, CustomerBillingInfo, TaxIdInfo};
+use crate::models::billing::{BillingDashboardData, AutoTopOffSettings, CustomerBillingInfo, TaxIdInfo, FinalCostResponse};
 use crate::db::repositories::api_usage_repository::{ApiUsageRepository, DetailedUsageRecord, ApiUsageEntryDto, ApiUsageRecord};
 use crate::db::repositories::UserCredit;
 use crate::db::repositories::customer_billing_repository::{CustomerBillingRepository, CustomerBilling};
@@ -1364,10 +1364,10 @@ impl BillingService {
     pub async fn store_streaming_final_cost(
         &self,
         request_id: &str,
-        final_cost_data: &FinalCostData,
+        final_cost_data: &FinalCostResponse,
     ) -> Result<(), AppError> {
         info!("Storing final streaming cost in Redis for desktop retrieval: request_id={}, cost=${:.4}", 
-              request_id, final_cost_data.final_cost);
+              request_id, final_cost_data.final_cost.unwrap_or(0.0));
         
         // Check if Redis is available
         if let Some(redis_client) = &self.redis_client {
@@ -1385,7 +1385,7 @@ impl BillingService {
             match conn.set_ex::<_, _, ()>(&redis_key, json_data, ttl_seconds).await {
                 Ok(_) => {
                     info!("Final cost successfully stored in Redis: request_id={}, cost=${:.4}", 
-                          request_id, final_cost_data.final_cost);
+                          request_id, final_cost_data.final_cost.unwrap_or(0.0));
                     Ok(())
                 }
                 Err(e) => {
@@ -1404,7 +1404,7 @@ impl BillingService {
     pub async fn get_final_streaming_cost(
         &self,
         request_id: &str,
-    ) -> Result<Option<FinalCostData>, AppError> {
+    ) -> Result<Option<FinalCostResponse>, AppError> {
         info!("Retrieving final streaming cost from Redis: request_id={}", request_id);
         
         // Check if Redis is available
@@ -1417,10 +1417,10 @@ impl BillingService {
             match conn.get::<_, Option<String>>(&redis_key).await {
                 Ok(Some(json_data)) => {
                     // Deserialize the cost data
-                    match serde_json::from_str::<FinalCostData>(&json_data) {
+                    match serde_json::from_str::<FinalCostResponse>(&json_data) {
                         Ok(cost_data) => {
                             info!("Final cost retrieved from Redis: request_id={}, cost=${:.4}", 
-                                  request_id, cost_data.final_cost);
+                                  request_id, cost_data.final_cost.unwrap_or(0.0));
                             Ok(Some(cost_data))
                         }
                         Err(e) => {
@@ -1444,16 +1444,4 @@ impl BillingService {
         }
     }
 
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FinalCostData {
-    pub request_id: String,
-    pub user_id: Uuid,
-    pub final_cost: f64,
-    pub tokens_input: i64,
-    pub tokens_output: i64,
-    pub cache_write_tokens: i64,
-    pub cache_read_tokens: i64,
-    pub service_name: String,
 }

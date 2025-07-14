@@ -1,3 +1,10 @@
+---
+title: "Vibe Manager | AI-Powered Context Curation"
+description: "An AI coding assistant that seamlessly integrates internet knowledge with your codebase to create actionable implementation plans."
+imageUrl: "https://vibe-manager-media.s3.amazonaws.com/og-image.png"
+keywords: ["AI coding assistant", "codebase analysis", "implementation plans", "developer tools", "code context", "file discovery"]
+---
+
 # Vibe Manager - AI-Powered Context Curation for Large Codebases
 
 ## A Desktop Tool for Finding Relevant Files in Complex Projects

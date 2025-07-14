@@ -268,8 +268,8 @@ impl LlmTaskRunner {
                         usage.prompt_tokens = cost_data.tokens_input as i32;
                         usage.completion_tokens = cost_data.tokens_output as i32;
                         usage.total_tokens = (cost_data.tokens_input + cost_data.tokens_output) as i32;
-                        usage.cache_write_tokens = cost_data.cache_write_tokens as i32;
-                        usage.cache_read_tokens = cost_data.cache_read_tokens as i32;
+                        usage.cache_write_tokens = cost_data.cache_write_tokens.unwrap_or(0) as i32;
+                        usage.cache_read_tokens = cost_data.cache_read_tokens.unwrap_or(0) as i32;
                     } else {
                         // Create new OpenRouterUsage object from authoritative cost_data
                         stream_result.final_usage = Some(OpenRouterUsage {
@@ -278,8 +278,8 @@ impl LlmTaskRunner {
                             total_tokens: (cost_data.tokens_input + cost_data.tokens_output) as i32,
                             cost: Some(cost_data.final_cost),
                             cached_input_tokens: 0,
-                            cache_write_tokens: cost_data.cache_write_tokens as i32,
-                            cache_read_tokens: cost_data.cache_read_tokens as i32,
+                            cache_write_tokens: cost_data.cache_write_tokens.unwrap_or(0) as i32,
+                            cache_read_tokens: cost_data.cache_read_tokens.unwrap_or(0) as i32,
                         });
                     }
                 }

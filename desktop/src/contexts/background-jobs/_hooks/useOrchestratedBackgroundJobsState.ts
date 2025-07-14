@@ -45,6 +45,17 @@ export function useOrchestratedBackgroundJobsState({
   const isFetchingRef = useRef(false);
   const consecutiveErrorsRef = useRef(0);
   
+  // Streaming optimization: Use refs to accumulate streaming content without triggering re-renders
+  const streamingBuffersRef = useRef<Map<string, {
+    chunks: string[];
+    lastUpdate: number;
+    totalLength: number;
+    jobType?: string;
+  }>>(new Map());
+  
+  // Throttle UI updates during streaming to prevent main thread blocking
+  const streamingUpdateTimersRef = useRef<Map<string, NodeJS.Timeout>>(new Map());
+  
   // Derive activeJobs from jobs
   const activeJobs = useMemo(() => jobs.filter((job) => JOB_STATUSES.ACTIVE.includes(job.status)), [jobs]);
 
@@ -199,15 +210,15 @@ export function useOrchestratedBackgroundJobsState({
     []
   )
 
-  // Idempotent job upsert function that handles all update cases
-  const upsertJob = useCallback((jobUpdate: Partial<BackgroundJob> & { id: string }, prepend = false) => {
+  // Internal upsert function for direct state manipulation
+  const upsertJobInternal = useCallback((prevJobs: BackgroundJob[], jobUpdate: Partial<BackgroundJob> & { id: string }, prepend = false, isStreamingUpdate = false) => {
     // Filter out workflow orchestrator jobs
     const workflowTypes = ['file_finder_workflow', 'web_search_workflow'];
     if (jobUpdate.taskType && workflowTypes.includes(jobUpdate.taskType)) {
-      return;
+      return prevJobs;
     }
     
-    setJobs(prevJobs => {
+    {
       const existingJobIndex = prevJobs.findIndex(j => j.id === jobUpdate.id);
       
       if (existingJobIndex !== -1) {
@@ -249,7 +260,8 @@ export function useOrchestratedBackgroundJobsState({
         };
         
         // Only update if job actually changed
-        if (!areJobsEqual(existingJob, mergedJob)) {
+        // Use optimized equality check for streaming updates
+        if (!areJobsEqual(existingJob, mergedJob, isStreamingUpdate)) {
           const newJobs = [...prevJobs];
           newJobs[existingJobIndex] = mergedJob;
           return newJobs;
@@ -262,8 +274,13 @@ export function useOrchestratedBackgroundJobsState({
       }
       
       return prevJobs;
-    });
+    }
   }, []);
+  
+  // Idempotent job upsert function that handles all update cases
+  const upsertJob = useCallback((jobUpdate: Partial<BackgroundJob> & { id: string }, prepend = false, isStreamingUpdate = false) => {
+    setJobs(prevJobs => upsertJobInternal(prevJobs, jobUpdate, prepend, isStreamingUpdate));
+  }, [upsertJobInternal]);
   
   // Listen for SSE events from the Rust backend
   useEffect(() => {
@@ -271,6 +288,7 @@ export function useOrchestratedBackgroundJobsState({
     let unlistenJobCreatedPromise: Promise<() => void> | null = null;
     let unlistenJobDeletedPromise: Promise<() => void> | null = null;
     let unlistenJobUpdatedPromise: Promise<() => void> | null = null;
+    let unlistenResponseUpdatePromise: Promise<() => void> | null = null;
     
     const setupListeners = async () => {
       try {
@@ -305,6 +323,46 @@ export function useOrchestratedBackgroundJobsState({
             // Filter out workflow orchestrator jobs
             const workflowTypes = ['file_finder_workflow', 'web_search_workflow'];
             if (!jobUpdate.taskType || !workflowTypes.includes(jobUpdate.taskType)) {
+              // If job status changed to completed/failed/canceled, flush any remaining streaming buffer
+              if (jobUpdate.status && ['completed', 'failed', 'canceled'].includes(jobUpdate.status)) {
+                const buffer = streamingBuffersRef.current.get(jobUpdate.id);
+                if (buffer && buffer.chunks.length > 0) {
+                  // Immediately flush remaining chunks
+                  const accumulatedContent = buffer.chunks.join('');
+                  if (accumulatedContent) {
+                    setJobs(prevJobs => {
+                      const jobIndex = prevJobs.findIndex(j => j.id === jobUpdate.id);
+                      if (jobIndex !== -1) {
+                        const existingJob = prevJobs[jobIndex];
+                        const currentResponse = existingJob.response || '';
+                        const newResponse = currentResponse + accumulatedContent;
+                        
+                        if (newResponse !== existingJob.response) {
+                          const flushUpdate = {
+                            id: jobUpdate.id,
+                            response: newResponse,
+                            updatedAt: Date.now(),
+                          };
+                          
+                          return upsertJobInternal(prevJobs, flushUpdate, false, true);
+                        }
+                      }
+                      return prevJobs;
+                    });
+                  }
+                  
+                  // Clear the buffer
+                  streamingBuffersRef.current.delete(jobUpdate.id);
+                }
+                
+                // Clear any pending timer
+                const timer = streamingUpdateTimersRef.current.get(jobUpdate.id);
+                if (timer) {
+                  clearTimeout(timer);
+                  streamingUpdateTimersRef.current.delete(jobUpdate.id);
+                }
+              }
+              
               upsertJob(jobUpdate);
             }
           } catch (err) {
@@ -339,6 +397,114 @@ export function useOrchestratedBackgroundJobsState({
           }
         });
 
+        // Listen for streaming response updates with optimized buffering
+        unlistenResponseUpdatePromise = listen("job_response_update", async (event) => {
+          try {
+            const payload = event.payload as {
+              job_id: string;
+              response_chunk: string;
+              chars_received: number;
+              estimated_tokens: number;
+              visual_update: boolean;
+            };
+            
+            // Efficiently buffer streaming chunks to prevent O(n²) string concatenation
+            const bufferMap = streamingBuffersRef.current;
+            const timersMap = streamingUpdateTimersRef.current;
+            
+            if (!bufferMap.has(payload.job_id)) {
+              // Find the job type for adaptive throttling
+              const currentJob = jobs.find((j: BackgroundJob) => j.id === payload.job_id);
+              
+              bufferMap.set(payload.job_id, {
+                chunks: [],
+                lastUpdate: Date.now(),
+                totalLength: 0,
+                jobType: currentJob?.taskType
+              });
+            }
+            
+            const buffer = bufferMap.get(payload.job_id)!;
+            buffer.chunks.push(payload.response_chunk);
+            buffer.totalLength += payload.response_chunk.length;
+            buffer.lastUpdate = Date.now();
+            
+            // Clear existing timer for this job
+            if (timersMap.has(payload.job_id)) {
+              clearTimeout(timersMap.get(payload.job_id)!);
+            }
+            
+            // Adaptive throttling based on response size to prevent main thread blocking
+            // Implementation plans can be very large, so use aggressive throttling for them
+            let throttleMs = 100; // Default throttling
+            
+            if (buffer.totalLength > 500000) {
+              throttleMs = 500; // Very large responses: 500ms
+            } else if (buffer.totalLength > 100000) {
+              throttleMs = 300; // Large responses: 300ms
+            } else if (buffer.totalLength > 50000) {
+              throttleMs = 200; // Medium responses: 200ms
+            }
+            
+            // Additional throttling for implementation plans (they tend to be large)
+            if (buffer.jobType === 'implementation_plan') {
+              throttleMs = Math.max(throttleMs, 150); // Minimum 150ms for implementation plans
+            }
+            
+            const updateTimer = setTimeout(() => {
+              const currentBuffer = bufferMap.get(payload.job_id);
+              if (!currentBuffer || currentBuffer.chunks.length === 0) return;
+              
+              // Efficiently join all chunks at once (O(n) instead of O(n²))
+              // Use Array.join() which is optimized for string concatenation
+              const accumulatedContent = currentBuffer.chunks.join('');
+              
+              // Safety check: Skip if no meaningful content
+              if (!accumulatedContent) {
+                timersMap.delete(payload.job_id);
+                return;
+              }
+              
+              // Update job state with accumulated content using optimized streaming update
+              setJobs(prevJobs => {
+                const jobIndex = prevJobs.findIndex(j => j.id === payload.job_id);
+                if (jobIndex !== -1) {
+                  const existingJob = prevJobs[jobIndex];
+                  const currentResponse = existingJob.response || '';
+                  
+                  // Only update if content actually changed
+                  const newResponse = currentResponse + accumulatedContent;
+                  if (newResponse !== existingJob.response) {
+                    // Use optimized streaming update that bypasses expensive equality checks
+                    const streamingUpdate = {
+                      id: payload.job_id,
+                      response: newResponse,
+                      updatedAt: Date.now(),
+                    };
+                    
+                    // Clear the processed chunks
+                    currentBuffer.chunks = [];
+                    currentBuffer.totalLength = 0;
+                    
+                    // Use upsertJob with streaming optimization flag
+                    const result = upsertJobInternal(prevJobs, streamingUpdate, false, true);
+                    return result;
+                  }
+                }
+                return prevJobs;
+              });
+              
+              // Clean up timer
+              timersMap.delete(payload.job_id);
+            }, throttleMs);
+            
+            timersMap.set(payload.job_id, updateTimer);
+            
+          } catch (err) {
+            console.error("[BackgroundJobs] Error processing response update:", err);
+          }
+        });
+
       } catch (err) {
         console.error("[BackgroundJobs] Error setting up job listeners:", err);
       }
@@ -353,6 +519,13 @@ export function useOrchestratedBackgroundJobsState({
         return;
       }
 
+      // Clean up streaming timers to prevent memory leaks
+      streamingUpdateTimersRef.current.forEach((timer) => {
+        clearTimeout(timer);
+      });
+      streamingUpdateTimersRef.current.clear();
+      streamingBuffersRef.current.clear();
+
       if (unlistenUsageUpdatePromise) {
         safeCleanupListenerPromise(unlistenUsageUpdatePromise);
       }
@@ -364,6 +537,9 @@ export function useOrchestratedBackgroundJobsState({
       }
       if (unlistenJobUpdatedPromise) {
         safeCleanupListenerPromise(unlistenJobUpdatedPromise);
+      }
+      if (unlistenResponseUpdatePromise) {
+        safeCleanupListenerPromise(unlistenResponseUpdatePromise);
       }
     };
   }, [upsertJob]);

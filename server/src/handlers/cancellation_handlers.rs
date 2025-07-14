@@ -4,7 +4,7 @@ use uuid::Uuid;
 use tracing::{info, warn, error, instrument};
 
 use crate::error::AppError;
-use crate::models::authenticated_user::AuthenticatedUser;
+use crate::models::AuthenticatedUser;
 use crate::services::request_tracker::RequestTracker;
 use crate::config::settings::AppSettings;
 use crate::clients::http_client::new_api_client;

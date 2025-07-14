@@ -1892,20 +1892,10 @@ impl OpenAIClient {
             // - cache_read_tokens comes from prompt_tokens_details.cached_tokens
             // - cache_write_tokens is derived as prompt_tokens - cache_read_tokens when cache_read_tokens are present
 
-            // Derive cache_write_tokens as prompt_tokens - cache_read_tokens
-            // This represents the uncached tokens that were potentially written to cache
-            let cache_write_tokens = if cache_read_tokens > 0 {
-                // When we have cache reads, the remaining tokens are uncached (and potentially written to cache)
-                ((prompt_tokens as i32) - cache_read_tokens).max(0)
-            } else {
-                // No cache reads means all tokens are uncached, but we don't know if they were written to cache
-                0
-            };
-
             let mut usage = ProviderUsage {
                 prompt_tokens: prompt_tokens as i32, // Total input tokens
                 completion_tokens: completion_tokens as i32,
-                cache_write_tokens,
+                cache_write_tokens: 0,
                 cache_read_tokens,
                 model_id: model_id.to_string(),
                 duration_ms: None,

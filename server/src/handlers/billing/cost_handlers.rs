@@ -1,32 +1,31 @@
 use actix_web::{web, HttpResponse};
-use std::sync::Arc;
-use crate::error::AppError;
-use crate::services::billing_service::BillingService;
-use crate::models::AuthenticatedUser;
+use crate::{
+    error::AppError,
+    models::AuthenticatedUser,
+    services::billing_service::BillingService,
+};
 
 pub async fn get_final_streaming_cost(
-    path: web::Path<String>,
-    billing_service: web::Data<Arc<BillingService>>,
     user: web::ReqData<AuthenticatedUser>,
+    path: web::Path<String>,
+    billing_service: web::Data<BillingService>,
 ) -> Result<HttpResponse, AppError> {
     let request_id = path.into_inner();
-    let requesting_user_id = user.user_id;
     
-    // Get the cost data
-    let cost_data = billing_service.get_final_streaming_cost(&request_id).await?;
+    let final_cost = billing_service
+        .get_final_streaming_cost(&request_id)
+        .await?;
     
-    match cost_data {
-        Some(data) => {
-            // Validate that the requesting user owns this request
-            if data.user_id != requesting_user_id {
-                return Err(AppError::Forbidden(
-                    "You are not authorized to access this cost data".to_string()
-                ));
+    match final_cost {
+        Some(cost) => {
+            // Verify user owns this request
+            if cost.user_id != user.user_id {
+                return Err(AppError::Forbidden("Access denied to this cost data".to_string()));
             }
-            Ok(HttpResponse::Ok().json(data))
-        },
-        None => Err(AppError::NotFound(
-            format!("No final cost data found for request_id: {}", request_id)
-        )),
+            Ok(HttpResponse::Ok().json(cost))
+        }
+        None => Ok(HttpResponse::NotFound().json(serde_json::json!({
+            "error": "Cost data not found for this request"
+        })))
     }
 }

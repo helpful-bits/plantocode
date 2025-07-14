@@ -1,7 +1,7 @@
 use actix_web::{web, HttpResponse, Result};
 use crate::config::settings::AppSettings;
 use crate::db::repositories::user_repository::UserRepository;
-use crate::models::authenticated_user::AuthenticatedUser;
+use crate::models::AuthenticatedUser;
 use crate::services::auth::jwt::create_featurebase_sso_token;
 use serde_json::json;
 use std::sync::Arc;

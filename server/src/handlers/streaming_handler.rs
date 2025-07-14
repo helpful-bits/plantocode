@@ -157,7 +157,7 @@ pub trait StreamChunkTransformer {
     /// 
     /// * `Some((input_tokens, output_tokens))` - Incremental token counts
     /// * `None` - No incremental usage in this chunk
-    fn extract_incremental_usage(&self, _chunk: &Value) -> Option<(i32, i32)> {
+    fn extract_usage_from_chunk(&self, _chunk: &Value) -> Option<(i32, i32)> {
         // Default implementation returns None - providers can override
         None
     }
@@ -267,6 +267,9 @@ pub struct StandardizedStreamHandler<S> {
     last_update_time: std::time::Instant,
     tokens_since_last_update: i64,
     pending_usage_update: Option<String>,
+    start_event_sent: bool,
+    last_cumulative_input_tokens: i64,
+    last_cumulative_output_tokens: i64,
 }
 
 impl<S> StandardizedStreamHandler<S> 
@@ -283,7 +286,6 @@ where
     /// * `user_id` - User identifier for billing attribution
     /// * `billing_service` - Service for post-stream billing
     /// * `request_id` - Unique request identifier for tracking
-    /// * `prompt_tokens` - Number of tokens in the initial prompt
     pub fn new(
         inner_stream: S,
         transformer: Box<dyn StreamChunkTransformer + Send + Sync>,
@@ -291,7 +293,6 @@ where
         user_id: Uuid,
         billing_service: Arc<BillingService>,
         request_id: String,
-        prompt_tokens: i64,
     ) -> Self {
         Self {
             inner_stream,
@@ -302,11 +303,14 @@ where
             request_id,
             stream_completed: false,
             // Initialize real-time tracking
-            running_input_tokens: prompt_tokens,
+            running_input_tokens: 0,
             running_output_tokens: 0,
             last_update_time: std::time::Instant::now(),
             tokens_since_last_update: 0,
             pending_usage_update: None,
+            start_event_sent: false,
+            last_cumulative_input_tokens: 0,
+            last_cumulative_output_tokens: 0,
         }
     }
     
@@ -322,6 +326,15 @@ where
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
     ) -> Poll<Option<Self::Item>> {
+        // Send start event first
+        if !self.start_event_sent {
+            self.start_event_sent = true;
+            let event_data = serde_json::json!({ "request_id": self.request_id });
+            let event = create_sse_message("stream_started", &event_data);
+            cx.waker().wake_by_ref();
+            return Poll::Ready(Some(Ok(event)));
+        }
+        
         // Check if we have a pending usage update to send
         if let Some(usage_update) = self.pending_usage_update.take() {
             // After sending usage update, immediately re-poll to check for more chunks
@@ -352,17 +365,26 @@ where
                             let delta_output_tokens: i64;
                             
                             // First check for incremental usage from provider (most accurate)
-                            if let Some((input_delta, output_delta)) = self.transformer.extract_incremental_usage(&chunk_value) {
-                                delta_input_tokens = input_delta as i64;
-                                delta_output_tokens = output_delta as i64;
+                            if let Some((provider_input_tokens, provider_output_tokens)) = self.transformer.extract_usage_from_chunk(&chunk_value) {
+                                // Calculate deltas (works for both cumulative and incremental providers)
+                                let input_delta = (provider_input_tokens as i64).saturating_sub(self.last_cumulative_input_tokens);
+                                let output_delta = (provider_output_tokens as i64).saturating_sub(self.last_cumulative_output_tokens);
                                 
-                                // Update running totals with provider-reported incremental usage
-                                self.running_input_tokens += delta_input_tokens;
-                                self.running_output_tokens += delta_output_tokens;
+                                // Add deltas to running totals
+                                self.running_input_tokens += input_delta;
+                                self.running_output_tokens += output_delta;
+                                
+                                // Update last cumulative values
+                                self.last_cumulative_input_tokens = provider_input_tokens as i64;
+                                self.last_cumulative_output_tokens = provider_output_tokens as i64;
+                                
+                                delta_input_tokens = input_delta;
+                                delta_output_tokens = output_delta;
                                 
                                 // Always send usage update when provider reports incremental usage
                                 should_update = true;
-                                debug!("Provider reported incremental usage: input={}, output={}", delta_input_tokens, delta_output_tokens);
+                                debug!("Provider reported usage: input={}, output={} (deltas: input={}, output={})", 
+                                       provider_input_tokens, provider_output_tokens, input_delta, output_delta);
                             }
                             // Otherwise, estimate from text delta
                             else if let Some(text_delta) = self.transformer.extract_text_delta(&chunk_value) {
@@ -477,14 +499,15 @@ impl<S> StandardizedStreamHandler<S> {
                                   request_id, api_usage_record.cost);
                             
                             // Store the final cost for desktop client retrieval
-                            let final_cost_data = crate::services::billing_service::FinalCostData {
+                            let final_cost_data = crate::models::billing::FinalCostResponse {
+                                status: "completed".to_string(),
                                 request_id: request_id.clone(),
+                                final_cost: Some(api_usage_record.cost.to_f64().unwrap_or(0.0)),
+                                tokens_input: Some(usage.prompt_tokens as i64),
+                                tokens_output: Some(usage.completion_tokens as i64),
+                                cache_write_tokens: Some(usage.cache_write_tokens as i64),
+                                cache_read_tokens: Some(usage.cache_read_tokens as i64),
                                 user_id,
-                                final_cost: api_usage_record.cost.to_f64().unwrap_or(0.0),
-                                tokens_input: usage.prompt_tokens as i64,
-                                tokens_output: usage.completion_tokens as i64,
-                                cache_write_tokens: usage.cache_write_tokens as i64,
-                                cache_read_tokens: usage.cache_read_tokens as i64,
                                 service_name: model.id.clone(),
                             };
                             
@@ -571,6 +594,22 @@ pub fn create_sse_keepalive() -> web::Bytes {
 /// SSE comment line formatted as `: {message}\n\n`
 pub fn create_sse_comment(message: &str) -> web::Bytes {
     web::Bytes::from(format!(": {}\n\n", message))
+}
+
+/// Helper function to create SSE message with event type and data
+/// 
+/// This function creates a properly formatted SSE message with event type and JSON data.
+/// 
+/// # Arguments
+/// 
+/// * `event` - Event type (e.g., "stream_started", "usage_update")
+/// * `data` - JSON data to include in the message
+/// 
+/// # Returns
+/// 
+/// SSE message formatted as `event: {event}\ndata: {data}\n\n`
+pub fn create_sse_message(event: &str, data: &serde_json::Value) -> web::Bytes {
+    web::Bytes::from(format!("event: {}\ndata: {}\n\n", event, data))
 }
 
 /// Helper function to create standardized OpenRouter stream chunk

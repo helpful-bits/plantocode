@@ -115,6 +115,8 @@ pub struct FinalCostResponse {
     pub tokens_output: Option<i64>,
     pub cache_write_tokens: Option<i64>,
     pub cache_read_tokens: Option<i64>,
+    pub user_id: uuid::Uuid,
+    pub service_name: String,
 }
 
 // New unified credit history entry that includes API usage token details

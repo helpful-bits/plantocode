@@ -10,4 +10,3 @@ pub mod model_mapping_service;
 pub mod request_tracker;
 
 // Re-export commonly used types
-pub use billing_service::FinalCostData;

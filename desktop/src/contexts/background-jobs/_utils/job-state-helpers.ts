@@ -14,7 +14,8 @@ const logger = createLogger({ namespace: "JobComparison" });
  */
 export function areJobsEqual(
   jobA: BackgroundJob,
-  jobB: BackgroundJob
+  jobB: BackgroundJob,
+  isStreamingUpdate: boolean = false
 ): boolean {
   // Fast path 1: Reference equality (same object)
   if (jobA === jobB) return true;
@@ -23,7 +24,32 @@ export function areJobsEqual(
   if (!jobA || !jobB) return false;
   if (jobA.id !== jobB.id) return false;
 
-  // Parse metadata once for both jobs
+  // Fast path 2: Optimized streaming update check
+  // During streaming, only response content and updatedAt change
+  if (isStreamingUpdate && jobA.status === "running" && jobB.status === "running") {
+    // For streaming updates, only check response content and updatedAt
+    // Skip expensive metadata parsing and complex comparisons
+    const responseChanged = jobA.response !== jobB.response;
+    const timestampChanged = jobA.updatedAt !== jobB.updatedAt;
+    
+    // If both are different, this is a streaming update
+    if (responseChanged && timestampChanged) {
+      logger.debug(
+        `Fast streaming update detected for job ${jobA.id}: response length ${jobA.response?.length || 0} → ${jobB.response?.length || 0}`
+      );
+      return false;
+    }
+    
+    // If only one changed, this might be a different kind of update
+    if (responseChanged || timestampChanged) {
+      return false;
+    }
+    
+    // If neither changed, they're equal
+    return true;
+  }
+
+  // Parse metadata once for both jobs (only for non-streaming updates)
   const metaA = getParsedMetadata(jobA.metadata);
   const metaB = getParsedMetadata(jobB.metadata);
 

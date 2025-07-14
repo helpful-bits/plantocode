@@ -1,6 +1,6 @@
 "use client";
 
-import { Loader2, FileCode, Eye, AlertTriangle, XCircle } from "lucide-react";
+import { Loader2, FileCode, Eye, AlertTriangle, XCircle, ClipboardCopy } from "lucide-react";
 import { useCallback, useState, useEffect, useMemo } from "react";
 
 import { JobDetailsModal } from "@/app/components/background-jobs-sidebar/job-details-modal";
@@ -138,6 +138,15 @@ export function ImplementationPlansPanel({
   const [selectedStepNumber, setSelectedStepNumber] = useState<string | null>(null);
   const [selectedModelId, setSelectedModelId] = useState<string | undefined>(undefined);
   const [allowedModelsForPlan, setAllowedModelsForPlan] = useState<ModelInfo[]>([]);
+  
+  // Preloaded prompt content state
+  const [preloadedPromptContent, setPreloadedPromptContent] = useState<string | null>(null);
+  const [isPreloadingPrompt, setIsPreloadingPrompt] = useState(false);
+
+  // Clear preloaded content when dependencies change
+  useEffect(() => {
+    setPreloadedPromptContent(null);
+  }, [taskDescription, currentSession?.taskDescription, includedPaths, sessionId, projectDirectory]);
 
   // Validation for create functionality
   const canCreatePlan = Boolean(
@@ -297,6 +306,99 @@ export function ImplementationPlansPanel({
     }
   }, [canCreatePlan, sessionId, taskDescription, currentSession?.taskDescription, projectDirectory, includedPaths, promptCopyModal, showNotification]);
 
+  // Handle preload prompt on hover
+  const handlePreloadPrompt = useCallback(async () => {
+    if (!canCreatePlan || isPreloadingPrompt) {
+      return;
+    }
+
+    const finalTaskDescription = taskDescription || currentSession?.taskDescription || "";
+    const finalIncludedPaths = includedPaths || [];
+
+    setIsPreloadingPrompt(true);
+    try {
+      const { getPromptAction } = await import("@/actions/ai/prompt.actions");
+      const result = await getPromptAction({
+        sessionId: sessionId!,
+        taskDescription: finalTaskDescription,
+        projectDirectory: projectDirectory!,
+        relevantFiles: finalIncludedPaths,
+        projectStructure: undefined,
+        taskType: "implementation_plan"
+      });
+
+      if (result.isSuccess && result.data) {
+        setPreloadedPromptContent(result.data.combinedPrompt);
+      }
+    } catch (error) {
+      console.error("Failed to preload prompt:", error);
+    } finally {
+      setIsPreloadingPrompt(false);
+    }
+  }, [canCreatePlan, isPreloadingPrompt, taskDescription, currentSession?.taskDescription, includedPaths, sessionId, projectDirectory]);
+
+  // Handle copy prompt
+  const handleCopyPrompt = useCallback(async () => {
+    if (!canCreatePlan) {
+      showNotification({
+        title: "Cannot Copy Prompt",
+        message: "Please ensure you have a project directory, task description, and selected files.",
+        type: "error",
+      });
+      return;
+    }
+
+    try {
+      // Use preloaded content if available
+      if (preloadedPromptContent) {
+        await navigator.clipboard.writeText(preloadedPromptContent);
+        showNotification({
+          title: "Copied to clipboard",
+          message: "Implementation plan prompt copied successfully",
+          type: "success",
+          duration: 2000,
+        });
+        return;
+      }
+
+      // Fallback to loading content if not preloaded
+      const finalTaskDescription = taskDescription || currentSession?.taskDescription || "";
+      const finalIncludedPaths = includedPaths || [];
+
+      const { getPromptAction } = await import("@/actions/ai/prompt.actions");
+      const result = await getPromptAction({
+        sessionId: sessionId!,
+        taskDescription: finalTaskDescription,
+        projectDirectory: projectDirectory!,
+        relevantFiles: finalIncludedPaths,
+        projectStructure: undefined,
+        taskType: "implementation_plan"
+      });
+
+      if (result.isSuccess && result.data) {
+        await navigator.clipboard.writeText(result.data.combinedPrompt);
+        showNotification({
+          title: "Copied to clipboard",
+          message: "Implementation plan prompt copied successfully",
+          type: "success",
+          duration: 2000,
+        });
+      } else {
+        showNotification({
+          title: "Failed to Copy Prompt",
+          message: result.message || "Failed to load prompt",
+          type: "error",
+        });
+      }
+    } catch (error) {
+      showNotification({
+        title: "Failed to Copy Prompt",
+        message: error instanceof Error ? error.message : "An unknown error occurred",
+        type: "error",
+      });
+    }
+  }, [canCreatePlan, preloadedPromptContent, sessionId, taskDescription, currentSession?.taskDescription, projectDirectory, includedPaths, showNotification]);
+
   // Handle create plan using the context-provided function
   const handleCreatePlan = useCallback(async () => {
     if (!onCreatePlan || !canCreatePlan) return;
@@ -437,16 +539,29 @@ export function ImplementationPlansPanel({
             )}
             
             <div className="space-y-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleViewPrompt}
-                disabled={!canCreatePlan}
-                className="flex items-center justify-center w-full h-9"
-              >
-                <Eye className="h-4 w-4 mr-2" />
-                View Prompt
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleViewPrompt}
+                  disabled={!canCreatePlan}
+                  className="flex items-center justify-center w-full h-9"
+                >
+                  <Eye className="h-4 w-4 mr-2" />
+                  View Prompt
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleCopyPrompt}
+                  onMouseEnter={handlePreloadPrompt}
+                  disabled={false}
+                  className="flex items-center justify-center w-full h-9"
+                >
+                  <ClipboardCopy className="h-4 w-4 mr-2" />
+                  Copy
+                </Button>
+              </div>
 
               <Button
                 variant="default"

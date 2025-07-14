@@ -71,12 +71,12 @@ VALUES (
         "model": "google/gemini-2.5-flash",
         "allowed_models": ["google/gemini-2.5-flash", "openai/o4-mini"],
         "max_tokens": 30000,
-        "temperature": 0.35
+        "temperature": 0.2
       },
       "web_search_execution": {
         "model": "openai/o4-mini",
         "allowed_models": ["openai/o3", "openai/o4-mini"],
-        "max_tokens": 4000,
+        "max_tokens": 10000,
         "temperature": 0.3
       },
       "generic_llm_stream": {

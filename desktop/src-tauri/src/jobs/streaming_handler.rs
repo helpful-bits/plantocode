@@ -75,6 +75,10 @@ impl StreamedResponseHandler {
             match event_result {
                 Ok(event) => {
                     match event {
+                        StreamEvent::StreamStarted { request_id } => {
+                            debug!("Stream started with server request_id: {}", request_id);
+                            // Could store this request_id if needed for later polling
+                        },
                         StreamEvent::ContentChunk(chunk) => {
                             // Check if job has been canceled before processing chunk
                             if job_processor_utils::check_job_canceled(&self.repo, &self.job_id).await? {
