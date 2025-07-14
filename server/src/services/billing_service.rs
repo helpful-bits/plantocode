@@ -1,5 +1,5 @@
 use crate::error::AppError;
-use crate::models::billing::{BillingDashboardData, AutoTopOffSettings, CustomerBillingInfo};
+use crate::models::billing::{BillingDashboardData, AutoTopOffSettings, CustomerBillingInfo, TaxIdInfo};
 use crate::db::repositories::api_usage_repository::{ApiUsageRepository, DetailedUsageRecord, ApiUsageEntryDto, ApiUsageRecord};
 use crate::db::repositories::UserCredit;
 use crate::db::repositories::customer_billing_repository::{CustomerBillingRepository, CustomerBilling};
@@ -107,7 +107,10 @@ impl BillingService {
     ) -> Result<bool, AppError> {
         let user_balance = self.credit_service.get_user_balance(user_id).await?;
         
-        if user_balance.balance <= BigDecimal::from(0) {
+        // Check sum of paid balance and free credit balance
+        let total_balance = &user_balance.balance + &user_balance.free_credit_balance;
+        
+        if total_balance <= BigDecimal::from(0) {
             return Err(AppError::CreditInsufficient("No credits available. Please purchase credits to continue using AI services.".to_string()));
         }
 
@@ -150,15 +153,26 @@ impl BillingService {
             tx,
         ).await?;
         
-        // Grant initial credits (default $5.00)
-        let initial_credits = BigDecimal::from(5);
-        self.credit_service.adjust_credits_with_executor(
-            user_id,
-            &initial_credits,
-            "Initial signup credits".to_string(),
-            Some(serde_json::json!({"type": "signup_grant", "customer_billing_id": customer_billing_id})),
-            tx,
-        ).await?;
+        // Grant initial free credits ($2.00) with expiry
+        let free_credits = BigDecimal::from_str("2.00").unwrap();
+        let free_credits_expires_at = now + Duration::days(30);
+        
+        // Update user_credits with free credits
+        sqlx::query(
+            "UPDATE user_credits 
+             SET free_credit_balance = $2,
+                 free_credits_granted_at = $3,
+                 free_credits_expires_at = $4,
+                 updated_at = CURRENT_TIMESTAMP
+             WHERE user_id = $1"
+        )
+        .bind(user_id)
+        .bind(&free_credits)
+        .bind(now)
+        .bind(free_credits_expires_at)
+        .execute(&mut **tx)
+        .await
+        .map_err(|e| AppError::Database(format!("Failed to grant free credits: {}", e)))?;
         
         // Construct the customer billing record from known data
         let customer_billing = CustomerBilling {
@@ -172,7 +186,7 @@ impl BillingService {
             updated_at: now,
         };
         
-        info!("Created customer billing record and granted initial credits for user {}", user_id);
+        info!("Created customer billing record and granted initial free credits for user {}", user_id);
         Ok(customer_billing)
     }
 
@@ -343,10 +357,15 @@ impl BillingService {
         let credit_balance = credit_balance?;
         let (is_payment_method_required, is_billing_info_required) = billing_readiness.unwrap_or((false, false));
         
+        // Calculate total balance
+        let total_balance = &credit_balance.balance + &credit_balance.free_credit_balance;
+        
         // Build response with readiness flags
         let dashboard_data = BillingDashboardData {
             credit_balance_usd: credit_balance.balance.to_f64().unwrap_or(0.0),
-            services_blocked: credit_balance.balance <= BigDecimal::from(0),
+            free_credit_balance_usd: credit_balance.free_credit_balance.to_f64().unwrap_or(0.0),
+            free_credits_expires_at: credit_balance.free_credits_expires_at,
+            services_blocked: total_balance <= BigDecimal::from(0),
             is_payment_method_required,
             is_billing_info_required,
         };
@@ -607,6 +626,9 @@ impl BillingService {
             return Err(AppError::InvalidArgument("Amount must be between $0.01 and $10,000.00".to_string()));
         }
 
+        // Calculate fee and net amounts
+        let (fee_amount, net_amount) = Self::_calculate_fee_and_net(&amount_decimal);
+        
         // Create price_data object instead of creating Product/Price
         let product_name = format!("${} Credit Top-up", amount_decimal);
         let amount_cents = (amount_decimal.clone() * BigDecimal::from(100)).to_i64().unwrap_or(0);
@@ -623,11 +645,14 @@ impl BillingService {
         let mut metadata = std::collections::HashMap::new();
         metadata.insert("type".to_string(), "credit_purchase".to_string());
         metadata.insert("user_id".to_string(), user_id.to_string());
-        metadata.insert("amount".to_string(), amount_decimal.to_string());
+        metadata.insert("gross_amount".to_string(), amount_decimal.to_string());
+        metadata.insert("fee_amount".to_string(), fee_amount.to_string());
+        metadata.insert("net_amount".to_string(), net_amount.to_string());
         metadata.insert("currency".to_string(), "USD".to_string());
 
         // Use hardcoded URLs that match the frontend expectations
-        let success_url = "http://localhost:1420/billing/success";
+        // Include session ID placeholder in success URL for payment verification
+        let success_url = "http://localhost:1420/account?billing_success=true&session_id={CHECKOUT_SESSION_ID}";
         let cancel_url = "http://localhost:1420/billing/cancel";
 
         let idempotency_key = uuid::Uuid::new_v4().to_string();
@@ -685,6 +710,22 @@ impl BillingService {
             .map_err(|e| AppError::Database(format!("Failed to commit transaction: {}", e)))?;
 
         Ok(usage_records)
+    }
+
+    /// Calculate fee and net amount based on tiered pricing
+    fn _calculate_fee_and_net(gross_amount: &BigDecimal) -> (BigDecimal, BigDecimal) {
+        let fee_percentage = if gross_amount < &BigDecimal::from(30) {
+            BigDecimal::from_str("0.20").unwrap() // 20% fee
+        } else if gross_amount < &BigDecimal::from(300) {
+            BigDecimal::from_str("0.10").unwrap() // 10% fee
+        } else {
+            BigDecimal::from_str("0.05").unwrap() // 5% fee
+        };
+        
+        let fee_amount = gross_amount * fee_percentage;
+        let net_amount = gross_amount - &fee_amount;
+        
+        (fee_amount, net_amount)
     }
 
     /// Create a setup checkout session for payment method addition
@@ -887,6 +928,7 @@ impl BillingService {
     pub async fn finalize_api_charge(
         &self,
         request_id: &str,
+        user_id: &Uuid,
         final_usage: ProviderUsage,
     ) -> Result<(ApiUsageRecord, UserCredit), AppError> {
         debug!("Finalizing API charge for request: {}", request_id);
@@ -907,6 +949,13 @@ impl BillingService {
         // Start transaction
         let pool = self.credit_service.get_user_credit_repository().get_pool();
         let mut tx = pool.begin().await.map_err(AppError::from)?;
+        
+        // Set RLS context using user_id within the transaction
+        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
+            .bind(user_id.to_string())
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| AppError::Database(format!("Failed to set user context in transaction: {}", e)))?;
         
         // Finalize charge with credit service
         let (api_usage_record, user_credit) = self.credit_service
@@ -1185,17 +1234,34 @@ impl BillingService {
             None => return Ok(None),
         };
 
-        // Fetch customer from Stripe
-        let customer = match stripe_service.get_customer(&customer_id).await {
+        // Fetch customer and tax IDs from Stripe concurrently
+        let (customer_result, tax_ids_result) = tokio::join!(
+            stripe_service.get_customer(&customer_id),
+            stripe_service.get_customer_tax_ids(&customer_id)
+        );
+
+        let customer = match customer_result {
             Ok(customer) => customer,
             Err(_) => return Ok(None), // Gracefully handle Stripe errors
         };
+
+        // Process tax IDs, ignore errors for better UX
+        let tax_ids = tax_ids_result
+            .unwrap_or_default()
+            .into_iter()
+            .map(|tax_id| TaxIdInfo {
+                r#type: tax_id.r#type,
+                value: tax_id.value,
+                country: tax_id.country,
+            })
+            .collect();
 
         Ok(Some(CustomerBillingInfo {
             customer_name: customer.name.clone(),
             customer_email: customer.email,
             phone: customer.phone,
             tax_exempt: customer.tax_exempt,
+            tax_ids,
             address_line1: customer.address.as_ref().and_then(|a| a.line1.clone()),
             address_line2: customer.address.as_ref().and_then(|a| a.line2.clone()),
             address_city: customer.address.as_ref().and_then(|a| a.city.clone()),

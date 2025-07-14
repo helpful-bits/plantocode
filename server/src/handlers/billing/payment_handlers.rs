@@ -1,4 +1,5 @@
 use actix_web::{web, HttpResponse, get, post};
+use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use crate::error::AppError;
 use crate::services::billing_service::BillingService;
@@ -34,7 +35,7 @@ pub struct PortalResponse {
 #[post("/create-portal-session")]
 pub async fn create_billing_portal_session(
     user: web::ReqData<AuthenticatedUser>,
-    billing_service: web::Data<BillingService>,
+    billing_service: web::Data<Arc<BillingService>>,
 ) -> Result<HttpResponse, AppError> {
     debug!("Creating billing portal for user: {}", user.user_id);
     
@@ -55,7 +56,7 @@ pub struct PaymentMethodsResponse {
 #[get("/payment-methods")]
 pub async fn get_payment_methods(
     user: web::ReqData<AuthenticatedUser>,
-    billing_service: web::Data<BillingService>,
+    billing_service: web::Data<Arc<BillingService>>,
     pagination: web::Query<PaginationQuery>,
 ) -> Result<HttpResponse, AppError> {
     debug!("Getting payment methods from Stripe for user: {}", user.user_id);
@@ -91,7 +92,7 @@ pub struct PublishableKeyResponse {
 /// Get Stripe publishable key for frontend
 #[get("/stripe/publishable-key")]
 pub async fn get_stripe_publishable_key(
-    billing_service: web::Data<BillingService>,
+    billing_service: web::Data<Arc<BillingService>>,
     _user: web::ReqData<AuthenticatedUser>, // Authentication required but user-agnostic
 ) -> Result<HttpResponse, AppError> {
     debug!("Getting Stripe publishable key");

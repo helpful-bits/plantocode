@@ -12,7 +12,9 @@ pub struct CreditTransaction {
     pub id: Uuid,
     pub user_id: Uuid,
     pub transaction_type: String, // 'purchase', 'consumption', 'refund', 'adjustment', 'expiry'
-    pub amount: BigDecimal,
+    pub net_amount: BigDecimal,
+    pub gross_amount: Option<BigDecimal>,
+    pub fee_amount: Option<BigDecimal>,
     pub currency: String,
     pub description: Option<String>,
     pub stripe_charge_id: Option<String>,
@@ -57,17 +59,19 @@ impl CreditTransactionRepository {
             CreditTransaction,
             r#"
             INSERT INTO credit_transactions 
-            (id, user_id, transaction_type, amount, currency, description, 
+            (id, user_id, transaction_type, net_amount, gross_amount, fee_amount, currency, description, 
              stripe_charge_id, related_api_usage_id, metadata, balance_after, created_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
-            RETURNING id, user_id, transaction_type, amount, currency, 
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())
+            RETURNING id, user_id, transaction_type, net_amount, gross_amount, fee_amount, currency, 
                       description, stripe_charge_id, related_api_usage_id, 
                       metadata, created_at, balance_after
             "#,
             transaction.id,
             transaction.user_id,
             transaction.transaction_type,
-            transaction.amount,
+            transaction.net_amount,
+            transaction.gross_amount,
+            transaction.fee_amount,
             transaction.currency,
             transaction.description,
             transaction.stripe_charge_id,
@@ -95,7 +99,7 @@ impl CreditTransactionRepository {
         let results = sqlx::query_as!(
             CreditTransaction,
             r#"
-            SELECT id, user_id, transaction_type, amount, currency, 
+            SELECT id, user_id, transaction_type, net_amount, gross_amount, fee_amount, currency, 
                    description, stripe_charge_id, related_api_usage_id, 
                    metadata, created_at, balance_after
             FROM credit_transactions 
@@ -126,7 +130,7 @@ impl CreditTransactionRepository {
         let results = sqlx::query_as!(
             CreditTransaction,
             r#"
-            SELECT id, user_id, transaction_type, amount, currency, 
+            SELECT id, user_id, transaction_type, net_amount, gross_amount, fee_amount, currency, 
                    description, stripe_charge_id, related_api_usage_id, 
                    metadata, created_at, balance_after
             FROM credit_transactions 
@@ -154,10 +158,10 @@ impl CreditTransactionRepository {
         let result = sqlx::query!(
             r#"
             SELECT 
-                COALESCE(SUM(CASE WHEN transaction_type = 'purchase' THEN amount ELSE 0 END), 0) as total_purchased,
-                COALESCE(SUM(CASE WHEN transaction_type = 'consumption' THEN amount ELSE 0 END), 0) as total_consumed,
-                COALESCE(SUM(CASE WHEN transaction_type = 'refund' THEN amount ELSE 0 END), 0) as total_refunded,
-                COALESCE(SUM(amount), 0) as net_balance,
+                COALESCE(SUM(CASE WHEN transaction_type = 'purchase' THEN net_amount ELSE 0 END), 0) as total_purchased,
+                COALESCE(SUM(CASE WHEN transaction_type = 'consumption' THEN net_amount ELSE 0 END), 0) as total_consumed,
+                COALESCE(SUM(CASE WHEN transaction_type = 'refund' THEN net_amount ELSE 0 END), 0) as total_refunded,
+                COALESCE(SUM(net_amount), 0) as net_balance,
                 COUNT(*) as transaction_count
             FROM credit_transactions 
             WHERE user_id = $1
@@ -187,7 +191,7 @@ impl CreditTransactionRepository {
         let result = sqlx::query_as!(
             CreditTransaction,
             r#"
-            SELECT id, user_id, transaction_type, amount, currency, 
+            SELECT id, user_id, transaction_type, net_amount, gross_amount, fee_amount, currency, 
                    description, stripe_charge_id, related_api_usage_id, 
                    metadata, created_at, balance_after
             FROM credit_transactions 
@@ -213,7 +217,7 @@ impl CreditTransactionRepository {
         let results = sqlx::query_as!(
             CreditTransaction,
             r#"
-            SELECT id, user_id, transaction_type, amount, currency, 
+            SELECT id, user_id, transaction_type, net_amount, gross_amount, fee_amount, currency, 
                    description, stripe_charge_id, related_api_usage_id, 
                    metadata, created_at, balance_after
             FROM credit_transactions 
@@ -240,10 +244,10 @@ impl CreditTransactionRepository {
         let result = sqlx::query!(
             r#"
             SELECT 
-                COALESCE(SUM(CASE WHEN transaction_type = 'purchase' THEN amount ELSE 0 END), 0) as total_purchased,
-                COALESCE(SUM(CASE WHEN transaction_type = 'consumption' THEN amount ELSE 0 END), 0) as total_consumed,
-                COALESCE(SUM(CASE WHEN transaction_type = 'refund' THEN amount ELSE 0 END), 0) as total_refunded,
-                COALESCE(SUM(amount), 0) as net_balance,
+                COALESCE(SUM(CASE WHEN transaction_type = 'purchase' THEN net_amount ELSE 0 END), 0) as total_purchased,
+                COALESCE(SUM(CASE WHEN transaction_type = 'consumption' THEN net_amount ELSE 0 END), 0) as total_consumed,
+                COALESCE(SUM(CASE WHEN transaction_type = 'refund' THEN net_amount ELSE 0 END), 0) as total_refunded,
+                COALESCE(SUM(net_amount), 0) as net_balance,
                 COUNT(*) as transaction_count
             FROM credit_transactions 
             WHERE user_id = $1
@@ -285,7 +289,7 @@ impl CreditTransactionRepository {
         let results = sqlx::query_as!(
             CreditTransaction,
             r#"
-            SELECT id, user_id, transaction_type, amount, currency, 
+            SELECT id, user_id, transaction_type, net_amount, gross_amount, fee_amount, currency, 
                    description, stripe_charge_id, related_api_usage_id, 
                    metadata, created_at, balance_after
             FROM credit_transactions 
@@ -311,7 +315,7 @@ impl CreditTransactionRepository {
         let results = sqlx::query_as!(
             CreditTransaction,
             r#"
-            SELECT id, user_id, transaction_type, amount, currency, 
+            SELECT id, user_id, transaction_type, net_amount, gross_amount, fee_amount, currency, 
                    description, stripe_charge_id, related_api_usage_id, 
                    metadata, created_at, balance_after
             FROM credit_transactions 
@@ -343,7 +347,9 @@ impl CreditTransactionRepository {
             id: Uuid::new_v4(),
             user_id: *user_id,
             transaction_type: "consumption".to_string(),
-            amount: amount.clone(), // Already negative when passed in
+            net_amount: amount.clone(), // Already negative when passed in
+            gross_amount: None,
+            fee_amount: None,
             currency: "USD".to_string(),
             description,
             stripe_charge_id: None,

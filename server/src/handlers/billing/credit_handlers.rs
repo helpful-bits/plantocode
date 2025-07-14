@@ -1,4 +1,5 @@
 use actix_web::{web, HttpResponse, get, post, HttpRequest, HttpMessage};
+use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use bigdecimal::BigDecimal;
@@ -50,7 +51,7 @@ pub struct ExtendedPaginationQuery {
 #[get("/balance")]
 pub async fn get_credit_balance(
     user: web::ReqData<AuthenticatedUser>,
-    billing_service: web::Data<BillingService>,
+    billing_service: web::Data<Arc<BillingService>>,
 ) -> Result<HttpResponse, AppError> {
     debug!("Getting credit balance for user: {}", user.user_id);
     
@@ -64,6 +65,10 @@ pub async fn get_credit_balance(
                 user_id: user.user_id,
                 balance: BigDecimal::from(0),
                 currency: "USD".to_string(),
+                free_credit_balance: BigDecimal::from(0),
+                free_credits_granted_at: None,
+                free_credits_expires_at: None,
+                free_credits_expired: false,
                 created_at: Some(chrono::Utc::now()),
                 updated_at: None,
             };
@@ -93,7 +98,7 @@ pub async fn get_credit_history(
         .into_iter()
         .map(|transaction| CreditTransactionEntry {
             id: transaction.id.to_string(),
-            amount: transaction.amount.to_string(),
+            amount: transaction.net_amount.to_string(),
             currency: transaction.currency,
             transaction_type: transaction.transaction_type,
             description: transaction.description.unwrap_or_default(),

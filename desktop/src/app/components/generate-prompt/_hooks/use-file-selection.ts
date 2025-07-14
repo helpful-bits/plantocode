@@ -3,15 +3,20 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useSessionStateContext, useSessionActionsContext } from "@/contexts/session";
 import { listProjectFilesAction } from "@/actions/file-system/list-project-files.action";
-import { useNotification } from "@/contexts/notification-context";
+import { getFileSelectionHistoryAction, syncFileSelectionHistoryAction, type FileSelectionHistoryEntry } from "@/actions/session/history.actions";
+import { areArraysEqual } from "@/utils/array-utils";
 
-// Extended interface for UI state - includes selection state
-interface ExtendedFileInfo {
+// File info from filesystem (without selection state)
+interface FileInfo {
   path: string;        // RELATIVE from project root
   name: string;
   size?: number;
   modifiedAt?: number;
   isBinary: boolean;
+}
+
+// Extended interface for UI state - includes selection state
+interface ExtendedFileInfo extends FileInfo {
   included: boolean;
   excluded: boolean;
 }
@@ -25,27 +30,38 @@ interface ExtendedFileInfo {
 export function useFileSelection(projectDirectory?: string) {
   const { currentSession } = useSessionStateContext();
   const { updateCurrentSessionFields } = useSessionActionsContext();
-  const { showNotification } = useNotification();
   
-  const [files, setFiles] = useState<ExtendedFileInfo[]>([]);
+  const [allProjectFiles, setAllProjectFiles] = useState<FileInfo[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterMode, setFilterMode] = useState<"all" | "selected">("all");
   const [sortBy, setSortBy] = useState<"name" | "size" | "modified">("name");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   
   // History for undo/redo
-  const [history, setHistory] = useState<{ includedFiles: string[], forceExcludedFiles: string[] }[]>([]);
-  const [historyIndex, setHistoryIndex] = useState(-1);
+  const [historyState, setHistoryState] = useState<{ entries: FileSelectionHistoryEntry[], currentIndex: number }>({ entries: [], currentIndex: -1 });
+  const isUndoRedoInProgress = useRef(false);
+  const historyStateRef = useRef(historyState);
   
   // Create stable references for current session data
   const sessionIncluded = useMemo(() => currentSession?.includedFiles || [], [currentSession?.includedFiles]);
   const sessionExcluded = useMemo(() => currentSession?.forceExcludedFiles || [], [currentSession?.forceExcludedFiles]);
+  
+  // Computed files that combines filesystem data with session selection state
+  const files = useMemo((): ExtendedFileInfo[] => {
+    const includedSet = new Set(sessionIncluded);
+    const excludedSet = new Set(sessionExcluded);
+    
+    return allProjectFiles.map(file => ({
+      ...file,
+      included: includedSet.has(file.path),
+      excluded: excludedSet.has(file.path),
+    }));
+  }, [allProjectFiles, sessionIncluded, sessionExcluded]);
 
   // Load files from file system 
-  const loadFiles = useCallback(async (preserveSelections = false) => {
+  const loadFiles = useCallback(async () => {
     if (!projectDirectory) return;
     
     setLoading(true);
@@ -58,148 +74,192 @@ export function useFileSelection(projectDirectory?: string) {
         throw new Error(result.message || "Failed to load files");
       }
 
-      // Create file list with or without current session state
-      let fileList: ExtendedFileInfo[];
-      
-      if (preserveSelections) {
-        // Get current session data at call time to avoid dependency issues
-        const currentIncluded = currentSession?.includedFiles || [];
-        const currentExcluded = currentSession?.forceExcludedFiles || [];
-        const includedSet = new Set(currentIncluded);
-        const excludedSet = new Set(currentExcluded);
-
-        fileList = result.data.map(file => ({
-          ...file,
-          included: includedSet.has(file.path),
-          excluded: excludedSet.has(file.path),
-        } as ExtendedFileInfo));
-      } else {
-        fileList = result.data.map(file => ({
-          ...file,
-          included: false,
-          excluded: false,
-        } as ExtendedFileInfo));
-      }
-
-      setFiles(fileList);
+      // Store filesystem data without selection state
+      setAllProjectFiles(result.data);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");
     } finally {
       setLoading(false);
     }
-  }, [projectDirectory]); // Only depend on projectDirectory to avoid recreating on session changes
-
-  // Separate refresh function that preserves selections
-  const refreshFiles = useCallback(() => {
-    loadFiles(true);
-  }, [loadFiles]);
-
-  // ONLY load files when project directory changes (without preserving selections)
-  useEffect(() => {
-    loadFiles(false);
   }, [projectDirectory]);
 
-  // Sync file selection state when session data changes (without reloading files)
-  useEffect(() => {
-    if (files.length === 0) return; // Don't sync if no files loaded yet
-    
-    // Defer the update to avoid setState during render
-    setTimeout(() => {
-      const includedSet = new Set(sessionIncluded);
-      const excludedSet = new Set(sessionExcluded);
-      
-      setFiles(prevFiles => 
-        prevFiles.map(file => ({
-          ...file,
-          included: includedSet.has(file.path),
-          excluded: excludedSet.has(file.path),
-        }))
-      );
-    }, 0);
-  }, [sessionIncluded, sessionExcluded, files.length]);
+  // Refresh function that reloads files from filesystem
+  const refreshFiles = useCallback(() => {
+    loadFiles();
+  }, [loadFiles]);
 
-  // Save to history before making changes
-  const saveToHistory = useCallback(() => {
-    const currentState = {
-      includedFiles: currentSession?.includedFiles || [],
-      forceExcludedFiles: currentSession?.forceExcludedFiles || []
+  // Load files when project directory changes
+  useEffect(() => {
+    loadFiles();
+  }, [loadFiles]);
+
+  // Load history when session changes
+  useEffect(() => {
+    if (currentSession?.id) {
+      getFileSelectionHistoryAction(currentSession.id).then(result => {
+        if (result.isSuccess && result.data) {
+          const entries = result.data.map(entry => ({
+            includedFiles: entry.includedFiles,
+            forceExcludedFiles: entry.forceExcludedFiles
+          }));
+          
+          const currentSessionState = {
+            includedFiles: sessionIncluded,
+            forceExcludedFiles: sessionExcluded
+          };
+          
+          const lastEntry = entries[entries.length - 1];
+          if (!lastEntry || 
+              !areArraysEqual([...currentSessionState.includedFiles].sort(), [...lastEntry.includedFiles].sort()) ||
+              !areArraysEqual([...currentSessionState.forceExcludedFiles].sort(), [...lastEntry.forceExcludedFiles].sort())) {
+            entries.push(currentSessionState);
+          }
+          
+          setHistoryState({ entries, currentIndex: entries.length - 1 });
+        }
+      });
+    }
+  }, [currentSession?.id, sessionIncluded, sessionExcluded]);
+
+
+  useEffect(() => {
+    historyStateRef.current = historyState;
+  }, [historyState]);
+
+  useEffect(() => {
+    const flushHistory = () => {
+      if (currentSession?.id && historyStateRef.current.entries.length > 0) {
+        syncFileSelectionHistoryAction(currentSession.id, historyStateRef.current.entries);
+      }
     };
-    
-    setHistory(prev => {
-      const newHistory = prev.slice(0, historyIndex + 1);
-      newHistory.push(currentState);
-      return newHistory.slice(-50); // Keep last 50 states
+
+    window.addEventListener('flush-file-selection-history', flushHistory);
+
+    return () => {
+      window.removeEventListener('flush-file-selection-history', flushHistory);
+    };
+  }, [currentSession?.id]);
+
+  useEffect(() => {
+    if (currentSession?.id && historyState.entries.length > 0 && !isUndoRedoInProgress.current) {
+      syncFileSelectionHistoryAction(currentSession.id, historyState.entries);
+    }
+  }, [historyState, currentSession?.id]);
+
+  // Declarative history management
+  useEffect(() => {
+    setHistoryState(prevState => {
+      if (isUndoRedoInProgress.current) {
+        isUndoRedoInProgress.current = false;
+        return prevState;
+      }
+      
+      const currentState = {
+        includedFiles: sessionIncluded,
+        forceExcludedFiles: sessionExcluded
+      };
+      
+      const currentEntry = prevState.entries[prevState.currentIndex];
+      if (currentEntry &&
+          areArraysEqual([...currentState.includedFiles].sort(), [...currentEntry.includedFiles].sort()) &&
+          areArraysEqual([...currentState.forceExcludedFiles].sort(), [...currentEntry.forceExcludedFiles].sort())) {
+        return prevState;
+      }
+      
+      const newEntries = prevState.entries.slice(0, prevState.currentIndex + 1);
+      newEntries.push(currentState);
+      const limitedEntries = newEntries.slice(-50);
+      
+      return {
+        entries: limitedEntries,
+        currentIndex: limitedEntries.length - 1
+      };
     });
-    setHistoryIndex(prev => Math.min(prev + 1, 49));
-  }, [currentSession, historyIndex]);
+  }, [sessionIncluded, sessionExcluded]);
 
   // Toggle file inclusion
   const toggleFileSelection = useCallback((path: string) => {
-    saveToHistory();
+    const currentFile = files.find(f => f.path === path);
+    if (!currentFile) return;
     
-    // Calculate new file state
-    const updatedFiles = files.map(file => {
-      if (file.path === path) {
-        const newIncluded = !file.included;
-        return {
-          ...file,
-          included: newIncluded,
-          excluded: newIncluded ? false : file.excluded // Clear exclusion when including
-        };
-      }
-      return file;
+    const newIncluded = !currentFile.included;
+    const currentIncluded = currentSession?.includedFiles || [];
+    const currentExcluded = currentSession?.forceExcludedFiles || [];
+    
+    let newIncludedFiles: string[];
+    let newExcludedFiles: string[];
+    
+    if (newIncluded) {
+      // Add to included, remove from excluded
+      newIncludedFiles = [...currentIncluded.filter(p => p !== path), path];
+      newExcludedFiles = currentExcluded.filter(p => p !== path);
+    } else {
+      // Remove from included
+      newIncludedFiles = currentIncluded.filter(p => p !== path);
+      newExcludedFiles = currentExcluded;
+    }
+    
+    updateCurrentSessionFields({
+      includedFiles: newIncludedFiles,
+      forceExcludedFiles: newExcludedFiles
     });
-    
-    // Update states sequentially
-    setFiles(updatedFiles);
-    setHasUnsavedChanges(true);
-  }, [files, saveToHistory]);
+  }, [files, currentSession, updateCurrentSessionFields]);
 
   // Toggle file exclusion
   const toggleFileExclusion = useCallback((path: string) => {
-    saveToHistory();
+    const currentFile = files.find(f => f.path === path);
+    if (!currentFile) return;
     
-    // Calculate new file state
-    const updatedFiles = files.map(file => {
-      if (file.path === path) {
-        const newExcluded = !file.excluded;
-        return {
-          ...file,
-          excluded: newExcluded,
-          included: newExcluded ? false : file.included // Clear inclusion when excluding
-        };
-      }
-      return file;
+    const newExcluded = !currentFile.excluded;
+    const currentIncluded = currentSession?.includedFiles || [];
+    const currentExcluded = currentSession?.forceExcludedFiles || [];
+    
+    let newIncludedFiles: string[];
+    let newExcludedFiles: string[];
+    
+    if (newExcluded) {
+      // Add to excluded, remove from included
+      newExcludedFiles = [...currentExcluded.filter(p => p !== path), path];
+      newIncludedFiles = currentIncluded.filter(p => p !== path);
+    } else {
+      // Remove from excluded
+      newExcludedFiles = currentExcluded.filter(p => p !== path);
+      newIncludedFiles = currentIncluded;
+    }
+    
+    updateCurrentSessionFields({
+      includedFiles: newIncludedFiles,
+      forceExcludedFiles: newExcludedFiles
     });
-
-    // Update states sequentially
-    setFiles(updatedFiles);
-    setHasUnsavedChanges(true);
-  }, [files, saveToHistory]);
+  }, [files, currentSession, updateCurrentSessionFields]);
 
   // Undo functionality
   const undo = useCallback(() => {
-    if (historyIndex > 0) {
-      const prevState = history[historyIndex - 1];
-      setHistoryIndex(historyIndex - 1);
+    if (historyState.currentIndex > 0) {
+      const newIndex = historyState.currentIndex - 1;
+      const prevState = historyState.entries[newIndex];
+      setHistoryState(prev => ({ ...prev, currentIndex: newIndex }));
+      isUndoRedoInProgress.current = true;
       updateCurrentSessionFields({
         includedFiles: prevState.includedFiles,
         forceExcludedFiles: prevState.forceExcludedFiles
       });
     }
-  }, [history, historyIndex, updateCurrentSessionFields]);
+  }, [historyState, updateCurrentSessionFields]);
 
   // Redo functionality
   const redo = useCallback(() => {
-    if (historyIndex < history.length - 1) {
-      const nextState = history[historyIndex + 1];
-      setHistoryIndex(historyIndex + 1);
+    if (historyState.currentIndex < historyState.entries.length - 1) {
+      const newIndex = historyState.currentIndex + 1;
+      const nextState = historyState.entries[newIndex];
+      setHistoryState(prev => ({ ...prev, currentIndex: newIndex }));
+      isUndoRedoInProgress.current = true;
       updateCurrentSessionFields({
         includedFiles: nextState.includedFiles,
         forceExcludedFiles: nextState.forceExcludedFiles
       });
     }
-  }, [history, historyIndex, updateCurrentSessionFields]);
+  }, [historyState, updateCurrentSessionFields]);
 
   // Sort function
   const sortFiles = useCallback((filesToSort: ExtendedFileInfo[]) => {
@@ -246,139 +306,41 @@ export function useFileSelection(projectDirectory?: string) {
   // Count from all files, not just filtered
   const includedCount = files.filter(f => f.included && !f.excluded).length;
 
-  const saveSelectionsToSession = useCallback(async () => {
-    if (!currentSession) return;
-    
-    const newIncluded = files.filter(f => f.included).map(f => f.path);
-    const newExcluded = files.filter(f => f.excluded).map(f => f.path);
-    
-    await updateCurrentSessionFields({
-      includedFiles: newIncluded,
-      forceExcludedFiles: newExcluded
-    });
-    
-    setHasUnsavedChanges(false);
-  }, [files, currentSession, updateCurrentSessionFields]);
-
-  // Automatic save with 500ms debounce
-  const debouncedSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  
-  useEffect(() => {
-    if (hasUnsavedChanges) {
-      // Clear existing timeout
-      if (debouncedSaveTimeoutRef.current) {
-        clearTimeout(debouncedSaveTimeoutRef.current);
-      }
-      
-      // Set new timeout for 500ms
-      debouncedSaveTimeoutRef.current = setTimeout(() => {
-        saveSelectionsToSession();
-      }, 500);
-    }
-    
-    // Cleanup on unmount
-    return () => {
-      if (debouncedSaveTimeoutRef.current) {
-        clearTimeout(debouncedSaveTimeoutRef.current);
-      }
-    };
-  }, [hasUnsavedChanges, saveSelectionsToSession]);
-
-  // Apply workflow results to file selection
-  const applyWorkflowResultsToSession = useCallback((paths: string[], source: string) => {
-    if (paths && paths.length > 0) {
-      // Save current state to history before applying
-      saveToHistory();
-      
-      // ADD workflow results to existing selection (merge, don't replace)
-      const pathsSet = new Set(paths);
-      const currentIncluded = currentSession?.includedFiles || [];
-      const currentExcluded = currentSession?.forceExcludedFiles || [];
-      
-      // Update the files state to reflect the new additions
-      const updatedFiles = files.map(file => {
-        if (pathsSet.has(file.path)) {
-          return { ...file, included: true, excluded: false };
-        }
-        return file;
-      });
-      
-      setFiles(updatedFiles);
-      
-      // Merge new paths with existing included files
-      const mergedIncluded = [...new Set([...currentIncluded, ...paths])];
-      
-      // Remove any of the new paths from excluded list
-      const newExcludedFiles = currentExcluded.filter(path => !pathsSet.has(path));
-      
-      // Update session with debouncing
-      updateCurrentSessionFields({ 
-        includedFiles: mergedIncluded,
-        forceExcludedFiles: newExcludedFiles
-      });
-      
-      // Mark that we have unsaved changes
-      setHasUnsavedChanges(true);
-      
-      const addedCount = mergedIncluded.length - currentIncluded.length;
-      console.log(`Added ${addedCount} new files from ${source} (${mergedIncluded.length} total selected)`);
-      
-      showNotification({
-        title: "Files added",
-        message: `Added ${addedCount} files to selection`,
-        type: "success",
-      });
-    }
-  }, [currentSession, files, updateCurrentSessionFields, saveToHistory, showNotification, setFiles, setHasUnsavedChanges]);
 
 
   // Select filtered files only
   const selectFiltered = useCallback(() => {
-    saveToHistory();
     
-    // Calculate new file state
     const filteredPaths = new Set(filteredAndSortedFiles.map(f => f.path));
+    const currentIncluded = currentSession?.includedFiles || [];
+    const currentExcluded = currentSession?.forceExcludedFiles || [];
     
-    const updatedFiles = files.map(file => {
-      if (filteredPaths.has(file.path)) {
-        return { ...file, included: true, excluded: false };
-      }
-      return file;
+    // Add filtered paths to included, remove from excluded
+    const newIncluded = [...new Set([...currentIncluded, ...Array.from(filteredPaths)])];
+    const newExcluded = currentExcluded.filter(path => !filteredPaths.has(path));
+    
+    updateCurrentSessionFields({ 
+      includedFiles: newIncluded,
+      forceExcludedFiles: newExcluded
     });
-    
-    // Calculate new included files list
-    const newIncluded = updatedFiles
-      .filter(file => file.included && !file.excluded)
-      .map(file => file.path);
-    
-    // Update states sequentially
-    setFiles(updatedFiles);
-    updateCurrentSessionFields({ includedFiles: newIncluded });
-  }, [saveToHistory, updateCurrentSessionFields, filteredAndSortedFiles, files]);
+  }, [updateCurrentSessionFields, filteredAndSortedFiles, currentSession]);
 
   // Deselect filtered files only
   const deselectFiltered = useCallback(() => {
-    saveToHistory();
     
-    // Calculate new file state
     const filteredPaths = new Set(filteredAndSortedFiles.map(f => f.path));
+    const currentIncluded = currentSession?.includedFiles || [];
+    const currentExcluded = currentSession?.forceExcludedFiles || [];
     
-    const updatedFiles = files.map(file => {
-      if (filteredPaths.has(file.path)) {
-        return { ...file, included: false, excluded: false };
-      }
-      return file;
+    // Remove filtered paths from included and excluded
+    const newIncluded = currentIncluded.filter(path => !filteredPaths.has(path));
+    const newExcluded = currentExcluded.filter(path => !filteredPaths.has(path));
+    
+    updateCurrentSessionFields({ 
+      includedFiles: newIncluded,
+      forceExcludedFiles: newExcluded
     });
-    
-    // Calculate new included files list
-    const newIncluded = updatedFiles
-      .filter(file => file.included && !file.excluded)
-      .map(file => file.path);
-    
-    // Update states sequentially
-    setFiles(updatedFiles);
-    updateCurrentSessionFields({ includedFiles: newIncluded });
-  }, [saveToHistory, updateCurrentSessionFields, filteredAndSortedFiles, files]);
+  }, [updateCurrentSessionFields, filteredAndSortedFiles, currentSession]);
 
 
   return {
@@ -397,14 +359,12 @@ export function useFileSelection(projectDirectory?: string) {
     toggleFileExclusion,
     refreshFiles,
     includedCount,
-    totalCount: files.length,
+    totalCount: allProjectFiles.length,
     undo,
     redo,
-    canUndo: historyIndex > 0,
-    canRedo: historyIndex < history.length - 1,
+    canUndo: historyState.currentIndex > 0,
+    canRedo: historyState.currentIndex < historyState.entries.length - 1,
     selectFiltered,
     deselectFiltered,
-    hasUnsavedChanges,
-    applyWorkflowResultsToSession,
   };
 }

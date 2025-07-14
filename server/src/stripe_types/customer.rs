@@ -30,6 +30,34 @@ pub struct CustomerAddress {
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct TaxId {
+    pub id: String,
+    pub object: String,
+    pub country: Option<String>,
+    pub created: i64,
+    pub customer: String,
+    pub livemode: bool,
+    pub r#type: String,
+    pub value: String,
+    pub verification: Option<TaxIdVerification>,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct TaxIdVerification {
+    pub status: String,
+    pub verified_address: Option<String>,
+    pub verified_name: Option<String>,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct TaxIdList {
+    pub object: String,
+    pub data: Vec<TaxId>,
+    pub has_more: bool,
+    pub url: String,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct CustomerInvoiceSettings {
     pub default_payment_method: Option<String>,
     pub footer: Option<String>,

@@ -42,11 +42,6 @@ export function useSessionActions({
   const { projectDirectory } = useProject();
   const { showNotification } = useNotification();
   
-  // Smart save strategy: Save on meaningful user actions, not arbitrary timeouts
-  const saveOnUserAction = useRef(false);
-  const lastSaveTime = useRef(0);
-  const MIN_SAVE_INTERVAL = 5000; // Only save at most every 5 seconds to avoid spam
-  
   // Use refs to avoid stale closures
   const currentSessionRef = useRef(currentSession);
   const isSessionModifiedRef = useRef(isSessionModified);
@@ -58,35 +53,6 @@ export function useSessionActions({
   useEffect(() => {
     isSessionModifiedRef.current = isSessionModified;
   }, [isSessionModified]);
-
-  // Save on browser events that indicate user is leaving/backgrounding
-  useEffect(() => {
-    const handleSaveEvents = async () => {
-      if (currentSessionRef.current && isSessionModifiedRef.current) {
-        await saveCurrentSession();
-      }
-    };
-
-    // Smart save triggers - when user actually needs it saved
-    const saveOnBlur = () => { saveOnUserAction.current = true; void handleSaveEvents(); };
-    const saveOnVisibilityChange = () => { 
-      if (document.visibilityState === 'hidden') {
-        saveOnUserAction.current = true; 
-        void handleSaveEvents(); 
-      }
-    };
-    const saveOnBeforeUnload = () => { saveOnUserAction.current = true; void handleSaveEvents(); };
-
-    window.addEventListener('blur', saveOnBlur);
-    document.addEventListener('visibilitychange', saveOnVisibilityChange);
-    window.addEventListener('beforeunload', saveOnBeforeUnload);
-
-    return () => {
-      window.removeEventListener('blur', saveOnBlur);
-      document.removeEventListener('visibilitychange', saveOnVisibilityChange);
-      window.removeEventListener('beforeunload', saveOnBeforeUnload);
-    };
-  }, []);
 
   // Handle saving the current session
   const saveCurrentSession = useCallback(async (): Promise<boolean> => {
@@ -167,23 +133,6 @@ export function useSessionActions({
 
   // Direct reference to saveCurrentSession as flushSaves
   const flushSaves = saveCurrentSession;
-  
-  // Smart save function - saves immediately if enough time has passed, or marks for save
-  const smartSave = useCallback(() => {
-    const now = Date.now();
-    const timeSinceLastSave = now - lastSaveTime.current;
-    
-    // If enough time has passed, save immediately
-    if (timeSinceLastSave >= MIN_SAVE_INTERVAL) {
-      lastSaveTime.current = now;
-      if (currentSessionRef.current && isSessionModifiedRef.current) {
-        void saveCurrentSession();
-      }
-    } else {
-      // Mark that we want to save, will be picked up by event listeners
-      saveOnUserAction.current = true;
-    }
-  }, [saveCurrentSession]);
 
 
   // Update specific fields in the current session
@@ -201,26 +150,29 @@ export function useSessionActions({
         const typedKey = key as keyof Session;
         const fieldValue = fields[typedKey];
         if (fieldValue !== undefined && fieldValue !== currentSessionRef.current[typedKey]) {
-          // For arrays, do a shallow content comparison
+          let hasChanged = false;
           if (Array.isArray(fieldValue) && Array.isArray(currentSessionRef.current[typedKey])) {
-            // For file selection arrays, sort before comparison to ensure consistent representation
-            const isFileSelectionArray = typedKey === 'includedFiles' || typedKey === 'forceExcludedFiles';
-            if (isFileSelectionArray) {
-              const sortedNewValue = [...(fieldValue as string[])].sort();
-              const sortedCurrentValue = [...(currentSessionRef.current[typedKey] as string[])].sort();
-              if (!areArraysEqual(sortedNewValue, sortedCurrentValue)) {
-                changed = true;
-                (updatedFields as any)[typedKey] = sortedNewValue;
+            // For file selection arrays, compare content regardless of order
+            if (typedKey === 'includedFiles' || typedKey === 'forceExcludedFiles') {
+              const sortedNew = [...(fieldValue as string[])].sort();
+              const sortedCurrent = [...(currentSessionRef.current[typedKey] as string[])].sort();
+              if (!areArraysEqual(sortedNew, sortedCurrent)) {
+                hasChanged = true;
               }
             } else {
+              // For other arrays, a simple content check is enough
               if (!areArraysEqual(fieldValue as unknown[], currentSessionRef.current[typedKey] as unknown[])) {
-                changed = true;
-                (updatedFields as any)[typedKey] = fieldValue;
+                hasChanged = true;
               }
             }
           } else {
+            // For non-array fields
+            hasChanged = true;
+          }
+
+          if (hasChanged) {
             changed = true;
-            (updatedFields as any)[typedKey] = fieldValue;
+            (updatedFields as any)[typedKey] = fieldValue; // IMPORTANT: Store the original fieldValue
           }
         }
       }
@@ -230,14 +182,14 @@ export function useSessionActions({
         setSessionModified(true);
         setCurrentSession(updatedSession);
         
-        // Use smart save instead of debounced auto-save
-        smartSave();
+        // Save immediately
+        void saveCurrentSession();
       }
     },
     [
       setCurrentSession, // Stable setter from SessionStateContext
       setSessionModified, // Stable setter from SessionStateContext
-      smartSave, // Memoized function dependency
+      saveCurrentSession, // Memoized function dependency
     ]
   );
 
@@ -539,6 +491,36 @@ export function useSessionActions({
     [setSessionError, onSessionNeedsReload]
   );
 
+  const applyFileSelectionUpdate = useCallback(
+    (paths: string[], source?: string) => {
+      if (!currentSessionRef.current) return;
+      
+      const { includedFiles = [], forceExcludedFiles = [] } = currentSessionRef.current;
+      
+      // Extend logic: add new paths to existing included files
+      const newIncludedFiles = Array.from(new Set([...includedFiles, ...paths]));
+      
+      // Remove newly included paths from excluded files
+      const newExcludedFiles = forceExcludedFiles.filter(
+        (path) => !paths.includes(path)
+      );
+      
+      updateCurrentSessionFields({
+        includedFiles: newIncludedFiles,
+        forceExcludedFiles: newExcludedFiles,
+      });
+      
+      if (source) {
+        showNotification({
+          title: 'Files Applied',
+          message: `Applied ${paths.length} files from ${source}`,
+          type: 'success',
+        });
+      }
+    },
+    [updateCurrentSessionFields, showNotification]
+  );
+
   return useMemo(
     () => ({
       saveCurrentSession,
@@ -550,6 +532,7 @@ export function useSessionActions({
       deleteNonActiveSession,
       renameActiveSession,
       renameSession,
+      applyFileSelectionUpdate,
     }),
     [
       saveCurrentSession,
@@ -561,6 +544,7 @@ export function useSessionActions({
       deleteNonActiveSession,
       renameActiveSession,
       renameSession,
+      applyFileSelectionUpdate,
     ]
   );
 }

@@ -199,7 +199,9 @@ impl ReconciliationService {
         let result = sqlx::query_as!(
             UserCredit,
             r#"
-            SELECT user_id, balance, currency, created_at, updated_at
+            SELECT user_id, balance, currency, free_credit_balance, 
+                   free_credits_granted_at, free_credits_expires_at, free_credits_expired,
+                   created_at, updated_at
             FROM user_credits
             ORDER BY user_id
             "#
@@ -219,7 +221,7 @@ impl ReconciliationService {
             r#"
             SELECT 
                 user_id,
-                SUM(amount) as transaction_total,
+                SUM(net_amount) as transaction_total,
                 MAX(created_at) as last_transaction_date,
                 COUNT(*) as transaction_count
             FROM credit_transactions 
@@ -289,7 +291,7 @@ impl ReconciliationService {
         let result = sqlx::query!(
             r#"
             SELECT 
-                COALESCE(SUM(amount), 0) as transaction_total,
+                COALESCE(SUM(net_amount), 0) as transaction_total,
                 MAX(created_at) as last_transaction_date,
                 COUNT(*) as transaction_count
             FROM credit_transactions 

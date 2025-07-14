@@ -6,9 +6,18 @@ export interface ParsedStep {
 
 export const parsePlanResponseContent = (response: string | undefined | null): string => {
   if (!response || response.trim() === '') {
-    return 'No content available.';
+    return '';
   }
-  
+
+  try {
+    const parsed = JSON.parse(response);
+    if (parsed && typeof parsed.content === 'string') {
+      return parsed.content.trim();
+    }
+  } catch (e) {
+    // Not a JSON string, it's a plain string.
+  }
+
   return response.trim();
 };
 

@@ -254,16 +254,17 @@ fn main() {
             // Workflow commands (new stage-based approach)
             commands::workflow_commands::start_file_finder_workflow,
             commands::workflow_commands::start_web_search_workflow,
-            commands::workflow_commands::get_file_finder_workflow_status,
+            commands::workflow_commands::get_workflow_status,
             commands::workflow_commands::cancel_workflow,
-            commands::workflow_commands::pause_file_finder_workflow,
-            commands::workflow_commands::resume_file_finder_workflow,
-            commands::workflow_commands::get_file_finder_workflow_results,
+            commands::workflow_commands::pause_workflow,
+            commands::workflow_commands::resume_workflow,
+            commands::workflow_commands::get_workflow_results_legacy,
+            commands::workflow_commands::get_workflow_results,
             commands::workflow_commands::get_all_workflows_command,
             commands::workflow_commands::get_workflow_details_command,
+            commands::workflow_commands::retry_workflow_command,
             commands::workflow_commands::retry_workflow_stage_command,
             commands::workflow_commands::get_workflow_state,
-            commands::workflow_commands::get_workflow_results,
             
             
             // Generic task commands
@@ -317,6 +318,8 @@ fn main() {
             commands::session_commands::update_session_fields_command,
             commands::session_commands::get_task_description_history_command,
             commands::session_commands::sync_task_description_history_command,
+            commands::session_commands::get_file_selection_history_command,
+            commands::session_commands::sync_file_selection_history_command,
             
             // Setup commands
             commands::setup_commands::trigger_initial_keychain_access,

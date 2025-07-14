@@ -132,7 +132,9 @@ const ImplementationPlanCard = React.memo<ImplementationPlanCardProps>(({
   const sessionName = getJobDisplaySessionName(plan);
 
   // Determine if the job has content to display
-  const hasContent = !!plan.response || isStreaming;
+  // For completed jobs, we assume they have content (will be fetched on demand)
+  // For streaming jobs, we can view the stream
+  const hasContent = JOB_STATUSES.COMPLETED.includes(plan.status) || isStreaming;
 
   return (
     <Card className="relative mb-4 overflow-hidden">

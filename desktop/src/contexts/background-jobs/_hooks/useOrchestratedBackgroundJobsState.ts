@@ -268,7 +268,6 @@ export function useOrchestratedBackgroundJobsState({
   // Listen for SSE events from the Rust backend
   useEffect(() => {
     let unlistenUsageUpdatePromise: Promise<() => void> | null = null;
-    let unlistenResponseUpdatePromise: Promise<() => void> | null = null;
     let unlistenJobCreatedPromise: Promise<() => void> | null = null;
     let unlistenJobDeletedPromise: Promise<() => void> | null = null;
     let unlistenJobUpdatedPromise: Promise<() => void> | null = null;
@@ -329,8 +328,8 @@ export function useOrchestratedBackgroundJobsState({
               id: payload.job_id,
               tokensSent: payload.tokens_sent,
               tokensReceived: payload.tokens_received,
-              cacheWriteTokens: payload.cache_write_tokens || null,
-              cacheReadTokens: payload.cache_read_tokens || null,
+              cacheWriteTokens: payload.cache_write_tokens ?? null,
+              cacheReadTokens: payload.cache_read_tokens ?? null,
               actualCost: payload.estimated_cost,
               isFinalized: false, // This is estimated cost
               updatedAt: Date.now(),
@@ -340,26 +339,6 @@ export function useOrchestratedBackgroundJobsState({
           }
         });
 
-        // Listen for response update events
-        unlistenResponseUpdatePromise = listen("job_response_update", async (event) => {
-          try {
-            const payload = event.payload as {
-              job_id: string;
-              response_chunk: string;
-              chars_received: number;
-              estimated_tokens: number;
-              visual_update: boolean;
-            };
-            
-            upsertJob({
-              id: payload.job_id,
-              response: (jobs.find(j => j.id === payload.job_id)?.response || '') + payload.response_chunk,
-              updatedAt: Date.now(),
-            });
-          } catch (err) {
-            console.error("[BackgroundJobs] Error processing job_response_update:", err);
-          }
-        });
       } catch (err) {
         console.error("[BackgroundJobs] Error setting up job listeners:", err);
       }
@@ -376,9 +355,6 @@ export function useOrchestratedBackgroundJobsState({
 
       if (unlistenUsageUpdatePromise) {
         safeCleanupListenerPromise(unlistenUsageUpdatePromise);
-      }
-      if (unlistenResponseUpdatePromise) {
-        safeCleanupListenerPromise(unlistenResponseUpdatePromise);
       }
       if (unlistenJobCreatedPromise) {
         safeCleanupListenerPromise(unlistenJobCreatedPromise);

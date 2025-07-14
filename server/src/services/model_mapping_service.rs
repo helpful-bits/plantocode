@@ -102,8 +102,8 @@ impl ModelMappingService {
                 p.status as provider_status,
                 mpm.provider_model_id as resolved_model_id
             FROM models m
-            JOIN providers p ON m.provider_id = p.id
-            JOIN model_provider_mappings mpm ON m.id = mpm.internal_model_id AND p.code = mpm.provider_code
+            JOIN model_provider_mappings mpm ON m.id = mpm.internal_model_id
+            JOIN providers p ON p.code = mpm.provider_code
             WHERE m.id = $1 AND p.code = $2
             AND m.status = 'active' AND p.status = 'active'
             "#,

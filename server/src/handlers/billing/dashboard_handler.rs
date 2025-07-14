@@ -1,4 +1,5 @@
 use actix_web::{web, HttpResponse};
+use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use crate::error::AppError;
 use crate::services::billing_service::BillingService;
@@ -12,7 +13,7 @@ use log::{debug, info, error};
 /// Get consolidated billing dashboard data
 pub async fn get_billing_dashboard_data_handler(
     user: web::ReqData<AuthenticatedUser>,
-    billing_service: web::Data<BillingService>,
+    billing_service: web::Data<Arc<BillingService>>,
 ) -> Result<HttpResponse, AppError> {
     debug!("Getting billing dashboard data for user: {}", user.user_id);
     
@@ -25,7 +26,7 @@ pub async fn get_billing_dashboard_data_handler(
 /// Get customer billing information for read-only display
 pub async fn get_customer_billing_info_handler(
     user: web::ReqData<AuthenticatedUser>,
-    billing_service: web::Data<BillingService>,
+    billing_service: web::Data<Arc<BillingService>>,
 ) -> Result<HttpResponse, AppError> {
     debug!("Getting customer billing info for user: {}", user.user_id);
     

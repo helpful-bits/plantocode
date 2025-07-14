@@ -1,12 +1,11 @@
 "use client";
 
-import { useContext, useRef, useCallback } from "react";
+import { useContext, useCallback } from "react";
 
 import { BackgroundJobsContext } from "@/contexts/background-jobs";
 import { SidebarHeader, StatusMessages } from "@/ui";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/ui/collapsible";
 import { getSidebarStyle } from "@/utils/ui-utils";
-import { FileBrowser, type FileBrowserHandle } from "../generate-prompt/file-browser";
 import { type BackgroundJob } from "@/types/session-types";
 import { useSessionStateContext, useSessionActionsContext } from "@/contexts/session";
 
@@ -25,8 +24,7 @@ import { JobDetailsModal } from "./job-details-modal";
 export const BackgroundJobsSidebar = () => {
   const { jobs, isLoading, error } = useContext(BackgroundJobsContext);
   const { activeSessionId, currentSession } = useSessionStateContext();
-  const { updateCurrentSessionFields } = useSessionActionsContext();
-  const fileBrowserRef = useRef<FileBrowserHandle>(null);
+  const { updateCurrentSessionFields, applyFileSelectionUpdate } = useSessionActionsContext();
 
   // Use the extracted sidebar state manager hook
   const {
@@ -133,8 +131,8 @@ export const BackgroundJobsSidebar = () => {
       }
     }
     
-    if (paths.length > 0 && fileBrowserRef.current) {
-      fileBrowserRef.current.handleApplyFilesFromJob(paths, `job ${job.id}`);
+    if (paths.length > 0) {
+      applyFileSelectionUpdate(paths, `job ${job.id}`);
     }
   };
 
@@ -193,11 +191,6 @@ export const BackgroundJobsSidebar = () => {
 
       {/* Job Details Modal - Moved outside sidebar container to fix z-index stacking */}
       <JobDetailsModal job={selectedJob} onClose={() => setSelectedJob(null)} />
-      
-      {/* Hidden FileBrowser to access its apply function */}
-      <div style={{ display: 'none' }}>
-        <FileBrowser ref={fileBrowserRef} />
-      </div>
     </>
   );
 };

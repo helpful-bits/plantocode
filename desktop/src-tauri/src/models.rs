@@ -752,10 +752,26 @@ pub struct FinalCostResponse {
 #[serde(rename_all = "camelCase")]
 pub struct FinalCostData {
     pub request_id: String,
-    pub service_name: String,
+    pub user_id: String,
     pub final_cost: f64,
     pub tokens_input: i64,
     pub tokens_output: i64,
     pub cache_write_tokens: i64,
     pub cache_read_tokens: i64,
+    pub service_name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileSelectionHistoryEntry {
+    pub included_files: Vec<String>,
+    pub force_excluded_files: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileSelectionHistoryEntryWithTimestamp {
+    pub included_files: Vec<String>,
+    pub force_excluded_files: Vec<String>,
+    pub created_at: i64,
 }

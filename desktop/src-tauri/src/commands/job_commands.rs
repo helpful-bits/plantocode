@@ -40,7 +40,7 @@ pub async fn get_active_jobs_command(app_handle: AppHandle) -> AppResult<Vec<cra
         .inner()
         .clone();
 
-    repo.get_all_visible_jobs()
+    repo.get_all_visible_jobs_lightweight()
         .await
         .map_err(|e| AppError::DatabaseError(format!("Failed to get active jobs: {}", e)))
 }
@@ -119,7 +119,7 @@ pub async fn get_all_visible_jobs_command(app_handle: AppHandle) -> AppResult<Ve
         .inner()
         .clone();
 
-    repo.get_all_visible_jobs()
+    repo.get_all_visible_jobs_lightweight()
         .await
         .map_err(|e| AppError::DatabaseError(format!("Failed to get all visible jobs: {}", e)))
 }

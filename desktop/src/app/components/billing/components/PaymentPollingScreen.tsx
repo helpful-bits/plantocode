@@ -15,8 +15,7 @@ interface PaymentPollingScreenProps {
 }
 
 const INITIAL_POLLING_INTERVAL = 1000;
-const POLLING_BACKOFF_FACTOR = 1.5;
-const MAX_POLLING_INTERVAL = 10000;
+const MAX_POLLING_INTERVAL = 30000;
 const TIMEOUT_DURATION = 300000;
 
 export function PaymentPollingScreen({
@@ -28,24 +27,29 @@ export function PaymentPollingScreen({
   const [status, setStatus] = useState<'polling' | 'success' | 'error' | 'timeout'>('polling');
   const [message, setMessage] = useState<string>("Waiting for payment confirmation...");
   const [error, setError] = useState<string | null>(null);
+  const [pollCount, setPollCount] = useState<number>(0);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const currentPollingIntervalRef = useRef<number>(INITIAL_POLLING_INTERVAL);
+  const isPollingPausedRef = useRef<boolean>(false);
 
   useEffect(() => {
     let isMounted = true;
 
     const pollPaymentStatus = async () => {
+      if (isPollingPausedRef.current || !isMounted) return;
+      
       try {
         const result = await getCheckoutSessionStatus(sessionId);
         
         if (!isMounted) return;
 
+        setPollCount(prev => prev + 1);
+
         if (result.status === 'complete' && (result.paymentStatus === 'paid' || result.paymentStatus === 'no_payment_required')) {
           setStatus('success');
           setMessage("Payment completed successfully!");
           cleanup();
-          // Dispatch billing-data-updated event to trigger reactive balance update
           window.dispatchEvent(new Event('billing-data-updated'));
           onSuccess();
         } else if (result.status === 'expired') {
@@ -75,15 +79,12 @@ export function PaymentPollingScreen({
     };
 
     const scheduleNextPoll = () => {
-      if (!isMounted) return;
+      if (!isMounted || isPollingPausedRef.current) return;
       
       const currentInterval = currentPollingIntervalRef.current;
       intervalRef.current = setTimeout(pollPaymentStatus, currentInterval);
       
-      const nextInterval = Math.min(
-        currentInterval * POLLING_BACKOFF_FACTOR,
-        MAX_POLLING_INTERVAL
-      );
+      const nextInterval = Math.min(currentInterval * 2, MAX_POLLING_INTERVAL);
       currentPollingIntervalRef.current = nextInterval;
     };
 
@@ -98,9 +99,26 @@ export function PaymentPollingScreen({
       }
     };
 
-    // Set timeout
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        isPollingPausedRef.current = true;
+        if (intervalRef.current) {
+          clearTimeout(intervalRef.current);
+          intervalRef.current = null;
+        }
+      } else {
+        isPollingPausedRef.current = false;
+        if (status === 'polling') {
+          currentPollingIntervalRef.current = INITIAL_POLLING_INTERVAL;
+          pollPaymentStatus();
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
     timeoutRef.current = setTimeout(() => {
-      if (isMounted) {
+      if (isMounted && status === 'polling') {
         setStatus('timeout');
         setError("Payment confirmation timed out. Please check your payment status or try again.");
         cleanup();
@@ -108,14 +126,14 @@ export function PaymentPollingScreen({
       }
     }, TIMEOUT_DURATION);
 
-    // Initial poll
     pollPaymentStatus();
 
     return () => {
       isMounted = false;
       cleanup();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [sessionId, onSuccess, onError]);
+  }, [sessionId, onSuccess, onError, status]);
 
   const handleCancel = () => {
     if (intervalRef.current) {
@@ -153,6 +171,19 @@ export function PaymentPollingScreen({
       default:
         return 'text-gray-600';
     }
+  };
+
+  const getPollingIndicator = () => {
+    const currentInterval = currentPollingIntervalRef.current / 1000;
+    return (
+      <div className="text-xs text-muted-foreground space-y-1">
+        <div>Checking payment status every {currentInterval.toFixed(0)} seconds</div>
+        <div>Attempts made: {pollCount}</div>
+        {isPollingPausedRef.current && (
+          <div className="text-amber-600">Polling paused - tab not visible</div>
+        )}
+      </div>
+    );
   };
 
   return (
@@ -193,6 +224,8 @@ export function PaymentPollingScreen({
           <div className="text-xs text-muted-foreground">
             This window will automatically update when payment is confirmed
           </div>
+          
+          {getPollingIndicator()}
         </div>
       )}
 
