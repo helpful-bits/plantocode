@@ -29,9 +29,17 @@ impl SessionRepository {
         let created_at: i64 = row.try_get::<'_, i64, _>("created_at")?;
         let updated_at: i64 = row.try_get::<'_, i64, _>("updated_at")?;
         
-        // Fetch included and excluded files
-        let included_files = self.get_included_files(&id).await?;
-        let force_excluded_files = self.get_excluded_files(&id).await?;
+        // Read included and excluded files from TEXT columns
+        let included_files_text: Option<String> = row.try_get("included_files")?;
+        let force_excluded_files_text: Option<String> = row.try_get("force_excluded_files")?;
+        
+        let included_files = included_files_text
+            .map(|text| text.lines().filter(|line| !line.is_empty()).map(|line| line.to_string()).collect())
+            .unwrap_or_else(Vec::new);
+        
+        let force_excluded_files = force_excluded_files_text
+            .map(|text| text.lines().filter(|line| !line.is_empty()).map(|line| line.to_string()).collect())
+            .unwrap_or_else(Vec::new);
         
         Ok(Session {
             id,
@@ -91,41 +99,6 @@ impl SessionRepository {
         }
     }
     
-    /// Get included files for a session
-    pub async fn get_included_files(&self, session_id: &str) -> AppResult<Vec<String>> {
-        let rows = sqlx::query("SELECT path FROM included_files WHERE session_id = $1")
-            .bind(session_id)
-            .fetch_all(&*self.pool)
-            .await
-            .map_err(|e| AppError::DatabaseError(format!("Failed to fetch included files: {}", e)))?;
-            
-        let mut included_files = Vec::new();
-        
-        for row in rows {
-            let path: String = row.try_get::<'_, String, _>("path")?;
-            included_files.push(path);
-        }
-        
-        Ok(included_files)
-    }
-    
-    /// Get excluded files for a session
-    pub async fn get_excluded_files(&self, session_id: &str) -> AppResult<Vec<String>> {
-        let rows = sqlx::query("SELECT path FROM excluded_files WHERE session_id = $1")
-            .bind(session_id)
-            .fetch_all(&*self.pool)
-            .await
-            .map_err(|e| AppError::DatabaseError(format!("Failed to fetch excluded files: {}", e)))?;
-            
-        let mut excluded_files = Vec::new();
-        
-        for row in rows {
-            let path: String = row.try_get::<'_, String, _>("path")?;
-            excluded_files.push(path);
-        }
-        
-        Ok(excluded_files)
-    }
     
     /// Create a new session
     pub async fn create_session(&self, session: &Session) -> AppResult<()> {
@@ -142,8 +115,9 @@ impl SessionRepository {
             INSERT INTO sessions (
                 id, name, project_directory, project_hash, 
                 task_description, search_term, search_selected_files_only, model_used,
+                included_files, force_excluded_files,
                 created_at, updated_at
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
             "#)
             .bind(&session.id)
             .bind(&session.name)
@@ -153,6 +127,8 @@ impl SessionRepository {
             .bind(&session.search_term)
             .bind(if session.search_selected_files_only { 1i64 } else { 0i64 })
             .bind(&session.model_used)
+            .bind(session.included_files.join("\n"))
+            .bind(session.force_excluded_files.join("\n"))
             .bind(session.created_at)
             .bind(session.updated_at)
             .execute(&mut *tx)
@@ -164,37 +140,6 @@ impl SessionRepository {
             log::error!("Repository: Failed to insert session {}: {}", session.id, e);
             return Err(AppError::DatabaseError(format!("Failed to insert session: {}", e)));
         }
-        
-        // Insert included files
-        for path in &session.included_files {
-            let result = sqlx::query("INSERT INTO included_files (session_id, path) VALUES ($1, $2)")
-                .bind(&session.id)
-                .bind(path)
-                .execute(&mut *tx)
-                .await;
-                
-            if let Err(e) = result {
-                // Rollback transaction on error
-                let _ = tx.rollback().await;
-                log::error!("Repository: Failed to insert included file {} for session {}: {}", path, session.id, e);
-                return Err(AppError::DatabaseError(format!("Failed to insert included file: {}", e)));
-            }
-        }
-        
-        // Insert excluded files
-        for path in &session.force_excluded_files {
-                let result = sqlx::query("INSERT INTO excluded_files (session_id, path) VALUES ($1, $2)")
-                    .bind(&session.id)
-                    .bind(path)
-                    .execute(&mut *tx)
-                    .await;
-                    
-                if let Err(e) = result {
-                    // Rollback transaction on error
-                    let _ = tx.rollback().await;
-                    return Err(AppError::DatabaseError(format!("Failed to insert excluded file: {}", e)));
-                }
-            }
         
         // Commit transaction
         tx.commit().await
@@ -223,8 +168,10 @@ impl SessionRepository {
                 search_term = $5,
                 search_selected_files_only = $6,
                 model_used = $7,
-                updated_at = $8
-            WHERE id = $9
+                included_files = $8,
+                force_excluded_files = $9,
+                updated_at = $10
+            WHERE id = $11
             "#)
             .bind(&session.name)
             .bind(&session.project_directory)
@@ -233,6 +180,8 @@ impl SessionRepository {
             .bind(&session.search_term)
             .bind(if session.search_selected_files_only { 1i64 } else { 0i64 })
             .bind(&session.model_used)
+            .bind(session.included_files.join("\n"))
+            .bind(session.force_excluded_files.join("\n"))
             .bind(session.updated_at)
             .bind(&session.id)
             .execute(&mut *tx)
@@ -244,60 +193,6 @@ impl SessionRepository {
             log::error!("Repository: Failed to update session {}: {}", session.id, e);
             return Err(AppError::DatabaseError(format!("Failed to update session: {}", e)));
         }
-        
-        // Delete existing included files
-        let result = sqlx::query("DELETE FROM included_files WHERE session_id = $1")
-            .bind(&session.id)
-            .execute(&mut *tx)
-            .await;
-            
-        if let Err(e) = result {
-            // Rollback transaction on error
-            let _ = tx.rollback().await;
-            return Err(AppError::DatabaseError(format!("Failed to delete existing included files: {}", e)));
-        }
-        
-        // Delete existing excluded files
-        let result = sqlx::query("DELETE FROM excluded_files WHERE session_id = $1")
-            .bind(&session.id)
-            .execute(&mut *tx)
-            .await;
-            
-        if let Err(e) = result {
-            // Rollback transaction on error
-            let _ = tx.rollback().await;
-            return Err(AppError::DatabaseError(format!("Failed to delete existing excluded files: {}", e)));
-        }
-        
-        // Insert included files
-        for path in &session.included_files {
-            let result = sqlx::query("INSERT INTO included_files (session_id, path) VALUES ($1, $2)")
-                .bind(&session.id)
-                .bind(path)
-                .execute(&mut *tx)
-                .await;
-                
-            if let Err(e) = result {
-                // Rollback transaction on error
-                let _ = tx.rollback().await;
-                return Err(AppError::DatabaseError(format!("Failed to insert included file: {}", e)));
-            }
-        }
-        
-        // Insert excluded files
-        for path in &session.force_excluded_files {
-                let result = sqlx::query("INSERT INTO excluded_files (session_id, path) VALUES ($1, $2)")
-                    .bind(&session.id)
-                    .bind(path)
-                    .execute(&mut *tx)
-                    .await;
-                    
-                if let Err(e) = result {
-                    // Rollback transaction on error
-                    let _ = tx.rollback().await;
-                    return Err(AppError::DatabaseError(format!("Failed to insert excluded file: {}", e)));
-                }
-            }
         
         // Commit transaction
         tx.commit().await
@@ -423,6 +318,52 @@ impl SessionRepository {
             .execute(&*self.pool)
             .await
             .map_err(|e| AppError::DatabaseError(format!("Failed to clear task description history: {}", e)))?;
+        
+        Ok(())
+    }
+
+    pub async fn get_file_selection_history(&self, session_id: &str) -> AppResult<Vec<(String, String, i64)>> {
+        let rows = sqlx::query("SELECT included_files, force_excluded_files, created_at FROM file_selection_history WHERE session_id = $1 ORDER BY created_at ASC")
+            .bind(session_id)
+            .fetch_all(&*self.pool)
+            .await
+            .map_err(|e| AppError::DatabaseError(format!("Failed to fetch file selection history: {}", e)))?;
+        
+        let mut history = Vec::new();
+        for row in rows {
+            let included_files: String = row.try_get("included_files")?;
+            let force_excluded_files: String = row.try_get("force_excluded_files")?;
+            let created_at: i64 = row.try_get("created_at")?;
+            history.push((included_files, force_excluded_files, created_at));
+        }
+        
+        Ok(history)
+    }
+
+    pub async fn sync_file_selection_history(&self, session_id: &str, history: &[(String, String)]) -> AppResult<()> {
+        let mut tx = self.pool.begin().await
+            .map_err(|e| AppError::DatabaseError(format!("Failed to begin transaction: {}", e)))?;
+        
+        sqlx::query("DELETE FROM file_selection_history WHERE session_id = $1")
+            .bind(session_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| AppError::DatabaseError(format!("Failed to delete existing file selection history: {}", e)))?;
+        
+        let now = crate::utils::date_utils::get_timestamp();
+        for (included_files, force_excluded_files) in history {
+            sqlx::query("INSERT INTO file_selection_history (session_id, included_files, force_excluded_files, created_at) VALUES ($1, $2, $3, $4)")
+                .bind(session_id)
+                .bind(included_files)
+                .bind(force_excluded_files)
+                .bind(now)
+                .execute(&mut *tx)
+                .await
+                .map_err(|e| AppError::DatabaseError(format!("Failed to insert file selection history: {}", e)))?;
+        }
+        
+        tx.commit().await
+            .map_err(|e| AppError::DatabaseError(format!("Failed to commit transaction: {}", e)))?;
         
         Ok(())
     }

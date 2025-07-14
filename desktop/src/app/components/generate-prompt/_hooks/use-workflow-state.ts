@@ -2,14 +2,15 @@
 
 import { useContext, useMemo, useCallback, useEffect, useRef } from "react";
 import { BackgroundJobsContext } from "@/contexts/background-jobs";
-import { useSessionStateContext } from "@/contexts/session";
+import { useSessionStateContext, useSessionActionsContext } from "@/contexts/session";
 import { JOB_STATUSES } from "@/types/session-types";
 import { startFileFinderWorkflowAction, cancelWorkflowAction } from "@/actions/workflows";
 
-export function useWorkflowState(onWorkflowComplete?: (files: string[]) => void) {
+export function useWorkflowState() {
   const { jobs } = useContext(BackgroundJobsContext);
   const { currentSession } = useSessionStateContext();
-  const lastCompletedJobIdRef = useRef<string | null>(null);
+  const { applyFileSelectionUpdate } = useSessionActionsContext();
+  const processedJobIds = useRef<Set<string>>(new Set());
 
   // Check for active file-finding stage jobs instead of master workflow job
   const activeFileFindingJob = useMemo(() => {
@@ -91,25 +92,27 @@ export function useWorkflowState(onWorkflowComplete?: (files: string[]) => void)
   }, [fileFinderWorkflowJob]);
 
   useEffect(() => {
-    if (!fileFinderWorkflowJob || !onWorkflowComplete) return;
+    if (!fileFinderWorkflowJob) return;
     
-    if (fileFinderWorkflowJob.status === 'completed' && 
-        fileFinderWorkflowJob.id !== lastCompletedJobIdRef.current) {
-      lastCompletedJobIdRef.current = fileFinderWorkflowJob.id;
+    if (fileFinderWorkflowJob.status === 'completed' && !processedJobIds.current.has(fileFinderWorkflowJob.id)) {
+      processedJobIds.current.add(fileFinderWorkflowJob.id);
       
-      try {
-        const response = fileFinderWorkflowJob.response;
-        if (response && typeof response === 'string') {
-          const parsedResponse = JSON.parse(response);
-          if (parsedResponse.selectedFiles && Array.isArray(parsedResponse.selectedFiles)) {
-            onWorkflowComplete(parsedResponse.selectedFiles);
+      // Only apply if this workflow belongs to the current session
+      if (fileFinderWorkflowJob.sessionId === currentSession?.id) {
+        try {
+          const parsedResponse = typeof fileFinderWorkflowJob.response === 'string' 
+            ? JSON.parse(fileFinderWorkflowJob.response) 
+            : fileFinderWorkflowJob.response;
+          
+          if (parsedResponse?.selectedFiles && Array.isArray(parsedResponse.selectedFiles)) {
+            applyFileSelectionUpdate(parsedResponse.selectedFiles, "AI File Finder");
           }
+        } catch (error) {
+          console.error('Failed to parse workflow response:', error);
         }
-      } catch (error) {
-        console.error("Failed to parse workflow response:", error);
       }
     }
-  }, [fileFinderWorkflowJob, onWorkflowComplete]);
+  }, [fileFinderWorkflowJob, currentSession?.id, applyFileSelectionUpdate]);
 
   return {
     findingFiles,

@@ -10,7 +10,7 @@ use crate::models::{JobStatus, TaskType};
 use crate::db_utils::BackgroundJobRepository;
 use crate::jobs::processors::utils::parsing_utils;
 use crate::jobs::processors::{LlmTaskRunner, LlmTaskConfigBuilder, LlmPromptContext};
-use crate::utils::{get_timestamp, xml_utils::extract_xml_from_markdown};
+use crate::utils::{get_timestamp, xml_utils::extract_xml_from_markdown, extract_file_paths_from_implementation_plan};
 use crate::jobs::job_processor_utils;
 use crate::jobs::processors::utils::prompt_utils;
 
@@ -96,6 +96,12 @@ impl JobProcessor for ImplementationPlanMergeProcessor {
         
         if source_plans.is_empty() {
             return Err(AppError::JobError("No valid source plans found".to_string()));
+        }
+        
+        // Extract file paths from raw implementation plan XML
+        for (_index, plan_xml) in &source_plans {
+            let extracted_paths = extract_file_paths_from_implementation_plan(plan_xml);
+            all_relevant_files.extend(extracted_paths);
         }
         
         // Load file contents for context (similar to implementation plan processor)
@@ -251,6 +257,10 @@ impl JobProcessor for ImplementationPlanMergeProcessor {
             .with_tokens(
                 usage_for_result.as_ref().map(|u| u.prompt_tokens as u32),
                 usage_for_result.as_ref().map(|u| u.completion_tokens as u32)
+            )
+            .with_cache_tokens(
+                usage_for_result.as_ref().map(|u| u.cache_write_tokens as i64),
+                usage_for_result.as_ref().map(|u| u.cache_read_tokens as i64)
             )
             .with_system_prompt_template(system_prompt_template)
             .with_actual_cost(actual_cost);

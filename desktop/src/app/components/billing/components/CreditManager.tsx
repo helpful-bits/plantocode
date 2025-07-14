@@ -24,13 +24,17 @@ export interface CreditManagerProps {
 type CurrentView = "selection" | "polling";
 export const CreditManager = ({ isOpen, onClose }: CreditManagerProps) => {
   const [currentView, setCurrentView] = useState<CurrentView>("selection");
-  const [purchaseAmount, setPurchaseAmount] = useState<string>("");
+  const [selectedTier, setSelectedTier] = useState<number | null>(null);
+  const [customAmount, setCustomAmount] = useState<string>("");
+  const [showCustomInput, setShowCustomInput] = useState<boolean>(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [balance, setBalance] = useState<number>(0);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
   const { showNotification } = useNotification();
+
+  const PRESET_TIERS = [10, 25, 50];
 
   useEffect(() => {
     if (isOpen) {
@@ -50,10 +54,57 @@ export const CreditManager = ({ isOpen, onClose }: CreditManagerProps) => {
     }
   };
 
+  const calculateFee = (amount: number): { feeRate: number; feeAmount: number; netAmount: number } => {
+    let feeRate: number;
+    if (amount < 30) {
+      feeRate = 0.20;
+    } else if (amount < 300) {
+      feeRate = 0.10;
+    } else {
+      feeRate = 0.05;
+    }
+    
+    const feeAmount = amount * feeRate;
+    const netAmount = amount - feeAmount;
+    
+    return { feeRate, feeAmount, netAmount };
+  };
+
+  const getCurrentAmount = (): number | null => {
+    if (selectedTier !== null) {
+      return selectedTier;
+    }
+    if (showCustomInput && customAmount) {
+      const amount = parseFloat(customAmount);
+      return isNaN(amount) ? null : amount;
+    }
+    return null;
+  };
+
+  const handleTierSelect = (amount: number) => {
+    setSelectedTier(amount);
+    setShowCustomInput(false);
+    setCustomAmount("");
+    setError(null);
+  };
+
+  const handleOtherClick = () => {
+    setSelectedTier(null);
+    setShowCustomInput(true);
+    setError(null);
+  };
+
+  const handleCustomAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    if (value === '' || /^\d*\.?\d*$/.test(value)) {
+      setCustomAmount(value);
+      setError(null);
+    }
+  };
 
   const handlePurchase = async () => {
-    const amount = parseFloat(purchaseAmount);
-    if (isNaN(amount) || amount < 1 || amount > 1000) {
+    const amount = getCurrentAmount();
+    if (!amount || amount < 1 || amount > 1000) {
       setError("Please enter a valid amount between $1 and $1000");
       return;
     }
@@ -89,10 +140,11 @@ export const CreditManager = ({ isOpen, onClose }: CreditManagerProps) => {
     
     setCurrentView("selection");
     setSessionId(null);
-    setPurchaseAmount("");
+    setSelectedTier(null);
+    setCustomAmount("");
+    setShowCustomInput(false);
     setError(null);
     
-    // Dispatch event to notify other components about billing data update
     window.dispatchEvent(new CustomEvent('billing-data-updated'));
     onClose();
   };
@@ -117,28 +169,16 @@ export const CreditManager = ({ isOpen, onClose }: CreditManagerProps) => {
   const handleClose = () => {
     setCurrentView("selection");
     setSessionId(null);
-    setPurchaseAmount("");
+    setSelectedTier(null);
+    setCustomAmount("");
+    setShowCustomInput(false);
     setError(null);
     onClose();
   };
 
-  const handleQuickSelect = (amount: number) => {
-    setPurchaseAmount(amount.toString());
-    setError(null);
-  };
-
-  const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value;
-    // Allow only numbers and decimal point
-    if (value === '' || /^\d*\.?\d*$/.test(value)) {
-      setPurchaseAmount(value);
-      setError(null);
-    }
-  };
-
   const isValidAmount = () => {
-    const amount = parseFloat(purchaseAmount);
-    return !isNaN(amount) && amount >= 1 && amount <= 1000;
+    const amount = getCurrentAmount();
+    return amount !== null && amount >= 1 && amount <= 1000;
   };
 
 
@@ -177,64 +217,82 @@ export const CreditManager = ({ isOpen, onClose }: CreditManagerProps) => {
 
             <Card>
               <CardHeader>
-                <CardTitle>Purchase Top-up Credits</CardTitle>
+                <CardTitle>Select Amount to Purchase</CardTitle>
               </CardHeader>
               <CardContent className="space-y-6">
-                <div className="space-y-4">
-                  <div>
-                    <label htmlFor="purchase-amount" className="block text-sm font-medium mb-2">
-                      Enter amount to purchase
+                <div className="grid grid-cols-2 gap-3">
+                  {PRESET_TIERS.map((tier) => (
+                    <Button
+                      key={tier}
+                      variant={selectedTier === tier ? "default" : "outline"}
+                      size="lg"
+                      onClick={() => handleTierSelect(tier)}
+                      disabled={isLoading}
+                      className="h-20 text-xl font-semibold"
+                    >
+                      ${tier}
+                    </Button>
+                  ))}
+                  <Button
+                    variant={showCustomInput ? "default" : "outline"}
+                    size="lg"
+                    onClick={handleOtherClick}
+                    disabled={isLoading}
+                    className="h-20 text-xl font-semibold"
+                  >
+                    Other
+                  </Button>
+                </div>
+
+                {showCustomInput && (
+                  <div className="space-y-2">
+                    <label htmlFor="custom-amount" className="block text-sm font-medium">
+                      Enter custom amount
                     </label>
                     <div className="relative">
                       <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                       <Input
-                        id="purchase-amount"
+                        id="custom-amount"
                         type="text"
-                        placeholder="25.00"
-                        value={purchaseAmount}
-                        onChange={handleAmountChange}
+                        placeholder="100.00"
+                        value={customAmount}
+                        onChange={handleCustomAmountChange}
                         className="pl-10"
                         disabled={isLoading}
+                        autoFocus
                       />
                     </div>
-                    <p className="text-xs text-muted-foreground mt-1">
+                    <p className="text-xs text-muted-foreground">
                       Minimum: $1.00, Maximum: $1,000.00
                     </p>
                   </div>
+                )}
 
-                  <div>
-                    <p className="text-sm font-medium mb-3">Quick select amounts:</p>
-                    <div className="flex gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleQuickSelect(10)}
-                        disabled={isLoading}
-                        className="flex-1"
-                      >
-                        $10
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleQuickSelect(25)}
-                        disabled={isLoading}
-                        className="flex-1"
-                      >
-                        $25
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleQuickSelect(50)}
-                        disabled={isLoading}
-                        className="flex-1"
-                      >
-                        $50
-                      </Button>
-                    </div>
+                {getCurrentAmount() !== null && (
+                  <div role="status" className="bg-secondary/50 rounded-lg p-4 space-y-2">
+                    <div className="text-sm font-medium text-muted-foreground">Transaction Summary</div>
+                    {(() => {
+                      const amount = getCurrentAmount()!;
+                      const { feeRate, feeAmount, netAmount } = calculateFee(amount);
+                      return (
+                        <>
+                          <div className="flex justify-between">
+                            <span>You pay:</span>
+                            <span className="font-semibold">${amount.toFixed(2)}</span>
+                          </div>
+                          <div className="flex justify-between text-sm text-muted-foreground">
+                            <span>Processing fee ({(feeRate * 100).toFixed(0)}%):</span>
+                            <span>-${feeAmount.toFixed(2)}</span>
+                          </div>
+                          <div className="border-t pt-2 flex justify-between">
+                            <span className="font-medium">Credits you receive:</span>
+                            <span className="font-bold text-primary">${netAmount.toFixed(2)}</span>
+                          </div>
+                        </>
+                      );
+                    })()}
                   </div>
-                </div>
+                )}
 
                 <Button 
                   onClick={handlePurchase}
@@ -249,10 +307,10 @@ export const CreditManager = ({ isOpen, onClose }: CreditManagerProps) => {
                     </>
                   ) : isValidAmount() ? (
                     <>
-                      Purchase ${parseFloat(purchaseAmount).toFixed(2)} in Credits
+                      Purchase ${getCurrentAmount()!.toFixed(2)}
                     </>
                   ) : (
-                    'Enter a valid amount to purchase'
+                    'Select an amount to purchase'
                   )}
                 </Button>
               </CardContent>

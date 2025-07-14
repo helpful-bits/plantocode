@@ -231,7 +231,7 @@ pub async fn start_web_search_workflow(
 
 /// Get workflow status and progress using WorkflowOrchestrator
 #[command]
-pub async fn get_file_finder_workflow_status(
+pub async fn get_workflow_status(
     workflow_id: String,
     app_handle: AppHandle
 ) -> Result<WorkflowStatusResponse, String> {
@@ -288,18 +288,10 @@ pub async fn cancel_workflow(
     Ok(())
 }
 
-/// Cancel entire workflow using WorkflowOrchestrator (legacy alias)
-#[command]
-pub async fn cancel_file_finder_workflow(
-    workflow_id: String,
-    app_handle: AppHandle
-) -> Result<(), String> {
-    cancel_workflow(workflow_id, app_handle).await
-}
 
 /// Pause a workflow - prevents new stages from starting
 #[command]
-pub async fn pause_file_finder_workflow(
+pub async fn pause_workflow(
     workflow_id: String,
     app_handle: AppHandle
 ) -> Result<(), String> {
@@ -319,7 +311,7 @@ pub async fn pause_file_finder_workflow(
 
 /// Resume a paused workflow - allows new stages to start
 #[command]
-pub async fn resume_file_finder_workflow(
+pub async fn resume_workflow(
     workflow_id: String,
     app_handle: AppHandle
 ) -> Result<(), String> {
@@ -337,9 +329,9 @@ pub async fn resume_file_finder_workflow(
     Ok(())
 }
 
-/// Get final workflow results using WorkflowOrchestrator
+/// Get final workflow results using WorkflowOrchestrator (legacy detailed format)
 #[command]
-pub async fn get_file_finder_workflow_results(
+pub async fn get_workflow_results_legacy(
     workflow_id: String,
     app_handle: AppHandle
 ) -> Result<WorkflowResultsResponse, String> {
@@ -429,6 +421,40 @@ pub async fn get_file_finder_workflow_results(
         intermediate_data: Some(workflow_result.intermediate_data),
         total_actual_cost: workflow_result.total_actual_cost,
     })
+}
+
+/// Retry a workflow by finding the first failed stage and triggering retry
+#[command]
+pub async fn retry_workflow_command(
+    workflow_id: String,
+    app_handle: AppHandle
+) -> Result<String, String> {
+    info!("Retrying workflow {}", workflow_id);
+    
+    // Validate required fields
+    if workflow_id.is_empty() {
+        return Err("Workflow ID is required".to_string());
+    }
+    
+    // Get the workflow orchestrator
+    let orchestrator = get_workflow_orchestrator().await
+        .map_err(|e| format!("Failed to get workflow orchestrator: {}", e))?;
+    
+    // Get workflow state to find failed stages
+    let workflow_state = orchestrator.get_workflow_status(&workflow_id).await
+        .map_err(|e| format!("Failed to get workflow status: {}", e))?;
+    
+    // Find the first failed stage
+    let failed_stage = workflow_state.stages.iter()
+        .find(|stage| stage.status == crate::models::JobStatus::Failed)
+        .ok_or_else(|| "No failed stages found in workflow".to_string())?;
+    
+    // Call the retry_workflow_stage method on the orchestrator
+    let new_job_id = orchestrator.retry_workflow_stage(&workflow_id, &failed_stage.job_id).await
+        .map_err(|e| format!("Failed to retry workflow stage: {}", e))?;
+    
+    info!("Successfully started retry for workflow {} with new job {}", workflow_id, new_job_id);
+    Ok(new_job_id)
 }
 
 /// Retry a specific failed stage within a workflow

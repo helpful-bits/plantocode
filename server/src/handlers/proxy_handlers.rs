@@ -130,7 +130,7 @@ pub async fn llm_chat_completion_handler(
     payload: web::Json<LlmCompletionRequest>,
     user: web::ReqData<AuthenticatedUser>,
     app_settings: web::Data<AppSettings>,
-    billing_service: web::Data<BillingService>,
+    billing_service: web::Data<Arc<BillingService>>,
     model_repository: web::Data<ModelRepository>,
     request_tracker: web::Data<RequestTracker>,
 ) -> Result<HttpResponse, AppError> {
@@ -154,6 +154,18 @@ pub async fn llm_chat_completion_handler(
         .find_by_id_with_provider(&model_id)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("Model '{}' not found or inactive", model_id)))?;
+
+    // Validate prompt size against model's context window
+    if model_with_provider.context_window > 0 {
+        let context_window = model_with_provider.context_window;
+        let estimated_tokens = calculate_input_tokens(&payload) as u32;
+        if estimated_tokens > context_window as u32 {
+            return Err(AppError::BadRequest(format!(
+                "Prompt size ({} tokens) exceeds the model's context window ({} tokens)",
+                estimated_tokens, context_window
+            )));
+        }
+    }
 
     info!(
         "Routing to provider: {} for model: {}",
@@ -232,11 +244,12 @@ pub async fn llm_chat_completion_handler(
                     &model_with_provider,
                     &user_id,
                     &app_settings,
-                    Arc::clone(&billing_service),
+                    billing_service.get_ref().clone(),
                     model_repository.clone(),
                     web_mode,
                     request_id.clone(),
                     request_tracker.clone(),
+                    estimated_input_tokens,
                 )
                 .await
             } else {
@@ -245,7 +258,7 @@ pub async fn llm_chat_completion_handler(
                     &model_with_provider,
                     &user_id,
                     &app_settings,
-                    Arc::clone(&billing_service),
+                    billing_service.get_ref().clone(),
                     model_repository.clone(),
                     web_mode,
                     request_id.clone(),
@@ -262,9 +275,10 @@ pub async fn llm_chat_completion_handler(
                     &model_with_provider,
                     &user_id,
                     &app_settings,
-                    Arc::clone(&billing_service),
+                    billing_service.get_ref().clone(),
                     model_repository.clone(),
                     request_id.clone(),
+                    estimated_input_tokens,
                 )
                 .await
             } else {
@@ -274,7 +288,7 @@ pub async fn llm_chat_completion_handler(
                     &model_with_provider,
                     &user_id,
                     &app_settings,
-                    Arc::clone(&billing_service),
+                    billing_service.get_ref().clone(),
                     model_repository.clone(),
                     request_id.clone(),
                 )
@@ -289,9 +303,10 @@ pub async fn llm_chat_completion_handler(
                     &model_with_provider,
                     &user_id,
                     &app_settings,
-                    Arc::clone(&billing_service),
+                    billing_service.get_ref().clone(),
                     model_repository.clone(),
                     request_id.clone(),
+                    estimated_input_tokens,
                 )
                 .await
             } else {
@@ -301,7 +316,7 @@ pub async fn llm_chat_completion_handler(
                     &model_with_provider,
                     &user_id,
                     &app_settings,
-                    Arc::clone(&billing_service),
+                    billing_service.get_ref().clone(),
                     model_repository.clone(),
                     request_id.clone(),
                 )
@@ -316,9 +331,10 @@ pub async fn llm_chat_completion_handler(
                     &model_with_provider,
                     &user_id,
                     &app_settings,
-                    Arc::clone(&billing_service),
+                    billing_service.get_ref().clone(),
                     Arc::clone(&model_repository),
                     request_id.clone(),
+                    estimated_input_tokens,
                 )
                 .await
             } else {
@@ -327,7 +343,7 @@ pub async fn llm_chat_completion_handler(
                     &model_with_provider,
                     &user_id,
                     &app_settings,
-                    Arc::clone(&billing_service),
+                    billing_service.get_ref().clone(),
                     Arc::clone(&model_repository),
                     request_id.clone(),
                 )
@@ -342,9 +358,10 @@ pub async fn llm_chat_completion_handler(
                     &model_with_provider,
                     &user_id,
                     &app_settings,
-                    Arc::clone(&billing_service),
+                    billing_service.get_ref().clone(),
                     Arc::clone(&model_repository),
                     request_id.clone(),
+                    estimated_input_tokens,
                 )
                 .await
             } else {
@@ -353,7 +370,7 @@ pub async fn llm_chat_completion_handler(
                     &model_with_provider,
                     &user_id,
                     &app_settings,
-                    Arc::clone(&billing_service),
+                    billing_service.get_ref().clone(),
                     Arc::clone(&model_repository),
                     request_id.clone(),
                 )
@@ -438,7 +455,7 @@ async fn handle_openai_request(
 
     // Finalize API charge with actual usage
     let (api_usage_record, _user_credit) = billing_service
-        .finalize_api_charge(&request_id, usage.clone())
+        .finalize_api_charge(&request_id, user_id, usage.clone())
         .await?;
 
     // Convert to OpenRouter format for consistent client parsing with standardized usage
@@ -462,6 +479,7 @@ async fn handle_openai_streaming_request(
     web_mode: bool,
     request_id: String,
     request_tracker: web::Data<RequestTracker>,
+    estimated_input_tokens: i32,
 ) -> Result<HttpResponse, AppError> {
     let payload_value_clone = payload.clone();
 
@@ -488,6 +506,7 @@ async fn handle_openai_streaming_request(
                         billing_service,
                         Arc::clone(&model_repository),
                         request_id,
+                        estimated_input_tokens,
                     )
                     .await;
                 }
@@ -513,6 +532,7 @@ async fn handle_openai_streaming_request(
         *user_id,
         billing_service.clone(),
         request_id,
+        estimated_input_tokens as i64,
     );
 
     Ok(HttpResponse::Ok()
@@ -573,7 +593,7 @@ async fn handle_anthropic_request(
 
     // Two-phase billing: Finalize the request with actual usage
     let (api_usage_record, _user_credit) = billing_service
-        .finalize_api_charge(&request_id, usage.clone())
+        .finalize_api_charge(&request_id, user_id, usage.clone())
         .await?;
     let cost = api_usage_record.cost;
 
@@ -609,6 +629,7 @@ async fn handle_anthropic_streaming_request(
     billing_service: Arc<BillingService>,
     model_repository: web::Data<ModelRepository>,
     request_id: String,
+    estimated_input_tokens: i32,
 ) -> Result<HttpResponse, AppError> {
     let payload_clone = payload.clone();
     let client = AnthropicClient::new(app_settings)?;
@@ -633,6 +654,7 @@ async fn handle_anthropic_streaming_request(
                     billing_service,
                     Arc::clone(&model_repository),
                     request_id,
+                    estimated_input_tokens,
                 )
                 .await;
             }
@@ -648,6 +670,7 @@ async fn handle_anthropic_streaming_request(
         *user_id,
         billing_service.clone(),
         request_id,
+        estimated_input_tokens as i64,
     );
 
     Ok(HttpResponse::Ok()
@@ -745,7 +768,7 @@ async fn handle_google_request(
 
     // Two-phase billing: Finalize the request with actual usage
     let (api_usage_record, _user_credit) = billing_service
-        .finalize_api_charge(&request_id, usage.clone())
+        .finalize_api_charge(&request_id, user_id, usage.clone())
         .await?;
     let cost = api_usage_record.cost;
 
@@ -786,6 +809,7 @@ async fn handle_google_streaming_request(
     billing_service: Arc<BillingService>,
     model_repository: web::Data<ModelRepository>,
     request_id: String,
+    estimated_input_tokens: i32,
 ) -> Result<HttpResponse, AppError> {
     // Extract the original model ID from the payload before it gets transformed
     let original_model_id = payload["model"].as_str().unwrap_or_default().to_string();
@@ -848,6 +872,7 @@ async fn handle_google_streaming_request(
                     billing_service,
                     Arc::clone(&model_repository),
                     request_id,
+                    estimated_input_tokens,
                 )
                 .await;
             }
@@ -864,6 +889,7 @@ async fn handle_google_streaming_request(
         *user_id,
         billing_service,
         request_id,
+        estimated_input_tokens as i64,
     );
 
     Ok(HttpResponse::Ok()
@@ -885,7 +911,7 @@ async fn handle_openrouter_request(
 
     let mut request = client.convert_to_chat_request(payload)?;
 
-    request.model = model.resolved_model_id.clone();
+    request.model = model.id.clone();
 
     let (response, _headers, _, _, _, _) = client
         .chat_completion(request, &user_id.to_string())
@@ -901,7 +927,7 @@ async fn handle_openrouter_request(
 
     // Two-phase billing: Finalize the request with actual usage
     let (api_usage_record, _user_credit) = billing_service
-        .finalize_api_charge(&request_id, usage.clone())
+        .finalize_api_charge(&request_id, user_id, usage.clone())
         .await?;
     let cost = api_usage_record.cost;
 
@@ -924,11 +950,12 @@ async fn handle_openrouter_streaming_request(
     billing_service: Arc<BillingService>,
     model_repository: Arc<ModelRepository>,
     request_id: String,
+    estimated_input_tokens: i32,
 ) -> Result<HttpResponse, AppError> {
     let client = OpenRouterClient::new(app_settings, model_repository)?;
     let mut request = client.convert_to_chat_request(payload)?;
 
-    request.model = model.resolved_model_id.clone();
+    request.model = model.id.clone();
 
     let (_headers, stream) = client
         .stream_chat_completion(request, user_id.to_string())
@@ -942,6 +969,7 @@ async fn handle_openrouter_streaming_request(
         *user_id,
         billing_service.clone(),
         request_id,
+        estimated_input_tokens as i64,
     );
 
     Ok(HttpResponse::Ok()
@@ -960,7 +988,7 @@ pub async fn transcription_handler(
     mut payload: Multipart,
     user: web::ReqData<AuthenticatedUser>,
     app_settings: web::Data<AppSettings>,
-    billing_service: web::Data<BillingService>,
+    billing_service: web::Data<Arc<BillingService>>,
     model_repository: web::Data<ModelRepository>,
 ) -> Result<HttpResponse, AppError> {
     let user_id = user.user_id;

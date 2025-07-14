@@ -69,16 +69,18 @@ pub use implementation_plan_commands::{
 pub use workflow_commands::{
     start_file_finder_workflow,
     start_web_search_workflow,
-    get_file_finder_workflow_status,
-    get_file_finder_workflow_results,
-    cancel_file_finder_workflow,
+    get_workflow_status,
+    get_workflow_results_legacy,
     cancel_workflow,
-    pause_file_finder_workflow,
-    resume_file_finder_workflow,
+    pause_workflow,
+    resume_workflow,
+    retry_workflow_command,
     retry_workflow_stage_command,
     get_all_workflows_command,
     get_workflow_details_command,
     cancel_workflow_stage_command,
+    get_workflow_state,
+    get_workflow_results,
 };
 
 
@@ -157,6 +159,10 @@ pub use session_commands::{
     update_session_project_directory_command,
     clear_all_project_sessions_command,
     update_session_fields_command,
+    get_task_description_history_command,
+    sync_task_description_history_command,
+    get_file_selection_history_command,
+    sync_file_selection_history_command,
 };
 
 // Re-exports from setup commands module

@@ -148,12 +148,37 @@ export default function AccountPage() {
                       </div>
                     )}
 
-                    {billingInfo.taxExempt && (
+                    {billingInfo.taxExempt && billingInfo.taxExempt !== "none" && (
                       <div className="flex items-center gap-3">
                         <Shield className="h-4 w-4 text-muted-foreground" />
                         <div>
-                          <p className="text-sm font-medium">{billingInfo.taxExempt}</p>
+                          <p className="text-sm font-medium">
+                            {billingInfo.taxExempt === "exempt" 
+                              ? "Tax Exempt" 
+                              : billingInfo.taxExempt === "reverse" 
+                                ? "Reverse Charge" 
+                                : billingInfo.taxExempt}
+                          </p>
                           <p className="text-xs text-muted-foreground">Tax Status</p>
+                        </div>
+                      </div>
+                    )}
+
+                    {billingInfo.taxIds && billingInfo.taxIds.length > 0 && (
+                      <div className="flex items-start gap-3">
+                        <Shield className="h-4 w-4 text-muted-foreground mt-0.5" />
+                        <div>
+                          <div className="space-y-1">
+                            {billingInfo.taxIds.map((taxId, index) => (
+                              <div key={index} className="text-sm font-medium">
+                                <span className="text-muted-foreground text-xs uppercase mr-2">
+                                  {taxId.type}{taxId.country && ` (${taxId.country})`}:
+                                </span>
+                                <span>{taxId.value}</span>
+                              </div>
+                            ))}
+                          </div>
+                          <p className="text-xs text-muted-foreground">Tax ID{billingInfo.taxIds.length > 1 ? 's' : ''}</p>
                         </div>
                       </div>
                     )}

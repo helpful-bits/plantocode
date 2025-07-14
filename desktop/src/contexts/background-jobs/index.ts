@@ -10,8 +10,6 @@ export {
 // Export utility functions for direct usage
 export * from "./_utils";
 
-// Export specific hook for direct access
-export { useBackgroundJob } from "../_hooks/use-background-job";
 
 // Export hooks for direct usage when needed
 export * from "./_hooks";

@@ -1,4 +1,5 @@
 use actix_web::{web, HttpResponse, post, HttpRequest};
+use std::sync::Arc;
 use crate::error::AppError;
 use crate::services::billing_service::BillingService;
 use crate::db::repositories::api_usage_repository::ApiUsageEntryDto;
@@ -20,7 +21,7 @@ use serde::{Deserialize, Serialize};
 pub async fn stripe_webhook(
     req: HttpRequest,
     body: web::Bytes,
-    billing_service: web::Data<BillingService>,
+    billing_service: web::Data<Arc<BillingService>>,
     app_state: web::Data<crate::models::runtime_config::AppState>,
 ) -> Result<HttpResponse, AppError> {
     // Step 1: Extract Stripe-Signature header
@@ -384,26 +385,39 @@ async fn process_credit_purchase(
         }
     };
     
-    // Extract amount from metadata with enhanced validation and fallback logic
-    let amount_str = match metadata.get("amount").map(|v| v.as_str()) {
-        Some(amount) => {
-            info!("Found amount in metadata for PaymentIntent {}: {}", payment_intent.id, amount);
-            amount
-        },
-        None => {
-            // Try to extract amount from credit_amount for backward compatibility
-            match metadata.get("credit_amount").map(|v| v.as_str()) {
-                Some(credit_amount) => {
-                    info!("Found credit_amount in metadata for PaymentIntent {} (fallback): {}", payment_intent.id, credit_amount);
-                    credit_amount
-                },
-                None => {
-                    error!("Missing required metadata field 'amount' or 'credit_amount' in PaymentIntent {}. Available metadata keys: {:?}, full metadata: {:?}", 
-                           payment_intent.id, metadata.keys().collect::<Vec<_>>(), metadata);
-                    return Err(AppError::InvalidArgument("Missing required amount in credit purchase metadata. This field specifies the credit amount to add to the user's account.".to_string()));
+    // Extract amounts from metadata - prefer new fields, fallback to legacy
+    let (gross_amount_str, fee_amount_str, net_amount_str) = if let (Some(gross), Some(fee), Some(net)) = 
+        (metadata.get("gross_amount").map(|v| v.as_str()),
+         metadata.get("fee_amount").map(|v| v.as_str()),
+         metadata.get("net_amount").map(|v| v.as_str())) {
+        info!("Found tiered fee metadata for PaymentIntent {}: gross={}, fee={}, net={}", 
+              payment_intent.id, gross, fee, net);
+        (gross, fee, net)
+    } else {
+        // Fallback to legacy amount field
+        let amount_str = match metadata.get("amount").map(|v| v.as_str()) {
+            Some(amount) => {
+                info!("Found legacy amount in metadata for PaymentIntent {}: {}", payment_intent.id, amount);
+                amount
+            },
+            None => {
+                // Try to extract amount from credit_amount for backward compatibility
+                match metadata.get("credit_amount").map(|v| v.as_str()) {
+                    Some(credit_amount) => {
+                        info!("Found credit_amount in metadata for PaymentIntent {} (fallback): {}", payment_intent.id, credit_amount);
+                        credit_amount
+                    },
+                    None => {
+                        error!("Missing required metadata field 'amount' or 'credit_amount' in PaymentIntent {}. Available metadata keys: {:?}, full metadata: {:?}", 
+                               payment_intent.id, metadata.keys().collect::<Vec<_>>(), metadata);
+                        return Err(AppError::InvalidArgument("Missing required amount in credit purchase metadata. This field specifies the credit amount to add to the user's account.".to_string()));
+                    }
                 }
             }
-        }
+        };
+        
+        // For legacy, gross = net = amount (no fees)
+        (amount_str, "0", amount_str)
     };
     
     let currency = match metadata.get("currency").map(|v| v.as_str()) {
@@ -441,25 +455,41 @@ async fn process_credit_purchase(
         }
     };
     
-    // Parse the amount from metadata
-    let amount = match amount_str.parse::<BigDecimal>() {
+    // Parse the amounts from metadata
+    let gross_amount = match gross_amount_str.parse::<BigDecimal>() {
         Ok(amount) => amount,
         Err(e) => {
-            error!("Invalid amount in PaymentIntent {}: {}", payment_intent.id, e);
-            return Err(AppError::InvalidArgument(format!("Invalid amount: {}", e)));
+            error!("Invalid gross_amount in PaymentIntent {}: {}", payment_intent.id, e);
+            return Err(AppError::InvalidArgument(format!("Invalid gross_amount: {}", e)));
         }
     };
     
-    info!("Processing credit purchase for user {} with amount {} {} (payment type: {})", 
-          user_uuid, amount, currency, payment_type);
+    let fee_amount = match fee_amount_str.parse::<BigDecimal>() {
+        Ok(amount) => amount,
+        Err(e) => {
+            error!("Invalid fee_amount in PaymentIntent {}: {}", payment_intent.id, e);
+            return Err(AppError::InvalidArgument(format!("Invalid fee_amount: {}", e)));
+        }
+    };
+    
+    let net_amount = match net_amount_str.parse::<BigDecimal>() {
+        Ok(amount) => amount,
+        Err(e) => {
+            error!("Invalid net_amount in PaymentIntent {}: {}", payment_intent.id, e);
+            return Err(AppError::InvalidArgument(format!("Invalid net_amount: {}", e)));
+        }
+    };
+    
+    info!("Processing credit purchase for user {} with gross_amount {} {} (fee: {}, net: {}) (payment type: {})", 
+          user_uuid, gross_amount, currency, fee_amount, net_amount, payment_type);
     
     // Process credit purchase directly from amount
     let db_pools = billing_service.get_db_pools();
     let credit_service = crate::services::credit_service::CreditService::new(db_pools.clone());
     
-    // Validate payment amount matches metadata amount (convert to cents for comparison)
-    let expected_amount_cents = (&amount * BigDecimal::from(100)).to_i64()
-        .ok_or_else(|| AppError::InvalidArgument("Invalid amount for cents conversion".to_string()))?;
+    // Validate payment amount matches gross amount (convert to cents for comparison)
+    let expected_amount_cents = (&gross_amount * BigDecimal::from(100)).to_i64()
+        .ok_or_else(|| AppError::InvalidArgument("Invalid gross amount for cents conversion".to_string()))?;
     
     if payment_intent.amount != expected_amount_cents {
         error!("Payment amount mismatch in PaymentIntent {}: expected {} cents, got {} cents", 
@@ -483,7 +513,8 @@ async fn process_credit_purchase(
     // Process the credit purchase using the credit service
     let updated_balance = match credit_service.record_credit_purchase(
         &user_uuid,
-        &amount,
+        &gross_amount,
+        &fee_amount,
         currency,
         &payment_intent.id,
         metadata_json,
@@ -511,7 +542,7 @@ async fn process_credit_purchase(
         email_service.send_credit_purchase_notification(
             &user_uuid,
             &user.email,
-            &amount,
+            &net_amount,
             &payment_intent.currency,
         ).await.map_err(|e| {
             error!("Failed to send credit purchase notification for PaymentIntent {}: {}", payment_intent.id, e);
@@ -817,9 +848,13 @@ async fn handle_invoice_payment_succeeded(
     let credit_service = billing_service.get_credit_service();
     let audit_context = AuditContext::new(user.id);
     
+    // For auto-topoff, we treat the paid amount as net amount (no fees)
+    let zero_fee = BigDecimal::from(0);
+    
     match credit_service.record_credit_purchase(
         &user.id,
-        &amount_paid_dollars,
+        &amount_paid_dollars,  // gross_amount (what they paid)
+        &zero_fee,            // fee_amount (no fees for auto-topoff)
         currency,
         charge_id,
         metadata,

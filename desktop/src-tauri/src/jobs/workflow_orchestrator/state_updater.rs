@@ -92,7 +92,7 @@ pub(super) fn update_intermediate_data_internal(
         }
         WorkflowStage::WebSearchExecution => {
             // Extract search results from the execution stage
-            if let Some(results_array) = stage_data.get("webSearchResults").and_then(|v| v.as_array()) {
+            if let Some(results_array) = stage_data.get("searchResults").and_then(|v| v.as_array()) {
                 // Convert JSON objects to strings for storage (can be enhanced later if needed)
                 workflow_state.intermediate_data.web_search_results = results_array.iter()
                     .map(|v| serde_json::to_string(v).unwrap_or_else(|_| v.to_string()))

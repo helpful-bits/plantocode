@@ -40,7 +40,9 @@ CREATE TABLE IF NOT EXISTS sessions (
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
   model_used TEXT DEFAULT NULL,
-  search_selected_files_only INTEGER DEFAULT 0 CHECK(search_selected_files_only IN (0, 1))
+  search_selected_files_only INTEGER DEFAULT 0 CHECK(search_selected_files_only IN (0, 1)),
+  included_files TEXT,
+  force_excluded_files TEXT
 );
 
 -- Create indexes for sessions table
@@ -49,29 +51,6 @@ CREATE INDEX IF NOT EXISTS idx_sessions_project_directory ON sessions(project_di
 CREATE INDEX IF NOT EXISTS idx_sessions_updated_at ON sessions(updated_at);
 CREATE INDEX IF NOT EXISTS idx_sessions_model_used ON sessions(model_used);
 
--- Create included_files table
-CREATE TABLE IF NOT EXISTS included_files (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  session_id TEXT NOT NULL,
-  path TEXT NOT NULL,
-  FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE,
-  UNIQUE(session_id, path)
-);
-
--- Create index for included_files table
-CREATE INDEX IF NOT EXISTS idx_included_files_session ON included_files(session_id);
-
--- Create excluded_files table
-CREATE TABLE IF NOT EXISTS excluded_files (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  session_id TEXT NOT NULL,
-  path TEXT NOT NULL,
-  FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE,
-  UNIQUE(session_id, path)
-);
-
--- Create index for excluded_files table
-CREATE INDEX IF NOT EXISTS idx_excluded_files_session ON excluded_files(session_id);
 
 -- Create task_description_history table
 CREATE TABLE IF NOT EXISTS task_description_history (
@@ -84,6 +63,19 @@ CREATE TABLE IF NOT EXISTS task_description_history (
 
 -- Create index for task_description_history table
 CREATE INDEX IF NOT EXISTS idx_task_description_history_session_id_created_at ON task_description_history(session_id, created_at DESC);
+
+-- Create file_selection_history table
+CREATE TABLE IF NOT EXISTS file_selection_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT NOT NULL,
+    included_files TEXT NOT NULL,
+    force_excluded_files TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+);
+
+-- Create index for file_selection_history table
+CREATE INDEX IF NOT EXISTS idx_file_selection_history_session_id_created_at ON file_selection_history(session_id, created_at DESC);
 
 
 -- Create key_value_store table

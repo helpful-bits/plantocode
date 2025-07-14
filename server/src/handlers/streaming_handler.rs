@@ -27,6 +27,7 @@ use crate::services::billing_service::BillingService;
 use crate::utils::token_estimator;
 use bigdecimal::{BigDecimal, ToPrimitive};
 use std::str::FromStr;
+use crate::models::model_pricing::ModelPricing;
 
 /// Result of chunk transformation operations
 /// 
@@ -124,36 +125,9 @@ pub trait StreamChunkTransformer {
     /// StreamError with provider-specific error details
     fn handle_error_chunk(&self, error: &Value) -> StreamError;
     
-    /// Determine if a chunk represents stream completion
-    /// 
-    /// Different providers use different markers for stream completion.
-    /// This method identifies final chunks that indicate the stream is done.
-    /// 
-    /// # Arguments
-    /// 
-    /// * `chunk` - Parsed chunk as JSON Value
-    /// 
-    /// # Returns
-    /// 
-    /// * `true` - This is a final chunk, stream should complete
-    /// * `false` - This is an intermediate chunk, continue streaming
-    fn is_final_chunk(&self, chunk: &Value) -> bool;
+    fn process_chunk_for_usage(&self, _chunk: &[u8]) {}
     
-    /// Extract usage information from final chunks
-    /// 
-    /// This method extracts token usage from final streaming chunks for post-stream
-    /// billing. It should parse the chunk and return usage information if available.
-    /// 
-    /// # Arguments
-    /// 
-    /// * `chunk` - Raw chunk bytes containing usage information
-    /// * `model_id` - Model identifier for usage attribution
-    /// 
-    /// # Returns
-    /// 
-    /// * `Some(ProviderUsage)` - Successfully extracted usage information
-    /// * `None` - No usage information in this chunk (normal for non-final chunks)
-    fn extract_usage_if_final(&self, chunk: &[u8], model_id: &str) -> Option<ProviderUsage>;
+    fn get_final_usage(&self) -> Option<ProviderUsage> { None }
     
     /// Extract text content delta from a streaming chunk
     /// 
@@ -262,12 +236,7 @@ pub fn parse_and_validate_chunk(
         return Err(transformer.handle_error_chunk(error_obj));
     }
     
-    // Step 4: Check if this is a final chunk
-    if transformer.is_final_chunk(&chunk_value) {
-        debug!("Final chunk detected");
-    }
-    
-    // Step 5: Transform using provider-specific logic
+    // Step 4: Transform using provider-specific logic
     transformer.transform_chunk(chunk)
 }
 
@@ -286,14 +255,12 @@ pub fn parse_and_validate_chunk(
 /// 5. **Provider Agnostic**: Works with any provider implementing StreamChunkTransformer
 pub struct StandardizedStreamHandler<S> {
     inner_stream: S,
-    transformer: Box<dyn StreamChunkTransformer + Send + Sync>,
-    usage_collector: Arc<tokio::sync::Mutex<Option<ProviderUsage>>>,
+    transformer: Arc<dyn StreamChunkTransformer + Send + Sync>,
     model: ModelWithProvider,
     user_id: Uuid,
     billing_service: Arc<BillingService>,
     request_id: String,
     stream_completed: bool,
-    final_usage: Arc<Mutex<Option<ProviderUsage>>>,
     // Real-time usage tracking fields
     running_input_tokens: i64,
     running_output_tokens: i64,
@@ -316,6 +283,7 @@ where
     /// * `user_id` - User identifier for billing attribution
     /// * `billing_service` - Service for post-stream billing
     /// * `request_id` - Unique request identifier for tracking
+    /// * `prompt_tokens` - Number of tokens in the initial prompt
     pub fn new(
         inner_stream: S,
         transformer: Box<dyn StreamChunkTransformer + Send + Sync>,
@@ -323,20 +291,18 @@ where
         user_id: Uuid,
         billing_service: Arc<BillingService>,
         request_id: String,
+        prompt_tokens: i64,
     ) -> Self {
-        let final_usage = Arc::new(Mutex::new(None));
         Self {
             inner_stream,
-            transformer,
-            usage_collector: Arc::new(tokio::sync::Mutex::new(None)),
+            transformer: Arc::from(transformer),
             model,
             user_id,
             billing_service,
             request_id,
             stream_completed: false,
-            final_usage,
             // Initialize real-time tracking
-            running_input_tokens: 0,
+            running_input_tokens: prompt_tokens,
             running_output_tokens: 0,
             last_update_time: std::time::Instant::now(),
             tokens_since_last_update: 0,
@@ -344,18 +310,6 @@ where
         }
     }
     
-    /// Set initial prompt tokens for accurate usage tracking
-    /// 
-    /// This should be called before streaming begins if the prompt token count
-    /// is known (e.g., from a non-streaming token count endpoint).
-    /// 
-    /// # Arguments
-    /// 
-    /// * `prompt_tokens` - Number of tokens in the initial prompt
-    pub async fn set_initial_prompt_tokens(&mut self, prompt_tokens: i64) {
-        self.running_input_tokens = prompt_tokens;
-        info!("Set initial prompt tokens to {} for request {}", prompt_tokens, self.request_id);
-    }
 }
 
 impl<S> Stream for StandardizedStreamHandler<S>
@@ -378,16 +332,8 @@ where
         // Poll the inner stream
         match Pin::new(&mut self.inner_stream).poll_next(cx) {
             Poll::Ready(Some(Ok(chunk))) => {
-                // Try to extract usage information from this chunk before transformation
-                if let Some(usage) = self.transformer.extract_usage_if_final(&chunk, &self.model.id) {
-                    info!("Extracted final usage for model {}: input={}, output={}", self.model.id, usage.prompt_tokens, usage.completion_tokens);
-                    let usage_collector = self.usage_collector.clone();
-                    let final_usage = self.final_usage.clone();
-                    tokio::spawn(async move {
-                        *usage_collector.lock().await = Some(usage.clone());
-                        *final_usage.lock().await = Some(usage);
-                    });
-                }
+                // Process chunk for usage tracking
+                self.transformer.process_chunk_for_usage(&chunk);
                 
                 // Process chunk through standardized pipeline
                 match parse_and_validate_chunk(&chunk, self.transformer.as_ref()) {
@@ -444,9 +390,17 @@ where
                             if should_update {
                                 // Create SSE usage update event with cumulative counts
                                 // Note: These are estimates - final cost will be calculated after stream completion
-                                // For real-time updates, we use a basic estimate or 0.0 since the CostResolver
-                                // will provide the authoritative cost at stream completion
-                                let estimated_cost = 0.0; // Placeholder - final cost comes from CostResolver
+                                // Calculate estimated cost using ModelPricing
+                                let estimated_cost = {
+                                    let usage = ProviderUsage::new(
+                                        self.running_input_tokens as i32,
+                                        self.running_output_tokens as i32,
+                                        self.model.id.clone(),
+                                    );
+                                    self.model.calculate_total_cost(&usage)
+                                        .map(|cost| cost.to_f64().unwrap_or(0.0))
+                                        .unwrap_or(0.0)
+                                };
                                 
                                 let usage_update = serde_json::json!({
                                     "tokens_input": self.running_input_tokens,
@@ -508,19 +462,16 @@ impl<S> StandardizedStreamHandler<S> {
             info!("Stream completed for request: {}", self.request_id);
             
             // Spawn billing task for post-stream processing
-            let final_usage = self.final_usage.clone();
+            let transformer = self.transformer.clone();
             let model = self.model.clone();
             let user_id = self.user_id;
             let billing_service = self.billing_service.clone();
             let request_id = self.request_id.clone();
             
             tokio::spawn(async move {
-                // Wait a moment for usage collection to complete
-                tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-                
-                if let Some(usage) = final_usage.lock().await.take() {
+                if let Some(usage) = transformer.get_final_usage() {
                     // Finalize API charge with actual usage
-                    match billing_service.finalize_api_charge(&request_id, usage.clone()).await {
+                    match billing_service.finalize_api_charge(&request_id, &user_id, usage.clone()).await {
                         Ok((api_usage_record, _user_credit)) => {
                             info!("Post-stream billing completed successfully for request {}: cost=${:.4}", 
                                   request_id, api_usage_record.cost);
@@ -560,8 +511,6 @@ impl<S> Drop for StandardizedStreamHandler<S> {
         // Ensure billing is triggered even if the stream is dropped unexpectedly
         if !self.stream_completed {
             warn!("Stream handler dropped without completion for request: {} - triggering billing", self.request_id);
-            
-            // Usage data should already be in final_usage from extract_usage_if_final
             
             self.handle_stream_completion();
         }

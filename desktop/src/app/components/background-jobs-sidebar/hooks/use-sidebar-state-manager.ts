@@ -7,7 +7,7 @@ import { useUILayout } from "@/contexts/ui-layout-context";
 import { useNotification } from "@/contexts/notification-context";
 import { type BackgroundJob } from "@/types/session-types";
 import { setSidebarWidth } from "@/utils/ui-utils";
-import { retryWorkflowStageAction, retryWorkflowAction } from "@/actions/workflows/workflow.actions";
+import { retryWorkflowStageAction, retryWorkflowAction, cancelWorkflowAction } from "@/actions/workflows/workflow.actions";
 
 export interface SidebarState {
   selectedJob: BackgroundJob | null;
@@ -38,7 +38,7 @@ export interface SidebarManager extends SidebarState {
  */
 export function useSidebarStateManager(): SidebarManager {
   const backgroundJobsContext = useContext(BackgroundJobsContext);
-  const { cancelJob, deleteJob, clearHistory, refreshJobs } = backgroundJobsContext;
+  const { jobs, cancelJob, deleteJob, clearHistory, refreshJobs } = backgroundJobsContext;
 
   // Use the UI layout context
   const { setIsSidebarCollapsed } = useUILayout();
@@ -236,7 +236,15 @@ export function useSidebarStateManager(): SidebarManager {
       }));
 
       try {
-        await cancelJob(jobId);
+        // Find the full job object from the jobs array using the jobId
+        const job = jobs.find(j => j.id === jobId);
+        
+        // Check if job.taskType is a workflow type
+        if (job && (job.taskType === 'file_finder_workflow' || job.taskType === 'web_search_workflow')) {
+          await cancelWorkflowAction(jobId);
+        } else {
+          await cancelJob(jobId);
+        }
       } finally {
         setState((prev: SidebarState) => ({
           ...prev,
@@ -244,7 +252,7 @@ export function useSidebarStateManager(): SidebarManager {
         }));
       }
     },
-    [cancelJob]
+    [cancelJob, jobs]
   );
 
   // Handle job deletion

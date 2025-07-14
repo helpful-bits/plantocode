@@ -1,4 +1,5 @@
 use actix_web::{web, HttpResponse, get, post};
+use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use crate::error::AppError;
 use crate::services::billing_service::BillingService;
@@ -36,7 +37,7 @@ pub struct CheckoutSessionStatusResponse {
 #[post("/custom-credit-session")]
 pub async fn create_custom_credit_checkout_session_handler(
     user: web::ReqData<AuthenticatedUser>,
-    billing_service: web::Data<BillingService>,
+    billing_service: web::Data<Arc<BillingService>>,
     request: web::Json<CreateCustomCreditCheckoutRequest>,
 ) -> Result<HttpResponse, AppError> {
     info!("Creating custom credit checkout session for user: {} with amount: {}", 
@@ -61,7 +62,7 @@ pub async fn create_custom_credit_checkout_session_handler(
 #[post("/setup-session")]
 pub async fn create_setup_checkout_session_handler(
     user: web::ReqData<AuthenticatedUser>,
-    billing_service: web::Data<BillingService>,
+    billing_service: web::Data<Arc<BillingService>>,
 ) -> Result<HttpResponse, AppError> {
     info!("Creating setup checkout session for user: {}", user.user_id);
     
@@ -82,7 +83,7 @@ pub async fn create_setup_checkout_session_handler(
 #[get("/session-status/{session_id}")]
 pub async fn get_checkout_session_status_handler(
     user: web::ReqData<AuthenticatedUser>,
-    billing_service: web::Data<BillingService>,
+    billing_service: web::Data<Arc<BillingService>>,
     path: web::Path<String>,
 ) -> Result<HttpResponse, AppError> {
     let session_id = path.into_inner();

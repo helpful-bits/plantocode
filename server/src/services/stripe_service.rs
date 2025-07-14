@@ -418,6 +418,19 @@ impl StripeService {
         Ok(customer)
     }
 
+    /// Retrieve tax IDs for a customer
+    pub async fn get_customer_tax_ids(&self, customer_id: &str) -> Result<Vec<stripe_types::TaxId>, StripeServiceError> {
+        let response = self.make_stripe_request_with_idempotency(
+            reqwest::Method::GET,
+            &format!("customers/{}/tax_ids", customer_id),
+            None,
+            &format!("get_tax_ids_{}", uuid::Uuid::new_v4()),
+        ).await?;
+        let tax_id_list: stripe_types::TaxIdList = serde_json::from_value(response)
+            .map_err(|e| StripeServiceError::Configuration(format!("Failed to parse tax ID response: {}", e)))?;
+        Ok(tax_id_list.data)
+    }
+
     /// Create a payment intent for processing payments using latest Stripe patterns
     pub async fn create_payment_intent(
         &self,
@@ -746,11 +759,20 @@ impl StripeService {
         // Create checkout session using direct API call with idempotency key
         let mode_str = mode;
         
+        // Ensure success_url includes the session ID placeholder for payment verification
+        let success_url_with_session = if success_url.contains("{CHECKOUT_SESSION_ID}") {
+            success_url.to_string()
+        } else {
+            // Add session ID placeholder if not present
+            let separator = if success_url.contains('?') { "&" } else { "?" };
+            format!("{}{}", success_url, separator) + "session_id={CHECKOUT_SESSION_ID}"
+        };
+        
         let mut session_data = serde_json::json!({
             "customer": customer_id,
             "client_reference_id": user_id.to_string(),
             "mode": mode_str,
-            "success_url": success_url,
+            "success_url": success_url_with_session,
             "cancel_url": cancel_url,
             "currency": "usd"
         });

@@ -11,6 +11,10 @@ pub struct UserCredit {
     pub user_id: Uuid,
     pub balance: BigDecimal,
     pub currency: String,
+    pub free_credit_balance: BigDecimal,
+    pub free_credits_granted_at: Option<DateTime<Utc>>,
+    pub free_credits_expires_at: Option<DateTime<Utc>>,
+    pub free_credits_expired: bool,
     pub created_at: Option<DateTime<Utc>>,
     pub updated_at: Option<DateTime<Utc>>,
 }
@@ -47,7 +51,8 @@ impl UserCreditRepository {
         let result = sqlx::query_as!(
             UserCredit,
             r#"
-            SELECT user_id, balance, currency, created_at, updated_at
+            SELECT user_id, balance, currency, free_credit_balance, free_credits_granted_at, 
+                   free_credits_expires_at, free_credits_expired, created_at, updated_at
             FROM user_credits 
             WHERE user_id = $1
             "#,
@@ -82,7 +87,8 @@ impl UserCreditRepository {
             UPDATE user_credits 
             SET balance = $2, updated_at = NOW()
             WHERE user_id = $1
-            RETURNING user_id, balance, currency, created_at, updated_at
+            RETURNING user_id, balance, currency, free_credit_balance, free_credits_granted_at, 
+                      free_credits_expires_at, free_credits_expired, created_at, updated_at
             "#,
             user_id,
             new_balance
@@ -116,7 +122,8 @@ impl UserCreditRepository {
             UPDATE user_credits 
             SET balance = balance + $2, updated_at = NOW()
             WHERE user_id = $1 AND balance + $2 >= 0
-            RETURNING user_id, balance, currency, created_at, updated_at
+            RETURNING user_id, balance, currency, free_credit_balance, free_credits_granted_at, 
+                      free_credits_expires_at, free_credits_expired, created_at, updated_at
             "#,
             user_id,
             amount_change
@@ -149,8 +156,9 @@ impl UserCreditRepository {
         // First try to insert, ignore if already exists
         sqlx::query!(
             r#"
-            INSERT INTO user_credits (user_id, balance, currency, created_at, updated_at)
-            VALUES ($1, 0.0000, 'USD', NOW(), NOW())
+            INSERT INTO user_credits (user_id, balance, currency, free_credit_balance, 
+                                      free_credits_expired, created_at, updated_at)
+            VALUES ($1, 0.0000, 'USD', 0.0000, false, NOW(), NOW())
             ON CONFLICT (user_id) DO NOTHING
             "#,
             user_id
@@ -163,7 +171,8 @@ impl UserCreditRepository {
         let result = sqlx::query_as!(
             UserCredit,
             r#"
-            SELECT user_id, balance, currency, created_at, updated_at
+            SELECT user_id, balance, currency, free_credit_balance, free_credits_granted_at, 
+                   free_credits_expires_at, free_credits_expired, created_at, updated_at
             FROM user_credits 
             WHERE user_id = $1
             "#,
@@ -181,7 +190,8 @@ impl UserCreditRepository {
         let result = sqlx::query_as!(
             UserCredit,
             r#"
-            SELECT user_id, balance, currency, created_at, updated_at
+            SELECT user_id, balance, currency, free_credit_balance, free_credits_granted_at, 
+                   free_credits_expires_at, free_credits_expired, created_at, updated_at
             FROM user_credits 
             WHERE user_id = ANY($1)
             ORDER BY updated_at DESC
@@ -217,5 +227,94 @@ impl UserCreditRepository {
             Some(user_credit) => Ok(&user_credit.balance >= required_amount),
             None => Ok(false), // No credit record means no credits
         }
+    }
+
+    /// Expire free credits for all users where expiry date has passed
+    pub async fn expire_free_credits(&self) -> Result<u64, sqlx::Error> {
+        let result = sqlx::query!(
+            r#"
+            UPDATE user_credits 
+            SET free_credit_balance = 0.0000, 
+                free_credits_expired = true, 
+                updated_at = NOW()
+            WHERE free_credits_expires_at < NOW() 
+            AND free_credits_expired = false
+            "#
+        )
+        .execute(&self.pool)
+        .await?;
+
+        Ok(result.rows_affected())
+    }
+    
+    /// Deduct credits with priority: free credits first, then paid balance
+    pub async fn deduct_credits_with_priority(
+        &self,
+        user_id: &Uuid,
+        amount: &BigDecimal,
+        executor: &mut sqlx::Transaction<'_, sqlx::Postgres>
+    ) -> Result<(UserCredit, BigDecimal, BigDecimal), AppError> {
+        // Get current balance
+        let current = self.get_balance_with_executor(user_id, executor).await?
+            .ok_or_else(|| AppError::NotFound("User credit record not found".to_string()))?;
+        
+        let mut remaining_to_deduct = amount.clone();
+        let mut from_free = BigDecimal::from(0);
+        let mut from_paid = BigDecimal::from(0);
+        
+        // First, deduct from free credits if available and not expired
+        if current.free_credit_balance > BigDecimal::from(0) && !current.free_credits_expired {
+            if let Some(expires_at) = current.free_credits_expires_at {
+                if expires_at > Utc::now() {
+                    // Free credits are valid
+                    if current.free_credit_balance >= remaining_to_deduct {
+                        // Can deduct entirely from free credits
+                        from_free = remaining_to_deduct.clone();
+                        remaining_to_deduct = BigDecimal::from(0);
+                    } else {
+                        // Deduct what we can from free credits
+                        from_free = current.free_credit_balance.clone();
+                        remaining_to_deduct -= &from_free;
+                    }
+                }
+            }
+        }
+        
+        // Then deduct remaining from paid balance
+        if remaining_to_deduct > BigDecimal::from(0) {
+            if current.balance >= remaining_to_deduct {
+                from_paid = remaining_to_deduct;
+            } else {
+                return Err(AppError::CreditInsufficient(
+                    format!("Insufficient credits. Required: {}, Available: {} (paid) + {} (free)", 
+                            amount, current.balance, current.free_credit_balance)
+                ));
+            }
+        }
+        
+        // Update balances
+        let new_free_balance = &current.free_credit_balance - &from_free;
+        let new_paid_balance = &current.balance - &from_paid;
+        
+        let updated = sqlx::query_as!(
+            UserCredit,
+            r#"
+            UPDATE user_credits 
+            SET balance = $2, 
+                free_credit_balance = $3,
+                updated_at = NOW()
+            WHERE user_id = $1
+            RETURNING user_id, balance, currency, free_credit_balance, free_credits_granted_at, 
+                      free_credits_expires_at, free_credits_expired, created_at, updated_at
+            "#,
+            user_id,
+            new_paid_balance,
+            new_free_balance
+        )
+        .fetch_one(&mut **executor)
+        .await
+        .map_err(|e| AppError::Database(format!("Failed to update user credit balance: {}", e)))?;
+        
+        Ok((updated, from_free, from_paid))
     }
 }

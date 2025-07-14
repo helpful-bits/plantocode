@@ -109,7 +109,7 @@ export interface WorkflowCommandResponse {
   status: string;
 }
 
-// Response from get_file_finder_workflow_status command - matches WorkflowStatusResponse in backend
+// Response from get_workflow_status command - matches WorkflowStatusResponse in backend
 export interface WorkflowStatusResponse {
   workflowId: string;
   sessionId: string;

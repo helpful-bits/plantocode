@@ -456,7 +456,7 @@ export interface StartFileFinderWorkflowCommandArgs {
   timeoutMs?: number;
 }
 
-export interface GetFileFinderWorkflowStatusCommandArgs {
+export interface GetWorkflowStatusCommandArgs {
   workflowId: string;
 }
 
@@ -464,15 +464,15 @@ export interface CancelWorkflowCommandArgs {
   workflowId: string;
 }
 
-export interface PauseFileFinderWorkflowCommandArgs {
+export interface PauseWorkflowCommandArgs {
   workflowId: string;
 }
 
-export interface ResumeFileFinderWorkflowCommandArgs {
+export interface ResumeWorkflowCommandArgs {
   workflowId: string;
 }
 
-export interface GetFileFinderWorkflowResultsCommandArgs {
+export interface GetWorkflowResultsCommandArgs {
   workflowId: string;
 }
 
@@ -483,7 +483,7 @@ export interface GetWorkflowDetailsCommandArgs {
   workflowId: string;
 }
 
-export interface RetryWorkflowStageCommandArgs {
+export interface RetryWorkflowCommandArgs {
   workflowId: string;
   failedStageJobId: string;
 }
@@ -650,14 +650,14 @@ export type TauriInvoke = {
   
   // File Finder Workflow commands
   "start_file_finder_workflow": (args: StartFileFinderWorkflowCommandArgs) => Promise<import("@/types/workflow-types").WorkflowCommandResponse>;
-  "get_file_finder_workflow_status": (args: GetFileFinderWorkflowStatusCommandArgs) => Promise<import("@/types/workflow-types").WorkflowStatusResponse>;
+  "get_workflow_status": (args: GetWorkflowStatusCommandArgs) => Promise<import("@/types/workflow-types").WorkflowStatusResponse>;
   "cancel_workflow": (args: CancelWorkflowCommandArgs) => Promise<void>;
-  "pause_file_finder_workflow": (args: PauseFileFinderWorkflowCommandArgs) => Promise<void>;
-  "resume_file_finder_workflow": (args: ResumeFileFinderWorkflowCommandArgs) => Promise<void>;
-  "get_file_finder_workflow_results": (args: GetFileFinderWorkflowResultsCommandArgs) => Promise<import("@/types/workflow-types").WorkflowResultsResponse>;
+  "pause_workflow": (args: PauseWorkflowCommandArgs) => Promise<void>;
+  "resume_workflow": (args: ResumeWorkflowCommandArgs) => Promise<void>;
+  "get_workflow_results_legacy": (args: GetWorkflowResultsCommandArgs) => Promise<import("@/types/workflow-types").WorkflowResultsResponse>;
   "get_all_workflows_command": (args: GetAllWorkflowsCommandArgs) => Promise<import("@/types/workflow-types").WorkflowStatusResponse[]>;
   "get_workflow_details_command": (args: GetWorkflowDetailsCommandArgs) => Promise<import("@/types/workflow-types").WorkflowStatusResponse | null>;
-  "retry_workflow_stage_command": (args: RetryWorkflowStageCommandArgs) => Promise<string>;
+  "retry_workflow_command": (args: RetryWorkflowCommandArgs) => Promise<string>;
   "cancel_workflow_stage_command": (args: CancelWorkflowStageCommandArgs) => Promise<void>;
   "start_web_enhanced_task_refinement_workflow": (args: StartWebEnhancedTaskRefinementWorkflowCommandArgs) => Promise<import("@/types/workflow-types").WorkflowCommandResponse>;
   "get_workflow_state": (args: { workflowId: string }) => Promise<any>;
@@ -940,11 +940,18 @@ export interface BillingDashboardPlanDetails {
   billingInterval: string;
 }
 
+export interface TaxIdInfo {
+  type: string;
+  value: string;
+  country?: string | null;
+}
+
 export interface CustomerBillingInfo {
   customerName?: string | null;
   customerEmail?: string | null;
   phone?: string | null;
   taxExempt?: string | null;
+  taxIds: TaxIdInfo[];
   addressLine1?: string | null;
   addressLine2?: string | null;
   addressCity?: string | null;
@@ -959,6 +966,12 @@ export interface BillingDashboardData {
   servicesBlocked: boolean;
   isPaymentMethodRequired: boolean;
   isBillingInfoRequired: boolean;
+  freeCreditBalanceUsd: number;
+  freeCreditsGrantedAt: string | null;
+  freeCreditsExpiresAt: string | null;
+  freeCreditsExpired: boolean;
+  usageLimitUsd: number;
+  currentUsage: number;
 }
 
 // Invoice interfaces

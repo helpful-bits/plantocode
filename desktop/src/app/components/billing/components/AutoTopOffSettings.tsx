@@ -43,8 +43,8 @@ export function AutoTopOffSettings({ className }: AutoTopOffSettingsProps) {
       
       // Update form state
       setEnabled(currentSettings.enabled);
-      setThreshold(currentSettings.threshold?.toString() || "");
-      setAmount(currentSettings.amount?.toString() || "");
+      setThreshold(currentSettings.threshold || "");
+      setAmount(currentSettings.amount || "");
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Failed to load auto top-off settings";
       setError(errorMessage);
@@ -88,7 +88,7 @@ export function AutoTopOffSettings({ className }: AutoTopOffSettingsProps) {
         type: "success",
         title: "Auto Top-Off Settings Updated",
         message: enabled 
-          ? `Auto top-off enabled: ${formatUsdCurrency(updatedSettings.amount || 0)} when balance falls below ${formatUsdCurrency(updatedSettings.threshold || 0)}`
+          ? `Auto top-off enabled: ${formatUsdCurrency(parseFloat(updatedSettings.amount || "0"))} when balance falls below ${formatUsdCurrency(parseFloat(updatedSettings.threshold || "0"))}`
           : "Auto top-off has been disabled",
       });
     } catch (err) {
@@ -111,8 +111,8 @@ export function AutoTopOffSettings({ className }: AutoTopOffSettingsProps) {
     
     return (
       enabled !== settings.enabled ||
-      (enabled && threshold !== (settings.threshold?.toString() || "")) ||
-      (enabled && amount !== (settings.amount?.toString() || ""))
+      (enabled && threshold !== (settings.threshold || "")) ||
+      (enabled && amount !== (settings.amount || ""))
     );
   };
 

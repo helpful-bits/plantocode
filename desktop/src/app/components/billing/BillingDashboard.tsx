@@ -7,7 +7,8 @@ import {
   RefreshCw,
   DollarSign,
   Plus,
-  FileWarning
+  FileWarning,
+  Clock
 } from "lucide-react";
 
 import { Button } from "@/ui/button";
@@ -31,7 +32,11 @@ export function BillingDashboard({}: BillingDashboardProps = {}) {
     dashboardData,
     isLoading,
     error,
-    refreshBillingData
+    refreshBillingData,
+    freeCreditBalanceUsd,
+    usageLimitUsd,
+    currentUsage,
+    freeCreditsExpiresAt
   } = useBillingData();
 
 
@@ -48,19 +53,44 @@ export function BillingDashboard({}: BillingDashboardProps = {}) {
       newUrl.searchParams.delete('credits');
       window.history.replaceState(null, '', newUrl.toString());
     }
-  }, []);
+    
+    // Check for session_id (post-payment handling)
+    const sessionId = urlParams.get('session_id');
+    if (sessionId) {
+      // Verify payment status and refresh billing data
+      const verifyPayment = async () => {
+        try {
+          await refreshBillingData();
+        } catch (err) {
+          console.error('Error verifying payment:', err);
+        }
+      };
+      verifyPayment();
+      
+      // Clean up the URL parameter
+      const newUrl = new URL(window.location.href);
+      newUrl.searchParams.delete('session_id');
+      window.history.replaceState(null, '', newUrl.toString());
+    }
+  }, [refreshBillingData]);
 
   useEffect(() => {
     const handleOpenCreditManager = () => {
       setIsCreditManagerOpen(true);
     };
+    
+    const handleBillingDataUpdated = () => {
+      refreshBillingData();
+    };
 
     window.addEventListener('open-credit-manager', handleOpenCreditManager);
+    window.addEventListener('billing-data-updated', handleBillingDataUpdated);
     
     return () => {
       window.removeEventListener('open-credit-manager', handleOpenCreditManager);
+      window.removeEventListener('billing-data-updated', handleBillingDataUpdated);
     };
-  }, []);
+  }, [refreshBillingData]);
 
   const handleUpdateBillingInfo = async () => {
     try {
@@ -73,6 +103,19 @@ export function BillingDashboard({}: BillingDashboardProps = {}) {
     } finally {
       setIsOpeningPortal(false);
     }
+  };
+  
+  // Calculate free tier usage percentage
+  const freeTierUsagePercentage = usageLimitUsd > 0 ? Math.min((currentUsage / usageLimitUsd) * 100, 100) : 0;
+  const isFreeTierWarning = freeTierUsagePercentage >= 80 && freeTierUsagePercentage < 100;
+  const isFreeTierExhausted = freeTierUsagePercentage >= 100;
+  
+  // Determine progress bar color based on usage
+  const getProgressBarColor = () => {
+    if (freeTierUsagePercentage < 50) return "bg-green-500";
+    if (freeTierUsagePercentage < 80) return "bg-yellow-500";
+    if (freeTierUsagePercentage < 100) return "bg-orange-500";
+    return "bg-red-500";
   };
 
 
@@ -147,6 +190,47 @@ export function BillingDashboard({}: BillingDashboardProps = {}) {
           </AlertDescription>
         </Alert>
       )}
+      
+      {/* Free Tier Usage Alerts */}
+      {freeCreditBalanceUsd > 0 && isFreeTierWarning && !isFreeTierExhausted && (
+        <Alert className="border-orange-200 bg-orange-50">
+          <AlertTriangle className="h-5 w-5 text-orange-600" />
+          <AlertTitle className="text-orange-800 font-semibold">Free Credits Running Low</AlertTitle>
+          <AlertDescription className="flex items-center justify-between mt-2">
+            <span className="text-orange-700">
+              You've used {freeTierUsagePercentage.toFixed(0)}% of your free credits. Consider purchasing additional credits to ensure uninterrupted service.
+            </span>
+            <Button 
+              size="sm" 
+              onClick={() => setIsCreditManagerOpen(true)}
+              className="ml-4 bg-orange-600 hover:bg-orange-700"
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Buy Credits
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
+      
+      {freeCreditBalanceUsd > 0 && isFreeTierExhausted && (
+        <Alert variant="destructive" className="border-red-200 bg-red-50">
+          <AlertTriangle className="h-5 w-5" />
+          <AlertTitle className="text-red-800 font-semibold">Free Credits Exhausted</AlertTitle>
+          <AlertDescription className="flex items-center justify-between mt-2">
+            <span className="text-red-700">
+              Your free credits have been fully used. Purchase credits now to continue using AI services.
+            </span>
+            <Button 
+              size="sm" 
+              onClick={() => setIsCreditManagerOpen(true)}
+              className="ml-4 bg-red-600 hover:bg-red-700"
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Buy Credits
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
 
       {error && hasAnyData && (
         <Alert variant="default" className="border-amber-200 bg-amber-50">
@@ -194,6 +278,33 @@ export function BillingDashboard({}: BillingDashboardProps = {}) {
                 )}
               </div>
             </div>
+            
+            {/* Free Tier Usage Progress */}
+            {freeCreditBalanceUsd > 0 && (
+              <div className="space-y-3 max-w-md mx-auto">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">Free Credit Usage</span>
+                  <span className="font-medium">{freeTierUsagePercentage.toFixed(0)}%</span>
+                </div>
+                <div className="relative h-3 w-full overflow-hidden rounded-full bg-secondary/60 backdrop-blur-sm border border-border/30">
+                  <div 
+                    className={`h-full w-full flex-1 ${getProgressBarColor()} transition-all`}
+                    style={{ transform: `translateX(-${100 - freeTierUsagePercentage}%)` }}
+                  />
+                </div>
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span>{formatUsdCurrency(currentUsage)} used</span>
+                  <span>{formatUsdCurrency(usageLimitUsd)} limit</span>
+                </div>
+                {freeCreditsExpiresAt && (
+                  <div className="flex items-center justify-center gap-1 text-xs text-muted-foreground">
+                    <Clock className="h-3 w-3" />
+                    <span>Expires {new Date(freeCreditsExpiresAt).toLocaleDateString()}</span>
+                  </div>
+                )}
+              </div>
+            )}
+            
             <Button 
               size="lg" 
               onClick={() => setIsCreditManagerOpen(true)}

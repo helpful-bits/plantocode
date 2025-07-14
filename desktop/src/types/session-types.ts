@@ -60,7 +60,6 @@ export type Session = {
   createdAt: number; // Timestamp when the session was created
   includedFiles: string[]; // Array of comparablePath strings (normalized, project-relative paths) that are selected
   forceExcludedFiles: string[]; // Array of comparablePath strings (normalized, project-relative paths) forced excluded even if they match inclusion criteria
-  backgroundJobs?: BackgroundJob[]; // Associated background jobs
   searchSelectedFilesOnly: boolean; // Whether to search only in selected files
   modelUsed?: string; // The model used for this session
 };

@@ -38,7 +38,7 @@ import { MergePlansSection } from "./_components/MergePlansSection";
 import { useImplementationPlansLogic } from "./_hooks/useImplementationPlansLogic";
 import { usePromptCopyModal } from "./_hooks/usePromptCopyModal";
 import { replacePlaceholders } from "@/utils/placeholder-utils";
-import { getContentForStep } from "./_utils/plan-content-parser";
+import { getContentForStep, parsePlanResponseContent } from "./_utils/plan-content-parser";
 import { normalizeJobResponse } from '@/utils/response-utils';
 
 interface ImplementationPlansPanelProps {
@@ -89,6 +89,25 @@ export function ImplementationPlansPanel({
     if (!openedPlanJobId) return null;
     return implementationPlans.find(plan => plan.id === openedPlanJobId) || null;
   }, [openedPlanJobId, implementationPlans]);
+
+  // Get current plan index and navigation info
+  const currentPlanIndex = useMemo(() => {
+    if (!openedPlanJobId) return -1;
+    return implementationPlans.findIndex(plan => plan.id === openedPlanJobId);
+  }, [openedPlanJobId, implementationPlans]);
+
+  const hasPreviousPlan = currentPlanIndex > 0;
+  const hasNextPlan = currentPlanIndex >= 0 && currentPlanIndex < implementationPlans.length - 1;
+
+  // Handle navigation between plans
+  const handleNavigateToPlan = useCallback((direction: 'previous' | 'next') => {
+    if (currentPlanIndex === -1) return;
+    
+    const newIndex = direction === 'previous' ? currentPlanIndex - 1 : currentPlanIndex + 1;
+    if (newIndex >= 0 && newIndex < implementationPlans.length) {
+      setOpenedPlanJobId(implementationPlans[newIndex].id);
+    }
+  }, [currentPlanIndex, implementationPlans]);
 
   // Handle opening the plan content modal
   const handleViewPlanContent = useCallback((plan: BackgroundJob) => {
@@ -178,9 +197,10 @@ export function ImplementationPlansPanel({
   const handleCopyButtonClick = useCallback(async (buttonConfig: CopyButtonConfig, plan: BackgroundJob) => {
     try {
       const fullPlan = plan.response || '';
+      const parsedPlanContent = parsePlanResponseContent(normalizeJobResponse(fullPlan).content);
       const data = {
-        IMPLEMENTATION_PLAN: normalizeJobResponse(fullPlan).content,
-        STEP_CONTENT: selectedStepNumber ? getContentForStep(normalizeJobResponse(fullPlan).content, selectedStepNumber) : ''
+        IMPLEMENTATION_PLAN: parsedPlanContent,
+        STEP_CONTENT: selectedStepNumber ? getContentForStep(parsedPlanContent, selectedStepNumber) : ''
       };
       const processedContent = replacePlaceholders(buttonConfig.content, data);
       
@@ -528,6 +548,12 @@ export function ImplementationPlansPanel({
           onStepSelect={setSelectedStepNumber}
           copyButtons={implementationPlanSettings || []}
           onCopyButtonClick={(buttonConfig) => handleCopyButtonClick(buttonConfig, livePlanForModal)}
+          // Navigation props
+          currentIndex={currentPlanIndex}
+          totalPlans={implementationPlans.length}
+          hasPrevious={hasPreviousPlan}
+          hasNext={hasNextPlan}
+          onNavigate={handleNavigateToPlan}
         />
       )}
 

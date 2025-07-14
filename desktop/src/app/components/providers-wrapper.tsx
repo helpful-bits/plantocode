@@ -26,6 +26,7 @@ import { BackgroundJobsProvider } from "@/contexts/background-jobs";
 import { SessionProvider } from "@/contexts/session";
 import { NotificationProvider } from "@/contexts";
 import { TextImprovementProvider } from "@/contexts/text-improvement";
+import { BillingProvider } from "@/contexts/billing-context";
 import { TooltipProvider } from "@/ui/tooltip";
 
 export interface ProvidersWrapperProps {
@@ -79,9 +80,11 @@ export function ProvidersWrapper({
               <ProjectProvider>
                 <SessionProvider>
                   <BackgroundJobsProvider>
-                    <TextImprovementProvider>
-                      {children}
-                    </TextImprovementProvider>
+                    <BillingProvider>
+                      <TextImprovementProvider>
+                        {children}
+                      </TextImprovementProvider>
+                    </BillingProvider>
                   </BackgroundJobsProvider>
                 </SessionProvider>
               </ProjectProvider>

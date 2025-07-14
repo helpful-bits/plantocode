@@ -49,4 +49,5 @@ export interface SessionActionsContextType {
   deleteNonActiveSession: (sessionId: string) => Promise<void>;
   renameActiveSession: (newName: string) => Promise<void>;
   renameSession: (sessionId: string, newName: string) => Promise<void>;
+  applyFileSelectionUpdate: (paths: string[], source?: string) => void;
 }

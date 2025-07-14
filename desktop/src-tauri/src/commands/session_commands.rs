@@ -1,6 +1,6 @@
 use tauri::{AppHandle, Manager};
 use crate::error::AppResult;
-use crate::models::{Session, CreateSessionRequest};
+use crate::models::{Session, CreateSessionRequest, FileSelectionHistoryEntry, FileSelectionHistoryEntryWithTimestamp};
 use serde_json::Value;
 use crate::utils::hash_utils::hash_string;
 use std::sync::Arc;
@@ -307,4 +307,52 @@ pub async fn sync_task_description_history_command(app_handle: AppHandle, sessio
         .clone();
 
     repo.sync_task_description_history(&session_id, &history).await
+}
+
+#[tauri::command]
+pub async fn get_file_selection_history_command(app_handle: AppHandle, session_id: String) -> AppResult<Vec<FileSelectionHistoryEntryWithTimestamp>> {
+    let repo = app_handle.state::<Arc<crate::db_utils::session_repository::SessionRepository>>()
+        .inner()
+        .clone();
+
+    let history_tuples = repo.get_file_selection_history(&session_id).await?;
+    
+    let mut history = Vec::new();
+    for (included_files_text, force_excluded_files_text, created_at) in history_tuples {
+        let included_files = included_files_text
+            .lines()
+            .filter(|line| !line.is_empty())
+            .map(|line| line.to_string())
+            .collect();
+        
+        let force_excluded_files = force_excluded_files_text
+            .lines()
+            .filter(|line| !line.is_empty())
+            .map(|line| line.to_string())
+            .collect();
+        
+        history.push(FileSelectionHistoryEntryWithTimestamp {
+            included_files,
+            force_excluded_files,
+            created_at,
+        });
+    }
+    
+    Ok(history)
+}
+
+#[tauri::command]
+pub async fn sync_file_selection_history_command(app_handle: AppHandle, session_id: String, history: Vec<FileSelectionHistoryEntry>) -> AppResult<()> {
+    let repo = app_handle.state::<Arc<crate::db_utils::session_repository::SessionRepository>>()
+        .inner()
+        .clone();
+
+    let history_tuples: Vec<(String, String)> = history.into_iter().map(|entry| {
+        (
+            entry.included_files.join("\n"),
+            entry.force_excluded_files.join("\n")
+        )
+    }).collect();
+
+    repo.sync_file_selection_history(&session_id, &history_tuples).await
 }

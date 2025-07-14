@@ -49,11 +49,13 @@ mod tests {
         balance_after: BigDecimal,
     ) -> Result<(), sqlx::Error> {
         sqlx::query(
-            "INSERT INTO credit_transactions (user_id, transaction_type, amount, balance_after) VALUES ($1, $2, $3, $4)"
+            "INSERT INTO credit_transactions (user_id, transaction_type, net_amount, gross_amount, fee_amount, balance_after) VALUES ($1, $2, $3, $4, $5, $6)"
         )
         .bind(user_id)
         .bind(transaction_type)
         .bind(amount)
+        .bind(amount.clone())
+        .bind(BigDecimal::from(0))
         .bind(balance_after)
         .execute(pool)
         .await?;
@@ -329,10 +331,12 @@ mod tests {
 
         // Test: User 1 context trying to insert transaction for User 2 (should fail)
         let transaction_insert_result = sqlx::query(
-            "INSERT INTO credit_transactions (user_id, transaction_type, amount, balance_after) VALUES ($1, 'purchase', $2, $3)"
+            "INSERT INTO credit_transactions (user_id, transaction_type, net_amount, gross_amount, fee_amount, balance_after) VALUES ($1, 'purchase', $2, $3, $4, $5)"
         )
         .bind(user_2_id)
         .bind(BigDecimal::from_f64(50.0000).unwrap())
+        .bind(BigDecimal::from_f64(50.0000).unwrap())
+        .bind(BigDecimal::from(0))
         .bind(BigDecimal::from_f64(100.0000).unwrap())
         .execute(&mut *conn_1)
         .await;

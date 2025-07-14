@@ -15,7 +15,7 @@ VALUES (
           },
           {
             "label": "Investigate Results",
-            "content": "Investigate the results of the work of each of the agents, and be sure that we have implemented the plan CORRECTLY!"
+            "content": "Investigate the results of ALL agents that were launched and ensure we have implemented the COMPLETE plan CORRECTLY! Perform a thorough self-check without launching background agents. Think deeply to verify EVERYTHING has been properly executed."
           }
         ]
       },

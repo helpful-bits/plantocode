@@ -909,6 +909,7 @@ impl ServerProxyClient {
         
         Ok(Some(crate::models::FinalCostData {
             request_id: cost_response.request_id.clone(),
+            user_id: "unknown".to_string(), // Desktop client doesn't need user_id for local operations
             service_name: "streaming".to_string(), // Default service name for streaming requests
             final_cost: cost_response.final_cost.unwrap_or(0.0),
             tokens_input: cost_response.tokens_input.unwrap_or(0),

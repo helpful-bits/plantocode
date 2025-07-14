@@ -44,6 +44,14 @@ pub struct CreditHistoryResponse {
 }
 
 // Customer billing models
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct TaxIdInfo {
+    pub r#type: String,
+    pub value: String,
+    pub country: Option<String>,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CustomerBillingInfo {
@@ -51,6 +59,7 @@ pub struct CustomerBillingInfo {
     pub customer_email: Option<String>,
     pub phone: Option<String>,
     pub tax_exempt: Option<String>,
+    pub tax_ids: Vec<TaxIdInfo>,
     pub address_line1: Option<String>,
     pub address_line2: Option<String>,
     pub address_city: Option<String>,
@@ -65,6 +74,8 @@ pub struct CustomerBillingInfo {
 #[serde(rename_all = "camelCase")]
 pub struct BillingDashboardData {
     pub credit_balance_usd: f64,
+    pub free_credit_balance_usd: f64,
+    pub free_credits_expires_at: Option<chrono::DateTime<chrono::Utc>>,
     pub services_blocked: bool,
     pub is_payment_method_required: bool,
     pub is_billing_info_required: bool,

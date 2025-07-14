@@ -355,6 +355,9 @@ async fn main() -> std::io::Result<()> {
         }
     }
     
+    // Wrap billing service in Arc for sharing across handlers
+    let billing_service = Arc::new(billing_service);
+    
     // Clone app_settings for use outside the closure
     let app_settings_for_server = app_settings.clone();
 

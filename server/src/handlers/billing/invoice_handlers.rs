@@ -1,4 +1,5 @@
 use actix_web::{get, web, HttpResponse, Result};
+use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use log::{debug, info};
 
@@ -16,7 +17,7 @@ pub struct InvoiceQueryParams {
 #[get("/invoices")]
 pub async fn list_invoices(
     user: web::ReqData<AuthenticatedUser>,
-    billing_service: web::Data<BillingService>,
+    billing_service: web::Data<Arc<BillingService>>,
     query: web::Query<InvoiceQueryParams>,
 ) -> Result<HttpResponse, AppError> {
     // Validate and sanitize pagination parameters

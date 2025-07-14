@@ -19,7 +19,7 @@ use bigdecimal::BigDecimal;
 use std::str::FromStr;
 
 use crate::handlers::streaming_handler::{StreamChunkTransformer, TransformResult, StreamError};
-use crate::clients::google_client::GoogleStreamChunk;
+use crate::clients::google_client::{GoogleStreamChunk, GoogleUsageMetadata};
 use crate::clients::open_router_client::{OpenRouterStreamChunk, OpenRouterStreamChoice, OpenRouterStreamDelta, OpenRouterUsage};
 use crate::clients::usage_extractor::ProviderUsage;
 
@@ -35,14 +35,19 @@ use crate::clients::usage_extractor::ProviderUsage;
 /// - Malformed chunks (returns Ignore, never forwards)
 /// - Valid content chunks (converts to OpenRouterStreamChunk)
 /// - Final chunks with usage metadata (extracts for billing)
+/// 
+/// Note: Google sends cumulative usage metadata in multiple chunks during streaming.
+/// We track the last seen usage and only extract it once when we see a truly final chunk.
 pub struct GoogleStreamTransformer {
     model_id: String,
+    last_usage_metadata: std::sync::Mutex<Option<crate::clients::google_client::GoogleUsageMetadata>>,
 }
 
 impl GoogleStreamTransformer {
     pub fn new(model_id: &str) -> Self {
         Self {
             model_id: model_id.to_string(),
+            last_usage_metadata: std::sync::Mutex::new(None),
         }
     }
     
@@ -124,8 +129,15 @@ impl StreamChunkTransformer for GoogleStreamTransformer {
         }
         
         // Step 4: Try to deserialize as GoogleStreamChunk
-        match serde_json::from_value::<GoogleStreamChunk>(chunk_value) {
+        match serde_json::from_value::<GoogleStreamChunk>(chunk_value.clone()) {
             Ok(google_chunk) => {
+                // Store usage metadata if present (Google sends cumulative totals)
+                if let Some(ref usage_metadata) = google_chunk.usage_metadata {
+                    if let Ok(mut last_usage) = self.last_usage_metadata.lock() {
+                        *last_usage = Some(usage_metadata.clone());
+                    }
+                }
+                
                 let openrouter_chunk = self.convert_google_to_openrouter(google_chunk);
                 let converted_json = serde_json::to_string(&openrouter_chunk)
                     .unwrap_or_else(|_| "{}".to_string());
@@ -145,49 +157,43 @@ impl StreamChunkTransformer for GoogleStreamTransformer {
         StreamError::ProviderError(format!("Google API error: {}", error_message))
     }
     
-    fn is_final_chunk(&self, chunk: &Value) -> bool {
-        // Check if this chunk has candidates with finish_reason
-        chunk.get("candidates")
-            .and_then(|candidates| candidates.as_array())
-            .and_then(|arr| arr.first())
-            .and_then(|candidate| candidate.get("finish_reason"))
-            .is_some()
-    }
-    
-    fn extract_usage_if_final(&self, chunk: &[u8], model_id: &str) -> Option<ProviderUsage> {
-        let chunk_str = std::str::from_utf8(chunk).ok()?;
+    fn process_chunk_for_usage(&self, chunk: &[u8]) {
+        let chunk_str = match std::str::from_utf8(chunk) {
+            Ok(s) => s,
+            Err(_) => return,
+        };
+        
         let json_str = if chunk_str.starts_with("data: ") {
             &chunk_str[6..]
         } else {
             chunk_str
         };
         
-        let chunk_value: Value = serde_json::from_str(json_str).ok()?;
-        
-        // Google may send usage metadata in any chunk, not necessarily with finish_reason
-        // Check if this chunk has usage metadata
-        let has_usage = chunk_value.get("usageMetadata").is_some();
-        
-        if has_usage {
+        if let Ok(chunk_value) = serde_json::from_str::<Value>(json_str) {
             if let Ok(google_chunk) = serde_json::from_value::<GoogleStreamChunk>(chunk_value) {
                 if let Some(usage_metadata) = google_chunk.usage_metadata {
-                    info!("Google: Extracted usage metadata from chunk - prompt_tokens: {}, completion_tokens: {}, model_id: {}", 
-                          usage_metadata.prompt_token_count, 
-                          usage_metadata.candidates_token_count.unwrap_or(0), 
-                          model_id);
-                    return Some(ProviderUsage {
-                        prompt_tokens: usage_metadata.prompt_token_count,
-                        completion_tokens: usage_metadata.candidates_token_count.unwrap_or(0),
-                        cache_write_tokens: 0, // Google doesn't support cache write
-                        cache_read_tokens: usage_metadata.cached_content_token_count.unwrap_or(0),
-                        model_id: model_id.to_string(),
-                        duration_ms: None,
-                        cost: None,
-                    });
+                    if let Ok(mut last_usage) = self.last_usage_metadata.lock() {
+                        *last_usage = Some(usage_metadata);
+                    }
                 }
             }
         }
-        
+    }
+    
+    fn get_final_usage(&self) -> Option<ProviderUsage> {
+        if let Ok(mut last_usage_guard) = self.last_usage_metadata.lock() {
+            if let Some(usage_metadata) = last_usage_guard.take() {
+                return Some(ProviderUsage {
+                    prompt_tokens: usage_metadata.prompt_token_count,
+                    completion_tokens: usage_metadata.candidates_token_count.unwrap_or(0),
+                    cache_write_tokens: 0,
+                    cache_read_tokens: usage_metadata.cached_content_token_count.unwrap_or(0),
+                    model_id: self.model_id.clone(),
+                    duration_ms: None,
+                    cost: None,
+                });
+            }
+        }
         None
     }
     
@@ -228,12 +234,14 @@ impl StreamChunkTransformer for GoogleStreamTransformer {
 /// - Incremental usage updates from message_delta events
 pub struct AnthropicStreamTransformer {
     model_id: String,
+    final_usage: std::sync::Mutex<Option<ProviderUsage>>,
 }
 
 impl AnthropicStreamTransformer {
     pub fn new(model_id: &str) -> Self {
         Self {
             model_id: model_id.to_string(),
+            final_usage: std::sync::Mutex::new(None),
         }
     }
 }
@@ -294,61 +302,48 @@ impl StreamChunkTransformer for AnthropicStreamTransformer {
         StreamError::ProviderError(format!("Anthropic API error: {}", error_message))
     }
     
-    fn is_final_chunk(&self, chunk: &Value) -> bool {
-        // Check for Anthropic completion indicators
-        if chunk.get("type") == Some(&Value::String("message_stop".to_string())) {
-            return true;
-        }
-        if let Some(delta) = chunk.get("delta") {
-            if delta.get("stop_reason").is_some() {
-                return true;
-            }
-        }
-        // Standard OpenRouter completion check
-        chunk.get("choices")
-            .and_then(|choices| choices.as_array())
-            .and_then(|arr| arr.first())
-            .and_then(|choice| choice.get("finish_reason"))
-            .is_some()
-    }
-    
-    fn extract_usage_if_final(&self, chunk: &[u8], model_id: &str) -> Option<ProviderUsage> {
-        let chunk_str = std::str::from_utf8(chunk).ok()?;
+    fn process_chunk_for_usage(&self, chunk: &[u8]) {
+        let chunk_str = match std::str::from_utf8(chunk) {
+            Ok(s) => s,
+            Err(_) => return,
+        };
+        
         let json_str = if chunk_str.starts_with("data: ") {
             &chunk_str[6..]
         } else {
             chunk_str
         };
         
-        let chunk_value: Value = serde_json::from_str(json_str).ok()?;
-        
-        // Check if this is a final chunk with usage information
-        let is_final = self.is_final_chunk(&chunk_value);
-        let has_usage = chunk_value.get("usage").is_some();
-        
-        if is_final && has_usage {
+        if let Ok(chunk_value) = serde_json::from_str::<Value>(json_str) {
             if let Some(usage_obj) = chunk_value.get("usage") {
                 let prompt_tokens = usage_obj.get("input_tokens").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
                 let completion_tokens = usage_obj.get("output_tokens").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
                 let cache_write_tokens = usage_obj.get("cache_creation_input_tokens").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
                 let cache_read_tokens = usage_obj.get("cache_read_input_tokens").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
                 
-                // Calculate total prompt tokens as per Anthropic's model
                 let total_prompt_tokens = prompt_tokens + cache_write_tokens + cache_read_tokens;
                 
-                return Some(ProviderUsage {
-                    prompt_tokens: total_prompt_tokens,
-                    completion_tokens,
-                    cache_write_tokens,
-                    cache_read_tokens,
-                    model_id: model_id.to_string(),
-                    duration_ms: None,
-                    cost: None,
-                });
+                if let Ok(mut usage_guard) = self.final_usage.lock() {
+                    *usage_guard = Some(ProviderUsage {
+                        prompt_tokens: total_prompt_tokens,
+                        completion_tokens,
+                        cache_write_tokens,
+                        cache_read_tokens,
+                        model_id: self.model_id.clone(),
+                        duration_ms: None,
+                        cost: None,
+                    });
+                }
             }
         }
-        
-        None
+    }
+    
+    fn get_final_usage(&self) -> Option<ProviderUsage> {
+        if let Ok(mut usage_guard) = self.final_usage.lock() {
+            usage_guard.take()
+        } else {
+            None
+        }
     }
     
     fn extract_text_delta(&self, chunk: &Value) -> Option<String> {
@@ -418,12 +413,14 @@ impl StreamChunkTransformer for AnthropicStreamTransformer {
 /// - Never forwarding malformed chunks to prevent client errors
 pub struct OpenAIStreamTransformer {
     model_id: String,
+    final_usage: std::sync::Mutex<Option<ProviderUsage>>,
 }
 
 impl OpenAIStreamTransformer {
     pub fn new(model_id: &str) -> Self {
         Self {
             model_id: model_id.to_string(),
+            final_usage: std::sync::Mutex::new(None),
         }
     }
 }
@@ -481,60 +478,55 @@ impl StreamChunkTransformer for OpenAIStreamTransformer {
         StreamError::ProviderError(format!("OpenAI API error: {}", error_message))
     }
     
-    fn is_final_chunk(&self, chunk: &Value) -> bool {
-        // Check if chunk has choices with finish_reason AND usage information
-        let has_finish_reason = chunk.get("choices")
-            .and_then(|choices| choices.as_array())
-            .and_then(|arr| arr.first())
-            .and_then(|choice| choice.get("finish_reason"))
-            .is_some();
-        let has_usage = chunk.get("usage").is_some();
+    fn process_chunk_for_usage(&self, chunk: &[u8]) {
+        let chunk_str = match std::str::from_utf8(chunk) {
+            Ok(s) => s,
+            Err(_) => return,
+        };
         
-        has_finish_reason && has_usage
-    }
-    
-    fn extract_usage_if_final(&self, chunk: &[u8], model_id: &str) -> Option<ProviderUsage> {
-        let chunk_str = std::str::from_utf8(chunk).ok()?;
         let json_str = if chunk_str.starts_with("data: ") {
             &chunk_str[6..]
         } else {
             chunk_str
         };
         
-        let chunk_value: Value = serde_json::from_str(json_str).ok()?;
-        
-        // Check if this is a final chunk with usage information
-        if self.is_final_chunk(&chunk_value) {
+        if let Ok(chunk_value) = serde_json::from_str::<Value>(json_str) {
             if let Some(usage_obj) = chunk_value.get("usage") {
                 let prompt_tokens = usage_obj.get("prompt_tokens").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
                 let completion_tokens = usage_obj.get("completion_tokens").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
                 
-                // Extract cached tokens from prompt_tokens_details if available
                 let cache_read_tokens = usage_obj.get("prompt_tokens_details")
                     .and_then(|details| details.get("cached_tokens"))
                     .and_then(|v| v.as_i64())
                     .unwrap_or(0) as i32;
                 
-                // Derive cache_write_tokens
                 let cache_write_tokens = if cache_read_tokens > 0 {
                     prompt_tokens - cache_read_tokens
                 } else {
                     0
                 };
                 
-                return Some(ProviderUsage {
-                    prompt_tokens,
-                    completion_tokens,
-                    cache_write_tokens,
-                    cache_read_tokens,
-                    model_id: model_id.to_string(),
-                    duration_ms: None,
-                    cost: None,
-                });
+                if let Ok(mut usage_guard) = self.final_usage.lock() {
+                    *usage_guard = Some(ProviderUsage {
+                        prompt_tokens,
+                        completion_tokens,
+                        cache_write_tokens,
+                        cache_read_tokens,
+                        model_id: self.model_id.clone(),
+                        duration_ms: None,
+                        cost: None,
+                    });
+                }
             }
         }
-        
-        None
+    }
+    
+    fn get_final_usage(&self) -> Option<ProviderUsage> {
+        if let Ok(mut usage_guard) = self.final_usage.lock() {
+            usage_guard.take()
+        } else {
+            None
+        }
     }
     
     fn extract_text_delta(&self, chunk: &Value) -> Option<String> {
@@ -570,12 +562,14 @@ impl StreamChunkTransformer for OpenAIStreamTransformer {
 /// while passing valid chunks through unchanged.
 pub struct OpenRouterStreamTransformer {
     model_id: String,
+    final_usage: std::sync::Mutex<Option<ProviderUsage>>,
 }
 
 impl OpenRouterStreamTransformer {
     pub fn new(model_id: &str) -> Self {
         Self {
             model_id: model_id.to_string(),
+            final_usage: std::sync::Mutex::new(None),
         }
     }
 }
@@ -634,18 +628,12 @@ impl StreamChunkTransformer for OpenRouterStreamTransformer {
         StreamError::ProviderError(format!("OpenRouter API error: {}", error_message))
     }
     
-    fn is_final_chunk(&self, chunk: &Value) -> bool {
-        // Check if the chunk contains a finish_reason that is not null
-        chunk.get("choices")
-            .and_then(|choices| choices.as_array())
-            .and_then(|arr| arr.first())
-            .and_then(|choice| choice.get("finish_reason"))
-            .and_then(|reason| reason.as_str())
-            .is_some()
-    }
-    
-    fn extract_usage_if_final(&self, chunk: &[u8], model_id: &str) -> Option<ProviderUsage> {
-        let chunk_str = std::str::from_utf8(chunk).ok()?;
+    fn process_chunk_for_usage(&self, chunk: &[u8]) {
+        let chunk_str = match std::str::from_utf8(chunk) {
+            Ok(s) => s,
+            Err(_) => return,
+        };
+        
         let json_str = if chunk_str.starts_with("data: ") {
             &chunk_str[6..]
         } else {
@@ -653,42 +641,39 @@ impl StreamChunkTransformer for OpenRouterStreamTransformer {
         };
         
         if json_str.trim() == "[DONE]" {
-            return None;
+            return;
         }
         
-        let chunk_value: Value = serde_json::from_str(json_str).ok()?;
-        
-        // Check if this chunk has usage data and is a final chunk
-        if let Some(usage_obj) = chunk_value.get("usage") {
-            let is_final = chunk_value.get("choices")
-                .and_then(|choices| choices.as_array())
-                .and_then(|arr| arr.first())
-                .and_then(|choice| choice.get("finish_reason"))
-                .and_then(|reason| reason.as_str())
-                .is_some();
-            
-            if is_final {
+        if let Ok(chunk_value) = serde_json::from_str::<Value>(json_str) {
+            if let Some(usage_obj) = chunk_value.get("usage") {
                 let prompt_tokens = usage_obj.get("prompt_tokens").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
                 let completion_tokens = usage_obj.get("completion_tokens").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
                 
-                // Extract cached tokens from OpenRouter (if available)
                 let cache_read_tokens = usage_obj.get("cached_input_tokens")
                     .and_then(|v| v.as_i64())
                     .unwrap_or(0) as i32;
                 
-                return Some(ProviderUsage {
-                    prompt_tokens,
-                    completion_tokens,
-                    cache_write_tokens: 0,  // OpenRouter doesn't support cache write
-                    cache_read_tokens,
-                    model_id: model_id.to_string(),
-                    duration_ms: None,
-                    cost: usage_obj.get("cost").and_then(|v| v.as_f64()).map(|f| BigDecimal::from_str(&f.to_string()).unwrap_or_default()),
-                });
+                if let Ok(mut usage_guard) = self.final_usage.lock() {
+                    *usage_guard = Some(ProviderUsage {
+                        prompt_tokens,
+                        completion_tokens,
+                        cache_write_tokens: 0,
+                        cache_read_tokens,
+                        model_id: self.model_id.clone(),
+                        duration_ms: None,
+                        cost: usage_obj.get("cost").and_then(|v| v.as_f64()).map(|f| BigDecimal::from_str(&f.to_string()).unwrap_or_default()),
+                    });
+                }
             }
         }
-        
-        None
+    }
+    
+    fn get_final_usage(&self) -> Option<ProviderUsage> {
+        if let Ok(mut usage_guard) = self.final_usage.lock() {
+            usage_guard.take()
+        } else {
+            None
+        }
     }
     
     fn extract_text_delta(&self, chunk: &Value) -> Option<String> {

@@ -668,6 +668,7 @@ impl JobProcessor for FileRelevanceAssessmentProcessor {
             usage: aggregated_usage, // Aggregated usage from all chunks
             system_prompt_id: if captured_system_prompt_id.is_empty() { "chunked_processing".to_string() } else { captured_system_prompt_id },
             system_prompt_template: captured_system_prompt_template, // Use actual template from first successful chunk
+            request_id: None, // Chunked processing doesn't use request_id for final cost polling
         };
 
         debug!("File relevance assessment completed for job {}", job.id);

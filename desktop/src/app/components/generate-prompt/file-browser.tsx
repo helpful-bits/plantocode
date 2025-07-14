@@ -1,7 +1,7 @@
 "use client";
 
-import { RefreshCw, X, AlertCircle, Loader2, Search, Undo, Redo, CheckSquare, Square, Sparkles, ChevronUp, ChevronDown, HelpCircle } from "lucide-react";
-import React, { useState } from "react";
+import { RefreshCw, X, AlertCircle, Loader2, Search, Undo2, Redo2, CheckSquare, Square, Sparkles, ChevronUp, ChevronDown, HelpCircle } from "lucide-react";
+import { useState } from "react";
 import { useProject } from "@/contexts/project-context";
 import { useSessionStateContext } from "@/contexts/session";
 import { Button } from "@/ui/button";
@@ -11,16 +11,12 @@ import { useFileSelection } from "./_hooks/use-file-selection";
 import { useWorkflowState } from "./_hooks/use-workflow-state";
 import { FileItem } from "./_components/file-item";
 
-export interface FileBrowserHandle {
-  handleApplyFilesFromJob: (paths: string[], source: string) => void;
-}
-
 /**
  * EXTREMELY SIMPLE file browser
  * No complex state management, no caching, no multiple contexts
  * Just a list of files with checkboxes
  */
-export const FileBrowser = React.forwardRef<FileBrowserHandle, {}>((_, ref) => {
+export const FileBrowser = () => {
   const { projectDirectory } = useProject();
   const { currentSession } = useSessionStateContext();
   const {
@@ -46,33 +42,17 @@ export const FileBrowser = React.forwardRef<FileBrowserHandle, {}>((_, ref) => {
     canRedo,
     selectFiltered,
     deselectFiltered,
-    applyWorkflowResultsToSession,
   } = useFileSelection(projectDirectory);
   
-  const handleWorkflowComplete = React.useCallback((files: string[]) => {
-    applyWorkflowResultsToSession(files, "workflow completion");
-    if (files.length > 0) {
-      setFilterMode("selected");
-    }
-  }, [applyWorkflowResultsToSession, setFilterMode]);
-
   const {
     findingFiles,
     findingFilesError,
     triggerFind,
     cancelFind,
-  } = useWorkflowState(handleWorkflowComplete);
+  } = useWorkflowState();
 
   // State for controlling tooltip visibility
   const [showFindFilesHelpTooltip, setShowFindFilesHelpTooltip] = useState(false);
-
-  const handleApplyFilesFromJob = React.useCallback((paths: string[], source: string) => {
-    applyWorkflowResultsToSession(paths, source);
-  }, [applyWorkflowResultsToSession]);
-
-  React.useImperativeHandle(ref, () => ({
-    handleApplyFilesFromJob,
-  }), [handleApplyFilesFromJob]);
 
   if (!projectDirectory) {
     return (
@@ -156,21 +136,23 @@ export const FileBrowser = React.forwardRef<FileBrowserHandle, {}>((_, ref) => {
           <div className="flex items-center gap-1 ml-2 pl-2 border-l border-border/60">
             <Button
               variant="outline"
-              size="sm"
+              size="icon-sm"
               onClick={undo}
               disabled={!canUndo}
               title="Undo file selection"
+              className="h-6 w-6"
             >
-              <Undo className="h-4 w-4" />
+              <Undo2 className="h-3 w-3" />
             </Button>
             <Button
               variant="outline"
-              size="sm"
+              size="icon-sm"
               onClick={redo}
               disabled={!canRedo}
               title="Redo file selection"
+              className="h-6 w-6"
             >
-              <Redo className="h-4 w-4" />
+              <Redo2 className="h-3 w-3" />
             </Button>
           </div>
         </div>
@@ -378,6 +360,4 @@ export const FileBrowser = React.forwardRef<FileBrowserHandle, {}>((_, ref) => {
       </div>
     </div>
   );
-});
-
-FileBrowser.displayName = "FileBrowser";
+};

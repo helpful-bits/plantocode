@@ -1,4 +1,5 @@
 use actix_web::{web, HttpResponse, get, post};
+use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use crate::error::AppError;
 use crate::services::billing_service::BillingService;
@@ -17,7 +18,7 @@ use bigdecimal::{BigDecimal, FromPrimitive};
 #[get("/auto-top-off-settings")]
 pub async fn get_auto_top_off_settings_handler(
     user: web::ReqData<AuthenticatedUser>,
-    billing_service: web::Data<BillingService>,
+    billing_service: web::Data<Arc<BillingService>>,
 ) -> Result<HttpResponse, AppError> {
     debug!("Getting auto top-off settings for user: {}", user.user_id);
     
@@ -32,7 +33,7 @@ pub async fn get_auto_top_off_settings_handler(
 pub async fn update_auto_top_off_settings_handler(
     user: web::ReqData<AuthenticatedUser>,
     request: web::Json<UpdateAutoTopOffRequest>,
-    billing_service: web::Data<BillingService>,
+    billing_service: web::Data<Arc<BillingService>>,
 ) -> Result<HttpResponse, AppError> {
     debug!("Updating auto top-off settings for user: {}", user.user_id);
     

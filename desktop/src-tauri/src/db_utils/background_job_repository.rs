@@ -3,7 +3,7 @@ use std::str::FromStr;
 use sqlx::{sqlite::SqliteRow, Row, SqlitePool, Sqlite};
 use tauri::Emitter;
 use crate::error::{AppError, AppResult};
-use crate::models::{BackgroundJob, JobStatus, TaskType};
+use crate::models::{BackgroundJob, JobStatus, TaskType, FinalCostData};
 use crate::utils::get_timestamp;
 use log::{info, warn, debug};
 use serde_json::{Value, json};
@@ -184,235 +184,6 @@ impl BackgroundJobRepository {
         Ok(())
     }
 
-    /// Legacy method for streaming progress updates (kept for backward compatibility)
-    /// This method is used for streaming responses from API clients.
-    /// 
-    /// # Arguments
-    /// * `job_id` - The ID of the job to update
-    /// * `chunk` - The text chunk to append to the response
-    /// * `new_tokens_received` - The number of tokens in this chunk
-    /// * `current_total_response_length` - The current length of the accumulated response (characters)
-    /// * `current_metadata_str` - The current metadata string from BackgroundJob.metadata
-    /// * `app_handle` - Optional Tauri app handle for event emission
-    /// * `cost` - Optional cost value to store in both metadata and database
-    /// * `cache_write_tokens` - Optional cache write tokens to update
-    /// * `cache_read_tokens` - Optional cache read tokens to update
-    pub async fn update_job_stream_progress_legacy(&self, job_id: &str, chunk: &str, new_tokens_received: i32, current_total_response_length: i32, current_metadata_str: Option<&str>, app_handle: Option<&tauri::AppHandle>, cost: Option<f64>, cache_write_tokens: Option<i64>, cache_read_tokens: Option<i64>) -> AppResult<String> {
-        // First check if the job exists and is in running status
-        let job = self.get_job_by_id(job_id).await?
-            .ok_or_else(|| AppError::DatabaseError(format!("Job not found: {}", job_id)))?;
-            
-        // Only append to running jobs
-        if job.status != JobStatus::Running.to_string() {
-            return Err(AppError::DatabaseError(format!("Cannot append to job with status {}", job.status)));
-        }
-        
-        // Get current timestamp
-        let now = get_timestamp();
-        
-        // Build the new response by appending the chunk
-        let current_response = job.response.unwrap_or_default();
-        let new_response = format!("{}{}", current_response, chunk);
-        
-        // Calculate token counts
-        let tokens_received = job.tokens_received.unwrap_or(0) + new_tokens_received;
-        
-        // Parse current metadata into JobUIMetadata structure
-        let metadata_str = match current_metadata_str {
-            Some(metadata_str) => {
-                if let Ok(mut ui_metadata) = serde_json::from_str::<crate::jobs::types::JobUIMetadata>(metadata_str) {
-                    // Update streaming fields directly in task_data (flattened structure)
-                    if let serde_json::Value::Object(ref mut task_map) = ui_metadata.task_data {
-                        task_map.insert("isStreaming".to_string(), serde_json::json!(true));
-                        task_map.insert("lastStreamUpdateTime".to_string(), serde_json::json!(now));
-                        task_map.insert("responseLength".to_string(), serde_json::json!(current_total_response_length));
-                        task_map.insert("tokensReceived".to_string(), serde_json::json!(tokens_received));
-                        
-                        // Add cost if provided
-                        if let Some(cost_value) = cost {
-                            task_map.insert("actual_cost".to_string(), serde_json::json!(cost_value));
-                        }
-                        
-                        // Add start time if not present
-                        if !task_map.contains_key("stream_start_time") {
-                            task_map.insert("stream_start_time".to_string(), serde_json::json!(now));
-                        }
-                        
-                        // Calculate streamProgress if estimatedTotalLength exists
-                        if let Some(estimated_total_length) = task_map.get("estimatedTotalLength").and_then(|v| v.as_f64()) {
-                            if estimated_total_length > 0.0 {
-                                let progress = ((current_total_response_length as f64 / estimated_total_length) * 100.0).min(100.0);
-                                task_map.insert("streamProgress".to_string(), serde_json::json!(progress));
-                            }
-                        }
-                    } else {
-                        // If task_data is not an object, create it with flattened streaming fields
-                        let mut task_data = serde_json::json!({
-                            "isStreaming": true,
-                            "lastStreamUpdateTime": now,
-                            "responseLength": current_total_response_length,
-                            "tokensReceived": tokens_received,
-                            "stream_start_time": now
-                        });
-                        
-                        if let Some(cost_value) = cost {
-                            if let serde_json::Value::Object(ref mut map) = task_data {
-                                map.insert("actual_cost".to_string(), serde_json::json!(cost_value));
-                            }
-                        }
-                        
-                        ui_metadata.task_data = task_data;
-                    }
-                    
-                    serde_json::to_string(&ui_metadata)
-                        .map_err(|e| AppError::SerializationError(format!("Failed to serialize JobUIMetadata: {}", e)))?
-                } else {
-                    // Cannot parse as JobUIMetadata - create minimal streaming metadata with flattened structure
-                    let mut task_data = serde_json::json!({
-                        "isStreaming": true,
-                        "lastStreamUpdateTime": now,
-                        "responseLength": current_total_response_length,
-                        "tokensReceived": tokens_received,
-                        "stream_start_time": now
-                    });
-                    
-                    if let Some(cost_value) = cost {
-                        if let serde_json::Value::Object(ref mut map) = task_data {
-                            map.insert("actual_cost".to_string(), serde_json::json!(cost_value));
-                        }
-                    }
-                    
-                    serde_json::to_string(&serde_json::json!({
-                        "task_data": task_data
-                    })).unwrap()
-                }
-            },
-            None => {
-                // No metadata - create minimal streaming metadata with flattened structure
-                let mut task_data = serde_json::json!({
-                    "isStreaming": true,
-                    "lastStreamUpdateTime": now,
-                    "responseLength": current_total_response_length,
-                    "tokensReceived": tokens_received,
-                    "stream_start_time": now
-                });
-                
-                if let Some(cost_value) = cost {
-                    if let serde_json::Value::Object(ref mut map) = task_data {
-                        map.insert("actual_cost".to_string(), serde_json::json!(cost_value));
-                    }
-                }
-                
-                serde_json::to_string(&serde_json::json!({
-                    "task_data": task_data
-                })).unwrap()
-            }
-        };
-        
-        // Update the job in the database - include cost and cache tokens if provided
-        let query_result = if let (Some(cost_value), Some(cache_write), Some(cache_read)) = (cost, cache_write_tokens, cache_read_tokens) {
-            debug!("Updating job {} streaming progress with cost: ${:.6} and cache tokens", job_id, cost_value);
-            sqlx::query(
-                r#"
-                UPDATE background_jobs SET
-                    response = $1, 
-                    tokens_received = $2,
-                    updated_at = $3,
-                    metadata = $4,
-                    actual_cost = $5,
-                    cache_write_tokens = $6,
-                    cache_read_tokens = $7
-                WHERE id = $8 AND status = $9
-                "#)
-                .bind(new_response)
-                .bind(tokens_received)
-                .bind(now)
-                .bind(&metadata_str)
-                .bind(cost_value)
-                .bind(cache_write)
-                .bind(cache_read)
-                .bind(job_id)
-                .bind(JobStatus::Running.to_string())
-                .execute(&*self.pool)
-                .await
-        } else if let Some(cost_value) = cost {
-            debug!("Updating job {} streaming progress with cost: ${:.6}", job_id, cost_value);
-            sqlx::query(
-                r#"
-                UPDATE background_jobs SET
-                    response = $1, 
-                    tokens_received = $2,
-                    updated_at = $3,
-                    metadata = $4,
-                    actual_cost = $5
-                WHERE id = $6 AND status = $7
-                "#)
-                .bind(new_response)
-                .bind(tokens_received)
-                .bind(now)
-                .bind(&metadata_str)
-                .bind(cost_value)
-                .bind(job_id)
-                .bind(JobStatus::Running.to_string())
-                .execute(&*self.pool)
-                .await
-        } else {
-            debug!("Updating job {} streaming progress without cost", job_id);
-            sqlx::query(
-                r#"
-                UPDATE background_jobs SET
-                    response = $1, 
-                    tokens_received = $2,
-                    updated_at = $3,
-                    metadata = $4
-                WHERE id = $5 AND status = $6
-                "#)
-                .bind(new_response)
-                .bind(tokens_received)
-                .bind(now)
-                .bind(&metadata_str)
-                .bind(job_id)
-                .bind(JobStatus::Running.to_string())
-                .execute(&*self.pool)
-                .await
-        };
-        
-        query_result.map_err(|e| AppError::DatabaseError(format!("Failed to append to job response: {}", e)))?;
-            
-        // Emit streaming response update event to frontend if AppHandle is provided
-        if let Some(handle) = app_handle {
-            // Try to extract actualCost from metadata if present
-            let actual_cost = if let Ok(ui_metadata) = serde_json::from_str::<crate::jobs::types::JobUIMetadata>(&metadata_str) {
-                if let serde_json::Value::Object(ref task_map) = ui_metadata.task_data {
-                    task_map.get("actualCost").and_then(|v| v.as_f64())
-                } else {
-                    None
-                }
-            } else {
-                None
-            };
-            
-            let mut event_payload = serde_json::json!({
-                "job_id": job_id,
-                "response_chunk": chunk,
-                "chars_received": current_total_response_length,
-                "tokens_received": tokens_received,
-                "metadata": metadata_str
-            });
-            
-            // Add actual_cost to the event payload if present
-            if let Some(cost) = actual_cost {
-                event_payload["actual_cost"] = serde_json::json!(cost);
-            }
-            
-            if let Err(e) = handle.emit("job_response_update", &event_payload) {
-                log::warn!("Failed to emit job response update event for job {}: {}", job_id, e);
-                // Don't fail the whole operation if event emission fails
-            }
-        }
-            
-        Ok(metadata_str)
-    }
     
     
     /// Delete job history based on days_to_keep
@@ -550,6 +321,68 @@ impl BackgroundJobRepository {
         let rows = sqlx::query(
             r#"
             SELECT * FROM background_jobs 
+            ORDER BY 
+                CASE 
+                    WHEN status IN ($1, $2, $3, $4, $5, $6) THEN 0
+                    ELSE 1
+                END,
+                CASE 
+                    WHEN status = $7 THEN 0
+                    WHEN status = $8 THEN 1
+                    WHEN status = $9 THEN 2
+                    WHEN status = $10 THEN 3
+                    WHEN status = $11 THEN 4
+                    WHEN status = $12 THEN 5
+                    WHEN status = $13 THEN 6
+                    WHEN status = $14 THEN 7
+                    WHEN status = $15 THEN 8
+                    ELSE 9
+                END,
+                updated_at DESC
+            LIMIT 500
+            "#)
+            .bind(JobStatus::Running.to_string())
+            .bind(JobStatus::Preparing.to_string()) 
+            .bind(JobStatus::Queued.to_string())
+            .bind(JobStatus::AcknowledgedByWorker.to_string())
+            .bind(JobStatus::Created.to_string())
+            .bind(JobStatus::Idle.to_string())
+            .bind(JobStatus::Running.to_string())
+            .bind(JobStatus::Queued.to_string())
+            .bind(JobStatus::Preparing.to_string())
+            .bind(JobStatus::AcknowledgedByWorker.to_string())
+            .bind(JobStatus::Created.to_string())
+            .bind(JobStatus::Idle.to_string())
+            .bind(JobStatus::Completed.to_string())
+            .bind(JobStatus::Failed.to_string())
+            .bind(JobStatus::Canceled.to_string())
+            .fetch_all(&*self.pool)
+            .await
+            .map_err(|e| AppError::DatabaseError(format!("Failed to fetch jobs: {}", e)))?;
+            
+        let mut jobs = Vec::new();
+        
+        for row in rows {
+            let job = self.row_to_job(&row)?;
+            jobs.push(job);
+        }
+        
+        Ok(jobs)
+    }
+    
+    /// Get all visible jobs for sidebar display - lightweight query without large text fields
+    /// This method excludes prompt, response, and system_prompt_template to improve performance
+    pub async fn get_all_visible_jobs_lightweight(&self) -> AppResult<Vec<BackgroundJob>> {
+        let rows = sqlx::query(
+            r#"
+            SELECT 
+                id, session_id, task_type, status, 
+                error_message, tokens_sent, tokens_received, 
+                cache_write_tokens, cache_read_tokens, model_used, 
+                actual_cost, metadata, created_at, updated_at, 
+                start_time, end_time, is_finalized,
+                '' as prompt, NULL as response, NULL as system_prompt_template
+            FROM background_jobs 
             ORDER BY 
                 CASE 
                     WHEN status IN ($1, $2, $3, $4, $5, $6) THEN 0
@@ -948,6 +781,46 @@ impl BackgroundJobRepository {
             }
         } else {
             warn!("No rows affected when marking job {} as completed", job_id);
+        }
+            
+        Ok(())
+    }
+    
+    /// Update system prompt template for a job
+    /// This method allows storing the system prompt template early in the job processing,
+    /// before the LLM request is made, ensuring it's available even if the job fails
+    pub async fn update_system_prompt_template(&self, job_id: &str, system_prompt_template: &str) -> AppResult<()> {
+        let now = get_timestamp();
+        
+        debug!("Updating system prompt template for job {}", job_id);
+        
+        let result = sqlx::query(
+            r#"
+            UPDATE background_jobs 
+            SET system_prompt_template = $1, updated_at = $2 
+            WHERE id = $3
+            "#)
+            .bind(system_prompt_template)
+            .bind(now)
+            .bind(job_id)
+            .execute(&*self.pool)
+            .await
+            .map_err(|e| AppError::DatabaseError(format!("Failed to update system prompt template for job {}: {}", job_id, e)))?;
+            
+        if result.rows_affected() > 0 {
+            debug!("Successfully updated system prompt template for job {}", job_id);
+            
+            // Emit job_updated event if we have an app handle
+            if let Some(app_handle) = &self.app_handle {
+                // Fetch the updated job to emit complete data
+                if let Ok(Some(updated_job)) = self.get_job_by_id(job_id).await {
+                    if let Err(e) = app_handle.emit("job_updated", &updated_job) {
+                        warn!("Failed to emit job_updated event for system prompt template update on job {}: {}", job_id, e);
+                    }
+                }
+            }
+        } else {
+            warn!("No rows affected when updating system prompt template for job {}", job_id);
         }
             
         Ok(())
@@ -1807,54 +1680,13 @@ impl BackgroundJobRepository {
     }
     
     
-    /// Update job with final cost and token counts after streaming completes
-    /// This method is called after polling the final cost endpoint
-    pub async fn update_job_final_cost_and_tokens(
-        &self,
-        job_id: &str,
-        final_cost: f64,
-        tokens_input: i64,
-        tokens_output: i64,
-        cache_write_tokens: i64,
-        cache_read_tokens: i64,
-    ) -> AppResult<()> {
-        info!("Updating job {} with final cost: ${:.4} and token counts", job_id, final_cost);
-        
-        let now = get_timestamp();
-        
-        // Update the database with final values
-        sqlx::query(
-            r#"
-            UPDATE background_jobs SET
-                actual_cost = $1,
-                tokens_sent = $2,
-                tokens_received = $3,
-                cache_write_tokens = $4,
-                cache_read_tokens = $5,
-                updated_at = $6
-            WHERE id = $7
-            "#)
-            .bind(final_cost)
-            .bind(tokens_input)
-            .bind(tokens_output)
-            .bind(cache_write_tokens)
-            .bind(cache_read_tokens)
-            .bind(now)
-            .bind(job_id)
-            .execute(&*self.pool)
-            .await
-            .map_err(|e| AppError::DatabaseError(format!("Failed to update job final cost: {}", e)))?;
-            
-        debug!("Successfully updated job {} with final cost and token counts", job_id);
-        Ok(())
-    }
 
     /// Update job with final cost data and mark as finalized
     /// Performs single UPDATE query to set final cost, all token counts, and isFinalized flag
     pub async fn update_job_with_final_cost(
         &self,
         job_id: &str,
-        final_cost_data: &crate::models::FinalCostData,
+        final_cost_data: &FinalCostData,
     ) -> AppResult<()> {
         info!("Updating job {} with final cost data: ${:.4} and marking as finalized", job_id, final_cost_data.final_cost);
         

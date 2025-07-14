@@ -673,6 +673,10 @@ CREATE TABLE IF NOT EXISTS user_credits (
     user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
     balance DECIMAL(12, 4) NOT NULL DEFAULT 0.0000,
     currency VARCHAR(3) NOT NULL DEFAULT 'USD',
+    free_credit_balance DECIMAL(12, 4) NOT NULL DEFAULT 0.0000,
+    free_credits_granted_at TIMESTAMPTZ,
+    free_credits_expires_at TIMESTAMPTZ,
+    free_credits_expired BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CONSTRAINT fk_user_credits_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -683,7 +687,9 @@ CREATE TABLE IF NOT EXISTS credit_transactions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     transaction_type VARCHAR(50) NOT NULL, -- 'purchase', 'consumption', 'refund', 'adjustment', 'expiry', 'consumption_adjustment', 'refund_adjustment'
-    amount DECIMAL(12, 4) NOT NULL, -- Positive for additions, negative for deductions
+    net_amount DECIMAL(12, 4) NOT NULL, -- Positive for additions, negative for deductions
+    gross_amount DECIMAL(12, 4),
+    fee_amount DECIMAL(12, 4),
     currency VARCHAR(3) NOT NULL DEFAULT 'USD',
     description TEXT,
     stripe_charge_id VARCHAR(255), -- For purchases
@@ -1020,9 +1026,9 @@ BEGIN
     -- Test 2: Users cannot access other users' credit transactions
     BEGIN
         -- Setup: Create credit transactions for both users
-        INSERT INTO credit_transactions (user_id, transaction_type, amount, balance_after) VALUES 
-            (test_user_1, 'purchase', test_transaction_amount, test_credit_balance + test_transaction_amount),
-            (test_user_2, 'purchase', test_transaction_amount, test_credit_balance + test_transaction_amount);
+        INSERT INTO credit_transactions (user_id, transaction_type, net_amount, gross_amount, fee_amount, balance_after) VALUES 
+            (test_user_1, 'purchase', test_transaction_amount, test_transaction_amount, 0, test_credit_balance + test_transaction_amount),
+            (test_user_2, 'purchase', test_transaction_amount, test_transaction_amount, 0, test_credit_balance + test_transaction_amount);
 
         -- Test: Set context for user 1 and verify they can only see their own transactions
         PERFORM set_config('app.current_user_id', test_user_1::text, false);

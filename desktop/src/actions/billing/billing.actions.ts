@@ -65,8 +65,8 @@ export async function getDetailedUsageWithSummary(
 
 export interface AutoTopOffSettings {
   enabled: boolean;
-  threshold?: number;
-  amount?: number;
+  threshold?: string;
+  amount?: string;
 }
 
 export interface UpdateAutoTopOffRequest {
@@ -90,10 +90,10 @@ export interface CheckoutSessionResponse {
 }
 
 export async function createCreditPurchaseCheckoutSession(
-  amount: number
+  grossAmount: number
 ): Promise<CheckoutSessionResponse> {
   return await invoke<CheckoutSessionResponse>('create_credit_purchase_checkout_session_command', {
-    amount,
+    amount: grossAmount,
   });
 }
 

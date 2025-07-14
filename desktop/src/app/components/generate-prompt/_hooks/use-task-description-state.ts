@@ -195,6 +195,7 @@ export function useTaskDescriptionState({
           // Store the results for the Apply button
           setWebSearchResults(results.intermediateData.webSearchResults);
           setIsWebRefiningTask(false);
+          setWebSearchWorkflowId(undefined);
           showNotification({ 
             title: "Web search completed", 
             message: "Research findings are ready. Click 'Apply' to add them to your task description.", 

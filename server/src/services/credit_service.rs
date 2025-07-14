@@ -133,7 +133,9 @@ impl CreditService {
             id: Uuid::new_v4(),
             user_id: api_usage_record.user_id,
             transaction_type: "consumption".to_string(),
-            amount: negative_amount,
+            net_amount: negative_amount,
+            gross_amount: None,
+            fee_amount: None,
             currency: "USD".to_string(),
             description: Some(usage_description),
             stripe_charge_id: None,
@@ -238,7 +240,9 @@ impl CreditService {
                 id: Uuid::new_v4(),
                 user_id: existing_record.user_id,
                 transaction_type: adjustment_type.to_string(),
-                amount: adjustment_amount,
+                net_amount: adjustment_amount,
+                gross_amount: None,
+                fee_amount: None,
                 currency: "USD".to_string(),
                 description: Some(adjustment_desc),
                 stripe_charge_id: None,
@@ -439,7 +443,7 @@ impl CreditService {
                 -- Credit purchases (only purchase transactions)
                 SELECT 
                     ct.id::text as entry_id,
-                    ct.amount as price,  -- Positive for purchases
+                    COALESCE(ct.gross_amount, ct.net_amount) as price,  -- Use gross for purchases (includes fees)
                     ct.created_at as date,
                     'Credit Purchase' as model,
                     NULL::bigint as input_tokens,
@@ -573,7 +577,9 @@ impl CreditService {
             id: Uuid::new_v4(),
             user_id: *user_id,
             transaction_type: "refund".to_string(),
-            amount: amount.clone(),
+            net_amount: amount.clone(),
+            gross_amount: None,
+            fee_amount: None,
             currency: "USD".to_string(),
             description,
             stripe_charge_id: Some(stripe_charge_id.to_string()),
@@ -640,7 +646,9 @@ impl CreditService {
             id: Uuid::new_v4(),
             user_id: *user_id,
             transaction_type: "adjustment".to_string(),
-            amount: amount.clone(),
+            net_amount: amount.clone(),
+            gross_amount: None,
+            fee_amount: None,
             currency: "USD".to_string(),
             description: Some(description),
             stripe_charge_id: None,
@@ -687,17 +695,20 @@ impl CreditService {
     pub async fn record_credit_purchase(
         &self,
         user_id: &Uuid,
-        amount: &BigDecimal,
+        gross_amount: &BigDecimal,
+        fee_amount: &BigDecimal,
         currency: &str,
         stripe_charge_id: &str,
         payment_metadata: serde_json::Value,
         audit_context: &AuditContext,
     ) -> Result<UserCredit, AppError> {
-        // Normalize amount at entry point
-        let amount = normalize_cost(amount);
+        // Normalize amounts at entry point
+        let gross_amount = normalize_cost(gross_amount);
+        let fee_amount = normalize_cost(fee_amount);
+        let net_amount = &gross_amount - &fee_amount;
         
         // Validate purchase amount using financial validation utility
-        validate_credit_purchase_amount(&amount)?;
+        validate_credit_purchase_amount(&net_amount)?;
         
         if currency.to_uppercase() != "USD" {
             return Err(AppError::InvalidArgument(
@@ -705,7 +716,8 @@ impl CreditService {
             ));
         }
         
-        info!("Processing credit purchase for user {}: {} {}", user_id, amount, currency);
+        info!("Processing credit purchase for user {}: gross {} {}, fee {}, net {}", 
+              user_id, gross_amount, currency, fee_amount, net_amount);
         
         let pool = self.user_credit_repository.get_pool();
         
@@ -732,6 +744,10 @@ impl CreditService {
                 user_id,
                 balance,
                 currency,
+                free_credit_balance,
+                free_credits_granted_at,
+                free_credits_expires_at,
+                free_credits_expired,
                 created_at,
                 updated_at
             FROM user_credits 
@@ -755,10 +771,10 @@ impl CreditService {
         };
 
         // Validate that the purchase won't result in a negative balance (safety check)
-        validate_balance_adjustment(&current_balance.balance, &amount, "Credit purchase")?;
+        validate_balance_adjustment(&current_balance.balance, &net_amount, "Credit purchase")?;
 
         let updated_balance = self.user_credit_repository
-            .increment_balance_with_executor(user_id, &amount, &mut tx)
+            .increment_balance_with_executor(user_id, &net_amount, &mut tx)
             .await?;
 
         let description = format!("Credit purchase via Stripe charge {}", stripe_charge_id);
@@ -767,7 +783,9 @@ impl CreditService {
             id: Uuid::new_v4(),
             user_id: *user_id,
             transaction_type: "purchase".to_string(),
-            amount: amount.clone(),
+            net_amount: net_amount.clone(),
+            gross_amount: Some(gross_amount.clone()),
+            fee_amount: Some(fee_amount.clone()),
             currency: currency.to_string(),
             description: Some(description),
             stripe_charge_id: Some(stripe_charge_id.to_string()),
@@ -815,7 +833,7 @@ impl CreditService {
         if let Err(audit_error) = self.audit_service.log_credit_purchase_succeeded(
             audit_context,
             stripe_charge_id,
-            &amount,
+            &net_amount,
             currency,
             audit_metadata,
         ).await {
@@ -823,7 +841,7 @@ impl CreditService {
         }
 
         info!("Successfully processed credit purchase for user {} via Stripe charge {}: {} {} added (balance: {} -> {})", 
-              user_id, stripe_charge_id, amount, currency, current_balance.balance, updated_balance.balance);
+              user_id, stripe_charge_id, net_amount, currency, current_balance.balance, updated_balance.balance);
         Ok(updated_balance)
     }
 
@@ -951,25 +969,30 @@ impl CreditService {
             .ensure_balance_record_exists_with_executor(&api_usage_record.user_id, tx)
             .await?;
 
-        // Check if user has sufficient credits
-        if current_balance.balance < cost {
+        // Check if user has sufficient total credits (paid + free)
+        let total_available = &current_balance.balance + &current_balance.free_credit_balance;
+        if total_available < cost {
             return Err(AppError::CreditInsufficient(
-                format!("Insufficient credits. Required: {}, Available: {}", cost, current_balance.balance)
+                format!("Insufficient credits. Required: {}, Available: {} (paid) + {} (free)", 
+                        cost, current_balance.balance, current_balance.free_credit_balance)
             ));
         }
 
-        // Deduct the credits within the transaction
-        let negative_amount = -&cost;
-        let updated_balance = self.user_credit_repository
-            .increment_balance_with_executor(&api_usage_record.user_id, &negative_amount, tx)
+        // Deduct credits with priority (free first, then paid)
+        let (updated_balance, from_free, from_paid) = self.user_credit_repository
+            .deduct_credits_with_priority(&api_usage_record.user_id, &cost, tx)
             .await?;
+        
+        let negative_amount = -&cost;
 
         // Record the consumption transaction within the same transaction
         let transaction = CreditTransaction {
             id: Uuid::new_v4(),
             user_id: api_usage_record.user_id,
             transaction_type: "consumption".to_string(),
-            amount: negative_amount,
+            net_amount: negative_amount,
+            gross_amount: None,
+            fee_amount: None,
             currency: "USD".to_string(),
             description: Some(usage_description),
             stripe_charge_id: None,

@@ -588,13 +588,8 @@ export const JobCard = React.memo(
                           (fileFindingTasks.includes(job.taskType) && 
                             job.response && (() => {
                               try {
-                                let responseData: any;
-                                if (typeof job.response === 'string') {
-                                  responseData = JSON.parse(job.response);
-                                } else {
-                                  responseData = job.response;
-                                }
-                                return responseData.count > 0;
+                                let responseData = typeof job.response === 'string' ? JSON.parse(job.response) : job.response;
+                                return Array.isArray(responseData.files) && responseData.files.length > 0;
                               } catch (e) {
                                 return false;
                               }
