@@ -1,0 +1,22 @@
+name: vibe-manager-website
+services:
+- name: landing-page
+  github:
+    repo: vibemanager/vibe-manager
+    branch: main
+    deploy_on_push: true
+  source_dir: website
+  build_command: pnpm install && pnpm build
+  run_command: pnpm start
+  environment_slug: node-js
+  instance_count: 1
+  instance_size_slug: basic-xxs
+  http_port: 3000
+  routes:
+  - path: /
+  envs:
+  - key: NODE_ENV
+    value: production
+  - key: NEXT_PUBLIC_GA_MEASUREMENT_ID
+    value: ${NEXT_PUBLIC_GA_MEASUREMENT_ID}
+    type: SECRET

@@ -14,7 +14,8 @@ import {
   AlertDialogTitle,
 } from "@/ui/alert-dialog";
 
-import { BackgroundJobsSidebar, Navigation } from "../client-components";
+import { BackgroundJobsSidebar } from "../client-components";
+import { Navigation } from "./navigation";
 
 import type { ReactNode } from "react";
 

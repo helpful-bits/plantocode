@@ -358,7 +358,6 @@ impl ServerProxyClient {
         // Create request with estimated duration (used for initial attempt)
         let estimated_duration_ms = self.estimate_request_duration(&messages, &options.model);
         
-        let request_id = uuid::Uuid::new_v4().to_string();
         let mut request = OpenRouterRequest {
             model: options.model.clone(),
             messages: messages.clone(),
@@ -366,7 +365,7 @@ impl ServerProxyClient {
             max_tokens: Some(options.max_tokens),
             temperature: Some(options.temperature),
             duration_ms: Some(estimated_duration_ms),
-            request_id: Some(request_id.clone()),
+            request_id: options.request_id.clone(),
             task_type: options.task_type.clone(),
         };
         
@@ -495,11 +494,7 @@ impl ServerProxyClient {
         // Estimate duration for the streaming request
         let estimated_duration_ms = self.estimate_request_duration(&messages, &options.model);
         
-        // Use provided request ID or generate a unique one for tracking final costs
-        let request_id = options.request_id.clone()
-            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
-        
-        // Create request with estimated duration and request ID
+        // Create request with estimated duration and request ID from options (may be None)
         let request = OpenRouterRequest {
             model: options.model.clone(),
             messages,
@@ -507,7 +502,7 @@ impl ServerProxyClient {
             max_tokens: Some(options.max_tokens),
             temperature: Some(options.temperature),
             duration_ms: Some(estimated_duration_ms),
-            request_id: Some(request_id.clone()),
+            request_id: options.request_id.clone(),
             task_type: options.task_type.clone(),
         };
         
@@ -562,7 +557,13 @@ impl ServerProxyClient {
                             },
                             _ => {
                                 // Handle regular message events (no special event type or content chunks)
-                                if message.data == "[DONE]" {
+                                if message.event == "stream_started" {
+                                    if let Ok(data) = serde_json::from_str::<serde_json::Value>(&message.data) {
+                                        if let Some(request_id) = data.get("request_id").and_then(|v| v.as_str()) {
+                                            return Some((Ok(crate::models::stream_event::StreamEvent::StreamStarted { request_id: request_id.to_string() }), (event_source, start_time, stream_ended)));
+                                        }
+                                    }
+                                } else if message.data == "[DONE]" {
                                     if !stream_ended {
                                         let actual_duration = start_time.elapsed();
                                         let actual_duration_ms = actual_duration.as_millis() as i64;
@@ -902,20 +903,16 @@ impl ServerProxyClient {
         let cost_response: crate::models::FinalCostResponse = response.json().await
             .map_err(|e| AppError::ServerProxyError(format!("Failed to parse final cost response: {}", e)))?;
         
-        if cost_response.status != "success" {
-            debug!("Final cost not yet available for request_id: {}", request_id);
-            return Ok(None);
-        }
-        
         Ok(Some(crate::models::FinalCostData {
             request_id: cost_response.request_id.clone(),
-            user_id: "unknown".to_string(), // Desktop client doesn't need user_id for local operations
-            service_name: "streaming".to_string(), // Default service name for streaming requests
-            final_cost: cost_response.final_cost.unwrap_or(0.0),
-            tokens_input: cost_response.tokens_input.unwrap_or(0),
-            tokens_output: cost_response.tokens_output.unwrap_or(0),
-            cache_write_tokens: cost_response.cache_write_tokens.unwrap_or(0),
-            cache_read_tokens: cost_response.cache_read_tokens.unwrap_or(0),
+            provider: cost_response.provider.clone(),
+            model: cost_response.model.clone(),
+            final_cost: cost_response.final_cost,
+            tokens_input: cost_response.tokens_input,
+            tokens_output: cost_response.tokens_output,
+            cache_write_tokens: cost_response.cache_write_tokens,
+            cache_read_tokens: cost_response.cache_read_tokens,
+            timestamp: cost_response.timestamp,
         }))
     }
     

@@ -7,4 +7,5 @@ use serde::Deserialize;
 pub enum StreamEvent {
     ContentChunk(OpenRouterStreamChunk),
     UsageUpdate(UsageUpdate),
+    StreamStarted { request_id: String },
 }
