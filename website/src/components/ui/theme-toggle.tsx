@@ -8,7 +8,8 @@ import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 
@@ -58,41 +59,25 @@ export function ThemeToggle() {
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger className="inline-flex items-center justify-center whitespace-nowrap rounded-lg text-sm font-medium ring-offset-background transition-all duration-200 focus-ring disabled:pointer-events-none disabled:opacity-50 cursor-pointer border border-border bg-background/80 text-foreground backdrop-blur-sm hover:bg-accent/60 hover:text-accent-foreground w-9 h-9" aria-label="Toggle theme">
+      <DropdownMenuTrigger className="inline-flex items-center justify-center whitespace-nowrap rounded-lg text-sm font-medium ring-offset-background transition-all duration-200 disabled:pointer-events-none disabled:opacity-50 cursor-pointer border-0 bg-white/10 text-current backdrop-blur-sm hover:bg-white/20 w-9 h-9 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50" aria-label="Toggle theme">
         {currentIcon()}
         <span className="sr-only">Toggle theme</span>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-40">
-        <DropdownMenuItem
-          onClick={() => setTheme('light')}
-          className="flex items-center gap-2 cursor-pointer"
-        >
-          <Sun className="w-4 h-4" />
-          <span>Light</span>
-          {theme === 'light' && (
-            <div className="ml-auto w-2 h-2 bg-primary rounded-full" />
-          )}
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          onClick={() => setTheme('dark')}
-          className="flex items-center gap-2 cursor-pointer"
-        >
-          <Moon className="w-4 h-4" />
-          <span>Dark</span>
-          {theme === 'dark' && (
-            <div className="ml-auto w-2 h-2 bg-primary rounded-full" />
-          )}
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          onClick={() => setTheme('system')}
-          className="flex items-center gap-2 cursor-pointer"
-        >
-          <Monitor className="w-4 h-4" />
-          <span>System</span>
-          {theme === 'system' && (
-            <div className="ml-auto w-2 h-2 bg-primary rounded-full" />
-          )}
-        </DropdownMenuItem>
+        <DropdownMenuRadioGroup value={theme} onValueChange={setTheme}>
+          <DropdownMenuRadioItem value="light" className="flex items-center gap-2 cursor-pointer">
+            <Sun className="w-4 h-4" />
+            <span>Light</span>
+          </DropdownMenuRadioItem>
+          <DropdownMenuRadioItem value="dark" className="flex items-center gap-2 cursor-pointer">
+            <Moon className="w-4 h-4" />
+            <span>Dark</span>
+          </DropdownMenuRadioItem>
+          <DropdownMenuRadioItem value="system" className="flex items-center gap-2 cursor-pointer">
+            <Monitor className="w-4 h-4" />
+            <span>System</span>
+          </DropdownMenuRadioItem>
+        </DropdownMenuRadioGroup>
       </DropdownMenuContent>
     </DropdownMenu>
   );

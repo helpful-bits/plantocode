@@ -3,13 +3,13 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { ThemeToggle } from '@/components/theme';
+import { ThemeToggle } from '@/components/ui/theme-toggle';
 import { useTheme } from 'next-themes';
 
 export function Header() {
   const [mounted, setMounted] = useState(false);
   const [scrolled, setScrolled] = useState(false);
-  const { theme } = useTheme();
+  const { resolvedTheme } = useTheme();
 
   useEffect(() => {
     setMounted(true);
@@ -56,7 +56,7 @@ export function Header() {
     <header 
       className={`fixed top-0 w-full z-50 transition-all duration-300 ${
         scrolled 
-          ? 'glass border-b border-border/20 shadow-lg' 
+          ? 'glass-subtle border-b border-border/20 shadow-lg' 
           : 'bg-transparent'
       }`}
     >
@@ -65,53 +65,53 @@ export function Header() {
           href="/" 
           className={`font-bold text-xl transition-all duration-300 ${
             scrolled 
-              ? 'text-foreground' 
-              : theme === 'dark' 
-                ? 'text-white' 
-                : 'text-foreground'
-          }`}
+              ? 'text-teal-800 dark:text-teal-600' 
+              : resolvedTheme === 'dark' 
+                ? 'text-white drop-shadow-md' 
+                : 'text-white drop-shadow-lg'
+          } hover:opacity-90`}
         >
           Vibe Manager
         </Link>
         <nav className="hidden md:flex items-center gap-6">
           <Link 
             href="#features" 
-            className={`transition-all duration-300 hover:text-primary ${
+            className={`transition-all duration-300 ${
               scrolled 
-                ? 'text-muted-foreground' 
-                : theme === 'dark' 
-                  ? 'text-gray-200 hover:text-white' 
-                  : 'text-muted-foreground'
-            }`}
+                ? 'text-teal-700 hover:text-teal-600 dark:text-teal-600 dark:hover:text-teal-500' 
+                : resolvedTheme === 'dark' 
+                  ? 'text-white/90 hover:text-white drop-shadow' 
+                  : 'text-white/90 hover:text-white drop-shadow-md'
+            } font-medium`}
           >
             Features
           </Link>
           <Link 
             href="#how-it-works" 
-            className={`transition-all duration-300 hover:text-primary ${
+            className={`transition-all duration-300 ${
               scrolled 
-                ? 'text-muted-foreground' 
-                : theme === 'dark' 
-                  ? 'text-gray-200 hover:text-white' 
-                  : 'text-muted-foreground'
-            }`}
+                ? 'text-teal-700 hover:text-teal-600 dark:text-teal-600 dark:hover:text-teal-500' 
+                : resolvedTheme === 'dark' 
+                  ? 'text-white/90 hover:text-white drop-shadow' 
+                  : 'text-white/90 hover:text-white drop-shadow-md'
+            } font-medium`}
           >
             How It Works
           </Link>
           <Link 
             href="#pricing" 
-            className={`transition-all duration-300 hover:text-primary ${
+            className={`transition-all duration-300 ${
               scrolled 
-                ? 'text-muted-foreground' 
-                : theme === 'dark' 
-                  ? 'text-gray-200 hover:text-white' 
-                  : 'text-muted-foreground'
-            }`}
+                ? 'text-teal-700 hover:text-teal-600 dark:text-teal-600 dark:hover:text-teal-500' 
+                : resolvedTheme === 'dark' 
+                  ? 'text-white/90 hover:text-white drop-shadow' 
+                  : 'text-white/90 hover:text-white drop-shadow-md'
+            } font-medium`}
           >
             Pricing
           </Link>
           <ThemeToggle />
-          <Button asChild className="btn-primary-modern">
+          <Button asChild>
             <Link href="/download">
               Download
             </Link>

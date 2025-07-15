@@ -1,6 +1,5 @@
 import type { Metadata } from 'next';
 import './globals.css';
-import '@/styles/gradients.css';
 import { fontClasses } from './fonts';
 import { StructuredData } from '@/components/seo/StructuredData';
 import type { WebSite } from 'schema-dts';
@@ -130,30 +129,9 @@ export default function RootLayout({
           crossOrigin="anonymous"
         />
         
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `
-              (function() {
-                try {
-                  const savedTheme = localStorage.getItem('vibe-manager-theme');
-                  const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-                  const theme = savedTheme === 'system' || !savedTheme ? systemTheme : savedTheme;
-                  
-                  if (theme === 'dark') {
-                    document.documentElement.classList.add('dark');
-                  }
-                } catch (e) {}
-              })();
-            `
-          }}
-        />
       </head>
       <body className={fontClasses.sans}>
-        {/* Animated gradient background with GPU acceleration */}
-        <div className="fixed inset-0 -z-10 gradient-hero-animated gradient-optimized" />
-        
-        {/* Subtle gradient overlay for depth */}
-        <div className="fixed inset-0 -z-10 gradient-overlay opacity-30" />
+        <div className="fixed inset-0 -z-10 dynamic-bg" />
         
         <ClientProviders>
           <GoogleAnalytics gaId={process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID || "G-XXXXXXXXXX"} />

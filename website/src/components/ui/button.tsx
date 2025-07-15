@@ -11,11 +11,9 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default:
-          "bg-primary text-primary-foreground hover:bg-primary/85 backdrop-blur-sm",
+          "bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white border-0 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5",
         destructive:
           "bg-destructive text-destructive-foreground hover:bg-destructive/85",
-        warning:
-          "bg-warning text-warning-foreground hover:bg-warning/85",
         outline:
           "border border-border bg-background/80 text-foreground backdrop-blur-sm hover:bg-accent/60 hover:text-accent-foreground",
         secondary:
@@ -23,37 +21,8 @@ const buttonVariants = cva(
         ghost:
           "hover:bg-accent/40 hover:text-accent-foreground transition-all duration-200 backdrop-blur-sm",
         link: "text-primary underline-offset-4 hover:underline hover:text-primary/80",
-        navigation:
-          "h-10 px-5 font-medium rounded-lg transition-all duration-200 ease-out hover:bg-accent/40 focus:bg-accent/50 focus-ring border border-transparent hover:border-border/30 backdrop-blur-sm",
-        "navigation-active":
-          "h-10 px-5 font-medium rounded-lg transition-all duration-200 ease-out bg-primary/90 text-primary-foreground border border-primary/15 backdrop-blur-sm",
-        filter:
-          "border-0 rounded-none text-muted-foreground hover:bg-accent/30 hover:text-accent-foreground data-[active=true]:bg-primary/10 data-[active=true]:text-primary data-[active=true]:font-medium transition-all duration-200 backdrop-blur-sm",
-        "filter-active":
-          "border-0 rounded-none bg-primary/10 text-primary font-medium hover:bg-primary/15 transition-all duration-200 backdrop-blur-sm",
-        compact:
-          "bg-secondary/60 text-secondary-foreground hover:bg-secondary/80 border border-border/40 shadow-sm hover:shadow-md transition-all duration-200 backdrop-blur-sm",
-        // New glass morphism variants
-        "glass-subtle":
-          "glass-subtle text-foreground hover:bg-accent/20 hover:text-accent-foreground",
-        "glass-normal":
-          "glass text-foreground hover:bg-primary/10 hover:text-primary-foreground",
-        "glass-intense":
-          "glass-intense text-foreground hover:bg-primary/15 hover:text-primary-foreground",
-        "glass-card":
-          "glass-card text-foreground hover:bg-primary/10 hover:text-primary-foreground",
-        // Premium glass button
-        "premium":
-          "premium-card text-foreground hover:bg-primary/20 hover:text-primary-foreground font-medium",
-        // Gradient variants
-        "gradient-primary":
-          "gradient-primary text-primary-foreground hover:opacity-90 font-medium",
-        "gradient-animated":
-          "gradient-primary-animated text-primary-foreground hover:opacity-90 font-medium",
-        "gradient-secondary":
-          "gradient-secondary text-foreground hover:opacity-90",
-        "gradient-accent":
-          "gradient-accent text-foreground hover:opacity-90",
+        "gradient-outline":
+          "relative bg-white dark:bg-gray-900 text-transparent bg-clip-text bg-gradient-to-r from-emerald-600 to-teal-600 font-semibold border-2 border-emerald-600/50 dark:border-emerald-400/50 shadow-md hover:shadow-lg hover:shadow-emerald-500/25 transform hover:-translate-y-0.5 hover:border-emerald-600 dark:hover:border-emerald-400 transition-all",
       },
       size: {
         default: "h-10 px-4 py-2",
@@ -80,6 +49,7 @@ export interface ButtonProps
     VariantProps<typeof buttonVariants> {
   asChild?: boolean;
   size?: "default" | "xs" | "sm" | "lg" | "icon" | "icon-xs" | "icon-sm" | "icon-lg" | "compact" | "compact-sm";
+  variant?: "default" | "destructive" | "outline" | "secondary" | "ghost" | "link" | "gradient-outline";
 }
 
 const Button = forwardRef<HTMLButtonElement, ButtonProps>(
