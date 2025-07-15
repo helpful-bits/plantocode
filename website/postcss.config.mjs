@@ -1,5 +1,8 @@
 const config = {
-  plugins: ["@tailwindcss/postcss", "@csstools/postcss-oklab-function"],
+  plugins: {
+    "@tailwindcss/postcss": {},
+    ...(process.env.NODE_ENV === "production" ? { cssnano: {} } : {}),
+  },
 };
 
 export default config;

@@ -428,12 +428,12 @@ impl OpenAIClient {
                         start_time,
                         consecutive_queued,
                     } => {
-                        // Check for early timeout (2 minutes) if stuck in queued
-                        if start_time.elapsed() > Duration::from_secs(120)
-                            && consecutive_queued > 30
+                        // Check for early timeout (10 minutes) if stuck in queued
+                        if start_time.elapsed() > Duration::from_secs(600)
+                            && consecutive_queued > 150
                         {
                             error!(
-                                "Request appears stuck in queued state after 2 minutes: response_id={}",
+                                "Request appears stuck in queued state after 10 minutes: response_id={}",
                                 response_id
                             );
 
@@ -733,7 +733,7 @@ impl OpenAIClient {
 
         let start_time = Instant::now();
         let max_duration = Duration::from_secs(1800); // 30 minutes total
-        let early_timeout = Duration::from_secs(120); // 2 minutes for detecting stuck requests
+        let early_timeout = Duration::from_secs(600); // 10 minutes for detecting stuck requests
         let mut retry_count = 0;
         let max_retries = 900; // 30 minutes / 2 seconds = 900 attempts
         let mut consecutive_queued_count = 0;
@@ -841,8 +841,8 @@ impl OpenAIClient {
                 "queued" => {
                     consecutive_queued_count += 1;
 
-                    // Check for early timeout - if still queued after 2 minutes, likely stuck
-                    if start_time.elapsed() > early_timeout && consecutive_queued_count > 30 {
+                    // Check for early timeout - if still queued after 10 minutes, likely stuck
+                    if start_time.elapsed() > early_timeout && consecutive_queued_count > 150 {
                         warn!(
                             "Request appears stuck in queued state after 2 minutes: response_id={}",
                             response_id

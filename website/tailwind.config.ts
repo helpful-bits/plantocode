@@ -3,66 +3,36 @@ import type { Config } from "tailwindcss";
 const config: Config = {
   content: [
     "./src/**/*.{js,ts,jsx,tsx}",
+    "./src/styles/**/*.css",
   ],
   darkMode: "class",
   theme: {
     extend: {
+      colors: {
+        // Map semantic names to CSS variables using OKLCH
+        primary: 'oklch(var(--primary) / <alpha-value>)',
+        secondary: 'oklch(var(--secondary) / <alpha-value>)',
+        destructive: 'oklch(var(--destructive) / <alpha-value>)',
+        muted: 'oklch(var(--muted) / <alpha-value>)',
+        accent: 'oklch(var(--accent) / <alpha-value>)',
+        card: 'oklch(var(--card) / <alpha-value>)',
+        popover: 'oklch(var(--popover) / <alpha-value>)',
+        border: 'oklch(var(--border) / <alpha-value>)',
+        input: 'oklch(var(--input) / <alpha-value>)',
+        ring: 'oklch(var(--ring) / <alpha-value>)',
+        background: 'oklch(var(--background) / <alpha-value>)',
+        foreground: 'oklch(var(--foreground) / <alpha-value>)',
+        'primary-foreground': 'oklch(var(--primary-foreground) / <alpha-value>)',
+        'secondary-foreground': 'oklch(var(--secondary-foreground) / <alpha-value>)',
+        'destructive-foreground': 'oklch(var(--destructive-foreground) / <alpha-value>)',
+        'muted-foreground': 'oklch(var(--muted-foreground) / <alpha-value>)',
+        'accent-foreground': 'oklch(var(--accent-foreground) / <alpha-value>)',
+        'card-foreground': 'oklch(var(--card-foreground) / <alpha-value>)',
+        'popover-foreground': 'oklch(var(--popover-foreground) / <alpha-value>)',
+      },
       fontFamily: {
         sans: ["var(--font-inter)", "ui-sans-serif", "system-ui", "sans-serif"],
         mono: ["var(--font-jetbrains-mono)", "ui-monospace", "SFMono-Regular", "monospace"],
-      },
-      
-      // Enhanced animation presets
-      animation: {
-        'float': 'float 6s ease-in-out infinite',
-        'pulse-glow': 'pulse-glow 2s ease-in-out infinite',
-        'slide-in-up': 'slide-in-up 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) both',
-        'fade-in-scale': 'fade-in-scale 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94) both',
-        'shimmer': 'shimmer 2s linear infinite',
-        'spin-slow': 'spin 3s linear infinite',
-        'bounce-subtle': 'bounce 2s infinite',
-      },
-      
-      // Keyframes for custom animations
-      keyframes: {
-        'float': {
-          '0%, 100%': { transform: 'translateY(0) translateZ(0)' },
-          '50%': { transform: 'translateY(-10px) translateZ(0)' },
-        },
-        'pulse-glow': {
-          '0%, 100%': { 
-            boxShadow: '0 0 20px color-mix(in oklch, var(--oklch-primary-500) 20%, transparent)',
-            transform: 'scale(1) translateZ(0)'
-          },
-          '50%': { 
-            boxShadow: '0 0 40px color-mix(in oklch, var(--oklch-primary-500) 40%, transparent)',
-            transform: 'scale(1.02) translateZ(0)'
-          },
-        },
-        'slide-in-up': {
-          'from': {
-            transform: 'translateY(30px) translateZ(0)',
-            opacity: '0',
-          },
-          'to': {
-            transform: 'translateY(0) translateZ(0)',
-            opacity: '1',
-          },
-        },
-        'fade-in-scale': {
-          'from': {
-            transform: 'scale(0.8) translateZ(0)',
-            opacity: '0',
-          },
-          'to': {
-            transform: 'scale(1) translateZ(0)',
-            opacity: '1',
-          },
-        },
-        'shimmer': {
-          '0%': { transform: 'translateX(-100%) translateZ(0)' },
-          '100%': { transform: 'translateX(100%) translateZ(0)' },
-        },
       },
       
       // Enhanced backdrop blur utilities
@@ -284,16 +254,16 @@ const config: Config = {
       
       // Enhanced shadow system with OKLCH colors
       boxShadow: {
-        'xs': '0 1px 2px color-mix(in oklch, var(--oklch-neutral-900) 5%, transparent)',
-        'sm': '0 1px 3px color-mix(in oklch, var(--oklch-neutral-900) 8%, transparent)',
-        'md': '0 4px 6px color-mix(in oklch, var(--oklch-neutral-900) 5%, transparent), 0 2px 4px color-mix(in oklch, var(--oklch-neutral-900) 3%, transparent)',
-        'lg': '0 10px 15px color-mix(in oklch, var(--oklch-neutral-900) 8%, transparent), 0 4px 6px color-mix(in oklch, var(--oklch-neutral-900) 5%, transparent)',
-        'xl': '0 20px 25px color-mix(in oklch, var(--oklch-neutral-900) 10%, transparent), 0 10px 10px color-mix(in oklch, var(--oklch-neutral-900) 3%, transparent)',
-        '2xl': '0 25px 50px color-mix(in oklch, var(--oklch-neutral-900) 15%, transparent)',
-        'glow': '0 0 20px color-mix(in oklch, var(--oklch-primary-500) 20%, transparent)',
-        'glow-lg': '0 0 40px color-mix(in oklch, var(--oklch-primary-500) 30%, transparent)',
-        'glass': '0 8px 32px color-mix(in oklch, var(--oklch-primary-500) 4%, transparent)',
-        'glass-lg': '0 16px 48px color-mix(in oklch, var(--oklch-primary-500) 6%, transparent)',
+        'xs': '0 1px 2px color-mix(in oklch, var(--foreground) 5%, transparent)',
+        'sm': '0 1px 3px color-mix(in oklch, var(--foreground) 8%, transparent)',
+        'md': '0 4px 6px color-mix(in oklch, var(--foreground) 5%, transparent), 0 2px 4px color-mix(in oklch, var(--foreground) 3%, transparent)',
+        'lg': '0 10px 15px color-mix(in oklch, var(--foreground) 8%, transparent), 0 4px 6px color-mix(in oklch, var(--foreground) 5%, transparent)',
+        'xl': '0 20px 25px color-mix(in oklch, var(--foreground) 10%, transparent), 0 10px 10px color-mix(in oklch, var(--foreground) 3%, transparent)',
+        '2xl': '0 25px 50px color-mix(in oklch, var(--foreground) 15%, transparent)',
+        'glow': '0 0 20px color-mix(in oklch, var(--primary) 20%, transparent)',
+        'glow-lg': '0 0 40px color-mix(in oklch, var(--primary) 30%, transparent)',
+        'glass': '0 8px 32px color-mix(in oklch, var(--primary) 4%, transparent)',
+        'glass-lg': '0 16px 48px color-mix(in oklch, var(--primary) 6%, transparent)',
       },
       
       // Enhanced border radius system
@@ -335,6 +305,9 @@ const config: Config = {
     require("@tailwindcss/typography"),
     require("tailwindcss-animate"),
   ],
+  experimental: {
+    externalDependencies: ["**/*.css"],
+  },
 };
 
 export default config;
