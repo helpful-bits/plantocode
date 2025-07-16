@@ -256,6 +256,12 @@ impl OpenRouterClient {
         request: OpenRouterChatRequest,
         user_id: String
     ) -> Result<(HeaderMap, Pin<Box<dyn Stream<Item = Result<web::Bytes, AppError>> + Send + 'static>>), AppError> {
+        // Map model ID to OpenRouter-compatible format before the async move
+        let mut streaming_request = request.clone();
+        streaming_request.stream = Some(true);
+        streaming_request.usage = Some(UsageInclude { include: true });
+        streaming_request.model = self.get_provider_model_id(&streaming_request.model).await?;
+        
         // Clone necessary parts for 'static lifetime
         let client = self.client.clone();
         let api_key = self.api_key.clone();
@@ -270,14 +276,6 @@ impl OpenRouterClient {
                 *counter
             };
             let url = format!("{}/chat/completions", base_url);
-            
-            // Ensure stream is set to true and usage is included
-            let mut streaming_request = request.clone();
-            streaming_request.stream = Some(true);
-            streaming_request.usage = Some(UsageInclude { include: true });
-            
-            // Map model ID to OpenRouter-compatible format
-            streaming_request.model = self.get_provider_model_id(&streaming_request.model).await?;
             
             let response = client
                 .post(&url)
@@ -382,7 +380,7 @@ impl OpenRouterClient {
     fn extract_usage_from_json(&self, json_value: &serde_json::Value, model_id: &str) -> Option<ProviderUsage> {
         let usage = json_value.get("usage")?;
         
-        // Handle OpenRouter format: {"prompt_tokens", "completion_tokens", "cost", "prompt_tokens_details"}
+        // Handle OpenRouter format: {"prompt_tokens", "completion_tokens", "cost"}
         // OpenRouter's prompt_tokens already represents total input tokens
         let prompt_tokens = match usage.get("prompt_tokens").and_then(|v| v.as_i64()) {
             Some(tokens) => tokens as i32,
@@ -400,14 +398,11 @@ impl OpenRouterClient {
             }
         };
         
-        // Extract cached tokens from prompt_tokens_details if available (OpenRouter may pass through provider details)
-        let cache_read_tokens = usage.get("prompt_tokens_details")
-            .and_then(|details| details.get("cached_tokens"))
-            .and_then(|v| v.as_i64())
-            .unwrap_or(0) as i32;
+        // Set cache_write_tokens and cache_read_tokens to 0 unless OpenRouter provides explicit fields
+        let cache_write_tokens = 0;
+        let cache_read_tokens = 0;
         
-        // Extract cost from OpenRouter response with improved error handling
-        // OpenRouter can send cost as either a number or a string
+        // Improve the cost parsing logic to robustly handle both numbers and strings
         let cost = usage.get("cost")
             .and_then(|v| match v {
                 serde_json::Value::Number(n) => n.as_f64(),
@@ -456,21 +451,27 @@ impl OpenRouterClient {
             }
         }
         
-        // Use the with_total_input_and_cost constructor for consistency with other providers
-        let usage = ProviderUsage::with_total_input_and_cost(
-            prompt_tokens,      // Total input tokens (already correct semantics)
-            completion_tokens,  // Output tokens
-            0,                  // No cache write support in OpenRouter
-            cache_read_tokens,  // Cache read tokens from prompt_tokens_details if available
-            model_id.to_string(),
-            cost                // Provider-calculated cost
-        );
+        // Use the with_cost constructor for consistency with other providers
+        let usage = if let Some(cost_val) = cost {
+            ProviderUsage::with_cost(
+                prompt_tokens,      // Total input tokens (already correct semantics)
+                completion_tokens,  // Output tokens
+                cache_write_tokens, // Set to 0 unless OpenRouter provides explicit fields
+                cache_read_tokens,  // Set to 0 unless OpenRouter provides explicit fields
+                model_id.to_string(),
+                cost_val            // Provider-calculated cost
+            )
+        } else {
+            ProviderUsage::new(
+                prompt_tokens,      // Total input tokens (already correct semantics)
+                completion_tokens,  // Output tokens
+                cache_write_tokens, // Set to 0 unless OpenRouter provides explicit fields
+                cache_read_tokens,  // Set to 0 unless OpenRouter provides explicit fields
+                model_id.to_string(),
+            )
+        };
         
-        // Validate usage data before returning
-        if let Err(e) = usage.validate() {
-            tracing::warn!("Invalid usage data from OpenRouter: {}", e);
-            return None;
-        }
+        usage.validate().ok()?;
         
         Some(usage)
     }

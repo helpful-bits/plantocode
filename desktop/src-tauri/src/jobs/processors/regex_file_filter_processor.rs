@@ -116,11 +116,9 @@ impl RegexFileFilterProcessor {
 
     /// Process a single pattern group and return matching files
     async fn process_pattern_group(&self, compiled_group: &CompiledPatternGroup, all_files: &[String], project_directory: &str) -> Vec<String> {
-        info!("Processing pattern group: '{}'", compiled_group.title);
         
         // If neither path nor content pattern is available, skip this group
         if compiled_group.path_regex.is_none() && compiled_group.content_regex.is_none() {
-            info!("Pattern group '{}' has no positive patterns. Skipping.", compiled_group.title);
             return Vec::new();
         }
 
@@ -167,7 +165,6 @@ impl RegexFileFilterProcessor {
         
         let positive_matches: Vec<String> = positive_results.into_iter().filter_map(|x| x).collect();
         
-        info!("Pattern group '{}' found {} files matching positive patterns", compiled_group.title, positive_matches.len());
         
         // Apply negative path filtering
         let negative_filtered = if let Some(ref neg_path_regex) = compiled_group.negative_path_regex {
@@ -176,14 +173,12 @@ impl RegexFileFilterProcessor {
                 .filter(|file_path| !neg_path_regex.is_match(file_path))
                 .collect();
             if excluded_count > 0 {
-                info!("Pattern group '{}' excluded {} files due to negative path pattern", compiled_group.title, excluded_count);
             }
             filtered
         } else {
             positive_matches
         };
         
-        info!("Pattern group '{}' final result: {} files", compiled_group.title, negative_filtered.len());
         negative_filtered
     }
 }
@@ -217,7 +212,6 @@ impl JobProcessor for RegexFileFilterProcessor {
         // Generate directory tree using session-based utility (avoids duplicate session lookup)
         let directory_tree_for_prompt = match get_directory_tree_with_defaults(&session.project_directory).await {
             Ok(tree) => {
-                info!("Generated directory tree using session-based utility for regex pattern generation ({} lines)", tree.lines().count());
                 Some(tree)
             }
             Err(e) => {
@@ -240,8 +234,6 @@ impl JobProcessor for RegexFileFilterProcessor {
         // Create LLM task runner
         let task_runner = LlmTaskRunner::new(app_handle.clone(), job.clone(), llm_config);
         
-        info!("Generating regex patterns for task: {}", &task_description_for_prompt);
-        info!("Calling LLM for regex pattern generation with model {}", &model_used);
         
         // Create LLM prompt context for task runner
         let llm_context = LlmPromptContext {
@@ -260,8 +252,6 @@ impl JobProcessor for RegexFileFilterProcessor {
             }
         };
         
-        info!("Regex Pattern Generation LLM task completed successfully for job {}", job.id);
-        info!("System prompt ID: {}", llm_result.system_prompt_id);
         
         // Extract the response content
         let response_content = llm_result.response.clone();
@@ -281,7 +271,6 @@ impl JobProcessor for RegexFileFilterProcessor {
         
         // Parse pattern groups and apply file filtering
         let filtered_files = if let Some(ref parsed_json) = json_validation_result.1 {
-            info!("Applying generated pattern groups to filter files");
             
             // Extract pattern groups from JSON
             let pattern_groups: Vec<PatternGroup> = if let Some(groups_array) = parsed_json.get("patternGroups").and_then(|v| v.as_array()) {
@@ -295,7 +284,6 @@ impl JobProcessor for RegexFileFilterProcessor {
             if pattern_groups.is_empty() {
                 return Err(AppError::JobError("No valid pattern groups found in generated response".to_string()));
             } else {
-                info!("Found {} pattern groups to process", pattern_groups.len());
                 
                 // Compile all pattern groups - fail fast on any error
                 let compiled_groups: Vec<CompiledPatternGroup> = pattern_groups.iter()
@@ -320,7 +308,6 @@ impl JobProcessor for RegexFileFilterProcessor {
                     .map(|path| path.to_string_lossy().to_string())
                     .collect();
                 
-                info!("Discovered {} files, processing with {} pattern groups", all_files.len(), compiled_groups.len());
                 
                 // Convert normalized directory to string for pattern matching
                 let normalized_project_dir_str = normalized_project_dir.to_string_lossy().to_string();
@@ -339,22 +326,28 @@ impl JobProcessor for RegexFileFilterProcessor {
                 }
                 
                 let final_matches: Vec<String> = all_matching_files.into_iter().collect();
-                info!("Total unique files found across all pattern groups: {}", final_matches.len());
                 final_matches
             }
         } else {
             return Err(AppError::JobError("Cannot apply file filtering - JSON parsing failed".to_string()));
         };
         
-        info!("RegexFileFilter completed: Generated patterns and filtered {} files", filtered_files.len());
         
         // Extract system prompt template and cost
         let system_prompt_template = llm_result.system_prompt_template.clone();
         let actual_cost = llm_result.usage.as_ref().and_then(|u| u.cost).unwrap_or(0.0);
         
         // Return success result with filtered files as JSON, including token usage
+        let summary = if filtered_files.len() > 0 {
+            format!("Found {} files", filtered_files.len())
+        } else {
+            "No matching files found".to_string()
+        };
+        
         let result = JobProcessResult::success(job.id.clone(), JobResultData::Json(json!({
-            "filteredFiles": filtered_files
+            "files": filtered_files,
+            "count": filtered_files.len(),
+            "summary": summary
         })))
         .with_tokens(
             llm_result.usage.as_ref().map(|u| u.prompt_tokens as u32),

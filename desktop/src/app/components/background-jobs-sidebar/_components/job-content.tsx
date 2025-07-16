@@ -16,7 +16,7 @@ interface JobContentProps {
   isCancelling: Record<string, boolean>;
   isDeleting: Record<string, boolean>;
   onSelect: (job: BackgroundJob) => void;
-  onApplyFiles?: (job: BackgroundJob) => void;
+  onApplyFiles?: (job: BackgroundJob) => Promise<void>;
   currentSessionId?: string;
 }
 

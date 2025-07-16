@@ -7,7 +7,7 @@ import { Inter, JetBrains_Mono } from "next/font/google";
 
 // Inter variable font with full weight range and optimal settings
 export const inter = Inter({
-  subsets: ["latin", "latin-ext"],
+  subsets: ["latin"],
   variable: "--font-inter",
   display: "swap", // Immediate text visibility
   weight: ["300", "400", "500", "600", "700", "800", "900"],
@@ -32,7 +32,7 @@ export const inter = Inter({
 
 // JetBrains Mono for code with variable font optimization
 export const jetbrainsMono = JetBrains_Mono({
-  subsets: ["latin", "latin-ext"],
+  subsets: ["latin"],
   variable: "--font-jetbrains-mono",
   display: "swap",
   weight: ["300", "400", "500", "600", "700", "800"],

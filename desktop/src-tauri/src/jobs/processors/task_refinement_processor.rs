@@ -33,7 +33,6 @@ impl JobProcessor for TaskRefinementProcessor {
 
     async fn process(&self, job: Job, app_handle: AppHandle) -> AppResult<JobProcessResult> {
         let job_id = job.id().to_string();
-        info!("Processing Task Refinement job {}", job_id);
         
         // Extract the payload
         let payload = match &job.payload {
@@ -110,27 +109,17 @@ impl JobProcessor for TaskRefinementProcessor {
             }
         };
         
-        info!("Task Refinement LLM task completed successfully for job {}", job_id);
-        info!("System prompt ID: {}", llm_result.system_prompt_id);
         
         let refined_content = llm_result.response.trim().to_string();
-        
-        // Format the response with structured appending: original + refinement
-        let structured_response = format!(
-            "{}\n\n---\n\n<refined_task>\n{}\n</refined_task>",
-            payload.task_description,
-            refined_content
-        );
         
         // Extract usage and system prompt template before moving it
         let usage_for_result = llm_result.usage.clone();
         let system_prompt_template = llm_result.system_prompt_template.clone();
         let actual_cost = llm_result.usage.as_ref().and_then(|u| u.cost).unwrap_or(0.0);
         
-        info!("Completed Task Refinement job {}", job_id);
         
-        // Return success result with structured text data
-        Ok(JobProcessResult::success(job_id, JobResultData::Text(structured_response))
+        // Return success result with structured JSON data
+        Ok(JobProcessResult::success(job_id, JobResultData::Json(serde_json::json!({"refinedTask": refined_content, "analysis": "Refined task based on provided context.", "summary": "Task description refined"})))
             .with_tokens(
                 usage_for_result.as_ref().map(|u| u.prompt_tokens as u32),
                 usage_for_result.as_ref().map(|u| u.completion_tokens as u32)

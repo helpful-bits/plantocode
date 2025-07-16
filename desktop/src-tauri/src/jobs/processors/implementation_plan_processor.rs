@@ -93,11 +93,7 @@ impl JobProcessor for ImplementationPlanProcessor {
             &model_used,
         ).await?;
 
-        info!("Enhanced Implementation Plan prompt composition for job {}", job.id);
-        info!("System prompt ID: {}", composed_prompt.system_prompt_id);
-        info!("Context sections: {:?}", composed_prompt.context_sections);
         if let Some(tokens) = composed_prompt.estimated_total_tokens {
-            info!("Estimated tokens: {}", tokens);
             
             // Log warning if estimated tokens exceed typical model limits
             if tokens > 100000 {
@@ -145,7 +141,6 @@ impl JobProcessor for ImplementationPlanProcessor {
 
         let system_prompt_id = composed_prompt.system_prompt_id;
         
-        info!("Generated implementation plan prompt for task: {}", &payload.task_description);
         
         
         // Setup LLM task configuration for streaming
@@ -183,12 +178,10 @@ impl JobProcessor for ImplementationPlanProcessor {
         
         // Check if job has been canceled before calling the LLM
         if job_processor_utils::check_job_canceled(&repo, &job.id).await? {
-            info!("Job {} has been canceled before processing", job.id);
             return Ok(JobProcessResult::canceled(job.id.clone(), "Job was canceled by user".to_string()));
         }
         
         // Execute streaming LLM task using the task runner
-        info!("Calling LLM for implementation plan with model {} (streaming enabled)", model_used);
         let llm_result = match task_runner.execute_streaming_llm_task(
             prompt_context,
             &settings_repo,
@@ -203,8 +196,6 @@ impl JobProcessor for ImplementationPlanProcessor {
             }
         };
         
-        info!("Streaming LLM task completed successfully for job {}", job.id);
-        info!("System prompt ID: {}", llm_result.system_prompt_id);
         
         // Use the response from the task runner
         let response_content = llm_result.response.clone();
@@ -218,7 +209,6 @@ impl JobProcessor for ImplementationPlanProcessor {
         
         // Check if job has been canceled after LLM call but before further processing using helper
         if job_processor_utils::check_job_canceled(&repo, &job.id).await? {
-            info!("Job {} has been canceled after LLM call", job.id);
             return Ok(JobProcessResult::canceled(job.id.clone(), "Job was canceled by user".to_string()));
         }
         

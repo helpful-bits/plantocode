@@ -81,9 +81,6 @@ export default function App() {
 
       // Check if Tauri is available for desktop functionality
       if (isTauri) {
-        // Use a logger that can be configured instead of console.log
-        // eslint-disable-next-line no-console
-        console.log("[App] Tauri environment detected - initializing desktop features");
         
         // Basic Tauri environment validation
         try {

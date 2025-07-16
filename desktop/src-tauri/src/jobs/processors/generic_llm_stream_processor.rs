@@ -29,7 +29,6 @@ impl JobProcessor for GenericLlmStreamProcessor {
     }
     
     async fn process(&self, job: Job, app_handle: AppHandle) -> AppResult<JobProcessResult> {
-        info!("Processing generic LLM stream job {}", job.id);
         
         // Extract the payload
         let payload = match &job.payload {
@@ -66,7 +65,6 @@ impl JobProcessor for GenericLlmStreamProcessor {
         };
         
         // Execute streaming LLM task using the task runner
-        info!("Calling LLM for generic stream with model {} (streaming enabled)", model_used);
         let llm_result = match task_runner.execute_streaming_llm_task(
             prompt_context,
             &settings_repo,
@@ -81,8 +79,6 @@ impl JobProcessor for GenericLlmStreamProcessor {
             }
         };
         
-        info!("Generic LLM Stream task completed successfully for job {}", job.id);
-        info!("System prompt ID: {}", llm_result.system_prompt_id);
         
         // Use the response from the task runner
         let response_content = llm_result.response.clone();
@@ -120,7 +116,6 @@ impl JobProcessor for GenericLlmStreamProcessor {
             .with_system_prompt_template(system_prompt_template)
             .with_actual_cost(actual_cost);
         
-        info!("Completed generic LLM stream job {}", job.id);
         Ok(result)
     }
 }

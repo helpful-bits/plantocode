@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import Image from 'next/image';
-import { useTheme } from 'next-themes';
+import { GlassCard } from '@/components/ui/GlassCard';
 
 interface FAQItem {
   question: string;
@@ -15,22 +15,23 @@ interface FAQProps {
 
 export function FAQ({ items }: FAQProps) {
   const [openIndex, setOpenIndex] = useState<number | null>(null);
-  const [mounted, setMounted] = useState(false);
-  const { resolvedTheme } = useTheme();
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   return (
     <section id="faq" className="relative py-16 px-4 overflow-hidden">
       {/* Background image - changes based on theme */}
       <Image
-        src={resolvedTheme === 'dark' ? "/images/features-background-dark.png" : "/images/features-background.png"}
+        src="/images/features-background.png"
         alt="FAQ section background"
         fill
         quality={100}
-        className="object-cover object-top z-0"
+        className="object-cover object-top z-0 block dark:hidden"
+      />
+      <Image
+        src="/images/features-background-dark.png"
+        alt="FAQ section background"
+        fill
+        quality={100}
+        className="object-cover object-top z-0 hidden dark:block"
       />
       
       {/* Gradient overlay for better text contrast and smooth transition */}
@@ -40,56 +41,20 @@ export function FAQ({ items }: FAQProps) {
       <div className="absolute inset-x-0 top-0 h-32 z-2 bg-gradient-to-b from-background to-transparent" />
       
       {/* Glass morphism overlay */}
-      <div className="absolute inset-0 z-5 bg-gradient-to-b from-transparent via-background/5 to-background/20 backdrop-blur-[2px]" />
+      <div className="absolute inset-0 z-5 bg-gradient-to-b from-transparent via-background/10 to-transparent backdrop-blur-sm" />
       
       <div className="container mx-auto max-w-3xl relative z-10">
         <div className="text-center mb-12">
-          <h2 className={`text-3xl sm:text-4xl lg:text-5xl font-bold mb-4 ${
-            resolvedTheme === 'dark' ? "text-white" : "text-teal-900"
-          }`}>Frequently Asked Questions</h2>
-          <p className={`text-lg sm:text-xl max-w-2xl mx-auto leading-relaxed font-medium ${
-            resolvedTheme === 'dark' ? 'text-gray-100' : 'text-teal-950'
-          }`}
-            style={{
-              textShadow: resolvedTheme === 'dark' 
-                ? `0 0 20px rgba(94, 234, 212, 0.3),
-                   0 0 40px rgba(94, 234, 212, 0.2),
-                   0 2px 8px rgba(0, 0, 0, 0.4)`
-                : `0 0 30px rgba(255, 255, 135, 0.6),
-                   0 0 50px rgba(154, 255, 154, 0.4),
-                   0 2px 8px rgba(255, 255, 200, 0.7)`
-            }}
-          >
+          <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-4 text-teal-900 dark:text-white">Frequently Asked Questions</h2>
+          <p className="text-lg sm:text-xl max-w-2xl mx-auto leading-relaxed font-medium text-teal-950 dark:text-gray-100">
             Everything you need to know about Vibe Manager
           </p>
         </div>
         
         <div className="space-y-4">
           {items.map((item, index) => (
-            <div key={index} className="relative group">
-              <div className="relative overflow-hidden rounded-2xl transition-all duration-300 hover:shadow-lg">
-                {/* Solid base layer for consistent readability */}
-                <div className="absolute inset-0 bg-white/90 dark:bg-black/80 backdrop-blur-xl backdrop-saturate-150" />
-                
-                {/* Subtle gradient overlay for depth */}
-                <div className="absolute inset-0 bg-gradient-to-br from-white/20 dark:from-white/5 via-transparent to-transparent opacity-50" />
-                
-                {/* Very subtle emerald tint */}
-                <div className="absolute inset-0 bg-gradient-to-b from-transparent to-emerald-500/5" />
-                
-                {/* Glass shine effect */}
-                <div className="absolute inset-[1px] bg-gradient-to-br from-white/30 dark:from-white/10 via-transparent to-transparent rounded-[22px] opacity-30" />
-                
-                {/* Shimmer on hover */}
-                <div className="absolute inset-0 opacity-0 group-hover:opacity-100 bg-gradient-to-r from-transparent via-white/20 dark:via-white/10 to-transparent -skew-x-12 translate-x-[-100%] group-hover:translate-x-[100%] transition-all duration-700" />
-                
-                {/* Subtle edge highlights */}
-                <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/60 dark:via-white/20 to-transparent" />
-                
-                {/* Clean border */}
-                <div className="absolute inset-0 rounded-2xl ring-1 ring-white/20 dark:ring-white/10" />
-                
-                <div className="relative">
+            <GlassCard key={index}>
+                <div>
                   <button
                     className="w-full p-6 text-left flex justify-between items-center transition-colors group"
                     onClick={() => setOpenIndex(openIndex === index ? null : index)}
@@ -132,8 +97,7 @@ export function FAQ({ items }: FAQProps) {
                     </div>
                   </div>
                 </div>
-              </div>
-            </div>
+            </GlassCard>
           ))}
         </div>
       </div>

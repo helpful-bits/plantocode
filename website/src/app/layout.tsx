@@ -70,6 +70,10 @@ export const metadata: Metadata = {
     creator: '@vibemanager',
     site: '@vibemanager',
   },
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: 'oklch(0.98 0.01 195)' },
+    { media: '(prefers-color-scheme: dark)', color: 'oklch(0.18 0.02 206)' }
+  ],
   robots: {
     index: true,
     follow: true,
@@ -89,8 +93,8 @@ export const metadata: Metadata = {
   other: {
     'apple-mobile-web-app-title': 'Vibe Manager',
     'application-name': 'Vibe Manager',
-    'msapplication-TileColor': '#000000',
-    'theme-color': '#ffffff', // Default to light theme for initial load
+    'msapplication-TileColor': 'oklch(0.18 0.02 206)',
+    'theme-color': 'oklch(0.98 0.01 195)', // Default to light theme for initial load
   },
 };
 
@@ -109,17 +113,6 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning className={fontClasses.variables}>
       <head>
-        <meta 
-          name="theme-color" 
-          content="#ffffff" 
-          media="(prefers-color-scheme: light)"
-        />
-        <meta 
-          name="theme-color" 
-          content="#2d3748" 
-          media="(prefers-color-scheme: dark)"
-        />
-        
         {/* Font preload for critical Inter font */}
         <link
           rel="preload"

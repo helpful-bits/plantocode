@@ -94,7 +94,6 @@ impl LlmTaskRunner {
         }
         
         // Log the actual system prompt being sent to the LLM
-        info!("System prompt (ID: {}) being sent to LLM", system_prompt_id);
         
         // Log full prompt to file for debugging
         self.log_prompt_to_file(&system_prompt, &user_prompt, "non_streaming").await;
@@ -113,7 +112,6 @@ impl LlmTaskRunner {
         // Add task type for web mode detection
         api_options.task_type = Some(self.job.task_type.to_string());
         
-        info!("Making LLM API call with model: {}", self.config.model);
         
         // Execute the LLM call
         let response = llm_api_utils::execute_llm_chat_completion(
@@ -181,7 +179,6 @@ impl LlmTaskRunner {
         
         // Generate unique request ID for tracking final costs
         let request_id = uuid::Uuid::new_v4().to_string();
-        info!("Generated request ID for streaming job {}: {}", self.job.id, request_id);
         
         // Update job metadata to include request_id
         let mut metadata: serde_json::Value = if let Some(meta_str) = &initial_db_job.metadata {
@@ -215,7 +212,6 @@ impl LlmTaskRunner {
         // Log full prompt to file for debugging
         self.log_prompt_to_file(&system_prompt, &user_prompt, "streaming").await;
         
-        info!("Making streaming LLM API call with model: {}", self.config.model);
         
         // Get API client
         let llm_client = llm_api_utils::get_api_client(&self.app_handle)?;
@@ -224,7 +220,7 @@ impl LlmTaskRunner {
         let messages = llm_api_utils::create_openrouter_messages(&system_prompt, &user_prompt);
         
         // Create streaming handler configuration
-        let stream_config = crate::jobs::streaming_handler::create_stream_config(&system_prompt, &user_prompt);
+        let stream_config = crate::jobs::streaming_handler::create_stream_config(&system_prompt, &user_prompt, &self.config.model);
         
         // Create streaming handler
         let streaming_handler = crate::jobs::streaming_handler::StreamedResponseHandler::new(
@@ -252,11 +248,8 @@ impl LlmTaskRunner {
             .ok_or_else(|| AppError::InternalError("Cannot poll for final cost with non-server proxy client".to_string()))?;
         
         // Poll for final cost with exponential backoff retry - this is now synchronous
-        info!("Polling for final cost for job {} with request_id {}", job_id, request_id);
         match proxy_client.poll_final_streaming_cost_with_retry(&request_id).await {
             Ok(Some(cost_data)) => {
-                info!("Retrieved final cost via polling for job {}: ${:.4}, tokens: input={}, output={}", 
-                      job_id, cost_data.final_cost, cost_data.tokens_input, cost_data.tokens_output);
                 
                 // Update job with final cost and usage details
                 if let Err(e) = repo.update_job_with_final_cost(job_id, &cost_data).await {

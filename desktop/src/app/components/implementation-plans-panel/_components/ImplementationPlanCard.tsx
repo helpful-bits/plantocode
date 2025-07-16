@@ -28,6 +28,7 @@ interface ImplementationPlanCardProps {
   isDeleting: boolean;
   copyButtons?: CopyButtonConfig[];
   onCopyButtonClick?: (buttonConfig: CopyButtonConfig, plan: BackgroundJob) => void;
+  onPreloadPlanContent?: () => void;
   isSelected?: boolean;
   onToggleSelection?: (jobId: string) => void;
 }
@@ -78,6 +79,7 @@ const ImplementationPlanCard = React.memo<ImplementationPlanCardProps>(({
   isDeleting,
   copyButtons = [],
   onCopyButtonClick,
+  onPreloadPlanContent,
   isSelected = false,
   onToggleSelection,
 }) => {
@@ -241,6 +243,7 @@ const ImplementationPlanCard = React.memo<ImplementationPlanCardProps>(({
                   size="sm"
                   className="text-xs h-7 px-2 py-1"
                   onClick={() => onCopyButtonClick?.(button, plan)}
+                  onMouseEnter={onPreloadPlanContent}
                   title={`Copy: ${button.label}`}
                 >
                   <Copy className="mr-1 h-3 w-3" />

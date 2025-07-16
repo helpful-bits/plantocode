@@ -132,58 +132,6 @@ export default function Home() {
     },
   ];
 
-  const pricingTiers = [
-    {
-      name: "Free Credits",
-      price: "$0",
-      description: "New users receive free credits (30-day expiration)",
-      features: [
-        "Full access to all features",
-        "All AI models available",
-        "No feature restrictions",
-        "File Finder workflow",
-        "Deep Research integration",
-        "Multi-model planning",
-        "Context persistence",
-        "Parallel execution"
-      ],
-      buttonText: "Get Started",
-      buttonVariant: "outline" as const,
-    },
-    {
-      name: "Paid Credits",
-      price: "Pay-as-you-go",
-      description: "Only pay for AI usage with transparent processing fees",
-      features: [
-        "All features included",
-        "Real-time cost tracking",
-        "Auto top-off option available",
-        "Purchase range: $0.01 to $10,000",
-        "No subscriptions or hidden fees",
-        "Transparent cost breakdown",
-        "Multiple AI models supported"
-      ],
-      highlighted: true,
-      buttonText: "Buy Credits",
-      buttonVariant: "default" as const,
-    },
-    {
-      name: "Enterprise",
-      price: "Custom",
-      description: "For large teams with special requirements",
-      features: [
-        "Everything in Paid Credits",
-        "Custom system prompts",
-        "Admin controls",
-        "Volume pricing available",
-        "Dedicated support",
-        "Team collaboration features",
-        "Priority customer success"
-      ],
-      buttonText: "Contact Sales",
-      buttonVariant: "secondary" as const,
-    },
-  ];
 
   return (
     <>
@@ -193,7 +141,7 @@ export default function Home() {
         <HeroSection />
         <Features features={features} />
         <HowItWorks steps={steps} />
-        <Pricing tiers={pricingTiers} />
+        <Pricing />
         <FAQ items={faqItems} />
         <CallToAction 
           title="Ready to Transform Your Development Workflow?"

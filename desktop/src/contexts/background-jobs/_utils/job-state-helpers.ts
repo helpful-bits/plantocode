@@ -355,62 +355,13 @@ export function hasMetadataChanged(
   const metaA = getParsedMetadata(jobA.metadata);
   const metaB = getParsedMetadata(jobB.metadata);
 
-  // Check for regex patterns in completed jobs (especially for regex generation tasks)
-  if (jobA.status === "completed") {
-    // Check if parsedJsonData exists in only one of the jobs
-    const hasRegexPatternsA = metaA?.taskData?.parsedJsonData !== undefined;
-    const hasRegexPatternsB = metaB?.taskData?.parsedJsonData !== undefined;
-
-    if (hasRegexPatternsA !== hasRegexPatternsB) {
-      logger.debug(
-        `Metadata differs: regexPatterns presence mismatch for job ${jobA.id}`
-      );
-      return true;
-    }
-
-    // If both have regexPatterns, compare the references
-    if (
-      hasRegexPatternsA &&
-      hasRegexPatternsB &&
-      metaA?.taskData?.parsedJsonData !== metaB?.taskData?.parsedJsonData
-    ) {
-      logger.debug(
-        `Metadata differs: regexPatterns changed for job ${jobA.id}`
-      );
-      return true;
-    }
-  }
-
-  // For pathfinder jobs, check pathData and pathCount first
+  // For pathfinder jobs, check pathCount first
   if (jobA.taskType === "extended_path_finder") {
     // For completed path finder jobs, check pathCount
     if (jobA.status === "completed") {
       if (metaA?.taskData?.pathCount !== metaB?.taskData?.pathCount) {
         logger.debug(
           `Path finder job metadata differs: pathCount ${metaA?.taskData?.pathCount} !== ${metaB?.taskData?.pathCount}`
-        );
-        return true;
-      }
-
-      // If pathData is present in only one, they differ
-      const hasPathDataA = metaA?.taskData?.pathData !== undefined;
-      const hasPathDataB = metaB?.taskData?.pathData !== undefined;
-
-      if (hasPathDataA !== hasPathDataB) {
-        logger.debug(
-          `Path finder job metadata differs: pathData presence mismatch`
-        );
-        return true;
-      }
-
-      // If both have pathData, compare the structures (but not deeply, just check if they're equal references)
-      if (
-        hasPathDataA &&
-        hasPathDataB &&
-        metaA?.taskData?.pathData !== metaB?.taskData?.pathData
-      ) {
-        logger.debug(
-          `Path finder job metadata differs: pathData reference changes`
         );
         return true;
       }
@@ -537,8 +488,6 @@ export function hasMetadataChanged(
 
   // Define complex object fields that need reference comparison (not deep comparison)
   const complexObjectFields = [
-    "parsedJsonData", // Regex patterns and other parsed JSON - reference comparison only
-    "pathData", // Path finder results data - reference comparison only
     "planData", // Implementation plan data - reference comparison only
   ];
 

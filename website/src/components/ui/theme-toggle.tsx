@@ -64,7 +64,7 @@ export function ThemeToggle() {
         <span className="sr-only">Toggle theme</span>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-40">
-        <DropdownMenuRadioGroup value={theme} onValueChange={setTheme}>
+        <DropdownMenuRadioGroup value={theme || 'system'} onValueChange={setTheme}>
           <DropdownMenuRadioItem value="light" className="flex items-center gap-2 cursor-pointer">
             <Sun className="w-4 h-4" />
             <span>Light</span>
@@ -80,52 +80,5 @@ export function ThemeToggle() {
         </DropdownMenuRadioGroup>
       </DropdownMenuContent>
     </DropdownMenu>
-  );
-}
-
-/**
- * Simple theme toggle button for inline use
- */
-export function ThemeToggleButton() {
-  const { setTheme, resolvedTheme } = useTheme();
-  const [mounted, setMounted] = React.useState(false);
-
-  React.useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  if (!mounted) {
-    return (
-      <Button
-        variant="ghost"
-        size="icon"
-        disabled
-        className="w-9 h-9 rounded-lg"
-      >
-        <div className="w-4 h-4 animate-pulse bg-muted rounded" />
-        <span className="sr-only">Loading theme toggle</span>
-      </Button>
-    );
-  }
-
-  const toggleTheme = () => {
-    setTheme(resolvedTheme === 'light' ? 'dark' : 'light');
-  };
-
-  return (
-    <Button
-      variant="ghost"
-      size="icon"
-      onClick={toggleTheme}
-      className="w-9 h-9 rounded-lg transition-all duration-200 hover:bg-accent/20 focus-visible:ring-2 focus-visible:ring-ring"
-      aria-label={`Switch to ${resolvedTheme === 'light' ? 'dark' : 'light'} theme`}
-    >
-      {resolvedTheme === 'light' ? (
-        <Moon className="w-4 h-4" />
-      ) : (
-        <Sun className="w-4 h-4" />
-      )}
-      <span className="sr-only">Toggle theme</span>
-    </Button>
   );
 }

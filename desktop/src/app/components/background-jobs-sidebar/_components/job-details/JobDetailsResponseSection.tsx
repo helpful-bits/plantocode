@@ -299,7 +299,6 @@ export function JobDetailsResponseSection() {
             // No refresh needed in this context as job data comes from context
           }}
           copyButtons={copyButtons}
-          onCopyButtonClick={(buttonConfig) => handleCopy(buttonConfig)}
         />
       )}
     </Card>

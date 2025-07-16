@@ -63,7 +63,6 @@ impl FileRelevanceAssessmentProcessor {
 
     /// Parse paths from LLM text response using newline separation (as instructed in system prompt)
     fn parse_paths_from_text_response(response_text: &str, _project_directory: &str) -> AppResult<Vec<String>> {
-        info!("Parsing LLM response of {} chars", response_text.len());
         
         // Parse newline-separated paths as instructed in system prompt
         let paths: Vec<String> = response_text
@@ -73,7 +72,6 @@ impl FileRelevanceAssessmentProcessor {
             .map(|line| line.to_string())
             .collect();
         
-        info!("Successfully parsed {} paths from newline-separated response", paths.len());
         Ok(Self::deduplicate_paths(paths))
     }
     
@@ -101,7 +99,6 @@ impl FileRelevanceAssessmentProcessor {
         let prompt_overhead = 2000u32; // Conservative estimate for prompt overhead
         let available_tokens = max_chunk_tokens.saturating_sub(prompt_overhead);
         
-        info!("Creating content-aware chunks with {} available tokens per chunk using ACTUAL file sizes", available_tokens);
         
         for file_path in files {
             // Get content-based token estimation using standard utilities
@@ -151,7 +148,6 @@ impl FileRelevanceAssessmentProcessor {
             // Check if adding this file would exceed chunk limit
             if current_chunk_tokens + file_tokens > available_tokens && !current_chunk.is_empty() {
                 // Finalize current chunk and start new one
-                info!("Chunk completed with {} files and {} actual tokens", current_chunk.len(), current_chunk_tokens);
                 chunks.push(current_chunk);
                 current_chunk = Vec::new();
                 current_chunk_tokens = 0;
@@ -164,7 +160,6 @@ impl FileRelevanceAssessmentProcessor {
         
         // Don't forget the last chunk
         if !current_chunk.is_empty() {
-            info!("Final chunk with {} files and {} actual tokens", current_chunk.len(), current_chunk_tokens);
             chunks.push(current_chunk);
         }
         
@@ -172,8 +167,6 @@ impl FileRelevanceAssessmentProcessor {
             warn!("Skipped {} inaccessible files: {:?}", skipped_files.len(), skipped_files);
         }
         
-        info!("Created {} content-aware chunks for {} accessible files (skipped {})", 
-            chunks.len(), files.len() - skipped_files.len(), skipped_files.len());
         
         Ok(chunks)
     }
@@ -190,7 +183,6 @@ impl FileRelevanceAssessmentProcessor {
         repo: &crate::db_utils::BackgroundJobRepository,
         job_id: &str,
     ) -> AppResult<(Vec<String>, Option<crate::models::OpenRouterUsage>, String, String)> {
-        info!("Processing chunk {}/{} with {} files", chunk_index + 1, total_chunks, chunk.len());
         
         // Check for cancellation before processing this chunk
         if job_processor_utils::check_job_canceled(repo, job_id).await? {
@@ -211,10 +203,7 @@ impl FileRelevanceAssessmentProcessor {
                 }
             }
         }
-        info!("Loaded content for {}/{} files in chunk {}", file_contents.len(), chunk.len(), chunk_index + 1);
         
-        // Log chunk details to file for debugging
-        Self::log_chunk_to_file(chunk_index + 1, total_chunks, chunk, &file_contents, task_description).await;
 
         // Create prompt context for this chunk
         let prompt_context = LlmPromptContext {
@@ -224,7 +213,6 @@ impl FileRelevanceAssessmentProcessor {
         };
 
         // Log the system prompt being used for this chunk
-        info!("System prompt for chunk {}: Fetching from task runner...", chunk_index + 1);
         
         // Execute LLM task for this chunk
         let llm_result = task_runner.execute_llm_task(prompt_context, settings_repo).await
@@ -233,10 +221,7 @@ impl FileRelevanceAssessmentProcessor {
         // Parse the LLM response for this chunk
         let chunk_relevant_paths = Self::parse_paths_from_text_response(&llm_result.response, project_directory)
             .map_err(|e| AppError::JobError(format!("Failed to parse chunk {} results: {}", chunk_index + 1, e)))?;
-        info!("Parsed {} paths from chunk {} response", chunk_relevant_paths.len(), chunk_index + 1);
 
-        info!("Chunk {}/{} identified {} relevant files from {} input files", 
-            chunk_index + 1, total_chunks, chunk_relevant_paths.len(), chunk.len());
 
         Ok((chunk_relevant_paths, llm_result.usage, llm_result.system_prompt_id, llm_result.system_prompt_template))
     }
@@ -256,47 +241,9 @@ impl FileRelevanceAssessmentProcessor {
             }
         }
 
-        info!("Merged {} unique relevant files from {} chunks", all_results.len(), total_chunks);
         all_results
     }
 
-    /// Log chunk details to temporary file for debugging
-    async fn log_chunk_to_file(
-        chunk_index: usize,
-        total_chunks: usize,
-        files: &[String],
-        file_contents: &std::collections::HashMap<String, String>,
-        task_description: &str,
-    ) {
-        let base_dir = std::path::Path::new("/path/to/project/tmp");
-        let chunk_dir = base_dir.join("file_chunks").join("FileRelevanceAssessment");
-        
-        if let Err(_) = tokio::fs::create_dir_all(&chunk_dir).await {
-            return;
-        }
-        
-        let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S%.3f");
-        let filename = format!("chunk_{}_of_{}_{}.txt", chunk_index, total_chunks, timestamp);
-        let filepath = chunk_dir.join(filename);
-        
-        let mut chunk_info = format!(
-            "=== CHUNK {} OF {} ===\n=== TASK DESCRIPTION ===\n{}\n\n=== FILES IN CHUNK ({}) ===\n",
-            chunk_index, total_chunks, task_description, files.len()
-        );
-        
-        for file_path in files {
-            chunk_info.push_str(&format!("- {}\n", file_path));
-        }
-        
-        chunk_info.push_str("\n=== FILE CONTENTS ===\n");
-        for (file_path, content) in file_contents {
-            chunk_info.push_str(&format!("\n--- FILE: {} ({} chars) ---\n{}\n", file_path, content.len(), content));
-        }
-        
-        chunk_info.push_str("\n=== END CHUNK ===\n");
-        
-        let _ = tokio::fs::write(&filepath, chunk_info).await;
-    }
 }
 
 #[async_trait::async_trait]
@@ -332,8 +279,6 @@ impl JobProcessor for FileRelevanceAssessmentProcessor {
         let (model_used, temperature, max_output_tokens) = model_settings;
         
         job_processor_utils::log_job_start(&job.id, "File Relevance Assessment");
-        info!("Starting COMPREHENSIVE file relevance assessment with {} files to analyze", 
-            payload.locally_filtered_files.len());
         
         // Initialize processing duration tracking
         let mut parallel_duration = std::time::Duration::from_secs(0);
@@ -352,13 +297,11 @@ impl JobProcessor for FileRelevanceAssessmentProcessor {
         let task_runner = LlmTaskRunner::new(app_handle.clone(), job.clone(), task_config);
 
         // INTELLIGENT CHUNKED PROCESSING - Process ALL files without limits
-        info!("Creating intelligent content-aware chunks for optimal context utilization");
         
         // Get the model's INPUT context window limit - not output limit!
         let model_context_window = crate::utils::config_helpers::get_model_context_window(&model_used, &app_handle).await
             .map_err(|e| AppError::JobError(format!("Failed to get model context window for {}: {}", model_used, e)))?;
         
-        info!("Model {} has INPUT context window of {} tokens", model_used, model_context_window);
         
         // Create content-aware chunks based on ACTUAL file sizes using INPUT context window
         // Use 60% of INPUT context window for aggressive chunking while leaving room for response
@@ -376,8 +319,6 @@ impl JobProcessor for FileRelevanceAssessmentProcessor {
             }
         };
 
-        info!("Processing {} files across {} intelligent chunks IN PARALLEL for maximum speed", 
-            payload.locally_filtered_files.len(), chunks.len());
 
         // Check for cancellation before starting parallel processing
         if job_processor_utils::check_job_canceled(&repo, &job.id).await? {
@@ -386,7 +327,6 @@ impl JobProcessor for FileRelevanceAssessmentProcessor {
         }
 
         // PARALLEL PROCESSING - Process ALL chunks concurrently for maximum speed!
-        info!("Launching {} concurrent chunk processing tasks", chunks.len());
         let start_time = std::time::Instant::now();
         
         // Create futures for all chunks
@@ -420,7 +360,6 @@ impl JobProcessor for FileRelevanceAssessmentProcessor {
         let chunk_results = futures::future::join_all(chunk_futures).await;
         parallel_duration = start_time.elapsed();
         
-        info!("Parallel processing completed in {:.2}s - analyzing results", parallel_duration.as_secs_f64());
 
         // Process results from parallel execution
         let mut all_chunk_results = Vec::new();
@@ -456,8 +395,6 @@ impl JobProcessor for FileRelevanceAssessmentProcessor {
                                 total_cost += usage.cost.unwrap_or(0.0);
                             }
                             
-                            info!("✓ Chunk {}/{} completed successfully ({} files)", 
-                                chunk_index + 1, chunks.len(), chunk_file_count);
                         }
                         Err(e) => {
                             let error_msg = format!("Chunk {}/{} processing failed: {}", chunk_index + 1, chunks.len(), e);
@@ -474,8 +411,6 @@ impl JobProcessor for FileRelevanceAssessmentProcessor {
             }
         }
 
-        info!("PARALLEL PROCESSING COMPLETE: {}/{} chunks successful in {:.2}s", 
-            successful_chunks, chunks.len(), parallel_duration.as_secs_f64());
 
         // Check if we have any successful results
         if all_chunk_results.is_empty() && !chunks.is_empty() {
@@ -488,11 +423,8 @@ impl JobProcessor for FileRelevanceAssessmentProcessor {
 
         // Merge results from all successful chunks
         let successful_chunks_count = all_chunk_results.len();
-        info!("Merging results from {} successful chunks", successful_chunks_count);
         let relevant_paths = Self::merge_chunk_results(all_chunk_results);
 
-        info!("COMPREHENSIVE processing complete: {} files processed across {} chunks → {} relevant files identified", 
-            total_processed_files, chunks.len(), relevant_paths.len());
         
         // Validate the parsed paths against the filesystem
         let mut validated_relevant_paths = Vec::new();
@@ -511,8 +443,6 @@ impl JobProcessor for FileRelevanceAssessmentProcessor {
             }
         }
         
-        info!("File relevance assessment validation: {} valid, {} invalid paths", 
-            validated_relevant_paths.len(), invalid_relevant_paths.len());
         
         // Calculate token count for validated relevant paths
         let token_count = match Self::estimate_tokens_for_file_batch(&std::path::Path::new(project_directory), &validated_relevant_paths).await {
@@ -596,11 +526,11 @@ impl JobProcessor for FileRelevanceAssessmentProcessor {
         });
         
         // Create comprehensive response with strongly-typed structs
-        let summary = format!("COMPREHENSIVE File Relevance Assessment: {} total files → {} chunks → {} processed files → {} relevant files found", 
-            payload.locally_filtered_files.len(),
-            chunks.len(),
-            total_processed_files,
-            validated_relevant_paths.len());
+        let summary = if total_processed_files > 0 {
+            format!("Assessed {} files, found {} relevant", total_processed_files, validated_relevant_paths.len())
+        } else {
+            "No files to assess".to_string()
+        };
             
         let processing_details = FileRelevanceAssessmentProcessingDetails {
             approach: "intelligent_chunked_processing".to_string(),
@@ -629,7 +559,7 @@ impl JobProcessor for FileRelevanceAssessmentProcessor {
         let relevant_files_count = validated_relevant_paths.len();
         let response = FileRelevanceAssessmentResponse {
             count: relevant_files_count,
-            relevant_files: validated_relevant_paths.clone(),
+            files: validated_relevant_paths.clone(),
             summary,
             token_count: token_count as usize,
             processing: processing_details,
@@ -654,9 +584,6 @@ impl JobProcessor for FileRelevanceAssessmentProcessor {
             None
         };
         
-        info!("Aggregated usage across {} chunks: {} input + {} output = {} total tokens (${:.4} cost)", 
-            successful_chunks, total_input_tokens, total_output_tokens, 
-            total_input_tokens + total_output_tokens, total_cost);
 
         // For chunked processing, we need to handle finalization differently
         // Since we processed multiple chunks, create a synthetic combined result

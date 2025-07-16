@@ -84,10 +84,6 @@ export async function setupMedia({
       return null;
     }
 
-    // eslint-disable-next-line no-console
-    console.log(
-      `[MediaHandler] Using MIME type: ${mimeType || "browser default"}`
-    );
 
     // Configure the MediaRecorder with optimized settings
     const recorderOptions: MediaRecorderOptions = {
@@ -126,23 +122,15 @@ export async function setupMedia({
       // Get the label from the track
       activeDeviceLabel = activeTrack.label || null;
 
-      // eslint-disable-next-line no-console
-      console.log(
-        `[MediaHandler] Active audio device: ${activeDeviceLabel || "Unknown"} (${activeDeviceId || "No ID"})`
-      );
     }
 
     // Enhanced event handler with concise logging
     recorder.onstart = () => {
-      // eslint-disable-next-line no-console
-      console.log(`[MediaHandler] Recording started - State: ${recorder.state}, MIME: ${finalMimeType}, Tracks: ${stream.getAudioTracks().length}`);
     };
 
     // Handle data chunks with concise logging
     recorder.ondataavailable = (event) => {
       if (event.data.size > 0) {
-        // eslint-disable-next-line no-console
-        console.log(`[MediaHandler] Audio chunk: ${event.data.size} bytes, Type: ${event.data.type}`);
         
         // Log warning for unusually small chunks
         if (event.data.size < 100) {
@@ -165,8 +153,6 @@ export async function setupMedia({
 
     // Stop handler with concise logging
     recorder.onstop = () => {
-      // eslint-disable-next-line no-console
-      console.log(`[MediaHandler] Recording stopped - State: ${recorder.state}, Stream active: ${stream.active}`);
       onStop();
     };
 

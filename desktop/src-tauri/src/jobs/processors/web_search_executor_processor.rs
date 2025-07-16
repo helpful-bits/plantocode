@@ -29,7 +29,6 @@ impl JobProcessor for WebSearchExecutorProcessor {
     }
 
     async fn process(&self, job: Job, app_handle: AppHandle) -> AppResult<JobProcessResult> {
-        info!("Processing WebSearchExecution job: {}", job.id);
 
         let (repo, session_repo, settings_repo, background_job) = job_processor_utils::setup_job_processing(&job.id, &app_handle).await?;
 
@@ -68,7 +67,6 @@ impl JobProcessor for WebSearchExecutorProcessor {
             return Ok(JobProcessResult::failure(job.id.clone(), error_msg.to_string()));
         }
 
-        info!("Executing {} sophisticated research prompts in parallel for job {}", prompts_to_execute.len(), job.id);
 
         // Get model settings using project-aware configuration
         let model_settings = job_processor_utils::get_llm_task_config(&background_job, &app_handle, &session).await?;
@@ -166,12 +164,18 @@ impl JobProcessor for WebSearchExecutorProcessor {
             }));
         }
 
-        info!("Sophisticated research execution completed successfully for job {}", job.id);
+        // Create standardized summary
+        let summary = if search_results.len() > 0 {
+            format!("Found {} research findings", search_results.len())
+        } else {
+            "No research findings".to_string()
+        };
+
 
         // Store result metadata for sophisticated research task
         let result_metadata = json!({
             "modelUsed": model_used,
-            "summary": "Executed sophisticated research prompts in parallel and aggregated results",
+            "summary": summary,
             "totalPrompts": successful_results.len() + failed_prompts.len(),
             "successfulPrompts": successful_results.len(),
             "failedPrompts": failed_prompts.len(),
@@ -193,7 +197,8 @@ impl JobProcessor for WebSearchExecutorProcessor {
         // Return success result with JSON format expected by data extraction
         let result_json = json!({
             "searchResults": search_results,
-            "searchResultsCount": search_results.len()
+            "searchResultsCount": search_results.len(),
+            "summary": summary
         });
         
         Ok(JobProcessResult::success_with_metadata(

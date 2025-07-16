@@ -49,9 +49,6 @@ export {
   LazyComponentWrapper,
 } from '../components/ui/LazyComponent';
 
-// Export performance components
-export { LoadingOptimizer } from '../components/performance/LoadingOptimizer';
-export { PerformanceMonitor as PerformanceMonitorComponent } from '../components/performance/PerformanceMonitor';
 
 // Common performance constants
 export const PERFORMANCE_THRESHOLDS = {

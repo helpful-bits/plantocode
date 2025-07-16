@@ -370,68 +370,6 @@ impl BackgroundJobRepository {
         Ok(jobs)
     }
     
-    /// Get all visible jobs for sidebar display - lightweight query without large text fields
-    /// This method excludes prompt, response, and system_prompt_template to improve performance
-    pub async fn get_all_visible_jobs_lightweight(&self) -> AppResult<Vec<BackgroundJob>> {
-        let rows = sqlx::query(
-            r#"
-            SELECT 
-                id, session_id, task_type, status, 
-                error_message, tokens_sent, tokens_received, 
-                cache_write_tokens, cache_read_tokens, model_used, 
-                actual_cost, metadata, created_at, updated_at, 
-                start_time, end_time, is_finalized,
-                '' as prompt, NULL as response, NULL as system_prompt_template
-            FROM background_jobs 
-            ORDER BY 
-                CASE 
-                    WHEN status IN ($1, $2, $3, $4, $5, $6) THEN 0
-                    ELSE 1
-                END,
-                CASE 
-                    WHEN status = $7 THEN 0
-                    WHEN status = $8 THEN 1
-                    WHEN status = $9 THEN 2
-                    WHEN status = $10 THEN 3
-                    WHEN status = $11 THEN 4
-                    WHEN status = $12 THEN 5
-                    WHEN status = $13 THEN 6
-                    WHEN status = $14 THEN 7
-                    WHEN status = $15 THEN 8
-                    ELSE 9
-                END,
-                updated_at DESC
-            LIMIT 500
-            "#)
-            .bind(JobStatus::Running.to_string())
-            .bind(JobStatus::Preparing.to_string()) 
-            .bind(JobStatus::Queued.to_string())
-            .bind(JobStatus::AcknowledgedByWorker.to_string())
-            .bind(JobStatus::Created.to_string())
-            .bind(JobStatus::Idle.to_string())
-            .bind(JobStatus::Running.to_string())
-            .bind(JobStatus::Queued.to_string())
-            .bind(JobStatus::Preparing.to_string())
-            .bind(JobStatus::AcknowledgedByWorker.to_string())
-            .bind(JobStatus::Created.to_string())
-            .bind(JobStatus::Idle.to_string())
-            .bind(JobStatus::Completed.to_string())
-            .bind(JobStatus::Failed.to_string())
-            .bind(JobStatus::Canceled.to_string())
-            .fetch_all(&*self.pool)
-            .await
-            .map_err(|e| AppError::DatabaseError(format!("Failed to fetch jobs: {}", e)))?;
-            
-        let mut jobs = Vec::new();
-        
-        for row in rows {
-            let job = self.row_to_job(&row)?;
-            jobs.push(job);
-        }
-        
-        Ok(jobs)
-    }
-    
     /// Create a new job
     pub async fn create_job(&self, job: &BackgroundJob) -> AppResult<()> {
         sqlx::query(

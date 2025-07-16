@@ -1,6 +1,7 @@
 use tauri::{command, AppHandle, Manager, Emitter};
 use log::info;
 use crate::error::{AppError, AppResult};
+use crate::models::{BackgroundJob, TaskType};
 use std::sync::Arc;
 use serde::{Serialize, Deserialize};
 use serde_json::json;
@@ -40,9 +41,14 @@ pub async fn get_active_jobs_command(app_handle: AppHandle) -> AppResult<Vec<cra
         .inner()
         .clone();
 
-    repo.get_all_visible_jobs_lightweight()
+    let mut jobs = repo.get_all_visible_jobs()
         .await
-        .map_err(|e| AppError::DatabaseError(format!("Failed to get active jobs: {}", e)))
+        .map_err(|e| AppError::DatabaseError(format!("Failed to get active jobs: {}", e)))?;
+    
+    // Strip large content from implementation plans to reduce payload size
+    strip_implementation_plan_content(&mut jobs);
+    
+    Ok(jobs)
 }
 
 #[derive(Debug, Deserialize)]
@@ -119,7 +125,21 @@ pub async fn get_all_visible_jobs_command(app_handle: AppHandle) -> AppResult<Ve
         .inner()
         .clone();
 
-    repo.get_all_visible_jobs_lightweight()
+    let mut jobs = repo.get_all_visible_jobs()
         .await
-        .map_err(|e| AppError::DatabaseError(format!("Failed to get all visible jobs: {}", e)))
+        .map_err(|e| AppError::DatabaseError(format!("Failed to get all visible jobs: {}", e)))?;
+    
+    // Strip large content from implementation plans to reduce payload size
+    strip_implementation_plan_content(&mut jobs);
+    
+    Ok(jobs)
+}
+
+/// Strip large content from implementation plan jobs to reduce payload size
+fn strip_implementation_plan_content(jobs: &mut Vec<BackgroundJob>) {
+    for job in jobs.iter_mut() {
+        if job.task_type == "implementation_plan" || job.task_type == "implementation_plan_merge" {
+            job.response = Some("".to_string());
+        }
+    }
 }

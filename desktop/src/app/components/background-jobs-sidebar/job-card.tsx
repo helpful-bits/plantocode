@@ -39,7 +39,7 @@ export interface JobCardProps {
   isCancelling: Record<string, boolean>;
   isDeleting: Record<string, boolean>;
   onSelect: (job: BackgroundJob) => void;
-  onApplyFiles?: (job: BackgroundJob) => void;
+  onApplyFiles?: (job: BackgroundJob) => Promise<void>;
   currentSessionId?: string;
 }
 
@@ -429,11 +429,11 @@ export const JobCard = React.memo(
                         const fileFindingTasks = [
                           "extended_path_finder", 
                           "file_relevance_assessment",
-                          "regex_file_filter"
+                          "regex_file_filter",
+                          "path_correction"
                         ];
                         
                         if (fileFindingTasks.includes(job.taskType)) {
-                          // Use standardized response format from backend
                           if (job.response) {
                             try {
                               let responseObj: any;
@@ -443,15 +443,22 @@ export const JobCard = React.memo(
                                 responseObj = job.response;
                               }
                               
-                              // Backend standardizes all file-finding responses to have 'files' and 'count'
-                              if (typeof responseObj.count === 'number') {
-                                const summary = responseObj.summary || `${responseObj.count} file${responseObj.count !== 1 ? "s" : ""} found`;
+                              // First check if backend summary exists and render it
+                              if (responseObj.summary) {
                                 return (
                                   <span className="font-medium text-foreground">
-                                    {summary}
+                                    {responseObj.summary}
                                   </span>
                                 );
                               }
+                              
+                              // Fall back to simplified count logic
+                              const count = responseObj.files?.length || 0;
+                              return (
+                                <span className="font-medium text-foreground">
+                                  {count > 0 ? `${count} file${count !== 1 ? 's' : ''} found` : 'No files found'}
+                                </span>
+                              );
                             } catch (e) {
                               // Fall through to "No files found"
                             }
@@ -495,36 +502,42 @@ export const JobCard = React.memo(
                           );
                         }
                         
-                        // Handle path correction tasks
-                        if (job.taskType === "path_correction") {
-                          // Use standardized response format from backend
+                        
+                        // Handle web search prompts generation
+                        if (job.taskType === "web_search_prompts_generation") {
                           if (job.response) {
                             try {
-                              let responseObj: any;
+                              let responseData: any;
                               if (typeof job.response === 'string') {
-                                responseObj = JSON.parse(job.response);
+                                responseData = JSON.parse(job.response);
                               } else {
-                                responseObj = job.response;
+                                responseData = job.response;
                               }
                               
-                              // Backend standardizes to 'files' and 'count'
-                              if (typeof responseObj.count === 'number' && responseObj.count > 0) {
-                                const summary = responseObj.summary || `${responseObj.count} corrected path${responseObj.count !== 1 ? "s" : ""}`;
+                              // First check if backend summary exists and render it
+                              if (responseData.summary) {
                                 return (
                                   <span className="font-medium text-foreground">
-                                    {summary}
+                                    {responseData.summary}
                                   </span>
                                 );
                               }
+                              
+                              // Fall back to prompts count summary
+                              const count = responseData.prompts?.length || 0;
+                              return (
+                                <span className="font-medium text-foreground">
+                                  {count > 0 ? `${count} search prompt${count !== 1 ? 's' : ''} generated` : 'No prompts generated'}
+                                </span>
+                              );
                             } catch (e) {
-                              // Fall through to "No paths corrected"
+                              // Fall through to generic message
                             }
                           }
                           
-                          // Show "No paths corrected" for path correction tasks with no results
                           return (
                             <span className="text-muted-foreground">
-                              No paths corrected
+                              No prompts generated
                             </span>
                           );
                         }
@@ -540,7 +553,16 @@ export const JobCard = React.memo(
                                 responseData = job.response;
                               }
                               
-                              // Check for searchResults array
+                              // First check if backend summary exists and render it
+                              if (responseData.summary) {
+                                return (
+                                  <span className="font-medium text-foreground">
+                                    {responseData.summary}
+                                  </span>
+                                );
+                              }
+                              
+                              // Keep existing logic as fallback for older jobs
                               if (responseData.searchResults && Array.isArray(responseData.searchResults)) {
                                 const count = responseData.searchResults.length;
                                 if (count > 0) {
@@ -559,6 +581,37 @@ export const JobCard = React.memo(
                           return (
                             <span className="text-muted-foreground">
                               No research findings generated
+                            </span>
+                          );
+                        }
+                        
+                        // Handle task refinement
+                        if (job.taskType === "task_refinement") {
+                          if (job.response) {
+                            try {
+                              let responseObj: any;
+                              if (typeof job.response === 'string') {
+                                responseObj = JSON.parse(job.response);
+                              } else {
+                                responseObj = job.response;
+                              }
+                              
+                              // Check for and render backend summary
+                              if (responseObj.summary) {
+                                return (
+                                  <span className="font-medium text-foreground">
+                                    {responseObj.summary}
+                                  </span>
+                                );
+                              }
+                            } catch (e) {
+                              // Fall through to generic message
+                            }
+                          }
+                          
+                          return (
+                            <span className="text-muted-foreground">
+                              Task refined
                             </span>
                           );
                         }
@@ -584,16 +637,9 @@ export const JobCard = React.memo(
                         ];
                         
                         const shouldShowAddFiles = onApplyFiles && (
-                          // File finding tasks with results
+                          // File finding tasks - show button for completed jobs (response data will be fetched on click)
                           (fileFindingTasks.includes(job.taskType) && 
-                            job.response && (() => {
-                              try {
-                                let responseData = typeof job.response === 'string' ? JSON.parse(job.response) : job.response;
-                                return Array.isArray(responseData.files) && responseData.files.length > 0;
-                              } catch (e) {
-                                return false;
-                              }
-                            })()
+                            job.status === "completed"
                           ) ||
                           // Web search with results
                           (job.taskType === "web_search_execution" && 
@@ -623,9 +669,13 @@ export const JobCard = React.memo(
                               <Button
                                 variant="outline"
                                 size="xs"
-                                onClick={(e) => {
+                                onClick={async (e) => {
                                   e.stopPropagation();
-                                  onApplyFiles(job);
+                                  try {
+                                    await onApplyFiles(job);
+                                  } catch (error) {
+                                    console.error('Failed to apply files from job:', error);
+                                  }
                                 }}
                                 aria-label={job.taskType === "web_search_execution" ? "Apply research findings" : "Add files to selection"}
                                 className="text-[10px] h-6 px-2 py-0.5 font-medium border-primary/40 hover:border-primary hover:bg-primary/10"

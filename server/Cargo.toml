@@ -57,6 +57,9 @@ async-trait = "0.1.77"
 # HTTP client
 reqwest = { version = "0.12.15", features = ["json", "multipart", "stream"] }
 
+# Token estimation
+tiktoken-rs = "0.7.0"
+
 # Email service
 
 # Error handling

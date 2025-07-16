@@ -9,14 +9,8 @@ use crate::utils::hash_utils::generate_project_hash;
 use tauri::{AppHandle, Manager};
 use std::sync::Arc;
 use chrono::{Utc, Datelike};
+use log;
 
-/// Simple token estimation for local use only (not for billing)
-/// Uses a basic character-to-token ratio heuristic
-fn estimate_tokens(text: &str) -> i32 {
-    let char_count = text.chars().count();
-    // Roughly 4 characters per token for general text
-    ((char_count + 3) / 4) as i32
-}
 
 /// **UNIFIED PROMPT SYSTEM**
 /// This provides a single, comprehensive prompt processing system that handles
@@ -103,7 +97,6 @@ pub struct UnifiedPromptContext {
     pub session_name: Option<String>,
     
     // Rich context data
-    pub project_structure: Option<String>,
     pub file_contents: Option<HashMap<String, String>>,
     pub relevant_files: Option<Vec<String>>,
     pub directory_tree: Option<String>,
@@ -194,9 +187,10 @@ impl UnifiedPromptProcessor {
         let user_prompt = self.generate_user_prompt(context)?;
         
         
-        // Estimate tokens
-        let system_tokens = estimate_tokens(&processed_system) as usize;
-        let user_tokens = estimate_tokens(&user_prompt) as usize;
+        // Use server-side token estimation for accurate counts
+        let model_name = context.model_name.as_deref().unwrap_or("gpt-4");
+        let system_tokens = self.estimate_tokens_with_fallback(&processed_system, model_name, app_handle).await as usize;
+        let user_tokens = self.estimate_tokens_with_fallback(&user_prompt, model_name, app_handle).await as usize;
         let total_tokens = system_tokens + user_tokens;
         
         // Track context sections used
@@ -437,6 +431,22 @@ impl UnifiedPromptProcessor {
         sections
     }
 
+    /// Estimate tokens using server API with fallback to character-based heuristic
+    async fn estimate_tokens_with_fallback(&self, text: &str, model_name: &str, app_handle: &AppHandle) -> u32 {
+        // Try to get server proxy client for accurate token estimation
+        let client = app_handle.state::<Arc<ServerProxyClient>>();
+        match client.estimate_tokens(model_name, text).await {
+            Ok(tokens) => return tokens,
+            Err(e) => {
+                log::warn!("Server token estimation failed, using fallback: {}", e);
+            }
+        }
+        
+        // Fallback to character-based heuristic (4 characters per token)
+        let char_count = text.chars().count() as u32;
+        (char_count + 3) / 4 // Round up division
+    }
+
 }
 
 /// Substitute placeholders in a system prompt template with actual values
@@ -601,7 +611,6 @@ impl UnifiedPromptContextBuilder {
                 custom_instructions: None,
                 model_name: None,
                 session_name: None,
-                project_structure: None,
                 file_contents: None,
                 relevant_files: None,
                 directory_tree: None,
@@ -611,10 +620,6 @@ impl UnifiedPromptContextBuilder {
         }
     }
 
-    pub fn project_structure(mut self, project_structure: Option<String>) -> Self {
-        self.context.project_structure = project_structure;
-        self
-    }
 
     pub fn file_contents(mut self, file_contents: Option<HashMap<String, String>>) -> Self {
         self.context.file_contents = file_contents;

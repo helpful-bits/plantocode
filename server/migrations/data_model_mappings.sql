@@ -62,13 +62,13 @@ VALUES
 ('google/gemini-2.5-flash:thinking', 'google', 'gemini-2.5-flash:thinking'),
 
 -- =============================================================================
--- DEEPSEEK MODELS
+-- OPENROUTER MODELS
 -- =============================================================================
--- DeepSeek models routed through OpenRouter (primary route)
+-- DeepSeek models routed through OpenRouter
 ('deepseek/deepseek-r1-0528', 'openrouter', 'deepseek/deepseek-r1-0528'),
 
--- DeepSeek direct API mappings (for when direct access is available)
-('deepseek/deepseek-r1-0528', 'deepseek', 'deepseek-r1-0528')
+-- Moonshot AI models routed through OpenRouter
+('moonshotai/kimi-k2', 'openrouter', 'moonshotai/kimi-k2')
 
 ON CONFLICT (internal_model_id, provider_code) DO UPDATE SET
 provider_model_id = EXCLUDED.provider_model_id;

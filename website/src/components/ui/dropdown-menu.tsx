@@ -68,12 +68,13 @@ const DropdownMenuContent = React.forwardRef<
   if (!context) throw new Error('DropdownMenuContent must be used within DropdownMenu');
 
   const contentRef = React.useRef<HTMLDivElement>(null);
+  const actualRef = (ref as React.MutableRefObject<HTMLDivElement>) || contentRef;
 
   // Close on click outside
   React.useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (contentRef.current && !contentRef.current.contains(event.target as Node)) {
-        const trigger = contentRef.current.previousElementSibling;
+      if (actualRef.current && !actualRef.current.contains(event.target as Node)) {
+        const trigger = actualRef.current.previousElementSibling;
         if (trigger && !trigger.contains(event.target as Node)) {
           context.setOpen(false);
         }
@@ -104,7 +105,7 @@ const DropdownMenuContent = React.forwardRef<
 
   return (
     <div
-      ref={contentRef}
+      ref={actualRef}
       className={cn(
         'absolute z-50 min-w-[8rem] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md',
         'animate-in fade-in-0 zoom-in-95',
@@ -274,7 +275,7 @@ const DropdownMenuRadioGroup = React.forwardRef<
     onValueChange?: (value: string) => void;
   }
 >(({ className, value, onValueChange, ...props }, ref) => (
-  <DropdownMenuRadioGroupContext.Provider value={{ value, onValueChange }}>
+  <DropdownMenuRadioGroupContext.Provider value={{ value: value || '', onValueChange: onValueChange || (() => {}) }}>
     <DropdownMenuGroup ref={ref} className={cn('', className)} {...props} />
   </DropdownMenuRadioGroupContext.Provider>
 ));

@@ -33,7 +33,6 @@ impl JobProcessor for TextImprovementProcessor {
     }
     
     async fn process(&self, job: Job, app_handle: AppHandle) -> AppResult<JobProcessResult> {
-        info!("Processing text improvement job {}", job.id);
         
         // Extract the text to process
         let text_to_process = match &job.payload {
@@ -80,8 +79,6 @@ impl JobProcessor for TextImprovementProcessor {
         // Execute LLM task using the task runner
         let result = match task_runner.execute_llm_task(prompt_context, &settings_repo).await {
             Ok(llm_result) => {
-                info!("Text improvement LLM task completed successfully for job {}", job.id);
-                info!("System prompt ID: {}", llm_result.system_prompt_id);
                 
                 let processed_text = llm_result.response.clone();
                 let text_len = processed_text.len() as i32;
@@ -106,7 +103,6 @@ impl JobProcessor for TextImprovementProcessor {
             }
         };
         
-        info!("Completed text improvement job {}", job.id);
         Ok(result)
     }
 }

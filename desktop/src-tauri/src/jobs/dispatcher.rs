@@ -45,43 +45,14 @@ fn standardize_file_finding_response(response: Value, task_type: &TaskType) -> V
             }
         },
         TaskType::FileRelevanceAssessment => {
-            // {"relevantFiles": [...], "tokenCount": n} -> {"files": [...], "count": n, "metadata": {...}}
-            if let Some(relevant_files) = response.get("relevantFiles").and_then(|v| v.as_array()) {
-                let token_count = response.get("tokenCount").and_then(|v| v.as_u64());
-                json!({
-                    "files": relevant_files,
-                    "count": relevant_files.len(),
-                    "summary": format!("{} relevant files found", relevant_files.len()),
-                    "metadata": {
-                        "tokenCount": token_count
-                    }
-                })
-            } else {
-                response
-            }
+            // File Relevance Assessment already returns standardized format: {"files": [...], "count": n, "summary": "..."}
+            // No transformation needed
+            response
         },
         TaskType::ExtendedPathFinder => {
-            // {"verifiedPaths": [...], "unverifiedPaths": [...]} -> {"files": [...], "count": n, "metadata": {...}}
-            let empty_vec = vec![];
-            let verified_paths = response.get("verifiedPaths").and_then(|v| v.as_array()).unwrap_or(&empty_vec);
-            let unverified_paths = response.get("unverifiedPaths").and_then(|v| v.as_array()).unwrap_or(&empty_vec);
-            let mut all_files = Vec::new();
-            all_files.extend(verified_paths.clone());
-            all_files.extend(unverified_paths.clone());
-            
-            json!({
-                "files": all_files,
-                "count": all_files.len(),
-                "summary": response.get("summary").and_then(|v| v.as_str()).unwrap_or(&format!(
-                    "{} verified, {} unverified paths", 
-                    verified_paths.len(), 
-                    unverified_paths.len()
-                )),
-                "metadata": {
-                    "verifiedCount": verified_paths.len(),
-                    "unverifiedCount": unverified_paths.len()
-                }
-            })
+            // Extended Path Finder already returns standardized format: {"files": [...], "count": n, "summary": "..."}
+            // No transformation needed
+            response
         },
         TaskType::PathCorrection => {
             // {"correctedPaths": [...]} -> {"files": [...], "count": n}

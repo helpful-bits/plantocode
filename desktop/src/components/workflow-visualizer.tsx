@@ -249,7 +249,6 @@ function StageJobCard({
       if (!result.isSuccess) {
         console.error('Failed to retry stage:', result.error);
       } else {
-        console.log(`Successfully initiated retry for stage ${stageJob.jobId}`);
       }
     } catch (error) {
       console.error('Error retrying stage:', error);
@@ -284,7 +283,6 @@ function StageJobCard({
       if (!result.isSuccess) {
         console.error('Failed to cancel stage:', result.error);
       } else {
-        console.log(`Successfully initiated cancel for stage ${stageJob.jobId}`);
       }
     } catch (error) {
       console.error('Error canceling stage:', error);
@@ -613,8 +611,7 @@ export function WorkflowTimeline({
                                 try {
                                   const result = await retryWorkflowStageAction(workflowState.workflowId, stageJob.jobId);
                                   if (result.isSuccess) {
-                                    console.log(`Successfully initiated retry for stage ${stageJob.jobId}`);
-                                  } else {
+                                                              } else {
                                     console.error('Failed to retry stage:', result.error);
                                   }
                                 } catch (error) {
@@ -652,8 +649,7 @@ export function WorkflowTimeline({
                                 try {
                                   const result = await cancelWorkflowStageAction(workflowState.workflowId, stageJob.jobId);
                                   if (result.isSuccess) {
-                                    console.log(`Successfully initiated cancel for stage ${stageJob.jobId}`);
-                                  } else {
+                                                              } else {
                                     console.error('Failed to cancel stage:', result.error);
                                   }
                                 } catch (error) {
