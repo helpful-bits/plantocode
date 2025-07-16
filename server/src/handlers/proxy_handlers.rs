@@ -52,39 +52,25 @@ fn is_fallback_error(error: &AppError) -> bool {
     }
 }
 
-/// Calculate input tokens from request payload
-fn calculate_input_tokens(payload: &LlmCompletionRequest) -> i32 {
-    use crate::utils::token_estimator::estimate_tokens;
-
-    let mut total_chars = 0;
-
-    // Count characters in all messages
-    for message in &payload.messages {
-        // Count characters in the message content
-        match message {
-            serde_json::Value::Object(obj) => {
-                if let Some(content) = obj.get("content") {
-                    match content {
-                        serde_json::Value::String(s) => {
-                            total_chars += s.len();
-                        }
-                        serde_json::Value::Array(arr) => {
-                            for part in arr {
-                                if let Some(text) = part.get("text").and_then(|t| t.as_str()) {
-                                    total_chars += text.len();
-                                }
-                            }
-                        }
-                        _ => {}
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-
-    // Use token estimator to convert characters to tokens
-    estimate_tokens(&"x".repeat(total_chars)) as i32
+/// Calculate input tokens from request payload using accurate tiktoken-rs estimation
+/// 
+/// This function provides accurate token estimation for upfront billing.
+/// It uses the same tiktoken-rs library as the desktop client to ensure consistency.
+/// 
+/// # Arguments
+/// 
+/// * `payload` - The LLM completion request
+/// * `model_id` - The model ID to use for tokenization
+/// 
+/// # Returns
+/// 
+/// Accurate token count as i32
+fn calculate_input_tokens(payload: &LlmCompletionRequest, model_id: &str) -> i32 {
+    use crate::utils::token_estimator::estimate_tokens_for_messages;
+    
+    // Use accurate tiktoken-rs estimation for upfront billing
+    // This ensures consistency with desktop client estimates
+    estimate_tokens_for_messages(&payload.messages, model_id) as i32
 }
 
 /// Helper function to create standardized usage response
@@ -158,7 +144,7 @@ pub async fn llm_chat_completion_handler(
     // Validate prompt size against model's context window
     if model_with_provider.context_window > 0 {
         let context_window = model_with_provider.context_window;
-        let estimated_tokens = calculate_input_tokens(&payload) as u32;
+        let estimated_tokens = calculate_input_tokens(&payload, &model_with_provider.id) as u32;
         if estimated_tokens > context_window as u32 {
             return Err(AppError::BadRequest(format!(
                 "Prompt size ({} tokens) exceeds the model's context window ({} tokens)",
@@ -182,14 +168,14 @@ pub async fn llm_chat_completion_handler(
         .await;
 
     // Calculate estimated input tokens for initial charge
-    let estimated_input_tokens = calculate_input_tokens(&payload);
+    let estimated_input_tokens = calculate_input_tokens(&payload, &model_with_provider.id);
     info!("Estimated input tokens: {} tokens", estimated_input_tokens);
 
     // Create API usage entry for initial charge
     let api_usage_entry = ApiUsageEntryDto {
         user_id,
         service_name: model_with_provider.id.clone(),
-        tokens_input: 0,
+        tokens_input: estimated_input_tokens as i64,
         tokens_output: 0,
         cache_write_tokens: 0,
         cache_read_tokens: 0,
@@ -477,11 +463,12 @@ async fn handle_openai_streaming_request(
 ) -> Result<HttpResponse, AppError> {
     let payload_value_clone = payload.clone();
 
+    // Instantiate OpenAI client
     let client = OpenAIClient::new(app_settings)?;
     let mut request = client.convert_to_openai_request(payload)?;
-
     request.model = model.resolved_model_id.clone();
 
+    // Initiate provider streaming request
     let (_headers, provider_stream, response_id) =
         match client.stream_chat_completion(request, web_mode).await {
             Ok(result) => result,
@@ -491,7 +478,6 @@ async fn handle_openai_streaming_request(
                         "[FALLBACK] OpenAI streaming request failed, retrying with OpenRouter: {}",
                         error
                     );
-                    // Note: OpenRouter doesn't support cancellation, so we don't pass request_tracker
                     return handle_openrouter_streaming_request(
                         payload_value_clone,
                         model,
@@ -517,7 +503,10 @@ async fn handle_openai_streaming_request(
         }
     }
 
+    // Instantiate OpenAI stream transformer
     let transformer = Box::new(OpenAIStreamTransformer::new(&model.id));
+    
+    // Wrap provider stream and transformer in StandardizedStreamHandler
     let standardized_handler = StandardizedStreamHandler::new(
         provider_stream,
         transformer,
@@ -527,6 +516,7 @@ async fn handle_openai_streaming_request(
         request_id,
     );
 
+    // Return HttpResponse containing StandardizedStreamHandler
     Ok(HttpResponse::Ok()
         .content_type("text/event-stream")
         .streaming(standardized_handler))
@@ -623,9 +613,12 @@ async fn handle_anthropic_streaming_request(
     request_id: String,
 ) -> Result<HttpResponse, AppError> {
     let payload_clone = payload.clone();
+    
+    // Instantiate Anthropic client
     let client = AnthropicClient::new(app_settings)?;
     let mut request = client.convert_to_chat_request(payload)?;
 
+    // Initiate provider streaming request
     let (headers, provider_stream) = match client
         .stream_chat_completion(request, &model_with_mapping, user_id.to_string())
         .await
@@ -652,7 +645,10 @@ async fn handle_anthropic_streaming_request(
         }
     };
 
+    // Instantiate Anthropic stream transformer
     let transformer = Box::new(AnthropicStreamTransformer::new(&model_with_provider.id));
+    
+    // Wrap provider stream and transformer in StandardizedStreamHandler
     let standardized_handler = StandardizedStreamHandler::new(
         provider_stream,
         transformer,
@@ -662,6 +658,7 @@ async fn handle_anthropic_streaming_request(
         request_id,
     );
 
+    // Return HttpResponse containing StandardizedStreamHandler
     Ok(HttpResponse::Ok()
         .content_type("text/event-stream")
         .streaming(standardized_handler))
@@ -799,16 +796,18 @@ async fn handle_google_streaming_request(
     model_repository: web::Data<ModelRepository>,
     request_id: String,
 ) -> Result<HttpResponse, AppError> {
-    // Extract the original model ID from the payload before it gets transformed
     let original_model_id = payload["model"].as_str().unwrap_or_default().to_string();
     let payload_clone = payload.clone();
+    
+    // Instantiate Google client
     let client = GoogleClient::new(app_settings)?;
     let request = client.convert_to_chat_request_with_capabilities(
         payload,
         Some(&model_with_provider.capabilities),
     )?;
 
-    let (_headers, google_stream) = match client
+    // Initiate provider streaming request
+    let (_headers, provider_stream) = match client
         .stream_chat_completion(request, &model_with_mapping, user_id.to_string())
         .await
     {
@@ -867,10 +866,12 @@ async fn handle_google_streaming_request(
         }
     };
 
-    // Use standardized streaming handler with Google transformer
+    // Instantiate Google stream transformer
     let transformer = Box::new(GoogleStreamTransformer::new(&model_with_provider.id));
+    
+    // Wrap provider stream and transformer in StandardizedStreamHandler
     let standardized_handler = StandardizedStreamHandler::new(
-        google_stream,
+        provider_stream,
         transformer,
         model_with_provider.clone(),
         *user_id,
@@ -878,6 +879,7 @@ async fn handle_google_streaming_request(
         request_id,
     );
 
+    // Return HttpResponse containing StandardizedStreamHandler
     Ok(HttpResponse::Ok()
         .content_type("text/event-stream")
         .streaming(standardized_handler))
@@ -937,18 +939,22 @@ async fn handle_openrouter_streaming_request(
     model_repository: Arc<ModelRepository>,
     request_id: String,
 ) -> Result<HttpResponse, AppError> {
+    // Instantiate OpenRouter client
     let client = OpenRouterClient::new(app_settings, model_repository)?;
     let mut request = client.convert_to_chat_request(payload)?;
-
     request.model = model.id.clone();
 
-    let (_headers, stream) = client
+    // Initiate provider streaming request
+    let (_headers, provider_stream) = client
         .stream_chat_completion(request, user_id.to_string())
         .await?;
 
+    // Instantiate OpenRouter stream transformer
     let transformer = Box::new(OpenRouterStreamTransformer::new(&model.id));
+    
+    // Wrap provider stream and transformer in StandardizedStreamHandler
     let standardized_handler = StandardizedStreamHandler::new(
-        stream,
+        provider_stream,
         transformer,
         model.clone(),
         *user_id,
@@ -956,6 +962,7 @@ async fn handle_openrouter_streaming_request(
         request_id,
     );
 
+    // Return HttpResponse containing StandardizedStreamHandler
     Ok(HttpResponse::Ok()
         .content_type("text/event-stream")
         .streaming(standardized_handler))
@@ -969,7 +976,7 @@ pub struct TranscriptionResponse {
 /// Handle audio transcription (multipart form) - mimics OpenAI's /v1/audio/transcriptions
 #[instrument(skip(payload, user, app_settings, billing_service, model_repository))]
 pub async fn transcription_handler(
-    mut payload: Multipart,
+    payload: Multipart,
     user: web::ReqData<AuthenticatedUser>,
     app_settings: web::Data<AppSettings>,
     billing_service: web::Data<Arc<BillingService>>,
@@ -978,114 +985,15 @@ pub async fn transcription_handler(
     let user_id = user.user_id;
     info!("Processing transcription request for user: {}", user_id);
 
-    // Pre-validation will be done after we get the model information
+    let multipart_data = crate::utils::multipart_utils::process_transcription_multipart(payload).await?;
 
-    let mut model = String::new();
-    let mut file_data = Vec::new();
-    let mut filename = String::new();
-    let mut language: Option<String> = None;
-    let mut prompt: Option<String> = None;
-    let mut temperature: Option<f32> = None;
-    let mut mime_type: Option<String> = None;
-
-    // Parse multipart form data
-    while let Some(mut field) = payload
-        .try_next()
-        .await
-        .map_err(|e| AppError::BadRequest(format!("Failed to parse multipart data: {}", e)))?
-    {
-        let name = field.name().unwrap_or("").to_string();
-
-        match name.as_str() {
-            "model" => {
-                let mut data = Vec::new();
-                while let Some(chunk) = field.try_next().await.map_err(|e| {
-                    AppError::BadRequest(format!("Failed to read field data: {}", e))
-                })? {
-                    data.extend_from_slice(&chunk);
-                }
-                model = String::from_utf8(data)
-                    .map_err(|e| AppError::BadRequest(format!("Invalid model field: {}", e)))?;
-            }
-            "file" => {
-                // Get filename from content disposition if available
-                if let Some(content_disposition) = field.content_disposition() {
-                    if let Some(name) = content_disposition.get_filename() {
-                        filename = name.to_string();
-                    }
-                }
-                // Extract MIME type from field
-                if let Some(content_type) = field.content_type() {
-                    mime_type = Some(content_type.to_string());
-                }
-                if filename.is_empty() {
-                    filename = "audio.webm".to_string(); // Default filename
-                }
-
-                while let Some(chunk) = field
-                    .try_next()
-                    .await
-                    .map_err(|e| AppError::BadRequest(format!("Failed to read file data: {}", e)))?
-                {
-                    file_data.extend_from_slice(&chunk);
-                }
-            }
-            "language" => {
-                let mut data = Vec::new();
-                while let Some(chunk) = field.try_next().await.map_err(|e| {
-                    AppError::BadRequest(format!("Failed to read language field: {}", e))
-                })? {
-                    data.extend_from_slice(&chunk);
-                }
-                if !data.is_empty() {
-                    language = Some(String::from_utf8(data).map_err(|e| {
-                        AppError::BadRequest(format!("Invalid language field: {}", e))
-                    })?);
-                }
-            }
-            "prompt" => {
-                let mut data = Vec::new();
-                while let Some(chunk) = field.try_next().await.map_err(|e| {
-                    AppError::BadRequest(format!("Failed to read prompt field: {}", e))
-                })? {
-                    data.extend_from_slice(&chunk);
-                }
-                if !data.is_empty() {
-                    prompt = Some(String::from_utf8(data).map_err(|e| {
-                        AppError::BadRequest(format!("Invalid prompt field: {}", e))
-                    })?);
-                }
-            }
-            "temperature" => {
-                let mut data = Vec::new();
-                while let Some(chunk) = field.try_next().await.map_err(|e| {
-                    AppError::BadRequest(format!("Failed to read temperature field: {}", e))
-                })? {
-                    data.extend_from_slice(&chunk);
-                }
-                if !data.is_empty() {
-                    let temp_str = String::from_utf8(data).map_err(|e| {
-                        AppError::BadRequest(format!("Invalid temperature field: {}", e))
-                    })?;
-                    temperature = Some(temp_str.parse().map_err(|e| {
-                        AppError::BadRequest(format!("Invalid temperature value: {}", e))
-                    })?);
-                }
-            }
-            _ => {
-                // Skip unknown fields
-                while let Some(_chunk) = field.try_next().await.map_err(|e| {
-                    AppError::BadRequest(format!("Failed to skip field data: {}", e))
-                })? {
-                    // Skip chunk
-                }
-            }
-        }
-    }
-
-    if model.is_empty() {
-        return Err(AppError::BadRequest("Model field is required".to_string()));
-    }
+    let model = multipart_data.model;
+    let file_data = multipart_data.audio_data;
+    let filename = multipart_data.filename;
+    let language = multipart_data.language;
+    let prompt = multipart_data.prompt;
+    let temperature = multipart_data.temperature;
+    let duration_ms = multipart_data.duration_ms;
 
     // Look up model with provider information
     let model_with_provider = model_repository
@@ -1129,21 +1037,18 @@ pub async fn transcription_handler(
     let validated_temperature =
         validate_server_temperature(temperature).map_err(|e| AppError::from(e))?;
 
-    let mut cleaned_mime_type = mime_type.as_deref().unwrap_or("audio/webm").to_string();
-    // Clean MIME type to remove codec info (e.g., "audio/webm; codecs=opus" becomes "audio/webm")
-    if let Some(semicolon_pos) = cleaned_mime_type.find(';') {
-        cleaned_mime_type = cleaned_mime_type[..semicolon_pos].trim().to_string();
-    }
+    let cleaned_mime_type = "audio/webm".to_string();
     let file_extension = mime_type_to_extension(&cleaned_mime_type);
 
     // Update filename if it's the default
-    if filename == "audio.webm" {
-        filename = format!("audio.{}", file_extension);
+    let mut final_filename = filename;
+    if final_filename == "audio.webm" {
+        final_filename = format!("audio.{}", file_extension);
     }
 
     // Validate audio file
     let _validated_audio =
-        validate_server_audio_file(&filename, &cleaned_mime_type, file_data.len())
+        validate_server_audio_file(&final_filename, &cleaned_mime_type, file_data.len())
             .map_err(|e| AppError::from(e))?;
 
     // Use OpenAI client for transcription
@@ -1153,7 +1058,7 @@ pub async fn transcription_handler(
     let transcription_text = client
         .transcribe_audio(
             &file_data,
-            &filename,
+            &final_filename,
             resolved_model_id,
             validated_language.as_deref(),
             validated_prompt.as_deref(),
@@ -1161,6 +1066,45 @@ pub async fn transcription_handler(
             &cleaned_mime_type,
         )
         .await?;
+
+    // Calculate estimated token count based on audio duration (10 tokens per second)
+    let tokens_input = (duration_ms / 1000) * 10;
+    
+    // Calculate tokens in transcribed text
+    let tokens_output = crate::utils::token_estimator::estimate_tokens(&transcription_text, &model_with_provider.id) as i32;
+
+    // Create provider usage for billing
+    let usage = ProviderUsage::new(
+        tokens_input as i32,
+        tokens_output,
+        0,
+        0,
+        model_with_provider.id.clone()
+    );
+
+    // Calculate cost using model pricing
+    let final_cost = model_with_provider.calculate_total_cost(&usage)
+        .map_err(|e| AppError::Internal(format!("Cost calculation failed: {}", e)))?;
+
+    // Create API usage entry
+    let api_usage_entry = ApiUsageEntryDto {
+        user_id,
+        service_name: model_with_provider.id.clone(),
+        tokens_input: tokens_input as i64,
+        tokens_output: tokens_output as i64,
+        cache_write_tokens: 0,
+        cache_read_tokens: 0,
+        request_id: None,
+        metadata: Some(serde_json::json!({
+            "transcription": true,
+            "duration_ms": duration_ms,
+            "timestamp": chrono::Utc::now().to_rfc3339()
+        })),
+        provider_reported_cost: Some(final_cost.clone()),
+    };
+
+    // Charge for API usage
+    billing_service.charge_for_api_usage(api_usage_entry, final_cost).await?;
 
     let response = TranscriptionResponse {
         text: transcription_text,

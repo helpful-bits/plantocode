@@ -18,6 +18,7 @@ pub struct StreamConfig {
     pub prompt_tokens: usize,
     pub system_prompt: String,
     pub user_prompt: String,
+    pub model: String,
 }
 
 /// Result of streaming processing
@@ -102,7 +103,7 @@ impl StreamedResponseHandler {
                                 // Optionally use token estimator for visual updates only
                                 // This is not used for billing - server provides authoritative counts
                                 if let Some(ref app_handle) = self.app_handle {
-                                    let estimated_tokens = crate::utils::token_estimator::estimate_tokens(&chunk_content);
+                                    let estimated_tokens = (chunk_content.len() / 4) as u32; // Simple fallback for visual updates
                                     
                                     let event_payload = serde_json::json!({
                                         "job_id": self.job_id,
@@ -120,7 +121,22 @@ impl StreamedResponseHandler {
                             
                             // Update usage if present in chunk
                             if let Some(usage) = chunk.usage {
-                                current_usage = Some(usage);
+                                if let Some(current) = current_usage.as_mut() {
+                                    // Merge token counts from the chunk while preserving existing cost
+                                    current.prompt_tokens = usage.prompt_tokens;
+                                    current.completion_tokens = usage.completion_tokens;
+                                    current.total_tokens = usage.total_tokens;
+                                    current.cached_input_tokens = usage.cached_input_tokens;
+                                    current.cache_write_tokens = usage.cache_write_tokens;
+                                    current.cache_read_tokens = usage.cache_read_tokens;
+                                    // Preserve existing cost field, only update if chunk has cost and current doesn't
+                                    if current.cost.is_none() && usage.cost.is_some() {
+                                        current.cost = usage.cost;
+                                    }
+                                } else {
+                                    // No existing usage, use the chunk's usage data directly
+                                    current_usage = Some(usage);
+                                }
                             }
                             
                             // Check for completion
@@ -223,10 +239,11 @@ impl StreamedResponseHandler {
 
 /// Create a StreamConfig from system and user prompts
 /// Server will provide accurate token counts, so we don't estimate client-side
-pub fn create_stream_config(system_prompt: &str, user_prompt: &str) -> StreamConfig {
+pub fn create_stream_config(system_prompt: &str, user_prompt: &str, model: &str) -> StreamConfig {
     StreamConfig {
         prompt_tokens: 0, // Server will provide accurate token counts
         system_prompt: system_prompt.to_string(),
         user_prompt: user_prompt.to_string(),
+        model: model.to_string(),
     }
 }

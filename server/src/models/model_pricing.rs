@@ -1,3 +1,8 @@
+// This module implements a flexible, data-driven pricing model. Note that all pricing is ultimately
+// resolved to a token-based cost. For services billed by other units (e.g., audio duration),
+// the conversion to an equivalent token cost is handled at the application/handler level before
+// using this pricing logic.
+
 use bigdecimal::BigDecimal;
 use std::str::FromStr;
 use serde_json::Value;
@@ -90,6 +95,10 @@ pub trait ModelPricing {
     /// and calculates costs based on the data-driven pricing model without
     /// any provider-specific logic.
     /// 
+    /// The implementation uses checked arithmetic throughout to prevent overflow attacks
+    /// and includes comprehensive validation for token counts and pricing rates to
+    /// defend against invalid data.
+    /// 
     /// # Arguments
     /// 
     /// * `usage` - The ProviderUsage struct containing token counts and provider information
@@ -144,11 +153,16 @@ pub trait ModelPricing {
                 .or_else(|_| parse_pricing_field(pricing_info, "completion_per_million", &min_price, &max_price))
         }?;
         
-        // Calculate base input cost with checked arithmetic
+        // Calculate base input cost with checked arithmetic and enhanced validation
         let base_input_tokens = usage.prompt_tokens
             .checked_sub(usage.cache_write_tokens)
             .and_then(|v| v.checked_sub(usage.cache_read_tokens))
             .ok_or_else(|| "Token arithmetic overflow: cache tokens exceed prompt tokens".to_string())?;
+        
+        // Additional validation: ensure result is non-negative
+        if base_input_tokens < 0 {
+            return Err("Invalid token calculation: cache tokens exceed prompt tokens".to_string());
+        }
         
         if base_input_tokens > 0 {
             let input_cost = calculate_token_cost(base_input_tokens as i64, &input_rate, &million)?;
@@ -243,15 +257,24 @@ fn parse_pricing_field_i64(pricing_info: &Value, key: &str) -> Option<i64> {
     pricing_info.get(key).and_then(|v| v.as_i64())
 }
 
-/// Calculate cost for a specific token count with checked arithmetic
+/// Calculate cost for a specific token count with checked arithmetic and comprehensive validation
 fn calculate_token_cost(
     token_count: i64,
     rate: &BigDecimal,
     million: &BigDecimal,
 ) -> Result<BigDecimal, String> {
+    // Validate token count
     if token_count < 0 {
         return Ok(BigDecimal::from(0));
     }
+    
+    // Validate token count against maximum allowed
+    if token_count > MAX_TOKENS {
+        return Err(format!("Token count {} exceeds maximum allowed {}", token_count, MAX_TOKENS));
+    }
+    
+    // Validate pricing rate
+    validate_pricing_rate(rate, "token cost calculation")?;
     
     let tokens_bd = BigDecimal::from(token_count);
     
@@ -267,7 +290,7 @@ fn calculate_token_cost(
         return Err("Token cost calculation would overflow maximum allowed cost".to_string());
     }
     
-    // Safe division
+    // Safe division with checked arithmetic
     Ok(product.checked_div(million)
         .ok_or_else(|| "Token cost division error".to_string())?)
 }
@@ -338,7 +361,7 @@ mod tests {
             provider_code: "test".to_string(),
         };
         
-        let usage = ProviderUsage::with_total_input(1000, 500, 0, 200, "test-model".to_string());
+        let usage = ProviderUsage::new(1000, 500, 0, 200, "test-model".to_string());
         let result = model.calculate_total_cost(&usage);
         assert!(result.is_ok());
         
@@ -361,7 +384,7 @@ mod tests {
             provider_code: "test".to_string(),
         };
         
-        let usage = ProviderUsage::with_total_input(1000, 500, 200, 300, "test-model".to_string());
+        let usage = ProviderUsage::new(1000, 500, 200, 300, "test-model".to_string());
         let result = model.calculate_total_cost(&usage);
         assert!(result.is_ok());
         
@@ -387,7 +410,7 @@ mod tests {
         };
         
         // Test with tokens exceeding threshold
-        let usage = ProviderUsage::new(100000, 50000, "test-model".to_string());
+        let usage = ProviderUsage::new(100000, 50000, 0, 0, "test-model".to_string());
         let result = model.calculate_total_cost(&usage);
         assert!(result.is_ok());
         
@@ -408,7 +431,7 @@ mod tests {
             provider_code: "test".to_string(),
         };
         
-        let usage = ProviderUsage::new(-100, 500, "test-model".to_string());
+        let usage = ProviderUsage::new(-100, 500, 0, 0, "test-model".to_string());
         let result = model.calculate_total_cost(&usage);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("Invalid prompt token count"));
@@ -421,7 +444,7 @@ mod tests {
             provider_code: "test".to_string(),
         };
         
-        let usage = ProviderUsage::new(1000, 500, "test-model".to_string());
+        let usage = ProviderUsage::new(1000, 500, 0, 0, "test-model".to_string());
         let result = model.calculate_total_cost(&usage);
         assert!(result.is_err());
     }
@@ -464,7 +487,7 @@ mod tests {
         };
         
         // Test with very large token counts near MAX_TOKENS
-        let usage = ProviderUsage::new(999_999_999, 999_999_999, "test-model".to_string());
+        let usage = ProviderUsage::new(999_999_999, 999_999_999, 0, 0, "test-model".to_string());
         let result = model.calculate_total_cost(&usage);
         
         // Should handle large numbers without overflow
@@ -486,7 +509,7 @@ mod tests {
         };
         
         // Cache tokens exceed prompt tokens - this should fail
-        let usage = ProviderUsage::with_total_input(1000, 500, 600, 600, "test-model".to_string());
+        let usage = ProviderUsage::new(1000, 500, 600, 600, "test-model".to_string());
         let result = model.calculate_total_cost(&usage);
         
         assert!(result.is_err());

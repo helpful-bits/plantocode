@@ -1324,7 +1324,6 @@ impl OpenAIClient {
         // Standard streaming flow
         let mut streaming_request = request.clone();
         streaming_request.stream = Some(true);
-        // Add stream_options to include usage in streaming responses
         streaming_request.stream_options = Some(StreamOptions {
             include_usage: true,
         });
@@ -1887,22 +1886,14 @@ impl OpenAIClient {
                 .and_then(|v| v.as_i64())
                 .unwrap_or(0) as i32;
 
-            // For OpenAI API:
-            // - prompt_tokens is already the total input tokens (no calculation needed)
-            // - cache_read_tokens comes from prompt_tokens_details.cached_tokens
-            // - cache_write_tokens is derived as prompt_tokens - cache_read_tokens when cache_read_tokens are present
-
-            let mut usage = ProviderUsage {
-                prompt_tokens: prompt_tokens as i32, // Total input tokens
-                completion_tokens: completion_tokens as i32,
-                cache_write_tokens: 0,
+            let mut usage = ProviderUsage::new(
+                prompt_tokens as i32, // Total input tokens
+                completion_tokens as i32,
+                0, // cache_write_tokens is 0 for OpenAI
                 cache_read_tokens,
-                model_id: model_id.to_string(),
-                duration_ms: None,
-                cost: None, // OpenAI doesn't provide cost in responses
-            };
+                model_id.to_string()
+            );
 
-            // Validate usage data before returning
             usage.validate().ok()?;
 
             return Some(usage);
@@ -1920,17 +1911,14 @@ impl OpenAIClient {
                 .and_then(|v| v.as_i64())
                 .unwrap_or(0) as i32;
 
-            let mut usage = ProviderUsage {
-                prompt_tokens: input_tokens as i32, // Total input tokens
-                completion_tokens: output_tokens as i32,
-                cache_write_tokens: 0, // Responses API doesn't provide cache write details
+            let mut usage = ProviderUsage::new(
+                input_tokens as i32, // Total input tokens
+                output_tokens as i32,
+                0, // Responses API doesn't provide cache write details
                 cache_read_tokens,
-                model_id: model_id.to_string(),
-                duration_ms: None,
-                cost: None, // OpenAI doesn't provide cost in responses
-            };
+                model_id.to_string()
+            );
 
-            // Validate usage data before returning
             usage.validate().ok()?;
 
             return Some(usage);

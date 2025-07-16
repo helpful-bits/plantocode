@@ -168,7 +168,7 @@ pub struct FileRelevanceAssessmentQualityDetails {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FileRelevanceAssessmentResponse {
-    pub relevant_files: Vec<String>,
+    pub files: Vec<String>,
     pub count: usize,
     pub summary: String,
     pub token_count: usize,

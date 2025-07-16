@@ -55,8 +55,6 @@ impl JobProcessor for ExtendedPathFinderProcessor {
         let (model_used, temperature, max_output_tokens) = model_settings;
         
         job_processor_utils::log_job_start(&job.id, "Extended Path Finding");
-        info!("Starting extended path finding with {} AI-filtered initial paths", 
-            payload.initial_paths.len());
         
         // Check if job has been canceled using standardized utility
         if job_processor_utils::check_job_canceled(&repo, &job.id).await? {
@@ -68,7 +66,6 @@ impl JobProcessor for ExtendedPathFinderProcessor {
         let project_directory = &session.project_directory;
         let directory_tree = match get_directory_tree_with_defaults(project_directory).await {
             Ok(tree) => {
-                info!("Generated directory tree for extended path finder ({} lines)", tree.lines().count());
                 tree
             }
             Err(e) => {
@@ -83,7 +80,6 @@ impl JobProcessor for ExtendedPathFinderProcessor {
             let absolute_path = Path::new(project_directory).join(path);
             match fs::read_to_string(&absolute_path).await {
                 Ok(content) => {
-                    info!("Read file content for AI context: {} ({} bytes)", path, content.len());
                     file_contents.insert(path.clone(), content);
                 },
                 Err(e) => {
@@ -93,7 +89,6 @@ impl JobProcessor for ExtendedPathFinderProcessor {
             }
         }
         
-        info!("Sending {} file contents to AI for better path finding", file_contents.len());
         
         // Setup LLM task configuration
         let llm_config = LlmTaskConfigBuilder::new(model_used.clone(), temperature, max_output_tokens)
@@ -131,7 +126,6 @@ impl JobProcessor for ExtendedPathFinderProcessor {
         }
         
         // Execute LLM task using the task runner
-        info!("Calling LLM for extended path finding with model {}", model_used);
         let llm_result = match task_runner.execute_llm_task(prompt_context, &settings_repo).await {
             Ok(result) => result,
             Err(e) => {
@@ -141,8 +135,6 @@ impl JobProcessor for ExtendedPathFinderProcessor {
             }
         };
         
-        info!("Extended path finding LLM task completed successfully for job {}", job.id);
-        info!("System prompt ID: {}", llm_result.system_prompt_id);
         
         // Extract the response content
         let response_content = llm_result.response.clone();
@@ -174,8 +166,6 @@ impl JobProcessor for ExtendedPathFinderProcessor {
             }
         }
         
-        info!("Extended paths validation: {} valid, {} invalid paths", 
-            validated_extended_paths.len(), unverified_extended_paths.len());
         
         // Combine initial paths (already validated and filtered by AI relevance assessment) with validated extended paths
         let mut combined_validated_paths = payload.initial_paths.clone();
@@ -185,8 +175,6 @@ impl JobProcessor for ExtendedPathFinderProcessor {
             }
         }
         
-        info!("Extended path finding completed for workflow {}: extended by {} files", 
-            job.id, validated_extended_paths.len());
         
         // Check for cancellation after LLM processing using standardized utility
         if job_processor_utils::check_job_canceled(&repo, &job.id).await? {
@@ -210,8 +198,11 @@ impl JobProcessor for ExtendedPathFinderProcessor {
             "taskDescription": payload.task_description,
             "projectDirectory": project_directory.clone(),
             "modelUsed": model_used,
-            "summary": format!("Extended by {} files", 
-                validated_extended_paths.len())
+            "summary": if validated_extended_paths.len() > 0 {
+                format!("Found {} additional files", validated_extended_paths.len())
+            } else {
+                "No additional files found".to_string()
+            }
         });
         
         debug!("Extended path finding completed for workflow {}", job.id);
@@ -223,14 +214,17 @@ impl JobProcessor for ExtendedPathFinderProcessor {
         let actual_cost = llm_result.usage.as_ref().and_then(|u| u.cost).unwrap_or(0.0);
         
         // Return success result with structured JSON data
+        // Only return the new extended paths, not the initial paths which are already in the session
         Ok(JobProcessResult::success(
             job.id.clone(), 
             JobResultData::Json(serde_json::json!({
-                "verifiedPaths": combined_validated_paths,
-                "unverifiedPaths": unverified_extended_paths,
-                "count": combined_validated_paths.len(),
-                "summary": format!("Extended by {} files", 
-                    validated_extended_paths.len())
+                "files": validated_extended_paths,
+                "count": validated_extended_paths.len(),
+                "summary": if validated_extended_paths.len() > 0 {
+                    format!("Found {} additional files", validated_extended_paths.len())
+                } else {
+                    "No additional files found".to_string()
+                }
             }))
         )
         .with_tokens(

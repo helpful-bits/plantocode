@@ -305,9 +305,6 @@ const config: Config = {
     require("@tailwindcss/typography"),
     require("tailwindcss-animate"),
   ],
-  experimental: {
-    externalDependencies: ["**/*.css"],
-  },
 };
 
 export default config;

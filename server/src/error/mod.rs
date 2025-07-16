@@ -39,6 +39,8 @@ pub enum AppError {
     Billing(String),
     AlreadyExists(String),
     DataIntegrity(String),
+    SpendingLimitExceeded(String),
+    CheckoutError(String),
 }
 
 #[derive(Serialize, Deserialize)]
@@ -84,6 +86,8 @@ impl fmt::Display for AppError {
             AppError::Billing(e) => write!(f, "Billing error: {}", e),
             AppError::AlreadyExists(e) => write!(f, "Already exists: {}", e),
             AppError::DataIntegrity(e) => write!(f, "Data integrity error: {}", e),
+            AppError::SpendingLimitExceeded(e) => write!(f, "Spending limit exceeded: {}", e),
+            AppError::CheckoutError(e) => write!(f, "Checkout error: {}", e),
         }
     }
 }
@@ -126,6 +130,8 @@ impl ResponseError for AppError {
             AppError::Billing(_) => (StatusCode::PAYMENT_REQUIRED, "billing_error"),
             AppError::AlreadyExists(_) => (StatusCode::CONFLICT, "already_exists"),
             AppError::DataIntegrity(_) => (StatusCode::INTERNAL_SERVER_ERROR, "data_integrity_error"),
+            AppError::SpendingLimitExceeded(_) => (StatusCode::PAYMENT_REQUIRED, "spending_limit_exceeded"),
+            AppError::CheckoutError(_) => (StatusCode::PAYMENT_REQUIRED, "checkout_error"),
         };
 
         let error_response = ErrorResponse {
@@ -172,6 +178,8 @@ impl ResponseError for AppError {
             AppError::Billing(_) => StatusCode::PAYMENT_REQUIRED,
             AppError::AlreadyExists(_) => StatusCode::CONFLICT,
             AppError::DataIntegrity(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            AppError::SpendingLimitExceeded(_) => StatusCode::PAYMENT_REQUIRED,
+            AppError::CheckoutError(_) => StatusCode::PAYMENT_REQUIRED,
         }
     }
 }

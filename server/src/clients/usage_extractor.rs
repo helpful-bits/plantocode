@@ -190,90 +190,52 @@ pub struct ProviderUsage {
 }
 
 impl ProviderUsage {
-    /// Create a new ProviderUsage with basic token counts
+    /// Create a new ProviderUsage with explicit total input tokens
     /// 
-    /// This is a convenience constructor for the most common use case where
-    /// only total input and completion tokens are available.
+    /// This constructor makes it clear that prompt_tokens represents the TOTAL
+    /// input tokens, not just uncached tokens. Use this for all new implementations.
     /// 
     /// # Arguments
     /// 
-    /// * `prompt_tokens` - TOTAL number of input tokens (includes all input: uncached + cached)
+    /// * `total_input_tokens` - TOTAL number of input tokens (uncached + cache_write + cache_read)
     /// * `completion_tokens` - Number of output tokens
+    /// * `cache_write_tokens` - Number of tokens written to cache (for billing breakdown)
+    /// * `cache_read_tokens` - Number of tokens read from cache (for billing breakdown)
     /// * `model_id` - The model ID used for this request
     /// 
     /// # Example
     /// 
     /// ```rust
-    /// let usage = ProviderUsage::new(150, 75, "model-id".to_string());
-    /// assert_eq!(usage.prompt_tokens, 150); // Total input tokens
-    /// assert_eq!(usage.completion_tokens, 75);
-    /// assert_eq!(usage.total_tokens(), 225);
+    /// // If provider reports: uncached=100, cache_write=25, cache_read=75
+    /// let usage = ProviderUsage::new(
+    ///     200,  // total_input_tokens (100 + 25 + 75)
+    ///     50,   // completion_tokens
+    ///     25,   // cache_write_tokens
+    ///     75,   // cache_read_tokens
+    ///     "claude-3-sonnet".to_string()
+    /// );
+    /// assert_eq!(usage.prompt_tokens, 200);
+    /// assert_eq!(usage.total_input_tokens(), 200);
     /// ```
-    pub fn new(prompt_tokens: i32, completion_tokens: i32, model_id: String) -> Self {
+    pub fn new(
+        total_input_tokens: i32,
+        completion_tokens: i32,
+        cache_write_tokens: i32,
+        cache_read_tokens: i32,
+        model_id: String,
+    ) -> Self {
         Self {
-            prompt_tokens,
+            prompt_tokens: total_input_tokens,
             completion_tokens,
-            cache_write_tokens: 0,
-            cache_read_tokens: 0,
+            cache_write_tokens,
+            cache_read_tokens,
             model_id,
             duration_ms: None,
             cost: None,
         }
     }
     
-    /// Derive cache write tokens from uncached tokens and cache read tokens
-    /// 
-    /// This helper is for providers that don't explicitly report cache write tokens.
-    /// It calculates cache writes by assuming uncached tokens are written to cache.
-    /// 
-    /// # Arguments
-    /// 
-    /// * `uncached_tokens` - Tokens that were NOT read from cache (not total input!)
-    /// * `cache_read_tokens` - Tokens read from cache
-    /// 
-    /// # Returns
-    /// 
-    /// The estimated number of tokens written to cache
-    /// 
-    /// # Important
-    /// 
-    /// This method expects UNCACHED tokens, not total input tokens. If you have
-    /// total input tokens, first subtract cache_read_tokens to get uncached tokens.
-    /// 
-    /// # Example
-    /// 
-    /// ```rust
-    /// // Provider reports: total_input=200, cache_read=75
-    /// let uncached = 200 - 75; // 125
-    /// let cache_write = ProviderUsage::derive_cache_write(uncached, 75); // Returns 125
-    /// ```
-    pub fn derive_cache_write(uncached_tokens: i32, cache_read_tokens: i32) -> i32 {
-        // In most cases, uncached tokens are written to cache for future use
-        // This is a heuristic - some providers may have different caching strategies
-        uncached_tokens.max(0)
-    }
     
-    /// Create a ProviderUsage from legacy token counts without cache information
-    /// 
-    /// This constructor is provided for compatibility with older systems
-    /// that don't support cache token tracking.
-    /// 
-    /// # Arguments
-    /// 
-    /// * `prompt_tokens` - TOTAL number of input tokens (all input tokens processed)
-    /// * `completion_tokens` - Number of output tokens
-    /// * `model_id` - The model ID used for this request
-    pub fn from_legacy(prompt_tokens: i32, completion_tokens: i32, model_id: String) -> Self {
-        Self {
-            prompt_tokens,
-            completion_tokens,
-            cache_write_tokens: 0,
-            cache_read_tokens: 0,
-            model_id,
-            duration_ms: None,
-            cost: None,
-        }
-    }
     
     
     /// Get the total number of input tokens
@@ -330,55 +292,12 @@ impl ProviderUsage {
     }
     
     
-    /// Create a new ProviderUsage with explicit total input tokens
-    /// 
-    /// This constructor makes it clear that prompt_tokens represents the TOTAL
-    /// input tokens, not just uncached tokens. Use this for all new implementations.
-    /// 
-    /// # Arguments
-    /// 
-    /// * `total_input_tokens` - TOTAL number of input tokens (uncached + cache_write + cache_read)
-    /// * `completion_tokens` - Number of output tokens
-    /// * `cache_write_tokens` - Number of tokens written to cache (for billing breakdown)
-    /// * `cache_read_tokens` - Number of tokens read from cache (for billing breakdown)
-    /// * `model_id` - The model ID used for this request
-    /// 
-    /// # Example
-    /// 
-    /// ```rust
-    /// // If provider reports: uncached=100, cache_write=25, cache_read=75
-    /// let usage = ProviderUsage::with_total_input(
-    ///     200,  // total_input_tokens (100 + 25 + 75)
-    ///     50,   // completion_tokens
-    ///     25,   // cache_write_tokens
-    ///     75,   // cache_read_tokens
-    ///     "claude-3-sonnet".to_string()
-    /// );
-    /// assert_eq!(usage.prompt_tokens, 200);
-    /// assert_eq!(usage.total_input_tokens(), 200);
-    /// ```
-    pub fn with_total_input(
-        total_input_tokens: i32,
-        completion_tokens: i32,
-        cache_write_tokens: i32,
-        cache_read_tokens: i32,
-        model_id: String,
-    ) -> Self {
-        Self {
-            prompt_tokens: total_input_tokens,
-            completion_tokens,
-            cache_write_tokens,
-            cache_read_tokens,
-            model_id,
-            duration_ms: None,
-            cost: None,
-        }
-    }
     
-    /// Create a new ProviderUsage with total input tokens and cost information
+    /// Create a new ProviderUsage with provider-calculated cost information
     /// 
-    /// This constructor combines explicit total input semantics with cost tracking
-    /// for providers that return billing information.
+    /// This constructor creates a ProviderUsage instance with cost information
+    /// provided by the LLM provider. Cost information is preserved for auditing
+    /// purposes but is not used for billing calculations.
     /// 
     /// # Arguments
     /// 
@@ -396,22 +315,22 @@ impl ProviderUsage {
     /// use std::str::FromStr;
     /// 
     /// let cost = BigDecimal::from_str("0.0025").unwrap();
-    /// let usage = ProviderUsage::with_total_input_and_cost(
+    /// let usage = ProviderUsage::with_cost(
     ///     200,  // total_input_tokens
     ///     50,   // completion_tokens
     ///     25,   // cache_write_tokens
     ///     75,   // cache_read_tokens
     ///     "claude-3-sonnet".to_string(),
-    ///     Some(cost)
+    ///     cost
     /// );
     /// ```
-    pub fn with_total_input_and_cost(
+    pub fn with_cost(
         total_input_tokens: i32,
         completion_tokens: i32,
         cache_write_tokens: i32,
         cache_read_tokens: i32,
         model_id: String,
-        cost: Option<BigDecimal>,
+        cost: BigDecimal,
     ) -> Self {
         Self {
             prompt_tokens: total_input_tokens,
@@ -420,27 +339,27 @@ impl ProviderUsage {
             cache_read_tokens,
             model_id,
             duration_ms: None,
-            cost,
+            cost: Some(cost),
         }
     }
     
     /// Validate that token counts are non-negative and semantically correct
     /// 
-    /// This method performs validation to ensure usage data integrity:
+    /// This method performs comprehensive validation to ensure usage data integrity:
     /// - All token counts must be non-negative
-    /// - Cache tokens cannot exceed total prompt tokens
-    /// - Cost values must be non-negative if present
+    /// - Cache write + cache read tokens cannot exceed total prompt tokens
+    /// - Cost values must be non-negative and finite if present
     /// - Duration must be non-negative if present
     /// 
     /// # Returns
     /// 
-    /// * `Ok(())` - All token counts are valid
+    /// * `Ok(())` - All values are valid
     /// * `Err(String)` - Description of the validation error
     /// 
     /// # Example
     /// 
     /// ```rust
-    /// let usage = ProviderUsage::new(100, 50, "test-model".to_string());
+    /// let usage = ProviderUsage::new(100, 50, 20, 30, "test-model".to_string());
     /// assert!(usage.validate().is_ok());
     /// 
     /// let invalid_usage = ProviderUsage {
@@ -479,12 +398,12 @@ impl ProviderUsage {
             return Err(msg);
         }
         
-        // Ensure cached tokens don't exceed total prompt tokens
-        let total_cache_tokens = self.cache_write_tokens + self.cache_read_tokens;
-        if total_cache_tokens > self.prompt_tokens {
+        // Validate that cache write + cache read <= prompt tokens
+        if self.cache_write_tokens + self.cache_read_tokens > self.prompt_tokens {
             let msg = format!(
                 "Cache tokens ({} write + {} read = {}) exceed total prompt tokens ({})",
-                self.cache_write_tokens, self.cache_read_tokens, total_cache_tokens, self.prompt_tokens
+                self.cache_write_tokens, self.cache_read_tokens, 
+                self.cache_write_tokens + self.cache_read_tokens, self.prompt_tokens
             );
             warn!("{}", msg);
             return Err(msg);
@@ -499,10 +418,17 @@ impl ProviderUsage {
             }
         }
         
-        // Validate cost if present
+        // Validate cost if present - must be non-negative and finite
         if let Some(cost) = &self.cost {
             if cost.is_negative() {
                 let msg = "Invalid cost: cost cannot be negative".to_string();
+                warn!("{}", msg);
+                return Err(msg);
+            }
+            // Check for invalid numeric values (NaN equivalent for BigDecimal)
+            // BigDecimal doesn't have NaN, but we can check for invalid states
+            if cost.as_bigint_and_exponent().0.to_string().is_empty() {
+                let msg = "Invalid cost: cost cannot be NaN or infinite".to_string();
                 warn!("{}", msg);
                 return Err(msg);
             }
@@ -512,11 +438,6 @@ impl ProviderUsage {
     }
 }
 
-impl Default for ProviderUsage {
-    fn default() -> Self {
-        Self::new(0, 0, "unknown".to_string())
-    }
-}
 
 /// Trait for extracting standardized usage information from provider responses
 /// 
@@ -693,11 +614,11 @@ mod tests {
 
     #[test]
     fn test_provider_usage_new() {
-        let usage = ProviderUsage::new(100, 50, "test-model".to_string());
+        let usage = ProviderUsage::new(100, 50, 20, 30, "test-model".to_string());
         assert_eq!(usage.prompt_tokens, 100);
         assert_eq!(usage.completion_tokens, 50);
-        assert_eq!(usage.cache_write_tokens, 0);
-        assert_eq!(usage.cache_read_tokens, 0);
+        assert_eq!(usage.cache_write_tokens, 20);
+        assert_eq!(usage.cache_read_tokens, 30);
         assert_eq!(usage.model_id, "test-model");
         assert_eq!(usage.total_tokens(), 150);
     }
@@ -706,14 +627,14 @@ mod tests {
 
     #[test]
     fn test_set_duration() {
-        let mut usage = ProviderUsage::new(100, 50, "test-model".to_string());
+        let mut usage = ProviderUsage::new(100, 50, 0, 0, "test-model".to_string());
         usage.set_duration(1500);
         assert_eq!(usage.duration_ms, Some(1500));
     }
 
     #[test]
     fn test_validate_positive_tokens() {
-        let usage = ProviderUsage::new(100, 50, "test-model".to_string());
+        let usage = ProviderUsage::new(100, 50, 0, 0, "test-model".to_string());
         assert!(usage.validate().is_ok());
     }
 
@@ -779,18 +700,10 @@ mod tests {
         assert!(usage.validate().unwrap_err().contains("cost cannot be negative"));
     }
 
-    #[test]
-    fn test_default() {
-        let usage = ProviderUsage::default();
-        assert_eq!(usage.prompt_tokens, 0);
-        assert_eq!(usage.completion_tokens, 0);
-        assert_eq!(usage.total_tokens(), 0);
-        assert_eq!(usage.cost, None);
-    }
 
     #[test]
     fn test_set_cost() {
-        let mut usage = ProviderUsage::new(100, 50, "test-model".to_string());
+        let mut usage = ProviderUsage::new(100, 50, 0, 0, "test-model".to_string());
         assert_eq!(usage.cost, None);
         
         let cost = BigDecimal::from_str("0.0025").unwrap();
@@ -799,24 +712,10 @@ mod tests {
     }
 
     
-    #[test]
-    fn test_derive_cache_write() {
-        // Normal case: uncached tokens are written to cache
-        assert_eq!(ProviderUsage::derive_cache_write(70, 30), 70);
-        
-        // Edge case: no uncached tokens (all from cache)
-        assert_eq!(ProviderUsage::derive_cache_write(0, 100), 0);
-        
-        // Edge case: no cache read, all tokens are uncached
-        assert_eq!(ProviderUsage::derive_cache_write(100, 0), 100);
-        
-        // Edge case: negative uncached tokens (should not happen but handle gracefully)
-        assert_eq!(ProviderUsage::derive_cache_write(-50, 100), 0);
-    }
     
     #[test]
     fn test_with_total_input() {
-        let usage = ProviderUsage::with_total_input(
+        let usage = ProviderUsage::new(
             200,  // total_input_tokens (e.g., 100 uncached + 25 write + 75 read)
             50,   // completion_tokens
             25,   // cache_write_tokens
@@ -832,15 +731,15 @@ mod tests {
     }
     
     #[test]
-    fn test_with_total_input_and_cost() {
+    fn test_with_cost() {
         let cost = BigDecimal::from_str("0.0045").unwrap();
-        let usage = ProviderUsage::with_total_input_and_cost(
+        let usage = ProviderUsage::with_cost(
             300,  // total_input_tokens
             100,  // completion_tokens
             50,   // cache_write_tokens
             150,  // cache_read_tokens
             "gpt-4".to_string(),
-            Some(cost.clone())
+            cost.clone()
         );
         assert_eq!(usage.prompt_tokens, 300);
         assert_eq!(usage.completion_tokens, 100);
@@ -871,22 +770,20 @@ mod tests {
                 .and_then(|v| v.as_i64())
                 .ok_or_else(|| crate::error::AppError::External("Missing completion_tokens".to_string()))? as i32;
             
-            Ok(ProviderUsage {
+            Ok(ProviderUsage::new(
                 prompt_tokens,
                 completion_tokens,
-                cache_write_tokens: 0,
-                cache_read_tokens: 0,
-                model_id: model_id.to_string(),
-                duration_ms: None,
-                cost: None,
-            })
+                0,
+                0,
+                model_id.to_string()
+            ))
         }
 
         fn extract_usage(&self, raw_json: &serde_json::Value) -> Option<ProviderUsage> {
             let usage = raw_json.get("usage")?;
             let prompt_tokens = usage.get("prompt_tokens")?.as_i64()? as i32;
             let completion_tokens = usage.get("completion_tokens")?.as_i64()? as i32;
-            Some(ProviderUsage::new(prompt_tokens, completion_tokens, "test-model".to_string()))
+            Some(ProviderUsage::new(prompt_tokens, completion_tokens, 0, 0, "test-model".to_string()))
         }
     }
 

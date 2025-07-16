@@ -18,47 +18,6 @@ export function JobDetailsMetadataSection() {
   // Display structured metadata directly - no complex formatting needed
   const formattedMetadata = parsedMeta ? JSON.stringify(parsedMeta, null, 2) : "None";
 
-  // Access parsed JSON data from regex pattern generation
-  const parsedJsonData = parsedMeta?.taskData?.parsedJsonData;
-  const jsonValid = parsedMeta?.taskData?.jsonValid;
-  
-  // Format regex patterns directly here
-  const formattedRegex = (() => {
-    if (!parsedJsonData) return null;
-    
-    try {
-      let data: Record<string, any>;
-      
-      if (typeof parsedJsonData === "string") {
-        try {
-          data = JSON.parse(parsedJsonData) as Record<string, any>;
-        } catch (_e) {
-          return "Regex data not available or not valid JSON.";
-        }
-      } else if (parsedJsonData && typeof parsedJsonData === "object") {
-        data = parsedJsonData as Record<string, any>;
-      } else {
-        return "Regex data not available or not valid JSON.";
-      }
-      
-      const cleanPatterns = [
-        data.pathPattern && `Path: ${data.pathPattern}`,
-        data.contentPattern && `Content: ${data.contentPattern}`,
-        data.negativePathPattern && `Negative Path: ${data.negativePathPattern}`,
-        data.negativeContentPattern && `Negative Content: ${data.negativeContentPattern}`,
-      ].filter(Boolean);
-
-      if (cleanPatterns.length > 0) {
-        return cleanPatterns.join("\n");
-      }
-
-      return "No regex patterns found. Expected clean 4-pattern structure.";
-    } catch (e) {
-      console.error("Error formatting regex patterns:", e);
-      return "Regex data not available or not valid JSON.";
-    }
-  })();
-
   // Access implementation plan data
   const planData = parsedMeta?.taskData?.planData;
   const formattedPlanData = planData ? JSON.stringify(planData, null, 2) : null;
@@ -87,24 +46,6 @@ export function JobDetailsMetadataSection() {
                 <div className="text-sm font-medium text-foreground">{String(parsedMeta.taskData.targetField || '')}</div>
               </div>
             ) : null}
-
-            {jsonValid != null && (
-              <div>
-                <div className="text-xs text-muted-foreground mb-1">JSON Parsing Status</div>
-                <div className={`text-sm font-medium ${jsonValid ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                  {jsonValid ? 'Valid JSON' : 'Invalid JSON'}
-                </div>
-              </div>
-            )}
-
-            {parsedJsonData != null && (
-              <div>
-                <div className="text-xs text-muted-foreground mb-1">Regex Patterns</div>
-                <pre className="whitespace-pre-wrap font-mono text-xs text-balance w-full p-2 bg-muted/20 rounded-md border border-border/60 text-foreground">
-                  {formattedRegex || 'No regex patterns found'}
-                </pre>
-              </div>
-            )}
 
             {planData != null && (
               <div>

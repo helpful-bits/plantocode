@@ -11,27 +11,84 @@ import {
   DialogFooter,
 } from "@/ui/dialog";
 import { getParsedMetadata } from "./utils";
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo, useCallback, useEffect, lazy, Suspense } from "react";
 import { type TaskModelSettings } from "@/types/task-settings-types";
 import { getProjectTaskModelSettings } from "@/actions/project-settings.actions";
 import { useSessionStateContext } from "@/contexts/session";
 import { useLiveDuration } from "@/hooks/use-live-duration";
 import { normalizeJobResponse } from '@/utils/response-utils';
 import { invoke } from '@tauri-apps/api/core';
-
-
-// Import component sections
-import { JobDetailsAdditionalInfoSection } from "./_components/job-details/JobDetailsAdditionalInfoSection";
-import { JobDetailsErrorSection } from "./_components/job-details/JobDetailsErrorSection";
-import { JobDetailsMetadataSection } from "./_components/job-details/JobDetailsMetadataSection";
-import { JobDetailsModelConfigSection } from "./_components/job-details/JobDetailsModelConfigSection";
-import { JobDetailsPromptSection } from "./_components/job-details/JobDetailsPromptSection";
-import { JobDetailsResponseSection } from "./_components/job-details/JobDetailsResponseSection";
-import { JobDetailsStatusSection } from "./_components/job-details/JobDetailsStatusSection";
-import { JobDetailsTimingSection } from "./_components/job-details/JobDetailsTimingSection";
-import { JobDetailsCostUsageSection } from "./_components/job-details/JobDetailsCostUsageSection";
-import { JobDetailsSystemPromptSection } from "./_components/job-details/JobDetailsSystemPromptSection";
 import { JobDetailsContextProvider } from "./_contexts/job-details-context";
+
+// Lazy load component sections
+const JobDetailsAdditionalInfoSection = lazy(() => 
+  import("./_components/job-details/JobDetailsAdditionalInfoSection").then(module => ({ 
+    default: module.JobDetailsAdditionalInfoSection 
+  }))
+);
+
+const JobDetailsErrorSection = lazy(() => 
+  import("./_components/job-details/JobDetailsErrorSection").then(module => ({ 
+    default: module.JobDetailsErrorSection 
+  }))
+);
+
+const JobDetailsMetadataSection = lazy(() => 
+  import("./_components/job-details/JobDetailsMetadataSection").then(module => ({ 
+    default: module.JobDetailsMetadataSection 
+  }))
+);
+
+const JobDetailsModelConfigSection = lazy(() => 
+  import("./_components/job-details/JobDetailsModelConfigSection").then(module => ({ 
+    default: module.JobDetailsModelConfigSection 
+  }))
+);
+
+const JobDetailsPromptSection = lazy(() => 
+  import("./_components/job-details/JobDetailsPromptSection").then(module => ({ 
+    default: module.JobDetailsPromptSection 
+  }))
+);
+
+const JobDetailsResponseSection = lazy(() => 
+  import("./_components/job-details/JobDetailsResponseSection").then(module => ({ 
+    default: module.JobDetailsResponseSection 
+  }))
+);
+
+const JobDetailsStatusSection = lazy(() => 
+  import("./_components/job-details/JobDetailsStatusSection").then(module => ({ 
+    default: module.JobDetailsStatusSection 
+  }))
+);
+
+const JobDetailsTimingSection = lazy(() => 
+  import("./_components/job-details/JobDetailsTimingSection").then(module => ({ 
+    default: module.JobDetailsTimingSection 
+  }))
+);
+
+const JobDetailsCostUsageSection = lazy(() => 
+  import("./_components/job-details/JobDetailsCostUsageSection").then(module => ({ 
+    default: module.JobDetailsCostUsageSection 
+  }))
+);
+
+const JobDetailsSystemPromptSection = lazy(() => 
+  import("./_components/job-details/JobDetailsSystemPromptSection").then(module => ({ 
+    default: module.JobDetailsSystemPromptSection 
+  }))
+);
+
+// Loading component for sections
+function SectionLoader() {
+  return (
+    <div className="flex items-center justify-center p-4 min-h-[100px]">
+      <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+    </div>
+  );
+}
 
 interface JobDetailsModalProps {
   job: BackgroundJob | null;
@@ -64,34 +121,23 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
   // Fetch full job details when job changes
   useEffect(() => {
     const fetchFullJobDetails = async () => {
-      if (!job) {
-        setFullJobDetails(null);
-        return;
-      }
+      if (!job?.id) return;
       
       setIsLoadingFullDetails(true);
       try {
-        const result = await invoke<BackgroundJob | null>('get_background_job_by_id_command', {
+        const fullJob = await invoke<BackgroundJob>('get_background_job_by_id_command', {
           jobId: job.id
         });
-        
-        if (result) {
-          setFullJobDetails(result);
-        } else {
-          // Fallback to the provided job if fetch fails
-          setFullJobDetails(job);
-        }
+        setFullJobDetails(fullJob);
       } catch (error) {
         console.error('Failed to fetch full job details:', error);
-        // Fallback to the provided job if fetch fails
-        setFullJobDetails(job);
       } finally {
         setIsLoadingFullDetails(false);
       }
     };
     
     fetchFullJobDetails();
-  }, [job?.id]); // Only re-fetch when job ID changes
+  }, [job?.id]);
 
   // Load task settings when job changes
   useEffect(() => {
@@ -125,12 +171,12 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
 
   // Use fullJobDetails if available, but merge with the live job prop to get updates
   const displayJob = useMemo(() => {
-    if (!fullJobDetails) {
-      return job;
-    }
-    // Merge the live job over the fetched details to ensure updates are reflected
-    return { ...fullJobDetails, ...job };
-  }, [fullJobDetails, job]);
+    if (!job) return null;
+    return { ...job, ...fullJobDetails };
+  }, [job, fullJobDetails]);
+
+  // Early return if no job to avoid null checks throughout
+  if (!displayJob) return null;
 
   // Format metadata for display
   const formatMetadata = useCallback((metadata: any): string => {
@@ -158,190 +204,20 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
       
       switch (job.taskType) {
         case 'regex_file_filter':
-          // Parse standardized format from backend (files, count, summary)
-          if (response.files || response.filteredFiles) {
-            const files = response.files || response.filteredFiles;
-            const count = response.count || files.length;
-            const summary = response.summary;
-            
-            return (
-              <div className="space-y-3">
-                <div className="flex items-center gap-2">
-                  <div className="text-sm font-medium">Filtered Files</div>
-                  <div className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded">
-                    {count} files
-                  </div>
-                </div>
-                
-                {summary && (
-                  <div className="text-sm text-muted-foreground bg-muted/50 p-2 rounded">
-                    {summary}
-                  </div>
-                )}
-                
-                <div className="max-h-64 overflow-y-auto">
-                  <ul className="space-y-0.5">
-                    {files.map((file: string, idx: number) => (
-                      <li key={idx} className="text-sm font-mono text-foreground bg-muted/30 px-2 py-1 rounded">
-                        {file}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-                
-                {response.groupResults && Object.keys(response.groupResults).length > 0 && (
-                  <div className="mt-4 border-t pt-3">
-                    <div className="text-sm font-medium mb-2">Group Results:</div>
-                    <div className="space-y-3">
-                      {Object.entries(response.groupResults).map(([groupName, files]: [string, any]) => (
-                        <div key={groupName} className="border-l-2 border-muted pl-3">
-                          <div className="text-sm font-medium text-muted-foreground mb-1">{groupName}:</div>
-                          <ul className="space-y-0.5">
-                            {(files as string[]).map((file: string, idx: number) => (
-                              <li key={idx} className="text-xs font-mono text-foreground bg-muted/20 px-2 py-1 rounded">
-                                {file}
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          }
-          break;
-          
         case 'file_relevance_assessment':
-          // Parse standardized format from backend (files, count, summary, metadata)
-          if (response.files || response.relevantFiles) {
-            const files = response.files || response.relevantFiles;
-            const count = response.count || files.length;
-            const summary = response.summary;
-            const metadata = response.metadata;
-            
-            return (
-              <div className="space-y-3">
-                <div className="flex items-center gap-2">
-                  <div className="text-sm font-medium">Relevant Files</div>
-                  <div className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded">
-                    {count} files
-                  </div>
-                  {metadata?.tokenCount && (
-                    <div className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded">
-                      {metadata.tokenCount} tokens
-                    </div>
-                  )}
-                </div>
-                
-                {summary && (
-                  <div className="text-sm text-muted-foreground bg-muted/50 p-2 rounded">
-                    {summary}
-                  </div>
-                )}
-                
-                <div className="max-h-64 overflow-y-auto">
-                  <ul className="space-y-0.5">
-                    {files.map((file: string, idx: number) => (
-                      <li key={idx} className="text-sm font-mono text-foreground bg-muted/30 px-2 py-1 rounded">
-                        {file}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              </div>
-            );
-          }
-          break;
-          
         case 'extended_path_finder':
-          // Parse standardized format from backend (files, count, summary, metadata)  
-          if (response.files || response.directories) {
-            const files = response.files || [];
-            const directories = response.directories || [];
-            const count = response.count || files.length;
-            const summary = response.summary;
-            const metadata = response.metadata;
-            
-            return (
-              <div className="space-y-3">
-                <div className="flex items-center gap-2">
-                  <div className="text-sm font-medium">Found Paths</div>
-                  <div className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded">
-                    {count} total
-                  </div>
-                  {metadata?.verifiedCount !== undefined && (
-                    <div className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded">
-                      {metadata.verifiedCount} verified
-                    </div>
-                  )}
-                  {metadata?.unverifiedCount !== undefined && (
-                    <div className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded">
-                      {metadata.unverifiedCount} unverified
-                    </div>
-                  )}
-                </div>
-                
-                {summary && (
-                  <div className="text-sm text-muted-foreground bg-muted/50 p-2 rounded">
-                    {summary}
-                  </div>
-                )}
-                
-                <div className="max-h-64 overflow-y-auto space-y-3">
-                  {directories.length > 0 && (
-                    <div>
-                      <div className="text-sm font-medium text-muted-foreground mb-2">
-                        Directories ({directories.length})
-                      </div>
-                      <ul className="space-y-0.5">
-                        {directories.map((dir: string, idx: number) => (
-                          <li key={idx} className="text-sm font-mono text-foreground bg-muted/30 px-2 py-1 rounded">
-                            {dir}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                  
-                  {files.length > 0 && (
-                    <div>
-                      <div className="text-sm font-medium text-muted-foreground mb-2">
-                        Files ({files.length})
-                      </div>
-                      <ul className="space-y-0.5">
-                        {files.map((file: string, idx: number) => (
-                          <li key={idx} className="text-sm font-mono text-foreground bg-muted/30 px-2 py-1 rounded">
-                            {file}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                </div>
-              </div>
-            );
-          }
-          break;
-          
         case 'path_correction':
-          // Parse PathCorrectionResponse
-          if (response.correctedPaths) {
+          if (response.files && Array.isArray(response.files)) {
             return (
               <div className="space-y-2">
-                <div className="text-sm font-medium">Corrected Paths ({response.correctedPaths.length}):</div>
-                <ul className="list-disc list-inside space-y-1">
-                  {response.correctedPaths.map((path: string, idx: number) => (
-                    <li key={idx} className="text-sm">{path}</li>
+                <div className="font-semibold">{response.summary || `${response.count || 0} files found`}</div>
+                <div className="max-h-96 overflow-y-auto space-y-1">
+                  {response.files.map((file: string, index: number) => (
+                    <div key={index} className="text-sm font-mono bg-muted p-2 rounded">
+                      {file}
+                    </div>
                   ))}
-                </ul>
-                {response.summary && (
-                  <div className="mt-4">
-                    <div className="text-sm font-medium">Summary:</div>
-                    <p className="text-sm text-muted-foreground">{response.summary}</p>
-                  </div>
-                )}
+                </div>
               </div>
             );
           }
@@ -416,21 +292,15 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
         }
           
         case 'task_refinement':
-          // Parse TaskRefinementResponse
-          if (response.refinedTask || response.analysis) {
+          if (response.refinedTask) {
             return (
               <div className="space-y-4">
+                <div>
+                  <div className="font-semibold mb-2">Refined Task:</div>
+                  <div className="whitespace-pre-wrap">{response.refinedTask}</div>
+                </div>
                 {response.analysis && (
-                  <div>
-                    <div className="text-sm font-medium">Analysis:</div>
-                    <p className="text-sm text-muted-foreground">{response.analysis}</p>
-                  </div>
-                )}
-                {response.refinedTask && (
-                  <div>
-                    <div className="text-sm font-medium">Refined Task:</div>
-                    <p className="text-sm">{response.refinedTask}</p>
-                  </div>
+                  <div className="text-sm text-muted-foreground">{response.analysis}</div>
                 )}
               </div>
             );
@@ -488,25 +358,25 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
       <DialogContent className="max-w-6xl h-[95vh] !flex !flex-col !gap-0 text-foreground !bg-background rounded-xl shadow-lg !backdrop-blur-none">
         <DialogHeader>
           <DialogTitle
-            className={`${displayJob.taskType === "implementation_plan" ? "text-xl" : ""} text-foreground`}
+            className={`${displayJob?.taskType === "implementation_plan" ? "text-xl" : ""} text-foreground`}
           >
             {(() => {
               const parsedMeta = contextValue.parsedMetadata;
 
               if (
-                displayJob.taskType === "implementation_plan" &&
+                displayJob?.taskType === "implementation_plan" &&
                 parsedMeta?.taskData?.showPureContent === true
               ) {
                 return (
                   <div className="flex items-center gap-2">
                     <span>Implementation Plan Content</span>
-                    {(displayJob.status === "running" || displayJob.status === "processingStream") && parsedMeta?.taskData?.isStreaming && (
+                    {(displayJob?.status === "running" || displayJob?.status === "processingStream") && parsedMeta?.taskData?.isStreaming && (
                       <Loader2 className="h-4 w-4 animate-spin text-primary" />
                     )}
                   </div>
                 );
               } else if (
-                displayJob.taskType === "implementation_plan" &&
+                displayJob?.taskType === "implementation_plan" &&
                 parsedMeta?.taskData?.sessionName
               ) {
                 return <>Implementation Plan: {parsedMeta.taskData.sessionName}</>;
@@ -520,22 +390,22 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
               const parsedMeta = contextValue.parsedMetadata;
 
               if (parsedMeta?.taskData?.showPureContent === true) {
-                if ((displayJob.status === "running" || displayJob.status === "processingStream") && parsedMeta?.taskData?.isStreaming) {
+                if ((displayJob?.status === "running" || displayJob?.status === "processingStream") && parsedMeta?.taskData?.isStreaming) {
                   return <>Live updates in progress</>;
                 } else {
                   return <>Content View</>;
                 }
               } else {
-                return <>Details for job ID: {displayJob.id}</>;
+                return <>Details for job ID: {displayJob?.id}</>;
               }
             })()}
           </DialogDescription>
         </DialogHeader>
         {isLoadingFullDetails && (
-          <div className="absolute inset-0 bg-background/50 backdrop-blur-sm flex items-center justify-center z-10">
-            <div className="flex flex-col items-center gap-2">
-              <Loader2 className="h-8 w-8 animate-spin text-primary" />
-              <p className="text-sm text-muted-foreground">Loading job details...</p>
+          <div className="absolute inset-0 bg-background/80 flex items-center justify-center z-50">
+            <div className="flex items-center gap-2">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <span>Loading job details...</span>
             </div>
           </div>
         )}
@@ -546,26 +416,46 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
           >
             {/* Main job information cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <JobDetailsStatusSection />
-              <JobDetailsModelConfigSection />
+              <Suspense fallback={<SectionLoader />}>
+                <JobDetailsStatusSection />
+              </Suspense>
+              <Suspense fallback={<SectionLoader />}>
+                <JobDetailsModelConfigSection />
+              </Suspense>
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <JobDetailsTimingSection />
-              <JobDetailsCostUsageSection />
+              <Suspense fallback={<SectionLoader />}>
+                <JobDetailsTimingSection />
+              </Suspense>
+              <Suspense fallback={<SectionLoader />}>
+                <JobDetailsCostUsageSection />
+              </Suspense>
             </div>
 
-            <JobDetailsSystemPromptSection />
+            <Suspense fallback={<SectionLoader />}>
+              <JobDetailsSystemPromptSection />
+            </Suspense>
 
-            <JobDetailsAdditionalInfoSection />
+            <Suspense fallback={<SectionLoader />}>
+              <JobDetailsAdditionalInfoSection />
+            </Suspense>
             
-            <JobDetailsErrorSection />
+            <Suspense fallback={<SectionLoader />}>
+              <JobDetailsErrorSection />
+            </Suspense>
             
             {/* Content sections */}
             <div className="space-y-4">
-              <JobDetailsPromptSection />
-              <JobDetailsResponseSection />
-              <JobDetailsMetadataSection />
+              <Suspense fallback={<SectionLoader />}>
+                <JobDetailsPromptSection />
+              </Suspense>
+              <Suspense fallback={<SectionLoader />}>
+                <JobDetailsResponseSection />
+              </Suspense>
+              <Suspense fallback={<SectionLoader />}>
+                <JobDetailsMetadataSection />
+              </Suspense>
             </div>
           </div>
         </JobDetailsContextProvider>

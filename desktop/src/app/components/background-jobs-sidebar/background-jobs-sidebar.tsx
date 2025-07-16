@@ -8,6 +8,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/ui/collap
 import { getSidebarStyle } from "@/utils/ui-utils";
 import { type BackgroundJob } from "@/types/session-types";
 import { useSessionStateContext, useSessionActionsContext } from "@/contexts/session";
+import { invoke } from '@tauri-apps/api/core';
 
 import { JobContent } from "./_components/job-content";
 import { useJobFiltering } from "./hooks/use-job-filtering";
@@ -84,19 +85,31 @@ export const BackgroundJobsSidebar = () => {
       taskDescription: updatedTaskDescription
     });
     
-    console.log(`Applied ${results.length} web search results to task description`);
   }, [currentSession, updateCurrentSessionFields]);
 
   // Function to apply files from job to session
-  const handleApplyFilesFromJob = (job: BackgroundJob) => {
+  const handleApplyFilesFromJob = async (job: BackgroundJob) => {
+    // If response is missing (due to lightweight query), fetch full job data
+    let jobWithResponse = job;
+    if (!job.response && job.status === 'completed') {
+      try {
+        jobWithResponse = await invoke<BackgroundJob>('get_background_job_by_id_command', {
+          jobId: job.id
+        });
+      } catch (error) {
+        console.error('Failed to fetch full job details:', error);
+        return;
+      }
+    }
+
     // Handle web search execution jobs specially
-    if (job.taskType === 'web_search_execution' && job.status === 'completed' && job.response) {
+    if (jobWithResponse.taskType === 'web_search_execution' && jobWithResponse.status === 'completed' && jobWithResponse.response) {
       try {
         let responseData: any;
-        if (typeof job.response === 'string') {
-          responseData = JSON.parse(job.response);
+        if (typeof jobWithResponse.response === 'string') {
+          responseData = JSON.parse(jobWithResponse.response);
         } else {
-          responseData = job.response;
+          responseData = jobWithResponse.response;
         }
         
         // Extract search results and apply them
@@ -114,13 +127,13 @@ export const BackgroundJobsSidebar = () => {
     let paths: string[] = [];
     
     // Use standardized response format from backend
-    if (job.response) {
+    if (jobWithResponse.response) {
       try {
         let response: any;
-        if (typeof job.response === 'string') {
-          response = JSON.parse(job.response);
+        if (typeof jobWithResponse.response === 'string') {
+          response = JSON.parse(jobWithResponse.response);
         } else {
-          response = job.response;
+          response = jobWithResponse.response;
         }
         // Backend standardizes all file-finding responses to have 'files' array
         if (response.files && Array.isArray(response.files)) {
@@ -133,6 +146,7 @@ export const BackgroundJobsSidebar = () => {
     
     if (paths.length > 0) {
       applyFileSelectionUpdate(paths, `job ${job.id}`);
+    } else {
     }
   };
 

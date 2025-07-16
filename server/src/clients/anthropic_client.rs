@@ -15,6 +15,8 @@ use tracing::{debug, info, warn, error, instrument};
 
 use crate::clients::usage_extractor::{ProviderUsage, UsageExtractor};
 use crate::services::model_mapping_service::ModelWithMapping;
+use bigdecimal::BigDecimal;
+use std::str::FromStr;
 
 // Base URL for Anthropic API
 const ANTHROPIC_BASE_URL: &str = "https://api.anthropic.com/v1";
@@ -414,20 +416,34 @@ impl UsageExtractor for AnthropicClient {
             .and_then(|v| v.as_i64())
             .unwrap_or(0) as i32;
         
-        // Calculate prompt_tokens as input_tokens + cache_creation_input_tokens + cache_read_input_tokens
-        let prompt_tokens = input_tokens + cache_creation_input_tokens + cache_read_input_tokens;
+        // Calculate total prompt tokens as sum of all input token types
+        let total_prompt_tokens = input_tokens + cache_creation_input_tokens + cache_read_input_tokens;
         
-        let mut usage = ProviderUsage {
-            prompt_tokens,  // Total of all input tokens
-            completion_tokens: output_tokens,
-            cache_write_tokens: cache_creation_input_tokens,
-            cache_read_tokens: cache_read_input_tokens,
-            model_id: "unknown".to_string(), // Will be set by caller
-            duration_ms: None,
-            cost: None, // Anthropic doesn't provide cost in responses
+        // Extract optional cost field
+        let cost = usage.get("cost")
+            .and_then(|v| v.as_f64())
+            .map(|f| BigDecimal::from_str(&f.to_string()).ok())
+            .flatten();
+        
+        let mut usage = if let Some(cost_val) = cost {
+            ProviderUsage::with_cost(
+                total_prompt_tokens,
+                output_tokens,
+                cache_creation_input_tokens,
+                cache_read_input_tokens,
+                "unknown".to_string(),
+                cost_val
+            )
+        } else {
+            ProviderUsage::new(
+                total_prompt_tokens,
+                output_tokens,
+                cache_creation_input_tokens,
+                cache_read_input_tokens,
+                "unknown".to_string()
+            )
         };
         
-        // Validate usage data before returning
         usage.validate().ok()?;
         
         Some(usage)
@@ -455,20 +471,17 @@ impl UsageExtractor for AnthropicClient {
                     .and_then(|v| v.as_i64())
                     .unwrap_or(0) as i32;
                 
-                // Calculate prompt_tokens as input_tokens + cache_creation_input_tokens + cache_read_input_tokens
-                let prompt_tokens = input_tokens + cache_creation_input_tokens + cache_read_input_tokens;
+                // Calculate total prompt tokens as sum of all input token types
+                let total_prompt_tokens = input_tokens + cache_creation_input_tokens + cache_read_input_tokens;
                 
-                let mut usage = ProviderUsage {
-                    prompt_tokens,  // Total of all input tokens
-                    completion_tokens: output_tokens,
-                    cache_write_tokens: cache_creation_input_tokens,
-                    cache_read_tokens: cache_read_input_tokens,
-                    model_id: "unknown".to_string(), // Will be set by caller
-                    duration_ms: None,
-                    cost: None, // Anthropic doesn't provide cost in responses
-                };
+                let mut usage = ProviderUsage::new(
+                    total_prompt_tokens,
+                    output_tokens,
+                    cache_creation_input_tokens,
+                    cache_read_input_tokens,
+                    "unknown".to_string()
+                );
                 
-                // Validate usage data before returning
                 usage.validate().ok()?;
                 
                 Some(usage)
@@ -487,24 +500,21 @@ impl UsageExtractor for AnthropicClient {
                         .and_then(|v| v.as_i64())
                         .unwrap_or(0) as i32;
                     
-                    // Calculate prompt_tokens as input_tokens + cache_creation_input_tokens + cache_read_input_tokens
-                    let prompt_tokens = input_tokens + cache_creation_input_tokens + cache_read_input_tokens;
+                    // Calculate total prompt tokens as sum of all input token types
+                    let total_prompt_tokens = input_tokens + cache_creation_input_tokens + cache_read_input_tokens;
                     
-                    if prompt_tokens > 0 || output_tokens > 0 {
+                    if input_tokens > 0 || output_tokens > 0 {
                         debug!("Extracted incremental usage from message_delta: input={}, cache_creation={}, cache_read={}, output={}, total_prompt={}", 
-                               input_tokens, cache_creation_input_tokens, cache_read_input_tokens, output_tokens, prompt_tokens);
+                               input_tokens, cache_creation_input_tokens, cache_read_input_tokens, output_tokens, total_prompt_tokens);
                         
-                        let mut usage = ProviderUsage {
-                            prompt_tokens,  // Total of all input tokens
-                            completion_tokens: output_tokens,
-                            cache_write_tokens: cache_creation_input_tokens,
-                            cache_read_tokens: cache_read_input_tokens,
-                            model_id: "unknown".to_string(),
-                            duration_ms: None,
-                            cost: None,
-                        };
+                        let mut usage = ProviderUsage::new(
+                            total_prompt_tokens,
+                            output_tokens,
+                            cache_creation_input_tokens,
+                            cache_read_input_tokens,
+                            "unknown".to_string()
+                        );
                         
-                        // Validate usage data before returning
                         usage.validate().ok()?;
                         
                         return Some(usage);

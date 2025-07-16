@@ -31,10 +31,6 @@ export function useAudioInputDevices() {
           const audioInputs = devices.filter(
             (device) => device.kind === "audioinput"
           );
-          // eslint-disable-next-line no-console
-          console.log(
-            `[AudioDevices] Found ${audioInputs.length} audio input devices`
-          );
           setAvailableAudioInputs(audioInputs);
         } catch (error) {
           console.error("[AudioDevices] Error enumerating media devices:", error);
@@ -50,8 +46,6 @@ export function useAudioInputDevices() {
 
   // Function to select audio input device
   const selectAudioInput = useCallback((deviceId: string) => {
-    // eslint-disable-next-line no-console
-    console.log(`[AudioDevices] Selecting audio input device: ${deviceId}`);
     setSelectedAudioInputId(deviceId);
     
     // Save to localStorage
@@ -76,13 +70,6 @@ export function useAudioInputDevices() {
           (device) => device.kind === "audioinput"
         );
 
-        // Log detailed device information for debugging
-        audioInputs.forEach((device, idx) => {
-          // eslint-disable-next-line no-console
-          console.log(
-            `[AudioDevices] Device ${idx}: ID=${device.deviceId}, Label=${device.label}`
-          );
-        });
 
         // Check if the selected device is still available
         const isSelectedDeviceAvailable = audioInputs.some(
@@ -142,7 +129,6 @@ export function useAudioInputDevices() {
 
       if (!isSelectedDeviceAvailable) {
         // Saved device is no longer available, fall back to default
-        console.log(`[AudioDevices] Saved device ${selectedAudioInputId} no longer available, falling back to default`);
         setSelectedAudioInputId("default");
         if (typeof window !== 'undefined') {
           try {
@@ -152,7 +138,6 @@ export function useAudioInputDevices() {
           }
         }
       } else {
-        console.log(`[AudioDevices] Restored saved device: ${selectedAudioInputId}`);
       }
     }
   }, [availableAudioInputs, selectedAudioInputId]);
@@ -178,7 +163,6 @@ export function useAudioInputDevices() {
       stream.getTracks().forEach(track => track.stop());
       
       // eslint-disable-next-line no-console
-      console.log("[AudioDevices] Microphone permission granted, refreshing device list");
       
       // Refresh the device list to get proper labels
       await refreshDeviceList();

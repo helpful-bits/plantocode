@@ -34,7 +34,7 @@ Return the final list using the same formatting rules described above.', 'Enhanc
 
 ('default_text_improvement', 'text_improvement', 'Please improve the following text to make it clearer and grammatically correct while EXACTLY preserving its formatting style, including:
 - All line breaks
-- All indentation  
+- All indentation
 - All bullet points and numbering
 - All blank lines
 - All special characters and symbols
@@ -178,14 +178,14 @@ Analyze the task and create an ARRAY of targeted pattern groups. Each group shou
 
 ## STRATEGY:
 1. **Decompose** the task into logical functionality areas
-2. **Create focused groups** - each targeting specific file types/functionality  
+2. **Create focused groups** - each targeting specific file types/functionality
 3. **Use precise patterns** - narrow and specific within each group
 4. **Path-based exclusion** - exclude irrelevant file paths per group
 
 ## PATTERN GROUP RULES:
 - **Title**: Clear description of what this group targets
 - **Path Pattern**: Specific file paths/directories for this functionality
-- **Content Pattern**: Specific code keywords/functions for this functionality  
+- **Content Pattern**: Specific code keywords/functions for this functionality
 - **Negative Path Pattern**: Exclude file paths not relevant to this group
 - **Focus**: Each group should have a clear, narrow purpose
 
@@ -205,7 +205,7 @@ Analyze the task and create an ARRAY of targeted pattern groups. Each group shou
       "negativePathPattern": "(test|spec|story|mock)"
     },
     {
-      "title": "Auth API Routes", 
+      "title": "Auth API Routes",
       "pathPattern": ".*/api/.*auth.*\\.(js|ts)$",
       "contentPattern": "(router\\.|app\\.(get|post)|express|fastify)",
       "negativePathPattern": "(test|spec|mock)"
@@ -259,7 +259,7 @@ Respond directly to the user''s request with helpful and accurate information.',
 
 Your role is to:
 - Analyze file paths and contents to determine relevance
-- Apply filtering criteria to include/exclude files appropriately  
+- Apply filtering criteria to include/exclude files appropriately
 - Focus on files that are directly related to the task requirements
 - Consider file types, naming patterns, and content relevance
 - Provide a focused list of files that will be most useful
@@ -295,7 +295,7 @@ Respond ONLY with the list of relevant file paths from the provided list, one pe
 
 YOU ARE FORBIDDEN FROM:
 - Writing any implementation code or solutions
-- Providing fixes, patches, or step-by-step instructions  
+- Providing fixes, patches, or step-by-step instructions
 - Explaining how to solve problems
 - Outputting ANYTHING except XML research prompts
 
@@ -303,12 +303,12 @@ YOUR ONLY JOB: Generate XML prompts that will be used to search the web for API/
 
 # YOUR TASK
 
-1. **FIRST: Read the user's task description carefully** - This is provided in <task> tags
+1. **FIRST: Read the user''s task description carefully** - This is provided in <task> tags
 2. **Understand what the user wants to accomplish** - This is your primary focus
-3. **THEN: Analyze the codebase** - Look for APIs/libraries relevant to the user's goal
-4. **Generate research prompts** - ONLY for external APIs/libraries that help achieve the user's task
+3. **THEN: Analyze the codebase** - Look for APIs/libraries relevant to the user''s goal
+4. **Generate research prompts** - ONLY for external APIs/libraries that help achieve the user''s task
 
-The user's task description is the MOST IMPORTANT input. Everything else is context.
+The user''s task description is the MOST IMPORTANT input. Everything else is context.
 
 {{DIRECTORY_TREE}}
 
@@ -323,10 +323,10 @@ Generate ONLY this format (no other text allowed):
     <![CDATA[
     Task: [What user wants to do]
     Relevant API/Library: [Name of external API/library]
-    Current usage in code: [Brief mention of how it''s used]
+    Current implementation: [Include relevant code snippets showing how this API/library is currently used in the codebase, including key method calls, configurations, error handling, and any patterns that need verification or improvement]
     ]]>
   </context>
-  
+
   <search_query>
     <![CDATA[
     [Specific question about the API/library that needs verification or learning]
@@ -367,7 +367,7 @@ When you receive an `<integration_research>` prompt:
 ### Step 1: Installation & Dependencies
 [Exact commands and dependency additions for their architecture]
 
-### Step 2: Configuration Setup  
+### Step 2: Configuration Setup
 [Configuration files, environment variables, initialization code]
 
 ### Step 3: Code Integration
@@ -481,6 +481,17 @@ Remember: The goal is to create a PERFECT implementation plan that:
 - Provides the most comprehensive approach to solving the task
 - Leaves no stone unturned in addressing the requirements
 
+# STRICT OUTPUT RULES
+
+YOU ARE FORBIDDEN FROM:
+- Writing any explanatory text outside the XML block
+- Providing commentary before or after the implementation plan
+- Outputting ANYTHING except the XML implementation plan
+- Adding introductory phrases like "Here is the merged plan:" or "I will now create..."
+- Including any markdown formatting outside the XML
+
+YOUR ONLY JOB: Generate a single, valid <implementation_plan> XML block that contains the merged plan.
+
 You MUST output your response as a single, valid <implementation_plan> XML block that strictly follows this format:
 
 <implementation_plan>
@@ -520,3 +531,4 @@ ON CONFLICT (task_type) DO UPDATE SET
   description = EXCLUDED.description,
   version = EXCLUDED.version,
   updated_at = NOW();
+'''''''''''

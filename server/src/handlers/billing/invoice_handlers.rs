@@ -11,7 +11,7 @@ use crate::services::billing_service::BillingService;
 #[derive(Debug, Deserialize)]
 pub struct InvoiceQueryParams {
     pub limit: Option<i32>,
-    pub offset: Option<i32>,
+    pub starting_after: Option<String>,
 }
 
 #[get("/invoices")]
@@ -22,12 +22,11 @@ pub async fn list_invoices(
 ) -> Result<HttpResponse, AppError> {
     // Validate and sanitize pagination parameters
     let limit = query.limit.unwrap_or(50).clamp(1, 100); // Limit between 1 and 100
-    let offset = query.offset.unwrap_or(0).max(0); // Ensure non-negative offset
     
-    debug!("Listing invoices for user {} with limit: {}, offset: {}", user.user_id, limit, offset);
+    debug!("Listing invoices for user {} with limit: {}, starting_after: {:?}", user.user_id, limit, query.starting_after);
     
     let response = billing_service
-        .list_invoices_for_user(user.user_id, limit, offset)
+        .list_invoices_for_user(user.user_id, limit, query.starting_after.clone())
         .await?;
     
     info!("Successfully retrieved {} invoices for user {}", response.invoices.len(), user.user_id);

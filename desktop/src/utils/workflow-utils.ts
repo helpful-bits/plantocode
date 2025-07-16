@@ -129,7 +129,6 @@ export class WorkflowTracker {
       throw new Error('WorkflowTracker has been destroyed');
     }
 
-    console.log(`Initiating cancellation for workflow: ${this.workflowId}`);
     
     try {
       const { cancelWorkflowAction } = await import("@/actions/workflows/workflow.actions");
@@ -282,7 +281,7 @@ export class WorkflowTracker {
           const stageEvent = event.payload;
           if (stageEvent.workflowId === this.workflowId) {
             // Update our internal state based on stage event
-            this.handleStageEvent(stageEvent);
+            this.handleStageEvent();
           }
         }
       );
@@ -386,16 +385,9 @@ export class WorkflowTracker {
   }
 
   
-  private handleStageEvent(event: WorkflowStageEvent): void {
+  private handleStageEvent(): void {
     // Update internal state based on stage events
     // Since polling is disabled, we rely entirely on events for state updates
-    console.debug('Stage event received:', {
-      workflowId: event.workflowId,
-      stage: event.stage,
-      jobId: event.jobId,
-      status: event.status,
-      message: event.message
-    });
     
     // NOTE: We no longer fetch fresh status since polling is disabled
     // The status events provide comprehensive workflow state updates
@@ -718,6 +710,5 @@ export async function createWorkflowTracker(
   
   // Event-based updates will handle workflow state changes
   // Note: getStatus() calls may fail for completed workflows due to cleanup
-  console.debug(`Created workflow tracker for ${workflowId} - using event-based updates only`);
   return tracker;
 }

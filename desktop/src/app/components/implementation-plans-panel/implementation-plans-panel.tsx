@@ -23,6 +23,7 @@ import { ModelSelectorToggle } from "./_components/ModelSelectorToggle";
 import { setProjectTaskSetting } from "@/actions/project-settings.actions";
 import { type ModelInfo } from "@/types/config-types";
 import { getProjectTaskModelSettings } from "@/actions/project-settings.actions";
+import { getBackgroundJobAction } from "@/actions/background-jobs/jobs.actions";
 import {
   Card,
 } from "@/ui/card";
@@ -142,10 +143,15 @@ export function ImplementationPlansPanel({
   // Preloaded prompt content state
   const [preloadedPromptContent, setPreloadedPromptContent] = useState<string | null>(null);
   const [isPreloadingPrompt, setIsPreloadingPrompt] = useState(false);
+  
+  // Preloaded plan content state for copy buttons
+  const [preloadedPlanContent, setPreloadedPlanContent] = useState<Record<string, string>>({});
+  const [isPreloadingPlan, setIsPreloadingPlan] = useState<Record<string, boolean>>({});
 
   // Clear preloaded content when dependencies change
   useEffect(() => {
     setPreloadedPromptContent(null);
+    setPreloadedPlanContent({});
   }, [taskDescription, currentSession?.taskDescription, includedPaths, sessionId, projectDirectory]);
 
   // Validation for create functionality
@@ -202,11 +208,46 @@ export function ImplementationPlansPanel({
     loadModelConfig();
   }, [projectDirectory, runtimeConfig]);
   
+  // Handle preload plan content on hover
+  const handlePreloadPlanContent = useCallback(async (plan: BackgroundJob) => {
+    if (isPreloadingPlan[plan.id] || preloadedPlanContent[plan.id]) {
+      return;
+    }
+
+    setIsPreloadingPlan(prev => ({ ...prev, [plan.id]: true }));
+    try {
+      const fullJobResult = await getBackgroundJobAction(plan.id);
+      
+      if (fullJobResult.isSuccess && fullJobResult.data) {
+        const fullPlan = fullJobResult.data.response || '';
+        const parsedPlanContent = parsePlanResponseContent(normalizeJobResponse(fullPlan).content);
+        setPreloadedPlanContent(prev => ({ ...prev, [plan.id]: parsedPlanContent }));
+      }
+    } catch (error) {
+      console.error('Failed to preload plan content:', error);
+    } finally {
+      setIsPreloadingPlan(prev => ({ ...prev, [plan.id]: false }));
+    }
+  }, [isPreloadingPlan, preloadedPlanContent]);
+
   // Handle copy button click
   const handleCopyButtonClick = useCallback(async (buttonConfig: CopyButtonConfig, plan: BackgroundJob) => {
     try {
-      const fullPlan = plan.response || '';
-      const parsedPlanContent = parsePlanResponseContent(normalizeJobResponse(fullPlan).content);
+      // Use preloaded content if available, otherwise fetch it
+      let parsedPlanContent = preloadedPlanContent[plan.id];
+      
+      if (!parsedPlanContent) {
+        // Fallback to fetching if not preloaded
+        const fullJobResult = await getBackgroundJobAction(plan.id);
+        
+        if (!fullJobResult.isSuccess || !fullJobResult.data) {
+          throw new Error(fullJobResult.message || 'Failed to fetch full job details');
+        }
+        
+        const fullPlan = fullJobResult.data.response || '';
+        parsedPlanContent = parsePlanResponseContent(normalizeJobResponse(fullPlan).content);
+      }
+      
       const data = {
         IMPLEMENTATION_PLAN: parsedPlanContent,
         STEP_CONTENT: selectedStepNumber ? getContentForStep(parsedPlanContent, selectedStepNumber) : ''
@@ -230,7 +271,7 @@ export function ImplementationPlansPanel({
         duration: 3000,
       });
     }
-  }, [selectedStepNumber, showNotification]);
+  }, [selectedStepNumber, showNotification, preloadedPlanContent]);
 
   // Token estimation effect
   useEffect(() => {
@@ -250,7 +291,6 @@ export function ImplementationPlansPanel({
           taskDescription: finalTaskDescription,
           projectDirectory: projectDirectory!,
           relevantFiles: finalIncludedPaths,
-          projectStructure: undefined,
           taskType: "implementation_plan",
         });
 
@@ -295,7 +335,6 @@ export function ImplementationPlansPanel({
         taskDescription: finalTaskDescription,
         projectDirectory: projectDirectory!,
         relevantFiles: finalIncludedPaths,
-        projectStructure: undefined, // Could be enhanced later
       });
     } catch (error) {
       showNotification({
@@ -323,7 +362,6 @@ export function ImplementationPlansPanel({
         taskDescription: finalTaskDescription,
         projectDirectory: projectDirectory!,
         relevantFiles: finalIncludedPaths,
-        projectStructure: undefined,
         taskType: "implementation_plan"
       });
 
@@ -371,7 +409,6 @@ export function ImplementationPlansPanel({
         taskDescription: finalTaskDescription,
         projectDirectory: projectDirectory!,
         relevantFiles: finalIncludedPaths,
-        projectStructure: undefined,
         taskType: "implementation_plan"
       });
 
@@ -452,6 +489,9 @@ export function ImplementationPlansPanel({
       ? "Started!"
       : "Create Implementation Plan";
 
+  // Derive max output tokens from runtime config
+  const maxOutputTokens = runtimeConfig?.tasks?.implementationPlan?.maxTokens;
+
   return (
     <div className="space-y-4 p-4">
       <header className="flex justify-between items-center mb-4">
@@ -462,6 +502,8 @@ export function ImplementationPlansPanel({
               models={allowedModelsForPlan}
               selectedModelId={selectedModelId}
               onSelect={handleModelSelect}
+              estimatedTokens={estimatedTokens}
+              maxOutputTokens={maxOutputTokens}
             />
           )}
         </div>
@@ -631,6 +673,7 @@ export function ImplementationPlansPanel({
                 isDeleting={isDeleting[plan.id] || false}
                 copyButtons={implementationPlanSettings || []}
                 onCopyButtonClick={(buttonConfig) => handleCopyButtonClick(buttonConfig, plan)}
+                onPreloadPlanContent={() => handlePreloadPlanContent(plan)}
                 isSelected={selectedPlanIds.includes(plan.id)}
                 onToggleSelection={handleTogglePlanSelection}
               />
@@ -662,7 +705,6 @@ export function ImplementationPlansPanel({
           selectedStepNumber={selectedStepNumber}
           onStepSelect={setSelectedStepNumber}
           copyButtons={implementationPlanSettings || []}
-          onCopyButtonClick={(buttonConfig) => handleCopyButtonClick(buttonConfig, livePlanForModal)}
           // Navigation props
           currentIndex={currentPlanIndex}
           totalPlans={implementationPlans.length}
