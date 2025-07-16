@@ -26,3 +26,11 @@ pub const INVOICE_STATUS_PAID: &str = "paid";
 pub const INVOICE_STATUS_UNCOLLECTIBLE: &str = "uncollectible";
 pub const INVOICE_STATUS_VOID: &str = "void";
 
+// Webhook Event Types
+pub const EVENT_PAYMENT_INTENT_SUCCEEDED: &str = "payment_intent.succeeded";
+pub const EVENT_INVOICE_PAYMENT_SUCCEEDED: &str = "invoice.payment_succeeded";
+pub const EVENT_PAYMENT_METHOD_ATTACHED: &str = "payment_method.attached";
+pub const EVENT_PAYMENT_METHOD_DETACHED: &str = "payment_method.detached";
+pub const EVENT_CUSTOMER_DEFAULT_SOURCE_UPDATED: &str = "customer.default_source_updated";
+pub const EVENT_CHECKOUT_SESSION_COMPLETED: &str = "checkout.session.completed";
+

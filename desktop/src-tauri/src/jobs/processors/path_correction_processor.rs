@@ -149,7 +149,6 @@ impl JobProcessor for PathCorrectionProcessor {
                 // Primary parsing: XML output (as expected by system prompt)
                 let corrected_paths = match Self::parse_corrected_paths(content) {
                     Ok((paths, _)) => {
-                        info!("Successfully parsed {} paths using XML parsing", paths.len());
                         paths
                     },
                     Err(e) => {
@@ -157,7 +156,6 @@ impl JobProcessor for PathCorrectionProcessor {
                         // Fallback to plain text parsing for robustness
                         match parsing_utils::parse_paths_from_text_response(content, project_directory) {
                             Ok(paths) => {
-                                info!("Successfully parsed {} paths using plain text fallback", paths.len());
                                 paths
                             },
                             Err(_) => {
@@ -169,9 +167,10 @@ impl JobProcessor for PathCorrectionProcessor {
                 };
                 
                 // Create JSON response object
-                let json_response_obj = serde_json::json!({ 
-                    "correctedPaths": corrected_paths, 
-                    "count": corrected_paths.len() 
+                let json_response_obj = serde_json::json!({
+                    "files": corrected_paths,
+                    "count": corrected_paths.len(),
+                    "summary": format!("{} corrected path(s) found", corrected_paths.len())
                 });
                 let json_response_str = json_response_obj.to_string();
                 
@@ -186,7 +185,6 @@ impl JobProcessor for PathCorrectionProcessor {
                     "parsedCorrections": detailed_metadata
                 });
                 
-                info!("Path correction completed: {} paths corrected", corrected_paths.len());
                 debug!("Corrected paths: {:?}", corrected_paths);
                 
                 // Extract system prompt template and cost

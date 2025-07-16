@@ -13,6 +13,7 @@ use log::{error, info, warn};
 use chrono::Utc;
 use bigdecimal::{BigDecimal, ToPrimitive, FromPrimitive};
 use crate::stripe_types::*;
+use crate::stripe_types::enums::*;
 use serde::{Deserialize, Serialize};
 
 
@@ -211,7 +212,7 @@ async fn process_stripe_webhook_event(
     info!("Processing Stripe webhook event {} of type {}", event.id, event.type_);
 
     match event.type_.as_str() {
-        "payment_intent.succeeded" => {
+        EVENT_PAYMENT_INTENT_SUCCEEDED => {
             info!("Processing payment intent succeeded: {}", event.id);
             // Parse payment intent from event data
             let payment_intent: PaymentIntent = serde_json::from_value(event.data["object"].clone())
@@ -296,31 +297,31 @@ async fn process_stripe_webhook_event(
                 }
             }
         },
-        "invoice.payment_succeeded" => {
+        EVENT_INVOICE_PAYMENT_SUCCEEDED => {
             info!("Processing invoice.payment_succeeded for event {}", event.id);
             let invoice: Invoice = serde_json::from_value(event.data["object"].clone())
                 .map_err(|e| AppError::InvalidArgument(format!("Failed to parse invoice: {}", e)))?;
             handle_invoice_payment_succeeded(&invoice, billing_service).await?;
         },
-        "payment_method.attached" => {
+        EVENT_PAYMENT_METHOD_ATTACHED => {
             info!("Processing payment method attached: {}", event.id);
             let payment_method: PaymentMethod = serde_json::from_value(event.data["object"].clone())
                 .map_err(|e| AppError::InvalidArgument(format!("Failed to parse payment method: {}", e)))?;
             handle_payment_method_attached(&payment_method, billing_service).await?;
         },
-        "payment_method.detached" => {
+        EVENT_PAYMENT_METHOD_DETACHED => {
             info!("Processing payment method detached: {}", event.id);
             let payment_method: PaymentMethod = serde_json::from_value(event.data["object"].clone())
                 .map_err(|e| AppError::InvalidArgument(format!("Failed to parse payment method: {}", e)))?;
             handle_payment_method_detached(&payment_method, billing_service).await?;
         },
-        "customer.default_source_updated" => {
+        EVENT_CUSTOMER_DEFAULT_SOURCE_UPDATED => {
             info!("Processing customer default source updated: {}", event.id);
             let customer: Customer = serde_json::from_value(event.data["object"].clone())
                 .map_err(|e| AppError::InvalidArgument(format!("Failed to parse customer: {}", e)))?;
             handle_customer_default_source_updated(&customer, billing_service).await?;
         },
-        "checkout.session.completed" => {
+        EVENT_CHECKOUT_SESSION_COMPLETED => {
             info!("Processing checkout session completed: {}", event.id);
             let session: CheckoutSession = serde_json::from_value(event.data["object"].clone())
                 .map_err(|e| AppError::InvalidArgument(format!("Failed to parse checkout session: {}", e)))?;
@@ -897,6 +898,8 @@ fn is_permanent_error(error: &AppError) -> bool {
         AppError::Database(msg) if msg.contains("not found") => true,
         // Configuration errors are typically permanent
         AppError::Configuration(_) => true,
+        // AlreadyExists errors (like duplicate stripe_charge_id) are permanent but should be treated as success
+        AppError::AlreadyExists(_) => true,
         // Temporary database issues should be retried
         AppError::Database(_) => false,
         // Network and timeout issues should be retried (External is used for network errors)

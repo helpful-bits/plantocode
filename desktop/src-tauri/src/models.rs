@@ -737,16 +737,15 @@ pub struct ListInvoicesResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct FinalCostResponse {
+    pub status: String,
     pub request_id: String,
-    pub provider: String,
-    pub model: String,
-    pub tokens_input: i64,
-    pub tokens_output: i64,
-    pub cache_read_tokens: Option<i64>,
+    pub final_cost: Option<f64>,
+    pub tokens_input: Option<i64>,
+    pub tokens_output: Option<i64>,
     pub cache_write_tokens: Option<i64>,
-    pub final_cost: f64,
-    pub timestamp: chrono::DateTime<chrono::Utc>,
+    pub cache_read_tokens: Option<i64>,
     pub user_id: uuid::Uuid,
     pub service_name: String,
 }

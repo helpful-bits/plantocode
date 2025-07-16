@@ -97,6 +97,9 @@ impl CreditService {
             .await
             .map_err(|e| AppError::Database(format!("Failed to set user context: {}", e)))?;
         
+        // Validate estimated cost using financial validation utility
+        validate_credit_adjustment_amount(&estimated_cost)?;
+        
         // Normalize the estimated cost
         let cost = normalize_cost(&estimated_cost);
         
@@ -164,6 +167,9 @@ impl CreditService {
         final_usage: &ProviderUsage,
         tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     ) -> Result<(ApiUsageRecord, UserCredit), AppError> {
+        // Validate final cost using financial validation utility
+        validate_credit_adjustment_amount(&final_cost)?;
+        
         // Normalize the final cost
         let final_cost = normalize_cost(&final_cost);
         
@@ -542,11 +548,11 @@ impl CreditService {
         description: Option<String>,
         metadata: Option<serde_json::Value>,
     ) -> Result<UserCredit, AppError> {
+        // Validate refund amount using financial validation utility
+        validate_credit_refund_amount(amount)?;
+        
         // Normalize amount at entry point
         let amount = normalize_cost(amount);
-        
-        // Validate refund amount using financial validation utility
-        validate_credit_refund_amount(&amount)?;
         
         // Start a database transaction to ensure atomicity
         let pool = self.user_credit_repository.get_pool();
@@ -608,11 +614,11 @@ impl CreditService {
         admin_metadata: Option<serde_json::Value>,
         executor: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     ) -> Result<UserCredit, AppError> {
+        // Validate adjustment amount using financial validation utility
+        validate_credit_adjustment_amount(amount)?;
+        
         // Normalize amount at entry point
         let amount = normalize_cost(amount);
-        
-        // Validate adjustment amount using financial validation utility
-        validate_credit_adjustment_amount(&amount)?;
         
         sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
             .bind(user_id.to_string())
@@ -801,13 +807,16 @@ impl CreditService {
 
         // Commit transaction and handle both constraint violations and serialization failures
         match tx.commit().await {
-            Ok(()) => {},
+            Ok(()) => {
+                info!("Successfully committed credit purchase transaction for user {} via Stripe charge {}", user_id, stripe_charge_id);
+            },
             Err(e) => {
                 // Check if this is a database constraint violation (duplicate key)
                 if let sqlx::Error::Database(db_error) = &e {
                     if db_error.code().as_deref() == Some("23505") { // PostgreSQL unique constraint violation
-                        info!("Credit purchase for stripe charge {} was already recorded (constraint violation)", stripe_charge_id);
-                        return Ok(self.get_user_balance(user_id).await?);
+                        info!("Credit purchase for stripe charge {} was already recorded (duplicate constraint violation), returning success for idempotency", stripe_charge_id);
+                        // Return success with current balance for idempotency - this is the expected behavior for webhook handlers
+                        return Err(AppError::AlreadyExists(format!("Credit purchase for stripe charge {} was already processed", stripe_charge_id)));
                     }
                     // Handle serialization failures that can occur with SERIALIZABLE isolation
                     if db_error.code().as_deref() == Some("40001") { // PostgreSQL serialization failure
@@ -903,169 +912,9 @@ impl CreditService {
     }
 
 
-    /// Record API usage and bill credits atomically in a single transaction
-    pub async fn record_and_bill_usage(&self, entry: ApiUsageEntryDto) -> Result<(ApiUsageRecord, UserCredit), AppError> {
-        // Start transaction
-        let pool = self.user_credit_repository.get_pool();
-        let mut tx = pool.begin().await.map_err(AppError::from)?;
-        
-        let result = self._record_and_bill_in_transaction(entry, &mut tx).await?;
-        
-        // Commit transaction
-        tx.commit().await.map_err(AppError::from)?;
-        
-        Ok(result)
-    }
     
-    /// Record API usage and bill credits with a pre-resolved cost
-    /// This method is used by the billing service after centralized cost resolution
-    pub async fn record_and_bill_usage_with_cost(
-        &self, 
-        entry: ApiUsageEntryDto, 
-        resolved_cost: BigDecimal
-    ) -> Result<(ApiUsageRecord, UserCredit), AppError> {
-        // Start transaction
-        let pool = self.user_credit_repository.get_pool();
-        let mut tx = pool.begin().await.map_err(AppError::from)?;
-        
-        // Delegate to the new centralized billing transaction logic
-        let result = self._bill_usage_with_cost_in_transaction(entry, resolved_cost, &mut tx).await?;
-        
-        // Commit transaction
-        tx.commit().await.map_err(AppError::from)?;
-        
-        Ok(result)
-    }
     
-    /// Private helper for billing with pre-resolved cost within a transaction
-    /// This centralizes the billing transaction logic and makes CostResolver the single source of truth
-    async fn _bill_usage_with_cost_in_transaction(
-        &self,
-        entry: ApiUsageEntryDto,
-        resolved_cost: BigDecimal,
-        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
-    ) -> Result<(ApiUsageRecord, UserCredit), AppError> {
-        // Set user context for RLS policies
-        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
-            .bind(entry.user_id.to_string())
-            .execute(&mut **tx)
-            .await
-            .map_err(|e| AppError::Database(format!("Failed to set user context: {}", e)))?;
-        
-        // Normalize the resolved cost
-        let cost = normalize_cost(&resolved_cost);
-        
-        // Record API usage first
-        let api_usage_record = self.api_usage_repository
-            .record_usage_with_executor(entry, cost.clone(), tx)
-            .await?;
-        
-        // Consume credits with reference to the API usage record
-        let usage_description = format!("{} - {} tokens in, {} tokens out", 
-            api_usage_record.service_name, api_usage_record.tokens_input, api_usage_record.tokens_output);
-        
-        // Ensure user has a credit record within the transaction
-        let current_balance = self.user_credit_repository
-            .ensure_balance_record_exists_with_executor(&api_usage_record.user_id, tx)
-            .await?;
-
-        // Check if user has sufficient total credits (paid + free)
-        let total_available = &current_balance.balance + &current_balance.free_credit_balance;
-        if total_available < cost {
-            return Err(AppError::CreditInsufficient(
-                format!("Insufficient credits. Required: {}, Available: {} (paid) + {} (free)", 
-                        cost, current_balance.balance, current_balance.free_credit_balance)
-            ));
-        }
-
-        // Deduct credits with priority (free first, then paid)
-        let (updated_balance, from_free, from_paid) = self.user_credit_repository
-            .deduct_credits_with_priority(&api_usage_record.user_id, &cost, tx)
-            .await?;
-        
-        let negative_amount = -&cost;
-
-        // Record the consumption transaction within the same transaction
-        let transaction = CreditTransaction {
-            id: Uuid::new_v4(),
-            user_id: api_usage_record.user_id,
-            transaction_type: "consumption".to_string(),
-            net_amount: negative_amount,
-            gross_amount: None,
-            fee_amount: None,
-            currency: "USD".to_string(),
-            description: Some(usage_description),
-            stripe_charge_id: None,
-            related_api_usage_id: api_usage_record.id,
-            metadata: api_usage_record.metadata.clone(),
-            created_at: Some(Utc::now()),
-            balance_after: updated_balance.balance.clone(),
-        };
-
-        let _created_transaction = self.credit_transaction_repository
-            .create_transaction_with_executor(&transaction, &updated_balance.balance, tx)
-            .await?;
-        
-        // Log audit event for credit consumption
-        let audit_context = crate::services::audit_service::AuditContext::new(api_usage_record.user_id);
-        if let Err(audit_error) = self.audit_service.log_credit_consumption(
-            &audit_context,
-            &api_usage_record.user_id,
-            &api_usage_record.service_name,
-            &cost,
-            api_usage_record.tokens_input as i32,
-            api_usage_record.tokens_output as i32,
-            0, // cached_input_tokens - legacy field, use 0
-            api_usage_record.cache_write_tokens as i32,
-            api_usage_record.cache_read_tokens as i32,
-            &current_balance.balance,
-            &updated_balance.balance,
-            api_usage_record.id,
-        ).await {
-            warn!("Failed to log audit event for credit consumption: {}", audit_error);
-        }
-        
-        Ok((api_usage_record, updated_balance))
-    }
     
-    /// Private helper for recording and billing within an existing transaction
-    async fn _record_and_bill_in_transaction(
-        &self,
-        entry: ApiUsageEntryDto,
-        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
-    ) -> Result<(ApiUsageRecord, UserCredit), AppError> {
-        // Extract token counts and provider cost from metadata before moving entry
-        let tokens_input = entry.tokens_input;
-        let cache_write_tokens = entry.cache_write_tokens;
-        let cache_read_tokens = entry.cache_read_tokens;
-        let tokens_output = entry.tokens_output;
-        let model_id = entry.service_name.clone();
-        
-        // Note: This method provides fallback cost resolution for backward compatibility
-        // The preferred entry point is now BillingService.charge_for_api_usage which uses centralized resolution
-        
-        // Get model details for validation
-        let model_with_provider = self.model_repository
-            .find_by_id_with_provider(&model_id)
-            .await?
-            .ok_or_else(|| AppError::NotFound(format!("Model '{}' not found", model_id)))?;
-        
-        // Create ProviderUsage for cost calculation
-        let usage = ProviderUsage::with_total_input(
-            tokens_input as i32,
-            tokens_output as i32,
-            cache_write_tokens as i32,
-            cache_read_tokens as i32,
-            model_id.to_string()
-        );
-        
-        // Calculate cost using model's calculate_total_cost method with full token breakdown
-        let cost = model_with_provider.calculate_total_cost(&usage)
-            .map_err(|e| AppError::InvalidArgument(format!("Cost calculation failed: {}", e)))?;
-        
-        // Delegate to the centralized billing logic with the calculated cost
-        self._bill_usage_with_cost_in_transaction(entry, cost, tx).await
-    }
     
     /// Get access to the credit transaction repository
     pub fn get_credit_transaction_repository(&self) -> &Arc<CreditTransactionRepository> {

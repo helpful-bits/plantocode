@@ -1,10 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
 import Image from 'next/image';
-import { useTheme } from 'next-themes';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
+import { GlassCard } from '@/components/ui/GlassCard';
 
 interface CallToActionProps {
   title: string;
@@ -14,22 +13,22 @@ interface CallToActionProps {
 }
 
 export function CallToAction({ title, description, buttonText, buttonLink }: CallToActionProps) {
-  const [mounted, setMounted] = useState(false);
-  const { resolvedTheme } = useTheme();
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
   return (
     <section className="relative py-20 px-4 overflow-hidden">
       {/* Background image - changes based on theme */}
       <Image
-        src={resolvedTheme === 'dark' ? "/images/features-background-dark.png" : "/images/features-background.png"}
+        src="/images/features-background.png"
         alt="Call to action background"
         fill
         quality={100}
-        className="object-cover object-center z-0"
+        className="object-cover object-center z-0 block dark:hidden"
+      />
+      <Image
+        src="/images/features-background-dark.png"
+        alt="Call to action background"
+        fill
+        quality={100}
+        className="object-cover object-center z-0 hidden dark:block"
       />
       
       {/* Gradient overlay for better text contrast */}
@@ -39,7 +38,7 @@ export function CallToAction({ title, description, buttonText, buttonLink }: Cal
       <div className="absolute inset-x-0 top-0 h-32 z-2 bg-gradient-to-b from-background to-transparent" />
       
       {/* Glass morphism overlay */}
-      <div className="absolute inset-0 z-5 bg-gradient-to-b from-transparent via-background/5 to-background/20 backdrop-blur-[2px]" />
+      <div className="absolute inset-0 z-5 bg-gradient-to-b from-transparent via-background/10 to-transparent backdrop-blur-sm" />
       
       {/* Radial gradient for focus */}
       <div 
@@ -51,29 +50,8 @@ export function CallToAction({ title, description, buttonText, buttonLink }: Cal
       
       <div className="container mx-auto relative z-10">
         <div className="max-w-3xl mx-auto">
-          {/* Glass card for CTA content */}
-          <div className="relative overflow-hidden rounded-3xl">
-            {/* Solid base layer */}
-            <div className="absolute inset-0 bg-white/95 dark:bg-black/85 backdrop-blur-xl backdrop-saturate-150" />
-            
-            {/* Gradient overlay for depth */}
-            <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/10 via-transparent to-teal-500/10" />
-            
-            {/* Glass shine effect */}
-            <div className="absolute inset-[1px] bg-gradient-to-br from-white/40 via-transparent to-transparent rounded-[23px] opacity-40" />
-            
-            {/* Static shimmer effect */}
-            <div className="absolute inset-0 opacity-30">
-              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -skew-x-12 translate-x-12" />
-            </div>
-            
-            {/* Edge highlights */}
-            <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/70 to-transparent" />
-            
-            {/* Border with glow */}
-            <div className="absolute inset-0 rounded-3xl ring-1 ring-emerald-500/30 dark:ring-emerald-400/20" />
-            
-            <div className="relative text-center p-12">
+          <GlassCard highlighted={true}>
+            <div className="text-center p-12">
               <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-4 text-gray-900 dark:text-white">
                 {title}
               </h2>
@@ -101,7 +79,7 @@ export function CallToAction({ title, description, buttonText, buttonLink }: Cal
                 </Button>
               </div>
             </div>
-          </div>
+          </GlassCard>
         </div>
       </div>
     </section>

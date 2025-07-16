@@ -671,6 +671,53 @@ impl ServerProxyClient {
         Ok(cost_response)
     }
 
+    /// Estimate tokens for text using server-side accurate tokenization
+    pub async fn estimate_tokens(
+        &self,
+        model_id: &str,
+        text: &str,
+    ) -> AppResult<u32> {
+        info!("Estimating tokens for model {} via server proxy", model_id);
+        
+        // Get auth token
+        let auth_token = self.get_auth_token().await?;
+        
+        let estimation_url = format!("{}/api/models/estimate-tokens", self.server_url);
+        
+        let request_body = json!({
+            "model": model_id,
+            "text": text
+        });
+        
+        let response = self.http_client
+            .post(&estimation_url)
+            .header("Authorization", format!("Bearer {}", auth_token))
+            .header("Content-Type", "application/json")
+            .header("HTTP-Referer", APP_HTTP_REFERER)
+            .header("X-Title", APP_X_TITLE)
+            .json(&request_body)
+            .send()
+            .await
+            .map_err(|e| AppError::HttpError(e.to_string()))?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_text = response.text().await.unwrap_or_else(|_| "Failed to get error text".to_string());
+            error!("Server proxy token estimation API error: {} - {}", status, error_text);
+            return Err(self.handle_auth_error(status.as_u16(), &error_text).await);
+        }
+
+        let token_response: serde_json::Value = response.json().await
+            .map_err(|e| AppError::ServerProxyError(format!("Failed to parse token estimation response: {}", e)))?;
+
+        let estimated_tokens = token_response.get("estimatedTokens")
+            .and_then(|v| v.as_u64())
+            .ok_or_else(|| AppError::ServerProxyError("Missing or invalid estimatedTokens field".to_string()))? as u32;
+
+        info!("Token estimation through server proxy successful: {} tokens", estimated_tokens);
+        Ok(estimated_tokens)
+    }
+
     /// Estimate costs for multiple models/requests in batch using server-side calculation
     pub async fn estimate_batch_cost(
         &self,
@@ -903,16 +950,34 @@ impl ServerProxyClient {
         let cost_response: crate::models::FinalCostResponse = response.json().await
             .map_err(|e| AppError::ServerProxyError(format!("Failed to parse final cost response: {}", e)))?;
         
+        // Check if the response indicates the cost is still pending
+        if cost_response.status == "pending" {
+            return Ok(None);
+        }
+        
+        // Extract required fields, returning None if essential data is missing
+        let final_cost = cost_response.final_cost.ok_or_else(|| {
+            AppError::ServerProxyError("Final cost not available in response".to_string())
+        })?;
+        
+        let tokens_input = cost_response.tokens_input.ok_or_else(|| {
+            AppError::ServerProxyError("Input tokens not available in response".to_string())
+        })?;
+        
+        let tokens_output = cost_response.tokens_output.ok_or_else(|| {
+            AppError::ServerProxyError("Output tokens not available in response".to_string())
+        })?;
+        
         Ok(Some(crate::models::FinalCostData {
             request_id: cost_response.request_id.clone(),
-            provider: cost_response.provider.clone(),
-            model: cost_response.model.clone(),
-            final_cost: cost_response.final_cost,
-            tokens_input: cost_response.tokens_input,
-            tokens_output: cost_response.tokens_output,
+            provider: cost_response.service_name.clone(), // Map service_name to provider
+            model: "Unknown".to_string(), // Server doesn't provide model info in current response
+            final_cost,
+            tokens_input,
+            tokens_output,
             cache_write_tokens: cost_response.cache_write_tokens,
             cache_read_tokens: cost_response.cache_read_tokens,
-            timestamp: cost_response.timestamp,
+            timestamp: chrono::Utc::now(), // Use current time since server doesn't provide timestamp
         }))
     }
     

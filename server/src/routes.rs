@@ -86,6 +86,7 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig, strict_rate_limiter: RateL
             .route("/by-type/{model_type}", web::get().to(handlers::model_handlers::get_models_by_type))
             .route("/estimate-cost", web::post().to(handlers::model_handlers::estimate_cost))
             .route("/estimate-batch-cost", web::post().to(handlers::model_handlers::estimate_batch_cost))
+            .route("/estimate-tokens", web::post().to(handlers::model_handlers::estimate_tokens_handler))
     );
 
     // LLM proxy routes (/api/llm/*)

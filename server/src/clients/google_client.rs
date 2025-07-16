@@ -682,18 +682,14 @@ impl GoogleClient {
                 .map(|v| v as i32)
                 .unwrap_or(0);
             
-            // Google's promptTokenCount is already the total input tokens
-            let mut usage = ProviderUsage {
+            let mut usage = ProviderUsage::new(
                 prompt_tokens,  // Total input tokens (already includes cached)
                 completion_tokens,  // Total output tokens
-                cache_write_tokens: 0,  // Google doesn't support cache write
-                cache_read_tokens: cached_tokens,
-                model_id: model_id.to_string(),
-                duration_ms: None,
-                cost: None,  // Google doesn't provide cost in responses
-            };
+                0,  // cache_write_tokens should be 0
+                cached_tokens,
+                model_id.to_string()
+            );
             
-            // Validate usage data before returning
             usage.validate().ok()?;
             
             Some(usage)
@@ -707,7 +703,7 @@ impl GoogleClient {
         let usage_metadata = json_value.get("usageMetadata")?;
         
         // Handle Google format: {"promptTokenCount", "candidatesTokenCount", "cachedContentTokenCount"}
-        // IMPORTANT: Google's promptTokenCount is the TOTAL input tokens, not just uncached
+        // promptTokenCount is the total input, and cachedContentTokenCount is the cache read portion
         let prompt_token_count = match usage_metadata.get("promptTokenCount").and_then(|v| v.as_i64()) {
             Some(tokens) => tokens as i32,
             None => {
@@ -729,19 +725,14 @@ impl GoogleClient {
             .and_then(|v| v.as_i64())
             .unwrap_or(0) as i32;
         
-        // Google API's promptTokenCount is already the total input tokens
-        // No need to add cached tokens again
-        let mut usage = ProviderUsage {
-            prompt_tokens: prompt_token_count,  // Total input tokens (already includes cached)
-            completion_tokens: candidates_token_count,
-            cache_write_tokens: 0, // Google doesn't support cache write
-            cache_read_tokens: cached_content_token_count,
-            model_id: model_id.to_string(),
-            duration_ms: None,
-            cost: None, // Google doesn't provide cost in responses
-        };
+        let mut usage = ProviderUsage::new(
+            prompt_token_count,  // Total input tokens (already includes cached)
+            candidates_token_count,
+            0, // cache_write_tokens should be 0
+            cached_content_token_count,
+            model_id.to_string()
+        );
         
-        // Validate usage data before returning
         usage.validate().ok()?;
         
         Some(usage)

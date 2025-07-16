@@ -168,12 +168,10 @@ impl JobProcessor for ImplementationPlanMergeProcessor {
         
         // Check if job has been canceled before calling the LLM
         if job_processor_utils::check_job_canceled(&repo, &job.id).await? {
-            info!("Job {} has been canceled before processing", job.id);
             return Ok(JobProcessResult::canceled(job.id.clone(), "Job was canceled by user".to_string()));
         }
         
         // Execute streaming LLM task using the task runner
-        info!("Calling LLM for implementation plan merge with model {} (streaming enabled)", model_used);
         let llm_result = match task_runner.execute_streaming_llm_task(
             prompt_context,
             &settings_repo,
@@ -188,8 +186,6 @@ impl JobProcessor for ImplementationPlanMergeProcessor {
             }
         };
         
-        info!("Streaming LLM task completed successfully for job {}", job.id);
-        info!("System prompt ID: {}", llm_result.system_prompt_id);
         
         // Use the response from the task runner
         let response_content = llm_result.response.clone();
@@ -203,7 +199,6 @@ impl JobProcessor for ImplementationPlanMergeProcessor {
         
         // Check if job has been canceled after LLM call but before further processing
         if job_processor_utils::check_job_canceled(&repo, &job.id).await? {
-            info!("Job {} has been canceled after LLM call", job.id);
             return Ok(JobProcessResult::canceled(job.id.clone(), "Job was canceled by user".to_string()));
         }
         

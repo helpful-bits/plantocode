@@ -38,7 +38,6 @@ export function BillingProvider({ children }: { children: React.ReactNode }) {
   const fetchBillingData = useCallback(async () => {
     // If there's already an ongoing request, wait for it instead of creating a new one
     if (ongoingRequest.current) {
-      console.log('[BillingContext] Request already in progress, waiting for existing request');
       await ongoingRequest.current;
       return;
     }
@@ -49,7 +48,6 @@ export function BillingProvider({ children }: { children: React.ReactNode }) {
         setIsLoading(true);
         setError(null);
         
-        console.log('[BillingContext] Fetching billing data...');
         
         // Fetch both dashboard data and customer billing info in parallel
         const [dashboardData, customerInfo] = await Promise.all([
@@ -59,7 +57,6 @@ export function BillingProvider({ children }: { children: React.ReactNode }) {
         
         setDashboardData(dashboardData);
         setCustomerBillingInfo(customerInfo);
-        console.log('[BillingContext] Billing data fetched successfully');
       } catch (err) {
         const errorMessage = getErrorMessage(err);
         setError(errorMessage);
@@ -109,7 +106,6 @@ export function BillingProvider({ children }: { children: React.ReactNode }) {
             
             // Only refresh billing data if job reached a terminal state
             if (JOB_STATUSES.TERMINAL.includes(payload.status)) {
-              console.log('[BillingContext] Job reached terminal state, refreshing billing data:', payload);
               await refreshBillingData();
             }
           } catch (err) {
@@ -140,7 +136,6 @@ export function BillingProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const handleBillingDataUpdated = async () => {
       try {
-        console.log('[BillingContext] Received billing-data-updated event, refreshing data');
         await refreshBillingData();
       } catch (err) {
         console.error('[BillingContext] Error processing billing-data-updated event:', err);

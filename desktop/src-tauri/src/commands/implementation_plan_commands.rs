@@ -151,7 +151,6 @@ pub async fn estimate_prompt_tokens_command(
     task_description: String,
     project_directory: String,
     relevant_files: Vec<String>,
-    project_structure: Option<String>,
     app_handle: AppHandle,
 ) -> AppResult<PromptTokenEstimateResponse> {
     info!("Estimating tokens for {} prompt", task_type);
@@ -202,6 +201,16 @@ pub async fn estimate_prompt_tokens_command(
         .filter_map(|result| result)
         .collect();
     
+    let directory_tree = match crate::utils::directory_tree::get_directory_tree_with_defaults(actual_project_directory).await {
+        Ok(tree) => Some(tree),
+        Err(e) => {
+            log::warn!("Failed to generate directory tree for prompt context: {}", e);
+            None
+        }
+    };
+    
+    let model_settings = crate::utils::config_resolver::resolve_model_settings(&app_handle, parsed_task_type, actual_project_directory, None, None, None).await?;
+    
     // Get settings repository for UnifiedPromptProcessor
     let settings_repo = app_handle.state::<Arc<SettingsRepository>>().inner().clone();
     
@@ -211,8 +220,9 @@ pub async fn estimate_prompt_tokens_command(
         parsed_task_type,
         task_description.clone(),
     )
-    .project_structure(project_structure.clone())
+    .directory_tree(directory_tree)
     .file_contents(if file_contents_map.is_empty() { None } else { Some(file_contents_map.clone()) })
+    .model_name(model_settings.map(|settings| settings.0))
     .build();
 
     // Use UnifiedPromptProcessor to generate the complete prompt
@@ -237,7 +247,6 @@ pub async fn get_prompt_command(
     task_description: String,
     project_directory: String,
     relevant_files: Vec<String>,
-    project_structure: Option<String>,
     app_handle: AppHandle,
 ) -> AppResult<PromptResponse> {
     info!("Getting {} prompt for task: {}", task_type, task_description);
@@ -288,6 +297,14 @@ pub async fn get_prompt_command(
         .filter_map(|result| result)
         .collect();
     
+    let directory_tree = match crate::utils::directory_tree::get_directory_tree_with_defaults(actual_project_directory).await {
+        Ok(tree) => Some(tree),
+        Err(e) => {
+            log::warn!("Failed to generate directory tree for prompt context: {}", e);
+            None
+        }
+    };
+    
     // Get settings repository for UnifiedPromptProcessor
     let settings_repo = app_handle.state::<Arc<SettingsRepository>>().inner().clone();
     
@@ -297,7 +314,7 @@ pub async fn get_prompt_command(
         parsed_task_type,
         task_description.clone(),
     )
-    .project_structure(project_structure.clone())
+    .directory_tree(directory_tree)
     .file_contents(if file_contents_map.is_empty() { None } else { Some(file_contents_map.clone()) })
     .build();
 

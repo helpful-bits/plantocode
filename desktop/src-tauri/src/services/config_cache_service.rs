@@ -5,7 +5,7 @@ use std::hash::{Hash, Hasher};
 use serde_json::Value as JsonValue;
 use serde_json::{Map, Value};
 use tauri::{AppHandle, Manager};
-use tracing::{info, error, warn, instrument};
+use tracing::instrument;
 use tokio::time::{interval, Duration};
 use crate::error::AppError;
 use crate::models::{TaskType, RuntimeAIConfig};
@@ -45,7 +45,6 @@ pub type ConfigCache = Arc<Mutex<HashMap<String, JsonValue>>>;
 /// Fetches all server configurations and caches them in Tauri managed state
 #[instrument(skip(app_handle, server_proxy_client))]
 pub async fn fetch_and_cache_server_configurations(app_handle: &AppHandle, server_proxy_client: &ServerProxyClient) -> Result<(), AppError> {
-    info!("Fetching server configurations from API");
     
     // Get the config cache from managed state
     let cache = app_handle.state::<ConfigCache>();
@@ -78,17 +77,14 @@ pub async fn fetch_and_cache_server_configurations(app_handle: &AppHandle, serve
                         }
                     }
                     
-                    info!("Successfully updated {} server configurations", cache_guard.len());
                     Ok(())
                 }
                 Err(e) => {
-                    error!("Failed to acquire cache lock: {}", e);
-                    Err(AppError::ConfigError(format!("Failed to update configuration cache: {}", e)))
+                        Err(AppError::ConfigError(format!("Failed to update configuration cache: {}", e)))
                 }
             }
         }
         Err(e) => {
-            error!("Failed to fetch server configurations: {}", e);
             Err(e)
         }
     }
@@ -102,15 +98,9 @@ pub fn get_cached_config_value(key: &str, app_handle: &AppHandle) -> Option<Json
     match cache.lock() {
         Ok(cache_guard) => {
             let value = cache_guard.get(key).cloned();
-            if value.is_some() {
-                info!("Retrieved cached config value for key: {}", key);
-            } else {
-                warn!("No cached config value found for key: {}", key);
-            }
             value
         }
         Err(e) => {
-            error!("Failed to acquire cache lock when retrieving config for key {}: {}", key, e);
             None
         }
     }
@@ -124,11 +114,9 @@ pub fn get_all_cached_config_values(app_handle: &AppHandle) -> Result<HashMap<St
     match cache.lock() {
         Ok(cache_guard) => {
             let configs = cache_guard.clone();
-            info!("Retrieved {} cached configuration values", configs.len());
             Ok(configs)
         }
         Err(e) => {
-            error!("Failed to acquire cache lock when retrieving all configs: {}", e);
             Err(AppError::InternalError(format!("Failed to retrieve cached configurations: {}", e)))
         }
     }
@@ -138,7 +126,6 @@ pub fn get_all_cached_config_values(app_handle: &AppHandle) -> Result<HashMap<St
 /// Refreshes the configuration cache on demand
 #[instrument(skip(app_handle))]
 pub async fn refresh_config_cache(app_handle: &AppHandle) -> Result<(), AppError> {
-    info!("Refreshing configuration cache");
     
     // Get ServerProxyClient from app state
     let server_proxy_client = app_handle.try_state::<Arc<ServerProxyClient>>()
@@ -150,7 +137,6 @@ pub async fn refresh_config_cache(app_handle: &AppHandle) -> Result<(), AppError
 /// Automatically synchronizes cache with server at 30-second intervals
 #[instrument(skip(app_handle))]
 pub async fn auto_sync_cache_with_server(app_handle: AppHandle) {
-    info!("Starting auto-sync cache service with 30-second intervals");
     
     let mut sync_interval = interval(Duration::from_secs(30));
     
@@ -160,16 +146,12 @@ pub async fn auto_sync_cache_with_server(app_handle: AppHandle) {
         match detect_server_configuration_changes(&app_handle).await {
             Ok(changes_detected) => {
                 if changes_detected {
-                    info!("Server configuration changes detected, refreshing cache");
-                    if let Err(e) = force_cache_refresh_on_mismatch(&app_handle).await {
-                        error!("Failed to refresh cache after detecting changes: {}", e);
+                    if let Err(_) = force_cache_refresh_on_mismatch(&app_handle).await {
+                        // Handle error silently
                     }
-                } else {
-                    info!("No server configuration changes detected");
                 }
             }
             Err(e) => {
-                error!("Failed to detect server configuration changes: {}", e);
             }
         }
     }
@@ -178,7 +160,6 @@ pub async fn auto_sync_cache_with_server(app_handle: AppHandle) {
 /// Detects if server configuration has changed since last cache update
 #[instrument(skip(app_handle))]
 pub async fn detect_server_configuration_changes(app_handle: &AppHandle) -> Result<bool, AppError> {
-    info!("Detecting server configuration changes");
     
     // Get current server configuration hash
     let server_hash = get_server_config_hash(app_handle).await?;
@@ -188,11 +169,6 @@ pub async fn detect_server_configuration_changes(app_handle: &AppHandle) -> Resu
     
     let changes_detected = server_hash != cached_hash;
     
-    if changes_detected {
-        info!("Configuration changes detected - Server hash: {}, Cached hash: {}", server_hash, cached_hash);
-    } else {
-        info!("No configuration changes detected - Hash: {}", server_hash);
-    }
     
     Ok(changes_detected)
 }
@@ -200,20 +176,17 @@ pub async fn detect_server_configuration_changes(app_handle: &AppHandle) -> Resu
 /// Forces cache refresh when configuration mismatch is detected
 #[instrument(skip(app_handle))]
 pub async fn force_cache_refresh_on_mismatch(app_handle: &AppHandle) -> Result<(), AppError> {
-    info!("Forcing cache refresh due to configuration mismatch");
     
     // Fetch fresh configurations from server without clearing existing cache first
     // This ensures critical configurations like runtime_ai_config are never lost
     refresh_config_cache(app_handle).await?;
     
-    info!("Successfully refreshed configuration cache");
     Ok(())
 }
 
 /// Gets hash of current server configuration for change detection
 #[instrument(skip(app_handle))]
 pub async fn get_server_config_hash(app_handle: &AppHandle) -> Result<u64, AppError> {
-    info!("Fetching server configuration hash");
     
     // Get ServerProxyClient from app state
     let server_proxy_client = app_handle.try_state::<Arc<ServerProxyClient>>()
@@ -245,7 +218,6 @@ pub async fn get_server_config_hash(app_handle: &AppHandle) -> Result<u64, AppEr
     }
     
     let hash = hasher.finish();
-    info!("Generated server configuration hash: {}", hash);
     
     Ok(hash)
 }
@@ -280,7 +252,6 @@ pub fn get_cached_config_hash(app_handle: &AppHandle) -> Result<u64, AppError> {
             Ok(hash)
         }
         Err(e) => {
-            error!("Failed to acquire cache lock for hash calculation: {}", e);
             Err(AppError::ConfigError(format!("Failed to calculate cached config hash: {}", e)))
         }
     }
@@ -289,15 +260,12 @@ pub fn get_cached_config_hash(app_handle: &AppHandle) -> Result<u64, AppError> {
 /// Validates runtime configuration before caching - ZERO tolerance for invalid configs
 #[instrument(skip(configurations))]
 pub fn validate_runtime_config_before_cache(configurations: &HashMap<String, JsonValue>) -> Result<(), AppError> {
-    info!("Validating runtime configuration before caching");
     
     // Extract and validate RuntimeAIConfig
     if let Some(config_value) = configurations.get("runtime_ai_config") {
         // Try to deserialize the runtime config
         let runtime_config: RuntimeAIConfig = serde_json::from_value(config_value.clone())
             .map_err(|e| {
-                error!("Failed to deserialize runtime AI config during validation: {}", e);
-                error!("Config value was: {}", serde_json::to_string_pretty(config_value).unwrap_or_else(|_| "Unable to serialize".to_string()));
                 AppError::ConfigError(format!("Invalid runtime AI config format: {}", e))
             })?;
         
@@ -307,9 +275,7 @@ pub fn validate_runtime_config_before_cache(configurations: &HashMap<String, Jso
         // Validate all TaskType variants have corresponding configurations
         validate_all_task_types_have_configs(&runtime_config)?;
         
-        info!("Runtime configuration validation passed");
     } else {
-        error!("Runtime AI config missing from configurations map");
         return Err(AppError::ConfigError("Runtime AI config missing from server response".to_string()));
     }
     
@@ -317,7 +283,6 @@ pub fn validate_runtime_config_before_cache(configurations: &HashMap<String, Jso
 }
 
 /// Validates configuration consistency - strict validation rules
-#[instrument]
 pub fn validate_configuration_consistency(runtime_config: &RuntimeAIConfig) -> Result<(), AppError> {
     let mut validation_errors = Vec::new();
     
@@ -371,11 +336,9 @@ pub fn validate_configuration_consistency(runtime_config: &RuntimeAIConfig) -> R
             validation_errors.len(),
             validation_errors.join("\n")
         );
-        error!("{}", error_msg);
         return Err(AppError::ConfigError(error_msg));
     }
     
-    info!("Configuration consistency validation passed");
     Ok(())
 }
 
@@ -451,10 +414,8 @@ pub fn validate_all_task_types_have_configs(runtime_config: &RuntimeAIConfig) ->
             "TaskType configuration validation FAILED:\n{}",
             error_messages.join("\n")
         );
-        error!("{}", full_error);
         return Err(AppError::ConfigError(full_error));
     }
     
-    info!("All TaskType variants have valid configurations");
     Ok(())
 }

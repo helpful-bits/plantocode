@@ -517,7 +517,7 @@ impl BillingService {
         &self,
         user_id: Uuid,
         limit: i32,
-        offset: i32,
+        starting_after: Option<String>,
     ) -> Result<crate::models::ListInvoicesResponse, AppError> {
         debug!("Listing invoices for user: {}", user_id);
 
@@ -562,7 +562,7 @@ impl BillingService {
             &customer_id,
             None, // No status filter
             Some(limit as u64),
-            None, // No cursor-based pagination for now
+            starting_after.as_deref(),
         ).await {
             Ok(list) => list,
             Err(e) => {
@@ -579,8 +579,6 @@ impl BillingService {
         // Convert Stripe invoices to our Invoice model
         let invoices: Result<Vec<crate::models::Invoice>, AppError> = invoices_list.data
             .into_iter()
-            .skip(offset as usize)
-            .take(limit as usize)
             .map(|stripe_invoice| {
                 Ok(crate::models::Invoice {
                     id: stripe_invoice.id.to_string(),
@@ -860,13 +858,17 @@ impl BillingService {
             .ok_or_else(|| AppError::NotFound(format!("Model '{}' not found", model_id)))?;
         
         // Create ProviderUsage for cost calculation
-        let usage = ProviderUsage::with_total_input(
+        let usage = ProviderUsage::new(
             input_tokens as i32,
             output_tokens as i32,
             cache_write_tokens as i32,
             cache_read_tokens as i32,
             model_id.to_string()
         );
+        
+        // Validate usage data
+        usage.validate()
+            .map_err(|e| AppError::InvalidArgument(format!("Usage validation failed: {}", e)))?;
         
         // Calculate total cost using server-side pricing logic with full token breakdown
         let total_cost = model.calculate_total_cost(&usage)
@@ -897,13 +899,17 @@ impl BillingService {
             .ok_or_else(|| AppError::NotFound(format!("Model '{}' not found", entry.service_name)))?;
         
         // Create ProviderUsage for estimated cost calculation
-        let estimated_usage = ProviderUsage::with_total_input(
+        let estimated_usage = ProviderUsage::new(
             entry.tokens_input as i32,
             entry.tokens_output as i32,
             entry.cache_write_tokens as i32,
             entry.cache_read_tokens as i32,
             entry.service_name.clone()
         );
+        
+        // Validate usage data
+        estimated_usage.validate()
+            .map_err(|e| AppError::InvalidArgument(format!("Usage validation failed: {}", e)))?;
         
         // Use CostResolver to calculate estimated cost
         let estimated_cost = crate::services::cost_resolver::CostResolver::resolve(estimated_usage, &model);
@@ -985,14 +991,22 @@ impl BillingService {
     ) -> Result<(ApiUsageRecord, UserCredit), AppError> {
         debug!("Processing API usage with pre-resolved cost for user: {}", entry.user_id);
         
-        // Use the new centralized billing method that accepts pre-resolved cost
-        // This ensures CostResolver remains the single source of truth for cost calculation
-        let (api_usage_record, user_credit) = self.credit_service
-            .record_and_bill_usage_with_cost(entry, final_cost)
+        // Start a database transaction to ensure atomicity
+        let mut tx = self.db_pools.user_pool.begin().await.map_err(AppError::from)?;
+        
+        // Create API usage record
+        let api_usage_record = self.api_usage_repository.record_usage_with_executor(entry, final_cost.clone(), &mut tx).await?;
+        
+        // Commit the transaction
+        tx.commit().await.map_err(AppError::from)?;
+        
+        // Deduct credits from user balance
+        let user_credit = self.credit_service
+            .adjust_credits(&api_usage_record.user_id, &(-final_cost.clone()), format!("API usage: {}", api_usage_record.service_name), None)
             .await?;
         
         info!("Successfully billed user {} for API usage: {} (cost: {})", 
-              api_usage_record.user_id, api_usage_record.service_name, api_usage_record.cost);
+              api_usage_record.user_id, api_usage_record.service_name, final_cost);
         
         // After successful billing, check and trigger auto top-off if needed
         // Don't fail the API call if auto top-off fails - just log the error
@@ -1337,15 +1351,17 @@ impl BillingService {
             .ok_or_else(|| AppError::NotFound(format!("Model '{}' not found", model_id)))?;
         
         // Create ProviderUsage for the new calculate_total_cost method
-        let usage = crate::clients::usage_extractor::ProviderUsage {
-            prompt_tokens: input_tokens as i32,
-            completion_tokens: output_tokens as i32,
-            cache_write_tokens: cache_write_tokens as i32,
-            cache_read_tokens: cache_read_tokens as i32,
-            model_id: model_id.to_string(),
-            duration_ms: None,
-            cost: None,
-        };
+        let usage = crate::clients::usage_extractor::ProviderUsage::new(
+            input_tokens as i32,
+            output_tokens as i32,
+            cache_write_tokens as i32,
+            cache_read_tokens as i32,
+            model_id.to_string()
+        );
+        
+        // Validate usage data
+        usage.validate()
+            .map_err(|e| AppError::InvalidArgument(format!("Usage validation failed: {}", e)))?;
         
         // Calculate total cost using server-side pricing logic
         let total_cost = model.calculate_total_cost(&usage)

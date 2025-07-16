@@ -26,7 +26,6 @@ interface PlanContentModalProps {
   selectedStepNumber?: string | null;
   onStepSelect?: (stepNumber: string | null) => void;
   copyButtons?: CopyButtonConfig[];
-  onCopyButtonClick?: (buttonConfig: CopyButtonConfig) => void;
   // Navigation props
   currentIndex?: number;
   totalPlans?: number;
@@ -79,7 +78,6 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
   onRefreshContent,
   selectedStepNumber,
   copyButtons = [],
-  onCopyButtonClick,
   // Navigation props
   currentIndex = 0,
   totalPlans = 1,
@@ -181,14 +179,8 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
   // Use centralized utility function for consistent sessionName logic
   const sessionName = getJobDisplaySessionName(displayPlan);
 
-  // Default copy button handler using replacePlaceholders
+  // Copy button handler with proper notification system
   const handleCopyButtonClick = React.useCallback(async (button: CopyButtonConfig) => {
-    if (onCopyButtonClick) {
-      onCopyButtonClick(button);
-      return;
-    }
-    
-    // Default implementation using replacePlaceholders
     try {
       const data = {
         IMPLEMENTATION_PLAN: editedContent,
@@ -197,10 +189,23 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
       
       const processedContent = replacePlaceholders(button.content, data);
       await navigator.clipboard.writeText(processedContent);
+      
+      showNotification({
+        title: "Copied to clipboard",
+        message: `${button.label} copied successfully`,
+        type: "success",
+        duration: 2000,
+      });
     } catch (error) {
       console.error('Failed to copy to clipboard:', error);
+      showNotification({
+        title: "Copy failed",
+        message: "Failed to copy content to clipboard",
+        type: "error",
+        duration: 3000,
+      });
     }
-  }, [onCopyButtonClick, editedContent, selectedStepNumber]);
+  }, [editedContent, selectedStepNumber, showNotification]);
 
   // Initialize edited content when plan changes, and sync during streaming
   React.useEffect(() => {

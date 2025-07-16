@@ -1,18 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
 import Image from 'next/image';
-import { useTheme } from 'next-themes';
 import Link from 'next/link';
 
 export function Footer() {
-  const [mounted, setMounted] = useState(false);
-  const { resolvedTheme } = useTheme();
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
   return (
     <footer className="relative overflow-hidden">
       {/* Top gradient border */}
@@ -20,11 +11,18 @@ export function Footer() {
       
       {/* Background image - changes based on theme */}
       <Image
-        src={resolvedTheme === 'dark' ? "/images/features-background-dark.png" : "/images/features-background.png"}
+        src="/images/features-background.png"
         alt="Footer background"
         fill
         quality={100}
-        className="object-cover object-bottom z-0 opacity-30"
+        className="object-cover object-bottom z-0 opacity-30 block dark:hidden"
+      />
+      <Image
+        src="/images/features-background-dark.png"
+        alt="Footer background"
+        fill
+        quality={100}
+        className="object-cover object-bottom z-0 opacity-30 hidden dark:block"
       />
       
       {/* Gradient overlay with emerald tint */}

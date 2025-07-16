@@ -51,7 +51,6 @@ impl JobProcessor for WebSearchPromptsGeneratorProcessor {
     }
 
     async fn process(&self, job: Job, app_handle: AppHandle) -> AppResult<JobProcessResult> {
-        info!("Processing WebSearchPromptsGeneration job: {}", job.id);
 
         let (repo, session_repo, settings_repo, background_job) = job_processor_utils::setup_job_processing(&job.id, &app_handle).await?;
 
@@ -131,16 +130,20 @@ impl JobProcessor for WebSearchPromptsGeneratorProcessor {
         let system_prompt_template = llm_result.system_prompt_template.clone();
         let actual_cost = llm_result.usage.as_ref().and_then(|u| u.cost).unwrap_or(0.0);
 
-        info!("WebSearchPromptsGeneration LLM task completed successfully for job {}", job.id);
 
         // Parse XML response to extract sophisticated research task prompts
         let (prompts, parsing_info) = self.parse_xml_response(&llm_result.response);
-        info!("Extracted {} sophisticated research prompts from LLM response for job {}", prompts.len(), job.id);
         
         if prompts.is_empty() {
             let error_msg = "No research prompts could be extracted from LLM response. This indicates the LLM did not follow the expected format.";
             return Ok(JobProcessResult::failure(job.id.clone(), error_msg.to_string()));
         }
+
+        let summary = if prompts.len() > 0 {
+            format!("Generated {} research prompts", prompts.len())
+        } else {
+            "No research prompts generated".to_string()
+        };
 
         // Create structured JSON result
         let result_json = json!({
@@ -148,7 +151,8 @@ impl JobProcessor for WebSearchPromptsGeneratorProcessor {
             "promptCount": prompts.len(),
             "queries": prompts.iter()
                 .filter_map(|p| extract_query_from_task(p))
-                .collect::<Vec<_>>()
+                .collect::<Vec<_>>(),
+            "summary": summary
         });
 
         // Store metadata with workflow data for orchestrator and display data
@@ -159,7 +163,7 @@ impl JobProcessor for WebSearchPromptsGeneratorProcessor {
             "promptsCount": prompts.len(),
             "prompts": prompts,
             "parsingInfo": parsing_info,
-            "summary": format!("Generated {} sophisticated research prompts from XML response", prompts.len()),
+            "summary": summary,
             "workflowData": {
                 "prompts": prompts,
                 "promptsCount": prompts.len(),

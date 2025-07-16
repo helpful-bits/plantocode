@@ -9,6 +9,7 @@ use crate::db::repositories::{ModelRepository, ModelWithProvider};
 use crate::models::runtime_config::AppState;
 use crate::models::model_pricing::ModelPricing;
 use crate::clients::usage_extractor::ProviderUsage;
+use crate::utils;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -194,7 +195,7 @@ pub async fn estimate_cost(
     let cache_write_tokens = req.cache_write_tokens.unwrap_or(0);
     let cache_read_tokens = req.cache_read_tokens.unwrap_or(0);
     
-    let usage = ProviderUsage::with_total_input(
+    let usage = ProviderUsage::new(
         req.input_tokens as i32,
         req.output_tokens as i32,
         cache_write_tokens as i32,
@@ -313,7 +314,7 @@ pub async fn estimate_batch_cost(
         let cache_write_tokens = cost_req.cache_write_tokens.unwrap_or(0);
         let cache_read_tokens = cost_req.cache_read_tokens.unwrap_or(0);
         
-        let usage = ProviderUsage::with_total_input(
+        let usage = ProviderUsage::new(
             cost_req.input_tokens as i32,
             cost_req.output_tokens as i32,
             cache_write_tokens as i32,
@@ -400,5 +401,40 @@ pub async fn estimate_batch_cost(
     };
     
     info!("Batch cost estimation completed. Total estimated cost: {}", total_cost);
+    Ok(HttpResponse::Ok().json(response))
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TokenEstimationRequest {
+    pub model: String,
+    pub text: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TokenEstimationResponse {
+    pub model: String,
+    pub text_length: usize,
+    pub estimated_tokens: u32,
+}
+
+#[instrument(skip(app_state))]
+pub async fn estimate_tokens_handler(
+    app_state: web::Data<AppState>,
+    request: web::Json<TokenEstimationRequest>,
+) -> Result<HttpResponse, AppError> {
+    let req = request.into_inner();
+    info!("API request: Estimate tokens for model {} with text length {}", req.model, req.text.len());
+    
+    let estimated_tokens = utils::token_estimator::estimate_tokens(&req.text, &req.model);
+    
+    let response = TokenEstimationResponse {
+        model: req.model.clone(),
+        text_length: req.text.len(),
+        estimated_tokens,
+    };
+    
+    info!("Estimated {} tokens for model {} with text length {}", estimated_tokens, req.model, req.text.len());
     Ok(HttpResponse::Ok().json(response))
 }
