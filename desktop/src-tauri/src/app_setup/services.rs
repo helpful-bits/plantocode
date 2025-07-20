@@ -68,9 +68,15 @@ pub async fn initialize_api_clients(app_handle: &AppHandle) -> AppResult<()> {
     // Manage state with Tauri
     app_handle.manage(api_client_arc);
     app_handle.manage(transcription_client_arc);
-    app_handle.manage(server_proxy_client_arc);
+    app_handle.manage(server_proxy_client_arc.clone());
     app_handle.manage(billing_client_arc);
     
+    // Note: BackgroundJobRepository will pick up the ServerProxyClient from app state
+    // when create_repositories is called in db_utils/mod.rs. Since we initialize
+    // API clients after the database, the repository won't have the proxy client
+    // initially. This is handled by the repository checking for proxy client
+    // availability when needed for final cost polling.
+    info!("ServerProxyClient available in app state for BackgroundJobRepository to use");
     
     info!("API clients initialized and registered in app state.");
     

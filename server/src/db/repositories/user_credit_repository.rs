@@ -65,6 +65,29 @@ impl UserCreditRepository {
         Ok(result)
     }
 
+    pub async fn get_balance_for_update_with_executor(
+        &self,
+        user_id: &Uuid,
+        executor: &mut sqlx::Transaction<'_, sqlx::Postgres>
+    ) -> Result<Option<UserCredit>, AppError> {
+        let result = sqlx::query_as!(
+            UserCredit,
+            r#"
+            SELECT user_id, balance, currency, free_credit_balance, free_credits_granted_at, 
+                   free_credits_expires_at, free_credits_expired, created_at, updated_at
+            FROM user_credits 
+            WHERE user_id = $1
+            FOR UPDATE
+            "#,
+            user_id
+        )
+        .fetch_optional(&mut **executor)
+        .await
+        .map_err(|e| AppError::Database(format!("Failed to get user credit balance: {}", e)))?;
+
+        Ok(result)
+    }
+
     /// Update the credit balance for a user
     pub async fn update_balance(&self, user_id: &Uuid, new_balance: &BigDecimal) -> Result<UserCredit, AppError> {
         let mut tx = self.pool.begin().await

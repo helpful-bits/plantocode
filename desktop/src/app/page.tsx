@@ -41,11 +41,6 @@ function HomeContent() {
 export default function Home() {
   return (
     <main className="flex flex-col items-start">
-      {/* Descriptive text for project selection */}
-      <div className="text-sm text-muted-foreground mb-4 text-balance">
-        Select your project&apos;s root folder to enable file browsing,
-        session saving, and project-specific settings.
-      </div>
       
       {/* RequireProjectDirectory will handle the case when no project is selected */}
       <RequireProjectDirectory>

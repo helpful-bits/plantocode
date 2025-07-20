@@ -76,18 +76,6 @@ impl AuditLogRepository {
         Self { pool }
     }
 
-    /// Create a new audit log entry (legacy method - deprecated)
-    pub async fn create(&self, mut request: CreateAuditLogRequest) -> Result<AuditLog, AppError> {
-        // For backward compatibility, set empty security fields if not provided
-        if request.entry_hash.is_empty() {
-            request.entry_hash = "legacy".to_string();
-        }
-        if request.signature.is_empty() {
-            request.signature = "legacy".to_string();
-        }
-        
-        self.create_secure(request).await
-    }
     
     /// Create a new secure audit log entry with hash chaining and cryptographic signatures
     pub async fn create_secure(&self, request: CreateAuditLogRequest) -> Result<AuditLog, AppError> {
@@ -130,22 +118,6 @@ impl AuditLogRepository {
         Ok(audit_log)
     }
 
-    /// Create a new audit log entry with an existing transaction (legacy method - deprecated)
-    pub async fn create_with_executor<'a>(
-        &self,
-        mut request: CreateAuditLogRequest,
-        executor: &mut sqlx::Transaction<'a, sqlx::Postgres>,
-    ) -> Result<AuditLog, AppError> {
-        // For backward compatibility, set empty security fields if not provided
-        if request.entry_hash.is_empty() {
-            request.entry_hash = "legacy".to_string();
-        }
-        if request.signature.is_empty() {
-            request.signature = "legacy".to_string();
-        }
-        
-        self.create_secure_with_executor(request, executor).await
-    }
     
     /// Create a new secure audit log entry with an existing transaction and tamper-proof features
     pub async fn create_secure_with_executor<'a>(
@@ -359,30 +331,6 @@ impl AuditLogRepository {
         Ok(audit_logs)
     }
 
-    /// Update audit log status (DEPRECATED - violates write-once principle)
-    /// Use separate audit entries for status changes instead
-    pub async fn update_status(
-        &self,
-        id: &Uuid,
-        status: &str,
-        error_message: Option<&str>,
-    ) -> Result<(), AppError> {
-        warn!("DEPRECATED: update_status called on audit log {}. This violates write-once principle.", id);
-        warn!("Consider creating a new audit entry for status change instead.");
-        
-        // For backward compatibility, still allow the update but log a warning
-        sqlx::query!(
-            "UPDATE audit_logs SET status = $1, error_message = $2 WHERE id = $3",
-            status,
-            error_message,
-            id
-        )
-        .execute(&self.pool)
-        .await
-        .map_err(|e| AppError::Database(format!("Failed to update audit log status: {}", e)))?;
-
-        Ok(())
-    }
 
     /// Delete old audit logs (for cleanup/retention policies)
     pub async fn delete_older_than(&self, date: DateTime<Utc>) -> Result<u64, AppError> {
@@ -517,11 +465,11 @@ impl AuditLogRepository {
             status: Some("completed".to_string()),
             error_message: None,
             previous_hash: None,
-            entry_hash: "legacy".to_string(),
-            signature: "legacy".to_string(),
+            entry_hash: "test_entry_hash".to_string(),
+            signature: "test_signature".to_string(),
         };
 
-        self.create(request).await
+        self.create_secure(request).await
     }
 
     /// Log a billing event with transaction support
@@ -553,8 +501,8 @@ impl AuditLogRepository {
             status: Some("completed".to_string()),
             error_message: None,
             previous_hash: None,
-            entry_hash: "legacy".to_string(),
-            signature: "legacy".to_string(),
+            entry_hash: "test_entry_hash".to_string(),
+            signature: "test_signature".to_string(),
         };
 
         self.create_secure_with_executor(request, executor).await

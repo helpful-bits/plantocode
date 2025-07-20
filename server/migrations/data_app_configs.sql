@@ -5,7 +5,7 @@ VALUES (
     "tasks": {
       "implementation_plan": {
         "model": "google/gemini-2.5-pro",
-        "allowed_models": ["openai/o3", "openai/o4-mini", "deepseek/deepseek-r1-0528", "moonshotai/kimi-k2", "google/gemini-2.5-pro"],
+        "allowed_models": ["openai/o3", "openai/o4-mini", "deepseek/deepseek-r1-0528", "moonshotai/kimi-k2", "google/gemini-2.5-pro", "xai/grok-4"],
         "max_tokens": 23000,
         "temperature": 0.7,
         "copy_buttons": [
@@ -21,7 +21,7 @@ VALUES (
       },
       "implementation_plan_merge": {
         "model": "google/gemini-2.5-pro",
-        "allowed_models": ["google/gemini-2.5-flash", "google/gemini-2.5-pro", "moonshotai/kimi-k2", "openai/o4-mini"],
+        "allowed_models": ["google/gemini-2.5-flash", "google/gemini-2.5-pro", "moonshotai/kimi-k2", "openai/o4-mini", "xai/grok-4"],
         "max_tokens": 35000,
         "temperature": 0.35
       },
@@ -69,7 +69,7 @@ VALUES (
       },
       "web_search_prompts_generation": {
         "model": "google/gemini-2.5-flash",
-        "allowed_models": ["google/gemini-2.5-flash", "openai/o4-mini"],
+        "allowed_models": ["google/gemini-2.5-flash", "google/gemini-2.5-pro", "openai/o4-mini"],
         "max_tokens": 30000,
         "temperature": 0.2
       },
@@ -102,6 +102,16 @@ VALUES (
 }'::jsonb,
   'Task-driven AI settings with no global default models - complete original data preserved'
 )
+ON CONFLICT (config_key) DO UPDATE SET
+  config_value = EXCLUDED.config_value,
+  description = EXCLUDED.description,
+  updated_at = CURRENT_TIMESTAMP;
+
+-- Insert billing configuration defaults
+INSERT INTO application_configurations (config_key, config_value, description)
+VALUES 
+  ('billing_free_credits_expiry_days', '"3"', 'Number of days before free credits expire for new users'),
+  ('billing_free_credits_amount', '"2.00"', 'Amount of free credits (USD) granted to new users')
 ON CONFLICT (config_key) DO UPDATE SET
   config_value = EXCLUDED.config_value,
   description = EXCLUDED.description,

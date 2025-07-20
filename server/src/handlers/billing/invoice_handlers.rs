@@ -1,7 +1,7 @@
 use actix_web::{get, web, HttpResponse, Result};
 use std::sync::Arc;
 use serde::{Deserialize, Serialize};
-use log::{debug, info};
+use log::{info};
 
 use crate::models::AuthenticatedUser;
 use crate::error::AppError;
@@ -23,7 +23,6 @@ pub async fn list_invoices(
     // Validate and sanitize pagination parameters
     let limit = query.limit.unwrap_or(50).clamp(1, 100); // Limit between 1 and 100
     
-    debug!("Listing invoices for user {} with limit: {}, starting_after: {:?}", user.user_id, limit, query.starting_after);
     
     let response = billing_service
         .list_invoices_for_user(user.user_id, limit, query.starting_after.clone())

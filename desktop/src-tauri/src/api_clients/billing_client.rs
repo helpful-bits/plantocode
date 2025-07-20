@@ -7,7 +7,7 @@ use crate::commands::billing_commands::{
     CreditStats,
     PaymentMethodsResponse, PaymentMethod, PaymentMethodCard,
     BillingDashboardData, CustomerBillingInfo,
-    DetailedUsageResponse, UnifiedCreditHistoryResponse
+    DetailedUsageResponse, DetailedUsageRecord, UnifiedCreditHistoryResponse
 };
 use crate::models::ListInvoicesResponse;
 use serde::{Deserialize, Serialize};
@@ -446,7 +446,7 @@ impl BillingClient {
         debug!("Creating checkout session for credit amount: {}", amount);
         
         let request_body = serde_json::json!({
-            "amount": amount.to_string()
+            "amount": amount
         });
         
         let response: CheckoutSessionResponse = self.make_authenticated_request(

@@ -26,7 +26,10 @@ VALUES
 ('openai/gpt-4o-mini-transcribe', 'GPT-4o Mini Transcribe', 0, '{"input_per_million": 3.00, "output_per_million": 5.00}'::jsonb, (SELECT id FROM providers WHERE code = 'openai'), 'transcription', '{"transcription": true, "audio_processing": true, "multi_language": true}', 'active', 'OpenAI GPT-4o Mini transcription model - Audio input: $3/1M tokens, Text output: $5/1M tokens', 'gpt-4o-mini-transcribe'),
 
 -- Moonshot AI models via OpenRouter
-('moonshotai/kimi-k2', 'Kimi K2', 120000, '{"input_per_million": 0.55, "output_per_million": 2.20}'::jsonb, (SELECT id FROM providers WHERE code = 'openrouter'), 'text', '{"text": true, "chat": true, "chinese": true, "long_context": true}'::jsonb, 'active', 'Moonshot AI Kimi K2 model via OpenRouter - Chinese language optimized with 120K context', 'moonshotai/kimi-k2')
+('moonshotai/kimi-k2', 'Kimi K2', 120000, '{"input_per_million": 0.55, "output_per_million": 2.20}'::jsonb, (SELECT id FROM providers WHERE code = 'openrouter'), 'text', '{"text": true, "chat": true, "chinese": true, "long_context": true}'::jsonb, 'active', 'Moonshot AI Kimi K2 model via OpenRouter - Chinese language optimized with 120K context', 'moonshotai/kimi-k2'),
+
+-- xAI models (Grok 4 with always-on reasoning)
+('xai/grok-4', 'Grok 4', 256000, '{"input_per_million": 3.00, "output_per_million": 15.00, "long_context_threshold": 128000, "long_context_input_per_million": 6.00, "long_context_output_per_million": 30.00}'::jsonb, (SELECT id FROM providers WHERE code = 'xai'), 'text', '{"text": true, "chat": true, "reasoning": true, "code": true, "function_calling": true, "structured_output": true}'::jsonb, 'active', 'xAI Grok 4 - Always-on reasoning model with native function calling', 'grok-4')
 
 ON CONFLICT (id) DO UPDATE SET
 name = EXCLUDED.name,

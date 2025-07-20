@@ -15,12 +15,14 @@ export function TextImprovementPopover() {
   return (
     <div
       data-text-improvement-popover
-      className="fixed z-50 p-1"
+      className="fixed z-[350] p-1 pointer-events-auto"
       style={{
         top: `${position.top}px`,
         left: `${position.left}px`,
       }}
       onMouseDown={(e) => e.preventDefault()}
+      onMouseUp={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
     >
       <Button
         size="sm"
@@ -28,7 +30,7 @@ export function TextImprovementPopover() {
         onClick={triggerImprovement}
         isLoading={isImproving}
         disabled={isImproving}
-        className="h-7 w-7 p-0 bg-card/90 hover:bg-card border border-border/50 backdrop-blur-sm"
+        className="h-7 w-7 p-0 bg-card/90 hover:bg-card border border-border/50 backdrop-blur-sm cursor-pointer"
         title="Improve text"
       >
         <Sparkles className="h-3 w-3 text-foreground" />

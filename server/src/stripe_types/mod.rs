@@ -1,10 +1,12 @@
 //! Custom Stripe types module
 
 pub mod billing_portal_session;
+pub mod charge;
 pub mod checkout_session;
 pub mod customer;
 pub mod enums;
 pub mod event;
+pub mod expandable;
 pub mod invoice;
 pub mod payment_intent;
 pub mod payment_method;
@@ -14,10 +16,12 @@ pub mod setup_intent;
 
 // Re-export all types for convenience
 pub use billing_portal_session::BillingPortalSession;
+pub use charge::{Charge, BalanceTransaction};
 pub use checkout_session::{CheckoutSession, CheckoutSessionMode, CreateCheckoutSessionLineItems};
 pub use customer::{Customer, CustomerAddress, CustomerInvoiceSettings, TaxId, TaxIdList, TaxIdVerification};
 pub use enums::*;
 pub use event::{Event, EventObject};
+pub use expandable::Expandable;
 pub use invoice::{Invoice, InvoiceStatus, InvoiceList};
 pub use payment_intent::{PaymentIntent, PaymentIntentStatus};
 pub use payment_method::{PaymentMethod, PaymentMethodList};

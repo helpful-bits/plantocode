@@ -122,7 +122,7 @@ impl StripeService {
         method: reqwest::Method,
         endpoint: &str,
         body: Option<serde_json::Value>,
-        idempotency_key: &str,
+        idempotency_key: Option<&str>,
     ) -> Result<serde_json::Value, StripeServiceError> {
         let url = format!("https://api.stripe.com/v1/{}", endpoint);
         
@@ -130,8 +130,15 @@ impl StripeService {
         headers.insert(AUTHORIZATION, HeaderValue::from_str(&format!("Bearer {}", self.secret_key))
             .map_err(|_| StripeServiceError::Configuration("Invalid secret key format".to_string()))?);
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/x-www-form-urlencoded"));
-        headers.insert("Idempotency-Key", HeaderValue::from_str(idempotency_key)
-            .map_err(|_| StripeServiceError::Configuration("Invalid idempotency key format".to_string()))?);
+        
+        // Only add idempotency key for POST requests
+        if method == reqwest::Method::POST {
+            if let Some(key) = idempotency_key {
+                headers.insert("Idempotency-Key", HeaderValue::from_str(key)
+                    .map_err(|_| StripeServiceError::Configuration("Invalid idempotency key format".to_string()))?);
+            }
+        }
+        
         // Use configurable Stripe API version with fallback to latest stable version
         let stripe_version = std::env::var("STRIPE_API_VERSION")
             .unwrap_or_else(|_| "2024-06-20".to_string());
@@ -393,7 +400,7 @@ impl StripeService {
             reqwest::Method::POST,
             "customers",
             Some(customer_data),
-            idempotency_key,
+            Some(idempotency_key),
         ).await?;
         
         // Parse the response into a Customer struct
@@ -411,7 +418,7 @@ impl StripeService {
             reqwest::Method::GET,
             &format!("customers/{}", customer_id),
             None,
-            &format!("get_customer_{}", uuid::Uuid::new_v4()),
+            None,
         ).await?;
         let customer: stripe_types::Customer = serde_json::from_value(response)
             .map_err(|e| StripeServiceError::Configuration(format!("Failed to parse customer response: {}", e)))?;
@@ -424,7 +431,7 @@ impl StripeService {
             reqwest::Method::GET,
             &format!("customers/{}/tax_ids", customer_id),
             None,
-            &format!("get_tax_ids_{}", uuid::Uuid::new_v4()),
+            None,
         ).await?;
         let tax_id_list: stripe_types::TaxIdList = serde_json::from_value(response)
             .map_err(|e| StripeServiceError::Configuration(format!("Failed to parse tax ID response: {}", e)))?;
@@ -478,7 +485,7 @@ impl StripeService {
             reqwest::Method::POST,
             "payment_intents",
             Some(payment_data),
-            idempotency_key,
+            Some(idempotency_key),
         ).await.map_err(|e| {
             error!("Failed to create payment intent: {}", e);
             StripeServiceError::PaymentProcessing(format!("Failed to create payment intent: {}", e))
@@ -515,7 +522,7 @@ impl StripeService {
             reqwest::Method::POST,
             "billing_portal/sessions",
             Some(session_data),
-            idempotency_key,
+            Some(idempotency_key),
         ).await?;
         
         // Parse the response into a BillingPortalSession struct
@@ -532,11 +539,24 @@ impl StripeService {
             reqwest::Method::GET,
             &format!("payment_intents/{}", payment_intent_id),
             None,
-            &format!("get_payment_intent_{}", uuid::Uuid::new_v4()),
+            None,
         ).await?;
         let payment_intent: stripe_types::PaymentIntent = serde_json::from_value(response)
             .map_err(|e| StripeServiceError::Configuration(format!("Failed to parse payment intent response: {}", e)))?;
         Ok(payment_intent)
+    }
+
+    /// Retrieve a Charge by ID with expanded balance transaction
+    pub async fn get_charge(&self, charge_id: &str) -> Result<stripe_types::Charge, StripeServiceError> {
+        let response = self.make_stripe_request_with_idempotency(
+            reqwest::Method::GET,
+            &format!("charges/{}?expand[]=balance_transaction", charge_id),
+            None,
+            None,
+        ).await?;
+        let charge: stripe_types::Charge = serde_json::from_value(response)
+            .map_err(|e| StripeServiceError::Configuration(format!("Failed to parse charge response: {}", e)))?;
+        Ok(charge)
     }
 
 
@@ -549,7 +569,7 @@ impl StripeService {
             reqwest::Method::GET,
             &format!("payment_methods?customer={}&type=card", customer_id),
             None,
-            &format!("list_payment_methods_{}", uuid::Uuid::new_v4()),
+            None,
         ).await?;
         
         let payment_methods_list: stripe_types::PaymentMethodList = serde_json::from_value(response)
@@ -566,7 +586,7 @@ impl StripeService {
             reqwest::Method::GET,
             &format!("invoices?customer={}&limit=100", customer_id),
             None,
-            &format!("list_invoices_{}", uuid::Uuid::new_v4()),
+            None,
         ).await?;
         
         let invoices_list: stripe_types::InvoiceList = serde_json::from_value(response)
@@ -605,7 +625,7 @@ impl StripeService {
             reqwest::Method::GET,
             &format!("invoices?{}", query_string),
             None,
-            &format!("list_invoices_filtered_{}", uuid::Uuid::new_v4()),
+            None,
         ).await?;
         
         let invoices_list: stripe_types::InvoiceList = serde_json::from_value(response)
@@ -623,7 +643,7 @@ impl StripeService {
             reqwest::Method::POST,
             &format!("payment_methods/{}/detach", payment_method_id),
             None, // POST /v1/payment_methods/:id/detach doesn't require body data
-            idempotency_key,
+            Some(idempotency_key),
         ).await?;
         
         // Parse the response into a PaymentMethod struct
@@ -645,7 +665,7 @@ impl StripeService {
             reqwest::Method::POST,
             &format!("customers/{}", customer_id),
             Some(update_data),
-            idempotency_key,
+            Some(idempotency_key),
         ).await?;
         
         // Parse the response into a Customer struct
@@ -675,7 +695,7 @@ impl StripeService {
             reqwest::Method::POST,
             "products",
             Some(product_data),
-            &format!("{}_product", idempotency_key),
+            Some(&format!("{}_product", idempotency_key)),
         ).await?;
         
         let product: stripe_types::Product = serde_json::from_value(product_response)
@@ -697,7 +717,7 @@ impl StripeService {
             reqwest::Method::POST,
             "prices",
             Some(price_data),
-            &format!("{}_price", idempotency_key),
+            Some(&format!("{}_price", idempotency_key)),
         ).await?;
         
         let price: stripe_types::Price = serde_json::from_value(price_response)
@@ -730,13 +750,26 @@ impl StripeService {
             reqwest::Method::POST,
             "setup_intents",
             Some(setup_data),
-            idempotency_key,
+            Some(idempotency_key),
         ).await?;
         
         let setup_intent: stripe_types::SetupIntent = serde_json::from_value(response)
             .map_err(|e| StripeServiceError::Configuration(format!("Failed to parse setup intent response: {}", e)))?;
         
         info!("Created SetupIntent for customer: {}", customer_id);
+        Ok(setup_intent)
+    }
+
+    /// Retrieve a SetupIntent by ID
+    pub async fn get_setup_intent(&self, setup_intent_id: &str) -> Result<stripe_types::SetupIntent, StripeServiceError> {
+        let response = self.make_stripe_request_with_idempotency(
+            reqwest::Method::GET,
+            &format!("setup_intents/{}", setup_intent_id),
+            None,
+            None,
+        ).await?;
+        let setup_intent: stripe_types::SetupIntent = serde_json::from_value(response)
+            .map_err(|e| StripeServiceError::Configuration(format!("Failed to parse setup intent response: {}", e)))?;
         Ok(setup_intent)
     }
 
@@ -806,6 +839,9 @@ impl StripeService {
             "payment" => {
                 let mut payment_intent_data = serde_json::Map::new();
                 
+                // Add capture_method for automatic payment capture
+                payment_intent_data.insert("capture_method".to_string(), serde_json::Value::String("automatic".to_string()));
+                
                 // Add metadata to payment_intent_data
                 if !metadata.is_empty() {
                     let mut metadata_obj = serde_json::Map::new();
@@ -863,7 +899,7 @@ impl StripeService {
             reqwest::Method::POST,
             "checkout/sessions",
             Some(session_data),
-            idempotency_key,
+            Some(idempotency_key),
         ).await?;
         
         // Parse the response into a CheckoutSession struct
@@ -880,7 +916,7 @@ impl StripeService {
             reqwest::Method::GET,
             &format!("checkout/sessions/{}", session_id),
             None,
-            &format!("get_checkout_session_{}", uuid::Uuid::new_v4()),
+            None,
         ).await?;
         let session: stripe_types::CheckoutSession = serde_json::from_value(response)
             .map_err(|e| StripeServiceError::Configuration(format!("Failed to parse checkout session response: {}", e)))?;
@@ -912,7 +948,7 @@ impl StripeService {
             reqwest::Method::POST,
             "invoiceitems",
             Some(invoice_item_data),
-            &format!("{}_item", idempotency_key),
+            Some(&format!("{}_item", idempotency_key)),
         ).await?;
 
         // Create the invoice with automatic payment collection
@@ -933,7 +969,7 @@ impl StripeService {
             reqwest::Method::POST,
             "invoices",
             Some(invoice_data),
-            &format!("{}_invoice", idempotency_key),
+            Some(&format!("{}_invoice", idempotency_key)),
         ).await?;
 
         // Parse the invoice response and return immediately
@@ -943,7 +979,6 @@ impl StripeService {
         info!("Successfully created auto-charging invoice: {} for customer: {} - relying on webhooks for fulfillment", invoice.id, customer_id);
         Ok(invoice)
     }
-
 
 }
 

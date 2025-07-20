@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
+use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 use chrono::{DateTime, Utc, Duration};
 
@@ -11,6 +12,8 @@ pub struct TrackedRequest {
     pub provider: String,
     pub openai_response_id: Option<String>,
     pub created_at: DateTime<Utc>,
+    pub is_streaming: bool,
+    pub cancellation_token: Option<CancellationToken>,
 }
 
 #[derive(Clone)]
@@ -25,7 +28,7 @@ impl RequestTracker {
         }
     }
 
-    pub async fn track_request(&self, request_id: String, user_id: Uuid, provider: String) {
+    pub async fn track_request(&self, request_id: String, user_id: Uuid, provider: String, is_streaming: bool) {
         let mut requests = self.requests.write().await;
         requests.insert(request_id.clone(), TrackedRequest {
             request_id,
@@ -33,6 +36,21 @@ impl RequestTracker {
             provider,
             openai_response_id: None,
             created_at: Utc::now(),
+            is_streaming,
+            cancellation_token: None,
+        });
+    }
+
+    pub async fn track_request_with_cancellation(&self, request_id: String, user_id: Uuid, provider: String, is_streaming: bool, cancellation_token: CancellationToken) {
+        let mut requests = self.requests.write().await;
+        requests.insert(request_id.clone(), TrackedRequest {
+            request_id,
+            user_id,
+            provider,
+            openai_response_id: None,
+            created_at: Utc::now(),
+            is_streaming,
+            cancellation_token: Some(cancellation_token),
         });
     }
 
@@ -54,6 +72,20 @@ impl RequestTracker {
     pub async fn remove_request(&self, request_id: &str) -> Option<TrackedRequest> {
         let mut requests = self.requests.write().await;
         requests.remove(request_id)
+    }
+
+    pub async fn cancel_request(&self, request_id: &str) -> Result<bool, String> {
+        let requests = self.requests.read().await;
+        if let Some(tracked) = requests.get(request_id) {
+            if let Some(cancellation_token) = &tracked.cancellation_token {
+                cancellation_token.cancel();
+                Ok(true) // Successfully cancelled
+            } else {
+                Ok(false) // No cancellation token (non-streaming or older request)
+            }
+        } else {
+            Err(format!("Request {} not found in tracker", request_id))
+        }
     }
 
     pub async fn cleanup_old_requests(&self, max_age_hours: i64) {

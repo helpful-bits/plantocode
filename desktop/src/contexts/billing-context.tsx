@@ -49,14 +49,11 @@ export function BillingProvider({ children }: { children: React.ReactNode }) {
         setError(null);
         
         
-        // Fetch both dashboard data and customer billing info in parallel
-        const [dashboardData, customerInfo] = await Promise.all([
-          invoke<BillingDashboardData>('get_billing_dashboard_data_command'),
-          invoke<CustomerBillingInfo | null>('get_customer_billing_info_command')
-        ]);
+        // Fetch consolidated billing dashboard data
+        const dashboardData = await invoke<BillingDashboardData>('get_billing_dashboard_data_command');
         
         setDashboardData(dashboardData);
-        setCustomerBillingInfo(customerInfo);
+        setCustomerBillingInfo(dashboardData.customerBillingInfo);
       } catch (err) {
         const errorMessage = getErrorMessage(err);
         setError(errorMessage);

@@ -4,7 +4,6 @@ use std::sync::Arc;
 use std::time::Duration;
 use futures::{Stream, StreamExt};
 use reqwest::{Client, header, multipart};
-use reqwest_eventsource::{EventSource, Event};
 use serde_json::{json, Value};
 use log::{debug, error, info, trace, warn};
 use tauri::{AppHandle, Manager};
@@ -15,8 +14,11 @@ use crate::constants::{SERVER_API_URL, APP_HTTP_REFERER, APP_X_TITLE};
 use crate::error::{AppError, AppResult};
 use crate::models::{
     OpenRouterRequest, OpenRouterRequestMessage, OpenRouterContent,
-    OpenRouterResponse, OpenRouterStreamChunk
+    OpenRouterResponse, OpenRouterStreamChunk, ServerOpenRouterResponse
 };
+use crate::utils::stream_debug_logger::StreamDebugLogger;
+use crate::models::stream_event::StreamEvent;
+use reqwest_eventsource::{EventSource, Event};
 use super::client_trait::{ApiClient, ApiClientOptions, TranscriptionClient};
 use super::error_handling::map_server_proxy_error;
 
@@ -261,90 +263,6 @@ impl ServerProxyClient {
         }
     }
     
-    /// Log detailed API request information to debug files
-    async fn log_api_request_details(&self, request: &OpenRouterRequest, endpoint_url: &str, is_streaming: bool) {
-        use chrono;
-        
-        let base_dir = self.app_handle.path().app_log_dir()
-            .unwrap_or_else(|_| std::path::PathBuf::from("/tmp"));
-        let api_logs_dir = base_dir.join("api_requests");
-        
-        if let Err(_) = tokio::fs::create_dir_all(&api_logs_dir).await {
-            // Silently fail if can't create directory
-            return;
-        }
-        
-        let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S%.3f");
-        let request_type = if is_streaming { "streaming" } else { "non_streaming" };
-        let filename = format!("api_request_{}_{}.txt", request_type, timestamp);
-        let filepath = api_logs_dir.join(filename);
-        
-        // Extract message content for logging
-        let mut message_summary = String::new();
-        for (i, message) in request.messages.iter().enumerate() {
-            message_summary.push_str(&format!("Message {}: Role: {}\n", i + 1, message.role));
-            for (j, content) in message.content.iter().enumerate() {
-                match content {
-                    OpenRouterContent::Text { text, .. } => {
-                        let preview = if text.len() > 500 {
-                            // Safe UTF-8 truncation - find the last valid char boundary at or before 500 bytes
-                            let mut end = 500;
-                            while end > 0 && !text.is_char_boundary(end) {
-                                end -= 1;
-                            }
-                            format!("{}... ({} total chars)", &text[..end], text.len())
-                        } else {
-                            text.clone()
-                        };
-                        message_summary.push_str(&format!("  Content {}: {}\n", j + 1, preview));
-                    }
-                    OpenRouterContent::Image { .. } => {
-                        message_summary.push_str(&format!("  Content {}: [Image]\n", j + 1));
-                    }
-                }
-            }
-            message_summary.push('\n');
-        }
-        
-        // Serialize request for complete details
-        let request_json = match serde_json::to_string_pretty(request) {
-            Ok(json) => json,
-            Err(_) => "Failed to serialize request".to_string(),
-        };
-        
-        let log_content = format!(
-            "=== API REQUEST LOG ===\n\
-            Timestamp: {}\n\
-            Request Type: {}\n\
-            Endpoint URL: {}\n\
-            Server URL: {}\n\n\
-            === REQUEST PARAMETERS ===\n\
-            Model: {}\n\
-            Max Tokens: {:?}\n\
-            Temperature: {:?}\n\
-            Stream: {}\n\
-            Total Messages: {}\n\n\
-            === MESSAGE SUMMARY ===\n\
-            {}\n\
-            === COMPLETE REQUEST JSON ===\n\
-            {}\n\n\
-            === END API REQUEST LOG ===\n",
-            chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC"),
-            request_type,
-            endpoint_url,
-            self.server_url,
-            request.model,
-            request.max_tokens,
-            request.temperature,
-            request.stream,
-            request.messages.len(),
-            message_summary,
-            request_json
-        );
-        
-        let _ = tokio::fs::write(&filepath, log_content).await;
-        info!("API request details logged to: {:?}", filepath);
-    }
     
     /// Execute chat completion with duration measurement and retry logic
     /// For duration-based models, we make two attempts: first with estimated duration,
@@ -372,8 +290,6 @@ impl ServerProxyClient {
         // Create the server proxy endpoint URL for LLM chat completions
         let proxy_url = format!("{}/api/llm/chat/completions", self.server_url);
         
-        // Log detailed API request information before sending
-        self.log_api_request_details(&request, &proxy_url, false).await;
         
         // Record start time for actual duration measurement
         let start_time = std::time::Instant::now();
@@ -430,8 +346,9 @@ impl ServerProxyClient {
                     return Err(self.handle_auth_error(retry_status.as_u16(), &retry_error_text).await);
                 }
                 
-                let server_response: OpenRouterResponse = retry_response.json().await
+                let server_response: ServerOpenRouterResponse = retry_response.json().await
                     .map_err(|e| AppError::ServerProxyError(format!("Failed to parse server proxy response: {}", e)))?;
+                let server_response: OpenRouterResponse = server_response.into();
                 
                 trace!("Server proxy chat completion response (after retry): {:?}", server_response);
                 return Ok(server_response);
@@ -441,8 +358,9 @@ impl ServerProxyClient {
             return Err(self.handle_auth_error(status.as_u16(), &error_text).await);
         }
         
-        let server_response: OpenRouterResponse = response.json().await
+        let server_response: ServerOpenRouterResponse = response.json().await
             .map_err(|e| AppError::ServerProxyError(format!("Failed to parse server proxy response: {}", e)))?;
+        let server_response: OpenRouterResponse = server_response.into();
             
         trace!("Server proxy chat completion response: {:?}", server_response);
         Ok(server_response)
@@ -509,11 +427,10 @@ impl ServerProxyClient {
         // Create the server proxy endpoint URL for streaming LLM chat completions
         let proxy_url = format!("{}/api/llm/chat/completions", self.server_url);
         
-        // Log detailed API request information before sending
-        self.log_api_request_details(&request, &proxy_url, true).await;
         
         debug!("Starting streaming request with estimated duration: {}ms", estimated_duration_ms);
         
+        // Build the request but don't send it yet - EventSource will handle that
         let request_builder = self.http_client
             .post(&proxy_url)
             .header(header::CONTENT_TYPE, "application/json")
@@ -522,100 +439,169 @@ impl ServerProxyClient {
             .header("X-Title", APP_X_TITLE)
             .json(&request);
         
-        let event_source = EventSource::new(request_builder)
-            .map_err(|e| {
-                error!("Failed to create EventSource for {}: {}", proxy_url, e);
-                AppError::HttpError(format!("Failed to create EventSource: {}", e))
-            })?;
-        
         // Track stream start time for actual duration measurement
         let stream_start_time = std::time::Instant::now();
         
-        let stream = futures::stream::unfold((event_source, stream_start_time, false), move |(mut event_source, start_time, mut stream_ended)| async move {
-            loop {
-                match event_source.next().await {
-                    Some(Ok(Event::Message(message))) => {
-                        // Check for event type in the message
-                        match message.event.as_str() {
-                            "usage_update" => {
-                                // Parse usage update event
-                                match serde_json::from_str::<crate::models::usage_update::UsageUpdate>(&message.data) {
-                                    Ok(usage_update) => {
-                                        debug!("Received usage_update event: input={}, output={}, cost={}", 
-                                              usage_update.tokens_input, 
-                                              usage_update.tokens_output, 
-                                              usage_update.estimated_cost);
-                                        
-                                        // Return the usage update as a stream event
-                                        return Some((Ok(crate::models::stream_event::StreamEvent::UsageUpdate(usage_update)), (event_source, start_time, stream_ended)));
-                                    },
-                                    Err(e) => {
-                                        warn!("Failed to parse usage_update event: {} - Data: '{}'", e, message.data);
-                                        continue;
-                                    }
-                                }
-                            },
-                            _ => {
-                                // Handle regular message events (no special event type or content chunks)
-                                if message.event == "stream_started" {
-                                    if let Ok(data) = serde_json::from_str::<serde_json::Value>(&message.data) {
-                                        if let Some(request_id) = data.get("request_id").and_then(|v| v.as_str()) {
-                                            return Some((Ok(crate::models::stream_event::StreamEvent::StreamStarted { request_id: request_id.to_string() }), (event_source, start_time, stream_ended)));
+        // Create stream debug logger with provider name
+        let request_id_for_logger = options.request_id.clone().unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+        let mut stream_logger = StreamDebugLogger::new("desktop", &request_id_for_logger);
+        stream_logger.log_stream_start();
+        
+        // Create EventSource from the request builder
+        let mut event_source = EventSource::new(request_builder)
+            .map_err(|e| AppError::HttpError(format!("Failed to create EventSource: {}", e)))?;
+        
+        // Create a stream that converts SSE events to our StreamEvent type
+        let stream = futures::stream::unfold(
+            (event_source, stream_logger),
+            move |(mut event_source, mut stream_logger)| async move {
+                loop {
+                    match event_source.next().await {
+                        Some(Ok(Event::Open)) => {
+                            debug!("SSE connection opened");
+                            continue;
+                        }
+                        Some(Ok(Event::Message(message))) => {
+                            // Log the raw message
+                            stream_logger.log_chunk(message.data.as_bytes());
+                            
+                            // Handle [DONE] marker
+                            if message.data == "[DONE]" {
+                                debug!("Received [DONE] marker - stream complete");
+                                stream_logger.log_stream_end();
+                                return Some((Ok(StreamEvent::StreamCompleted), (event_source, stream_logger)));
+                            }
+                            
+                            // Parse the message based on event type
+                            let event_type = if message.event.is_empty() {
+                                "message"
+                            } else {
+                                &message.event
+                            };
+                            
+                            let stream_event = match event_type {
+                                "usage_update" => {
+                                    match serde_json::from_str::<crate::models::usage_update::UsageUpdate>(&message.data) {
+                                        Ok(usage) => Ok(StreamEvent::UsageUpdate(usage)),
+                                        Err(e) => {
+                                            error!("Failed to parse usage_update: {} - Data: '{}'", e, message.data);
+                                            Err(AppError::InvalidResponse(format!("Failed to parse usage_update: {}", e)))
                                         }
                                     }
-                                } else if message.data == "[DONE]" {
-                                    if !stream_ended {
-                                        let actual_duration = start_time.elapsed();
-                                        let actual_duration_ms = actual_duration.as_millis() as i64;
-                                        debug!("Streaming completed in {}ms (estimated: {}ms)", actual_duration_ms, estimated_duration_ms);
-                                        stream_ended = true;
-                                    }
-                                    debug!("Received [DONE] signal, ending stream");
-                                    return None;
                                 }
-                                
-                                // Try to parse as content chunk
-                                match serde_json::from_str::<OpenRouterStreamChunk>(&message.data) {
-                                    Ok(chunk) => {
-                                        trace!("Successfully parsed stream chunk");
-                                        return Some((Ok(crate::models::stream_event::StreamEvent::ContentChunk(chunk)), (event_source, start_time, stream_ended)));
-                                    },
-                                    Err(e) => {
-                                        debug!("Failed to parse streaming chunk: {} - Data: '{}'", e, message.data);
-                                        return Some((Err(AppError::InvalidResponse(format!("Invalid streaming JSON: {}", e))), (event_source, start_time, stream_ended)));
+                                "stream_started" => {
+                                    match serde_json::from_str::<serde_json::Value>(&message.data) {
+                                        Ok(data) => {
+                                            if let Some(request_id) = data.get("request_id").and_then(|v| v.as_str()) {
+                                                Ok(StreamEvent::StreamStarted { request_id: request_id.to_string() })
+                                            } else {
+                                                error!("stream_started missing request_id");
+                                                Err(AppError::InvalidResponse("stream_started event missing request_id".to_string()))
+                                            }
+                                        }
+                                        Err(e) => {
+                                            error!("Failed to parse stream_started: {} - Data: '{}'", e, message.data);
+                                            Err(AppError::InvalidResponse(format!("Failed to parse stream_started: {}", e)))
+                                        }
                                     }
+                                }
+                                "stream_cancelled" => {
+                                    match serde_json::from_str::<serde_json::Value>(&message.data) {
+                                        Ok(data) => {
+                                            let request_id = data.get("request_id")
+                                                .and_then(|v| v.as_str())
+                                                .unwrap_or("unknown")
+                                                .to_string();
+                                            let reason = data.get("reason")
+                                                .and_then(|v| v.as_str())
+                                                .unwrap_or("Unknown reason")
+                                                .to_string();
+                                            Ok(StreamEvent::StreamCancelled { request_id, reason })
+                                        }
+                                        Err(e) => {
+                                            error!("Failed to parse stream_cancelled: {} - Data: '{}'", e, message.data);
+                                            Err(AppError::InvalidResponse(format!("Failed to parse stream_cancelled: {}", e)))
+                                        }
+                                    }
+                                }
+                                "error_details" => {
+                                    match serde_json::from_str::<serde_json::Value>(&message.data) {
+                                        Ok(data) => {
+                                            let request_id = data.get("request_id")
+                                                .and_then(|v| v.as_str())
+                                                .unwrap_or("unknown")
+                                                .to_string();
+                                            
+                                            if let Some(error_data) = data.get("error") {
+                                                match serde_json::from_value::<crate::models::error_details::ErrorDetails>(error_data.clone()) {
+                                                    Ok(error) => Ok(StreamEvent::ErrorDetails { request_id, error }),
+                                                    Err(e) => {
+                                                        error!("Failed to parse error_details.error: {} - Error: {}", error_data, e);
+                                                        Err(AppError::InvalidResponse(format!("Failed to parse error_details: {}", e)))
+                                                    }
+                                                }
+                                            } else {
+                                                error!("error_details event missing 'error' field");
+                                                Err(AppError::InvalidResponse("error_details event missing 'error' field".to_string()))
+                                            }
+                                        }
+                                        Err(e) => {
+                                            error!("Failed to parse error_details: {} - Data: '{}'", e, message.data);
+                                            Err(AppError::InvalidResponse(format!("Failed to parse error_details: {}", e)))
+                                        }
+                                    }
+                                }
+                                "stream_completed" => {
+                                    debug!("Received stream_completed event");
+                                    Ok(StreamEvent::StreamCompleted)
+                                }
+                                _ => {
+                                    // Default: try to parse as content chunk
+                                    match serde_json::from_str::<OpenRouterStreamChunk>(&message.data) {
+                                        Ok(chunk) => Ok(StreamEvent::ContentChunk(chunk)),
+                                        Err(e) => {
+                                            error!("Failed to parse as content chunk: {} - Data: '{}'", e, message.data);
+                                            Err(AppError::InvalidResponse(format!("Failed to parse stream data: {}", e)))
+                                        }
+                                    }
+                                }
+                            };
+                            
+                            match stream_event {
+                                Ok(event) => {
+                                    debug!("Parsed StreamEvent: {:?}", event);
+                                    // Log stream end for usage updates
+                                    if matches!(event, StreamEvent::UsageUpdate(_)) {
+                                        stream_logger.log_stream_end();
+                                    }
+                                    return Some((Ok(event), (event_source, stream_logger)));
+                                }
+                                Err(e) => {
+                                    stream_logger.log_error(&format!("Failed to parse event: {}", e));
+                                    return Some((Err(e), (event_source, stream_logger)));
                                 }
                             }
                         }
-                    },
-                    Some(Ok(Event::Open)) => {
-                        debug!("EventSource stream opened");
-                        continue;
-                    },
-                    Some(Err(e)) => {
-                        match e {
-                            reqwest_eventsource::Error::StreamEnded => {
-                                debug!("EventSource stream ended gracefully");
-                                return None;
-                            },
-                            _ => {
-                                error!("EventSource error: {}", e);
-                                return Some((Err(AppError::NetworkError(format!("EventSource error: {}", e))), (event_source, start_time, stream_ended)));
-                            }
+                        Some(Err(e)) => {
+                            error!("EventSource error: {}", e);
+                            stream_logger.log_error(&format!("EventSource error: {}", e));
+                            let app_error = match e {
+                                reqwest_eventsource::Error::Transport(e) => AppError::HttpError(format!("Transport error: {}", e)),
+                                reqwest_eventsource::Error::InvalidStatusCode(code, _response) => AppError::HttpError(format!("Invalid status code: {}", code)),
+                                reqwest_eventsource::Error::InvalidContentType(mime, _response) => AppError::InvalidResponse(format!("Invalid content type: {:?}", mime)),
+                                _ => AppError::NetworkError(format!("SSE error: {}", e)),
+                            };
+                            return Some((Err(app_error), (event_source, stream_logger)));
                         }
-                    },
-                    None => {
-                        if !stream_ended {
-                            let actual_duration = start_time.elapsed();
-                            let actual_duration_ms = actual_duration.as_millis() as i64;
-                            debug!("Streaming ended in {}ms (estimated: {}ms)", actual_duration_ms, estimated_duration_ms);
+                        None => {
+                            debug!("EventSource stream ended");
+                            stream_logger.log_stream_end();
+                            return None;
                         }
-                        debug!("EventSource stream ended");
-                        return None;
                     }
                 }
             }
-        });
+        );
         
         Ok(Box::pin(stream))
     }
@@ -671,52 +657,6 @@ impl ServerProxyClient {
         Ok(cost_response)
     }
 
-    /// Estimate tokens for text using server-side accurate tokenization
-    pub async fn estimate_tokens(
-        &self,
-        model_id: &str,
-        text: &str,
-    ) -> AppResult<u32> {
-        info!("Estimating tokens for model {} via server proxy", model_id);
-        
-        // Get auth token
-        let auth_token = self.get_auth_token().await?;
-        
-        let estimation_url = format!("{}/api/models/estimate-tokens", self.server_url);
-        
-        let request_body = json!({
-            "model": model_id,
-            "text": text
-        });
-        
-        let response = self.http_client
-            .post(&estimation_url)
-            .header("Authorization", format!("Bearer {}", auth_token))
-            .header("Content-Type", "application/json")
-            .header("HTTP-Referer", APP_HTTP_REFERER)
-            .header("X-Title", APP_X_TITLE)
-            .json(&request_body)
-            .send()
-            .await
-            .map_err(|e| AppError::HttpError(e.to_string()))?;
-
-        if !response.status().is_success() {
-            let status = response.status();
-            let error_text = response.text().await.unwrap_or_else(|_| "Failed to get error text".to_string());
-            error!("Server proxy token estimation API error: {} - {}", status, error_text);
-            return Err(self.handle_auth_error(status.as_u16(), &error_text).await);
-        }
-
-        let token_response: serde_json::Value = response.json().await
-            .map_err(|e| AppError::ServerProxyError(format!("Failed to parse token estimation response: {}", e)))?;
-
-        let estimated_tokens = token_response.get("estimatedTokens")
-            .and_then(|v| v.as_u64())
-            .ok_or_else(|| AppError::ServerProxyError("Missing or invalid estimatedTokens field".to_string()))? as u32;
-
-        info!("Token estimation through server proxy successful: {} tokens", estimated_tokens);
-        Ok(estimated_tokens)
-    }
 
     /// Estimate costs for multiple models/requests in batch using server-side calculation
     pub async fn estimate_batch_cost(
@@ -866,21 +806,22 @@ impl ApiClient for ServerProxyClient {
 }
 
 impl ServerProxyClient {
-    /// Poll for final streaming cost with exponential backoff retry
+    /// Poll for final streaming cost with robust exponential backoff retry
     /// Polls /api/billing/final-cost/{request_id} endpoint
-    /// Uses exponential backoff (start at 100ms, max 2s)
-    /// Maximum 10 retries
+    /// Uses exponential backoff with jitter (start at 200ms, max 10s)
+    /// Maximum 30 retries to handle complex requests that need more processing time
     /// Returns FinalCostData struct
     /// Handles 404 gracefully (cost not yet available)
+    /// Ensures sufficient time for server cost processing completion
     pub async fn poll_final_streaming_cost_with_retry(
         &self, 
         request_id: &str
     ) -> AppResult<Option<crate::models::FinalCostData>> {
-        info!("Polling for final streaming cost with exponential backoff: request_id={}", request_id);
+        info!("Polling for final streaming cost with robust exponential backoff: request_id={}", request_id);
         
-        let max_attempts = 10;
-        let base_delay_ms = 100; // Start at 100ms
-        let max_delay_ms = 2000; // Max 2s
+        let max_attempts = 30; // Increased from 10 to handle complex requests
+        let base_delay_ms = 200; // Start at 200ms for better initial response
+        let max_delay_ms = 10000; // Max 10s to handle server processing delays
         
         for attempt in 1..=max_attempts {
             match self.poll_final_streaming_cost_detailed(request_id).await {
@@ -890,23 +831,28 @@ impl ServerProxyClient {
                 }
                 Ok(None) => {
                     if attempt < max_attempts {
-                        // Exponential backoff with cap at max_delay_ms
+                        // Exponential backoff with jitter and cap at max_delay_ms
+                        let exponential_delay = base_delay_ms * (1 << std::cmp::min(attempt - 1, 6)); // Cap exponential growth
+                        let jitter = (attempt as f64 * 50.0).round() as u64; // Add jitter based on attempt
                         let delay_ms = std::cmp::min(
-                            base_delay_ms * (1 << (attempt - 1)), 
+                            exponential_delay + jitter, 
                             max_delay_ms
                         );
-                        debug!("Final cost not available, waiting {}ms before attempt {}", delay_ms, attempt + 1);
+                        debug!("Final cost not available, waiting {}ms before attempt {} (with jitter)", delay_ms, attempt + 1);
                         tokio::time::sleep(tokio::time::Duration::from_millis(delay_ms)).await;
                     }
                 }
                 Err(e) => {
                     warn!("Error polling for final cost on attempt {}: {}", attempt, e);
                     if attempt < max_attempts {
-                        // Exponential backoff with cap at max_delay_ms
+                        // Exponential backoff with jitter and cap at max_delay_ms
+                        let exponential_delay = base_delay_ms * (1 << std::cmp::min(attempt - 1, 6)); // Cap exponential growth
+                        let jitter = (attempt as f64 * 50.0).round() as u64; // Add jitter based on attempt
                         let delay_ms = std::cmp::min(
-                            base_delay_ms * (1 << (attempt - 1)), 
+                            exponential_delay + jitter, 
                             max_delay_ms
                         );
+                        debug!("Retrying after error, waiting {}ms before attempt {} (with jitter)", delay_ms, attempt + 1);
                         tokio::time::sleep(tokio::time::Duration::from_millis(delay_ms)).await;
                     } else {
                         return Err(e);
@@ -915,23 +861,25 @@ impl ServerProxyClient {
             }
         }
         
-        info!("Final cost not available after {} attempts for request {}", max_attempts, request_id);
+        info!("Final cost not available after {} attempts for request {} - server may still be processing", max_attempts, request_id);
         Ok(None)
     }
     
-    /// Poll for detailed final streaming cost data
+    /// Poll for detailed final streaming cost data with request-specific timeout
     async fn poll_final_streaming_cost_detailed(&self, request_id: &str) -> AppResult<Option<crate::models::FinalCostData>> {
         info!("Polling for detailed final streaming cost: request_id={}", request_id);
         
         let auth_token = self.get_auth_token().await?;
         let url = format!("{}/api/billing/final-cost/{}", self.server_url, request_id);
         
+        // Use longer timeout for cost polling to handle server processing delays
         let response = self.http_client
             .get(&url)
             .header(header::CONTENT_TYPE, "application/json")
             .header("Authorization", format!("Bearer {}", auth_token))
             .header("HTTP-Referer", APP_HTTP_REFERER)
             .header("X-Title", APP_X_TITLE)
+            .timeout(std::time::Duration::from_secs(30)) // Extended timeout for complex requests
             .send()
             .await
             .map_err(|e| AppError::HttpError(e.to_string()))?;
@@ -971,7 +919,7 @@ impl ServerProxyClient {
         Ok(Some(crate::models::FinalCostData {
             request_id: cost_response.request_id.clone(),
             provider: cost_response.service_name.clone(), // Map service_name to provider
-            model: "Unknown".to_string(), // Server doesn't provide model info in current response
+            model: cost_response.service_name.clone(), // Use service_name as model ID
             final_cost,
             tokens_input,
             tokens_output,

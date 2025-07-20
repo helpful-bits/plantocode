@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { DollarSign, ChevronLeft, ChevronRight, Search, Loader2, Calendar, X } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/ui/card";
 import { Button } from "@/ui/button";
@@ -8,7 +8,7 @@ import { Input } from "@/ui/input";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/ui/tabs";
 import { Slider } from "@/ui/slider";
 import { LoadingSkeleton, ErrorState } from "./loading-and-error-states";
-import { getCreditHistory, type UnifiedCreditHistoryResponse, type UnifiedCreditHistoryEntry, getDetailedUsageWithSummary, type DetailedUsage, type UsageSummary } from "@/actions/billing";
+import { getCreditHistory, type UnifiedCreditHistoryResponse, type UnifiedCreditHistoryEntry, getDetailedUsageWithSummary, type DetailedUsageRecord, type UsageSummary } from "@/actions/billing";
 import { getProvidersWithModels } from "@/actions/config.actions";
 import { type ProviderWithModels } from "@/types/config-types";
 import { getErrorMessage } from "@/utils/error-handling";
@@ -39,7 +39,7 @@ export function BillingHistory({ className }: BillingHistoryProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const [isSearchActive, setIsSearchActive] = useState(false);
 
-  const [usageData, setUsageData] = useState<DetailedUsage[]>([]);
+  const [usageData, setUsageData] = useState<DetailedUsageRecord[]>([]);
   const [usageSummary, setUsageSummary] = useState<UsageSummary | null>(null);
   const [isUsageLoading, setIsUsageLoading] = useState(false);
   const [usageError, setUsageError] = useState<string | null>(null);
@@ -56,12 +56,31 @@ export function BillingHistory({ className }: BillingHistoryProps) {
   const [hasLoadedUsage, setHasLoadedUsage] = useState(false);
   const [sliderPage, setSliderPage] = useState(1);
   const [providers, setProviders] = useState<ProviderWithModels[]>([]);
-  const [selectedPreset, setSelectedPreset] = useState<'last1hour' | 'last24hours' | 'last7days' | 'thismonth' | null>('last24hours');
+  const [selectedPreset, setSelectedPreset] = useState<'last1hour' | 'last24hours' | 'last7days' | 'thisweek' | 'thismonth' | 'last30days' | null>('last24hours');
+  
+  const transactionsScrollRef = useRef<HTMLDivElement>(null);
+  const usageScrollRef = useRef<HTMLDivElement>(null);
 
   const getProviderDisplayName = (providerCode: string): string => {
     const provider = providers.find(p => p.provider.code === providerCode);
     return provider?.provider.name || providerCode;
   };
+
+  const updateScrollShadows = useCallback((scrollContainer: HTMLDivElement) => {
+    const parent = scrollContainer.parentElement;
+    if (!parent) return;
+
+    const topShadow = parent.querySelector('[data-scroll-shadow="top"]') as HTMLElement;
+    const bottomShadow = parent.querySelector('[data-scroll-shadow="bottom"]') as HTMLElement;
+
+    if (topShadow && bottomShadow) {
+      const { scrollTop, scrollHeight, clientHeight } = scrollContainer;
+      const isScrollable = scrollHeight > clientHeight;
+      
+      topShadow.style.display = isScrollable && scrollTop > 0 ? 'block' : 'none';
+      bottomShadow.style.display = isScrollable && scrollTop < scrollHeight - clientHeight - 1 ? 'block' : 'none';
+    }
+  }, []);
 
 
   const loadCreditHistory = useCallback(async (page: number = 1, search?: string) => {
@@ -99,8 +118,43 @@ export function BillingHistory({ className }: BillingHistoryProps) {
     setUsageError(null);
     
     try {
-      const startDateISO = new Date(startDate).toISOString();
-      const endDateISO = new Date(endDate + 'T23:59:59').toISOString();
+      let startDateISO: string;
+      let endDateISO: string;
+      
+      if (selectedPreset === 'last1hour') {
+        // For 1 hour filter, use actual hour precision
+        const end = new Date();
+        const start = new Date();
+        start.setHours(start.getHours() - 1);
+        startDateISO = start.toISOString();
+        endDateISO = end.toISOString();
+      } else if (selectedPreset === 'last24hours') {
+        // For 24 hour filter, use actual 24-hour precision
+        const end = new Date();
+        const start = new Date();
+        start.setDate(start.getDate() - 1);
+        startDateISO = start.toISOString();
+        endDateISO = end.toISOString();
+      } else if (selectedPreset === 'last7days') {
+        // For 7 days filter, use actual 7-day precision
+        const end = new Date();
+        const start = new Date();
+        start.setDate(start.getDate() - 7);
+        startDateISO = start.toISOString();
+        endDateISO = end.toISOString();
+      } else if (selectedPreset === 'last30days') {
+        // For 30 days filter, use actual 30-day precision
+        const end = new Date();
+        const start = new Date();
+        start.setDate(start.getDate() - 30);
+        startDateISO = start.toISOString();
+        endDateISO = end.toISOString();
+      } else {
+        // For other filters (7d, 1m, custom), use the date range as before
+        startDateISO = new Date(startDate).toISOString();
+        endDateISO = new Date(endDate + 'T23:59:59').toISOString();
+      }
+      
       const result = await getDetailedUsageWithSummary(startDateISO, endDateISO);
       setUsageData(result.detailedUsage);
       setUsageSummary(result.summary);
@@ -109,13 +163,51 @@ export function BillingHistory({ className }: BillingHistoryProps) {
     } finally {
       setIsUsageLoading(false);
     }
-  }, [startDate, endDate]);
+  }, [startDate, endDate, selectedPreset]);
 
   useEffect(() => {
     loadCreditHistory(1);
     // Load provider information for display names
     getProvidersWithModels().then(setProviders).catch(console.error);
   }, [loadCreditHistory]);
+
+  // Handle scroll shadows for transactions
+  useEffect(() => {
+    const scrollContainer = transactionsScrollRef.current;
+    if (!scrollContainer) return;
+
+    const handleScroll = () => updateScrollShadows(scrollContainer);
+    
+    // Initial check
+    handleScroll();
+    
+    scrollContainer.addEventListener('scroll', handleScroll);
+    window.addEventListener('resize', handleScroll);
+    
+    return () => {
+      scrollContainer.removeEventListener('scroll', handleScroll);
+      window.removeEventListener('resize', handleScroll);
+    };
+  }, [activeTab, transactionHistoryData, updateScrollShadows]);
+
+  // Handle scroll shadows for usage
+  useEffect(() => {
+    const scrollContainer = usageScrollRef.current;
+    if (!scrollContainer) return;
+
+    const handleScroll = () => updateScrollShadows(scrollContainer);
+    
+    // Initial check
+    handleScroll();
+    
+    scrollContainer.addEventListener('scroll', handleScroll);
+    window.addEventListener('resize', handleScroll);
+    
+    return () => {
+      scrollContainer.removeEventListener('scroll', handleScroll);
+      window.removeEventListener('resize', handleScroll);
+    };
+  }, [activeTab, usageData, updateScrollShadows]);
 
 
   useEffect(() => {
@@ -179,17 +271,19 @@ export function BillingHistory({ className }: BillingHistoryProps) {
     return () => clearTimeout(timer);
   }, [sliderPage, debouncedPageChange]);
 
-  const handlePresetClick = (preset: 'last1hour' | 'last24hours' | 'last7days' | 'thismonth') => {
+  const handlePresetClick = (preset: 'last1hour' | 'last24hours' | 'last7days' | 'thisweek' | 'thismonth' | 'last30days') => {
     const end = new Date();
     const endStr = end.toISOString().split('T')[0];
     
     setSelectedPreset(preset);
     
     if (preset === 'last1hour') {
-      // For 1 hour, we still need to use the current day since date inputs only support day precision
+      // For 1 hour, we use the current day to match date input limitations
+      // but the actual filtering will be done with proper hour precision in the API call
       const start = new Date();
       start.setHours(start.getHours() - 1);
-      setStartDate(start.toISOString().split('T')[0]);
+      // Use today's date for the input, but the API will filter by actual hour
+      setStartDate(new Date().toISOString().split('T')[0]);
       setEndDate(endStr);
     } else if (preset === 'last24hours') {
       const start = new Date();
@@ -201,8 +295,20 @@ export function BillingHistory({ className }: BillingHistoryProps) {
       start.setDate(start.getDate() - 7);
       setStartDate(start.toISOString().split('T')[0]);
       setEndDate(endStr);
+    } else if (preset === 'thisweek') {
+      const start = new Date(end);
+      const day = start.getDay();
+      const diff = start.getDate() - day + (day === 0 ? -6 : 1); // Adjust for Sunday
+      start.setDate(diff);
+      setStartDate(start.toISOString().split('T')[0]);
+      setEndDate(endStr);
     } else if (preset === 'thismonth') {
       const start = new Date(end.getFullYear(), end.getMonth(), 1);
+      setStartDate(start.toISOString().split('T')[0]);
+      setEndDate(endStr);
+    } else if (preset === 'last30days') {
+      const start = new Date();
+      start.setDate(start.getDate() - 30);
       setStartDate(start.toISOString().split('T')[0]);
       setEndDate(endStr);
     }
@@ -211,7 +317,7 @@ export function BillingHistory({ className }: BillingHistoryProps) {
   const renderTransactionSkeletonRows = () => (
     Array.from({ length: transactionHistoryData ? transactionHistoryData.entries.length : ITEMS_PER_PAGE }).map((_, index) => (
       <tr key={`skeleton-${index}`} className="hover:bg-muted/30 transition-colors">
-        <td className="py-3 px-1">
+        <td className="py-3 px-1 min-w-[100px]">
           <span className="h-5 w-16 bg-muted/30 rounded animate-pulse inline-block" />
         </td>
         <td className="py-3 px-1">
@@ -220,7 +326,10 @@ export function BillingHistory({ className }: BillingHistoryProps) {
         <td className="py-3 px-1">
           <span className="h-3 w-24 bg-muted/30 rounded animate-pulse inline-block" />
         </td>
-        <td className="py-3 px-1 text-right">
+        <td className="py-3 px-1 text-right hidden sm:table-cell">
+          <span className="h-3 w-16 bg-muted/30 rounded animate-pulse inline-block ml-auto" />
+        </td>
+        <td className="py-3 px-1 text-right hidden md:table-cell">
           <span className="h-3 w-16 bg-muted/30 rounded animate-pulse inline-block ml-auto" />
         </td>
         <td className="py-3 px-1 text-right">
@@ -252,21 +361,24 @@ export function BillingHistory({ className }: BillingHistoryProps) {
           <span className="h-3 w-20 bg-muted/30 rounded animate-pulse inline-block ml-auto" />
         </td>
         <td className="py-3 px-1 text-right">
+          <span className="h-3 w-16 bg-muted/30 rounded animate-pulse inline-block ml-auto" />
+        </td>
+        <td className="py-3 px-1 text-right">
+          <span className="h-3 w-12 bg-muted/30 rounded animate-pulse inline-block ml-auto" />
+        </td>
+        <td className="py-3 px-1 text-right">
           <span className="h-3 w-20 bg-muted/30 rounded animate-pulse inline-block ml-auto" />
         </td>
         <td className="py-3 px-1 text-right">
-          <span className="h-3 w-16 bg-muted/30 rounded animate-pulse inline-block ml-auto" />
-        </td>
-        <td className="py-3 px-1 text-right">
-          <span className="h-3 w-16 bg-muted/30 rounded animate-pulse inline-block ml-auto" />
+          <span className="h-3 w-20 bg-muted/30 rounded animate-pulse inline-block ml-auto" />
         </td>
       </tr>
     ))
   );
 
   return (
-    <Card className={className}>
-      <CardHeader>
+    <Card className={`${className} flex flex-col h-full`}>
+      <CardHeader className="flex-shrink-0">
         <div className="flex items-center justify-between">
           <div>
             <CardTitle className="text-xl font-bold flex items-center gap-3">
@@ -281,28 +393,30 @@ export function BillingHistory({ className }: BillingHistoryProps) {
           </div>
         </div>
       </CardHeader>
-      <CardContent>
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
+      <CardContent className="flex-1 min-h-0 flex flex-col">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full h-full flex flex-col">
+          <TabsList className="grid w-full grid-cols-2 flex-shrink-0">
             <TabsTrigger value="transactions">Transactions</TabsTrigger>
             <TabsTrigger value="usage">Usage Details</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="transactions" className="space-y-4">
+          <TabsContent value="transactions" className="flex-1 min-h-0 flex flex-col gap-4 mt-4">
             {isTransactionsLoading ? (
               <LoadingSkeleton />
             ) : transactionsError ? (
               <ErrorState message={transactionsError} onRetry={handleTransactionsRetry} />
             ) : !transactionHistoryData || transactionHistoryData.entries.length === 0 ? (
-              <div className="text-center py-8">
-                <DollarSign className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                <h3 className="font-semibold mb-2">No Credit Transactions</h3>
-                <p className="text-sm text-muted-foreground">
-                  Your credit transaction history will appear here once you have credit activity.
-                </p>
+              <div className="flex-1 flex items-center justify-center">
+                <div className="text-center">
+                  <DollarSign className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                  <h3 className="font-semibold mb-2">No Credit Transactions</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Your credit transaction history will appear here once you have credit activity.
+                  </p>
+                </div>
               </div>
             ) : (
-              <>
+              <div className="flex-1 min-h-0 flex flex-col">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <div className="relative">
@@ -341,54 +455,77 @@ export function BillingHistory({ className }: BillingHistoryProps) {
                   </span>
                 </div>
 
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-border/30">
-                      <th className="text-left text-xs font-medium text-muted-foreground py-2 px-1">Price</th>
-                      <th className="text-left text-xs font-medium text-muted-foreground py-2 px-1">Date</th>
-                      <th className="text-left text-xs font-medium text-muted-foreground py-2 px-1">Model</th>
-                      <th className="text-right text-xs font-medium text-muted-foreground py-2 px-1">Input Tokens</th>
-                      <th className="text-right text-xs font-medium text-muted-foreground py-2 px-1">Output Tokens</th>
-                      <th className="text-right text-xs font-medium text-muted-foreground py-2 px-1">Balance</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {isTransactionsLoadingPage ? (
-                      renderTransactionSkeletonRows()
-                    ) : (
-                      transactionHistoryData.entries.map((transaction: UnifiedCreditHistoryEntry) => (
-                        <tr
-                          key={transaction.id}
-                          className="border-b border-border/30 last:border-b-0 hover:bg-muted/30 transition-colors"
-                        >
-                          <td className="py-3 px-1">
-                            <span className={`font-medium text-sm ${transaction.price >= 0 ? 'text-green-600' : 'text-foreground'}`}>
-                              {transaction.price >= 0 ? '+' : ''}{formatUsdCurrencyPrecise(transaction.price)}
-                            </span>
-                          </td>
-                          <td className="py-3 px-1 text-xs text-muted-foreground">
-                            {formatTransactionDate(transaction.date)}
-                          </td>
-                          <td className="py-3 px-1 text-xs text-muted-foreground">
-                            {transaction.model || 'Credit Purchase'}
-                          </td>
-                          <td className="py-3 px-1 text-xs text-muted-foreground text-right">
-                            {transaction.inputTokens ? transaction.inputTokens.toLocaleString() : '-'}
-                          </td>
-                          <td className="py-3 px-1 text-xs text-muted-foreground text-right">
-                            {transaction.outputTokens ? transaction.outputTokens.toLocaleString() : '-'}
-                          </td>
-                          <td className="py-3 px-1 text-xs text-muted-foreground text-right">
-                            {formatUsdCurrencyPrecise(transaction.balanceAfter)}
-                          </td>
+                <div className="relative flex-1 min-h-0">
+                  {/* Scroll shadow indicators */}
+                  <div className="absolute inset-x-0 top-0 h-8 bg-gradient-to-b from-muted to-background pointer-events-none z-20 hidden" data-scroll-shadow="top" />
+                  <div className="absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-muted to-background pointer-events-none z-20 hidden" data-scroll-shadow="bottom" />
+                  {/* Horizontal scroll indicator for mobile */}
+                  <div className="sm:hidden absolute bottom-2 right-2 text-xs text-muted-foreground bg-muted px-2 py-1 rounded-md z-30">
+                    Scroll → for more
+                  </div>
+                  
+                  <div 
+                    ref={transactionsScrollRef}
+                    className="overflow-x-auto overflow-y-auto h-full" 
+                    data-scrollable="transactions"
+                  >
+                    <table className="w-full min-w-[640px]">
+                      <thead className="sticky top-0 z-10">
+                        <tr className="border-b border-border/40 bg-muted/30">
+                          <th className="text-left text-xs font-medium text-muted-foreground py-2 px-1 min-w-[100px] whitespace-nowrap">Price</th>
+                          <th className="text-left text-xs font-medium text-muted-foreground py-2 px-1 whitespace-nowrap">Date</th>
+                          <th className="text-left text-xs font-medium text-muted-foreground py-2 px-1 whitespace-nowrap">Model</th>
+                          <th className="text-right text-xs font-medium text-muted-foreground py-2 px-1 whitespace-nowrap">Input Tokens</th>
+                          <th className="text-right text-xs font-medium text-muted-foreground py-2 px-1 whitespace-nowrap hidden sm:table-cell">Output Tokens</th>
+                          <th className="text-right text-xs font-medium text-muted-foreground py-2 px-1 whitespace-nowrap hidden md:table-cell">Cached Tokens</th>
+                          <th className="text-right text-xs font-medium text-muted-foreground py-2 px-1 whitespace-nowrap">Balance</th>
                         </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {isTransactionsLoadingPage ? (
+                        renderTransactionSkeletonRows()
+                      ) : (
+                        transactionHistoryData.entries.map((transaction: UnifiedCreditHistoryEntry) => {
+                          const cachedTokens = (transaction.cacheReadTokens ?? 0) + (transaction.cacheWriteTokens ?? 0);
+                          return (
+                            <tr
+                              key={transaction.id}
+                              className="border-b border-border/30 last:border-b-0 hover:bg-muted/30 transition-colors"
+                            >
+                              <td className="py-3 px-1 min-w-[100px]">
+                                <span className={`font-medium text-sm ${transaction.price >= 0 ? 'text-green-600' : 'text-foreground'}`}>
+                                  {transaction.price >= 0 ? '+' : ''}{formatUsdCurrencyPrecise(transaction.price)}
+                                </span>
+                              </td>
+                              <td className="py-3 px-1 text-xs text-muted-foreground">
+                                {formatTransactionDate(transaction.date)}
+                              </td>
+                              <td className="py-3 px-1 text-xs text-muted-foreground">
+                                {transaction.model || 'Credit Purchase'}
+                              </td>
+                              <td className="py-3 px-1 text-xs text-muted-foreground text-right">
+                                {transaction.inputTokens ? transaction.inputTokens.toLocaleString() : '-'}
+                              </td>
+                              <td className="py-3 px-1 text-xs text-muted-foreground text-right hidden sm:table-cell">
+                                {transaction.outputTokens ? transaction.outputTokens.toLocaleString() : '-'}
+                              </td>
+                              <td className="py-3 px-1 text-xs text-muted-foreground text-right hidden md:table-cell">
+                                {cachedTokens > 0 ? cachedTokens.toLocaleString() : '-'}
+                              </td>
+                              <td className="py-3 px-1 text-xs text-muted-foreground text-right">
+                                {formatUsdCurrencyPrecise(transaction.balanceAfter)}
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
 
                 {Math.ceil(transactionHistoryData.totalCount / ITEMS_PER_PAGE) > 1 && transactionHistoryData.totalCount > 0 && (
-                  <div className="pt-4 border-t">
+                  <div className="pt-4 border-t flex-shrink-0">
                     <div className="flex items-center gap-3">
                       <span className="text-xs text-muted-foreground whitespace-nowrap">
                         1
@@ -448,14 +585,13 @@ export function BillingHistory({ className }: BillingHistoryProps) {
                     </div>
                   </div>
                 )}
-              </>
+              </div>
             )}
           </TabsContent>
 
-          <TabsContent value="usage" className="space-y-4">
-            <div className="flex flex-wrap items-end gap-4 p-4 bg-muted/30 rounded-lg border">
+          <TabsContent value="usage" className="flex-1 min-h-0 flex flex-col gap-4 mt-4">
+            <div className="flex items-center justify-between p-3 bg-muted/20 rounded-lg border border-border/40 flex-shrink-0">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-sm font-medium text-muted-foreground whitespace-nowrap">Quick Select:</span>
                 <Button
                   variant={selectedPreset === 'last1hour' ? 'default' : 'ghost'}
                   size="sm"
@@ -481,63 +617,70 @@ export function BillingHistory({ className }: BillingHistoryProps) {
                   7d
                 </Button>
                 <Button
+                  variant={selectedPreset === 'thisweek' ? 'default' : 'ghost'}
+                  size="sm"
+                  onClick={() => handlePresetClick('thisweek')}
+                  className={`h-8 text-xs ${selectedPreset === 'thisweek' ? 'bg-primary text-primary-foreground' : 'hover:bg-primary/10 hover:text-primary'}`}
+                >
+                  This Week
+                </Button>
+                <Button
                   variant={selectedPreset === 'thismonth' ? 'default' : 'ghost'}
                   size="sm"
                   onClick={() => handlePresetClick('thismonth')}
                   className={`h-8 text-xs ${selectedPreset === 'thismonth' ? 'bg-primary text-primary-foreground' : 'hover:bg-primary/10 hover:text-primary'}`}
                 >
-                  1m
+                  This Month
                 </Button>
-              </div>
-              
-              <div className="h-6 w-px bg-border mx-1" />
-              
-              <div className="flex items-end gap-3 flex-1 min-w-0">
-                <div className="space-y-1 flex-shrink-0">
-                  <label htmlFor="start-date" className="text-xs font-medium text-muted-foreground block">
-                    Start Date
-                  </label>
-                  <div className="relative">
-                    <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 w-3 h-3 text-muted-foreground pointer-events-none" />
-                    <Input
-                      id="start-date"
-                      type="date"
-                      value={startDate}
-                      onChange={(e) => {
-                        setStartDate(e.target.value);
-                        setSelectedPreset(null); // Clear preset when manually changing dates
-                      }}
-                      max={endDate}
-                      className="h-8 text-xs pl-9 min-w-[140px] font-mono"
-                    />
-                  </div>
+                <Button
+                  variant={selectedPreset === 'last30days' ? 'default' : 'ghost'}
+                  size="sm"
+                  onClick={() => handlePresetClick('last30days')}
+                  className={`h-8 text-xs ${selectedPreset === 'last30days' ? 'bg-primary text-primary-foreground' : 'hover:bg-primary/10 hover:text-primary'}`}
+                >
+                  30d
+                </Button>
+                
+                <div className="h-4 w-px bg-border/60 mx-2"></div>
+                
+                <div className="relative">
+                  <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 w-3 h-3 text-muted-foreground pointer-events-none" />
+                  <Input
+                    id="start-date"
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => {
+                      setStartDate(e.target.value);
+                      setSelectedPreset(null); // Clear preset when manually changing dates
+                    }}
+                    max={endDate}
+                    className="h-8 text-xs pl-9 min-w-[140px] font-mono"
+                  />
                 </div>
-                <div className="space-y-1 flex-shrink-0">
-                  <label htmlFor="end-date" className="text-xs font-medium text-muted-foreground block">
-                    End Date
-                  </label>
-                  <div className="relative">
-                    <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 w-3 h-3 text-muted-foreground pointer-events-none" />
-                    <Input
-                      id="end-date"
-                      type="date"
-                      value={endDate}
-                      onChange={(e) => {
-                        setEndDate(e.target.value);
-                        setSelectedPreset(null); // Clear preset when manually changing dates
-                      }}
-                      min={startDate}
-                      className="h-8 text-xs pl-9 min-w-[140px] font-mono"
-                    />
-                  </div>
+                <span className="text-xs text-muted-foreground">to</span>
+                <div className="relative">
+                  <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 w-3 h-3 text-muted-foreground pointer-events-none" />
+                  <Input
+                    id="end-date"
+                    type="date"
+                    value={endDate}
+                    onChange={(e) => {
+                      setEndDate(e.target.value);
+                      setSelectedPreset(null); // Clear preset when manually changing dates
+                    }}
+                    min={startDate}
+                    className="h-8 text-xs pl-9 min-w-[140px] font-mono"
+                  />
                 </div>
-                {isUsageLoading && (
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <Loader2 className="w-3 h-3 animate-spin" />
-                    <span>Updating...</span>
-                  </div>
-                )}
+                
               </div>
+              {/* Loading indicator */}
+              {isUsageLoading && (
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  <span>Loading...</span>
+                </div>
+              )}
             </div>
 
             {usageError && (
@@ -547,41 +690,67 @@ export function BillingHistory({ className }: BillingHistoryProps) {
             )}
 
             {!isUsageLoading && !usageError && usageData.length === 0 && (
-              <div className="text-center py-8 text-muted-foreground">
-                No usage data found for the selected date range.
+              <div className="flex-1 flex items-center justify-center">
+                <div className="text-center">
+                  <Calendar className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                  <h3 className="font-semibold mb-2">No Usage Data</h3>
+                  <p className="text-sm text-muted-foreground">
+                    No API usage found for the selected date range.
+                  </p>
+                </div>
               </div>
             )}
 
             {(isUsageLoading || (!usageError && usageData.length > 0)) && (
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-border/30">
-                      <th className="text-left text-xs font-medium text-muted-foreground py-3 px-1">
-                        Model
-                      </th>
-                      <th className="text-left text-xs font-medium text-muted-foreground py-3 px-1">
-                        Provider
-                      </th>
-                      <th className="text-right text-xs font-medium text-muted-foreground py-3 px-1">
-                        Cost
-                      </th>
-                      <th className="text-right text-xs font-medium text-muted-foreground py-3 px-1">
-                        Requests
-                      </th>
-                      <th className="text-right text-xs font-medium text-muted-foreground py-3 px-1">
-                        Input Tokens
-                      </th>
-                      <th className="text-right text-xs font-medium text-muted-foreground py-3 px-1">
-                        Output Tokens
-                      </th>
-                      <th className="text-right text-xs font-medium text-muted-foreground py-3 px-1">
-                        Cache Write
-                      </th>
-                      <th className="text-right text-xs font-medium text-muted-foreground py-3 px-1">
-                        Cache Read
-                      </th>
-                    </tr>
+              <div className="flex-1 min-h-0 flex flex-col">
+                <div className="relative flex-1 min-h-0">
+                  {/* Scroll shadow indicators */}
+                  <div className="absolute inset-x-0 top-0 h-8 bg-gradient-to-b from-muted to-background pointer-events-none z-20 hidden" data-scroll-shadow="top" />
+                  <div className="absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-muted to-background pointer-events-none z-20 hidden" data-scroll-shadow="bottom" />
+                  {/* Horizontal scroll indicator for mobile */}
+                  <div className="sm:hidden absolute bottom-2 right-2 text-xs text-muted-foreground bg-muted px-2 py-1 rounded-md z-30">
+                    Scroll → for more
+                  </div>
+                  
+                  <div 
+                    ref={usageScrollRef}
+                    className="overflow-x-auto overflow-y-auto h-full" 
+                    data-scrollable="usage"
+                  >
+                  <table className="w-full min-w-[640px]">
+                    <colgroup>
+                      <col className="w-auto" />
+                      <col className="w-auto" />
+                      <col className="w-20" />
+                      <col className="w-24" />
+                      <col className="w-28" />
+                      <col className="w-28" />
+                      <col className="w-28" />
+                    </colgroup>
+                    <thead className="sticky top-0 z-10">
+                      <tr className="border-b border-border/40 bg-muted/30">
+                        <th className="text-left text-xs font-medium text-muted-foreground py-3 px-1">
+                          Model
+                        </th>
+                        <th className="text-left text-xs font-medium text-muted-foreground py-3 px-1">
+                          Provider
+                        </th>
+                        <th className="text-right text-xs font-medium text-muted-foreground py-3 px-1">
+                          Cost
+                        </th>
+                        <th className="text-right text-xs font-medium text-muted-foreground py-3 px-1">
+                          Requests
+                        </th>
+                        <th className="text-right text-xs font-medium text-muted-foreground py-3 px-1">
+                          Input Tokens
+                        </th>
+                        <th className="text-right text-xs font-medium text-muted-foreground py-3 px-1">
+                          Output Tokens
+                        </th>
+                        <th className="text-right text-xs font-medium text-muted-foreground py-3 px-1">
+                          Cached Tokens
+                        </th>
+                      </tr>
                   </thead>
                   <tbody>
                     {isUsageLoading ? (
@@ -609,45 +778,57 @@ export function BillingHistory({ className }: BillingHistoryProps) {
                               {usage.totalOutputTokens.toLocaleString()}
                             </td>
                             <td className="py-3 px-1 text-xs text-muted-foreground text-right">
-                              {(usage.totalCacheWriteTokens ?? 0) > 0 ? usage.totalCacheWriteTokens.toLocaleString() : '-'}
-                            </td>
-                            <td className="py-3 px-1 text-xs text-muted-foreground text-right">
-                              {(usage.totalCacheReadTokens ?? 0) > 0 ? usage.totalCacheReadTokens.toLocaleString() : '-'}
+                              {(usage.totalCachedTokens ?? 0) > 0 ? usage.totalCachedTokens.toLocaleString() : '-'}
                             </td>
                           </tr>
                         ))}
-                        {usageData.length > 0 && usageSummary && (
-                          <tr className="border-t-2 border-border bg-muted/20 font-medium">
-                            <td className="py-3 px-1 text-xs font-semibold">
-                              Total
-                            </td>
-                            <td className="py-3 px-1 text-xs text-muted-foreground">
-                              {/* Empty cell for Provider column */}
-                            </td>
-                            <td className="py-3 px-1 text-xs font-semibold text-right">
-                              {formatUsdCurrency(usageSummary.totalCost)}
-                            </td>
-                            <td className="py-3 px-1 text-xs font-semibold text-right">
-                              {usageSummary.totalRequests.toLocaleString()}
-                            </td>
-                            <td className="py-3 px-1 text-xs font-semibold text-right">
-                              {usageSummary.totalInputTokens.toLocaleString()}
-                            </td>
-                            <td className="py-3 px-1 text-xs font-semibold text-right">
-                              {usageSummary.totalOutputTokens.toLocaleString()}
-                            </td>
-                            <td className="py-3 px-1 text-xs font-semibold text-right">
-                              {(usageSummary.totalCacheWriteTokens ?? 0) > 0 ? usageSummary.totalCacheWriteTokens.toLocaleString() : '-'}
-                            </td>
-                            <td className="py-3 px-1 text-xs font-semibold text-right">
-                              {(usageSummary.totalCacheReadTokens ?? 0) > 0 ? usageSummary.totalCacheReadTokens.toLocaleString() : '-'}
-                            </td>
-                          </tr>
-                        )}
                       </>
                     )}
                   </tbody>
                 </table>
+              </div>
+            </div>
+                {/* Total row outside scrollable area */}
+                {!isUsageLoading && !usageError && usageData.length > 0 && usageSummary && (
+                  <div className="overflow-x-auto border-t-2 border-border bg-muted/20 flex-shrink-0">
+                    <table className="w-full min-w-[640px]">
+                      <colgroup>
+                        <col className="w-auto" />
+                        <col className="w-auto" />
+                        <col className="w-20" />
+                        <col className="w-24" />
+                        <col className="w-28" />
+                        <col className="w-28" />
+                        <col className="w-28" />
+                      </colgroup>
+                      <tbody>
+                        <tr className="font-medium">
+                          <td className="py-3 px-1 text-xs font-semibold">
+                            Total
+                          </td>
+                          <td className="py-3 px-1 text-xs">
+                            {/* Empty cell for Provider column */}
+                          </td>
+                          <td className="py-3 px-1 text-xs font-bold text-right text-primary">
+                            {formatUsdCurrency(usageSummary.totalCost)}
+                          </td>
+                          <td className="py-3 px-1 text-xs font-semibold text-right">
+                            {usageSummary.totalRequests.toLocaleString()}
+                          </td>
+                          <td className="py-3 px-1 text-xs font-semibold text-right">
+                            {usageSummary.totalInputTokens.toLocaleString()}
+                          </td>
+                          <td className="py-3 px-1 text-xs font-semibold text-right">
+                            {usageSummary.totalOutputTokens.toLocaleString()}
+                          </td>
+                          <td className="py-3 px-1 text-xs font-semibold text-right">
+                            {(usageSummary.totalCachedTokens ?? 0) > 0 ? usageSummary.totalCachedTokens.toLocaleString() : '-'}
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
             )}
           </TabsContent>

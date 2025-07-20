@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS users (
     password_hash VARCHAR(255),
     full_name VARCHAR(255),
     auth0_user_id VARCHAR(255) UNIQUE,
-    auth0_refresh_token TEXT NULL,
+    auth0_refresh_token BYTEA NULL,
     role VARCHAR(50) NOT NULL DEFAULT 'user',
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
@@ -343,6 +343,14 @@ COMMENT ON COLUMN audit_logs.entry_hash IS 'SHA-256 hash of previous_hash + curr
 COMMENT ON COLUMN audit_logs.signature IS 'HMAC-SHA256 signature of entry_hash using secret key for authenticity verification';
 COMMENT ON TRIGGER audit_log_immutability_trigger ON audit_logs IS 'Enforces write-once behavior for tamper-proof audit logging';
 
+CREATE TABLE IF NOT EXISTS revoked_tokens (
+    jti UUID PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    revoked_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    expires_at TIMESTAMP WITH TIME ZONE NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_revoked_tokens_expires_at ON revoked_tokens(expires_at);
+
 -- Invoice cache table for Stripe invoice data
 CREATE TABLE IF NOT EXISTS invoices (
     id VARCHAR(255) PRIMARY KEY, -- Stripe invoice ID
@@ -418,6 +426,9 @@ BEGIN
     END;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER STABLE;
+
+-- Grant execute permissions for the helper function
+GRANT EXECUTE ON FUNCTION get_current_user_id() TO authenticated;
 
 -- RLS for users table
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
@@ -784,31 +795,31 @@ ALTER TABLE user_credits ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Users can manage their own credit balance" ON user_credits;
 DROP POLICY IF EXISTS "App can manage user credit balance" ON user_credits;
 
--- Comprehensive RLS policies for user_credits using direct session variable access
+-- Comprehensive RLS policies for user_credits using get_current_user_id() helper function
 DROP POLICY IF EXISTS "user_credits_select_policy" ON user_credits;
 CREATE POLICY "user_credits_select_policy" 
 ON user_credits FOR SELECT
 TO authenticated
-USING (user_id::text = current_setting('app.current_user_id'));
+USING (user_id = get_current_user_id());
 
 DROP POLICY IF EXISTS "user_credits_insert_policy" ON user_credits;
 CREATE POLICY "user_credits_insert_policy" 
 ON user_credits FOR INSERT
 TO authenticated
-WITH CHECK (user_id::text = current_setting('app.current_user_id'));
+WITH CHECK (user_id = get_current_user_id());
 
 DROP POLICY IF EXISTS "user_credits_update_policy" ON user_credits;
 CREATE POLICY "user_credits_update_policy" 
 ON user_credits FOR UPDATE
 TO authenticated
-USING (user_id::text = current_setting('app.current_user_id'))
-WITH CHECK (user_id::text = current_setting('app.current_user_id'));
+USING (user_id = get_current_user_id())
+WITH CHECK (user_id = get_current_user_id());
 
 DROP POLICY IF EXISTS "user_credits_delete_policy" ON user_credits;
 CREATE POLICY "user_credits_delete_policy" 
 ON user_credits FOR DELETE
 TO authenticated
-USING (user_id::text = current_setting('app.current_user_id'));
+USING (user_id = get_current_user_id());
 
 -- App service policies for system operations
 DROP POLICY IF EXISTS "App can manage user credit balance" ON user_credits;
@@ -826,31 +837,31 @@ DROP POLICY IF EXISTS "Users can select their own credit transactions" ON credit
 DROP POLICY IF EXISTS "Users can insert their own credit transactions" ON credit_transactions;
 DROP POLICY IF EXISTS "App can manage credit transactions" ON credit_transactions;
 
--- Comprehensive RLS policies for credit_transactions using direct session variable access
+-- Comprehensive RLS policies for credit_transactions using get_current_user_id() helper function
 DROP POLICY IF EXISTS "credit_transactions_select_policy" ON credit_transactions;
 CREATE POLICY "credit_transactions_select_policy" 
 ON credit_transactions FOR SELECT
 TO authenticated
-USING (user_id::text = current_setting('app.current_user_id'));
+USING (user_id = get_current_user_id());
 
 DROP POLICY IF EXISTS "credit_transactions_insert_policy" ON credit_transactions;
 CREATE POLICY "credit_transactions_insert_policy" 
 ON credit_transactions FOR INSERT
 TO authenticated
-WITH CHECK (user_id::text = current_setting('app.current_user_id'));
+WITH CHECK (user_id = get_current_user_id());
 
 DROP POLICY IF EXISTS "credit_transactions_update_policy" ON credit_transactions;
 CREATE POLICY "credit_transactions_update_policy" 
 ON credit_transactions FOR UPDATE
 TO authenticated
-USING (user_id::text = current_setting('app.current_user_id'))
-WITH CHECK (user_id::text = current_setting('app.current_user_id'));
+USING (user_id = get_current_user_id())
+WITH CHECK (user_id = get_current_user_id());
 
 DROP POLICY IF EXISTS "credit_transactions_delete_policy" ON credit_transactions;
 CREATE POLICY "credit_transactions_delete_policy" 
 ON credit_transactions FOR DELETE
 TO authenticated
-USING (user_id::text = current_setting('app.current_user_id'));
+USING (user_id = get_current_user_id());
 
 -- App service policies for system operations
 DROP POLICY IF EXISTS "App can manage credit transactions" ON credit_transactions;

@@ -3,3 +3,5 @@ pub mod admin_alerting;
 pub mod transcription_validation;
 pub mod financial_validation;
 pub mod token_estimator;
+pub mod http_client;
+pub mod stream_debug_logger;

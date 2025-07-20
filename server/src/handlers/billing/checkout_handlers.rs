@@ -5,7 +5,7 @@ use crate::error::AppError;
 use crate::services::billing_service::BillingService;
 use crate::models::AuthenticatedUser;
 use crate::stripe_types::*;
-use log::{debug, info};
+use log::{info};
 
 // ========================================
 // STRIPE CHECKOUT HANDLERS
@@ -14,7 +14,7 @@ use log::{debug, info};
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateCustomCreditCheckoutRequest {
-    pub amount: String,
+    pub amount: f64,
 }
 
 
@@ -45,7 +45,7 @@ pub async fn create_custom_credit_checkout_session_handler(
     
     let session = billing_service.create_credit_purchase_checkout_session(
         &user.user_id,
-        &request.amount,
+        &request.amount.to_string(),
     ).await?;
     
     let response = CheckoutSessionResponse {

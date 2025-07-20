@@ -431,20 +431,10 @@ impl UnifiedPromptProcessor {
         sections
     }
 
-    /// Estimate tokens using server API with fallback to character-based heuristic
-    async fn estimate_tokens_with_fallback(&self, text: &str, model_name: &str, app_handle: &AppHandle) -> u32 {
-        // Try to get server proxy client for accurate token estimation
-        let client = app_handle.state::<Arc<ServerProxyClient>>();
-        match client.estimate_tokens(model_name, text).await {
-            Ok(tokens) => return tokens,
-            Err(e) => {
-                log::warn!("Server token estimation failed, using fallback: {}", e);
-            }
-        }
-        
-        // Fallback to character-based heuristic (4 characters per token)
-        let char_count = text.chars().count() as u32;
-        (char_count + 3) / 4 // Round up division
+    /// Estimate tokens using local tiktoken-rs library
+    async fn estimate_tokens_with_fallback(&self, text: &str, model_name: &str, _app_handle: &AppHandle) -> u32 {
+        // Use local token estimator instead of server requests
+        crate::utils::token_estimator::estimate_tokens(text, model_name)
     }
 
 }

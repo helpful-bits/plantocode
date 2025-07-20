@@ -39,7 +39,7 @@ import { MergePlansSection } from "./_components/MergePlansSection";
 import { useImplementationPlansLogic } from "./_hooks/useImplementationPlansLogic";
 import { usePromptCopyModal } from "./_hooks/usePromptCopyModal";
 import { replacePlaceholders } from "@/utils/placeholder-utils";
-import { getContentForStep, parsePlanResponseContent } from "./_utils/plan-content-parser";
+import { getContentForStep } from "./_utils/plan-content-parser";
 import { normalizeJobResponse } from '@/utils/response-utils';
 
 interface ImplementationPlansPanelProps {
@@ -78,7 +78,7 @@ export function ImplementationPlansPanel({
     setJobToDelete,
     refreshJobs,
     handleTogglePlanSelection,
-    setMergeInstructions,
+    handleMergeInstructionsChange,
     handleMergePlans,
   } = useImplementationPlansLogic({ sessionId });
 
@@ -191,11 +191,22 @@ export function ImplementationPlansPanel({
           const planConfig = result.data.implementationPlan;
           const currentModel = planConfig.model;
           const allowedModelIds = planConfig.allowedModels || [];
+          const uniqueAllowedModelIds = [...new Set(allowedModelIds)];
           
           const availableModels = runtimeConfig.providers?.flatMap(p => p.models) || [];
-          const filteredModels = availableModels.filter(model => 
-            allowedModelIds.includes(model.id)
-          );
+          const filteredModels = availableModels
+            .filter(model => uniqueAllowedModelIds.includes(model.id))
+            .reduce((acc, model) => {
+              if (!acc.some(m => m.id === model.id)) {
+                acc.push(model);
+              }
+              return acc;
+            }, [] as typeof availableModels)
+            .sort((a, b) => {
+              const providerCompare = a.providerName.localeCompare(b.providerName);
+              if (providerCompare !== 0) return providerCompare;
+              return a.name.localeCompare(b.name);
+            });
           
           setSelectedModelId(currentModel);
           setAllowedModelsForPlan(filteredModels);
@@ -220,7 +231,7 @@ export function ImplementationPlansPanel({
       
       if (fullJobResult.isSuccess && fullJobResult.data) {
         const fullPlan = fullJobResult.data.response || '';
-        const parsedPlanContent = parsePlanResponseContent(normalizeJobResponse(fullPlan).content);
+        const parsedPlanContent = normalizeJobResponse(fullPlan).content;
         setPreloadedPlanContent(prev => ({ ...prev, [plan.id]: parsedPlanContent }));
       }
     } catch (error) {
@@ -245,7 +256,7 @@ export function ImplementationPlansPanel({
         }
         
         const fullPlan = fullJobResult.data.response || '';
-        parsedPlanContent = parsePlanResponseContent(normalizeJobResponse(fullPlan).content);
+        parsedPlanContent = normalizeJobResponse(fullPlan).content;
       }
       
       const data = {
@@ -375,6 +386,9 @@ export function ImplementationPlansPanel({
     }
   }, [canCreatePlan, isPreloadingPrompt, taskDescription, currentSession?.taskDescription, includedPaths, sessionId, projectDirectory]);
 
+  // State for copy button loading
+  const [isCopyingPrompt, setIsCopyingPrompt] = useState(false);
+
   // Handle copy prompt
   const handleCopyPrompt = useCallback(async () => {
     if (!canCreatePlan) {
@@ -386,10 +400,16 @@ export function ImplementationPlansPanel({
       return;
     }
 
+    setIsCopyingPrompt(true);
+
     try {
       // Use preloaded content if available
       if (preloadedPromptContent) {
         await navigator.clipboard.writeText(preloadedPromptContent);
+        
+        // Show loading for 1.8 seconds
+        await new Promise(resolve => setTimeout(resolve, 1800));
+        
         showNotification({
           title: "Copied to clipboard",
           message: "Implementation plan prompt copied successfully",
@@ -414,6 +434,10 @@ export function ImplementationPlansPanel({
 
       if (result.isSuccess && result.data) {
         await navigator.clipboard.writeText(result.data.combinedPrompt);
+        
+        // Show loading for 1.8 seconds
+        await new Promise(resolve => setTimeout(resolve, 1800));
+        
         showNotification({
           title: "Copied to clipboard",
           message: "Implementation plan prompt copied successfully",
@@ -433,6 +457,8 @@ export function ImplementationPlansPanel({
         message: error instanceof Error ? error.message : "An unknown error occurred",
         type: "error",
       });
+    } finally {
+      setIsCopyingPrompt(false);
     }
   }, [canCreatePlan, preloadedPromptContent, sessionId, taskDescription, currentSession?.taskDescription, projectDirectory, includedPaths, showNotification]);
 
@@ -456,9 +482,9 @@ export function ImplementationPlansPanel({
 
   // Memoized callback for clearing selection
   const handleClearSelection = useCallback(() => {
-    setMergeInstructions("");
+    handleMergeInstructionsChange("");
     selectedPlanIds.forEach(id => handleTogglePlanSelection(id));
-  }, [selectedPlanIds, handleTogglePlanSelection, setMergeInstructions]);
+  }, [selectedPlanIds, handleTogglePlanSelection, handleMergeInstructionsChange]);
 
   const handleModelSelect = useCallback(async (modelId: string) => {
     if (!projectDirectory) return;
@@ -597,11 +623,22 @@ export function ImplementationPlansPanel({
                   size="sm"
                   onClick={handleCopyPrompt}
                   onMouseEnter={handlePreloadPrompt}
-                  disabled={false}
-                  className="flex items-center justify-center w-full h-9"
+                  disabled={isCopyingPrompt}
+                  className="flex items-center justify-center w-full h-9 transition-all duration-300 ease-in-out"
                 >
-                  <ClipboardCopy className="h-4 w-4 mr-2" />
-                  Copy
+                  {isCopyingPrompt ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      <span className="bg-gradient-to-r from-blue-500 via-purple-500 to-cyan-500 bg-clip-text text-transparent animate-pulse">
+                        Copying...
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <ClipboardCopy className="h-4 w-4 mr-2" />
+                      Copy
+                    </>
+                  )}
                 </Button>
               </div>
 
@@ -650,7 +687,7 @@ export function ImplementationPlansPanel({
           selectedCount={selectedPlanIds.length}
           mergeInstructions={mergeInstructions}
           isMerging={isMerging}
-          onMergeInstructionsChange={setMergeInstructions}
+          onMergeInstructionsChange={handleMergeInstructionsChange}
           onMerge={handleMergePlans}
           onClearSelection={handleClearSelection}
         />
@@ -711,6 +748,13 @@ export function ImplementationPlansPanel({
           hasPrevious={hasPreviousPlan}
           hasNext={hasNextPlan}
           onNavigate={handleNavigateToPlan}
+          // Selection props
+          isSelected={selectedPlanIds.includes(livePlanForModal.id)}
+          onSelect={handleTogglePlanSelection}
+          // Merge instructions props
+          mergeInstructions={mergeInstructions}
+          onMergeInstructionsChange={handleMergeInstructionsChange}
+          selectedCount={selectedPlanIds.length}
         />
       )}
 

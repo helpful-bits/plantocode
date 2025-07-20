@@ -6,6 +6,7 @@ use crate::db::repositories::{
     UserRepository, SettingsRepository
 };
 use crate::config::AppSettings;
+use crate::handlers::config_handlers::DesktopRuntimeAIConfig;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -37,4 +38,5 @@ pub struct AppState {
     pub customer_billing_repository: Arc<CustomerBillingRepository>,
     pub user_repository: Arc<UserRepository>,
     pub settings_repository: Arc<SettingsRepository>,
+    pub runtime_ai_config: Arc<DesktopRuntimeAIConfig>,
 }

@@ -4,6 +4,8 @@ use crate::error::AppError;
 use std::collections::{HashMap, BTreeMap};
 use serde::{Serialize, Deserialize};
 use tracing::{info, instrument};
+use bigdecimal::BigDecimal;
+use std::str::FromStr;
 
 /// Database-driven AI model settings (pure task-driven configuration)
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -134,6 +136,78 @@ impl SettingsRepository {
         }
         
         info!("AI settings exist in database");
+        Ok(())
+    }
+
+    // =============================================================================
+    // BILLING CONFIGURATION METHODS
+    // =============================================================================
+
+    /// Get free credits expiry days from database configuration
+    pub async fn get_free_credits_expiry_days(&self) -> Result<i64, AppError> {
+        let config_value = self.get_config_value("billing_free_credits_expiry_days").await?;
+        
+        match config_value {
+            Some(json_value) => {
+                let value_str = json_value.as_str()
+                    .ok_or_else(|| AppError::Configuration("Free credits expiry config is not a string".to_string()))?;
+                
+                let days = value_str.parse::<i64>()
+                    .map_err(|_| AppError::Configuration("Free credits expiry config is not a valid number".to_string()))?;
+                
+                info!("Retrieved free credits expiry from database: {} days", days);
+                Ok(days)
+            }
+            None => {
+                info!("Free credits expiry config not found in database, using default: 3 days");
+                Ok(3) // Default fallback
+            }
+        }
+    }
+
+    /// Get free credits amount from database configuration
+    pub async fn get_free_credits_amount(&self) -> Result<BigDecimal, AppError> {
+        let config_value = self.get_config_value("billing_free_credits_amount").await?;
+        
+        match config_value {
+            Some(json_value) => {
+                let value_str = json_value.as_str()
+                    .ok_or_else(|| AppError::Configuration("Free credits amount config is not a string".to_string()))?;
+                
+                let amount = BigDecimal::from_str(value_str)
+                    .map_err(|_| AppError::Configuration("Free credits amount config is not a valid decimal".to_string()))?;
+                
+                info!("Retrieved free credits amount from database: ${}", amount);
+                Ok(amount)
+            }
+            None => {
+                info!("Free credits amount config not found in database, using default: $2.00");
+                Ok(BigDecimal::from_str("2.00").unwrap()) // Default fallback
+            }
+        }
+    }
+
+    /// Update free credits expiry days in database
+    pub async fn set_free_credits_expiry_days(&self, days: i64) -> Result<(), AppError> {
+        self.set_config_value(
+            "billing_free_credits_expiry_days", 
+            &days.to_string(), 
+            Some("Number of days before free credits expire for new users")
+        ).await?;
+
+        info!("Updated free credits expiry in database: {} days", days);
+        Ok(())
+    }
+
+    /// Update free credits amount in database
+    pub async fn set_free_credits_amount(&self, amount: &BigDecimal) -> Result<(), AppError> {
+        self.set_config_value(
+            "billing_free_credits_amount", 
+            &amount.to_string(), 
+            Some("Amount of free credits (USD) granted to new users")
+        ).await?;
+
+        info!("Updated free credits amount in database: ${}", amount);
         Ok(())
     }
 

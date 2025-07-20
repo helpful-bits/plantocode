@@ -5,6 +5,7 @@
 
 // Import job status types and constants from consolidated definitions
 import { type JobStatus, JOB_STATUSES } from './task-type-defs';
+import { ErrorDetails } from './error-details';
 export { type JobStatus, JOB_STATUSES };
 
 // Type for API types
@@ -46,6 +47,7 @@ export interface BackgroundJob {
   isFinalized?: boolean; // Whether the cost is final (true) or estimated (false)
   progressPercentage?: number; // Progress percentage for workflow jobs
   subStatusMessage?: string; // Detailed progress message for workflow stages
+  errorDetails?: ErrorDetails; // Detailed error information when available
 }
 
 // Session structure - stores user context and preferences, NOT workflow artifacts

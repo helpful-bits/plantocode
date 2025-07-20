@@ -40,6 +40,9 @@ impl CacheHealthMonitor {
     pub async fn monitor_cache_health(&self) {
         info!("Starting cache health monitoring service");
         
+        // Add stability delay before main loop
+        tokio::time::sleep(Duration::from_secs(10)).await;
+        
         let mut health_interval = interval(Duration::from_secs(self.health_check_interval_seconds));
         
         loop {

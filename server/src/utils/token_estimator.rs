@@ -4,8 +4,67 @@
 // 2. Real-time streaming updates (during API calls)
 // 3. Consistency with desktop client estimation
 
-use tiktoken_rs::{get_bpe_from_model, cl100k_base};
+use tiktoken_rs::{get_bpe_from_model, cl100k_base, o200k_base};
 use log::debug;
+use std::collections::HashMap;
+use once_cell::sync::Lazy;
+
+/// Provider-prefix to tokenizer mapping for performance optimization
+/// This avoids trying model-specific tokenizers and goes straight to the appropriate encoding
+static PROVIDER_TOKENIZER_MAP: Lazy<HashMap<&'static str, &'static str>> = Lazy::new(|| {
+    let mut map = HashMap::new();
+    
+    // OpenAI models
+    map.insert("gpt-4", "gpt-4");
+    map.insert("gpt-4-turbo", "gpt-4-turbo");
+    map.insert("gpt-4o", "gpt-4o");
+    map.insert("gpt-3.5-turbo", "gpt-3.5-turbo");
+    map.insert("text-embedding-3", "text-embedding-3-large");
+    map.insert("text-embedding-ada", "text-embedding-ada-002");
+    
+    // Anthropic models (use cl100k_base)
+    map.insert("claude", "cl100k_base");
+    
+    // Google models (use cl100k_base)
+    map.insert("gemini", "cl100k_base");
+    
+    // Meta models (use cl100k_base)
+    map.insert("llama", "cl100k_base");
+    
+    // Mistral models (use cl100k_base)
+    map.insert("mistral", "cl100k_base");
+    
+    // Default fallback
+    map.insert("default", "cl100k_base");
+    
+    map
+});
+
+/// Get the appropriate tokenizer encoding for a model using provider-prefix mapping
+/// This is more efficient than trying get_bpe_from_model which may fail
+fn get_tokenizer_encoding_for_model(model: &str) -> Result<tiktoken_rs::CoreBPE, anyhow::Error> {
+    // Check direct model match first
+    if let Ok(tokenizer) = get_bpe_from_model(model) {
+        return Ok(tokenizer);
+    }
+    
+    // Try provider-prefix mapping
+    let model_lower = model.to_lowercase();
+    for (prefix, encoding_name) in PROVIDER_TOKENIZER_MAP.iter() {
+        if model_lower.starts_with(prefix) {
+            debug!("Using provider-prefix mapping: {} -> {}", model, encoding_name);
+            return match *encoding_name {
+                "cl100k_base" => cl100k_base(),
+                "o200k_base" => o200k_base(),
+                _ => get_bpe_from_model(encoding_name),
+            };
+        }
+    }
+    
+    // Fallback to cl100k_base
+    debug!("No provider-prefix match for '{}', using cl100k_base fallback", model);
+    cl100k_base()
+}
 
 /// Estimate the number of tokens in a text string using tiktoken-rs
 /// 
@@ -30,21 +89,14 @@ pub fn estimate_tokens(text: &str, model: &str) -> u32 {
         return 0;
     }
 
-    // Try to get the BPE tokenizer for the specific model
-    let tokenizer = match get_bpe_from_model(model) {
+    // Use provider-prefix-based tokenizer mapping for improved performance
+    let tokenizer = match get_tokenizer_encoding_for_model(model) {
         Ok(tokenizer) => tokenizer,
         Err(_) => {
-            // Fall back to cl100k_base encoding if model-specific tokenizer not found
-            debug!("Model-specific tokenizer not found for '{}', falling back to cl100k_base", model);
-            match cl100k_base() {
-                Ok(tokenizer) => tokenizer,
-                Err(_) => {
-                    // If even cl100k_base fails, use a simple heuristic
-                    debug!("cl100k_base tokenizer failed, using character-based heuristic");
-                    let char_count = text.chars().count() as u32;
-                    return (char_count + 3) / 4; // 4 characters per token heuristic
-                }
-            }
+            // Final fallback to character-based heuristic
+            debug!("All tokenizer approaches failed for '{}', using character-based heuristic", model);
+            let char_count = text.chars().count() as u32;
+            return (char_count + 3) / 4; // 4 characters per token heuristic
         }
     };
 

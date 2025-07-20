@@ -7,7 +7,7 @@ import { Alert, AlertDescription } from "@/ui/alert";
 import { getCheckoutSessionStatus } from "@/actions/billing";
 import { getErrorMessage } from "@/utils/error-handling";
 
-interface PaymentPollingScreenProps {
+export interface PaymentPollingScreenProps {
   sessionId: string;
   onSuccess: () => void;
   onError: (error: string) => void;
