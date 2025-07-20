@@ -48,7 +48,7 @@ pub struct ModelWithProvider {
     pub provider_status: String,
 }
 
-// Default empty pricing JSON for fallback
+// Default empty pricing JSON
 static DEFAULT_PRICING: Lazy<serde_json::Value> = Lazy::new(|| {
     serde_json::json!({})
 });

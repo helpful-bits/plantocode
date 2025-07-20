@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use crate::error::AppError;
 use crate::services::billing_service::BillingService;
 use crate::models::AuthenticatedUser;
-use log::{debug, info};
+use log::{info};
 
 // ========================================
 // PAYMENT METHOD AND BILLING HANDLERS
@@ -37,7 +37,6 @@ pub async fn create_billing_portal_session(
     user: web::ReqData<AuthenticatedUser>,
     billing_service: web::Data<Arc<BillingService>>,
 ) -> Result<HttpResponse, AppError> {
-    debug!("Creating billing portal for user: {}", user.user_id);
     
     let url = billing_service.create_billing_portal_session(&user.user_id).await?;
     
@@ -59,7 +58,6 @@ pub async fn get_payment_methods(
     billing_service: web::Data<Arc<BillingService>>,
     pagination: web::Query<PaginationQuery>,
 ) -> Result<HttpResponse, AppError> {
-    debug!("Getting payment methods from Stripe for user: {}", user.user_id);
     
     // Get detailed payment methods with default flag from billing service
     let methods = billing_service.get_detailed_payment_methods(&user.user_id).await?;
@@ -95,7 +93,6 @@ pub async fn get_stripe_publishable_key(
     billing_service: web::Data<Arc<BillingService>>,
     _user: web::ReqData<AuthenticatedUser>, // Authentication required but user-agnostic
 ) -> Result<HttpResponse, AppError> {
-    debug!("Getting Stripe publishable key");
     
     let publishable_key = billing_service.get_stripe_publishable_key()?;
     

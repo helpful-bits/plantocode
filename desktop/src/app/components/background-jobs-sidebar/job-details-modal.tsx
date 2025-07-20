@@ -118,26 +118,36 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
   // Get live duration that updates every second for running jobs
   const liveDuration = useLiveDuration(job?.startTime, job?.endTime, job?.status || '');
   
-  // Fetch full job details when job changes
+  // Fetch full job details when job changes or modal opens
   useEffect(() => {
     const fetchFullJobDetails = async () => {
-      if (!job?.id) return;
+      if (!job?.id) {
+        setFullJobDetails(null);
+        return;
+      }
       
       setIsLoadingFullDetails(true);
       try {
         const fullJob = await invoke<BackgroundJob>('get_background_job_by_id_command', {
           jobId: job.id
         });
-        setFullJobDetails(fullJob);
+        if (fullJob) {
+          setFullJobDetails(fullJob);
+        } else {
+          // Fallback to the provided job if fetch fails
+          setFullJobDetails(job);
+        }
       } catch (error) {
         console.error('Failed to fetch full job details:', error);
+        // Fallback to the provided job if fetch fails
+        setFullJobDetails(job);
       } finally {
         setIsLoadingFullDetails(false);
       }
     };
     
     fetchFullJobDetails();
-  }, [job?.id]);
+  }, [job?.id, !!job]);
 
   // Load task settings when job changes
   useEffect(() => {
@@ -172,7 +182,30 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
   // Use fullJobDetails if available, but merge with the live job prop to get updates
   const displayJob = useMemo(() => {
     if (!job) return null;
-    return { ...job, ...fullJobDetails };
+    if (!fullJobDetails) {
+      return job;
+    }
+    // Merge the live job over the fetched details to ensure streaming updates are reflected
+    // BUT preserve the response content from fullJobDetails (lightweight job has NULL response)
+    const merged = { 
+      ...fullJobDetails, 
+      ...job, 
+      response: fullJobDetails.response || job.response,
+      prompt: fullJobDetails.prompt || job.prompt,
+      systemPromptTemplate: fullJobDetails.systemPromptTemplate || job.systemPromptTemplate
+    };
+    
+    // Debug logging to verify content is preserved
+    if (process.env.NODE_ENV === 'development') {
+      console.log('JobDetailsModal merge:', {
+        jobId: job.id,
+        fullDetailsResponseLength: fullJobDetails.response?.length || 0,
+        lightweightResponseLength: job.response?.length || 0,
+        mergedResponseLength: merged.response?.length || 0
+      });
+    }
+    
+    return merged;
   }, [job, fullJobDetails]);
 
   // Early return if no job to avoid null checks throughout

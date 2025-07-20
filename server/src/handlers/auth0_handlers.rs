@@ -6,6 +6,7 @@ use crate::auth_stores::{PollingStore, Auth0StateStore, Auth0PendingCodeInfo, Au
 use crate::services::auth::oauth::Auth0OAuthService;
 use crate::error::AppError;
 use crate::models::AuthenticatedUser;
+use crate::security::encryption;
 use log::{info, error, warn};
 use chrono::Utc;
 use crate::models::runtime_config::AppState;
@@ -174,18 +175,23 @@ pub async fn refresh_app_token_auth0(
     user: web::ReqData<AuthenticatedUser>,
     auth_service: web::Data<Auth0OAuthService>,
     user_repo: web::Data<std::sync::Arc<crate::db::repositories::user_repository::UserRepository>>,
+    app_state: web::Data<AppState>,
 ) -> Result<HttpResponse, AppError> {
     let app_user_id = user.user_id;
     
-    let refresh_token = match user_repo.get_auth0_refresh_token(&app_user_id).await? {
+    let encrypted_refresh_token = match user_repo.get_auth0_refresh_token(&app_user_id).await? {
         Some(token) => token,
         None => return Err(AppError::NotFound("No Auth0 refresh token found for this user".to_string())),
     };
     
+    let encryption_key = hex::decode(&app_state.settings.auth.refresh_token_encryption_key)
+        .map_err(|_| AppError::Configuration("Invalid refresh token encryption key format".to_string()))?;
+    let refresh_token = encryption::decrypt(&encrypted_refresh_token, &encryption_key)?;
     let new_tokens = auth_service.exchange_auth0_refresh_token(&refresh_token).await?;
     
     if let Some(new_refresh_token) = &new_tokens.refresh_token {
-        if let Err(e) = user_repo.store_auth0_refresh_token(&app_user_id, new_refresh_token).await {
+        let encrypted_new_token = encryption::encrypt(new_refresh_token, &encryption_key)?;
+        if let Err(e) = user_repo.store_auth0_refresh_token(&app_user_id, &encrypted_new_token).await {
             error!("Failed to update Auth0 refresh token: {}", e);
         }
     }

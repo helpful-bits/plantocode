@@ -12,7 +12,7 @@ use crate::utils::financial_validation::{
     validate_credit_purchase_amount, validate_credit_refund_amount, 
     validate_credit_adjustment_amount, validate_balance_adjustment, normalize_cost
 };
-use bigdecimal::{BigDecimal, FromPrimitive, ToPrimitive};
+use bigdecimal::{BigDecimal, FromPrimitive, ToPrimitive, Signed, Zero};
 use std::str::FromStr;
 use uuid::Uuid;
 use chrono::Utc;
@@ -51,7 +51,7 @@ impl CreditService {
         executor: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     ) -> Result<UserCredit, AppError> {
         // Set user context for RLS policies
-        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
+        sqlx::query("SELECT set_config('app.current_user_id', $1, true)")
             .bind(user_id.to_string())
             .execute(&mut **executor)
             .await
@@ -91,7 +91,7 @@ impl CreditService {
         tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     ) -> Result<(String, UserCredit), AppError> {
         // Set user context for RLS policies
-        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
+        sqlx::query("SELECT set_config('app.current_user_id', $1, true)")
             .bind(entry.user_id.to_string())
             .execute(&mut **tx)
             .await
@@ -112,10 +112,18 @@ impl CreditService {
             .record_usage_with_executor(entry, cost.clone(), tx)
             .await?;
         
-        // Ensure user has a credit record within the transaction
-        let current_balance = self.user_credit_repository
-            .ensure_balance_record_exists_with_executor(&api_usage_record.user_id, tx)
-            .await?;
+        // Get user credit balance with FOR UPDATE lock
+        let current_balance = match self.user_credit_repository
+            .get_balance_for_update_with_executor(&api_usage_record.user_id, tx)
+            .await? {
+            Some(balance) => balance,
+            None => {
+                // Create balance record if it doesn't exist
+                self.user_credit_repository
+                    .ensure_balance_record_exists_with_executor(&api_usage_record.user_id, tx)
+                    .await?
+            }
+        };
 
         // Check if user has sufficient credits for the estimate
         if current_balance.balance < cost {
@@ -159,19 +167,32 @@ impl CreditService {
         Ok((request_id, updated_balance))
     }
     
-    /// Finalize a charge with actual cost - updates api_usage to 'completed' and creates adjustment transaction
-    pub async fn finalize_charge_in_transaction(
+    /// Finalize a charge with actual cost and metadata - updates api_usage to 'completed' and creates adjustment transaction
+    pub async fn finalize_charge_in_transaction_with_metadata(
         &self,
         request_id: &str,
         final_cost: BigDecimal,
         final_usage: &ProviderUsage,
+        metadata: Option<serde_json::Value>,
         tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     ) -> Result<(ApiUsageRecord, UserCredit), AppError> {
+        // Log final ProviderUsage details for audit
+        info!(
+            "Finalizing charge with metadata - Request: {} | Model: {} | Tokens: {} input ({} cache_write, {} cache_read), {} output | Cost: ${:.6}",
+            request_id,
+            final_usage.model_id,
+            final_usage.prompt_tokens,
+            final_usage.cache_write_tokens,
+            final_usage.cache_read_tokens,
+            final_usage.completion_tokens,
+            final_cost
+        );
+        
         // Validate final cost using financial validation utility
-        validate_credit_adjustment_amount(&final_cost)?;
+        crate::utils::financial_validation::validate_credit_adjustment_amount(&final_cost)?;
         
         // Normalize the final cost
-        let final_cost = normalize_cost(&final_cost);
+        let final_cost = crate::utils::financial_validation::normalize_cost(&final_cost);
         
         // Get the pending api_usage record
         let existing_record = sqlx::query!(
@@ -192,7 +213,7 @@ impl CreditService {
             .ok_or_else(|| AppError::NotFound(format!("No pending API usage found for request_id: {}", request_id)))?;
         
         // Set user context for RLS policies
-        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
+        sqlx::query("SELECT set_config('app.current_user_id', $1, true)")
             .bind(existing_record.user_id.to_string())
             .execute(&mut **tx)
             .await
@@ -202,14 +223,15 @@ impl CreditService {
         let estimated_cost = existing_record.cost;
         let cost_delta = &final_cost - &estimated_cost;
         
-        // Update the api_usage record with final values
-        self.api_usage_repository.update_usage_with_executor(
+        // Update the api_usage record with final values and metadata
+        self.api_usage_repository.update_usage_with_metadata_executor(
             request_id,
             final_usage.prompt_tokens as i64,
             final_usage.completion_tokens as i64,
             final_usage.cache_write_tokens as i64,
             final_usage.cache_read_tokens as i64,
             final_cost.clone(),
+            metadata.clone(),
             "completed",
             tx,
         ).await?;
@@ -224,72 +246,56 @@ impl CreditService {
         
         // If there's a cost difference, create adjustment transaction
         if cost_delta != BigDecimal::from(0) {
-            // Apply the adjustment (negative delta means refund)
-            let adjustment_amount = -&cost_delta;
+            // Validate that the adjustment won't result in a negative balance
+            crate::utils::financial_validation::validate_balance_adjustment(&current_balance.balance, &cost_delta, "Usage finalization")?;
+            
+            // Adjust the balance
             final_balance = self.user_credit_repository
-                .increment_balance_with_executor(&existing_record.user_id, &adjustment_amount, tx)
+                .increment_balance_with_executor(&existing_record.user_id, &cost_delta, tx)
                 .await?;
             
             // Create adjustment transaction
-            let adjustment_type = if cost_delta > BigDecimal::from(0) {
-                "consumption_adjustment"
+            let adjustment_description = if !cost_delta.is_negative() && !cost_delta.is_zero() {
+                format!("Usage adjustment refund for request {}", request_id)
             } else {
-                "refund_adjustment"
+                format!("Usage adjustment charge for request {}", request_id)
             };
             
-            let adjustment_desc = format!(
-                "{} - Final adjustment (estimated: {}, final: {})",
-                existing_record.service_name, estimated_cost, final_cost
-            );
+            let adjustment_metadata = serde_json::json!({
+                "request_id": request_id,
+                "estimated_cost": estimated_cost,
+                "final_cost": final_cost,
+                "cost_delta": cost_delta,
+                "model_id": final_usage.model_id,
+                "tokens_input": final_usage.prompt_tokens,
+                "tokens_output": final_usage.completion_tokens,
+                "cache_write_tokens": final_usage.cache_write_tokens,
+                "cache_read_tokens": final_usage.cache_read_tokens
+            });
             
-            let adjustment_transaction = CreditTransaction {
-                id: Uuid::new_v4(),
+            let transaction = crate::db::repositories::credit_transaction_repository::CreditTransaction {
+                id: uuid::Uuid::new_v4(),
                 user_id: existing_record.user_id,
-                transaction_type: adjustment_type.to_string(),
-                net_amount: adjustment_amount,
+                transaction_type: "adjustment".to_string(),
+                net_amount: cost_delta.clone(),
                 gross_amount: None,
                 fee_amount: None,
                 currency: "USD".to_string(),
-                description: Some(adjustment_desc),
+                description: Some(adjustment_description),
                 stripe_charge_id: None,
                 related_api_usage_id: Some(existing_record.id),
-                metadata: Some(serde_json::json!({
-                    "phase": "final",
-                    "request_id": request_id,
-                    "estimated_cost": estimated_cost.to_string(),
-                    "final_cost": final_cost.to_string(),
-                    "cost_delta": cost_delta.to_string()
-                })),
-                created_at: Some(Utc::now()),
+                metadata: Some(adjustment_metadata),
+                created_at: Some(chrono::Utc::now()),
                 balance_after: final_balance.balance.clone(),
             };
             
-            let _created_transaction = self.credit_transaction_repository
-                .create_transaction_with_executor(&adjustment_transaction, &final_balance.balance, tx)
+            self.credit_transaction_repository
+                .create_transaction_with_executor(&transaction, &final_balance.balance, tx)
                 .await?;
         }
         
-        // Log audit event for credit consumption with final values
-        let audit_context = crate::services::audit_service::AuditContext::new(existing_record.user_id);
-        if let Err(audit_error) = self.audit_service.log_credit_consumption(
-            &audit_context,
-            &existing_record.user_id,
-            &existing_record.service_name,
-            &final_cost,
-            final_usage.prompt_tokens,
-            final_usage.completion_tokens,
-            0, // cached_input_tokens - legacy field
-            final_usage.cache_write_tokens,
-            final_usage.cache_read_tokens,
-            &current_balance.balance,
-            &final_balance.balance,
-            Some(existing_record.id),
-        ).await {
-            warn!("Failed to log audit event for credit consumption: {}", audit_error);
-        }
-        
-        // Return the updated api_usage record
-        let final_record = ApiUsageRecord {
+        // Create the final ApiUsageRecord
+        let api_usage_record = ApiUsageRecord {
             id: Some(existing_record.id),
             user_id: existing_record.user_id,
             service_name: existing_record.service_name,
@@ -299,12 +305,12 @@ impl CreditService {
             cache_read_tokens: final_usage.cache_read_tokens as i64,
             cost: final_cost,
             request_id: Some(request_id.to_string()),
-            metadata: existing_record.metadata,
+            metadata: metadata.clone(),
             timestamp: existing_record.timestamp,
             provider_reported_cost: final_usage.cost.clone(),
         };
         
-        Ok((final_record, final_balance))
+        Ok((api_usage_record, final_balance))
     }
 
     /// Get credit transaction history for a user
@@ -323,7 +329,7 @@ impl CreditService {
             .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
         
         // Set user context for RLS policies
-        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
+        sqlx::query("SELECT set_config('app.current_user_id', $1, true)")
             .bind(user_id.to_string())
             .execute(&mut *tx)
             .await
@@ -348,7 +354,7 @@ impl CreditService {
             .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
         
         // Set user context for RLS policies
-        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
+        sqlx::query("SELECT set_config('app.current_user_id', $1, true)")
             .bind(user_id.to_string())
             .execute(&mut *tx)
             .await
@@ -412,7 +418,7 @@ impl CreditService {
             .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
         
         // Set user context for RLS policies
-        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
+        sqlx::query("SELECT set_config('app.current_user_id', $1, true)")
             .bind(user_id.to_string())
             .execute(&mut *tx)
             .await
@@ -432,6 +438,8 @@ impl CreditService {
                     au.service_name as model,
                     au.tokens_input as input_tokens,
                     au.tokens_output as output_tokens,
+                    au.cache_write_tokens,
+                    au.cache_read_tokens,
                     COALESCE(
                         (SELECT balance_after FROM credit_transactions 
                          WHERE related_api_usage_id = au.id 
@@ -454,6 +462,8 @@ impl CreditService {
                     'Credit Purchase' as model,
                     NULL::bigint as input_tokens,
                     NULL::bigint as output_tokens,
+                    NULL::int as cache_write_tokens,
+                    NULL::int as cache_read_tokens,
                     ct.balance_after as balance_after,
                     COALESCE(ct.description, 'Credit Purchase') as description,
                     'credit_transaction' as source_type,
@@ -468,6 +478,8 @@ impl CreditService {
                 model,
                 input_tokens,
                 output_tokens,
+                cache_write_tokens,
+                cache_read_tokens,
                 balance_after,
                 description,
                 transaction_type
@@ -526,6 +538,8 @@ impl CreditService {
                 model: row.model.unwrap_or_default(),
                 input_tokens: row.input_tokens,
                 output_tokens: row.output_tokens,
+                cache_write_tokens: row.cache_write_tokens.map(|x| x as i64),
+                cache_read_tokens: row.cache_read_tokens.map(|x| x as i64),
                 balance_after: row.balance_after.and_then(|b| b.to_f64()).unwrap_or(0.0),
                 description: row.description.unwrap_or_default(),
                 transaction_type: row.transaction_type.unwrap_or_default(),
@@ -559,7 +573,7 @@ impl CreditService {
         let mut tx = pool.begin().await.map_err(AppError::from)?;
 
         // Set user context for RLS policies
-        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
+        sqlx::query("SELECT set_config('app.current_user_id', $1, true)")
             .bind(user_id.to_string())
             .execute(&mut *tx)
             .await
@@ -620,7 +634,7 @@ impl CreditService {
         // Normalize amount at entry point
         let amount = normalize_cost(amount);
         
-        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
+        sqlx::query("SELECT set_config('app.current_user_id', $1, true)")
             .bind(user_id.to_string())
             .execute(&mut **executor)
             .await
@@ -727,131 +741,147 @@ impl CreditService {
         
         let pool = self.user_credit_repository.get_pool();
         
-        // Start transaction and immediately set SERIALIZABLE isolation level to prevent race conditions
-        let mut tx = pool.begin().await.map_err(AppError::from)?;
+        // Implement retry logic for serializable transactions
+        let max_retries = 3;
+        let mut retry_count = 0;
         
-        // Set SERIALIZABLE isolation level for this transaction to prevent race conditions in auto-top-off flow
-        sqlx::query("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE")
-            .execute(&mut *tx)
+        loop {
+            // Start transaction and immediately set SERIALIZABLE isolation level to prevent race conditions
+            let mut tx = pool.begin().await.map_err(AppError::from)?;
+            
+            // Set SERIALIZABLE isolation level for this transaction to prevent race conditions in auto-top-off flow
+            sqlx::query("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE")
+                .execute(&mut *tx)
+                .await
+                .map_err(|e| AppError::Database(format!("Failed to set SERIALIZABLE isolation level: {}", e)))?;
+
+            sqlx::query("SELECT set_config('app.current_user_id', $1, true)")
+                .bind(user_id.to_string())
+                .execute(&mut *tx)
+                .await
+                .map_err(|e| AppError::Database(format!("Failed to set user context: {}", e)))?;
+
+            // Lock the user row to prevent concurrent modifications during auto-top-off
+            let current_balance = sqlx::query_as!(
+                UserCredit,
+                r#"
+                SELECT 
+                    user_id,
+                    balance,
+                    currency,
+                    free_credit_balance,
+                    free_credits_granted_at,
+                    free_credits_expires_at,
+                    free_credits_expired,
+                    created_at,
+                    updated_at
+                FROM user_credits 
+                WHERE user_id = $1 
+                FOR UPDATE
+                "#,
+                user_id
+            )
+            .fetch_optional(&mut *tx)
             .await
-            .map_err(|e| AppError::Database(format!("Failed to set SERIALIZABLE isolation level: {}", e)))?;
+            .map_err(|e| AppError::Database(format!("Failed to lock user credits row: {}", e)))?;
 
-        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
-            .bind(user_id.to_string())
-            .execute(&mut *tx)
-            .await
-            .map_err(|e| AppError::Database(format!("Failed to set user context: {}", e)))?;
-
-        // Lock the user row to prevent concurrent modifications during auto-top-off
-        let current_balance = sqlx::query_as!(
-            UserCredit,
-            r#"
-            SELECT 
-                user_id,
-                balance,
-                currency,
-                free_credit_balance,
-                free_credits_granted_at,
-                free_credits_expires_at,
-                free_credits_expired,
-                created_at,
-                updated_at
-            FROM user_credits 
-            WHERE user_id = $1 
-            FOR UPDATE
-            "#,
-            user_id
-        )
-        .fetch_optional(&mut *tx)
-        .await
-        .map_err(|e| AppError::Database(format!("Failed to lock user credits row: {}", e)))?;
-
-        let current_balance = match current_balance {
-            Some(balance) => balance,
-            None => {
-                // Create balance record if it doesn't exist, still within the locked transaction
-                self.user_credit_repository
-                    .ensure_balance_record_exists_with_executor(user_id, &mut tx)
-                    .await?
-            }
-        };
-
-        // Validate that the purchase won't result in a negative balance (safety check)
-        validate_balance_adjustment(&current_balance.balance, &net_amount, "Credit purchase")?;
-
-        let updated_balance = self.user_credit_repository
-            .increment_balance_with_executor(user_id, &net_amount, &mut tx)
-            .await?;
-
-        let description = format!("Credit purchase via Stripe charge {}", stripe_charge_id);
-
-        let transaction = CreditTransaction {
-            id: Uuid::new_v4(),
-            user_id: *user_id,
-            transaction_type: "purchase".to_string(),
-            net_amount: net_amount.clone(),
-            gross_amount: Some(gross_amount.clone()),
-            fee_amount: Some(fee_amount.clone()),
-            currency: currency.to_string(),
-            description: Some(description),
-            stripe_charge_id: Some(stripe_charge_id.to_string()),
-            related_api_usage_id: None,
-            metadata: Some(payment_metadata),
-            created_at: Some(Utc::now()),
-            balance_after: updated_balance.balance.clone(),
-        };
-
-        let _created_transaction = self.credit_transaction_repository
-            .create_transaction_with_executor(&transaction, &updated_balance.balance, &mut tx)
-            .await?;
-
-        // Commit transaction and handle both constraint violations and serialization failures
-        match tx.commit().await {
-            Ok(()) => {
-                info!("Successfully committed credit purchase transaction for user {} via Stripe charge {}", user_id, stripe_charge_id);
-            },
-            Err(e) => {
-                // Check if this is a database constraint violation (duplicate key)
-                if let sqlx::Error::Database(db_error) = &e {
-                    if db_error.code().as_deref() == Some("23505") { // PostgreSQL unique constraint violation
-                        info!("Credit purchase for stripe charge {} was already recorded (duplicate constraint violation), returning success for idempotency", stripe_charge_id);
-                        // Return success with current balance for idempotency - this is the expected behavior for webhook handlers
-                        return Err(AppError::AlreadyExists(format!("Credit purchase for stripe charge {} was already processed", stripe_charge_id)));
-                    }
-                    // Handle serialization failures that can occur with SERIALIZABLE isolation
-                    if db_error.code().as_deref() == Some("40001") { // PostgreSQL serialization failure
-                        warn!("Serialization failure during credit purchase for user {} and charge {}: {}", user_id, stripe_charge_id, db_error);
-                        return Err(AppError::Database(format!(
-                            "Transaction serialization conflict during credit purchase. This may indicate concurrent auto-top-off attempts: {}", 
-                            db_error
-                        )));
-                    }
+            let current_balance = match current_balance {
+                Some(balance) => balance,
+                None => {
+                    // Create balance record if it doesn't exist, still within the locked transaction
+                    self.user_credit_repository
+                        .ensure_balance_record_exists_with_executor(user_id, &mut tx)
+                        .await?
                 }
-                return Err(AppError::from(e));
+            };
+
+            // Validate that the purchase won't result in a negative balance (safety check)
+            validate_balance_adjustment(&current_balance.balance, &net_amount, "Credit purchase")?;
+
+            let updated_balance = self.user_credit_repository
+                .increment_balance_with_executor(user_id, &net_amount, &mut tx)
+                .await?;
+
+            let description = format!("Credit purchase via Stripe charge {}", stripe_charge_id);
+
+            let transaction = CreditTransaction {
+                id: Uuid::new_v4(),
+                user_id: *user_id,
+                transaction_type: "purchase".to_string(),
+                net_amount: net_amount.clone(),
+                gross_amount: Some(gross_amount.clone()),
+                fee_amount: Some(fee_amount.clone()),
+                currency: currency.to_string(),
+                description: Some(description),
+                stripe_charge_id: Some(stripe_charge_id.to_string()),
+                related_api_usage_id: None,
+                metadata: Some(payment_metadata.clone()),
+                created_at: Some(Utc::now()),
+                balance_after: updated_balance.balance.clone(),
+            };
+
+            let _created_transaction = self.credit_transaction_repository
+                .create_transaction_with_executor(&transaction, &updated_balance.balance, &mut tx)
+                .await?;
+
+            // Commit transaction and handle both constraint violations and serialization failures
+            match tx.commit().await {
+                Ok(()) => {
+                    info!("Successfully committed credit purchase transaction for user {} via Stripe charge {}", user_id, stripe_charge_id);
+                    
+                    // Log audit event after successful transaction commit
+                    let audit_metadata = serde_json::json!({
+                        "stripe_charge_id": stripe_charge_id,
+                        "balance_before": current_balance.balance,
+                        "balance_after": updated_balance.balance,
+                        "user_id": user_id.to_string()
+                    });
+
+                    if let Err(audit_error) = self.audit_service.log_credit_purchase_succeeded(
+                        audit_context,
+                        stripe_charge_id,
+                        &net_amount,
+                        currency,
+                        audit_metadata,
+                    ).await {
+                        warn!("Failed to log audit event for credit purchase: {}", audit_error);
+                    }
+
+                    info!("Successfully processed credit purchase for user {} via Stripe charge {}: {} {} added (balance: {} -> {})", 
+                          user_id, stripe_charge_id, net_amount, currency, current_balance.balance, updated_balance.balance);
+                    return Ok(updated_balance);
+                },
+                Err(e) => {
+                    // Check if this is a database constraint violation (duplicate key)
+                    if let sqlx::Error::Database(db_error) = &e {
+                        if db_error.code().as_deref() == Some("23505") { // PostgreSQL unique constraint violation
+                            info!("Credit purchase for stripe charge {} was already recorded (duplicate constraint violation), returning success for idempotency", stripe_charge_id);
+                            // Return success with current balance for idempotency - this is the expected behavior for webhook handlers
+                            return Err(AppError::AlreadyExists(format!("Credit purchase for stripe charge {} was already processed", stripe_charge_id)));
+                        }
+                        // Handle serialization failures that can occur with SERIALIZABLE isolation
+                        if db_error.code().as_deref() == Some("40001") { // PostgreSQL serialization failure
+                            retry_count += 1;
+                            if retry_count < max_retries {
+                                warn!("Serialization failure during credit purchase for user {} and charge {} (attempt {}/{}): {}", 
+                                      user_id, stripe_charge_id, retry_count, max_retries, db_error);
+                                // Sleep briefly before retrying
+                                tokio::time::sleep(tokio::time::Duration::from_millis(100 * retry_count as u64)).await;
+                                continue;
+                            } else {
+                                warn!("Serialization failure during credit purchase for user {} and charge {} (max retries exceeded): {}", 
+                                      user_id, stripe_charge_id, db_error);
+                                return Err(AppError::Database(format!(
+                                    "Transaction serialization conflict during credit purchase after {} retries. This may indicate concurrent auto-top-off attempts: {}", 
+                                    max_retries, db_error
+                                )));
+                            }
+                        }
+                    }
+                    return Err(AppError::from(e));
+                }
             }
         }
-
-        // Log audit event after successful transaction commit
-        let audit_metadata = serde_json::json!({
-            "stripe_charge_id": stripe_charge_id,
-            "balance_before": current_balance.balance,
-            "balance_after": updated_balance.balance,
-            "user_id": user_id.to_string()
-        });
-
-        if let Err(audit_error) = self.audit_service.log_credit_purchase_succeeded(
-            audit_context,
-            stripe_charge_id,
-            &net_amount,
-            currency,
-            audit_metadata,
-        ).await {
-            warn!("Failed to log audit event for credit purchase: {}", audit_error);
-        }
-
-        info!("Successfully processed credit purchase for user {} via Stripe charge {}: {} {} added (balance: {} -> {})", 
-              user_id, stripe_charge_id, net_amount, currency, current_balance.balance, updated_balance.balance);
-        Ok(updated_balance)
     }
 
 
@@ -862,7 +892,7 @@ impl CreditService {
             .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
         
         // Set user context for RLS policies
-        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
+        sqlx::query("SELECT set_config('app.current_user_id', $1, true)")
             .bind(user_id.to_string())
             .execute(&mut *tx)
             .await
@@ -895,7 +925,7 @@ impl CreditService {
             .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
         
         // Set user context for RLS policies
-        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
+        sqlx::query("SELECT set_config('app.current_user_id', $1, true)")
             .bind(user_id.to_string())
             .execute(&mut *tx)
             .await

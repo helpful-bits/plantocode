@@ -17,4 +17,6 @@ pub struct Claims {
     pub role: String,
     /// Token binding hash (optional)
     pub tbh: Option<String>,
+    /// JWT ID (unique identifier for the token)
+    pub jti: String,
 }

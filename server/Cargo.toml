@@ -91,6 +91,10 @@ tokio-cron-scheduler = "0.14.0"
 hmac = "0.12.1"
 hex = "0.4.3"
 subtle = "2.5.0"
+aes-gcm = "0.10.3"
+actix-web-lab = "0.24.2"
+eventsource-stream = "0.2.3"
+pin-project-lite = "0.2.16"
 
 [features]
 default = []

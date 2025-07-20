@@ -48,6 +48,8 @@ struct ErrorResponse {
     code: u16,
     message: String,
     error_type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error_details: Option<crate::models::error_details::ErrorDetails>,
 }
 
 impl fmt::Display for AppError {
@@ -138,6 +140,7 @@ impl ResponseError for AppError {
             code: status_code.as_u16(),
             message: self.to_string(),
             error_type: error_type.to_string(),
+            error_details: None, // TODO: Pass error details from context
         };
 
         HttpResponse::build(status_code).json(error_response)
@@ -181,6 +184,23 @@ impl ResponseError for AppError {
             AppError::SpendingLimitExceeded(_) => StatusCode::PAYMENT_REQUIRED,
             AppError::CheckoutError(_) => StatusCode::PAYMENT_REQUIRED,
         }
+    }
+}
+
+impl AppError {
+    /// Returns true if this error is permanent and should not be retried
+    pub fn is_permanent(&self) -> bool {
+        matches!(
+            self,
+            AppError::Auth(_)
+                | AppError::InvalidArgument(_)
+                | AppError::Validation(_)
+                | AppError::NotFound(_)
+                | AppError::AlreadyExists(_)
+                | AppError::Configuration(_)
+                | AppError::BadRequest(_)
+                | AppError::Forbidden(_)
+        )
     }
 }
 

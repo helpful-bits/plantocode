@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use crate::stripe_types::{Charge, Expandable};
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct PaymentIntent {
@@ -18,6 +19,7 @@ pub struct PaymentIntent {
     pub payment_method: Option<String>,
     pub setup_future_usage: Option<String>,
     pub confirmation_method: Option<String>,
+    pub latest_charge: Option<Expandable<Charge>>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]

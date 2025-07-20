@@ -10,18 +10,19 @@
 /// 3. Validate structure and transform OR return Ignore
 /// 4. NEVER forward unparseable chunks to prevent client errors
 
-use actix_web::web;
-use serde_json::{json, Value};
-use tracing::{debug, error, info};
+use serde_json::Value;
+use tracing::{error, debug};
 use uuid::Uuid;
 use chrono;
 use bigdecimal::BigDecimal;
 use std::str::FromStr;
 
-use crate::handlers::streaming_handler::{StreamChunkTransformer, TransformResult, StreamError};
-use crate::clients::google_client::{GoogleStreamChunk, GoogleUsageMetadata};
+use crate::streaming::transformers::{StreamChunkTransformer, TransformResult, StreamError};
+use crate::clients::google_client::{GoogleStreamChunk, GoogleUsageMetadata, GoogleStreamPart};
 use crate::clients::open_router_client::{OpenRouterStreamChunk, OpenRouterStreamChoice, OpenRouterStreamDelta, OpenRouterUsage};
 use crate::clients::usage_extractor::ProviderUsage;
+use crate::clients::openai::OpenAIStreamChunk;
+use crate::models::usage_metadata::{UsageMetadata, TokenModalityDetail};
 
 /// Google stream transformer - converts Google native format to OpenRouter format
 /// 
@@ -50,21 +51,36 @@ impl GoogleStreamTransformer {
     }
     
     /// Convert GoogleStreamChunk to OpenRouterStreamChunk format
-    fn convert_google_to_openrouter(&self, google_chunk: GoogleStreamChunk) -> OpenRouterStreamChunk {
+    fn convert_google_to_openrouter(&self, google_chunk: GoogleStreamChunk) -> Result<OpenRouterStreamChunk, StreamError> {
         let choices = if let Some(candidates) = google_chunk.candidates {
-            candidates.into_iter().map(|candidate| {
+            candidates.into_iter().enumerate().map(|(idx, candidate)| {
                 let content = candidate.content
-                    .and_then(|c| c.parts.into_iter().next())
-                    .map(|p| p.text)
-                    .unwrap_or_default();
+                    .and_then(|c| {
+                        // Concatenate ALL text parts without filtering - preserve everything
+                        c.parts.and_then(|parts| {
+                            let mut all_text = Vec::new();
+                            
+                            // Iterate through ALL parts and collect text
+                            for part in parts {
+                                if let Some(text) = part.text {
+                                    all_text.push(text);
+                                }
+                                // Note: If Google adds other part types in future, we can handle them here
+                            }
+                            
+                            // Join all collected text
+                            let combined_text = all_text.join("");
+                            if combined_text.is_empty() { None } else { Some(combined_text) }
+                        })
+                    });
                 
                 OpenRouterStreamChoice {
                     delta: OpenRouterStreamDelta {
                         role: Some("assistant".to_string()),
-                        content: if content.is_empty() { None } else { Some(content) },
+                        content,
                     },
                     index: candidate.index,
-                    finish_reason: candidate.finish_reason,
+                    finish_reason: None, // Remove finish_reason from standardized streams
                 }
             }).collect()
         } else {
@@ -79,64 +95,156 @@ impl GoogleStreamTransformer {
             cached_input_tokens: metadata.cached_content_token_count.unwrap_or(0),
             cache_write_tokens: 0,
             cache_read_tokens: metadata.cached_content_token_count.unwrap_or(0),
+            prompt_tokens_details: None,
         });
 
-        OpenRouterStreamChunk {
+        Ok(OpenRouterStreamChunk {
             id: format!("chatcmpl-{}", Uuid::new_v4()),
             choices,
             created: Some(chrono::Utc::now().timestamp()),
             model: self.model_id.clone(),
             object: Some("chat.completion.chunk".to_string()),
             usage,
-        }
+        })
     }
 }
 
 
 impl StreamChunkTransformer for GoogleStreamTransformer {
-    fn transform_chunk(&self, chunk: &[u8]) -> Result<TransformResult, StreamError> {
-        // Step 1: Convert to UTF-8 string
-        let chunk_str = std::str::from_utf8(chunk)
-            .map_err(|e| StreamError::ParseError(format!("Invalid UTF-8 in Google chunk: {}", e)))?;
-        
-        // Handle SSE format (data: prefix)
-        let json_str = if chunk_str.starts_with("data: ") {
-            let data_content = &chunk_str[6..];
-            if data_content.trim() == "[DONE]" {
-                debug!("Google transformer: Received [DONE] marker");
-                return Ok(TransformResult::Done);
-            }
-            data_content
-        } else {
-            debug!("Google transformer: Chunk missing 'data: ' prefix, ignoring");
-            return Ok(TransformResult::Ignore);
-        };
-        
-        // Step 2: Parse to JSON Value first (robust parsing)
-        let chunk_value = match serde_json::from_str::<Value>(json_str) {
-            Ok(value) => value,
-            Err(e) => {
-                debug!("Google transformer: Ignoring unparseable chunk: {} - Error: {}", json_str, e);
-                return Ok(TransformResult::Ignore);
-            }
-        };
-        
-        // Step 3: Check for Google API error objects
-        if let Some(error_obj) = chunk_value.get("error") {
+    fn transform_chunk(&self, chunk: &Value) -> Result<TransformResult, StreamError> {
+        // Check for Google API error objects
+        if let Some(error_obj) = chunk.get("error") {
             error!("Google API error in stream chunk: {}", error_obj);
             return Err(self.handle_error_chunk(error_obj));
         }
         
-        // Step 4: Try to deserialize as GoogleStreamChunk
-        match serde_json::from_value::<GoogleStreamChunk>(chunk_value.clone()) {
+        // Check if this is a final chunk with finishReason
+        let is_final_chunk = chunk.get("candidates")
+            .and_then(|c| c.as_array())
+            .and_then(|arr| arr.first())
+            .and_then(|candidate| candidate.get("finishReason"))
+            .and_then(|fr| fr.as_str())
+            .map(|reason| reason == "STOP")
+            .unwrap_or(false);
+        
+        // Google might send chunks with different structures
+        // First try to deserialize as GoogleStreamChunk
+        match serde_json::from_value::<GoogleStreamChunk>(chunk.clone()) {
             Ok(google_chunk) => {
-                let openrouter_chunk = self.convert_google_to_openrouter(google_chunk);
-                let converted_json = serde_json::to_string(&openrouter_chunk)
-                    .unwrap_or_else(|_| "{}".to_string());
-                Ok(TransformResult::Transformed(web::Bytes::from(format!("data: {}\n\n", converted_json))))
+                // Check if this chunk has any meaningful content or metadata
+                let has_meaningful_content = google_chunk.candidates
+                    .as_ref()
+                    .map(|candidates| {
+                        candidates.iter().any(|c| {
+                            // Accept chunks with any content parts (including thinking parts)
+                            c.content.as_ref()
+                                .and_then(|content| content.parts.as_ref())
+                                .map(|parts| !parts.is_empty())
+                                .unwrap_or(false)
+                        })
+                    })
+                    .unwrap_or(false);
+                
+                // Transform if we have ANY content - don't filter valid chunks
+                if has_meaningful_content {
+                    let transformed_chunk = self.convert_google_to_openrouter(google_chunk)?;
+                    Ok(TransformResult::Transformed(transformed_chunk))
+                } else if is_final_chunk {
+                    // This is the final chunk with no content, just finishReason
+                    // Return Done to trigger [DONE] marker
+                    // According to SSE standards, we should not send special markers
+                    // Stream termination is handled by connection closure
+                    Ok(TransformResult::Ignore)
+                } else {
+                    // Only ignore chunks that are truly empty
+                    Ok(TransformResult::Ignore)
+                }
             }
             Err(e) => {
-                debug!("Google transformer: Failed to parse as GoogleStreamChunk: {}, ignoring", e);
+                // Log the parsing error for debugging
+                debug!("Failed to parse Google chunk as GoogleStreamChunk: {}, chunk: {}", e, chunk);
+                
+                // Try lenient parsing to extract any valid content
+                if let Some(candidates) = chunk.get("candidates").and_then(|c| c.as_array()) {
+                    debug!("Attempting lenient parsing of Google chunk candidates");
+                    
+                    // Collect ALL text from ALL candidates and ALL parts
+                    let mut all_texts = Vec::new();
+                    
+                    for (idx, candidate) in candidates.iter().enumerate() {
+                        if let Some(parts) = candidate
+                            .get("content")
+                            .and_then(|c| c.get("parts"))
+                            .and_then(|p| p.as_array()) {
+                            
+                            // Collect text from ALL parts in this candidate
+                            for part in parts {
+                                if let Some(text) = part.get("text").and_then(|t| t.as_str()) {
+                                    if !text.is_empty() {
+                                        all_texts.push((idx, text.to_string()));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                    // If we found any text, create choices for each candidate
+                    if !all_texts.is_empty() {
+                        debug!("Found {} text segments in malformed Google chunk, transforming", all_texts.len());
+                        
+                        // Group texts by candidate index
+                        let mut choices = Vec::new();
+                        let mut current_idx = 0;
+                        let mut current_texts = Vec::new();
+                        
+                        for (idx, text) in all_texts {
+                            if idx != current_idx && !current_texts.is_empty() {
+                                // Create choice for previous candidate
+                                choices.push(OpenRouterStreamChoice {
+                                    delta: OpenRouterStreamDelta {
+                                        role: Some("assistant".to_string()),
+                                        content: Some(current_texts.join("")),
+                                    },
+                                    index: current_idx as i32,
+                                    finish_reason: None,
+                                });
+                                current_texts.clear();
+                            }
+                            current_idx = idx;
+                            current_texts.push(text);
+                        }
+                        
+                        // Don't forget the last candidate
+                        if !current_texts.is_empty() {
+                            choices.push(OpenRouterStreamChoice {
+                                delta: OpenRouterStreamDelta {
+                                    role: Some("assistant".to_string()),
+                                    content: Some(current_texts.join("")),
+                                },
+                                index: current_idx as i32,
+                                finish_reason: None,
+                            });
+                        }
+                        
+                        let chunk = OpenRouterStreamChunk {
+                            id: format!("chatcmpl-{}", Uuid::new_v4()),
+                            choices,
+                            created: Some(chrono::Utc::now().timestamp()),
+                            model: self.model_id.clone(),
+                            object: Some("chat.completion.chunk".to_string()),
+                            usage: None,
+                        };
+                        
+                        return Ok(TransformResult::Transformed(chunk));
+                    }
+                }
+                
+                // Check if this is a final chunk in the lenient parsing path
+                if is_final_chunk {
+                    // Return Done to trigger [DONE] marker
+                    return Ok(TransformResult::Done);
+                }
+                
                 Ok(TransformResult::Ignore)
             }
         }
@@ -164,6 +272,17 @@ impl StreamChunkTransformer for GoogleStreamTransformer {
     }
     
     fn extract_usage_from_chunk(&self, chunk: &Value) -> Option<ProviderUsage> {
+        // Only extract usage from the final chunk to prevent multiple usage updates
+        let is_final_chunk = chunk.get("candidates")
+            .and_then(|c| c.as_array())
+            .and_then(|arr| arr.first())
+            .and_then(|candidate| candidate.get("finishReason"))
+            .is_some();
+        
+        if !is_final_chunk {
+            return None;
+        }
+        
         // Google provides cumulative usage in every chunk with usageMetadata
         if let Some(usage_metadata) = chunk.get("usageMetadata") {
             let prompt_tokens = usage_metadata.get("promptTokenCount")
@@ -176,194 +295,57 @@ impl StreamChunkTransformer for GoogleStreamTransformer {
                 .and_then(|v| v.as_i64())
                 .unwrap_or(0) as i32;
             
-            Some(ProviderUsage {
+            // Create comprehensive metadata
+            let mut metadata = crate::models::usage_metadata::UsageMetadata::default();
+            
+            // Extract Google's version of reasoning tokens
+            metadata.thoughts_tokens = usage_metadata.get("thoughtsTokenCount")
+                .and_then(|v| v.as_i64());
+            
+            // Extract prompt token details (modality information)
+            if let Some(ptd) = usage_metadata.get("promptTokensDetails") {
+                if let Some(details_array) = ptd.as_array() {
+                    metadata.prompt_tokens_details = Some(
+                        details_array.iter()
+                            .filter_map(|d| {
+                                let modality = d.get("modality")?.as_str()?.to_string();
+                                let token_count = d.get("tokenCount")?.as_i64()?;
+                                Some(crate::models::usage_metadata::TokenModalityDetail {
+                                    modality,
+                                    token_count,
+                                })
+                            })
+                            .collect()
+                    );
+                }
+            }
+            
+            // Extract model version from chunk
+            metadata.model_version = chunk.get("modelVersion")
+                .and_then(|v| v.as_str())
+                .map(String::from);
+            
+            // Extract response ID
+            metadata.response_id = chunk.get("responseId")
+                .and_then(|v| v.as_str())
+                .map(String::from);
+            
+            metadata.provider = Some("Google".to_string());
+            
+            let mut usage = ProviderUsage::new(
                 prompt_tokens,
                 completion_tokens,
-                cache_write_tokens: 0,
+                0,
                 cache_read_tokens,
-                model_id: self.model_id.clone(),
-                duration_ms: None,
-                cost: None,
-            })
+                self.model_id.clone()
+            );
+            usage.metadata = Some(metadata);
+            Some(usage)
         } else {
             None
         }
     }
 }
-
-/// Anthropic stream transformer - injects OpenRouter fields into native format
-/// 
-/// Anthropic sends streaming chunks in their native format with:
-/// - type field instead of object
-/// - Missing required id field for OpenRouter compatibility
-/// - Different structure for content deltas
-/// - message_delta events containing incremental usage
-/// 
-/// This transformer robustly handles:
-/// - Anthropic API error chunks (converts to StreamError)
-/// - Native format detection and field injection
-/// - Malformed chunks (returns Ignore, never forwards)
-/// - Final chunks with usage information (extracts for billing)
-/// - Incremental usage updates from message_delta events
-pub struct AnthropicStreamTransformer {
-    model_id: String,
-}
-
-impl AnthropicStreamTransformer {
-    pub fn new(model_id: &str) -> Self {
-        Self {
-            model_id: model_id.to_string(),
-        }
-    }
-}
-
-
-impl StreamChunkTransformer for AnthropicStreamTransformer {
-    fn transform_chunk(&self, chunk: &[u8]) -> Result<TransformResult, StreamError> {
-        // Step 1: Convert to UTF-8 string
-        let chunk_str = std::str::from_utf8(chunk)
-            .map_err(|e| StreamError::ParseError(format!("Invalid UTF-8 in Anthropic chunk: {}", e)))?;
-        
-        // Handle SSE format (data: prefix)
-        let json_str = if chunk_str.starts_with("data: ") {
-            let data_content = &chunk_str[6..];
-            if data_content.trim() == "[DONE]" {
-                debug!("Anthropic transformer: Received [DONE] marker");
-                return Ok(TransformResult::Done);
-            }
-            data_content
-        } else {
-            debug!("Anthropic transformer: Chunk missing 'data: ' prefix, ignoring");
-            return Ok(TransformResult::Ignore);
-        };
-        
-        // Step 2: Parse to JSON Value first (robust parsing)
-        let mut chunk_value = match serde_json::from_str::<Value>(json_str) {
-            Ok(value) => value,
-            Err(e) => {
-                debug!("Anthropic transformer: Ignoring unparseable chunk: {} - Error: {}", json_str, e);
-                return Ok(TransformResult::Ignore);
-            }
-        };
-        
-        // Step 3: Check for Anthropic API error objects
-        if let Some(error_obj) = chunk_value.get("error") {
-            error!("Anthropic API error in stream chunk: {}", error_obj);
-            return Err(self.handle_error_chunk(error_obj));
-        }
-        
-        // Step 4: Detect native Anthropic format and inject OpenRouter fields
-        if chunk_value.get("type").is_some() && chunk_value.get("id").is_none() {
-            // Inject required OpenRouter fields for client compatibility
-            chunk_value["id"] = Value::String(format!("chatcmpl-{}", Uuid::new_v4()));
-            chunk_value["object"] = Value::String("chat.completion.chunk".to_string());
-            chunk_value["created"] = Value::Number(serde_json::Number::from(chrono::Utc::now().timestamp()));
-            chunk_value["model"] = Value::String(self.model_id.clone());
-        }
-        
-        // Step 5: Convert to OpenRouter format and return
-        let converted_json = serde_json::to_string(&chunk_value)
-            .unwrap_or_else(|_| "{}".to_string());
-        Ok(TransformResult::Transformed(web::Bytes::from(format!("data: {}\n\n", converted_json))))
-    }
-    
-    fn handle_error_chunk(&self, error: &Value) -> StreamError {
-        let error_message = error.get("message")
-            .and_then(|m| m.as_str())
-            .unwrap_or("Unknown Anthropic API error");
-        StreamError::ProviderError(format!("Anthropic API error: {}", error_message))
-    }
-    
-    fn extract_text_delta(&self, chunk: &Value) -> Option<String> {
-        // Anthropic can send text in different formats depending on the chunk type
-        
-        // First try the standard OpenRouter format (choices[0].delta.content)
-        if let Some(content) = chunk.get("choices")
-            .and_then(|choices| choices.as_array())
-            .and_then(|arr| arr.first())
-            .and_then(|choice| choice.get("delta"))
-            .and_then(|delta| delta.get("content"))
-            .and_then(|content| content.as_str()) {
-            return Some(content.to_string());
-        }
-        
-        // Try Anthropic native format (delta.text for content_block_delta)
-        if chunk.get("type") == Some(&Value::String("content_block_delta".to_string())) {
-            if let Some(text) = chunk.get("delta")
-                .and_then(|delta| delta.get("text"))
-                .and_then(|text| text.as_str()) {
-                return Some(text.to_string());
-            }
-        }
-        
-        // Try message delta format
-        if chunk.get("type") == Some(&Value::String("message_delta".to_string())) {
-            if let Some(text) = chunk.get("delta")
-                .and_then(|delta| delta.get("content"))
-                .and_then(|content| content.as_str()) {
-                return Some(text.to_string());
-            }
-        }
-        
-        None
-    }
-    
-    fn extract_usage_from_chunk(&self, chunk: &Value) -> Option<ProviderUsage> {
-        let chunk_type = chunk.get("type").and_then(|t| t.as_str())?;
-        
-        match chunk_type {
-            "message_start" => {
-                if let Some(message) = chunk.get("message") {
-                    if let Some(usage) = message.get("usage") {
-                        let input_tokens = usage.get("input_tokens").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
-                        let cache_creation = usage.get("cache_creation_input_tokens").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
-                        let cache_read = usage.get("cache_read_input_tokens").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
-                        
-                        Some(ProviderUsage {
-                            prompt_tokens: input_tokens,
-                            completion_tokens: 0,
-                            cache_write_tokens: cache_creation,
-                            cache_read_tokens: cache_read,
-                            model_id: self.model_id.clone(),
-                            duration_ms: None,
-                            cost: None,
-                        })
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                }
-            }
-            "message_delta" => {
-                if let Some(usage) = chunk.get("usage") {
-                    let input_tokens = usage.get("input_tokens").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
-                    let output_tokens = usage.get("output_tokens").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
-                    let cache_creation = usage.get("cache_creation_input_tokens").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
-                    let cache_read = usage.get("cache_read_input_tokens").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
-                    
-                    if input_tokens > 0 || output_tokens > 0 {
-                        Some(ProviderUsage {
-                            prompt_tokens: input_tokens,
-                            completion_tokens: output_tokens,
-                            cache_write_tokens: cache_creation,
-                            cache_read_tokens: cache_read,
-                            model_id: self.model_id.clone(),
-                            duration_ms: None,
-                            cost: None,
-                        })
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                }
-            }
-            _ => None
-        }
-    }
-}
-
 
 /// OpenAI stream transformer - validates and passes through compatible format
 /// 
@@ -385,50 +367,86 @@ impl OpenAIStreamTransformer {
 }
 
 impl OpenAIStreamTransformer {
-    
+    /// Convert OpenAI chunk to standardized format without OpenAI-specific fields
+    fn create_standardized_chunk(&self, openai_chunk: &OpenAIStreamChunk) -> Option<OpenRouterStreamChunk> {
+        let choices: Vec<OpenRouterStreamChoice> = openai_chunk.choices.iter()
+            .filter_map(|choice| {
+                // Only include choices that have actual content, exclude finish_reason
+                if choice.delta.content.is_some() || choice.delta.role.is_some() {
+                    Some(OpenRouterStreamChoice {
+                        index: choice.index,
+                        delta: OpenRouterStreamDelta {
+                            role: choice.delta.role.clone(),
+                            content: choice.delta.content.clone(),
+                        },
+                        finish_reason: None,
+                    })
+                } else {
+                    None
+                }
+            })
+            .collect();
+        
+        // Only return a chunk if we have actual content
+        if !choices.is_empty() {
+            Some(OpenRouterStreamChunk {
+                id: openai_chunk.id.clone(),
+                model: openai_chunk.model.clone(),
+                choices,
+                created: openai_chunk.created,
+                object: Some("chat.completion.chunk".to_string()),
+                usage: None,
+            })
+        } else {
+            None
+        }
+    }
 }
 
 impl StreamChunkTransformer for OpenAIStreamTransformer {
-    fn transform_chunk(&self, chunk: &[u8]) -> Result<TransformResult, StreamError> {
-        // Step 1: Convert to UTF-8 string
-        let chunk_str = std::str::from_utf8(chunk)
-            .map_err(|e| StreamError::ParseError(format!("Invalid UTF-8 in OpenAI chunk: {}", e)))?;
-        
-        // Handle SSE format (data: prefix)
-        if !chunk_str.starts_with("data: ") {
-            debug!("OpenAI transformer: Chunk missing 'data: ' prefix, ignoring");
-            return Ok(TransformResult::Ignore);
-        }
-        
-        let data_content = &chunk_str[6..];
-        if data_content.trim() == "[DONE]" {
-            debug!("OpenAI transformer: Received [DONE] marker");
-            return Ok(TransformResult::Done);
-        }
-        
-        // Step 2: Parse to JSON Value first (robust parsing)
-        let chunk_value = match serde_json::from_str::<Value>(data_content) {
-            Ok(value) => value,
-            Err(e) => {
-                debug!("OpenAI transformer: Ignoring unparseable chunk: {} - Error: {}", data_content, e);
-                return Ok(TransformResult::Ignore);
-            }
-        };
-        
-        // Step 3: Check for OpenAI API error objects
-        if let Some(error_obj) = chunk_value.get("error") {
+    fn transform_chunk(&self, chunk: &Value) -> Result<TransformResult, StreamError> {
+        // Check for OpenAI API error objects
+        if let Some(error_obj) = chunk.get("error") {
             error!("OpenAI API error in stream chunk: {}", error_obj);
             return Err(self.handle_error_chunk(error_obj));
         }
         
-        // Step 4: Validate as OpenRouterStreamChunk and forward
-        match serde_json::from_value::<OpenRouterStreamChunk>(chunk_value) {
-            Ok(_) => {
-                // Valid OpenRouter format, forward as-is
-                Ok(TransformResult::Transformed(web::Bytes::copy_from_slice(chunk)))
+        // Deserialize OpenAI chunk
+        match serde_json::from_value::<OpenAIStreamChunk>(chunk.clone()) {
+            Ok(openai_chunk) => {
+                // Check if this is the final chunk with finish_reason
+                let is_final_chunk = openai_chunk.choices.iter().any(|choice| {
+                    choice.finish_reason.is_some()
+                });
+                
+                // Check if this chunk has content
+                let has_content = openai_chunk.choices.iter().any(|choice| {
+                    choice.delta.content.is_some() || choice.delta.role.is_some()
+                });
+                
+                // Transform content chunks to standardized format without finish_reason
+                if has_content {
+                    // Create standardized chunk without any OpenAI-specific fields
+                    if let Some(standardized_chunk) = self.create_standardized_chunk(&openai_chunk) {
+                        Ok(TransformResult::Transformed(standardized_chunk))
+                    } else {
+                        Ok(TransformResult::Ignore)
+                    }
+                } else if is_final_chunk {
+                    // Final chunk with finish_reason but no content
+                    // According to SSE standards, stream termination should be connection-based
+                    // We ignore this chunk entirely - no [DONE] marker needed
+                    Ok(TransformResult::Ignore)
+                } else if openai_chunk.usage.is_some() {
+                    // Usage chunk - ignore here, will be handled by streaming handler
+                    Ok(TransformResult::Ignore)
+                } else {
+                    // Empty chunk - ignore
+                    Ok(TransformResult::Ignore)
+                }
             }
             Err(e) => {
-                debug!("OpenAI transformer: Failed to validate as OpenRouterStreamChunk: {}, ignoring", e);
+                debug!("Failed to deserialize OpenAI chunk: {}, ignoring malformed data", e);
                 Ok(TransformResult::Ignore)
             }
         }
@@ -453,25 +471,292 @@ impl StreamChunkTransformer for OpenAIStreamTransformer {
     }
     
     fn extract_usage_from_chunk(&self, chunk: &Value) -> Option<ProviderUsage> {
+        // OpenAI sends usage in the final chunk with a usage field
+        if let Some(usage) = chunk.get("usage") {
+            let prompt_tokens = usage.get("prompt_tokens")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0) as i32;
+            let completion_tokens = usage.get("completion_tokens")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0) as i32;
+            
+            // Extract all cached token types from prompt_tokens_details
+            let prompt_details = usage.get("prompt_tokens_details");
+            let cached_tokens = prompt_details
+                .and_then(|details| details.get("cached_tokens"))
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0) as i32;
+            
+            // Only return usage if we have actual token counts
+            if prompt_tokens > 0 || completion_tokens > 0 {
+                // Create comprehensive metadata
+                let mut metadata = UsageMetadata::default();
+                
+                // Extract completion token details including reasoning tokens
+                if let Some(ctd) = usage.get("completion_tokens_details") {
+                    metadata.reasoning_tokens = ctd.get("reasoning_tokens").and_then(|v| v.as_i64());
+                    metadata.audio_tokens_output = ctd.get("audio_tokens").and_then(|v| v.as_i64());
+                    metadata.accepted_prediction_tokens = ctd.get("accepted_prediction_tokens").and_then(|v| v.as_i64());
+                    metadata.rejected_prediction_tokens = ctd.get("rejected_prediction_tokens").and_then(|v| v.as_i64());
+                    
+                    // Also check for any nested completion details
+                    if let Some(audio_tokens) = ctd.get("audio_tokens").and_then(|v| v.as_i64()) {
+                        metadata.audio_tokens_output = Some(audio_tokens);
+                    }
+                    if let Some(text_tokens) = ctd.get("text_tokens").and_then(|v| v.as_i64()) {
+                        // Store text tokens in completion if available
+                        metadata.text_tokens_output = Some(text_tokens);
+                    }
+                }
+                
+                // Extract prompt token details including all modalities
+                if let Some(ptd) = prompt_details {
+                    metadata.audio_tokens_input = ptd.get("audio_tokens").and_then(|v| v.as_i64());
+                    metadata.image_tokens = ptd.get("image_tokens").and_then(|v| v.as_i64());
+                    metadata.text_tokens = ptd.get("text_tokens").and_then(|v| v.as_i64());
+                    
+                    // Extract any additional cached token details
+                    if let Some(cache_creation_input_tokens) = ptd.get("cache_creation_input_tokens").and_then(|v| v.as_i64()) {
+                        metadata.cache_creation_input_tokens = Some(cache_creation_input_tokens);
+                    }
+                    if let Some(cache_read_input_tokens) = ptd.get("cache_read_input_tokens").and_then(|v| v.as_i64()) {
+                        metadata.cache_read_input_tokens = Some(cache_read_input_tokens);
+                    }
+                }
+                
+                // Extract system info from chunk root
+                metadata.system_fingerprint = chunk.get("system_fingerprint")
+                    .and_then(|v| v.as_str())
+                    .map(String::from);
+                
+                metadata.model_version = chunk.get("model")
+                    .and_then(|v| v.as_str())
+                    .map(String::from);
+                
+                // Extract ID if present
+                metadata.response_id = chunk.get("id")
+                    .and_then(|v| v.as_str())
+                    .map(String::from);
+                
+                metadata.provider = Some("OpenAI".to_string());
+                
+                // Store the full usage object for debugging/future fields
+                metadata.provider_specific = Some(usage.clone());
+                
+                
+                let mut usage = ProviderUsage::new(
+                    prompt_tokens,        // Total input tokens
+                    completion_tokens,    // Total output tokens
+                    0,                   // cache_write_tokens (OpenAI doesn't report separately)
+                    cached_tokens,       // cache_read_tokens
+                    self.model_id.clone()
+                );
+                usage.metadata = Some(metadata);
+                return Some(usage);
+            }
+        }
+        None
+    }
+}
+
+
+/// XAI stream transformer - validates and passes through OpenAI-compatible format
+/// 
+/// XAI uses OpenAI-compatible streaming format, so this transformer handles
+/// their chunks by deserializing and re-serializing to ensure robustness.
+pub struct XaiStreamTransformer {
+    model_id: String,
+}
+
+impl XaiStreamTransformer {
+    pub fn new(model_id: &str) -> Self {
+        Self {
+            model_id: model_id.to_string(),
+        }
+    }
+}
+
+impl StreamChunkTransformer for XaiStreamTransformer {
+    fn transform_chunk(&self, chunk: &Value) -> Result<TransformResult, StreamError> {
+        // Check for XAI API error objects
+        if let Some(error_obj) = chunk.get("error") {
+            error!("XAI API error in stream chunk: {}", error_obj);
+            return Err(self.handle_error_chunk(error_obj));
+        }
+        
+        // Fully deserialize into OpenAIStreamChunk and re-serialize to ensure valid structure
+        match serde_json::from_value::<OpenAIStreamChunk>(chunk.clone()) {
+            Ok(openai_chunk) => {
+                // Validate that the chunk has meaningful content or is a final chunk with usage
+                let has_content = openai_chunk.choices.iter().any(|choice| {
+                    choice.delta.content.is_some() || 
+                    choice.delta.role.is_some() ||
+                    choice.finish_reason.is_some()
+                });
+                
+                let has_usage = openai_chunk.usage.is_some();
+                
+                // Only transform chunks that have actual content or usage data
+                if has_content || has_usage {
+                    // Convert OpenAI chunk to OpenRouter format
+                    let choices: Vec<OpenRouterStreamChoice> = openai_chunk.choices.into_iter()
+                        .map(|choice| OpenRouterStreamChoice {
+                            index: choice.index,
+                            delta: OpenRouterStreamDelta {
+                                role: choice.delta.role,
+                                content: choice.delta.content,
+                            },
+                            finish_reason: choice.finish_reason,
+                        })
+                        .collect();
+                    
+                    let usage = openai_chunk.usage.map(|u| OpenRouterUsage {
+                        prompt_tokens: u.prompt_tokens,
+                        completion_tokens: u.completion_tokens,
+                        total_tokens: u.total_tokens,
+                        cost: None,
+                        cached_input_tokens: u.prompt_tokens_details.as_ref()
+                            .and_then(|ptd| ptd.cached_tokens)
+                            .unwrap_or(0),
+                        cache_write_tokens: 0,
+                        cache_read_tokens: u.prompt_tokens_details.as_ref()
+                            .and_then(|ptd| ptd.cached_tokens)
+                            .unwrap_or(0),
+                        prompt_tokens_details: None,
+                    });
+                    
+                    let chunk = OpenRouterStreamChunk {
+                        id: openai_chunk.id,
+                        model: openai_chunk.model,
+                        choices,
+                        created: openai_chunk.created,
+                        object: openai_chunk.object,
+                        usage,
+                    };
+                    
+                    Ok(TransformResult::Transformed(chunk))
+                } else {
+                    debug!("XAI chunk has no meaningful content or usage, ignoring");
+                    Ok(TransformResult::Ignore)
+                }
+            }
+            Err(e) => {
+                debug!("Failed to deserialize XAI chunk: {}, ignoring malformed data", e);
+                Ok(TransformResult::Ignore)
+            }
+        }
+    }
+    
+    fn handle_error_chunk(&self, error: &Value) -> StreamError {
+        let error_message = error.get("message")
+            .and_then(|m| m.as_str())
+            .unwrap_or("Unknown XAI API error");
+        StreamError::ProviderError(format!("XAI API error: {}", error_message))
+    }
+    
+    fn extract_text_delta(&self, chunk: &Value) -> Option<String> {
+        // XAI sends text in choices[0].delta.content (same as OpenAI)
+        chunk.get("choices")
+            .and_then(|choices| choices.as_array())
+            .and_then(|arr| arr.first())
+            .and_then(|choice| choice.get("delta"))
+            .and_then(|delta| delta.get("content"))
+            .and_then(|content| content.as_str())
+            .map(|s| s.to_string())
+    }
+    
+    fn extract_usage_from_chunk(&self, chunk: &Value) -> Option<ProviderUsage> {
         if let Some(usage) = chunk.get("usage") {
             let prompt_tokens = usage.get("prompt_tokens").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
             let completion_tokens = usage.get("completion_tokens").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+            
+            // Extract all cached token types from prompt_tokens_details
             let prompt_tokens_details = usage.get("prompt_tokens_details");
-            let cache_creation_tokens = prompt_tokens_details
+            let cached_tokens = prompt_tokens_details
                 .and_then(|ptd| ptd.get("cached_tokens"))
                 .and_then(|v| v.as_i64())
                 .unwrap_or(0) as i32;
             
             if prompt_tokens > 0 || completion_tokens > 0 {
-                Some(ProviderUsage {
+                // Create comprehensive metadata
+                let mut metadata = crate::models::usage_metadata::UsageMetadata::default();
+                
+                // Extract completion token details including reasoning tokens
+                if let Some(ctd) = usage.get("completion_tokens_details") {
+                    metadata.reasoning_tokens = ctd.get("reasoning_tokens").and_then(|v| v.as_i64());
+                    metadata.audio_tokens_output = ctd.get("audio_tokens").and_then(|v| v.as_i64());
+                    metadata.accepted_prediction_tokens = ctd.get("accepted_prediction_tokens").and_then(|v| v.as_i64());
+                    metadata.rejected_prediction_tokens = ctd.get("rejected_prediction_tokens").and_then(|v| v.as_i64());
+                    
+                    // Also check for any nested completion details
+                    if let Some(audio_tokens) = ctd.get("audio_tokens").and_then(|v| v.as_i64()) {
+                        metadata.audio_tokens_output = Some(audio_tokens);
+                    }
+                    if let Some(text_tokens) = ctd.get("text_tokens").and_then(|v| v.as_i64()) {
+                        metadata.text_tokens_output = Some(text_tokens);
+                    }
+                }
+                
+                // Extract prompt token details including all modalities
+                if let Some(ptd) = prompt_tokens_details {
+                    metadata.text_tokens = ptd.get("text_tokens").and_then(|v| v.as_i64());
+                    metadata.audio_tokens_input = ptd.get("audio_tokens").and_then(|v| v.as_i64());
+                    metadata.image_tokens = ptd.get("image_tokens").and_then(|v| v.as_i64());
+                    
+                    // Extract any additional cached token details
+                    if let Some(cache_creation_input_tokens) = ptd.get("cache_creation_input_tokens").and_then(|v| v.as_i64()) {
+                        metadata.cache_creation_input_tokens = Some(cache_creation_input_tokens);
+                    }
+                    if let Some(cache_read_input_tokens) = ptd.get("cache_read_input_tokens").and_then(|v| v.as_i64()) {
+                        metadata.cache_read_input_tokens = Some(cache_read_input_tokens);
+                    }
+                }
+                
+                // Extract system info from chunk root
+                metadata.system_fingerprint = chunk.get("system_fingerprint")
+                    .and_then(|v| v.as_str())
+                    .map(String::from);
+                
+                metadata.model_version = chunk.get("model")
+                    .and_then(|v| v.as_str())
+                    .map(String::from);
+                
+                // Extract ID if present
+                metadata.response_id = chunk.get("id")
+                    .and_then(|v| v.as_str())
+                    .map(String::from);
+                
+                metadata.provider = Some("XAI".to_string());
+                
+                // Extract XAI-specific fields
+                let mut provider_specific_map = serde_json::Map::new();
+                
+                if let Some(num_sources) = usage.get("num_sources_used") {
+                    provider_specific_map.insert("num_sources_used".to_string(), num_sources.clone());
+                }
+                
+                // Store any XAI-specific usage fields
+                if let Some(web_search_count) = usage.get("web_search_count") {
+                    provider_specific_map.insert("web_search_count".to_string(), web_search_count.clone());
+                }
+                
+                if !provider_specific_map.is_empty() {
+                    metadata.provider_specific = Some(serde_json::Value::Object(provider_specific_map));
+                } else {
+                    // Store the full usage object for debugging/future fields
+                    metadata.provider_specific = Some(usage.clone());
+                }
+                
+                
+                let mut usage = ProviderUsage::new(
                     prompt_tokens,
                     completion_tokens,
-                    cache_write_tokens: cache_creation_tokens,
-                    cache_read_tokens: 0,
-                    model_id: self.model_id.clone(),
-                    duration_ms: None,
-                    cost: None,
-                })
+                    0,                    // cache_write_tokens (XAI doesn't report separately)
+                    cached_tokens,
+                    self.model_id.clone()
+                );
+                usage.metadata = Some(metadata);
+                Some(usage)
             } else {
                 None
             }
@@ -480,7 +765,6 @@ impl StreamChunkTransformer for OpenAIStreamTransformer {
         }
     }
 }
-
 
 /// OpenRouter stream transformer - validates and passes through native format
 /// 
@@ -504,47 +788,21 @@ impl OpenRouterStreamTransformer {
 }
 
 impl StreamChunkTransformer for OpenRouterStreamTransformer {
-    fn transform_chunk(&self, chunk: &[u8]) -> Result<TransformResult, StreamError> {
-        // Step 1: Convert to UTF-8 string
-        let chunk_str = std::str::from_utf8(chunk)
-            .map_err(|e| StreamError::ParseError(format!("Invalid UTF-8 in OpenRouter chunk: {}", e)))?;
-        
-        // Handle SSE format (data: prefix)
-        if !chunk_str.starts_with("data: ") {
-            debug!("OpenRouter transformer: Chunk missing 'data: ' prefix, ignoring");
-            return Ok(TransformResult::Ignore);
-        }
-        
-        let data_content = &chunk_str[6..];
-        if data_content.trim() == "[DONE]" {
-            debug!("OpenRouter transformer: Received [DONE] marker");
-            return Ok(TransformResult::Done);
-        }
-        
-        // Step 2: Parse to JSON Value first (robust parsing)
-        let chunk_value = match serde_json::from_str::<Value>(data_content) {
-            Ok(value) => value,
-            Err(e) => {
-                debug!("OpenRouter transformer: Ignoring unparseable chunk: {} - Error: {}", data_content, e);
-                return Ok(TransformResult::Ignore);
-            }
-        };
-        
-        // Step 3: Check for OpenRouter API error objects
-        if let Some(error_obj) = chunk_value.get("error") {
+    fn transform_chunk(&self, chunk: &Value) -> Result<TransformResult, StreamError> {
+        // Check for OpenRouter API error objects
+        if let Some(error_obj) = chunk.get("error") {
             error!("OpenRouter API error in stream chunk: {}", error_obj);
             return Err(self.handle_error_chunk(error_obj));
         }
         
-        // Step 4: If it's a valid OpenRouter chunk, re-serialize it and return Transformed
-        match serde_json::from_value::<OpenRouterStreamChunk>(chunk_value.clone()) {
-            Ok(_) => {
-                // Valid OpenRouter format, re-serialize and return
-                let re_serialized = serde_json::to_string(&chunk_value).unwrap_or_default();
-                Ok(TransformResult::Transformed(web::Bytes::from(format!("data: {}\n\n", re_serialized))))
+        // If it's a valid OpenRouter chunk, return it directly
+        match serde_json::from_value::<OpenRouterStreamChunk>(chunk.clone()) {
+            Ok(openrouter_chunk) => {
+                // Valid OpenRouter format, return directly
+                Ok(TransformResult::Transformed(openrouter_chunk))
             }
             Err(e) => {
-                debug!("OpenRouter transformer: Failed to validate as OpenRouterStreamChunk: {}, ignoring", e);
+                debug!("Failed to deserialize OpenRouter chunk: {}, ignoring malformed data", e);
                 Ok(TransformResult::Ignore)
             }
         }
@@ -573,34 +831,101 @@ impl StreamChunkTransformer for OpenRouterStreamTransformer {
             let prompt_tokens = usage.get("prompt_tokens").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
             let completion_tokens = usage.get("completion_tokens").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
             
+            // Extract cached tokens from prompt_tokens_details
+            let cached_tokens = usage.get("prompt_tokens_details")
+                .and_then(|details| details.get("cached_tokens"))
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0) as i32;
+            
+            // Enhanced cost information extraction - handles all OpenRouter cost formats
             let cost = usage.get("cost").and_then(|v| match v {
                 Value::Number(n) => n.as_f64(),
                 Value::String(s) => s.parse::<f64>().ok(),
+                Value::Object(obj) => {
+                    // Handle nested cost objects
+                    obj.get("amount")
+                        .and_then(|amount| match amount {
+                            Value::Number(n) => n.as_f64(),
+                            Value::String(s) => s.parse::<f64>().ok(),
+                            _ => None,
+                        })
+                        .or_else(|| {
+                            obj.get("total")
+                                .and_then(|total| match total {
+                                    Value::Number(n) => n.as_f64(),
+                                    Value::String(s) => s.parse::<f64>().ok(),
+                                    _ => None,
+                                })
+                        })
+                },
                 _ => None,
             }).and_then(|f| BigDecimal::from_str(&f.to_string()).ok());
             
-            if prompt_tokens > 0 || completion_tokens > 0 {
-                Some(if let Some(cost_val) = cost {
-                    ProviderUsage {
+            // CRITICAL FIX: Extract usage data whenever cost is present OR tokens are present
+            // This ensures we capture intermediate chunks with cost information even with zero tokens
+            if prompt_tokens > 0 || completion_tokens > 0 || cached_tokens > 0 || cost.is_some() {
+                // Create metadata to capture additional fields
+                let mut metadata = crate::models::usage_metadata::UsageMetadata::default();
+                
+                // Extract reasoning tokens
+                if let Some(ctd) = usage.get("completion_tokens_details") {
+                    metadata.reasoning_tokens = ctd.get("reasoning_tokens").and_then(|v| v.as_i64());
+                }
+                
+                // Extract cost details with comprehensive parsing
+                if let Some(cost_details) = usage.get("cost_details") {
+                    metadata.upstream_inference_cost = cost_details.get("upstream_inference_cost")
+                        .and_then(|v| match v {
+                            Value::Number(n) => n.as_f64(),
+                            Value::String(s) => s.parse::<f64>().ok(),
+                            _ => None,
+                        });
+                }
+                
+                // Extract BYOK flag
+                metadata.is_byok = usage.get("is_byok").and_then(|v| v.as_bool());
+                
+                // Extract provider info
+                metadata.provider = Some("OpenRouter".to_string());
+                
+                // Extract additional usage metadata that might be present
+                if let Some(model_version) = usage.get("model") {
+                    metadata.model_version = model_version.as_str().map(|s| s.to_string());
+                }
+                
+                // Extract system fingerprint if present
+                if let Some(fingerprint) = usage.get("system_fingerprint") {
+                    metadata.system_fingerprint = fingerprint.as_str().map(|s| s.to_string());
+                }
+                
+                // Extract response ID if present
+                if let Some(response_id) = usage.get("id") {
+                    metadata.response_id = response_id.as_str().map(|s| s.to_string());
+                }
+                
+                // Store any provider-specific data that might be useful for debugging
+                metadata.provider_specific = Some(usage.clone());
+                
+                let mut usage = if let Some(cost_val) = cost {
+                    ProviderUsage::with_cost(
                         prompt_tokens,
                         completion_tokens,
-                        cache_write_tokens: 0,
-                        cache_read_tokens: 0,
-                        model_id: self.model_id.clone(),
-                        duration_ms: None,
-                        cost: Some(cost_val),
-                    }
+                        0,
+                        cached_tokens,
+                        self.model_id.clone(),
+                        cost_val
+                    )
                 } else {
-                    ProviderUsage {
+                    ProviderUsage::new(
                         prompt_tokens,
                         completion_tokens,
-                        cache_write_tokens: 0,
-                        cache_read_tokens: 0,
-                        model_id: self.model_id.clone(),
-                        duration_ms: None,
-                        cost: None,
-                    }
-                })
+                        0,
+                        cached_tokens,
+                        self.model_id.clone()
+                    )
+                };
+                usage.metadata = Some(metadata);
+                Some(usage)
             } else {
                 None
             }

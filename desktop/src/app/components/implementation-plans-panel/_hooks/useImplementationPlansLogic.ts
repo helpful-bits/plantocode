@@ -34,6 +34,11 @@ export function useImplementationPlansLogic({
   const [mergeInstructions, setMergeInstructions] = useState("");
   const [isMerging, setIsMerging] = useState(false);
 
+  // Memoize setMergeInstructions to prevent unnecessary re-renders
+  const handleMergeInstructionsChange = useCallback((value: string) => {
+    setMergeInstructions(value);
+  }, []);
+
   // Filter implementation plans for the current project and optionally session
   const implementationPlans = useMemo(() => {
     if (!jobs) return [];
@@ -218,7 +223,7 @@ export function useImplementationPlansLogic({
     setJobToDelete,
     refreshJobs,
     handleTogglePlanSelection,
-    setMergeInstructions,
+    handleMergeInstructionsChange,
     handleMergePlans,
   };
 }

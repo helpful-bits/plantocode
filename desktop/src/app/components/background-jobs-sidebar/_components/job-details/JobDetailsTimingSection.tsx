@@ -2,11 +2,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/
 import { Progress } from "@/ui/progress";
 import { formatTimestamp } from "@/utils/date-utils";
 import { useJobDetailsContext } from "../../_contexts/job-details-context";
-
-import { getStreamingProgressValue } from "../../utils";
+import { useLiveProgress } from "@/hooks/use-live-progress";
 
 export function JobDetailsTimingSection() {
   const { job, jobDuration } = useJobDetailsContext();
+  const progress = useLiveProgress(job);
   return (
     <Card>
       <CardHeader className="pb-3">
@@ -39,18 +39,15 @@ export function JobDetailsTimingSection() {
             {job.status === "running" && job.startTime && (
               <div className="mt-2">
                 <Progress
-                  value={getStreamingProgressValue(job.metadata) ?? 5}
+                  value={progress ?? 5}
                   className="h-1 w-full animate-pulse"
                 />
                 <div className="text-xs text-muted-foreground mt-1">Running...</div>
-                {(() => {
-                  const progressValue = getStreamingProgressValue(job.metadata);
-                  return progressValue !== undefined ? (
-                    <div className="text-[10px] text-muted-foreground mt-0.5 text-right">
-                      {Math.floor(progressValue)}%
-                    </div>
-                  ) : null;
-                })()}
+                {progress !== undefined && (
+                  <div className="text-[10px] text-muted-foreground mt-0.5 text-right">
+                    {Math.floor(progress)}%
+                  </div>
+                )}
               </div>
             )}
           </div>

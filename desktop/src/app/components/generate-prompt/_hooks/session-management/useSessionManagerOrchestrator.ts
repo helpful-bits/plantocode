@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 
 import { type Session } from "@/types/session-types";
 
@@ -42,6 +42,8 @@ export function useSessionManagerOrchestrator({
     pendingLoadRef,
     hasLoadedOnceRef,
     deletedSessionIdsRef,
+    searchQuery,
+    setSearchQuery,
   } = useSessionListState();
 
   const { loadSessions } = useSessionQueries({
@@ -72,6 +74,19 @@ export function useSessionManagerOrchestrator({
     setEditingSessionId,
     deletedSessionIdsRef,
   });
+
+  const filteredSessions = useMemo(() => {
+    if (!searchQuery) {
+      return sessions;
+    }
+    
+    const lowerSearchQuery = searchQuery.toLowerCase();
+    return sessions.filter(session => 
+      session.name.toLowerCase().includes(lowerSearchQuery) ||
+      session.taskDescription?.toLowerCase().includes(lowerSearchQuery) ||
+      session.searchTerm?.toLowerCase().includes(lowerSearchQuery)
+    );
+  }, [sessions, searchQuery]);
 
   // Combined effect for project directory changes and session loading
   useEffect(() => {
@@ -113,8 +128,13 @@ export function useSessionManagerOrchestrator({
   return {
     // Session list state
     sessions,
+    filteredSessions,
     isLoadingSessions,
     error: sessionsError,
+
+    // Search state
+    searchQuery,
+    setSearchQuery,
 
     // Session form state
     sessionNameInput,

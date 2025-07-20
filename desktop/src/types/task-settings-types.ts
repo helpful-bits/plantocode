@@ -17,8 +17,6 @@ export interface TaskSettings {
   implementationPlan: TaskModelSettings;
   implementationPlanMerge: TaskModelSettings;
   genericLlmStream: TaskModelSettings;
-  fileFinderWorkflow: TaskModelSettings;
-  webSearchWorkflow: TaskModelSettings;
   streaming: TaskModelSettings;
   unknown: TaskModelSettings;
   fileRelevanceAssessment: TaskModelSettings;

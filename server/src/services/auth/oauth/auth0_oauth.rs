@@ -3,6 +3,7 @@ use crate::db::repositories::user_repository::UserRepository;
 use crate::error::AppError;
 use crate::models::auth_jwt_claims::Claims;
 use crate::services::auth::jwt;
+use crate::security::encryption;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
@@ -99,10 +100,14 @@ pub struct Auth0OAuthService {
     db_pool: PgPool,
     jwks_cache: Arc<tokio::sync::Mutex<Option<(Auth0Jwks, std::time::Instant)>>>,
     jwt_token_duration_days: i64,
+    refresh_token_encryption_key: Vec<u8>,
 }
 
 impl Auth0OAuthService {
     pub fn new(settings: &AppSettings, db_pool: PgPool) -> Self {
+        let refresh_token_encryption_key = hex::decode(&settings.auth.refresh_token_encryption_key)
+            .expect("Invalid refresh token encryption key format");
+        
         Self {
             client: Client::new(),
             auth0_domain: settings.api_keys.auth0_domain.clone(),
@@ -112,6 +117,7 @@ impl Auth0OAuthService {
             db_pool,
             jwks_cache: Arc::new(tokio::sync::Mutex::new(None)),
             jwt_token_duration_days: settings.auth.token_duration_days,
+            refresh_token_encryption_key,
         }
     }
 
@@ -261,6 +267,10 @@ impl Auth0OAuthService {
         auth0_refresh_token: Option<String>,
         client_id_from_header: Option<&str>,
     ) -> Result<AuthDataResponse, AppError> {
+        if !user_info.email_verified.unwrap_or(false) {
+            return Err(AppError::Unauthorized("Email verification is required to log in. Please verify your email with your provider.".to_string()));
+        }
+        
         let auth0_sub = user_info.sub.clone();
         let email = user_info.email.clone().unwrap_or_else(|| format!("user-{}", auth0_sub));
         let name = user_info.name.clone();
@@ -270,7 +280,8 @@ impl Auth0OAuthService {
         let user = user_repo.find_or_create_by_auth0_details(&auth0_sub, &email, name.as_deref()).await?;
 
         if let Some(refresh_token) = auth0_refresh_token {
-            user_repo.store_auth0_refresh_token(&user.id, &refresh_token).await?;
+            let encrypted_token = encryption::encrypt(&refresh_token, &self.refresh_token_encryption_key)?;
+            user_repo.store_auth0_refresh_token(&user.id, &encrypted_token).await?;
         }
 
         info!("Authenticated user {} (ID: {}) via Auth0", email, user.id);
@@ -310,6 +321,7 @@ impl Clone for Auth0OAuthService {
             db_pool: self.db_pool.clone(),
             jwks_cache: self.jwks_cache.clone(),
             jwt_token_duration_days: self.jwt_token_duration_days,
+            refresh_token_encryption_key: self.refresh_token_encryption_key.clone(),
         }
     }
 }

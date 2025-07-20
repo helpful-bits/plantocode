@@ -8,7 +8,7 @@ use sqlx::Row;
 use crate::error::AppError;
 use crate::db::repositories::api_usage_repository::ApiUsageRepository;
 use crate::models::auth_jwt_claims::Claims;
-use log::{debug, info, error};
+use log::{info, error};
 
 // ========================================
 // USAGE DEBUG HANDLERS (ADMIN ONLY)
@@ -83,7 +83,6 @@ pub async fn get_usage_debug_data(
         return Err(AppError::Forbidden("Admin access required".to_string()));
     }
     
-    debug!("Admin user {} accessing usage debug data", user.user_id);
     
     let limit = query.limit.unwrap_or(200).min(1000); // Cap at 1000 records
     let user_filter = query.user_id.as_ref().and_then(|s| Uuid::parse_str(s).ok());
