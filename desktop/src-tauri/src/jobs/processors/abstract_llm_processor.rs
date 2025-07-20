@@ -4,7 +4,6 @@ use log::{debug, info, warn};
 use serde_json::Value;
 use chrono;
 use tokio::fs;
-use uuid;
 
 use crate::error::{AppError, AppResult};
 use crate::models::OpenRouterUsage;
@@ -23,7 +22,6 @@ pub struct LlmTaskConfig {
     pub stream: bool,
 }
 
-// REMOVED: No default implementation with hardcoded values
 // Configuration must be explicitly provided to ensure no silent fallbacks
 
 /// Result of an LLM task execution
@@ -177,34 +175,16 @@ impl LlmTaskRunner {
             }
         }
         
-        // Generate unique request ID for tracking final costs
-        let request_id = uuid::Uuid::new_v4().to_string();
+        // DO NOT generate request_id locally - it will be received from stream_started event
         
-        // Update job metadata to include request_id
-        let mut metadata: serde_json::Value = if let Some(meta_str) = &initial_db_job.metadata {
-            serde_json::from_str(meta_str).unwrap_or_else(|_| serde_json::json!({}))
-        } else {
-            serde_json::json!({})
-        };
-        metadata["request_id"] = serde_json::json!(request_id.clone());
-        
-        let updated_metadata = serde_json::to_string(&metadata)
-            .map_err(|e| AppError::SerializationError(format!("Failed to serialize metadata: {}", e)))?;
-        
-        // Update job metadata with request_id
-        let mut job = repo.get_job_by_id(job_id).await?
-            .ok_or_else(|| AppError::JobError(format!("Job {} not found", job_id)))?;
-        job.metadata = Some(updated_metadata);
-        repo.update_job(&job).await?;
-        
-        // Create API options with streaming enabled and request ID
+        // Create API options with streaming enabled (DO NOT set request_id - server will generate it)
         let mut api_options = llm_api_utils::create_api_client_options(
             self.config.model.clone(),
             self.config.temperature,
             self.config.max_tokens,
             true, // Force streaming
         )?;
-        api_options.request_id = Some(request_id.clone());
+        // DO NOT set request_id - server will generate and return it in stream_started event
         
         // Add task type for web mode detection
         api_options.task_type = Some(self.job.task_type.to_string());
@@ -220,7 +200,7 @@ impl LlmTaskRunner {
         let messages = llm_api_utils::create_openrouter_messages(&system_prompt, &user_prompt);
         
         // Create streaming handler configuration
-        let stream_config = crate::jobs::streaming_handler::create_stream_config(&system_prompt, &user_prompt, &self.config.model);
+        let stream_config = crate::jobs::streaming_handler::create_stream_config(&system_prompt, &user_prompt, &self.config.model, self.config.max_tokens as usize);
         
         // Create streaming handler
         let streaming_handler = crate::jobs::streaming_handler::StreamedResponseHandler::new(
@@ -236,53 +216,69 @@ impl LlmTaskRunner {
             .process_stream_from_client_with_messages(&llm_client, messages, api_options)
             .await;
         
-        // Handle the stream result and await final cost polling
+        // Handle the stream result
         let mut stream_result = stream_result?;
         
-        // Get API client for polling
-        let llm_client = llm_api_utils::get_api_client(&self.app_handle)?;
+        // Extract request_id from the stream result
+        let request_id = stream_result.request_id.clone();
         
-        // Cast to ServerProxyClient to access polling methods
-        let proxy_client = llm_client.as_any()
-            .downcast_ref::<crate::api_clients::server_proxy_client::ServerProxyClient>()
-            .ok_or_else(|| AppError::InternalError("Cannot poll for final cost with non-server proxy client".to_string()))?;
-        
-        // Poll for final cost with exponential backoff retry - this is now synchronous
-        match proxy_client.poll_final_streaming_cost_with_retry(&request_id).await {
-            Ok(Some(cost_data)) => {
-                
-                // Update job with final cost and usage details
-                if let Err(e) = repo.update_job_with_final_cost(job_id, &cost_data).await {
-                    warn!("Failed to update job {} with final cost and usage: {}", job_id, e);
-                } else {
-                    // Update the LlmTaskResult with authoritative data from cost_data
-                    if let Some(ref mut usage) = stream_result.final_usage {
-                        usage.cost = Some(cost_data.final_cost);
-                        usage.prompt_tokens = cost_data.tokens_input as i32;
-                        usage.completion_tokens = cost_data.tokens_output as i32;
-                        usage.total_tokens = (cost_data.tokens_input + cost_data.tokens_output) as i32;
-                        usage.cache_write_tokens = cost_data.cache_write_tokens.unwrap_or(0) as i32;
-                        usage.cache_read_tokens = cost_data.cache_read_tokens.unwrap_or(0) as i32;
+        // If we have a request_id, poll for final cost after stream completes
+        // Use robust retry logic to handle server processing delays
+        if let Some(ref req_id) = request_id {
+            info!("Initiating final cost polling for job {} with request_id: {}", job_id, req_id);
+            
+            // Get API client for polling
+            let llm_client = llm_api_utils::get_api_client(&self.app_handle)?;
+            
+            // Cast to ServerProxyClient to access polling methods
+            let proxy_client = llm_client.as_any()
+                .downcast_ref::<crate::api_clients::server_proxy_client::ServerProxyClient>()
+                .ok_or_else(|| AppError::InternalError("Cannot poll for final cost with non-server proxy client".to_string()))?;
+            
+            // Poll for final cost with robust exponential backoff retry
+            // This handles complex requests that may need extended server processing time
+            match proxy_client.poll_final_streaming_cost_with_retry(req_id).await {
+                Ok(Some(cost_data)) => {
+                    info!("Successfully retrieved final cost data for job {}: ${:.4} (tokens: {}+{}={})", 
+                          job_id, cost_data.final_cost, cost_data.tokens_input, cost_data.tokens_output, 
+                          cost_data.tokens_input + cost_data.tokens_output);
+                    
+                    // Update job with final cost and usage details
+                    if let Err(e) = repo.update_job_with_final_cost(job_id, &cost_data).await {
+                        warn!("Failed to update job {} with final cost and usage: {}", job_id, e);
                     } else {
-                        // Create new OpenRouterUsage object from authoritative cost_data
-                        stream_result.final_usage = Some(OpenRouterUsage {
-                            prompt_tokens: cost_data.tokens_input as i32,
-                            completion_tokens: cost_data.tokens_output as i32,
-                            total_tokens: (cost_data.tokens_input + cost_data.tokens_output) as i32,
-                            cost: Some(cost_data.final_cost),
-                            cached_input_tokens: 0,
-                            cache_write_tokens: cost_data.cache_write_tokens.unwrap_or(0) as i32,
-                            cache_read_tokens: cost_data.cache_read_tokens.unwrap_or(0) as i32,
-                        });
+                        // Update the LlmTaskResult with authoritative data from cost_data
+                        if let Some(ref mut usage) = stream_result.final_usage {
+                            usage.cost = Some(cost_data.final_cost);
+                            usage.prompt_tokens = cost_data.tokens_input as i32;
+                            usage.completion_tokens = cost_data.tokens_output as i32;
+                            usage.total_tokens = (cost_data.tokens_input + cost_data.tokens_output) as i32;
+                            usage.cache_write_tokens = cost_data.cache_write_tokens.unwrap_or(0) as i32;
+                            usage.cache_read_tokens = cost_data.cache_read_tokens.unwrap_or(0) as i32;
+                        } else {
+                            // Create new OpenRouterUsage object from authoritative cost_data
+                            stream_result.final_usage = Some(OpenRouterUsage {
+                                prompt_tokens: cost_data.tokens_input as i32,
+                                completion_tokens: cost_data.tokens_output as i32,
+                                total_tokens: (cost_data.tokens_input + cost_data.tokens_output) as i32,
+                                cost: Some(cost_data.final_cost),
+                                cached_input_tokens: 0,
+                                cache_write_tokens: cost_data.cache_write_tokens.unwrap_or(0) as i32,
+                                cache_read_tokens: cost_data.cache_read_tokens.unwrap_or(0) as i32,
+                                prompt_tokens_details: None,
+                            });
+                        }
                     }
+                },
+                Ok(None) => {
+                    warn!("Final cost data not available for job {} with request_id {} after maximum retry attempts - server may still be processing", job_id, req_id);
+                },
+                Err(e) => {
+                    warn!("Failed to poll final cost for job {} with request_id {}: {} - this may indicate server processing issues", job_id, req_id, e);
                 }
-            },
-            Ok(None) => {
-                warn!("No final cost data found for job {} with request_id {}", job_id, request_id);
-            },
-            Err(e) => {
-                warn!("Failed to poll final cost for job {} with request_id {}: {}", job_id, request_id, e);
             }
+        } else {
+            warn!("No request_id available for job {} - cannot poll for final cost (likely using non-server proxy client)", job_id);
         }
         
         // Log server-authoritative usage data for billing audit trail
@@ -299,7 +295,7 @@ impl LlmTaskRunner {
             usage: final_usage, // Server-authoritative usage data including cost
             system_prompt_id,
             system_prompt_template,
-            request_id: Some(request_id),
+            request_id: request_id.clone(),
         })
     }
 
@@ -455,5 +451,4 @@ impl LlmTaskConfigBuilder {
     }
 }
 
-// REMOVED: No Default implementation to prevent hardcoded fallbacks
 // LlmTaskConfigBuilder must be created with explicit parameters via new(model, temperature, max_tokens)

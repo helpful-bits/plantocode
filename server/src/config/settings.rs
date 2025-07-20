@@ -11,6 +11,7 @@ pub struct AppSettings {
     pub api_keys: ApiKeysConfig,
     pub auth: AuthConfig,
     pub rate_limit: RateLimitConfig,
+    pub account_creation_rate_limit: RateLimitConfig,
     pub billing: BillingConfig,
     pub stripe: StripeConfig,
     pub auth_stores: AuthStoreConfig,
@@ -48,6 +49,7 @@ pub struct ServerConfig {
 pub struct ApiKeysConfig {
     pub openrouter_api_key: Option<String>,
     pub openai_api_key: Option<String>,
+    pub xai_api_key: Option<String>,
     pub anthropic_api_key: Option<String>,
     pub google_api_keys: Option<Vec<String>>,
     pub auth0_domain: String,
@@ -61,6 +63,7 @@ pub struct AuthConfig {
     pub jwt_secret: String,
     pub token_duration_days: i64,
     pub featurebase_sso_secret: String,
+    pub refresh_token_encryption_key: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -137,6 +140,7 @@ impl AppSettings {
         // API keys
         let openrouter_api_key = env::var("OPENROUTER_API_KEY").ok();
         let openai_api_key = env::var("OPENAI_API_KEY").ok();
+        let xai_api_key = env::var("XAI_API_KEY").ok();
         let anthropic_api_key = env::var("ANTHROPIC_API_KEY").ok();
         let google_api_keys = env::var("GOOGLE_API_KEYS")
             .ok()
@@ -162,12 +166,15 @@ impl AppSettings {
             .map_err(|_| AppError::Configuration("JWT_SECRET must be set".to_string()))?;
         
         let token_duration_days = env::var("JWT_ACCESS_TOKEN_DURATION_DAYS")
-            .unwrap_or_else(|_| "30".to_string())
+            .unwrap_or_else(|_| "1".to_string())
             .parse::<i64>()
             .map_err(|_| AppError::Configuration("JWT_ACCESS_TOKEN_DURATION_DAYS must be a valid number".to_string()))?;
         
         let featurebase_sso_secret = env::var("FEATUREBASE_SSO_SECRET")
             .map_err(|_| AppError::Configuration("FEATUREBASE_SSO_SECRET must be set".to_string()))?;
+        
+        let refresh_token_encryption_key = env::var("REFRESH_TOKEN_ENCRYPTION_KEY")
+            .map_err(|_| AppError::Configuration("REFRESH_TOKEN_ENCRYPTION_KEY must be set".to_string()))?;
         
         // Rate limiting
         let rate_limit_window_ms = env::var("RATE_LIMIT_WINDOW_MS")
@@ -189,6 +196,17 @@ impl AppSettings {
         let rate_limit_cleanup_interval_secs = env::var("RATE_LIMIT_CLEANUP_INTERVAL_SECS")
             .ok()
             .and_then(|s| s.parse().ok());
+        
+        // Account creation rate limiting
+        let account_creation_rate_limit_window_ms = env::var("ACCOUNT_CREATION_RATE_LIMIT_WINDOW_MS")
+            .unwrap_or_else(|_| "3600000".to_string())
+            .parse::<u64>()
+            .map_err(|_| AppError::Configuration("ACCOUNT_CREATION_RATE_LIMIT_WINDOW_MS must be a valid number".to_string()))?;
+        
+        let account_creation_rate_limit_max_requests = env::var("ACCOUNT_CREATION_RATE_LIMIT_MAX_REQUESTS")
+            .unwrap_or_else(|_| "5".to_string())
+            .parse::<u64>()
+            .map_err(|_| AppError::Configuration("ACCOUNT_CREATION_RATE_LIMIT_MAX_REQUESTS must be a valid number".to_string()))?;
         
         // Billing defaults
         let default_signup_credits = env::var("DEFAULT_SIGNUP_CREDITS")
@@ -252,6 +270,7 @@ impl AppSettings {
             api_keys: ApiKeysConfig {
                 openrouter_api_key,
                 openai_api_key,
+                xai_api_key,
                 anthropic_api_key,
                 google_api_keys,
                 auth0_domain,
@@ -263,12 +282,19 @@ impl AppSettings {
                 jwt_secret,
                 token_duration_days,
                 featurebase_sso_secret,
+                refresh_token_encryption_key,
             },
             rate_limit: RateLimitConfig {
                 window_ms: rate_limit_window_ms,
                 max_requests: rate_limit_max_requests,
                 redis_key_prefix: rate_limit_redis_key_prefix,
                 cleanup_interval_secs: rate_limit_cleanup_interval_secs,
+            },
+            account_creation_rate_limit: RateLimitConfig {
+                window_ms: account_creation_rate_limit_window_ms,
+                max_requests: account_creation_rate_limit_max_requests,
+                redis_key_prefix: Some("account_creation".to_string()),
+                cleanup_interval_secs: None,
             },
             billing: BillingConfig {
                 default_signup_credits,

@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import { fontClasses } from './fonts';
 import { StructuredData } from '@/components/seo/StructuredData';
@@ -70,10 +70,6 @@ export const metadata: Metadata = {
     creator: '@vibemanager',
     site: '@vibemanager',
   },
-  themeColor: [
-    { media: '(prefers-color-scheme: light)', color: 'oklch(0.98 0.01 195)' },
-    { media: '(prefers-color-scheme: dark)', color: 'oklch(0.18 0.02 206)' }
-  ],
   robots: {
     index: true,
     follow: true,
@@ -96,6 +92,13 @@ export const metadata: Metadata = {
     'msapplication-TileColor': 'oklch(0.18 0.02 206)',
     'theme-color': 'oklch(0.98 0.01 195)', // Default to light theme for initial load
   },
+};
+
+export const viewport: Viewport = {
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: 'oklch(0.98 0.01 195)' },
+    { media: '(prefers-color-scheme: dark)', color: 'oklch(0.18 0.02 206)' }
+  ],
 };
 
 const websiteJsonLd: WebSite = {

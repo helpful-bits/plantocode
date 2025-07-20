@@ -11,6 +11,15 @@ import { type ActionState } from "@/types";
 import { type TaskSettings } from "@/types/task-settings-types";
 import { handleActionError } from "@/utils/action-utils";
 
+async function invalidateRuntimeConfigCache() {
+  try {
+    // Force refresh the runtime config cache directly
+    await invoke("fetch_runtime_ai_config");
+  } catch (error) {
+    console.warn("Failed to invalidate runtime config cache:", error);
+  }
+}
+
 /**
  * Get server default task model settings (without project overrides)
  */
@@ -182,6 +191,9 @@ export async function setProjectTaskSetting(
       valueJson,
     });
     
+    // Immediately invalidate runtime config cache
+    await invalidateRuntimeConfigCache();
+    
     return {
       isSuccess: true,
       message: "Project task setting saved successfully",
@@ -227,6 +239,9 @@ export async function resetProjectTaskSetting(
       taskKey,
       settingKey,
     });
+    
+    // Immediately invalidate runtime config cache
+    await invalidateRuntimeConfigCache();
     
     return {
       isSuccess: true,

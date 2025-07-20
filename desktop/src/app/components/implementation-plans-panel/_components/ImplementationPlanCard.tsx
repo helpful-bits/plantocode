@@ -2,7 +2,7 @@
 
 import { formatDistanceToNow } from "date-fns";
 import { Info, Eye, Trash2, Loader2, Copy } from "lucide-react";
-import React, { useState, useEffect } from "react";
+import React from "react";
 
 import { type BackgroundJob, JOB_STATUSES } from "@/types/session-types";
 import { type CopyButtonConfig } from "@/types/config-types";
@@ -17,8 +17,9 @@ import {
 import { Progress } from "@/ui/progress";
 // Note: Using native checkbox as there's no Checkbox component in the UI library
 
-import { getStreamingProgressValue, getParsedMetadata } from "../../background-jobs-sidebar/utils";
+import { getParsedMetadata } from "../../background-jobs-sidebar/utils";
 import { getJobDisplaySessionName } from "../../background-jobs-sidebar/_utils/job-display-utils";
+import { useLiveProgress } from "@/hooks/use-live-progress";
 
 interface ImplementationPlanCardProps {
   plan: BackgroundJob;
@@ -33,43 +34,6 @@ interface ImplementationPlanCardProps {
   onToggleSelection?: (jobId: string) => void;
 }
 
-/**
- * Custom hook for live progress updates in Implementation Plan cards
- * Updates progress every second for running jobs
- * Reflects accurate streamProgress from metadata
- */
-const useLiveProgress = (
-  metadata: any,
-  startTime: number | null | undefined,
-  taskType: string | undefined,
-  isRunning: boolean
-): number | undefined => {
-  const [progress, setProgress] = useState<number | undefined>(() => 
-    isRunning ? getStreamingProgressValue(metadata) : undefined
-  );
-
-  useEffect(() => {
-    if (!isRunning) {
-      setProgress(undefined);
-      return;
-    }
-
-    const updateProgress = () => {
-      const newProgress = getStreamingProgressValue(metadata);
-      setProgress(newProgress);
-    };
-
-    // Update immediately
-    updateProgress();
-
-    // Set up interval to update every second
-    const interval = setInterval(updateProgress, 1000);
-
-    return () => clearInterval(interval);
-  }, [metadata, startTime, taskType, isRunning]);
-
-  return progress;
-};
 
 const ImplementationPlanCard = React.memo<ImplementationPlanCardProps>(({
   plan,
@@ -93,16 +57,14 @@ const ImplementationPlanCard = React.memo<ImplementationPlanCardProps>(({
     if (title.length <= maxLength) return title;
     return `${title.substring(0, maxLength - 3)}...`;
   };
+  // Check if actively streaming (running status but no content yet)
+  const hasResponseContent = plan.response && plan.response.trim().length > 0;
   const isStreaming = JOB_STATUSES.ACTIVE.includes(plan.status) &&
-                     ["running", "processing_stream", "generating_stream"].includes(plan.status);
+                     ["running", "processingStream", "generatingStream"].includes(plan.status) &&
+                     !hasResponseContent;
   
-  // Use live progress hook for consistent and real-time updates
-  const progress = useLiveProgress(
-    plan.metadata,
-    plan.startTime,
-    plan.taskType, // Now includes taskType for proper calculation
-    isStreaming
-  );
+  // Use live progress hook for consistent real-time updates
+  const progress = useLiveProgress(plan);
 
   // Parse the model information from plan metadata with priority order
   const modelInfo = (() => {
@@ -136,7 +98,8 @@ const ImplementationPlanCard = React.memo<ImplementationPlanCardProps>(({
   // Determine if the job has content to display
   // For completed jobs, we assume they have content (will be fetched on demand)
   // For streaming jobs, we can view the stream
-  const hasContent = JOB_STATUSES.COMPLETED.includes(plan.status) || isStreaming;
+  // For running jobs with content, we can view the delivered content
+  const hasContent = JOB_STATUSES.COMPLETED.includes(plan.status) || isStreaming || hasResponseContent;
 
   return (
     <Card className="relative mb-4 overflow-hidden">

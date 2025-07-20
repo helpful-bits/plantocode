@@ -5,7 +5,7 @@ use crate::error::AppError;
 use crate::services::billing_service::BillingService;
 use crate::models::AuthenticatedUser;
 use crate::models::billing::{AutoTopOffSettings, UpdateAutoTopOffRequest};
-use log::{debug, info};
+use log::{info};
 use bigdecimal::{BigDecimal, FromPrimitive};
 
 
@@ -20,7 +20,6 @@ pub async fn get_auto_top_off_settings_handler(
     user: web::ReqData<AuthenticatedUser>,
     billing_service: web::Data<Arc<BillingService>>,
 ) -> Result<HttpResponse, AppError> {
-    debug!("Getting auto top-off settings for user: {}", user.user_id);
     
     let settings = billing_service.get_auto_top_off_settings(&user.user_id).await?;
     
@@ -35,7 +34,6 @@ pub async fn update_auto_top_off_settings_handler(
     request: web::Json<UpdateAutoTopOffRequest>,
     billing_service: web::Data<Arc<BillingService>>,
 ) -> Result<HttpResponse, AppError> {
-    debug!("Updating auto top-off settings for user: {}", user.user_id);
     
     // Validate the request
     let threshold_decimal = if request.enabled {

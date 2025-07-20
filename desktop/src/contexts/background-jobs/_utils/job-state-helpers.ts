@@ -4,9 +4,15 @@ import { type BackgroundJob, JOB_STATUSES } from "@/types/session-types";
 import { createLogger } from "@/utils/logger";
 import { safeStringCompare } from "@/utils/string-utils";
 import { getParsedMetadata } from "@/app/components/background-jobs-sidebar/utils";
-import { normalizeJobResponse, safeResponseLength, safeResponseIncludes } from '@/utils/response-utils';
+import { normalizeJobResponse, safeResponseIncludes } from '@/utils/response-utils';
 
 const logger = createLogger({ namespace: "JobComparison" });
+
+// Parse metadata without caching to ensure cost updates are always reflected
+function parseMetadata(metadata: any): any {
+  if (!metadata) return null;
+  return getParsedMetadata(metadata);
+}
 
 /**
  * Compares two background jobs to determine if they are functionally equal
@@ -14,8 +20,7 @@ const logger = createLogger({ namespace: "JobComparison" });
  */
 export function areJobsEqual(
   jobA: BackgroundJob,
-  jobB: BackgroundJob,
-  isStreamingUpdate: boolean = false
+  jobB: BackgroundJob
 ): boolean {
   // Fast path 1: Reference equality (same object)
   if (jobA === jobB) return true;
@@ -24,36 +29,11 @@ export function areJobsEqual(
   if (!jobA || !jobB) return false;
   if (jobA.id !== jobB.id) return false;
 
-  // Fast path 2: Optimized streaming update check
-  // During streaming, only response content and updatedAt change
-  if (isStreamingUpdate && jobA.status === "running" && jobB.status === "running") {
-    // For streaming updates, only check response content and updatedAt
-    // Skip expensive metadata parsing and complex comparisons
-    const responseChanged = jobA.response !== jobB.response;
-    const timestampChanged = jobA.updatedAt !== jobB.updatedAt;
-    
-    // If both are different, this is a streaming update
-    if (responseChanged && timestampChanged) {
-      logger.debug(
-        `Fast streaming update detected for job ${jobA.id}: response length ${jobA.response?.length || 0} → ${jobB.response?.length || 0}`
-      );
-      return false;
-    }
-    
-    // If only one changed, this might be a different kind of update
-    if (responseChanged || timestampChanged) {
-      return false;
-    }
-    
-    // If neither changed, they're equal
-    return true;
-  }
+  // Parse metadata once for both jobs
+  const metaA = parseMetadata(jobA.metadata);
+  const metaB = parseMetadata(jobB.metadata);
 
-  // Parse metadata once for both jobs (only for non-streaming updates)
-  const metaA = getParsedMetadata(jobA.metadata);
-  const metaB = getParsedMetadata(jobB.metadata);
-
-  // Fast path 2: Check status first - if different, jobs are definitely not equal
+  // Check status first - if different, jobs are definitely not equal
   if (jobA.status !== jobB.status) {
     logger.debug(
       `Jobs differ for ${jobA.id}: status changed from ${jobA.status} to ${jobB.status}`
@@ -61,7 +41,7 @@ export function areJobsEqual(
     return false;
   }
 
-  // Fast path 3: Check updatedAt timestamp - if unchanged, do quick status-based check
+  // Check updatedAt timestamp - if unchanged, do quick status-based check
   if (jobA.updatedAt === jobB.updatedAt) {
     // For terminal jobs with identical updatedAt, assume content is stable
     if (JOB_STATUSES.TERMINAL.includes(jobA.status)) {
@@ -94,43 +74,21 @@ export function areJobsEqual(
       return false;
     }
 
-    // Special check for implementation plan jobs - these need to be checked more carefully
-    if (jobA.taskType === "implementation_plan") {
-      // Always check these critical fields for implementation plans - use taskData for consistency
-      const streamProgressA = metaA?.taskData?.streamProgress;
-      const streamProgressB = metaB?.taskData?.streamProgress;
-
-      if (streamProgressA !== streamProgressB) {
-        logger.debug(
-          `Implementation plan streaming progress changed: ${streamProgressA} → ${streamProgressB}`
-        );
-        return false;
-      }
-
-      // Check response length for implementation plans specifically
-      const responseLengthA = metaA?.taskData?.responseLength;
-      const responseLengthB = metaB?.taskData?.responseLength;
-
-      if (responseLengthA !== responseLengthB) {
-        logger.debug(
-          `Implementation plan response length changed: ${responseLengthA} → ${responseLengthB}`
-        );
-        return false;
-      }
-
-      // Special handling for when we have response content that has been updated
-      if (jobA.response !== jobB.response) {
-        const lengthA = safeResponseLength(jobA.response);
-        const lengthB = safeResponseLength(jobB.response);
-
-        if (lengthA !== lengthB) {
-          logger.debug(
-            `Implementation plan response content length changed: ${lengthA} → ${lengthB}`
-          );
-          return false;
-        }
-      }
+    // Check streaming metrics for all running jobs
+    if (metaA?.taskData?.streamProgress !== metaB?.taskData?.streamProgress) {
+      logger.debug(
+        `Stream progress changed for job ${jobA.id}: ${metaA?.taskData?.streamProgress} → ${metaB?.taskData?.streamProgress}`
+      );
+      return false;
     }
+
+    if (metaA?.taskData?.responseLength !== metaB?.taskData?.responseLength) {
+      logger.debug(
+        `Response length changed for job ${jobA.id}: ${metaA?.taskData?.responseLength} → ${metaB?.taskData?.responseLength}`
+      );
+      return false;
+    }
+
 
     // For streaming jobs, check crucial streaming indicators
     if (jobAIsStreaming && jobBIsStreaming) {
@@ -250,6 +208,7 @@ export function areJobsEqual(
     return false;
   }
 
+  // Check finalized status - this is critical for cost finalization
   if (jobA.isFinalized !== jobB.isFinalized) {
     logger.debug(
       `Finalized status changed for job ${jobA.id}: ${jobA.isFinalized} → ${jobB.isFinalized}`
@@ -352,8 +311,8 @@ export function hasMetadataChanged(
   if (!jobA.metadata || !jobB.metadata) return true;
 
   // Parse metadata once for both jobs
-  const metaA = getParsedMetadata(jobA.metadata);
-  const metaB = getParsedMetadata(jobB.metadata);
+  const metaA = parseMetadata(jobA.metadata);
+  const metaB = parseMetadata(jobB.metadata);
 
   // For pathfinder jobs, check pathCount first
   if (jobA.taskType === "extended_path_finder") {
@@ -379,35 +338,21 @@ export function hasMetadataChanged(
       return true;
     }
 
-    // Special handling for implementation plan jobs
-    if (jobA.taskType === "implementation_plan") {
-      // Check all relevant streaming fields for implementation plans specifically
-      // These are all critical for proper UI updates - use taskData for consistency
-
-      // Check streamProgress
-      if (metaA?.taskData?.streamProgress !== metaB?.taskData?.streamProgress) {
-        logger.debug(
-          `Implementation plan stream progress differs: ${metaA?.taskData?.streamProgress} !== ${metaB?.taskData?.streamProgress}`
-        );
-        return true;
-      }
-
-      // Check response length (critically important for UI updates)
-      if (metaA?.taskData?.responseLength !== metaB?.taskData?.responseLength) {
-        logger.debug(
-          `Implementation plan response length differs: ${metaA?.taskData?.responseLength} !== ${metaB?.taskData?.responseLength}`
-        );
-        return true;
-      }
-
-      // Check session name for implementation plans (used for display)
-      if (metaA?.taskData?.sessionName !== metaB?.taskData?.sessionName) {
-        logger.debug(
-          `Implementation plan session name differs`
-        );
-        return true;
-      }
+    // Check streaming metrics for all running jobs
+    if (metaA?.taskData?.streamProgress !== metaB?.taskData?.streamProgress) {
+      logger.debug(
+        `Stream progress differs in metadata: ${metaA?.taskData?.streamProgress} !== ${metaB?.taskData?.streamProgress}`
+      );
+      return true;
     }
+
+    if (metaA?.taskData?.responseLength !== metaB?.taskData?.responseLength) {
+      logger.debug(
+        `Response length differs in metadata: ${metaA?.taskData?.responseLength} !== ${metaB?.taskData?.responseLength}`
+      );
+      return true;
+    }
+
 
     // For active streaming jobs, check critical streaming indicators
     if (jobAIsStreaming) {

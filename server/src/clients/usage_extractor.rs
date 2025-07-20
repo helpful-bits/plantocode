@@ -22,13 +22,13 @@
 ///     fn extract_usage(&self, raw_json: &serde_json::Value) -> Option<ProviderUsage> {
 ///         // Extract usage from provider-specific JSON response
 ///         let usage = raw_json.get("usage")?;
-///         Some(ProviderUsage {
-///             prompt_tokens: usage.get("input_tokens")?.as_i64()? as i32,
-///             completion_tokens: usage.get("output_tokens")?.as_i64()? as i32,
-///             cache_write_tokens: 0,
-///             cache_read_tokens: usage.get("cached_tokens")?.as_i64().unwrap_or(0) as i32,
-///             duration_ms: None,
-///         })
+///         Some(ProviderUsage::new(
+///             usage.get("input_tokens")?.as_i64()? as i32,
+///             usage.get("output_tokens")?.as_i64()? as i32,
+///             0,
+///             usage.get("cached_tokens")?.as_i64().unwrap_or(0) as i32,
+///             "model-id".to_string()
+///         ))
 ///     }
 /// }
 /// ```
@@ -36,6 +36,7 @@
 use serde::{Deserialize, Serialize};
 use tracing::debug;
 use bigdecimal::{BigDecimal, Signed};
+use crate::models::usage_metadata::UsageMetadata;
 
 /// Standardized usage information extracted from provider responses
 /// 
@@ -120,15 +121,15 @@ use bigdecimal::{BigDecimal, Signed};
 /// 
 /// ```rust
 /// // Provider reports: uncached=500, cache_write=200, cache_read=300
-/// let usage = ProviderUsage {
-///     prompt_tokens: 1000,      // Total: 500 + 200 + 300
-///     completion_tokens: 150,   // Output tokens
-///     cache_write_tokens: 200,  // For billing breakdown
-///     cache_read_tokens: 300,   // For billing breakdown
-///     model_id: "claude-3".to_string(),
-///     duration_ms: Some(1500),
-///     cost: None,              // Server calculates its own costs
-/// };
+/// let mut usage = ProviderUsage::new(
+///     1000,    // Total: 500 + 200 + 300
+///     150,     // Output tokens
+///     200,     // For billing breakdown
+///     300,     // For billing breakdown
+///     "claude-3".to_string()
+/// );
+/// usage.set_duration(1500);
+/// // cost is calculated by the server
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ProviderUsage {
@@ -187,6 +188,16 @@ pub struct ProviderUsage {
     /// 
     /// Using BigDecimal for precise financial calculations without floating-point errors.
     pub cost: Option<BigDecimal>,
+    
+    /// Comprehensive metadata for future billing models and auditing
+    /// 
+    /// This field captures all additional token types and provider-specific data
+    /// that isn't part of the core billing calculation but may be needed for:
+    /// - Future billing models (reasoning tokens pricing)
+    /// - Multimodal usage tracking (audio, image tokens)
+    /// - Provider cost reconciliation
+    /// - Usage analytics and optimization
+    pub metadata: Option<UsageMetadata>,
 }
 
 impl ProviderUsage {
@@ -232,6 +243,7 @@ impl ProviderUsage {
             model_id,
             duration_ms: None,
             cost: None,
+            metadata: None,
         }
     }
     
@@ -340,6 +352,7 @@ impl ProviderUsage {
             model_id,
             duration_ms: None,
             cost: Some(cost),
+            metadata: None,
         }
     }
     
@@ -362,15 +375,7 @@ impl ProviderUsage {
     /// let usage = ProviderUsage::new(100, 50, 20, 30, "test-model".to_string());
     /// assert!(usage.validate().is_ok());
     /// 
-    /// let invalid_usage = ProviderUsage {
-    ///     prompt_tokens: -10,
-    ///     completion_tokens: 50,
-    ///     cache_write_tokens: 0,
-    ///     cache_read_tokens: 0,
-    ///     model_id: "test".to_string(),
-    ///     duration_ms: None,
-    ///     cost: None,
-    /// };
+    /// let invalid_usage = ProviderUsage::new(-10, 50, 0, 0, "test".to_string());
     /// assert!(invalid_usage.validate().is_err());
     /// ```
     pub fn validate(&self) -> Result<(), String> {
@@ -434,6 +439,83 @@ impl ProviderUsage {
             }
         }
         
+        // Validate metadata if present
+        if let Some(metadata) = &self.metadata {
+            // Validate that all metadata token counts are non-negative
+            if let Some(reasoning_tokens) = metadata.reasoning_tokens {
+                if reasoning_tokens < 0 {
+                    let msg = format!("Invalid metadata reasoning_tokens: {}", reasoning_tokens);
+                    warn!("{}", msg);
+                    return Err(msg);
+                }
+            }
+            if let Some(thoughts_tokens) = metadata.thoughts_tokens {
+                if thoughts_tokens < 0 {
+                    let msg = format!("Invalid metadata thoughts_tokens: {}", thoughts_tokens);
+                    warn!("{}", msg);
+                    return Err(msg);
+                }
+            }
+            if let Some(audio_tokens_input) = metadata.audio_tokens_input {
+                if audio_tokens_input < 0 {
+                    let msg = format!("Invalid metadata audio_tokens_input: {}", audio_tokens_input);
+                    warn!("{}", msg);
+                    return Err(msg);
+                }
+            }
+            if let Some(audio_tokens_output) = metadata.audio_tokens_output {
+                if audio_tokens_output < 0 {
+                    let msg = format!("Invalid metadata audio_tokens_output: {}", audio_tokens_output);
+                    warn!("{}", msg);
+                    return Err(msg);
+                }
+            }
+            if let Some(image_tokens) = metadata.image_tokens {
+                if image_tokens < 0 {
+                    let msg = format!("Invalid metadata image_tokens: {}", image_tokens);
+                    warn!("{}", msg);
+                    return Err(msg);
+                }
+            }
+            if let Some(text_tokens) = metadata.text_tokens {
+                if text_tokens < 0 {
+                    let msg = format!("Invalid metadata text_tokens: {}", text_tokens);
+                    warn!("{}", msg);
+                    return Err(msg);
+                }
+            }
+            if let Some(accepted_prediction_tokens) = metadata.accepted_prediction_tokens {
+                if accepted_prediction_tokens < 0 {
+                    let msg = format!("Invalid metadata accepted_prediction_tokens: {}", accepted_prediction_tokens);
+                    warn!("{}", msg);
+                    return Err(msg);
+                }
+            }
+            if let Some(rejected_prediction_tokens) = metadata.rejected_prediction_tokens {
+                if rejected_prediction_tokens < 0 {
+                    let msg = format!("Invalid metadata rejected_prediction_tokens: {}", rejected_prediction_tokens);
+                    warn!("{}", msg);
+                    return Err(msg);
+                }
+            }
+            if let Some(upstream_inference_cost) = metadata.upstream_inference_cost {
+                if upstream_inference_cost < 0.0 {
+                    let msg = format!("Invalid metadata upstream_inference_cost: {}", upstream_inference_cost);
+                    warn!("{}", msg);
+                    return Err(msg);
+                }
+            }
+            if let Some(prompt_tokens_details) = &metadata.prompt_tokens_details {
+                for detail in prompt_tokens_details {
+                    if detail.token_count < 0 {
+                        let msg = format!("Invalid metadata prompt_tokens_details token_count: {}", detail.token_count);
+                        warn!("{}", msg);
+                        return Err(msg);
+                    }
+                }
+            }
+        }
+        
         Ok(())
     }
 }
@@ -458,7 +540,7 @@ impl ProviderUsage {
 ///    - If provider reports total directly, use that value
 ///    - If provider reports components separately, sum them: uncached + cache_write + cache_read
 /// 
-/// 3. **Error Handling**: Return None for unparseable responses rather than panicking
+/// 3. **Error Handling**: Return appropriate errors for unparseable responses
 /// 
 /// 4. **Logging**: Use debug logging to aid in troubleshooting usage extraction
 /// 
@@ -466,37 +548,47 @@ impl ProviderUsage {
 /// 
 /// ```rust
 /// impl UsageExtractor for AnthropicClient {
-///     fn extract_usage(&self, raw_json: &serde_json::Value) -> Option<ProviderUsage> {
-///         let usage = raw_json.get("usage")?;
+///     async fn extract_from_response_body(&self, body: &[u8], model_id: &str) -> Result<ProviderUsage, crate::error::AppError> {
+///         let body_str = std::str::from_utf8(body)
+///             .map_err(|e| crate::error::AppError::InvalidArgument(format!("Invalid UTF-8: {}", e)))?;
+///         
+///         let json: serde_json::Value = serde_json::from_str(body_str)
+///             .map_err(|e| crate::error::AppError::External(format!("Failed to parse JSON: {}", e)))?;
+///         
+///         let usage = json.get("usage").ok_or_else(|| crate::error::AppError::External("Missing usage field".to_string()))?;
 ///         
 ///         // Anthropic reports total input_tokens
-///         let total_input = usage.get("input_tokens")?.as_i64()? as i32;
-///         let completion_tokens = usage.get("output_tokens")?.as_i64()? as i32;
-///         let cache_read = usage.get("cache_read_input_tokens")?.as_i64().unwrap_or(0) as i32;
-///         let cache_write = usage.get("cache_creation_input_tokens")?.as_i64().unwrap_or(0) as i32;
+///         let total_input = usage.get("input_tokens").and_then(|v| v.as_i64()).ok_or_else(|| crate::error::AppError::External("Missing input_tokens".to_string()))? as i32;
+///         let completion_tokens = usage.get("output_tokens").and_then(|v| v.as_i64()).ok_or_else(|| crate::error::AppError::External("Missing output_tokens".to_string()))? as i32;
+///         let cache_read = usage.get("cache_read_input_tokens").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+///         let cache_write = usage.get("cache_creation_input_tokens").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
 ///         
-///         Some(ProviderUsage::with_total_input(
+///         let provider_usage = ProviderUsage::new(
 ///             total_input,      // TOTAL input tokens
 ///             completion_tokens,
 ///             cache_write,
 ///             cache_read,
-///             "claude-3-sonnet".to_string()
-///         ))
+///             model_id.to_string()
+///         );
+///         
+///         // Validate the extracted usage
+///         provider_usage.validate().map_err(|e| crate::error::AppError::InvalidArgument(format!("Validation failed: {}", e)))?;
+///         
+///         Ok(provider_usage)
 ///     }
 /// }
 /// ```
 pub trait UsageExtractor {
-    /// Extract usage information from provider's HTTP response body (2025-07 format)
+    /// Extract usage information from provider's HTTP response body
     /// 
     /// This is the primary method for extracting usage from provider responses.
-    /// It handles the complete HTTP response body and supports both streaming 
-    /// and non-streaming responses with comprehensive error handling.
+    /// It handles the complete HTTP response body for non-streaming responses
+    /// with comprehensive error handling.
     /// 
     /// # Arguments
     /// 
     /// * `body` - The complete HTTP response body as bytes
     /// * `model_id` - The model identifier for this request
-    /// * `is_streaming` - Whether this is a streaming response
     /// 
     /// # Returns
     /// 
@@ -505,105 +597,37 @@ pub trait UsageExtractor {
     /// 
     /// # Implementation Requirements
     /// 
-    /// - Parse provider-specific payload formats (JSON, SSE, etc.)
+    /// - Parse provider-specific payload formats (JSON, etc.)
     /// - Handle malformed responses gracefully (return error, don't panic)
-    /// - Support both streaming final chunks and complete responses
+    /// - Parse complete response bodies only (not streaming chunks)
     /// - Map provider token fields to standard ProviderUsage structure
     /// - Include model_id in the returned ProviderUsage
-    async fn extract_from_http_body(&self, body: &[u8], model_id: &str, is_streaming: bool) -> Result<ProviderUsage, crate::error::AppError> {
-        let body_str = std::str::from_utf8(body)
-            .map_err(|e| crate::error::AppError::InvalidArgument(format!("Invalid UTF-8 in response body: {}", e)))?;
-        
-        self.extract_usage_from_string(body_str)
-            .map(|mut usage| {
-                usage.model_id = model_id.to_string();
-                usage
-            })
-            .ok_or_else(|| crate::error::AppError::External("Failed to extract usage from provider response".to_string()))
-    }
+    /// - **MUST** validate extracted data using `ProviderUsage::validate()` before returning
+    /// - Return validation errors as `AppError::InvalidArgument` with descriptive messages
+    async fn extract_from_response_body(&self, body: &[u8], model_id: &str) -> Result<ProviderUsage, crate::error::AppError>;
 
-    /// Extract usage information from a provider's raw JSON response
+    /// Extract usage information from a parsed JSON value
     /// 
-    /// This method should parse the provider-specific response format and
-    /// return standardized usage information. The implementation should be
-    /// robust to variations in response format and return None rather than
-    /// panicking on parse errors.
+    /// This is a convenience method for extracting usage from already-parsed JSON.
+    /// It's commonly used in testing and for processing streaming responses.
     /// 
     /// # Arguments
     /// 
-    /// * `raw_json` - The complete JSON response from the provider
+    /// * `raw_json` - The parsed JSON response from the provider
     /// 
     /// # Returns
     /// 
     /// * `Some(ProviderUsage)` - Successfully extracted usage information
-    /// * `None` - Unable to extract usage (missing fields, parse errors, etc.)
+    /// * `None` - Unable to extract usage (missing fields, invalid format, etc.)
     /// 
-    /// # Implementation Notes
+    /// # Implementation Requirements
     /// 
-    /// - Use debug logging to trace extraction process
-    /// - Handle missing optional fields gracefully
-    /// - Validate extracted data using `ProviderUsage::validate()`
-    /// - Consider provider-specific edge cases (e.g., streaming vs non-streaming)
-    fn extract_usage(&self, raw_json: &serde_json::Value) -> Option<ProviderUsage> {
-        debug!("Extracting usage from provider response");
-        
-        // Default implementation returns None - providers must override
-        // This ensures compilation but prevents silent failures
-        debug!("No usage extraction implementation available for this provider");
-        None
-    }
-    
-    /// Extract usage information from a streaming response chunk
-    /// 
-    /// Some providers send usage information in streaming chunks rather than
-    /// a final response. This method handles extraction from individual chunks.
-    /// 
-    /// The default implementation tries to extract from the chunk as if it
-    /// were a complete response, but providers can override for chunk-specific logic.
-    /// 
-    /// # Arguments
-    /// 
-    /// * `chunk_json` - A single streaming chunk as JSON
-    /// 
-    /// # Returns
-    /// 
-    /// * `Some(ProviderUsage)` - Usage information found in this chunk
-    /// * `None` - No usage information in this chunk (common for content chunks)
-    fn extract_usage_from_stream_chunk(&self, chunk_json: &serde_json::Value) -> Option<ProviderUsage> {
-        debug!("Extracting usage from stream chunk");
-        
-        // Default implementation: try normal extraction
-        // Most providers send usage in final chunks with same format
-        self.extract_usage(chunk_json)
-    }
-    
-    /// Extract usage information from a raw string response
-    /// 
-    /// This is a convenience method that parses JSON and delegates to extract_usage.
-    /// It handles JSON parsing errors gracefully and provides debug logging.
-    /// 
-    /// # Arguments
-    /// 
-    /// * `raw_response` - The raw string response from the provider
-    /// 
-    /// # Returns
-    /// 
-    /// * `Some(ProviderUsage)` - Successfully parsed and extracted usage
-    /// * `None` - JSON parsing failed or usage extraction failed
-    fn extract_usage_from_string(&self, raw_response: &str) -> Option<ProviderUsage> {
-        debug!("Parsing JSON response for usage extraction");
-        
-        match serde_json::from_str::<serde_json::Value>(raw_response) {
-            Ok(json) => {
-                debug!("Successfully parsed JSON, extracting usage");
-                self.extract_usage(&json)
-            }
-            Err(e) => {
-                debug!("Failed to parse JSON response: {}", e);
-                None
-            }
-        }
-    }
+    /// - Parse provider-specific JSON formats
+    /// - Handle missing fields gracefully (return None, don't panic)
+    /// - Map provider token fields to standard ProviderUsage structure
+    /// - **MUST** validate extracted data using `ProviderUsage::validate()`
+    /// - Return None if validation fails
+    fn extract_usage(&self, raw_json: &serde_json::Value) -> Option<ProviderUsage>;
 }
 
 #[cfg(test)]
@@ -640,45 +664,22 @@ mod tests {
 
     #[test]
     fn test_validate_negative_tokens() {
-        let usage = ProviderUsage {
-            prompt_tokens: -1,
-            completion_tokens: 50,
-            cache_write_tokens: 0,
-            cache_read_tokens: 0,
-            model_id: "test-model".to_string(),
-            duration_ms: None,
-            cost: None,
-        };
+        let usage = ProviderUsage::new(-1, 50, 0, 0, "test-model".to_string());
         assert!(usage.validate().is_err());
         assert!(usage.validate().unwrap_err().contains("prompt_tokens"));
     }
 
     #[test]
     fn test_validate_negative_duration() {
-        let usage = ProviderUsage {
-            prompt_tokens: 100,
-            completion_tokens: 50,
-            cache_write_tokens: 0,
-            cache_read_tokens: 0,
-            model_id: "test-model".to_string(),
-            duration_ms: Some(-100),
-            cost: None,
-        };
+        let mut usage = ProviderUsage::new(100, 50, 0, 0, "test-model".to_string());
+        usage.duration_ms = Some(-100);
         assert!(usage.validate().is_err());
         assert!(usage.validate().unwrap_err().contains("duration_ms"));
     }
 
     #[test]
     fn test_validate_cache_tokens_exceed_total() {
-        let usage = ProviderUsage {
-            prompt_tokens: 100,
-            completion_tokens: 50,
-            cache_write_tokens: 60,
-            cache_read_tokens: 60,
-            model_id: "test-model".to_string(),
-            duration_ms: None,
-            cost: None,
-        };
+        let usage = ProviderUsage::new(100, 50, 60, 60, "test-model".to_string());
         assert!(usage.validate().is_err());
         let error = usage.validate().unwrap_err();
         assert!(error.contains("exceed total prompt tokens"));
@@ -687,15 +688,7 @@ mod tests {
 
     #[test]
     fn test_validate_negative_cost() {
-        let usage = ProviderUsage {
-            prompt_tokens: 100,
-            completion_tokens: 50,
-            cache_write_tokens: 0,
-            cache_read_tokens: 0,
-            model_id: "test-model".to_string(),
-            duration_ms: None,
-            cost: Some(BigDecimal::from_str("-0.01").unwrap()),
-        };
+        let usage = ProviderUsage::with_cost(100, 50, 0, 0, "test-model".to_string(), BigDecimal::from_str("-0.01").unwrap());
         assert!(usage.validate().is_err());
         assert!(usage.validate().unwrap_err().contains("cost cannot be negative"));
     }
@@ -754,7 +747,7 @@ mod tests {
     struct MockUsageExtractor;
 
     impl UsageExtractor for MockUsageExtractor {
-        async fn extract_from_http_body(&self, body: &[u8], model_id: &str, is_streaming: bool) -> Result<ProviderUsage, crate::error::AppError> {
+        async fn extract_from_response_body(&self, body: &[u8], model_id: &str) -> Result<ProviderUsage, crate::error::AppError> {
             let body_str = std::str::from_utf8(body)
                 .map_err(|e| crate::error::AppError::InvalidArgument(format!("Invalid UTF-8: {}", e)))?;
             
@@ -770,21 +763,32 @@ mod tests {
                 .and_then(|v| v.as_i64())
                 .ok_or_else(|| crate::error::AppError::External("Missing completion_tokens".to_string()))? as i32;
             
-            Ok(ProviderUsage::new(
+            let usage = ProviderUsage::new(
                 prompt_tokens,
                 completion_tokens,
                 0,
                 0,
                 model_id.to_string()
-            ))
+            );
+            
+            // Validate the extracted usage
+            usage.validate().map_err(|e| crate::error::AppError::InvalidArgument(format!("Validation failed: {}", e)))?;
+            
+            Ok(usage)
         }
 
         fn extract_usage(&self, raw_json: &serde_json::Value) -> Option<ProviderUsage> {
             let usage = raw_json.get("usage")?;
             let prompt_tokens = usage.get("prompt_tokens")?.as_i64()? as i32;
             let completion_tokens = usage.get("completion_tokens")?.as_i64()? as i32;
-            Some(ProviderUsage::new(prompt_tokens, completion_tokens, 0, 0, "test-model".to_string()))
+            let usage = ProviderUsage::new(prompt_tokens, completion_tokens, 0, 0, "test-model".to_string());
+            
+            // Validate the extracted usage
+            usage.validate().ok()?;
+            
+            Some(usage)
         }
+
     }
 
     #[test]
@@ -802,24 +806,6 @@ mod tests {
         assert_eq!(usage.completion_tokens, 75);
     }
 
-    #[test]
-    fn test_extract_usage_from_string() {
-        let extractor = MockUsageExtractor;
-        let response_str = r#"{"usage": {"prompt_tokens": 200, "completion_tokens": 100}}"#;
-        
-        let usage = extractor.extract_usage_from_string(response_str).unwrap();
-        assert_eq!(usage.prompt_tokens, 200);
-        assert_eq!(usage.completion_tokens, 100);
-    }
-
-    #[test]
-    fn test_extract_usage_from_invalid_json() {
-        let extractor = MockUsageExtractor;
-        let invalid_json = "invalid json";
-        
-        let usage = extractor.extract_usage_from_string(invalid_json);
-        assert!(usage.is_none());
-    }
 
     #[test] 
     fn test_extract_usage_missing_fields() {
@@ -833,7 +819,7 @@ mod tests {
     }
     
     #[tokio::test]
-    async fn test_extract_from_http_body() {
+    async fn test_extract_from_response_body() {
         let extractor = MockUsageExtractor;
         let response_body = r#"{
             "usage": {
@@ -842,10 +828,9 @@ mod tests {
             }
         }"#;
         
-        let result = extractor.extract_from_http_body(
+        let result = extractor.extract_from_response_body(
             response_body.as_bytes(), 
-            "test-model", 
-            false
+            "test-model"
         ).await;
         
         assert!(result.is_ok());
@@ -856,14 +841,13 @@ mod tests {
     }
     
     #[tokio::test]
-    async fn test_extract_from_http_body_invalid_json() {
+    async fn test_extract_from_response_body_invalid_json() {
         let extractor = MockUsageExtractor;
         let invalid_body = "invalid json";
         
-        let result = extractor.extract_from_http_body(
+        let result = extractor.extract_from_response_body(
             invalid_body.as_bytes(),
-            "test-model",
-            false
+            "test-model"
         ).await;
         
         assert!(result.is_err());
@@ -872,16 +856,15 @@ mod tests {
     }
     
     #[tokio::test] 
-    async fn test_extract_from_http_body_missing_usage() {
+    async fn test_extract_from_response_body_missing_usage() {
         let extractor = MockUsageExtractor;
         let response_body = r#"{
             "other_field": "value"
         }"#;
         
-        let result = extractor.extract_from_http_body(
+        let result = extractor.extract_from_response_body(
             response_body.as_bytes(),
-            "test-model",
-            false
+            "test-model"
         ).await;
         
         assert!(result.is_err());

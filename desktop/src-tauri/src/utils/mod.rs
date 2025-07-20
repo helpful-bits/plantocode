@@ -17,6 +17,7 @@ pub mod config_resolver;
 pub mod context_resolver;
 pub mod config_helpers;
 pub mod path_extraction;
+pub mod token_estimator;
 
 
 pub use directory_tree::{generate_directory_tree, DirectoryTreeOptions};
@@ -49,6 +50,8 @@ pub use config_helpers::{
     get_model_info
 };
 pub use path_extraction::extract_file_paths_from_implementation_plan;
+pub use token_estimator::estimate_tokens;
 // UNIFIED PROMPT SYSTEM - CONSOLIDATES LEGACY PROMPT SYSTEMS
 pub mod unified_prompt_system;
 pub use unified_prompt_system::{UnifiedPromptProcessor, UnifiedPromptContext, UnifiedPromptContextBuilder, ComposedPrompt, PromptPlaceholders, substitute_placeholders, generate_system_prompt_id, get_template_for_display, convert_to_template};
+pub mod stream_debug_logger;

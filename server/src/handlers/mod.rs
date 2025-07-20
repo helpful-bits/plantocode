@@ -7,7 +7,6 @@ pub mod model_handlers;
 pub mod auth0_handlers;
 pub mod system_prompts_handlers;
 pub mod proxy_handlers;
-pub mod streaming_handler;
 pub mod provider_transformers;
 pub mod featurebase_handlers;
 pub mod cancellation_handlers;

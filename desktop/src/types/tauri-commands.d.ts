@@ -177,7 +177,7 @@ export interface PathIsAbsoluteCommandArgs {
 
 // Commands from generic_task_commands
 export interface GenericLLMStreamCommandArgs {
-  projectHash: string;
+  sessionId: string;
   promptText: string;
   systemPrompt?: string | null;
   model?: string | null;
@@ -189,7 +189,7 @@ export interface GenericLLMStreamCommandArgs {
 
 
 export interface RefineTaskDescriptionCommandArgs {
-  projectHash: string;
+  sessionId: string;
   taskDescription: string;
   relevantFiles: string[];
   projectDirectory: string;
@@ -624,8 +624,6 @@ export type TauriInvoke = {
   "get_credit_details_command": () => Promise<CreditDetailsResponse>;
   "get_credit_stats_command": () => Promise<CreditStats>;
   
-  // Customer billing info commands
-  "get_customer_billing_info_command": () => Promise<CustomerBillingInfo | null>;
   
   "confirm_payment_status_command": (args: { paymentIntentId: string }) => Promise<any>;
   "get_stripe_publishable_key_command": () => Promise<string>;
@@ -645,7 +643,7 @@ export type TauriInvoke = {
   "reveal_file_in_explorer_command": (args: { filePath: string }) => Promise<void>;
   
   // Payment method management commands
-  "get_detailed_usage_command": (args: { startDate: string; endDate: string }) => Promise<DetailedUsage[]>;
+  "get_detailed_usage_command": (args: { startDate: string; endDate: string }) => Promise<DetailedUsageRecord[]>;
   "get_detailed_usage_with_summary_command": (args: { startDate: string; endDate: string }) => Promise<import("@/actions/billing/billing.actions").DetailedUsageResponse>;
   
   // File Finder Workflow commands
@@ -665,7 +663,7 @@ export type TauriInvoke = {
 };
 
 // Billing-related types
-export interface DetailedUsage {
+export interface DetailedUsageRecord {
   serviceName: string;
   modelDisplayName: string;
   providerCode: string;
@@ -673,6 +671,7 @@ export interface DetailedUsage {
   totalRequests: number;
   totalInputTokens: number;
   totalOutputTokens: number;
+  totalCachedTokens: number;
 }
 
 export interface UsageInfo {
@@ -745,19 +744,12 @@ export interface CreditBalanceResponse {
 
 export interface CreditTransactionEntry {
   id: string;
-  price: number;  // renamed from amount
+  amount: string;
   currency: string;
-  model?: string;  // new field - model name or "Credit Purchase"
-  inputTokens?: number;  // new field
-  outputTokens?: number;  // new field
-  balanceAfter: number;
-  createdAt: string;
-}
-
-export interface CreditHistoryResponse {
-  transactions: CreditTransactionEntry[];
-  totalCount: number;
-  hasMore: boolean;
+  transaction_type: string;
+  description: string;
+  created_at: string;
+  balance_after: string;
 }
 
 export interface UnifiedCreditHistoryEntry {
@@ -767,6 +759,8 @@ export interface UnifiedCreditHistoryEntry {
   model: string;  // Model name or "Credit Purchase" for purchases
   inputTokens?: number | null;
   outputTokens?: number | null;
+  cacheWriteTokens?: number | null;
+  cacheReadTokens?: number | null;
   balanceAfter: number;
   description: string;
   transactionType: string;
@@ -972,6 +966,7 @@ export interface BillingDashboardData {
   freeCreditsExpired: boolean;
   usageLimitUsd: number;
   currentUsage: number;
+  customerBillingInfo: CustomerBillingInfo | null;
 }
 
 // Invoice interfaces

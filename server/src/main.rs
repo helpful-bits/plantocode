@@ -19,6 +19,7 @@ mod models;
 mod routes;
 mod config;
 mod security;
+mod streaming;
 mod stripe_types;
 mod utils;
 
@@ -43,6 +44,7 @@ use crate::services::credit_service::CreditService;
 use crate::services::reconciliation_service::ReconciliationService;
 use crate::services::request_tracker::RequestTracker;
 use crate::routes::{configure_routes, configure_public_api_routes, configure_public_auth_routes, configure_webhook_routes};
+use crate::handlers::config_handlers;
 
 /// Validates AI model configurations at startup to catch misconfigurations early
 async fn validate_ai_model_configurations(
@@ -284,7 +286,7 @@ async fn main() -> std::io::Result<()> {
     log::info!("Polling store and Auth0 state store cleanup tasks started");
     
     // Initialize reqwest HTTP client
-    let http_client = crate::clients::http_client::new_api_client();
+    let http_client = crate::utils::http_client::new_api_client();
     
     // Initialize rate limiting storage (Redis or memory based on configuration)
     let rate_limit_storage = match create_rate_limit_storage(&app_settings.rate_limit, &Some(app_settings.redis.url.clone())).await {
@@ -361,6 +363,31 @@ async fn main() -> std::io::Result<()> {
     // Clone app_settings for use outside the closure
     let app_settings_for_server = app_settings.clone();
 
+    // Load runtime AI config during startup for performance optimization (before server factory)
+    let runtime_ai_config = {
+        let settings_repository = Arc::new(SettingsRepository::new(db_pools.system_pool.clone()));
+        let model_repository = Arc::new(ModelRepository::new(Arc::new(db_pools.system_pool.clone())));
+        
+        match config_handlers::load_desktop_runtime_ai_config(&settings_repository, &model_repository).await {
+            Ok(config) => {
+                log::info!("Runtime AI configuration loaded successfully with {} providers", config.providers.len());
+                Arc::new(config)
+            }
+            Err(e) => {
+                log::error!("Failed to load runtime AI configuration: {}", e);
+                log::error!("Cannot start server without runtime AI configuration");
+                std::process::exit(1);
+            }
+        }
+    };
+
+    // Log one-time initialization messages before server creation
+    info!("Starting HTTP server factory with shared state initialization");
+    info!("Server configured with keep-alive: 5 minutes");
+    info!("Client request timeout: {}s, disconnect timeout: 5s", app_settings_for_server.server.client_request_timeout_secs);
+    info!("CORS configured for origins: {:?}", app_settings_for_server.server.cors_origins);
+    info!("Rate limiting configured with Redis prefix separation for route isolation");
+
     let server = HttpServer::new(move || {
         // Clone the data for the factory closure
         let db_pools = db_pools.clone();
@@ -372,6 +399,7 @@ async fn main() -> std::io::Result<()> {
         let auth0_state_store = web::Data::new(auth0_state_store.clone());
         let http_client = web::Data::new(http_client.clone());
         let billing_service = billing_service.clone();
+        let runtime_ai_config = runtime_ai_config.clone();
         
         // Initialize repositories with appropriate pools
         // User-specific operations use user pool (with RLS)
@@ -422,6 +450,7 @@ async fn main() -> std::io::Result<()> {
             customer_billing_repository,
             user_repository: user_repository.clone(),
             settings_repository,
+            runtime_ai_config,
         });
         
         // Create rate limiting middleware instances with different prefixes for independent Redis counters
@@ -429,6 +458,7 @@ async fn main() -> std::io::Result<()> {
         public_rate_limit_config.redis_key_prefix = Some("public_routes".to_string());
         let public_ip_rate_limiter = create_ip_rate_limiter(public_rate_limit_config, rate_limit_storage.clone());
         
+        let account_creation_rate_limiter = create_ip_rate_limiter(app_settings.account_creation_rate_limit.clone(), rate_limit_storage.clone());
         
         let mut strict_rate_limit_config = app_settings.rate_limit.clone();
         strict_rate_limit_config.redis_key_prefix = Some("strict_api".to_string());
@@ -487,13 +517,13 @@ async fn main() -> std::io::Result<()> {
             .service(
                 web::scope("/auth")
                     .wrap(public_ip_rate_limiter.clone())
-                    .configure(configure_public_auth_routes)
+                    .configure(|cfg| configure_public_auth_routes(cfg, account_creation_rate_limiter.clone()))
             )
             // Protected API routes with strict rate limiting (IP + User) and authentication (under /api)
             .service(
                 web::scope("/api")
                     .wrap(strict_rate_limiter.clone())
-                    .wrap(auth_middleware(db_pools.user_pool.clone()))
+                    .wrap(auth_middleware(db_pools.user_pool.clone(), db_pools.system_pool.clone()))
                     .configure(|cfg| configure_routes(cfg, strict_rate_limiter.clone()))
             )
             // Public webhook routes with IP-based rate limiting (no authentication)

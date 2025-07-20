@@ -158,7 +158,7 @@ impl AnthropicClient {
         let api_key = app_settings.api_keys.anthropic_api_key.clone()
             .ok_or_else(|| crate::error::AppError::Configuration("Anthropic API key must be configured".to_string()))?;
         
-        let client = crate::clients::http_client::new_api_client();
+        let client = crate::utils::http_client::new_api_client();
         
         Ok(Self {
             client,
@@ -217,7 +217,7 @@ impl AnthropicClient {
         let result: AnthropicChatResponse = serde_json::from_slice(&body)
             .map_err(|e| AppError::Internal(format!("Anthropic deserialization failed: {}", e.to_string())))?;
         
-        let usage = self.extract_from_http_body(&body, &request.model, false).await?;
+        let usage = self.extract_from_response_body(&body, &request.model).await?;
             
         Ok((result, headers, usage.prompt_tokens, usage.cache_write_tokens, usage.cache_read_tokens, usage.completion_tokens))
     }
@@ -363,22 +363,37 @@ impl AnthropicClient {
 }
 
 impl UsageExtractor for AnthropicClient {
+    fn extract_usage(&self, raw_json: &serde_json::Value) -> Option<ProviderUsage> {
+        let usage = raw_json.get("usage")?;
+        
+        let input_tokens = usage.get("input_tokens")?.as_i64()? as i32;
+        let output_tokens = usage.get("output_tokens")?.as_i64()? as i32;
+        let cache_write_tokens = usage.get("cache_creation_input_tokens").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+        let cache_read_tokens = usage.get("cache_read_input_tokens").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+        
+        let usage = ProviderUsage::new(
+            input_tokens + cache_write_tokens + cache_read_tokens, // Total prompt tokens
+            output_tokens,
+            cache_write_tokens,
+            cache_read_tokens,
+            String::new(), // model_id will be empty for trait method
+        );
+        
+        usage.validate().ok()?;
+        Some(usage)
+    }
+
     /// Extract usage information from Anthropic API HTTP response body (2025-07 format)
-    /// Supports both streaming and non-streaming responses with provider cost extraction
-    async fn extract_from_http_body(&self, body: &[u8], model_id: &str, is_streaming: bool) -> Result<ProviderUsage, AppError> {
+    /// Handles only non-streaming JSON responses - streaming is processed by transformers
+    async fn extract_from_response_body(&self, body: &[u8], model_id: &str) -> Result<ProviderUsage, AppError> {
         let body_str = std::str::from_utf8(body)
             .map_err(|e| AppError::InvalidArgument(format!("Invalid UTF-8: {}", e)))?;
         
+        // Handle non-streaming JSON response
         let json: serde_json::Value = serde_json::from_str(body_str)
             .map_err(|e| AppError::External(format!("Failed to parse JSON: {}", e)))?;
         
-        let usage_result = if is_streaming {
-            self.extract_usage_from_stream_chunk(&json)
-        } else {
-            self.extract_usage(&json)
-        };
-        
-        usage_result
+        self.extract_usage_from_json(&json, model_id)
             .map(|mut usage| {
                 usage.model_id = model_id.to_string();
                 usage
@@ -386,8 +401,11 @@ impl UsageExtractor for AnthropicClient {
             .ok_or_else(|| AppError::External("Failed to extract usage from Anthropic response".to_string()))
     }
     
+}
+
+impl AnthropicClient {
     /// Extract usage information from Anthropic response JSON
-    fn extract_usage(&self, json_value: &serde_json::Value) -> Option<ProviderUsage> {
+    fn extract_usage_from_json(&self, json_value: &serde_json::Value, model_id: &str) -> Option<ProviderUsage> {
         // Extract usage from parsed JSON
         let usage = json_value.get("usage")?;
         
@@ -431,7 +449,7 @@ impl UsageExtractor for AnthropicClient {
                 output_tokens,
                 cache_creation_input_tokens,
                 cache_read_input_tokens,
-                "unknown".to_string(),
+                model_id.to_string(),
                 cost_val
             )
         } else {
@@ -440,7 +458,7 @@ impl UsageExtractor for AnthropicClient {
                 output_tokens,
                 cache_creation_input_tokens,
                 cache_read_input_tokens,
-                "unknown".to_string()
+                model_id.to_string()
             )
         };
         
@@ -450,44 +468,45 @@ impl UsageExtractor for AnthropicClient {
     }
     
     /// Extract usage information from Anthropic streaming chunk
-    /// Handles both individual chunks and complete responses
     fn extract_usage_from_stream_chunk(&self, chunk_json: &serde_json::Value) -> Option<ProviderUsage> {
-        // For Anthropic streaming, usage info comes in message_stop event type
-        // Also check for message_delta events which may contain incremental usage
+        // For Anthropic streaming, usage info comes in message_start and message_delta events
         let chunk_type = chunk_json.get("type")?.as_str()?;
         
         match chunk_type {
-            "message_stop" => {
-                // Extract final usage from message_stop event
-                let usage = chunk_json.get("usage")?;
-                
-                let input_tokens = usage.get("input_tokens")?.as_i64()? as i32;
-                let output_tokens = usage.get("output_tokens")?.as_i64()? as i32;
-                
-                let cache_creation_input_tokens = usage.get("cache_creation_input_tokens")
-                    .and_then(|v| v.as_i64())
-                    .unwrap_or(0) as i32;
-                let cache_read_input_tokens = usage.get("cache_read_input_tokens")
-                    .and_then(|v| v.as_i64())
-                    .unwrap_or(0) as i32;
-                
-                // Calculate total prompt tokens as sum of all input token types
-                let total_prompt_tokens = input_tokens + cache_creation_input_tokens + cache_read_input_tokens;
-                
-                let mut usage = ProviderUsage::new(
-                    total_prompt_tokens,
-                    output_tokens,
-                    cache_creation_input_tokens,
-                    cache_read_input_tokens,
-                    "unknown".to_string()
-                );
-                
-                usage.validate().ok()?;
-                
-                Some(usage)
+            "message_start" => {
+                // Extract initial usage from message_start event
+                if let Some(message) = chunk_json.get("message") {
+                    if let Some(usage) = message.get("usage") {
+                        let input_tokens = usage.get("input_tokens").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+                        let output_tokens = usage.get("output_tokens").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+                        
+                        let cache_creation_input_tokens = usage.get("cache_creation_input_tokens")
+                            .and_then(|v| v.as_i64())
+                            .unwrap_or(0) as i32;
+                        let cache_read_input_tokens = usage.get("cache_read_input_tokens")
+                            .and_then(|v| v.as_i64())
+                            .unwrap_or(0) as i32;
+                        
+                        // Calculate total prompt tokens as sum of all input token types
+                        let total_prompt_tokens = input_tokens + cache_creation_input_tokens + cache_read_input_tokens;
+                        
+                        let mut usage = ProviderUsage::new(
+                            total_prompt_tokens,
+                            output_tokens,
+                            cache_creation_input_tokens,
+                            cache_read_input_tokens,
+                            "unknown".to_string()
+                        );
+                        
+                        usage.validate().ok()?;
+                        
+                        return Some(usage);
+                    }
+                }
+                None
             },
             "message_delta" => {
-                // Track usage from message_delta events
+                // Track cumulative usage from message_delta events
                 if let Some(usage) = chunk_json.get("usage") {
                     let input_tokens = usage.get("input_tokens").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
                     let output_tokens = usage.get("output_tokens").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
@@ -504,9 +523,6 @@ impl UsageExtractor for AnthropicClient {
                     let total_prompt_tokens = input_tokens + cache_creation_input_tokens + cache_read_input_tokens;
                     
                     if input_tokens > 0 || output_tokens > 0 {
-                        debug!("Extracted incremental usage from message_delta: input={}, cache_creation={}, cache_read={}, output={}, total_prompt={}", 
-                               input_tokens, cache_creation_input_tokens, cache_read_input_tokens, output_tokens, total_prompt_tokens);
-                        
                         let mut usage = ProviderUsage::new(
                             total_prompt_tokens,
                             output_tokens,
@@ -530,7 +546,7 @@ impl UsageExtractor for AnthropicClient {
 impl Clone for AnthropicClient {
     fn clone(&self) -> Self {
         Self {
-            client: crate::clients::http_client::new_api_client(),
+            client: crate::utils::http_client::new_api_client(),
             api_key: self.api_key.clone(),
             base_url: self.base_url.clone(),
             request_id_counter: self.request_id_counter.clone(),

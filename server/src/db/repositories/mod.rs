@@ -9,6 +9,7 @@ pub mod settings_repository;
 pub mod model_repository;
 pub mod provider_repository;
 pub mod webhook_idempotency_repository;
+pub mod revoked_token_repository;
 
 pub use api_usage_repository::ApiUsageRepository;
 pub use audit_log_repository::{AuditLogRepository, AuditLog, CreateAuditLogRequest, AuditLogFilter};
@@ -21,3 +22,4 @@ pub use model_repository::{ModelRepository, ModelWithProvider, Model};
 pub use provider_repository::{ProviderRepository, Provider, ProviderWithModelCount};
 pub use system_prompts_repository::{SystemPromptsRepository, DefaultSystemPrompt};
 pub use webhook_idempotency_repository::{WebhookIdempotencyRepository, WebhookIdempotencyRecord, WebhookProcessingStats};
+pub use revoked_token_repository::{RevokedTokenRepository, RevokedToken};

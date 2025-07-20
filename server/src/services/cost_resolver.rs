@@ -13,6 +13,7 @@ use crate::clients::usage_extractor::ProviderUsage;
 use crate::db::repositories::model_repository::ModelWithProvider;
 use crate::models::model_pricing::ModelPricing;
 use crate::utils::financial_validation::normalize_cost;
+use crate::error::AppError;
 
 /// Simple cost resolver for server-side calculations
 pub struct CostResolver;
@@ -29,7 +30,7 @@ impl CostResolver {
     /// - Provider-reported costs are logged for auditing purposes but never used for billing
     /// - All cost calculations must flow through this centralized resolution mechanism
     /// - This ensures billing consistency and prevents cost manipulation
-    pub fn resolve(usage: ProviderUsage, model: &ModelWithProvider) -> BigDecimal {
+    pub fn resolve(usage: ProviderUsage, model: &ModelWithProvider) -> Result<BigDecimal, AppError> {
         // Delegate to the model's calculate_total_cost method - this is the single source of truth
         match model.calculate_total_cost(&usage) {
             Ok(cost) => {
@@ -68,15 +69,14 @@ impl CostResolver {
                     );
                 }
                 
-                final_cost
+                Ok(final_cost)
             },
             Err(e) => {
-                warn!(
-                    "Failed to calculate cost for model {}: {}, returning zero",
+                Err(AppError::Internal(format!(
+                    "Failed to calculate cost for model {}: {}",
                     usage.model_id,
                     e
-                );
-                BigDecimal::from(0)
+                )))
             }
         }
     }
@@ -126,7 +126,7 @@ mod tests {
         let usage = ProviderUsage::new(1000, 500, "test-model".to_string());
         let model = create_test_model();
 
-        let cost = CostResolver::resolve(usage, &model);
+        let cost = CostResolver::resolve(usage, &model).unwrap();
 
         // Should be calculated by model.calculate_total_cost
         // Expected: (1000 * 0.01 / 1000000) + (500 * 0.02 / 1000000) = 0.00001 + 0.00001 = 0.00002
@@ -140,7 +140,7 @@ mod tests {
         usage.cost = Some(BigDecimal::from_str("0.0050").unwrap());
         let model = create_test_model();
 
-        let cost = CostResolver::resolve(usage, &model);
+        let cost = CostResolver::resolve(usage, &model).unwrap();
 
         // Should ignore provider cost and use server calculation
         let expected = BigDecimal::from_str("0.00002").unwrap();
@@ -152,7 +152,7 @@ mod tests {
         let usage = ProviderUsage::new(1000, 500, 200, 300, "test-model".to_string());
         let model = create_test_model();
 
-        let cost = CostResolver::resolve(usage, &model);
+        let cost = CostResolver::resolve(usage, &model).unwrap();
 
         // Should delegate to model.calculate_total_cost which handles cache pricing
         // Model uses default pricing logic, so calculation would be:
@@ -168,9 +168,9 @@ mod tests {
         let usage = ProviderUsage::new(-1000, 500, "test-model".to_string()); // Invalid negative tokens
         let model = create_test_model();
 
-        let cost = CostResolver::resolve(usage, &model);
+        let result = CostResolver::resolve(usage, &model);
 
-        // Should return zero on error
-        assert_eq!(cost, BigDecimal::from(0));
+        // Should return error on calculation failure
+        assert!(result.is_err());
     }
 }

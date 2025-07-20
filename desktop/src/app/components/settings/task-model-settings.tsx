@@ -283,9 +283,7 @@ export default function TaskModelSettings({
         return (
           !allWorkflowStageKeys.has(typedKey) &&
           !taskDetails?.hidden &&
-          taskDetails?.category === 'Workflow' &&
-          typedKey !== 'fileFinderWorkflow' &&
-          typedKey !== 'webSearchWorkflow'
+          taskDetails?.category === 'Workflow'
         );
       })
       .map(key => {
@@ -340,9 +338,7 @@ export default function TaskModelSettings({
     if (!providersWithModels) return null;
     
     // Filter out openrouter provider
-    let filtered = providersWithModels.filter(providerWithModels => 
-      providerWithModels.provider.code !== 'openrouter'
-    );
+    let filtered = providersWithModels;
     
     // Get settings for the currently selected task
     const settings = taskSettings[selectedTask as keyof TaskSettings];

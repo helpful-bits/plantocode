@@ -13,8 +13,6 @@ export const taskSettingsKeyToTaskType: Record<keyof TaskSettings, TaskType> = {
   textImprovement: "text_improvement",
   implementationPlan: "implementation_plan",
   implementationPlanMerge: "implementation_plan_merge",
-  fileFinderWorkflow: "file_finder_workflow",
-  webSearchWorkflow: "web_search_workflow",
   extendedPathFinder: "extended_path_finder",
   fileRelevanceAssessment: "file_relevance_assessment",
   taskRefinement: "task_refinement",

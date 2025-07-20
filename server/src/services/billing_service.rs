@@ -11,6 +11,7 @@ use crate::clients::usage_extractor::ProviderUsage;
 use crate::services::credit_service::CreditService;
 use crate::services::audit_service::AuditService;
 use crate::services::cost_resolver::CostResolver;
+use crate::db::repositories::settings_repository::SettingsRepository;
 use uuid::Uuid;
 use log::{debug, error, info, warn};
 use std::env;
@@ -34,6 +35,7 @@ pub struct BillingService {
     api_usage_repository: Arc<ApiUsageRepository>,
     credit_service: Arc<CreditService>,
     audit_service: Arc<AuditService>,
+    settings_repository: Arc<SettingsRepository>,
     stripe_service: Option<StripeService>,
     default_signup_credits: f64,
     app_settings: crate::config::settings::AppSettings,
@@ -66,6 +68,9 @@ impl BillingService {
         // Create audit service
         let audit_service = Arc::new(AuditService::new(db_pools.clone()));
         
+        // Create settings repository for database-driven configuration
+        let settings_repository = Arc::new(SettingsRepository::new(db_pools.system_pool.clone()));
+        
         // Initialize Stripe service for BillingService if environment variables are set
         let stripe_service = match (
             env::var("STRIPE_SECRET_KEY"),
@@ -87,6 +92,7 @@ impl BillingService {
             api_usage_repository,
             credit_service,
             audit_service,
+            settings_repository,
             stripe_service,
             default_signup_credits,
             app_settings,
@@ -138,7 +144,7 @@ impl BillingService {
     ) -> Result<CustomerBilling, AppError>
     {
         // Set user context for RLS within the transaction
-        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
+        sqlx::query("SELECT set_config('app.current_user_id', $1, true)")
             .bind(user_id.to_string())
             .execute(&mut **tx)
             .await
@@ -153,9 +159,12 @@ impl BillingService {
             tx,
         ).await?;
         
-        // Grant initial free credits ($2.00) with expiry
-        let free_credits = BigDecimal::from_str("2.00").unwrap();
-        let free_credits_expires_at = now + Duration::days(30);
+        // Grant initial free credits with database-driven configuration
+        let free_credits = self.settings_repository.get_free_credits_amount().await
+            .unwrap_or_else(|_| BigDecimal::from_str("2.00").unwrap());
+        let expiry_days = self.settings_repository.get_free_credits_expiry_days().await
+            .unwrap_or(3);
+        let free_credits_expires_at = now + Duration::days(expiry_days);
         
         // Update user_credits with free credits
         sqlx::query(
@@ -195,7 +204,7 @@ impl BillingService {
         let mut tx = self.db_pools.user_pool.begin().await
             .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
         
-        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
+        sqlx::query("SELECT set_config('app.current_user_id', $1, true)")
             .bind(user_id.to_string())
             .execute(&mut *tx)
             .await
@@ -297,7 +306,7 @@ impl BillingService {
             .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
 
         // Set user context for RLS within the transaction
-        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
+        sqlx::query("SELECT set_config('app.current_user_id', $1, true)")
             .bind(user_id.to_string())
             .execute(&mut *tx)
             .await
@@ -348,19 +357,21 @@ impl BillingService {
     pub async fn get_billing_dashboard_data(&self, user_id: &Uuid) -> Result<BillingDashboardData, AppError> {
         debug!("Fetching billing dashboard data for user: {}", user_id);
 
-        // Get credit balance and billing readiness concurrently
-        let (credit_balance, billing_readiness) = tokio::join!(
+        // Get credit balance, billing readiness, and customer billing info concurrently
+        let (credit_balance, billing_readiness, customer_billing_info) = tokio::join!(
             self.credit_service.get_user_balance(user_id),
-            self._check_billing_readiness(user_id)
+            self._check_billing_readiness(user_id),
+            self.get_customer_billing_info(user_id)
         );
 
         let credit_balance = credit_balance?;
         let (is_payment_method_required, is_billing_info_required) = billing_readiness.unwrap_or((false, false));
+        let customer_billing_info = customer_billing_info.unwrap_or(None);
         
         // Calculate total balance
         let total_balance = &credit_balance.balance + &credit_balance.free_credit_balance;
         
-        // Build response with readiness flags
+        // Build response with readiness flags and customer billing info
         let dashboard_data = BillingDashboardData {
             credit_balance_usd: credit_balance.balance.to_f64().unwrap_or(0.0),
             free_credit_balance_usd: credit_balance.free_credit_balance.to_f64().unwrap_or(0.0),
@@ -368,6 +379,7 @@ impl BillingService {
             services_blocked: total_balance <= BigDecimal::from(0),
             is_payment_method_required,
             is_billing_info_required,
+            customer_billing_info,
         };
 
         info!("Successfully assembled billing dashboard data for user: {}", user_id);
@@ -408,7 +420,7 @@ impl BillingService {
             .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
         
         // Set user context for RLS within the transaction
-        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
+        sqlx::query("SELECT set_config('app.current_user_id', $1, true)")
             .bind(user_id.to_string())
             .execute(&mut *tx)
             .await
@@ -452,7 +464,7 @@ impl BillingService {
             .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
 
         // Set user context for RLS within the transaction
-        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
+        sqlx::query("SELECT set_config('app.current_user_id', $1, true)")
             .bind(user_id.to_string())
             .execute(&mut *tx)
             .await
@@ -644,8 +656,6 @@ impl BillingService {
         metadata.insert("type".to_string(), "credit_purchase".to_string());
         metadata.insert("user_id".to_string(), user_id.to_string());
         metadata.insert("gross_amount".to_string(), amount_decimal.to_string());
-        metadata.insert("fee_amount".to_string(), fee_amount.to_string());
-        metadata.insert("net_amount".to_string(), net_amount.to_string());
         metadata.insert("currency".to_string(), "USD".to_string());
 
         // Use hardcoded URLs that match the frontend expectations
@@ -696,7 +706,7 @@ impl BillingService {
         let mut tx = self.db_pools.user_pool.begin().await
             .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
 
-        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
+        sqlx::query("SELECT set_config('app.current_user_id', $1, true)")
             .bind(user_id.to_string())
             .execute(&mut *tx)
             .await
@@ -771,7 +781,7 @@ impl BillingService {
             .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
 
         // Set user context for RLS within the transaction
-        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
+        sqlx::query("SELECT set_config('app.current_user_id', $1, true)")
             .bind(user_id.to_string())
             .execute(&mut *tx)
             .await
@@ -810,7 +820,7 @@ impl BillingService {
             .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
 
         // Set user context for RLS within the transaction
-        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
+        sqlx::query("SELECT set_config('app.current_user_id', $1, true)")
             .bind(user_id.to_string())
             .execute(&mut *tx)
             .await
@@ -912,7 +922,7 @@ impl BillingService {
             .map_err(|e| AppError::InvalidArgument(format!("Usage validation failed: {}", e)))?;
         
         // Use CostResolver to calculate estimated cost
-        let estimated_cost = crate::services::cost_resolver::CostResolver::resolve(estimated_usage, &model);
+        let estimated_cost = crate::services::cost_resolver::CostResolver::resolve(estimated_usage, &model)?;
         
         // Start transaction
         let pool = self.credit_service.get_user_credit_repository().get_pool();
@@ -929,15 +939,16 @@ impl BillingService {
         info!("Successfully initiated charge for request {}", request_id);
         Ok((request_id, user_credit))
     }
-    
-    /// Finalize an API charge with actual usage
-    pub async fn finalize_api_charge(
+
+    /// Finalize an API charge with actual usage and metadata
+    pub async fn finalize_api_charge_with_metadata(
         &self,
         request_id: &str,
         user_id: &Uuid,
         final_usage: ProviderUsage,
+        metadata: Option<serde_json::Value>,
     ) -> Result<(ApiUsageRecord, UserCredit), AppError> {
-        debug!("Finalizing API charge for request: {}", request_id);
+        debug!("Finalizing API charge with metadata for request: {}", request_id);
         
         // Get model for final cost calculation
         let model_repository = Arc::new(crate::db::repositories::ModelRepository::new(
@@ -950,33 +961,50 @@ impl BillingService {
             .ok_or_else(|| AppError::NotFound(format!("Model '{}' not found", final_usage.model_id)))?;
         
         // Use CostResolver to calculate final cost
-        let final_cost = crate::services::cost_resolver::CostResolver::resolve(final_usage.clone(), &model);
+        let final_cost = crate::services::cost_resolver::CostResolver::resolve(final_usage.clone(), &model)?;
         
         // Start transaction
         let pool = self.credit_service.get_user_credit_repository().get_pool();
         let mut tx = pool.begin().await.map_err(AppError::from)?;
         
         // Set RLS context using user_id within the transaction
-        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
+        sqlx::query("SELECT set_config('app.current_user_id', $1, true)")
             .bind(user_id.to_string())
             .execute(&mut *tx)
             .await
             .map_err(|e| AppError::Database(format!("Failed to set user context in transaction: {}", e)))?;
         
-        // Finalize charge with credit service
+        // Finalize charge with credit service, passing metadata
         let (api_usage_record, user_credit) = self.credit_service
-            .finalize_charge_in_transaction(request_id, final_cost, &final_usage, &mut tx)
+            .finalize_charge_in_transaction_with_metadata(request_id, final_cost, &final_usage, metadata, &mut tx)
             .await?;
         
         // Commit transaction
         tx.commit().await.map_err(AppError::from)?;
         
-        info!("Successfully finalized charge for request {} - user {} for model {} (cost: {})", 
+        info!("Successfully finalized charge with metadata for request {} - user {} for model {} (cost: {})", 
               request_id, api_usage_record.user_id, api_usage_record.service_name, api_usage_record.cost);
         
         // After successful billing, check and trigger auto top-off if needed
         if let Err(e) = self.check_and_trigger_auto_top_off(&api_usage_record.user_id).await {
             warn!("Auto top-off check failed for user {}: {}", api_usage_record.user_id, e);
+        }
+        
+        // Store final cost in Redis for desktop client retrieval
+        let final_cost_response = FinalCostResponse {
+            status: "completed".to_string(),
+            request_id: request_id.to_string(),
+            user_id: api_usage_record.user_id,
+            final_cost: Some(api_usage_record.cost.to_f64().unwrap_or(0.0)),
+            tokens_input: Some(final_usage.prompt_tokens.into()),
+            tokens_output: Some(final_usage.completion_tokens.into()),
+            cache_write_tokens: Some(final_usage.cache_write_tokens.into()),
+            cache_read_tokens: Some(final_usage.cache_read_tokens.into()),
+            service_name: api_usage_record.service_name.clone(),
+        };
+        
+        if let Err(e) = self.store_streaming_final_cost(request_id, &final_cost_response).await {
+            warn!("Failed to store final cost in Redis for request {}: {}", request_id, e);
         }
         
         Ok((api_usage_record, user_credit))
@@ -1026,7 +1054,7 @@ impl BillingService {
             .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
         
         // Set user context for RLS within the transaction
-        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
+        sqlx::query("SELECT set_config('app.current_user_id', $1, true)")
             .bind(user_id.to_string())
             .execute(&mut *tx)
             .await
@@ -1133,7 +1161,7 @@ impl BillingService {
 
         debug!("Auto top-off execution flow: step 4 - setting user context for RLS");
         // Set user context for RLS within the transaction
-        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
+        sqlx::query("SELECT set_config('app.current_user_id', $1, true)")
             .bind(user_id.to_string())
             .execute(&mut *tx)
             .await
@@ -1226,7 +1254,7 @@ impl BillingService {
         let mut tx = self.db_pools.user_pool.begin().await
             .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
 
-        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
+        sqlx::query("SELECT set_config('app.current_user_id', $1, true)")
             .bind(user_id.to_string())
             .execute(&mut *tx)
             .await
@@ -1458,6 +1486,67 @@ impl BillingService {
             warn!("Redis not configured, cannot retrieve final streaming cost");
             Ok(None)
         }
+    }
+
+    /// Process a saved payment method from a completed SetupIntent
+    /// This method handles setup mode checkout sessions where a payment method was added
+    pub async fn process_saved_payment_method(&self, setup_intent: &crate::stripe_types::SetupIntent) -> Result<(), AppError> {
+        info!("Processing saved payment method from setup intent: {}", setup_intent.id);
+        
+        // Check if setup intent status is "succeeded"
+        if !matches!(setup_intent.status, crate::stripe_types::setup_intent::SetupIntentStatus::Succeeded) {
+            warn!("Setup intent {} is not in succeeded status: {:?}", setup_intent.id, setup_intent.status);
+            return Err(AppError::InvalidArgument(format!("Setup intent is not in succeeded status: {:?}", setup_intent.status)));
+        }
+        
+        // Extract customer ID from setup_intent
+        let customer_id = setup_intent.customer.as_ref()
+            .ok_or_else(|| AppError::InvalidArgument("Setup intent has no customer ID".to_string()))?;
+        
+        // Extract payment method ID from setup_intent
+        let payment_method_id = setup_intent.payment_method.as_ref()
+            .ok_or_else(|| AppError::InvalidArgument("Setup intent has no payment method ID".to_string()))?;
+        
+        info!("Setup intent {} - customer: {}, payment method: {}", setup_intent.id, customer_id, payment_method_id);
+        
+        // Get stripe service
+        let stripe_service = self.get_stripe_service()?;
+        
+        // Set the payment method as default for the customer
+        let idempotency_key = format!("set_default_pm_{}_{}", setup_intent.id, payment_method_id);
+        stripe_service.set_default_payment_method(&idempotency_key, customer_id, payment_method_id).await
+            .map_err(|e| AppError::External(format!("Failed to set default payment method: {}", e)))?;
+        
+        info!("Successfully set payment method {} as default for customer {}", payment_method_id, customer_id);
+        
+        // Find the user via user_repository.get_by_stripe_customer_id
+        let user_repository = crate::db::repositories::user_repository::UserRepository::new(self.get_system_db_pool());
+        let user = user_repository.get_by_stripe_customer_id(customer_id).await
+            .map_err(|e| AppError::NotFound(format!("Could not find user for customer {}: {}", customer_id, e)))?;
+        
+        info!("Found user {} for customer {} in setup intent {}", user.id, customer_id, setup_intent.id);
+        
+        // Log detailed audit event
+        let mut metadata = std::collections::HashMap::new();
+        metadata.insert("setup_intent_id".to_string(), setup_intent.id.clone());
+        metadata.insert("payment_method_id".to_string(), payment_method_id.clone());
+        metadata.insert("customer_id".to_string(), customer_id.clone());
+        metadata.insert("event_type".to_string(), "payment_method_added".to_string());
+        
+        let audit_context = crate::services::audit_service::AuditContext::new(user.id);
+        let audit_event = crate::services::audit_service::AuditEvent::new(
+            "payment_method_added",
+            "billing"
+        )
+        .with_entity_id(setup_intent.id.clone())
+        .with_metadata(serde_json::to_value(metadata).unwrap_or_default());
+        
+        self.audit_service.log_event(&audit_context, audit_event).await?;
+        
+        info!("Successfully processed saved payment method for setup intent {} - user {} now has default payment method {}", 
+              setup_intent.id, user.id, payment_method_id);
+        
+        Ok(())
     }
 
 }

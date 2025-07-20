@@ -79,6 +79,7 @@ pub struct BillingDashboardData {
     pub services_blocked: bool,
     pub is_payment_method_required: bool,
     pub is_billing_info_required: bool,
+    pub customer_billing_info: Option<CustomerBillingInfo>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -129,6 +130,8 @@ pub struct UnifiedCreditHistoryEntry {
     pub model: String,  // Model name or "Credit Purchase" for purchases
     pub input_tokens: Option<i64>,
     pub output_tokens: Option<i64>,
+    pub cache_write_tokens: Option<i64>,
+    pub cache_read_tokens: Option<i64>,
     pub balance_after: f64,
     pub description: String,
     pub transaction_type: String,

@@ -10,15 +10,11 @@ VALUES
 -- Anthropic models routed through OpenRouter using canonical slugs
 ('anthropic/claude-sonnet-4-20250514', 'openrouter', 'anthropic/claude-sonnet-4'),
 ('anthropic/claude-opus-4-20250514', 'openrouter', 'anthropic/claude-opus-4'),
-('anthropic/claude-4-sonnet-20250514', 'openrouter', 'anthropic/claude-4-sonnet'),
-('anthropic/claude-4-opus-20250514', 'openrouter', 'anthropic/claude-4-opus'),
 ('anthropic/claude-3-7-sonnet-20250219', 'openrouter', 'anthropic/claude-3.7-sonnet'),
 
 -- Anthropic direct API mappings
 ('anthropic/claude-sonnet-4-20250514', 'anthropic', 'claude-sonnet-4-20250514'),
 ('anthropic/claude-opus-4-20250514', 'anthropic', 'claude-opus-4-20250514'),
-('anthropic/claude-4-sonnet-20250514', 'anthropic', 'claude-4-sonnet-20250514'),
-('anthropic/claude-4-opus-20250514', 'anthropic', 'claude-4-opus-20250514'),
 ('anthropic/claude-3-7-sonnet-20250219', 'anthropic', 'claude-3-7-sonnet-20250219'),
 
 -- =============================================================================
@@ -40,13 +36,9 @@ VALUES
 ('openai/o4-mini', 'openai', 'o4-mini'),
 ('openai/o4-mini-deep-research-2025-06-26', 'openai', 'o4-mini-deep-research-2025-06-26'),
 
--- OpenAI transcription models (primary route through OpenAI API)
+-- OpenAI transcription models (route through OpenAI API)
 ('openai/gpt-4o-transcribe', 'openai', 'gpt-4o-transcribe'),
 ('openai/gpt-4o-mini-transcribe', 'openai', 'gpt-4o-mini-transcribe'),
-
--- OpenAI transcription models (special transcription provider)
-('openai/gpt-4o-transcribe', 'openai_transcription', 'gpt-4o-transcribe'),
-('openai/gpt-4o-mini-transcribe', 'openai_transcription', 'gpt-4o-mini-transcribe'),
 
 -- =============================================================================
 -- GOOGLE MODELS
@@ -54,12 +46,10 @@ VALUES
 -- Google models routed through OpenRouter (for fallback scenarios)
 ('google/gemini-2.5-pro', 'openrouter', 'google/gemini-2.5-pro'),
 ('google/gemini-2.5-flash', 'openrouter', 'google/gemini-2.5-flash'),
-('google/gemini-2.5-flash:thinking', 'openrouter', 'google/gemini-2.5-flash:thinking'),
 
 -- Google direct API mappings (clean model IDs without google/ prefix)
 ('google/gemini-2.5-pro', 'google', 'gemini-2.5-pro'),
 ('google/gemini-2.5-flash', 'google', 'gemini-2.5-flash'),
-('google/gemini-2.5-flash:thinking', 'google', 'gemini-2.5-flash:thinking'),
 
 -- =============================================================================
 -- OPENROUTER MODELS
@@ -68,7 +58,16 @@ VALUES
 ('deepseek/deepseek-r1-0528', 'openrouter', 'deepseek/deepseek-r1-0528'),
 
 -- Moonshot AI models routed through OpenRouter
-('moonshotai/kimi-k2', 'openrouter', 'moonshotai/kimi-k2')
+('moonshotai/kimi-k2', 'openrouter', 'moonshotai/kimi-k2'),
+
+-- =============================================================================
+-- XAI MODELS
+-- =============================================================================
+-- xAI Grok 4 model routed through OpenRouter (for fallback scenarios)
+('xai/grok-4', 'openrouter', 'x-ai/grok-4'),
+
+-- xAI direct API mapping
+('xai/grok-4', 'xai', 'grok-4')
 
 ON CONFLICT (internal_model_id, provider_code) DO UPDATE SET
 provider_model_id = EXCLUDED.provider_model_id;

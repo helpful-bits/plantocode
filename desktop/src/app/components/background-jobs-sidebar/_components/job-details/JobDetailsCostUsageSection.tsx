@@ -44,8 +44,7 @@ export function JobDetailsCostUsageSection() {
   const totalTokens = (inputTokens + outputTokens);
   
   // Extract cache token information from job fields directly
-  const cacheWriteTokens = job.cacheWriteTokens || 0;
-  const cacheReadTokens = job.cacheReadTokens || 0;
+  const totalCachedTokens = (job.cacheWriteTokens || 0) + (job.cacheReadTokens || 0);
   
 
   return (
@@ -101,47 +100,24 @@ export function JobDetailsCostUsageSection() {
           </div>
           
           {/* Cache Token Display Section - Only show if any cache tokens exist */}
-          {(cacheWriteTokens > 0 || cacheReadTokens > 0) && (
+          {totalCachedTokens > 0 && (
             <div className="pt-4 border-t border-border/50">
               <div className="text-xs text-muted-foreground mb-2 font-medium">Cache Usage</div>
               <div className="text-xs text-muted-foreground mb-3 leading-relaxed">
-                Cache tokens optimize performance and reduce costs by reusing previously processed content
+                Cached tokens optimize performance and reduce costs by reusing content
               </div>
-              <div className="grid grid-cols-1 gap-3">
-                {cacheWriteTokens > 0 && (
-                  <div className="flex items-center justify-between p-2 bg-muted/50 rounded-sm">
-                    <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 rounded-full bg-amber-500"></div>
-                      <div className="text-xs text-muted-foreground">Cache Write</div>
-                    </div>
-                    <div className="text-sm font-mono font-medium text-foreground">
-                      <AnimatedNumber 
-                        value={cacheWriteTokens} 
-                        duration={600}
-                        format={(v) => Math.round(v).toLocaleString()}
-                      />
-                    </div>
-                  </div>
-                )}
-                {cacheReadTokens > 0 && (
-                  <div className="flex items-center justify-between p-2 bg-muted/50 rounded-sm">
-                    <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 rounded-full bg-teal-500"></div>
-                      <div className="text-xs text-muted-foreground">Cache Read</div>
-                    </div>
-                    <div className="text-sm font-mono font-medium text-foreground">
-                      <AnimatedNumber 
-                        value={cacheReadTokens} 
-                        duration={600}
-                        format={(v) => Math.round(v).toLocaleString()}
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
-              <div className="mt-3 text-xs text-muted-foreground space-y-1">
-                <div><strong>Cache Write:</strong> Tokens saved to cache for future use</div>
-                <div><strong>Cache Read:</strong> Tokens retrieved from cache</div>
+              <div className="flex items-center justify-between p-2 bg-muted/50 rounded-sm">
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full bg-amber-500"></div>
+                  <div className="text-xs text-muted-foreground">Cached Tokens</div>
+                </div>
+                <div className="text-sm font-mono font-medium text-foreground">
+                  <AnimatedNumber 
+                    value={totalCachedTokens} 
+                    duration={600}
+                    format={(v) => Math.round(v).toLocaleString()}
+                  />
+                </div>
               </div>
             </div>
           )}

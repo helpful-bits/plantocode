@@ -7,7 +7,7 @@ use crate::error::{AppResult, AppError};
 use crate::models::model_pricing::ModelPricing;
 use once_cell::sync::Lazy;
 
-// Default empty pricing JSON for fallback
+// Default empty pricing JSON
 static DEFAULT_PRICING: Lazy<serde_json::Value> = Lazy::new(|| {
     serde_json::json!({})
 });
@@ -164,10 +164,10 @@ impl ModelMappingService {
                 p.api_base_url as provider_api_base, p.capabilities as provider_capabilities,
                 p.status as provider_status,
                 mpm.provider_model_id as resolved_model_id
-            FROM models m
-            JOIN providers p ON m.provider_id = p.id
-            JOIN model_provider_mappings mpm ON m.id = mpm.internal_model_id AND p.code = mpm.provider_code
-            WHERE p.code = $1
+            FROM model_provider_mappings mpm
+            JOIN models m ON mpm.internal_model_id = m.id
+            JOIN providers p ON mpm.provider_code = p.code
+            WHERE mpm.provider_code = $1
             AND m.status = 'active' AND p.status = 'active'
             ORDER BY m.name
             "#,
@@ -218,9 +218,9 @@ impl ModelMappingService {
                 p.api_base_url as provider_api_base, p.capabilities as provider_capabilities,
                 p.status as provider_status,
                 mpm.provider_model_id as resolved_model_id
-            FROM models m
-            JOIN providers p ON m.provider_id = p.id
-            JOIN model_provider_mappings mpm ON m.id = mpm.internal_model_id AND p.code = mpm.provider_code
+            FROM model_provider_mappings mpm
+            JOIN models m ON mpm.internal_model_id = m.id
+            JOIN providers p ON mpm.provider_code = p.code
             WHERE m.status = 'active' AND p.status = 'active'
             ORDER BY p.name, m.name
             "#
@@ -270,9 +270,9 @@ impl ModelMappingService {
                 p.api_base_url as provider_api_base, p.capabilities as provider_capabilities,
                 p.status as provider_status,
                 mpm.provider_model_id as resolved_model_id
-            FROM models m
-            JOIN providers p ON m.provider_id = p.id
-            JOIN model_provider_mappings mpm ON m.id = mpm.internal_model_id AND p.code = mpm.provider_code
+            FROM model_provider_mappings mpm
+            JOIN models m ON mpm.internal_model_id = m.id
+            JOIN providers p ON mpm.provider_code = p.code
             WHERE m.model_type = $1
             AND m.status = 'active' AND p.status = 'active'
             ORDER BY p.name, m.name

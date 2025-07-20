@@ -294,8 +294,37 @@ pub async fn refresh_app_jwt_auth0(
 pub async fn logout_auth0(
     app_handle: AppHandle,
     token_manager: State<'_, Arc<TokenManager>>,
+    app_state: State<'_, AppState>,
 ) -> AppResult<()> {
-    // Clear stored app JWT
+    // Get current token for server logout call
+    let current_token = token_manager.get().await;
+    
+    // Call server logout endpoint if we have a token
+    if let Some(token) = &current_token {
+        let server_logout_url = std::env::var("SERVER_LOGOUT_URL")
+            .unwrap_or_else(|_| "http://localhost:8080/api/auth/logout".to_string());
+        
+        let client = &app_state.client;
+        let logout_response = client.post(&server_logout_url)
+            .header("Authorization", format!("Bearer {}", token))
+            .send()
+            .await;
+        
+        match logout_response {
+            Ok(response) => {
+                if response.status().is_success() {
+                    info!("Successfully called server logout endpoint");
+                } else {
+                    warn!("Server logout endpoint returned non-success status: {}", response.status());
+                }
+            },
+            Err(e) => {
+                warn!("Failed to call server logout endpoint: {}", e);
+            }
+        }
+    }
+    
+    // Clear stored app JWT regardless of server response
     token_manager.set(None).await?;
     
     // Construct Auth0 logout URL

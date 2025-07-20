@@ -1,7 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import type { 
   CreditDetailsResponse,
-  CreditHistoryResponse,
   CreditTransactionEntry,
   UnifiedCreditHistoryResponse,
   UnifiedCreditHistoryEntry,
@@ -10,7 +9,7 @@ import type {
 } from '@/types/tauri-commands';
 
 // Credit types
-export type { CreditHistoryResponse, CreditTransactionEntry, UnifiedCreditHistoryResponse, UnifiedCreditHistoryEntry };
+export type { CreditTransactionEntry, UnifiedCreditHistoryResponse, UnifiedCreditHistoryEntry };
 
 // Credit actions
 export async function getCreditDetails(): Promise<CreditDetailsResponse> {
@@ -30,7 +29,7 @@ export async function getCreditHistory(
 }
 
 // Plan/Usage types and actions
-export interface DetailedUsage {
+export interface DetailedUsageRecord {
   serviceName: string;
   modelDisplayName: string;
   providerCode: string;
@@ -38,8 +37,7 @@ export interface DetailedUsage {
   totalRequests: number;
   totalInputTokens: number;
   totalOutputTokens: number;
-  totalCacheWriteTokens: number;
-  totalCacheReadTokens: number;
+  totalCachedTokens: number;
 }
 
 export interface UsageSummary {
@@ -47,12 +45,11 @@ export interface UsageSummary {
   totalRequests: number;
   totalInputTokens: number;
   totalOutputTokens: number;
-  totalCacheWriteTokens: number;
-  totalCacheReadTokens: number;
+  totalCachedTokens: number;
 }
 
 export interface DetailedUsageResponse {
-  detailedUsage: DetailedUsage[];
+  detailedUsage: DetailedUsageRecord[];
   summary: UsageSummary;
 }
 

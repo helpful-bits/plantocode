@@ -257,7 +257,7 @@ async fn recover_queued_jobs(app_handle: AppHandle) -> AppResult<()> {
         .collect();
     
     if queued_jobs.is_empty() {
-        debug!("No queued jobs found in database to recover");
+        info!("Job recovery completed: no queued jobs found in database");
         return Ok(());
     }
     
@@ -266,6 +266,10 @@ async fn recover_queued_jobs(app_handle: AppHandle) -> AppResult<()> {
     // Get the job queue
     let queue = queue::get_job_queue().await?;
     
+    // Track recovery statistics
+    let mut recovered_count = 0;
+    let mut failed_count = 0;
+    
     // Convert database jobs back to queue jobs and re-enqueue them
     for db_job in queued_jobs {
         match job_payload_utils::convert_db_job_to_job(&db_job) {
@@ -273,10 +277,11 @@ async fn recover_queued_jobs(app_handle: AppHandle) -> AppResult<()> {
                 let job_id = job.id().to_string();
                 match queue.enqueue(job, queue::JobPriority::Normal).await {
                     Ok(()) => {
-                        debug!("Recovered and re-queued job: {}", job_id);
+                        recovered_count += 1;
                     },
                     Err(e) => {
                         error!("Failed to re-queue recovered job {}: {}", job_id, e);
+                        failed_count += 1;
                         // Mark job as failed if we can't re-queue it
                         if let Err(update_error) = background_job_repo.mark_job_failed(
                             &job_id, 
@@ -294,6 +299,7 @@ async fn recover_queued_jobs(app_handle: AppHandle) -> AppResult<()> {
             },
             Err(e) => {
                 error!("Failed to convert database job {} to queue job: {}", db_job.id, e);
+                failed_count += 1;
                 // Mark job as failed if we can't convert it
                 if let Err(update_error) = background_job_repo.mark_job_failed(
                     &db_job.id, 
@@ -310,6 +316,6 @@ async fn recover_queued_jobs(app_handle: AppHandle) -> AppResult<()> {
         }
     }
     
-    info!("Job recovery completed");
+    info!("Job recovery completed: {} jobs recovered successfully, {} jobs failed", recovered_count, failed_count);
     Ok(())
 }

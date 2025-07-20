@@ -1,9 +1,6 @@
 use std::path::{Path, PathBuf};
-use std::collections::HashSet;
-use log::{debug, warn};
-use tokio::fs;
+use log::debug;
 use serde::{Serialize, Deserialize};
-use async_recursion::async_recursion;
 
 use crate::error::{AppResult, AppError};
 use crate::utils::fs_utils;
@@ -52,8 +49,7 @@ impl Default for DirectoryTreeOptions {
 /// Generate a textual representation of a directory tree
 pub async fn generate_directory_tree(project_dir_path: &Path, options: DirectoryTreeOptions) -> AppResult<String> {
     let project_dir_str = project_dir_path.to_string_lossy().to_string();
-    debug!("Generating directory tree for {}", project_dir_str);
-    
+
     let mut all_paths = Vec::new();
     
     // Use git to get file list if this is a git repo and respect_gitignore is enabled
@@ -108,7 +104,7 @@ pub async fn generate_directory_tree(project_dir_path: &Path, options: Directory
     
     // Generate tree
     let tree = format_directory_tree(&relative_paths);
-    
+
     Ok(tree)
 }
 
@@ -147,8 +143,7 @@ pub async fn get_directory_tree_for_processor(
     project_directory: &str,
     excluded_paths: Option<&[String]>
 ) -> AppResult<String> {
-    debug!("Generating directory tree on-demand for: {}", project_directory);
-    
+
     let project_dir_path = Path::new(project_directory);
     
     // Create default options with sensible defaults for most processors
@@ -164,9 +159,6 @@ pub async fn get_directory_tree_for_processor(
     
     // Generate directory tree
     let directory_tree = generate_directory_tree(project_dir_path, tree_options).await?;
-    
-    debug!("Generated on-demand directory tree with {} lines", 
-           directory_tree.lines().count());
     
     Ok(directory_tree)
 }

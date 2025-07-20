@@ -8,6 +8,8 @@ use serde_json::{json, Value};
 use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 use tokio::sync::Mutex;
 use crate::config::settings::AppSettings;
 use crate::clients::usage_extractor::{UsageExtractor, ProviderUsage};
@@ -148,13 +150,15 @@ pub struct GoogleStreamCandidate {
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct GoogleStreamContent {
-    pub parts: Vec<GoogleStreamPart>,
-    pub role: String,
+    pub parts: Option<Vec<GoogleStreamPart>>,
+    pub role: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct GoogleStreamPart {
-    pub text: String,
+    pub text: Option<String>,
+    pub thought: Option<bool>,
 }
 
 // Google Client
@@ -175,7 +179,7 @@ impl GoogleClient {
             return Err(crate::error::AppError::Configuration("Google API keys list cannot be empty".to_string()));
         }
         
-        let client = crate::clients::http_client::new_api_client();
+        let client = crate::utils::http_client::new_api_client();
         
         Ok(Self {
             client,
@@ -195,6 +199,14 @@ impl GoogleClient {
         let mut counter = self.request_id_counter.lock().await;
         *counter += 1;
         *counter
+    }
+
+    /// Get the sticky key index for a user using consistent hashing
+    fn get_sticky_key_index(&self, user_id: &str) -> usize {
+        let mut hasher = DefaultHasher::new();
+        user_id.hash(&mut hasher);
+        let hash = hasher.finish();
+        (hash as usize) % self.api_keys.len()
     }
 
     fn is_retryable_error(&self, e: &AppError) -> bool {
@@ -221,11 +233,13 @@ impl GoogleClient {
         let clean_model_id = &model.resolved_model_id;
         
         let num_keys = self.api_keys.len();
-        let start_index = self.current_key_index.fetch_add(1, Ordering::Relaxed) % num_keys;
+        let sticky_index = self.get_sticky_key_index(user_id);
         let mut last_error = None;
         
+        debug!("Using sticky key index {} for user {}", sticky_index, user_id);
+        
         for i in 0..num_keys {
-            let key_index = (start_index + i) % num_keys;
+            let key_index = (sticky_index + i) % num_keys;
             let api_key = &self.api_keys[key_index];
             let url = format!("{}/models/{}:generateContent", self.base_url, clean_model_id);
             
@@ -317,9 +331,10 @@ impl GoogleClient {
         model: &ModelWithMapping,
         user_id: String
     ) -> Result<(HeaderMap, Pin<Box<dyn Stream<Item = Result<web::Bytes, AppError>> + Send + 'static>>), AppError> {
-        // Get the next key index upfront
+        // Get the sticky key index for this user
         let num_keys = self.api_keys.len();
-        let start_index = self.current_key_index.fetch_add(1, Ordering::Relaxed) % num_keys;
+        let sticky_index = self.get_sticky_key_index(&user_id);
+        debug!("Using sticky key index {} for streaming user {}", sticky_index, user_id);
         
         // Clone necessary parts for 'static lifetime
         let client = self.client.clone();
@@ -340,7 +355,7 @@ impl GoogleClient {
             let mut last_error = None;
             
             for i in 0..num_keys {
-                let key_index = (start_index + i) % num_keys;
+                let key_index = (sticky_index + i) % num_keys;
                 let api_key = &api_keys[key_index];
                 let url = format!("{}/models/{}:streamGenerateContent?alt=sse", base_url, clean_model_id);
                 
@@ -630,73 +645,6 @@ impl GoogleClient {
         }
     }
     
-    /// Extract usage from Google SSE (Server-Sent Events) streaming body
-    /// Processes streaming responses line by line to find usage metadata from final chunks only
-    fn extract_usage_from_sse_body(&self, body: &str, model_id: &str) -> Option<ProviderUsage> {
-        // Google provides cumulative token counts in streaming responses
-        // We need to track the last seen usageMetadata which contains the final totals
-        let mut last_usage_metadata: Option<serde_json::Value> = None;
-        
-        // Process streaming body line by line
-        for line in body.lines() {
-            if line.starts_with("data: ") {
-                let json_str = &line[6..]; // Remove "data: " prefix
-                if json_str.trim().is_empty() {
-                    continue;
-                }
-                
-                // Try to parse the chunk as JSON
-                if let Ok(chunk_json) = serde_json::from_str::<serde_json::Value>(json_str.trim()) {
-                    // Check for usage metadata in this chunk
-                    if let Some(usage_metadata) = chunk_json.get("usageMetadata") {
-                        // Store the last seen usage metadata
-                        last_usage_metadata = Some(usage_metadata.clone());
-                    }
-                }
-            } else if !line.trim().is_empty() {
-                // Try parsing non-SSE lines as JSON (some Google responses might not use SSE)
-                if let Ok(json) = serde_json::from_str::<serde_json::Value>(line.trim()) {
-                    // Check if this is a complete response with usage metadata
-                    if let Some(usage_metadata) = json.get("usageMetadata") {
-                        last_usage_metadata = Some(usage_metadata.clone());
-                    }
-                }
-            }
-        }
-        
-        // Process the last seen usage metadata to get final totals
-        if let Some(usage_metadata) = last_usage_metadata {
-            // Extract token counts from the final usage metadata
-            let prompt_tokens = usage_metadata.get("promptTokenCount")
-                .and_then(|v| v.as_i64())
-                .map(|v| v as i32)
-                .unwrap_or(0);
-            
-            let completion_tokens = usage_metadata.get("candidatesTokenCount")
-                .and_then(|v| v.as_i64())
-                .map(|v| v as i32)
-                .unwrap_or(0);
-            
-            let cached_tokens = usage_metadata.get("cachedContentTokenCount")
-                .and_then(|v| v.as_i64())
-                .map(|v| v as i32)
-                .unwrap_or(0);
-            
-            let mut usage = ProviderUsage::new(
-                prompt_tokens,  // Total input tokens (already includes cached)
-                completion_tokens,  // Total output tokens
-                0,  // cache_write_tokens should be 0
-                cached_tokens,
-                model_id.to_string()
-            );
-            
-            usage.validate().ok()?;
-            
-            Some(usage)
-        } else {
-            None
-        }
-    }
     
     /// Extract usage from parsed JSON (handles Google response format)
     fn extract_usage_from_json(&self, json_value: &serde_json::Value, model_id: &str) -> Option<ProviderUsage> {
@@ -740,23 +688,30 @@ impl GoogleClient {
 }
 
 impl UsageExtractor for GoogleClient {
-    /// Extract usage information from Google HTTP response body (2025-07 format)
+    fn extract_usage(&self, raw_json: &serde_json::Value) -> Option<ProviderUsage> {
+        let usage_metadata = raw_json.get("usageMetadata")?;
+        
+        let prompt_token_count = usage_metadata.get("promptTokenCount")?.as_i64()? as i32;
+        let candidates_token_count = usage_metadata.get("candidatesTokenCount")?.as_i64()? as i32;
+        let cached_content_token_count = usage_metadata.get("cachedContentTokenCount").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+        
+        let usage = ProviderUsage::new(
+            prompt_token_count,
+            candidates_token_count,
+            0, // cache_write_tokens
+            cached_content_token_count,
+            String::new(), // model_id will be empty for trait method
+        );
+        
+        usage.validate().ok()?;
+        Some(usage)
+    }
+
+    /// Extract usage information from Google HTTP response body (non-streaming JSON format)
     /// Supports usageMetadata: {promptTokenCount, candidatesTokenCount, cachedContentTokenCount}
-    async fn extract_from_http_body(&self, body: &[u8], model_id: &str, is_streaming: bool) -> Result<ProviderUsage, AppError> {
+    async fn extract_from_response_body(&self, body: &[u8], model_id: &str) -> Result<ProviderUsage, AppError> {
         let body_str = std::str::from_utf8(body)
             .map_err(|e| AppError::InvalidArgument(format!("Invalid UTF-8: {}", e)))?;
-        
-        if is_streaming {
-            // Handle streaming SSE format
-            if body_str.contains("data: ") {
-                return self.extract_usage_from_sse_body(body_str, model_id)
-                    .map(|mut usage| {
-                        usage.model_id = model_id.to_string();
-                        usage
-                    })
-                    .ok_or_else(|| AppError::External("Failed to extract usage from Google streaming response".to_string()));
-            }
-        }
         
         // Handle regular JSON response
         let json_value: serde_json::Value = serde_json::from_str(body_str)
@@ -767,22 +722,12 @@ impl UsageExtractor for GoogleClient {
             .ok_or_else(|| AppError::External("Failed to extract usage from Google response".to_string()))
     }
     
-    fn extract_usage(&self, raw_json: &serde_json::Value) -> Option<ProviderUsage> {
-        self.extract_usage_from_json(raw_json, "unknown")
-    }
-    
-    fn extract_usage_from_stream_chunk(&self, chunk_json: &serde_json::Value) -> Option<ProviderUsage> {
-        debug!("Extracting usage from Google stream chunk");
-        
-        // For Google streaming, usage info comes in the final chunk
-        self.extract_usage_from_json(chunk_json, "unknown")
-    }
 }
 
 impl Clone for GoogleClient {
     fn clone(&self) -> Self {
         Self {
-            client: crate::clients::http_client::new_api_client(),
+            client: crate::utils::http_client::new_api_client(),
             api_keys: self.api_keys.clone(),
             current_key_index: AtomicUsize::new(0),
             base_url: self.base_url.clone(),

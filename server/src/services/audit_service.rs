@@ -381,30 +381,6 @@ impl AuditService {
         self.audit_log_repository.count_by_user_id(user_id).await
     }
 
-    /// Update audit log status (DEPRECATED - violates write-once principle)
-    /// Creates a new audit entry for status changes instead of modifying existing ones
-    pub async fn update_audit_log_status(
-        &self,
-        audit_log_id: &Uuid,
-        status: &str,
-        error_message: Option<&str>,
-    ) -> Result<(), AppError> {
-        warn!("DEPRECATED: update_audit_log_status called. Creating new audit entry for status change instead.");
-        
-        // Create a new audit entry for the status change instead of modifying the existing one
-        let context = AuditContext::new(uuid::Uuid::nil()); // System context
-        let event = AuditEvent::new("audit_status_updated", "audit_log")
-            .with_entity_id(&audit_log_id.to_string())
-            .with_new_values(serde_json::json!({
-                "new_status": status,
-                "error_message": error_message
-            }))
-            .with_performed_by("system")
-            .with_status(status);
-            
-        self.log_event(&context, event).await?;
-        Ok(())
-    }
 
     /// Clean up old audit logs (for retention policies)
     pub async fn cleanup_old_audit_logs(&self, retention_days: i64) -> Result<u64, AppError> {
@@ -599,73 +575,6 @@ impl AuditService {
         Ok(true)
     }
     
-    /// Migration utility: Convert legacy audit logs to secure format with hash chaining
-    /// This should only be run once during system upgrade
-    pub async fn migrate_legacy_audit_logs(&self) -> Result<u64, AppError> {
-        warn!("Starting migration of legacy audit logs to secure format...");
-        
-        // Get all legacy audit logs (those with 'legacy' entry_hash)
-        let legacy_logs = sqlx::query_as!(
-            AuditLog,
-            r#"
-            SELECT 
-                id, user_id, action_type, entity_type, entity_id, old_values, new_values,
-                metadata, performed_by, ip_address, user_agent, session_id, request_id,
-                status, error_message, created_at, previous_hash, entry_hash, signature
-            FROM audit_logs 
-            WHERE entry_hash = 'legacy'
-            ORDER BY created_at ASC
-            "#
-        )
-        .fetch_all(self.audit_log_repository.get_pool())
-        .await
-        .map_err(|e| AppError::Database(format!("Failed to fetch legacy audit logs: {}", e)))?;
-        
-        if legacy_logs.is_empty() {
-            info!("No legacy audit logs found to migrate.");
-            return Ok(0);
-        }
-        
-        let mut migrated_count = 0;
-        let mut previous_hash: Option<String> = None;
-        
-        for log in legacy_logs {
-            // Calculate proper hash and signature for this entry
-            let entry_data = format!(
-                "{}|{}|{}|{}|{}|{}|{}|{}|{}",
-                log.user_id,
-                log.action_type,
-                log.entity_type,
-                log.entity_id.as_deref().unwrap_or(""),
-                log.performed_by,
-                log.status,
-                log.old_values.as_ref().map(|v| v.to_string()).unwrap_or_default(),
-                log.new_values.as_ref().map(|v| v.to_string()).unwrap_or_default(),
-                log.created_at.to_rfc3339()
-            );
-            
-            let entry_hash = self.calculate_entry_hash(previous_hash.as_deref(), &entry_data).await;
-            let signature = self.generate_entry_signature(&entry_hash)?;
-            
-            // Update the audit log with proper security fields
-            sqlx::query!(
-                "UPDATE audit_logs SET previous_hash = $1, entry_hash = $2, signature = $3 WHERE id = $4",
-                previous_hash,
-                entry_hash,
-                signature,
-                log.id
-            )
-            .execute(self.audit_log_repository.get_pool())
-            .await
-            .map_err(|e| AppError::Database(format!("Failed to update legacy audit log: {}", e)))?;
-            
-            previous_hash = Some(entry_hash);
-            migrated_count += 1;
-        }
-        
-        info!("Successfully migrated {} legacy audit logs to secure format", migrated_count);
-        Ok(migrated_count)
-    }
 
     /// Log payment processing
     pub async fn log_payment_processed(

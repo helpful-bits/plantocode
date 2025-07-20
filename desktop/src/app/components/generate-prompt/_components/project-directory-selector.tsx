@@ -1,12 +1,8 @@
 "use client";
 
 import {
-  AlertCircle,
-  Check,
   FolderOpen,
-  Loader2,
   X,
-  XCircle,
 } from "lucide-react";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -55,6 +51,7 @@ function ProjectDirectorySelector({
   const inputRef = useRef<HTMLInputElement>(null);
   const isInitialMountRef = useRef(true);
   const userEditedRef = useRef(false);
+  const autoDismissTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Update input field from project context on initial mount or when project directory changes
   useEffect(() => {
@@ -105,11 +102,41 @@ function ProjectDirectorySelector({
     }
   }, [inputValue, projectDirectory, projectIsLoading]);
 
+  // Auto-dismiss success validation messages
+  useEffect(() => {
+    if (validationStatus?.type === ValidationType.Success) {
+      // Clear any existing timeout
+      if (autoDismissTimeoutRef.current) {
+        clearTimeout(autoDismissTimeoutRef.current);
+      }
+      
+      // Set new timeout to dismiss the message after 3 seconds
+      autoDismissTimeoutRef.current = setTimeout(() => {
+        setValidationStatus(null);
+        autoDismissTimeoutRef.current = null;
+      }, 3000);
+    }
+    
+    // Cleanup timeout on unmount or when validation status changes
+    return () => {
+      if (autoDismissTimeoutRef.current) {
+        clearTimeout(autoDismissTimeoutRef.current);
+        autoDismissTimeoutRef.current = null;
+      }
+    };
+  }, [validationStatus]);
+
   // Handle input change
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setInputValue(value);
     userEditedRef.current = true; // Mark as user-edited
+
+    // Clear auto-dismiss timeout when input changes
+    if (autoDismissTimeoutRef.current) {
+      clearTimeout(autoDismissTimeoutRef.current);
+      autoDismissTimeoutRef.current = null;
+    }
 
     // Reset validation status when input changes
     if (validationStatus) {
@@ -361,32 +388,17 @@ function ProjectDirectorySelector({
   }, [inputValue, validateDirectory, setProjectDirectory, showNotification]);
 
 
-  // Render validation icon
-  const renderValidationIcon = useCallback(() => {
-    if (!validationStatus) return null;
-
-    switch (validationStatus.type) {
-      case ValidationType.Loading:
-        return (
-          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-        );
-      case ValidationType.Success:
-        return <Check className="h-4 w-4 text-green-500" />;
-      case ValidationType.Error:
-        return <XCircle className="h-4 w-4 text-destructive" />;
-      case ValidationType.Info:
-        return <AlertCircle className="h-4 w-4 text-blue-500" />;
-      default:
-        return null;
-    }
-  }, [validationStatus]);
 
   return (
     <div className="w-full">
       <form onSubmit={handleSubmit} className="w-full">
-        <div className="flex flex-col space-y-2 w-full">
-          <div className="flex items-center gap-2 w-full">
-            <div className="relative flex-1">
+        <div className="flex flex-col space-y-3 w-full">
+          <div className="flex items-center gap-3 w-full">
+            <label className="text-sm font-medium text-foreground whitespace-nowrap">
+              Project root:
+            </label>
+            <div className="flex items-center flex-1 group">
+            <div className="relative flex-1 border border-border/50 rounded-l-lg bg-background/80 backdrop-blur-sm focus-within:border-primary/30 focus-within:ring-2 focus-within:ring-ring/50 transition-all duration-200 hover:border-border/70">
               <Input
                 ref={inputRef}
                 value={inputValue}
@@ -394,11 +406,11 @@ function ProjectDirectorySelector({
                 onKeyDown={handleInputKeyDown}
                 placeholder="Enter project directory path"
                 className={cn(
-                  "pr-10",
+                  "border-0 bg-transparent focus-visible:ring-0 pr-16 h-10",
                   validationStatus?.type === ValidationType.Error &&
-                    "border-destructive focus-visible:ring-destructive",
+                    "text-destructive placeholder:text-destructive/50",
                   validationStatus?.type === ValidationType.Success &&
-                    "border-green-500 focus-visible:ring-green-500",
+                    "text-green-600 placeholder:text-green-600/50",
                   disabled && "opacity-70"
                 )}
                 disabled={isValidating || disabled}
@@ -411,16 +423,13 @@ function ProjectDirectorySelector({
                 <button
                   type="button"
                   onClick={handleClearClick}
-                  className="absolute right-10 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground focus-ring"
+                  className="absolute right-10 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground focus-ring rounded-sm p-1 hover:bg-accent/50 transition-colors"
                   aria-label="Clear input"
                   disabled={disabled}
                 >
-                  <X className="h-4 w-4" />
+                  <X className="h-3.5 w-3.5" />
                 </button>
               )}
-              <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                {renderValidationIcon()}
-              </div>
             </div>
 
             <Button
@@ -430,13 +439,15 @@ function ProjectDirectorySelector({
               onClick={handleOpenDirectoryBrowser}
               disabled={isValidating || disabled}
               className={cn(
-                "h-9 w-9 flex items-center justify-center",
+                "h-10 w-10 flex items-center justify-center border-l-0 rounded-l-none rounded-r-lg",
+                "hover:bg-accent/80 transition-colors group-focus-within:border-primary/30 group-focus-within:ring-2 group-focus-within:ring-ring/50",
                 disabled && "opacity-70"
               )}
               aria-label="Browse directories"
             >
               <FolderOpen className="h-4 w-4" />
             </Button>
+            </div>
           </div>
 
           {validationStatus && (
@@ -458,10 +469,6 @@ function ProjectDirectorySelector({
             </p>
           )}
 
-          <div className="text-xs text-muted-foreground mt-1 px-1 text-balance">
-            Sets the root directory for file browsing, session storage, and
-            project settings.
-          </div>
         </div>
       </form>
 

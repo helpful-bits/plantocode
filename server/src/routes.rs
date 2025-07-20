@@ -8,6 +8,7 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig, strict_rate_limiter: RateL
     cfg.service(
         web::scope("/auth") // Base path: /api/auth
             .route("/userinfo", web::get().to(handlers::auth::userinfo_handler::get_user_info))
+            .route("/logout", web::post().to(handlers::auth::logout_handler::logout))
     );
     cfg.service(
         web::scope("/auth0") // Base path: /api/auth0 (protected)
@@ -20,8 +21,6 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig, strict_rate_limiter: RateL
         web::scope("/billing")
             // Dashboard route
             .route("/dashboard", web::get().to(handlers::billing::dashboard_handler::get_billing_dashboard_data_handler))
-            // Customer billing info route
-            .route("/customer-info", web::get().to(handlers::billing::dashboard_handler::get_customer_billing_info_handler))
             // Usage summary route with pre-calculated totals
             .route("/usage-summary", web::get().to(handlers::billing::dashboard_handler::get_detailed_usage_with_summary_handler))
             // Auto top-off settings routes
@@ -45,7 +44,6 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig, strict_rate_limiter: RateL
                 web::scope("/credits")
                     .service(handlers::billing::credit_handlers::get_credit_balance)
                     .route("/details", web::get().to(handlers::billing::credit_handlers::get_credit_details))
-                    .route("/transaction-history", web::get().to(handlers::billing::credit_handlers::get_credit_history))
                     .route("/unified-history", web::get().to(handlers::billing::credit_handlers::get_unified_credit_history))
                     .route("/admin/adjust", web::post().to(handlers::billing::credit_handlers::admin_adjust_credits))
             )
@@ -66,6 +64,8 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig, strict_rate_limiter: RateL
     cfg.service(
         web::scope("/config")
             .route("/all-configurations", web::get().to(handlers::config_handlers::get_all_application_configurations_handler))
+            .route("/billing", web::get().to(handlers::config_handlers::get_billing_config))
+            .route("/billing", web::put().to(handlers::config_handlers::update_billing_config))
     );
     
     // Provider routes (/api/providers/*)
@@ -113,10 +113,10 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig, strict_rate_limiter: RateL
 /// Configures public authentication routes (not part of /api).
 /// These are typically for browser-based parts of the auth flow.
 /// Mounted under the "/auth" scope in main.rs.
-pub fn configure_public_auth_routes(cfg: &mut web::ServiceConfig) {
+pub fn configure_public_auth_routes(cfg: &mut web::ServiceConfig, account_creation_rate_limiter: RateLimitMiddleware) {
     cfg.service(
         web::scope("/auth0") // Base path: /auth/auth0
-            .route("/initiate-login", web::get().to(handlers::auth0_handlers::initiate_auth0_login))
+            .route("/initiate-login", web::get().to(handlers::auth0_handlers::initiate_auth0_login).wrap(account_creation_rate_limiter))
             .route("/callback", web::get().to(handlers::auth0_handlers::handle_auth0_callback))
             .route("/logged-out", web::get().to(auth0_logged_out_handler))
     );
@@ -177,8 +177,8 @@ mod tests {
         
         let _app = test::init_service(
             actix_web::App::new()
-                .configure(|cfg| configure_routes(cfg, rate_limiter))
-                .configure(configure_public_auth_routes)
+                .configure(|cfg| configure_routes(cfg, rate_limiter.clone()))
+                .configure(|cfg| configure_public_auth_routes(cfg, rate_limiter.clone()))
                 .configure(configure_public_api_routes)
                 .configure(configure_webhook_routes)
         );

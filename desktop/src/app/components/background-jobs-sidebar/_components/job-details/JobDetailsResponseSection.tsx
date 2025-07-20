@@ -6,14 +6,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/ui/collapsible";
 import { Progress } from "@/ui/progress";
 import { useJobDetailsContext } from "../../_contexts/job-details-context";
-import { parsePlanResponseContent } from "../../../implementation-plans-panel/_utils/plan-content-parser";
 import { Button } from "@/ui/button";
 import { replacePlaceholders } from "@/utils/placeholder-utils";
 import { type CopyButtonConfig } from "@/types/config-types";
 import PlanContentModal from "../../../implementation-plans-panel/_components/PlanContentModal";
 import { BackgroundJobsContext } from "@/contexts/background-jobs";
-
-import { getStreamingProgressValue } from "../../utils";
+import { useLiveProgress } from "@/hooks/use-live-progress";
 
 // Simple copy button component for non-implementation plan content
 function SimpleCopyButton({ content }: { content: string }) {
@@ -84,32 +82,19 @@ export function JobDetailsResponseSection() {
 
   const isImplementationPlan = job.taskType === "implementation_plan";
 
-  // Response content is now pre-formatted from context, no additional parsing needed
+  // Response content is now pre-formatted from context
   let displayContentForViewer = responseContent || "";
 
   const isJobStreaming = (job.status === "running" || job.status === "processingStream") && Boolean(parsedMetadata?.taskData?.isStreaming);
-
-  if (job.taskType === "implementation_plan") {
-    if (!isJobStreaming && job.status === "completed") {
-      displayContentForViewer = parsePlanResponseContent(responseContent);
-    }
-    // For streaming or other states of implementation_plan, responseContent is used directly.
-  }
+  
+  // Use live progress hook
+  const progress = useLiveProgress(job);
 
 
-  // Copy handler for modal - gets current content dynamically to avoid stale content during streaming
+  // Copy handler for modal
   const handleCopy = async (button: CopyButtonConfig) => {
     try {
-      // Get the current content dynamically instead of using potentially stale displayContentForViewer
-      let currentContent = responseContent || "";
-      if (job.taskType === "implementation_plan") {
-        if (!isJobStreaming && job.status === "completed") {
-          currentContent = parsePlanResponseContent(responseContent);
-        }
-        // For streaming or other states, use responseContent directly
-      }
-      
-      const data = { IMPLEMENTATION_PLAN: currentContent, STEP_CONTENT: '' };
+      const data = { IMPLEMENTATION_PLAN: responseContent || "", STEP_CONTENT: '' };
       const processedContent = replacePlaceholders(button.content, data);
       await navigator.clipboard.writeText(processedContent);
       
@@ -211,9 +196,7 @@ export function JobDetailsResponseSection() {
               {(job.status === "running" || job.status === "processingStream") && parsedMetadata?.taskData?.isStreaming ? (
                 <div className="mb-3">
                   <Progress
-                    value={
-                      getStreamingProgressValue(job.metadata) ?? 10
-                    }
+                    value={progress ?? 10}
                     className="h-1 mb-2"
                   />
                   <div className="flex justify-between items-center text-xs text-muted-foreground">
@@ -223,16 +206,9 @@ export function JobDetailsResponseSection() {
                         Streaming in progress...
                       </span>
                     </div>
-                    <div className="flex items-center gap-2">
-                      {parsedMetadata?.taskData?.responseLength ? (
-                        <span>
-                          {Math.floor(Number(parsedMetadata.taskData.responseLength) / 1024)} KB received
-                        </span>
-                      ) : null}
-                      {typeof parsedMetadata?.taskData?.streamProgress === "number" && (
-                        <span>{Math.floor(parsedMetadata.taskData.streamProgress)}% complete</span>
-                      )}
-                    </div>
+                    {progress !== undefined && (
+                      <span>{Math.round(progress)}% complete</span>
+                    )}
                   </div>
                 </div>
               ) : null}

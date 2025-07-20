@@ -7,7 +7,7 @@ use crate::error::AppError;
 use crate::models::AuthenticatedUser;
 use crate::services::request_tracker::RequestTracker;
 use crate::config::settings::AppSettings;
-use crate::clients::http_client::new_api_client;
+use crate::utils::http_client::new_api_client;
 
 #[derive(Debug, Deserialize)]
 pub struct CancelRequestPayload {
@@ -96,14 +96,57 @@ pub async fn cancel_request_handler(
             }
         }
         _ => {
-            // For other providers, we can't cancel but we'll remove from tracker
-            warn!("Cancellation not supported for provider: {}", tracked_request.provider);
-            request_tracker.remove_request(request_id).await;
-            
-            Ok(HttpResponse::Ok().json(CancelRequestResponse {
-                success: true,
-                message: format!("Request {} has been marked as cancelled", request_id),
-            }))
+            // Check if this is a streaming request with cancellation token
+            if tracked_request.is_streaming {
+                // Try to cancel the streaming request
+                match request_tracker.cancel_request(request_id).await {
+                    Ok(true) => {
+                        // Successfully cancelled streaming request
+                        info!("Successfully cancelled streaming request {} for provider: {}", request_id, tracked_request.provider);
+                        
+                        // Remove from tracker
+                        request_tracker.remove_request(request_id).await;
+                        
+                        Ok(HttpResponse::Ok().json(CancelRequestResponse {
+                            success: true,
+                            message: format!("Streaming request {} has been cancelled", request_id),
+                        }))
+                    }
+                    Ok(false) => {
+                        // No cancellation token - provider doesn't support stream cancellation
+                        warn!("Streaming request {} for provider {} has no cancellation token - will complete in background", request_id, tracked_request.provider);
+                        
+                        // Don't remove from tracker - let it complete for accurate billing
+                        
+                        Ok(HttpResponse::Ok().json(CancelRequestResponse {
+                            success: true,
+                            message: format!("Request {} will complete in background for accurate billing. You'll be charged for the actual usage.", request_id),
+                        }))
+                    }
+                    Err(e) => {
+                        error!("Failed to cancel streaming request {}: {}", request_id, e);
+                        
+                        // Still remove from tracker
+                        request_tracker.remove_request(request_id).await;
+                        
+                        Ok(HttpResponse::Ok().json(CancelRequestResponse {
+                            success: true,
+                            message: format!("Request {} has been marked as cancelled", request_id),
+                        }))
+                    }
+                }
+            } else {
+                // Non-streaming request - explain that it will complete in background
+                info!("Non-streaming request {} cannot be cancelled but will complete in background for accurate billing", request_id);
+                
+                // Keep the request in tracker to complete naturally
+                // Don't remove it - let it complete for accurate billing
+                
+                Ok(HttpResponse::Ok().json(CancelRequestResponse {
+                    success: true,
+                    message: format!("Request {} will complete in background for accurate billing. You'll be charged for the actual usage.", request_id),
+                }))
+            }
         }
     }
 }

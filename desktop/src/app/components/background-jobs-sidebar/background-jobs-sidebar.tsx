@@ -150,9 +150,6 @@ export const BackgroundJobsSidebar = () => {
     }
   };
 
-  // Removed handleApplyTextFromJob as web search workflows are now filtered out
-  // This functionality is no longer needed since workflow jobs don't appear in the sidebar
-
   // Get container style from utility function
   const containerStyle = getSidebarStyle(activeCollapsed);
 

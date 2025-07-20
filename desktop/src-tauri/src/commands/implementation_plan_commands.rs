@@ -356,7 +356,7 @@ pub async fn read_implementation_plan_command(
         .ok_or_else(|| AppError::NotFoundError(format!("Job not found: {}", args.job_id)))?;
     
     // Verify job type
-    if job.task_type != "implementation_plan" {
+    if job.task_type != "implementation_plan" && job.task_type != "implementation_plan_merge" {
         return Err(AppError::ValidationError(format!("Job is not an implementation plan: {}", args.job_id)));
     }
     
@@ -433,7 +433,7 @@ pub async fn update_implementation_plan_content_command(
         .ok_or_else(|| AppError::NotFoundError(format!("Job not found: {}", job_id)))?;
     
     // Verify job type
-    if job.task_type != "implementation_plan" {
+    if job.task_type != "implementation_plan" && job.task_type != "implementation_plan_merge" {
         return Err(AppError::ValidationError(format!("Job is not an implementation plan: {}", job_id)));
     }
     

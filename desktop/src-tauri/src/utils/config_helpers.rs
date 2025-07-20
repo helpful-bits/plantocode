@@ -242,7 +242,6 @@ pub async fn get_max_concurrent_jobs(app_handle: &AppHandle) -> AppResult<usize>
     Ok(max_jobs as usize)
 }
 
-// REMOVED: All PathFinder configuration functions - these were never used in the codebase
 // If PathFinder configuration is needed in the future, implement only what's actually used
 
 /// Get model info by model ID (STRICT - NO FALLBACKS)
@@ -419,7 +418,7 @@ fn validate_runtime_config(config: &RuntimeAIConfig) -> AppResult<()> {
         }
     }
     
-    // REMOVED: PathFinder settings validation - these configurations are never used in the codebase
+    // PathFinder settings validation - these configurations are never used in the codebase
     
     // STRICT: max_concurrent_jobs must be configured
     if config.max_concurrent_jobs.is_none() {

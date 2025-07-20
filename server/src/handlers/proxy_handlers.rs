@@ -1,6 +1,6 @@
 use crate::clients::usage_extractor::ProviderUsage;
 use crate::clients::{
-    AnthropicClient, GoogleClient, OpenAIClient, OpenRouterClient, UsageExtractor,
+    AnthropicClient, GoogleClient, OpenAIClient, OpenRouterClient, UsageExtractor, XaiClient,
 };
 use crate::config::settings::AppSettings;
 use crate::db::repositories::api_usage_repository::ApiUsageEntryDto;
@@ -8,7 +8,6 @@ use crate::db::repositories::model_repository::{ModelRepository, ModelWithProvid
 use crate::error::AppError;
 use crate::models::AuthenticatedUser;
 use crate::models::model_pricing::ModelPricing;
-use crate::models::standardized_usage_response::StandardizedUsageResponse;
 use crate::services::billing_service::BillingService;
 use crate::services::model_mapping_service::ModelWithMapping;
 use crate::services::request_tracker::RequestTracker;
@@ -23,19 +22,23 @@ use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::Arc;
-use tracing::{debug, error, info, instrument, warn};
+use tracing::{error, info, instrument, warn};
 use uuid::{self, Uuid};
 
 use actix_multipart::Multipart;
 use futures_util::{Stream, StreamExt, TryStreamExt};
 use serde::{Deserialize, Serialize};
 use std::pin::Pin;
+use tokio_util::sync::CancellationToken;
 
 use crate::handlers::provider_transformers::{
-    AnthropicStreamTransformer, GoogleStreamTransformer, OpenAIStreamTransformer,
-    OpenRouterStreamTransformer,
+    GoogleStreamTransformer, OpenAIStreamTransformer,
+    OpenRouterStreamTransformer, XaiStreamTransformer,
 };
-use crate::handlers::streaming_handler::StandardizedStreamHandler;
+use crate::streaming::stream_handler::ModernStreamHandler;
+use crate::models::error_details::{ErrorDetails, ProviderErrorInfo};
+use actix_web_lab::sse;
+use std::time::Duration;
 
 /// Helper function to determine if an error should trigger a fallback to OpenRouter
 fn is_fallback_error(error: &AppError) -> bool {
@@ -50,6 +53,168 @@ fn is_fallback_error(error: &AppError) -> bool {
         }
         _ => false,
     }
+}
+
+/// Extract detailed error information from AppError
+pub fn extract_error_details(error: &AppError, provider: &str) -> ErrorDetails {
+    let (code, message) = match error {
+        AppError::External(msg) => {
+            // Try to extract provider-specific error details
+            if msg.contains("context_length_exceeded") || msg.contains("context length") {
+                ("context_length_exceeded", msg.clone())
+            } else if msg.contains("status 429") || msg.contains("rate_limit") || msg.contains("rate limit") {
+                ("rate_limit_exceeded", msg.clone())
+            } else if msg.contains("status 401") || msg.contains("authentication") || msg.contains("unauthorized") {
+                ("authentication_failed", msg.clone())
+            } else if msg.contains("status 403") || msg.contains("forbidden") {
+                ("permission_denied", msg.clone())
+            } else if msg.contains("status 400") || msg.contains("bad request") {
+                ("bad_request", msg.clone())
+            } else if msg.contains("status 500") || msg.contains("internal server error") {
+                ("provider_internal_error", msg.clone())
+            } else if msg.contains("status 502") || msg.contains("bad gateway") {
+                ("provider_gateway_error", msg.clone())
+            } else if msg.contains("status 503") || msg.contains("service unavailable") {
+                ("provider_unavailable", msg.clone())
+            } else if msg.contains("timeout") || msg.contains("timed out") {
+                ("timeout_error", msg.clone())
+            } else if msg.contains("network") || msg.contains("connection") {
+                ("network_error", msg.clone())
+            } else {
+                ("external_service_error", msg.clone())
+            }
+        }
+        AppError::TooManyRequests(msg) => ("rate_limit_exceeded", msg.clone()),
+        AppError::BadRequest(msg) => {
+            // More specific error codes for bad requests
+            if msg.contains("invalid") || msg.contains("validation") {
+                ("validation_error", msg.clone())
+            } else if msg.contains("missing") || msg.contains("required") {
+                ("missing_parameter", msg.clone())
+            } else {
+                ("bad_request", msg.clone())
+            }
+        }
+        AppError::Internal(msg) => {
+            // More specific error codes for internal errors
+            if msg.contains("deserialization") || msg.contains("JSON") || msg.contains("parse") {
+                ("parsing_error", msg.clone())
+            } else {
+                ("internal_error", msg.clone())
+            }
+        }
+        AppError::NotFound(msg) => ("not_found", msg.clone()),
+        AppError::Unauthorized(msg) => ("unauthorized", msg.clone()),
+        AppError::CreditInsufficient(msg) => ("insufficient_credits", msg.clone()),
+        AppError::Configuration(msg) => ("configuration_error", msg.clone()),
+        AppError::InvalidArgument(msg) => ("invalid_argument", msg.clone()),
+        _ => ("unknown_error", error.to_string()),
+    };
+    
+    let mut error_details = ErrorDetails::new(code, message.clone());
+    
+    // Extract provider error info if available
+    if let AppError::External(msg) = error {
+        // More robust status code extraction using regex
+        let status_code = if let Some(captures) = regex::Regex::new(r"status (\d{3})").ok()
+            .and_then(|re| re.captures(msg)) {
+            captures.get(1).and_then(|m| m.as_str().parse().ok()).unwrap_or(0)
+        } else {
+            // Fallback to pattern matching
+            if msg.contains("400") { 400 }
+            else if msg.contains("401") { 401 }
+            else if msg.contains("403") { 403 }
+            else if msg.contains("429") { 429 }
+            else if msg.contains("500") { 500 }
+            else if msg.contains("502") { 502 }
+            else if msg.contains("503") { 503 }
+            else { 0 }
+        };
+        
+        // Try to extract JSON error body from the message
+        // Look for JSON anywhere in the message, not just at the start
+        if let Some(json_start) = msg.find('{') {
+            if let Some(json_end) = msg.rfind('}') {
+                let json_str = &msg[json_start..=json_end];
+                
+                // Provider-specific error parsing
+                match provider {
+                    "openai" | "xai" => {
+                        if let Some(provider_error) = ProviderErrorInfo::from_openai_error(status_code, json_str) {
+                            error_details = error_details.with_provider_error(provider_error);
+                        }
+                    }
+                    "anthropic" => {
+                        // Anthropic has a similar error format to OpenAI
+                        if let Ok(error_json) = serde_json::from_str::<serde_json::Value>(json_str) {
+                            if let Some(error) = error_json.get("error") {
+                                let error_type = error.get("type")
+                                    .and_then(|t| t.as_str())
+                                    .unwrap_or("unknown")
+                                    .to_string();
+                                
+                                let details = error.get("message")
+                                    .and_then(|m| m.as_str())
+                                    .unwrap_or(json_str)
+                                    .to_string();
+                                
+                                let provider_error = ProviderErrorInfo {
+                                    provider: provider.to_string(),
+                                    status_code,
+                                    error_type,
+                                    details,
+                                    context: None,
+                                };
+                                error_details = error_details.with_provider_error(provider_error);
+                            }
+                        }
+                    }
+                    "google" => {
+                        // Google has a different error format
+                        if let Ok(error_json) = serde_json::from_str::<serde_json::Value>(json_str) {
+                            if let Some(error) = error_json.get("error") {
+                                let error_type = error.get("status")
+                                    .and_then(|s| s.as_str())
+                                    .unwrap_or("UNKNOWN")
+                                    .to_string();
+                                
+                                let details = error.get("message")
+                                    .and_then(|m| m.as_str())
+                                    .unwrap_or(json_str)
+                                    .to_string();
+                                
+                                let provider_error = ProviderErrorInfo {
+                                    provider: provider.to_string(),
+                                    status_code,
+                                    error_type,
+                                    details,
+                                    context: None,
+                                };
+                                error_details = error_details.with_provider_error(provider_error);
+                            }
+                        }
+                    }
+                    _ => {
+                        // Generic provider error handling
+                        let provider_error = ProviderErrorInfo::from_provider_error(provider, status_code, json_str);
+                        error_details = error_details.with_provider_error(provider_error);
+                    }
+                }
+            }
+        } else if status_code > 0 {
+            // No JSON found, but we have a status code
+            let provider_error = ProviderErrorInfo {
+                provider: provider.to_string(),
+                status_code,
+                error_type: "http_error".to_string(),
+                details: message.clone(),
+                context: None,
+            };
+            error_details = error_details.with_provider_error(provider_error);
+        }
+    }
+    
+    error_details
 }
 
 /// Calculate input tokens from request payload using accurate tiktoken-rs estimation
@@ -78,16 +243,17 @@ fn create_standardized_usage_response(
     usage: &ProviderUsage,
     cost: &BigDecimal,
 ) -> Result<serde_json::Value, AppError> {
-    let response = StandardizedUsageResponse {
-        prompt_tokens: usage.prompt_tokens as u32,
-        completion_tokens: usage.completion_tokens as u32,
-        total_tokens: (usage.prompt_tokens + usage.completion_tokens) as u32,
-        cache_write_tokens: usage.cache_write_tokens as u32,
-        cache_read_tokens: usage.cache_read_tokens as u32,
-        cost: Some(cost.to_string().parse::<f64>().unwrap_or(0.0)),
-    };
-    serde_json::to_value(response)
-        .map_err(|e| AppError::Internal(format!("Failed to serialize usage response: {}", e)))
+    // Create response with snake_case field names to match desktop client's OpenRouterUsage
+    let response = serde_json::json!({
+        "prompt_tokens": usage.prompt_tokens,
+        "completion_tokens": usage.completion_tokens,
+        "total_tokens": usage.prompt_tokens + usage.completion_tokens,
+        "cost": cost.to_string().parse::<f64>().unwrap_or(0.0),
+        "cache_write_tokens": usage.cache_write_tokens,
+        "cache_read_tokens": usage.cache_read_tokens
+    });
+    
+    Ok(response)
 }
 
 #[derive(Deserialize, Serialize, Clone)]
@@ -133,7 +299,6 @@ pub async fn llm_chat_completion_handler(
 
     // Extract model ID from request payload
     let model_id = payload.model.clone();
-    debug!("Routing request for model: {}", model_id);
 
     // Look up model with provider information
     let model_with_provider = model_repository
@@ -158,14 +323,6 @@ pub async fn llm_chat_completion_handler(
         model_with_provider.provider_code, model_with_provider.name
     );
 
-    // Track the request in the request tracker
-    request_tracker
-        .track_request(
-            request_id.clone(),
-            user_id,
-            model_with_provider.provider_code.clone(),
-        )
-        .await;
 
     // Calculate estimated input tokens for initial charge
     let estimated_input_tokens = calculate_input_tokens(&payload, &model_with_provider.id);
@@ -204,7 +361,16 @@ pub async fn llm_chat_completion_handler(
 
     // Check if request is streaming
     let is_streaming = payload.stream.unwrap_or(false);
-    debug!("Request mode - web_mode: {}, is_streaming: {}", web_mode, is_streaming);
+
+    // Track the request in the request tracker
+    request_tracker
+        .track_request(
+            request_id.clone(),
+            user_id,
+            model_with_provider.provider_code.clone(),
+            is_streaming,
+        )
+        .await;
 
     // Extract payload for different handler types
     let payload_inner = payload.into_inner();
@@ -229,10 +395,10 @@ pub async fn llm_chat_completion_handler(
                     payload_value.clone(),
                     &model_with_provider,
                     &user_id,
+                    web_mode,
                     &app_settings,
                     billing_service.get_ref().clone(),
                     model_repository.clone(),
-                    web_mode,
                     request_id.clone(),
                     request_tracker.clone(),
                 )
@@ -242,10 +408,39 @@ pub async fn llm_chat_completion_handler(
                     payload_value.clone(),
                     &model_with_provider,
                     &user_id,
+                    web_mode,
                     &app_settings,
                     billing_service.get_ref().clone(),
                     model_repository.clone(),
+                    request_id.clone(),
+                    request_tracker.clone(),
+                )
+                .await
+            }
+        }
+        "xai" => {
+            if is_streaming {
+                handle_xai_streaming_request(
+                    payload_value.clone(),
+                    &model_with_provider,
+                    &user_id,
                     web_mode,
+                    &app_settings,
+                    billing_service.get_ref().clone(),
+                    model_repository.clone(),
+                    request_id.clone(),
+                    request_tracker.clone(),
+                )
+                .await
+            } else {
+                handle_xai_request(
+                    payload_value.clone(),
+                    &model_with_provider,
+                    &user_id,
+                    web_mode,
+                    &app_settings,
+                    billing_service.get_ref().clone(),
+                    model_repository.clone(),
                     request_id.clone(),
                     request_tracker.clone(),
                 )
@@ -254,15 +449,16 @@ pub async fn llm_chat_completion_handler(
         }
         "anthropic" => {
             if is_streaming {
-                handle_anthropic_streaming_request(
+                // Anthropic streaming has been removed - fallback to OpenRouter
+                handle_openrouter_streaming_request(
                     payload_value.clone(),
-                    &model_with_mapping,
                     &model_with_provider,
                     &user_id,
                     &app_settings,
                     billing_service.get_ref().clone(),
-                    model_repository.clone(),
+                    Arc::new(model_repository.get_ref().clone()),
                     request_id.clone(),
+                    request_tracker.clone(),
                 )
                 .await
             } else {
@@ -290,6 +486,7 @@ pub async fn llm_chat_completion_handler(
                     billing_service.get_ref().clone(),
                     model_repository.clone(),
                     request_id.clone(),
+                    request_tracker.clone(),
                 )
                 .await
             } else {
@@ -317,6 +514,7 @@ pub async fn llm_chat_completion_handler(
                     billing_service.get_ref().clone(),
                     Arc::clone(&model_repository),
                     request_id.clone(),
+                    request_tracker.clone(),
                 )
                 .await
             } else {
@@ -343,6 +541,7 @@ pub async fn llm_chat_completion_handler(
                     billing_service.get_ref().clone(),
                     Arc::clone(&model_repository),
                     request_id.clone(),
+                    request_tracker.clone(),
                 )
                 .await
             } else {
@@ -376,10 +575,10 @@ async fn handle_openai_request(
     payload: Value,
     model: &ModelWithProvider,
     user_id: &Uuid,
+    web_mode: bool,
     app_settings: &AppSettings,
     billing_service: Arc<BillingService>,
     model_repository: web::Data<ModelRepository>,
-    web_mode: bool,
     request_id: String,
     request_tracker: web::Data<RequestTracker>,
 ) -> Result<HttpResponse, AppError> {
@@ -387,7 +586,7 @@ async fn handle_openai_request(
 
     // Clone payload for fallback use
     let payload_value_clone = payload.clone();
-    let mut request = client.convert_to_openai_request(payload)?;
+    let mut request = client.convert_to_chat_request(payload)?;
 
     // Use the resolved model ID from mapping service
     request.model = model.resolved_model_id.clone();
@@ -431,12 +630,12 @@ async fn handle_openai_request(
 
     // Get usage from provider using unified extraction
     let usage = client
-        .extract_from_http_body(response_body.as_bytes(), &model.id, false)
+        .extract_from_response_body(response_body.as_bytes(), &model.id)
         .await?;
 
     // Finalize API charge with actual usage
     let (api_usage_record, _user_credit) = billing_service
-        .finalize_api_charge(&request_id, user_id, usage.clone())
+        .finalize_api_charge_with_metadata(&request_id, user_id, usage.clone(), None)
         .await?;
 
     // Convert to OpenRouter format for consistent client parsing with standardized usage
@@ -454,10 +653,10 @@ async fn handle_openai_streaming_request(
     payload: Value,
     model: &ModelWithProvider,
     user_id: &Uuid,
+    web_mode: bool,
     app_settings: &AppSettings,
     billing_service: Arc<BillingService>,
     model_repository: web::Data<ModelRepository>,
-    web_mode: bool,
     request_id: String,
     request_tracker: web::Data<RequestTracker>,
 ) -> Result<HttpResponse, AppError> {
@@ -465,7 +664,7 @@ async fn handle_openai_streaming_request(
 
     // Instantiate OpenAI client
     let client = OpenAIClient::new(app_settings)?;
-    let mut request = client.convert_to_openai_request(payload)?;
+    let mut request = client.convert_to_chat_request(payload)?;
     request.model = model.resolved_model_id.clone();
 
     // Initiate provider streaming request
@@ -486,6 +685,7 @@ async fn handle_openai_streaming_request(
                         billing_service,
                         Arc::clone(&model_repository),
                         request_id,
+                        request_tracker.clone(),
                     )
                     .await;
                 }
@@ -503,23 +703,173 @@ async fn handle_openai_streaming_request(
         }
     }
 
+    // Create cancellation token for streaming requests
+    let cancellation_token = tokio_util::sync::CancellationToken::new();
+    
+    // Update request tracker with cancellation token
+    request_tracker
+        .track_request_with_cancellation(
+            request_id.clone(),
+            *user_id,
+            model.provider_code.clone(),
+            true, // is_streaming
+            cancellation_token.clone(),
+        )
+        .await;
+    
     // Instantiate OpenAI stream transformer
     let transformer = Box::new(OpenAIStreamTransformer::new(&model.id));
     
-    // Wrap provider stream and transformer in StandardizedStreamHandler
-    let standardized_handler = StandardizedStreamHandler::new(
+    // Create the modern stream handler
+    let modern_handler = ModernStreamHandler::new(
         provider_stream,
         transformer,
         model.clone(),
         *user_id,
         billing_service.clone(),
         request_id,
+        cancellation_token,
     );
+    
+    // Convert to SSE stream and return as HttpResponse
+    use actix_web::Responder;
+    let sse_stream = modern_handler.into_sse_stream();
+    
+    // Create a dummy request to get HttpResponse from Responder
+    let req = actix_web::test::TestRequest::default().to_http_request();
+    Ok(sse_stream.respond_to(&req))
+}
 
-    // Return HttpResponse containing StandardizedStreamHandler
-    Ok(HttpResponse::Ok()
-        .content_type("text/event-stream")
-        .streaming(standardized_handler))
+/// Handle XAI non-streaming request
+async fn handle_xai_request(
+    payload: Value,
+    model: &ModelWithProvider,
+    user_id: &Uuid,
+    web_mode: bool,
+    app_settings: &AppSettings,
+    billing_service: Arc<BillingService>,
+    model_repository: web::Data<ModelRepository>,
+    request_id: String,
+    request_tracker: web::Data<RequestTracker>,
+) -> Result<HttpResponse, AppError> {
+    let client = XaiClient::new_for_xai(app_settings)?;
+
+    let mut request = client.convert_to_chat_request(payload)?;
+
+    // Use the resolved model ID from mapping service
+    request.model = model.resolved_model_id.clone();
+
+    let (response, _headers, response_id) = match client.chat_completion(request, web_mode).await {
+        Ok((response, headers, _, _, _, _, response_id)) => (response, headers, response_id),
+        Err(error) => {
+            return Err(error);
+        }
+    };
+
+    // Update request tracker with XAI response_id if available
+    if let Some(xai_response_id) = response_id {
+        if let Err(e) = request_tracker
+            .update_openai_response_id(&request_id, xai_response_id)
+            .await
+        {
+            warn!("Failed to update request tracker with response_id: {}", e);
+        }
+    }
+
+    // Serialize response to get HTTP body for usage extraction
+    let response_body = serde_json::to_string(&response)?;
+
+    // Get usage from provider using unified extraction
+    let usage = client
+        .extract_from_response_body(response_body.as_bytes(), &model.id)
+        .await?;
+
+    // Finalize API charge with actual usage
+    let (api_usage_record, _user_credit) = billing_service
+        .finalize_api_charge_with_metadata(&request_id, user_id, usage.clone(), None)
+        .await?;
+
+    // Convert to OpenRouter format for consistent client parsing with standardized usage
+    let mut response_value = serde_json::to_value(response)?;
+    if let Some(obj) = response_value.as_object_mut() {
+        let usage_response = create_standardized_usage_response(&usage, &api_usage_record.cost)?;
+        obj.insert("usage".to_string(), usage_response);
+    }
+
+    Ok(HttpResponse::Ok().json(response_value))
+}
+
+/// Handle XAI streaming request
+async fn handle_xai_streaming_request(
+    payload: Value,
+    model: &ModelWithProvider,
+    user_id: &Uuid,
+    web_mode: bool,
+    app_settings: &AppSettings,
+    billing_service: Arc<BillingService>,
+    model_repository: web::Data<ModelRepository>,
+    request_id: String,
+    request_tracker: web::Data<RequestTracker>,
+) -> Result<HttpResponse, AppError> {
+    // Instantiate XAI client
+    let client = XaiClient::new_for_xai(app_settings)?;
+    let mut request = client.convert_to_chat_request(payload)?;
+    request.model = model.resolved_model_id.clone();
+
+    // Initiate provider streaming request
+    let (_headers, provider_stream, response_id) =
+        match client.stream_chat_completion(request, web_mode).await {
+            Ok(result) => result,
+            Err(error) => {
+                return Err(error);
+            }
+        };
+
+    // Update request tracker with XAI response_id if available
+    if let Some(xai_response_id) = response_id {
+        if let Err(e) = request_tracker
+            .update_openai_response_id(&request_id, xai_response_id)
+            .await
+        {
+            warn!("Failed to update request tracker with response_id: {}", e);
+        }
+    }
+
+    // Create cancellation token for streaming requests
+    let cancellation_token = tokio_util::sync::CancellationToken::new();
+    
+    // Update request tracker with cancellation token
+    request_tracker
+        .track_request_with_cancellation(
+            request_id.clone(),
+            *user_id,
+            model.provider_code.clone(),
+            true, // is_streaming
+            cancellation_token.clone(),
+        )
+        .await;
+    
+    // Instantiate XAI stream transformer
+    let transformer = Box::new(XaiStreamTransformer::new(&model.id));
+    
+    // Create the modern stream handler
+    let modern_handler = ModernStreamHandler::new(
+        provider_stream,
+        transformer,
+        model.clone(),
+        *user_id,
+        billing_service.clone(),
+        request_id,
+        cancellation_token,
+    );
+    
+    // Convert to SSE stream and return as HttpResponse
+    use actix_web::Responder;
+    let sse_stream = modern_handler.into_sse_stream();
+    
+    // Create a dummy request to get HttpResponse from Responder
+    let req = actix_web::test::TestRequest::default().to_http_request();
+    Ok(sse_stream.respond_to(&req))
 }
 
 /// Handle Anthropic non-streaming request
@@ -570,12 +920,12 @@ async fn handle_anthropic_request(
 
     // Get usage from provider using unified extraction
     let usage = client
-        .extract_from_http_body(response_body.as_bytes(), &model_with_provider.id, false)
+        .extract_from_response_body(response_body.as_bytes(), &model_with_provider.id)
         .await?;
 
     // Two-phase billing: Finalize the request with actual usage
     let (api_usage_record, _user_credit) = billing_service
-        .finalize_api_charge(&request_id, user_id, usage.clone())
+        .finalize_api_charge_with_metadata(&request_id, user_id, usage.clone(), None)
         .await?;
     let cost = api_usage_record.cost;
 
@@ -601,68 +951,6 @@ async fn handle_anthropic_request(
     Ok(HttpResponse::Ok().json(openrouter_response))
 }
 
-/// Handle Anthropic streaming request
-async fn handle_anthropic_streaming_request(
-    payload: Value,
-    model_with_mapping: &ModelWithMapping,
-    model_with_provider: &ModelWithProvider,
-    user_id: &Uuid,
-    app_settings: &AppSettings,
-    billing_service: Arc<BillingService>,
-    model_repository: web::Data<ModelRepository>,
-    request_id: String,
-) -> Result<HttpResponse, AppError> {
-    let payload_clone = payload.clone();
-    
-    // Instantiate Anthropic client
-    let client = AnthropicClient::new(app_settings)?;
-    let mut request = client.convert_to_chat_request(payload)?;
-
-    // Initiate provider streaming request
-    let (headers, provider_stream) = match client
-        .stream_chat_completion(request, &model_with_mapping, user_id.to_string())
-        .await
-    {
-        Ok(result) => result,
-        Err(error) => {
-            if is_fallback_error(&error) {
-                warn!(
-                    "[FALLBACK] Anthropic streaming request failed, retrying with OpenRouter: {}",
-                    error
-                );
-                return handle_openrouter_streaming_request(
-                    payload_clone,
-                    &model_with_provider,
-                    user_id,
-                    app_settings,
-                    billing_service,
-                    Arc::clone(&model_repository),
-                    request_id,
-                )
-                .await;
-            }
-            return Err(error);
-        }
-    };
-
-    // Instantiate Anthropic stream transformer
-    let transformer = Box::new(AnthropicStreamTransformer::new(&model_with_provider.id));
-    
-    // Wrap provider stream and transformer in StandardizedStreamHandler
-    let standardized_handler = StandardizedStreamHandler::new(
-        provider_stream,
-        transformer,
-        model_with_provider.clone(),
-        *user_id,
-        billing_service.clone(),
-        request_id,
-    );
-
-    // Return HttpResponse containing StandardizedStreamHandler
-    Ok(HttpResponse::Ok()
-        .content_type("text/event-stream")
-        .streaming(standardized_handler))
-}
 
 /// Handle Google non-streaming request
 async fn handle_google_request(
@@ -749,12 +1037,12 @@ async fn handle_google_request(
 
     // Get usage from provider using unified extraction
     let usage = client
-        .extract_from_http_body(response_body.as_bytes(), &model_with_provider.id, false)
+        .extract_from_response_body(response_body.as_bytes(), &model_with_provider.id)
         .await?;
 
     // Two-phase billing: Finalize the request with actual usage
     let (api_usage_record, _user_credit) = billing_service
-        .finalize_api_charge(&request_id, user_id, usage.clone())
+        .finalize_api_charge_with_metadata(&request_id, user_id, usage.clone(), None)
         .await?;
     let cost = api_usage_record.cost;
 
@@ -795,9 +1083,24 @@ async fn handle_google_streaming_request(
     billing_service: Arc<BillingService>,
     model_repository: web::Data<ModelRepository>,
     request_id: String,
+    request_tracker: web::Data<RequestTracker>,
 ) -> Result<HttpResponse, AppError> {
     let original_model_id = payload["model"].as_str().unwrap_or_default().to_string();
     let payload_clone = payload.clone();
+    
+    // Create cancellation token for streaming requests
+    let cancellation_token = CancellationToken::new();
+    
+    // Track request with cancellation token to support stream cancellation
+    request_tracker
+        .track_request_with_cancellation(
+            request_id.clone(),
+            *user_id,
+            model_with_provider.provider_code.clone(),
+            true, // is_streaming
+            cancellation_token.clone(),
+        )
+        .await;
     
     // Instantiate Google client
     let client = GoogleClient::new(app_settings)?;
@@ -859,6 +1162,7 @@ async fn handle_google_streaming_request(
                     billing_service,
                     Arc::clone(&model_repository),
                     request_id,
+                    request_tracker.clone(),
                 )
                 .await;
             }
@@ -869,20 +1173,24 @@ async fn handle_google_streaming_request(
     // Instantiate Google stream transformer
     let transformer = Box::new(GoogleStreamTransformer::new(&model_with_provider.id));
     
-    // Wrap provider stream and transformer in StandardizedStreamHandler
-    let standardized_handler = StandardizedStreamHandler::new(
+    // Create the modern stream handler
+    let modern_handler = ModernStreamHandler::new(
         provider_stream,
         transformer,
         model_with_provider.clone(),
         *user_id,
         billing_service,
         request_id,
+        cancellation_token,
     );
-
-    // Return HttpResponse containing StandardizedStreamHandler
-    Ok(HttpResponse::Ok()
-        .content_type("text/event-stream")
-        .streaming(standardized_handler))
+    
+    // Convert to SSE stream and return as HttpResponse
+    use actix_web::Responder;
+    let sse_stream = modern_handler.into_sse_stream();
+    
+    // Create a dummy request to get HttpResponse from Responder
+    let req = actix_web::test::TestRequest::default().to_http_request();
+    Ok(sse_stream.respond_to(&req))
 }
 
 /// Handle OpenRouter (DeepSeek) non-streaming request
@@ -910,12 +1218,12 @@ async fn handle_openrouter_request(
 
     // Get usage from provider using unified extraction
     let usage = client
-        .extract_from_http_body(response_body.as_bytes(), &model.id, false)
+        .extract_from_response_body(response_body.as_bytes(), &model.id)
         .await?;
 
     // Two-phase billing: Finalize the request with actual usage
     let (api_usage_record, _user_credit) = billing_service
-        .finalize_api_charge(&request_id, user_id, usage.clone())
+        .finalize_api_charge_with_metadata(&request_id, user_id, usage.clone(), None)
         .await?;
     let cost = api_usage_record.cost;
 
@@ -938,6 +1246,7 @@ async fn handle_openrouter_streaming_request(
     billing_service: Arc<BillingService>,
     model_repository: Arc<ModelRepository>,
     request_id: String,
+    request_tracker: web::Data<RequestTracker>,
 ) -> Result<HttpResponse, AppError> {
     // Instantiate OpenRouter client
     let client = OpenRouterClient::new(app_settings, model_repository)?;
@@ -949,23 +1258,41 @@ async fn handle_openrouter_streaming_request(
         .stream_chat_completion(request, user_id.to_string())
         .await?;
 
+    // Create cancellation token for streaming requests
+    let cancellation_token = CancellationToken::new();
+    
+    // Update request tracker with cancellation token
+    request_tracker
+        .track_request_with_cancellation(
+            request_id.clone(),
+            *user_id,
+            model.provider_code.clone(),
+            true, // is_streaming
+            cancellation_token.clone(),
+        )
+        .await;
+    
     // Instantiate OpenRouter stream transformer
     let transformer = Box::new(OpenRouterStreamTransformer::new(&model.id));
     
-    // Wrap provider stream and transformer in StandardizedStreamHandler
-    let standardized_handler = StandardizedStreamHandler::new(
+    // Create the modern stream handler
+    let modern_handler = ModernStreamHandler::new(
         provider_stream,
         transformer,
         model.clone(),
         *user_id,
         billing_service.clone(),
         request_id,
+        cancellation_token,
     );
-
-    // Return HttpResponse containing StandardizedStreamHandler
-    Ok(HttpResponse::Ok()
-        .content_type("text/event-stream")
-        .streaming(standardized_handler))
+    
+    // Convert to SSE stream and return as HttpResponse
+    use actix_web::Responder;
+    let sse_stream = modern_handler.into_sse_stream();
+    
+    // Create a dummy request to get HttpResponse from Responder
+    let req = actix_web::test::TestRequest::default().to_http_request();
+    Ok(sse_stream.respond_to(&req))
 }
 
 #[derive(Serialize)]
@@ -1070,7 +1397,7 @@ pub async fn transcription_handler(
     // Calculate estimated token count based on audio duration (10 tokens per second)
     let tokens_input = (duration_ms / 1000) * 10;
     
-    // Calculate tokens in transcribed text
+    // Calculate tokens in transcribed text using token estimator
     let tokens_output = crate::utils::token_estimator::estimate_tokens(&transcription_text, &model_with_provider.id) as i32;
 
     // Create provider usage for billing

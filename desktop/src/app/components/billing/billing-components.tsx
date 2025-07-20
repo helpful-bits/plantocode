@@ -32,6 +32,12 @@ export const AddPaymentMethodModalAsync = lazy(() =>
   }))
 );
 
+export const PaymentPollingScreenAsync = lazy(() => 
+  import('./components/PaymentPollingScreen').then(module => ({ 
+    default: module.PaymentPollingScreen 
+  }))
+);
+
 function BillingModalLoader() {
   return (
     <div className="flex items-center justify-center p-8 min-h-[200px]">
@@ -61,6 +67,7 @@ export const PaymentMethodsList = withBillingSuspense(PaymentMethodsListAsync);
 export const BillingHistory = withBillingSuspense(BillingHistoryAsync);
 export const BillingHistoryModal = withBillingSuspense(BillingHistoryModalAsync);
 export const AddPaymentMethodModal = withBillingSuspense(AddPaymentMethodModalAsync);
+export const PaymentPollingScreen = withBillingSuspense(PaymentPollingScreenAsync);
 
 export function preloadBillingComponents(): void {
   setTimeout(() => {
@@ -70,6 +77,7 @@ export function preloadBillingComponents(): void {
     import('./components/AddPaymentMethodModal');
     import('./components/BillingHistory');
     import('./components/BillingHistoryModal');
+    import('./components/PaymentPollingScreen');
   }, 500);
 }
 export { LoadingSkeleton, ErrorState, ProcessingState } from './components/loading-and-error-states';

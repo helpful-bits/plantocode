@@ -9,7 +9,7 @@ use chrono::{Utc, Duration};
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct DetailedUsage {
+pub struct DetailedUsageRecord {
     pub service_name: String,
     pub model_display_name: String,
     pub provider_code: String,
@@ -17,6 +17,7 @@ pub struct DetailedUsage {
     pub total_requests: i64,
     pub total_input_tokens: i64,
     pub total_output_tokens: i64,
+    pub total_cached_tokens: i64,
     pub total_duration_ms: i64,
 }
 
@@ -27,13 +28,14 @@ pub struct UsageSummary {
     pub total_requests: i64,
     pub total_input_tokens: i64,
     pub total_output_tokens: i64,
+    pub total_cached_tokens: i64,
     pub total_duration_ms: i64,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DetailedUsageResponse {
-    pub detailed_usage: Vec<DetailedUsage>,
+    pub detailed_usage: Vec<DetailedUsageRecord>,
     pub summary: UsageSummary,
 }
 use regex::Regex;
@@ -354,6 +356,8 @@ pub struct UnifiedCreditHistoryEntry {
     pub model: String,  // Model name or "Credit Purchase" for purchases
     pub input_tokens: Option<i64>,
     pub output_tokens: Option<i64>,
+    pub cache_write_tokens: Option<i64>,
+    pub cache_read_tokens: Option<i64>,
     pub balance_after: f64,
     pub description: String,
     pub transaction_type: String,

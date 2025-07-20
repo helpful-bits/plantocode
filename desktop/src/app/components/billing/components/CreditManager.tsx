@@ -145,6 +145,7 @@ export const CreditManager = ({ isOpen, onClose }: CreditManagerProps) => {
     setShowCustomInput(false);
     setError(null);
     
+    // Trigger global billing data update event
     window.dispatchEvent(new CustomEvent('billing-data-updated'));
     onClose();
   };

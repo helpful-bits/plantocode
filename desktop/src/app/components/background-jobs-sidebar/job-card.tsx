@@ -7,7 +7,7 @@ import {
   X,
   Trash2,
 } from "lucide-react";
-import React, { useState, useEffect } from "react";
+import React from "react";
 
 import {
   type BackgroundJob,
@@ -25,12 +25,12 @@ import {
   formatTaskType,
   formatTimeAgo,
   formatTokenCount,
-  getStreamingProgressValue,
   getParsedMetadata,
   getTextImprovementOriginalText,
 } from "./utils";
 import { formatUsdCurrencyPrecise } from "@/utils/currency-utils";
 import { useLiveDuration } from "@/hooks/use-live-duration";
+import { useLiveProgress } from "@/hooks/use-live-progress";
 
 export interface JobCardProps {
   job: BackgroundJob;
@@ -42,77 +42,6 @@ export interface JobCardProps {
   onApplyFiles?: (job: BackgroundJob) => Promise<void>;
   currentSessionId?: string;
 }
-
-/**
- * Custom hook for live progress updates
- * Updates progress every second for running jobs
- * Reflects accurate streamProgress from metadata
- */
-const useLiveProgress = (
-  job: BackgroundJob,
-  isRunning: boolean
-): number | undefined => {
-  const [progress, setProgress] = useState<number | undefined>(() => 
-    isRunning ? getStreamingProgressValue(job.metadata, job.startTime) : undefined
-  );
-
-  useEffect(() => {
-    if (!isRunning) {
-      setProgress(undefined);
-      return;
-    }
-
-    const updateProgress = () => {
-      // First check if job has progressPercentage field (for workflow jobs)
-      if (job.progressPercentage !== undefined && job.progressPercentage !== null) {
-        setProgress(job.progressPercentage);
-        return;
-      }
-
-      // Check for stream progress from metadata
-      const streamProgress = getStreamingProgressValue(job.metadata, job.startTime);
-      if (streamProgress !== undefined) {
-        setProgress(streamProgress);
-        return;
-      }
-
-      // Fall back to time-based progress animation with different durations per task type
-      if (job.startTime || job.createdAt) {
-        const elapsed = Date.now() - new Date(job.startTime || job.createdAt).getTime();
-        let estimatedDuration = 30000; // Default 30 seconds
-        
-        const taskDurations: Record<string, number> = {
-          'extended_path_finder': 20000,
-          'file_relevance_assessment': 20000,
-          'regex_file_filter': 20000,
-          'path_correction': 20000,
-          'implementation_plan': 90000,
-          'implementation_plan_merge': 90000,
-          'web_search_prompts_generation': 30000,
-          'web_search_execution': 120000,
-          'text_improvement': 45000,
-          'task_refinement': 30000,
-          'generic_llm_stream': 60000,
-        };
-        
-        estimatedDuration = taskDurations[job.taskType] || estimatedDuration;
-        const progress = Math.min(90, (elapsed / estimatedDuration) * 90);
-        setProgress(Math.round(progress));
-      }
-    };
-
-    // Update immediately
-    updateProgress();
-
-    // Set up interval to update every 500ms for smoother animation
-    const interval = setInterval(updateProgress, 500);
-
-    return () => clearInterval(interval);
-  }, [job, isRunning]);
-
-  return progress;
-};
-
 
 const getErrorPreview = (errorMessage?: string) => {
   if (!errorMessage) return "";
@@ -134,10 +63,10 @@ export const JobCard = React.memo(
     // Determine if job is running for live progress updates  
     const isJobRunning = ["running", "processingStream", "generatingStream", "preparing", "preparing_input"].includes(job.status);
     
-    // Use live progress hook for running jobs
-    const liveProgress = useLiveProgress(job, isJobRunning);
+    // Use live progress hook for real-time progress updates
+    const progress = useLiveProgress(job);
     
-    // Use live duration hook for real-time duration updates
+    // Use live duration hook for real-time duration updates (keep this for now but optimize later)
     const liveDuration = useLiveDuration(job.startTime, job.endTime, job.status);
 
     // Choose best timestamp for display
@@ -158,7 +87,19 @@ export const JobCard = React.memo(
     const isCurrentJobDeleting = React.useMemo(() => Boolean(isDeleting?.[job.id]), [isDeleting, job.id]);
 
     // Use memoized helper functions with current job data
-    const errorPreview = React.useMemo(() => getErrorPreview(job.errorMessage), [job.errorMessage]);
+    const errorPreview = React.useMemo(() => {
+      // If we have detailed error information, show a more informative preview
+      if (job.errorDetails) {
+        const { code, message } = job.errorDetails;
+        const codeLabel = code.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+        const formattedMessage = `${codeLabel}: ${message}`;
+        const maxLength = 150; // Max characters for preview
+        return formattedMessage.length > maxLength
+          ? `${formattedMessage.substring(0, maxLength)}...`
+          : formattedMessage;
+      }
+      return getErrorPreview(job.errorMessage);
+    }, [job.errorMessage, job.errorDetails]);
     
     // Determine if this job belongs to the current session
     const isCurrentSession = React.useMemo(() => 
@@ -286,52 +227,41 @@ export const JobCard = React.memo(
         {/* Progress bar for active jobs */}
         {isJobRunning && (
           <div className="mt-2 mb-1">
-            {(() => {
-              // Show indeterminate progress if no accurate progress available
-              const displayProgress = liveProgress;
-              
-              if (displayProgress !== undefined) {
-                return (
-                  <>
-                    <Progress
-                      value={displayProgress}
-                      className="h-1"
-                    />
-                    <div className="flex justify-between items-center min-w-0 overflow-hidden">
-                      {job.subStatusMessage ? (
-                        <p className="text-[9px] text-muted-foreground mt-0.5 truncate">
-                          {job.subStatusMessage}
-                        </p>
-                      ) : null}
-                      <p className="text-[9px] text-muted-foreground mt-0.5 text-right">
-                        {Math.round(displayProgress)}%
-                      </p>
-                    </div>
-                  </>
-                );
-              } else {
-                // Show indeterminate progress when no progress data available
-                return (
-                  <>
-                    <Progress
-                      value={undefined}
-                      className="h-1"
-                    />
-                    <div className="flex justify-between items-center min-w-0 overflow-hidden">
-                      {job.subStatusMessage ? (
-                        <p className="text-[9px] text-muted-foreground mt-0.5 truncate">
-                          {job.subStatusMessage}
-                        </p>
-                      ) : null}
-                      <p className="text-[9px] text-muted-foreground mt-0.5 text-right">
-                        Processing...
-                      </p>
-                    </div>
-                  </>
-                );
-              }
-            })()
-            }
+            {progress !== undefined ? (
+              <>
+                <Progress
+                  value={progress}
+                  className="h-1"
+                />
+                <div className="flex justify-between items-center min-w-0 overflow-hidden">
+                  {job.subStatusMessage ? (
+                    <p className="text-[9px] text-muted-foreground mt-0.5 truncate">
+                      {job.subStatusMessage}
+                    </p>
+                  ) : null}
+                  <p className="text-[9px] text-muted-foreground mt-0.5 text-right">
+                    {Math.round(progress)}%
+                  </p>
+                </div>
+              </>
+            ) : (
+              <>
+                <Progress
+                  value={undefined}
+                  className="h-1"
+                />
+                <div className="flex justify-between items-center min-w-0 overflow-hidden">
+                  {job.subStatusMessage ? (
+                    <p className="text-[9px] text-muted-foreground mt-0.5 truncate">
+                      {job.subStatusMessage}
+                    </p>
+                  ) : null}
+                  <p className="text-[9px] text-muted-foreground mt-0.5 text-right">
+                    Processing...
+                  </p>
+                </div>
+              </>
+            )}
           </div>
         )}
 

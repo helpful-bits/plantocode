@@ -13,7 +13,7 @@ pub struct User {
     pub role: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
-    pub auth0_refresh_token: Option<String>,
+    pub auth0_refresh_token: Option<Vec<u8>>,
 }
 
 pub struct UserRepository {
@@ -30,7 +30,7 @@ impl UserRepository {
         let user = query_as!(
             User,
             r#"
-            SELECT id, email, password_hash, full_name, auth0_user_id, role, created_at, updated_at, auth0_refresh_token
+            SELECT id, email, password_hash, full_name, auth0_user_id, role, created_at, updated_at, auth0_refresh_token as "auth0_refresh_token: Vec<u8>"
             FROM users
             WHERE id = $1
             "#,
@@ -52,7 +52,7 @@ impl UserRepository {
         let user = query_as!(
             User,
             r#"
-            SELECT id, email, password_hash, full_name, auth0_user_id, role, created_at, updated_at, auth0_refresh_token
+            SELECT id, email, password_hash, full_name, auth0_user_id, role, created_at, updated_at, auth0_refresh_token as "auth0_refresh_token: Vec<u8>"
             FROM users
             WHERE id = $1
             "#,
@@ -75,7 +75,7 @@ impl UserRepository {
         let user = query_as!(
             User,
             r#"
-            SELECT id, email, password_hash, full_name, auth0_user_id, role, created_at, updated_at, auth0_refresh_token
+            SELECT id, email, password_hash, full_name, auth0_user_id, role, created_at, updated_at, auth0_refresh_token as "auth0_refresh_token: Vec<u8>"
             FROM users
             WHERE email = $1
             "#,
@@ -97,7 +97,7 @@ impl UserRepository {
         let user = query_as!(
             User,
             r#"
-            SELECT id, email, password_hash, full_name, auth0_user_id, role, created_at, updated_at, auth0_refresh_token
+            SELECT id, email, password_hash, full_name, auth0_user_id, role, created_at, updated_at, auth0_refresh_token as "auth0_refresh_token: Vec<u8>"
             FROM users
             WHERE email = $1
             "#,
@@ -120,7 +120,7 @@ impl UserRepository {
         let user = query_as!(
             User,
             r#"
-            SELECT id, email, password_hash, full_name, auth0_user_id, role, created_at, updated_at, auth0_refresh_token
+            SELECT id, email, password_hash, full_name, auth0_user_id, role, created_at, updated_at, auth0_refresh_token as "auth0_refresh_token: Vec<u8>"
             FROM users
             WHERE auth0_user_id = $1
             "#,
@@ -144,7 +144,7 @@ impl UserRepository {
         let user = query_as!(
             User,
             r#"
-            SELECT id, email, password_hash, full_name, auth0_user_id, role, created_at, updated_at, auth0_refresh_token
+            SELECT id, email, password_hash, full_name, auth0_user_id, role, created_at, updated_at, auth0_refresh_token as "auth0_refresh_token: Vec<u8>"
             FROM users
             WHERE auth0_user_id = $1
             "#,
@@ -323,7 +323,7 @@ impl UserRepository {
         let user = query_as!(
             User,
             r#"
-            SELECT u.id, u.email, u.password_hash, u.full_name, u.auth0_user_id, u.role, u.created_at, u.updated_at, u.auth0_refresh_token
+            SELECT u.id, u.email, u.password_hash, u.full_name, u.auth0_user_id, u.role, u.created_at, u.updated_at, u.auth0_refresh_token as "auth0_refresh_token: Vec<u8>"
             FROM users u
             JOIN customer_billing cb ON u.id = cb.user_id
             WHERE cb.stripe_customer_id = $1
@@ -346,7 +346,7 @@ impl UserRepository {
         let user = query_as!(
             User,
             r#"
-            SELECT u.id, u.email, u.password_hash, u.full_name, u.auth0_user_id, u.role, u.created_at, u.updated_at, u.auth0_refresh_token
+            SELECT u.id, u.email, u.password_hash, u.full_name, u.auth0_user_id, u.role, u.created_at, u.updated_at, u.auth0_refresh_token as "auth0_refresh_token: Vec<u8>"
             FROM users u
             JOIN customer_billing cb ON u.id = cb.user_id
             WHERE cb.stripe_customer_id = $1
@@ -475,7 +475,7 @@ impl UserRepository {
     }
     
     // Store Auth0 refresh token
-    pub async fn store_auth0_refresh_token(&self, user_id: &Uuid, refresh_token: &str) -> Result<(), AppError> {
+    pub async fn store_auth0_refresh_token(&self, user_id: &Uuid, refresh_token: &Vec<u8>) -> Result<(), AppError> {
         query!(
             r#"
             UPDATE users
@@ -483,7 +483,7 @@ impl UserRepository {
                 updated_at = now()
             WHERE id = $2
             "#,
-            refresh_token,
+            refresh_token as &[u8],
             user_id
         )
         .execute(&self.db_pool)
@@ -494,10 +494,10 @@ impl UserRepository {
     }
     
     // Get Auth0 refresh token
-    pub async fn get_auth0_refresh_token(&self, user_id: &Uuid) -> Result<Option<String>, AppError> {
+    pub async fn get_auth0_refresh_token(&self, user_id: &Uuid) -> Result<Option<Vec<u8>>, AppError> {
         let result = query!(
             r#"
-            SELECT auth0_refresh_token
+            SELECT auth0_refresh_token as "auth0_refresh_token: Vec<u8>"
             FROM users
             WHERE id = $1
             "#,

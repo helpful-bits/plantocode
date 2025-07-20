@@ -1,7 +1,7 @@
 "use client";
 
-import { RefreshCw } from "lucide-react";
-import { memo } from "react";
+import { RefreshCw, PlusCircle, Search } from "lucide-react";
+import { memo, useState } from "react";
 
 import { useSessionStateContext } from "@/contexts/session";
 import { type Session } from "@/types/session-types";
@@ -14,6 +14,8 @@ import {
   AlertDialogTitle,
 } from "@/ui/alert-dialog";
 import { Button } from "@/ui/button";
+import { Collapsible, CollapsibleContent } from "@/ui/collapsible";
+import { Input } from "@/ui/input";
 
 import { useSessionManagerOrchestrator } from "../_hooks/session-management";
 
@@ -32,6 +34,8 @@ const SessionManager = ({
   disabled = false,
   onLoadSession,
 }: SessionManagerProps) => {
+  const [isCreatingNew, setIsCreatingNew] = useState(false);
+  
   // Get contexts
   const { activeSessionId, isSessionLoading: globalIsSwitching } =
     useSessionStateContext();
@@ -39,6 +43,9 @@ const SessionManager = ({
   // Use the session manager orchestrator hook
   const {
     sessions,
+    filteredSessions,
+    searchQuery,
+    setSearchQuery,
     sessionNameInput,
     editingSessionId,
     editSessionNameInput,
@@ -94,61 +101,81 @@ const SessionManager = ({
 
 
   return (
-    <div className="space-y-2">
-      {/* New Session Form */}
-      <NewSessionForm
-        sessionNameInput={sessionNameInput}
-        onSessionNameInputChange={setSessionNameInput}
-        onSave={handleSaveNewSession}
+    <div className="border border-border rounded-xl shadow-soft bg-card/95 backdrop-blur-sm">
+      <div className="p-3 bg-muted/80 backdrop-blur-sm border-b border-border flex justify-between items-center rounded-t-xl">
+        <h3 className="text-lg font-semibold text-foreground">Sessions</h3>
+        <div className="flex items-center gap-2">
+          <div className="relative">
+            <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search sessions..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-8 h-8 w-48"
+            />
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            className="text-xs h-8 px-3 text-foreground"
+            onClick={() => {
+              void loadSessionsFromServer(true);
+            }}
+            disabled={disabled}
+          >
+            <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+            Refresh
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="text-xs h-8 px-3 text-foreground"
+            onClick={() => setIsCreatingNew(!isCreatingNew)}
+            disabled={disabled}
+          >
+            <PlusCircle className="h-3.5 w-3.5 mr-1.5" />
+            New
+          </Button>
+        </div>
+      </div>
+
+      <Collapsible open={isCreatingNew} onOpenChange={setIsCreatingNew}>
+        <CollapsibleContent className="border-b border-border">
+          <div className="p-3">
+            <NewSessionForm
+              sessionNameInput={sessionNameInput}
+              onSessionNameInputChange={setSessionNameInput}
+              onSave={handleSaveNewSession}
+              isLoading={isLoading}
+              disabled={disabled}
+              globalIsSwitching={globalIsSwitching}
+            />
+          </div>
+        </CollapsibleContent>
+      </Collapsible>
+
+      <SessionList
+        sessions={filteredSessions}
+        totalSessionCount={sessions.length}
+        searchQuery={searchQuery}
+        activeSessionId={activeSessionId}
+        editingSessionId={editingSessionId}
+        editSessionNameInput={editSessionNameInput}
+        onLoadSession={onLoadSession || handleLoadSessionWrapper}
+        onStartEdit={startEditingSessionWrapper}
+        onCloneSession={handleCloneSessionWrapper}
+        onSaveEdit={handleUpdateSessionName}
+        onCancelEdit={cancelEditingWrapper}
+        onEditInputChange={setEditSessionNameInput}
         isLoading={isLoading}
         disabled={disabled}
         globalIsSwitching={globalIsSwitching}
+        renderDeleteDialog={renderDeleteDialog}
       />
 
-      {/* Sessions List */}
-      <div className="border border-border rounded-xl shadow-soft bg-card/95 backdrop-blur-sm">
-        <div className="p-3 bg-muted/80 backdrop-blur-sm border-b border-border flex justify-between items-center rounded-t-xl">
-          <h3 className="text-lg font-semibold text-foreground">Sessions</h3>
-        </div>
-
-        <SessionList
-          sessions={sessions}
-          activeSessionId={activeSessionId}
-          editingSessionId={editingSessionId}
-          editSessionNameInput={editSessionNameInput}
-          onLoadSession={onLoadSession || handleLoadSessionWrapper}
-          onStartEdit={startEditingSessionWrapper}
-          onCloneSession={handleCloneSessionWrapper}
-          onSaveEdit={handleUpdateSessionName}
-          onCancelEdit={cancelEditingWrapper}
-          onEditInputChange={setEditSessionNameInput}
-          isLoading={isLoading}
-          disabled={disabled}
-          globalIsSwitching={globalIsSwitching}
-          renderDeleteDialog={renderDeleteDialog}
-        />
-      </div>
-
-      {/* Error Display */}
       {error && (
-        <div className="text-center text-destructive text-xs mt-1">{error}</div>
+        <div className="text-center text-destructive text-xs mt-1 p-3">{error}</div>
       )}
-
-      {/* Refresh Button */}
-      <div className="flex justify-end mt-2">
-        <Button
-          size="sm"
-          variant="outline"
-          className="text-xs h-8 px-3 text-foreground"
-          onClick={() => {
-            void loadSessionsFromServer(true);
-          }}
-          disabled={disabled}
-        >
-          <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
-          Refresh
-        </Button>
-      </div>
     </div>
   );
 };

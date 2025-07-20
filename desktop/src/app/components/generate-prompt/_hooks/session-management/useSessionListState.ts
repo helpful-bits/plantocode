@@ -14,6 +14,7 @@ export function useSessionListState() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [isLoadingSessions, setIsLoadingSessions] = useState(false);
   const [sessionsError, setSessionsError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
 
   // Refs for tracking state and preventing race conditions
   const pendingLoadRef = useRef(false);
@@ -46,6 +47,8 @@ export function useSessionListState() {
     setIsLoadingSessions,
     sessionsError,
     setSessionsError,
+    searchQuery,
+    setSearchQuery,
 
     // Refs
     pendingLoadRef,

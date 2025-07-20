@@ -12,7 +12,7 @@ use crate::db::repositories::UserCredit;
 use crate::models::AuthenticatedUser;
 use crate::models::auth_jwt_claims::Claims;
 use crate::models::billing::{CreditTransactionEntry, CreditHistoryResponse, UnifiedCreditHistoryResponse};
-use log::{debug, info};
+use log::{info};
 
 // ========================================
 // CREDIT SYSTEM HANDLERS
@@ -53,7 +53,6 @@ pub async fn get_credit_balance(
     user: web::ReqData<AuthenticatedUser>,
     billing_service: web::Data<Arc<BillingService>>,
 ) -> Result<HttpResponse, AppError> {
-    debug!("Getting credit balance for user: {}", user.user_id);
     
     let credit_repo = UserCreditRepository::new(billing_service.get_system_db_pool());
     let balance = credit_repo.get_balance(&user.user_id).await?;
@@ -79,44 +78,6 @@ pub async fn get_credit_balance(
     Ok(HttpResponse::Ok().json(response))
 }
 
-/// Get user's credit transaction history (renamed from get_credit_transaction_history to match frontend)
-pub async fn get_credit_history(
-    user: web::ReqData<AuthenticatedUser>,
-    query: web::Query<ExtendedPaginationQuery>,
-    credit_service: web::Data<CreditService>,
-) -> Result<HttpResponse, AppError> {
-    let limit = query.limit.unwrap_or(20);
-    let offset = query.offset.unwrap_or(0);
-    let search = query.search.clone();
-    
-    let credit_details = credit_service
-        .get_credit_details(&user.user_id, Some(limit), Some(offset), search.as_deref())
-        .await?;
-    
-    
-    let transactions: Vec<CreditTransactionEntry> = credit_details.transactions
-        .into_iter()
-        .map(|transaction| CreditTransactionEntry {
-            id: transaction.id.to_string(),
-            amount: transaction.net_amount.to_string(),
-            currency: transaction.currency,
-            transaction_type: transaction.transaction_type,
-            description: transaction.description.unwrap_or_default(),
-            created_at: transaction.created_at
-                .map(|dt| dt.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string())
-                .unwrap_or_default(),
-            balance_after: transaction.balance_after.to_string(),
-        })
-        .collect();
-    
-    let response = CreditHistoryResponse {
-        transactions,
-        total_count: credit_details.total_transaction_count,
-        has_more: credit_details.has_more,
-    };
-    
-    Ok(HttpResponse::Ok().json(response))
-}
 
 /// Get unified credit history that includes API usage with token details
 pub async fn get_unified_credit_history(
@@ -124,7 +85,6 @@ pub async fn get_unified_credit_history(
     query: web::Query<ExtendedPaginationQuery>,
     credit_service: web::Data<CreditService>,
 ) -> Result<HttpResponse, AppError> {
-    debug!("Getting unified credit history for user: {}", user.user_id);
     
     let limit = query.limit.unwrap_or(20);
     let offset = query.offset.unwrap_or(0);

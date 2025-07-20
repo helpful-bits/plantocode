@@ -4,7 +4,7 @@ use actix_web_httpauth::{
     middleware::HttpAuthentication,
 };
 use log::{debug, error, warn};
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, OnceLock, atomic::{AtomicBool, Ordering}};
 use uuid::Uuid;
 
 use crate::error::AppError;
@@ -12,8 +12,11 @@ use crate::models::AuthenticatedUser;
 use crate::security::rls_session_manager::RLSSessionManager;
 use crate::security::token_binding::{extract_token_binding_hash_from_service_request, TOKEN_BINDING_HEADER};
 use crate::services::auth::jwt;
+use crate::db::repositories::RevokedTokenRepository;
 
 static RLS_MANAGER: OnceLock<Arc<RLSSessionManager>> = OnceLock::new();
+static REVOKED_TOKEN_REPO: OnceLock<Arc<RevokedTokenRepository>> = OnceLock::new();
+static AUTH_INIT_LOGGED: AtomicBool = AtomicBool::new(false);
 
 fn get_rls_manager() -> Option<Arc<RLSSessionManager>> {
     RLS_MANAGER.get().cloned()
@@ -21,6 +24,14 @@ fn get_rls_manager() -> Option<Arc<RLSSessionManager>> {
 
 fn set_rls_manager(manager: Arc<RLSSessionManager>) {
     let _ = RLS_MANAGER.set(manager);
+}
+
+fn get_revoked_token_repo() -> Option<Arc<RevokedTokenRepository>> {
+    REVOKED_TOKEN_REPO.get().cloned()
+}
+
+fn set_revoked_token_repo(repo: Arc<RevokedTokenRepository>) {
+    let _ = REVOKED_TOKEN_REPO.set(repo);
 }
 
 pub async fn validator(req: ServiceRequest, credentials: BearerAuth) -> Result<ServiceRequest, (Error, ServiceRequest)> {
@@ -48,6 +59,23 @@ pub async fn validator(req: ServiceRequest, credentials: BearerAuth) -> Result<S
             
             let user_role = claims.role.clone();
             let user_email = claims.email.clone();
+            
+            // Check if token is revoked
+            if let Some(revoked_token_repo) = get_revoked_token_repo() {
+                match revoked_token_repo.is_revoked(&claims.jti).await {
+                    Ok(true) => {
+                        warn!("Revoked token access attempt for user {} with jti: {}", user_id, claims.jti);
+                        return Err((Error::from(actix_web::error::ErrorUnauthorized("Token has been revoked")), req));
+                    },
+                    Ok(false) => {
+                        debug!("Token jti {} is not revoked", claims.jti);
+                    },
+                    Err(e) => {
+                        error!("Failed to check token revocation status: {}", e);
+                        return Err((Error::from(actix_web::error::ErrorInternalServerError("Failed to verify token status")), req));
+                    }
+                }
+            }
 
             if let Some(token_binding_hash_claim) = &claims.tbh {
                 match extract_token_binding_hash_from_service_request(&req) {
@@ -119,11 +147,17 @@ pub async fn validator(req: ServiceRequest, credentials: BearerAuth) -> Result<S
     }
 }
 
-pub fn auth_middleware(user_pool: sqlx::PgPool) -> HttpAuthentication<actix_web_httpauth::extractors::bearer::BearerAuth, fn(ServiceRequest, BearerAuth) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<ServiceRequest, (Error, ServiceRequest)>>>>> {
-    debug!("Initializing auth middleware with RLS Session Manager");
-    let rls_manager = Arc::new(RLSSessionManager::new(user_pool));
+pub fn auth_middleware(user_pool: sqlx::PgPool, system_pool: sqlx::PgPool) -> HttpAuthentication<actix_web_httpauth::extractors::bearer::BearerAuth, fn(ServiceRequest, BearerAuth) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<ServiceRequest, (Error, ServiceRequest)>>>>> {
+    if AUTH_INIT_LOGGED.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
+        debug!("Initializing auth middleware with RLS Session Manager and Revoked Token Repository");
+    }
+    let rls_manager = Arc::new(RLSSessionManager::new(user_pool.clone()));
     rls_manager.start_cleanup_task();
     set_rls_manager(rls_manager);
+    
+    // Use system pool for revoked tokens table access (requires elevated permissions)
+    let revoked_token_repo = Arc::new(RevokedTokenRepository::new(system_pool));
+    set_revoked_token_repo(revoked_token_repo);
     
     HttpAuthentication::bearer(|req, creds| Box::pin(validator(req, creds)))
 }

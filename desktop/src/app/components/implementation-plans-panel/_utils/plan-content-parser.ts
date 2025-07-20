@@ -4,22 +4,6 @@ export interface ParsedStep {
   content: string;
 }
 
-export const parsePlanResponseContent = (response: string | undefined | null): string => {
-  if (!response || response.trim() === '') {
-    return '';
-  }
-
-  try {
-    const parsed = JSON.parse(response);
-    if (parsed && typeof parsed.content === 'string') {
-      return parsed.content.trim();
-    }
-  } catch (e) {
-    // Not a JSON string, it's a plain string.
-  }
-
-  return response.trim();
-};
 
 export const extractStepsFromPlan = (response: string | undefined | null): ParsedStep[] => {
   if (!response || response.trim() === '') {
@@ -62,5 +46,3 @@ export const getContentForStep = (fullPlan: string, stepNumber: string): string 
   // Return the inner content of the step (without the step tags)
   return stepMatch[1].trim();
 };
-
-

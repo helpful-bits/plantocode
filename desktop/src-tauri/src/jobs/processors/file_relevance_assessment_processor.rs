@@ -579,6 +579,7 @@ impl JobProcessor for FileRelevanceAssessmentProcessor {
                 cached_input_tokens: 0,
                 cache_write_tokens: 0,
                 cache_read_tokens: 0,
+                prompt_tokens_details: None,
             })
         } else {
             None

@@ -1,11 +1,28 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, memo } from "react";
 import { type BackgroundJob } from "@/types/session-types";
 
 import { EmptyState, LoadingState } from "../sidebar-states";
 import { JobCard } from "../job-card";
 import { getParsedMetadata } from "../utils";
+
+// Memoized JobCard to prevent unnecessary re-renders
+const MemoizedJobCard = memo(JobCard, (prevProps, nextProps) => {
+  // Custom comparison function for better performance
+  return (
+    prevProps.job.id === nextProps.job.id &&
+    prevProps.job.status === nextProps.job.status &&
+    prevProps.job.response === nextProps.job.response &&
+    prevProps.job.updatedAt === nextProps.job.updatedAt &&
+    prevProps.job.actualCost === nextProps.job.actualCost &&
+    prevProps.job.tokensSent === nextProps.job.tokensSent &&
+    prevProps.job.tokensReceived === nextProps.job.tokensReceived &&
+    prevProps.isCancelling[prevProps.job.id] === nextProps.isCancelling[nextProps.job.id] &&
+    prevProps.isDeleting[prevProps.job.id] === nextProps.isDeleting[nextProps.job.id] &&
+    prevProps.currentSessionId === nextProps.currentSessionId
+  );
+});
 
 interface JobContentProps {
   shouldShowLoading: boolean;
@@ -35,21 +52,30 @@ export const JobContent = ({
   onApplyFiles,
   currentSessionId,
 }: JobContentProps) => {
-  // Group jobs by workflow
+  // Optimized job grouping with metadata caching
   const jobGroups = useMemo(() => {
     const groups: { workflowId: string | null; jobs: BackgroundJob[] }[] = [];
     const processedJobs = new Set<string>();
+    const metadataCache = new Map<string, any>();
+    
+    // Helper to get cached metadata
+    const getCachedMetadata = (job: BackgroundJob) => {
+      if (!metadataCache.has(job.id)) {
+        metadataCache.set(job.id, getParsedMetadata(job.metadata));
+      }
+      return metadataCache.get(job.id);
+    };
     
     allJobsSorted.forEach((job) => {
       if (processedJobs.has(job.id)) return;
       
-      const metadata = getParsedMetadata(job.metadata);
+      const metadata = getCachedMetadata(job);
       const workflowId = metadata?.workflowId;
       
       if (workflowId) {
         // Find all jobs with the same workflow ID
         const workflowJobs = allJobsSorted.filter((j) => {
-          const jMeta = getParsedMetadata(j.metadata);
+          const jMeta = getCachedMetadata(j);
           return jMeta?.workflowId === workflowId;
         });
         
@@ -86,7 +112,7 @@ export const JobContent = ({
                 <div className={isWorkflowGroup ? "relative border border-dashed border-muted-foreground/40 rounded-lg p-[3px]" : ""}>
                   {group.jobs.map((job, jobIndex) => (
                     <div key={job.id} className={jobIndex > 0 ? "mt-3" : ""}>
-                      <JobCard
+                      <MemoizedJobCard
                         job={job}
                         handleCancel={handleCancel}
                         handleDelete={handleDelete}

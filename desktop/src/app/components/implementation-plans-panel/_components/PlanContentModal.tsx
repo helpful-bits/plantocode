@@ -1,6 +1,6 @@
 "use client";
 
-import { Loader2, Copy, Save, ChevronLeft, ChevronRight } from "lucide-react";
+import { Loader2, Copy, Save, ChevronLeft, ChevronRight, Plus, Check } from "lucide-react";
 import React, { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useNotification } from "@/contexts/notification-context";
@@ -12,11 +12,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/ui/dialog";
 import { Progress } from "@/ui/progress";
 import { VirtualizedCodeViewer } from "@/ui/virtualized-code-viewer";
 
-import { getStreamingProgressValue } from "../../background-jobs-sidebar/utils";
 import { getJobDisplaySessionName } from "../../background-jobs-sidebar/_utils/job-display-utils";
-import { parsePlanResponseContent, getContentForStep } from "../_utils/plan-content-parser";
+import { getContentForStep } from "../_utils/plan-content-parser";
 import { replacePlaceholders } from "@/utils/placeholder-utils";
 import { normalizeJobResponse } from '@/utils/response-utils';
+import { FloatingMergeInstructions } from './FloatingMergeInstructions';
+import { useLiveProgress } from "@/hooks/use-live-progress";
 
 interface PlanContentModalProps {
   plan?: BackgroundJob;
@@ -32,44 +33,15 @@ interface PlanContentModalProps {
   hasPrevious?: boolean;
   hasNext?: boolean;
   onNavigate?: (direction: 'previous' | 'next') => void;
+  // Selection props
+  isSelected?: boolean;
+  onSelect?: (planId: string) => void;
+  // Merge instructions props
+  mergeInstructions?: string;
+  onMergeInstructionsChange?: (value: string) => void;
+  selectedCount?: number;
 }
 
-/**
- * Custom hook for live progress updates in Plan Content Modal
- * Updates progress every second for running jobs
- */
-const useLiveProgress = (
-  metadata: any,
-  startTime: number | null | undefined,
-  taskType: string | undefined,
-  isRunning: boolean
-): number | undefined => {
-  const [progress, setProgress] = useState<number | undefined>(() => 
-    isRunning ? getStreamingProgressValue(metadata) : undefined
-  );
-
-  useEffect(() => {
-    if (!isRunning) {
-      setProgress(undefined);
-      return;
-    }
-
-    const updateProgress = () => {
-      const newProgress = getStreamingProgressValue(metadata);
-      setProgress(newProgress);
-    };
-
-    // Update immediately
-    updateProgress();
-
-    // Set up interval to update every second
-    const interval = setInterval(updateProgress, 1000);
-
-    return () => clearInterval(interval);
-  }, [metadata, startTime, taskType, isRunning]);
-
-  return progress;
-};
 
 const PlanContentModal: React.FC<PlanContentModalProps> = ({
   plan,
@@ -84,6 +56,13 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
   hasPrevious = false,
   hasNext = false,
   onNavigate,
+  // Selection props
+  isSelected = false,
+  onSelect,
+  // Merge instructions props
+  mergeInstructions = "",
+  onMergeInstructionsChange,
+  selectedCount = 0,
 }) => {
   const [isSaving, setIsSaving] = React.useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = React.useState(false);
@@ -128,47 +107,16 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
     fetchFullPlanDetails();
   }, [plan?.id, open]);
   
-  // Use full details if available, but merge with the live plan prop to get updates
-  const displayPlan = React.useMemo(() => {
-    if (!plan) return null;
-    if (!fullPlanDetails) {
-      return plan;
-    }
-    // Merge the live plan over the fetched details to ensure streaming updates are reflected
-    // BUT preserve the response content from fullPlanDetails (lightweight plan has NULL response)
-    const merged = { 
-      ...fullPlanDetails, 
-      ...plan, 
-      response: fullPlanDetails.response || plan.response,
-      prompt: fullPlanDetails.prompt || plan.prompt,
-      systemPromptTemplate: fullPlanDetails.systemPromptTemplate || plan.systemPromptTemplate
-    };
-    
-    // Debug logging to verify content is preserved
-    if (process.env.NODE_ENV === 'development') {
-      console.log('PlanContentModal merge:', {
-        jobId: plan.id,
-        fullDetailsResponseLength: fullPlanDetails.response?.length || 0,
-        lightweightResponseLength: plan.response?.length || 0,
-        mergedResponseLength: merged.response?.length || 0
-      });
-    }
-    
-    return merged;
-  }, [fullPlanDetails, plan]);
+  // Use full details if available, otherwise use the plan prop
+  const displayPlan = fullPlanDetails || plan;
 
   if (!displayPlan) return null;
 
   const isStreaming = JOB_STATUSES.ACTIVE.includes(displayPlan.status) &&
-                     (displayPlan.status === "running" || displayPlan.status === "processingStream" || displayPlan.status === "generatingStream");
+                     ["running", "processingStream", "generatingStream"].includes(displayPlan.status);
   
-  // Use live progress hook for consistent and real-time updates
-  const progress = useLiveProgress(
-    displayPlan.metadata,
-    displayPlan.startTime,
-    displayPlan.taskType, // Now includes taskType for proper calculation
-    isStreaming
-  );
+  // Use live progress hook for consistent real-time updates
+  const progress = useLiveProgress(displayPlan);
 
   const viewerLanguage = "xml"; // Default to XML for implementation plans
 
@@ -207,25 +155,23 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
     }
   }, [editedContent, selectedStepNumber, showNotification]);
 
-  // Initialize edited content when plan changes, and sync during streaming
+  // Initialize edited content when plan changes
   React.useEffect(() => {
     if (displayPlan) {
-      const currentContent = parsePlanResponseContent(normalizeJobResponse(displayPlan.response).content);
+      const currentContent = normalizeJobResponse(displayPlan.response).content;
       setEditedContent(currentContent);
-      setHasUnsavedChanges(false); // Reset when the underlying plan data changes
+      setHasUnsavedChanges(false);
     }
-  }, [displayPlan?.id, displayPlan?.response, displayPlan?.status]);
+  }, [displayPlan?.id, displayPlan?.response]);
 
   // Handle content changes in the editor
   const handleContentChange = React.useCallback((newContent: string | undefined) => {
     if (newContent !== undefined && displayPlan) {
       setEditedContent(newContent);
-      const originalContent = displayPlan.status === "completed" 
-        ? parsePlanResponseContent(normalizeJobResponse(displayPlan.response).content)
-        : normalizeJobResponse(displayPlan.response).content || "";
+      const originalContent = normalizeJobResponse(displayPlan.response).content || "";
       setHasUnsavedChanges(newContent !== originalContent);
     }
-  }, [displayPlan?.response, displayPlan?.status]);
+  }, [displayPlan?.response]);
 
   // Save changes to the database
   const handleSave = React.useCallback(async () => {
@@ -378,20 +324,22 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
         {/* Progress bar for streaming jobs */}
         {isStreaming && (
           <div className="mb-2 flex-shrink-0">
-            {(() => {
-              // Ensure we always show some progress for active jobs, consistent with other components
-              const displayProgress = progress !== undefined ? progress : 10;
-              
-              return (
-                <>
-                  <Progress value={displayProgress} className="h-2" />
-                  <div className="flex justify-between mt-1 text-xs text-muted-foreground">
-                    <span>Generating implementation plan...</span>
-                    <span>{Math.round(displayProgress)}%</span>
-                  </div>
-                </>
-              );
-            })()}
+            {progress !== undefined ? (
+              <>
+                <Progress value={progress} className="h-2" />
+                <div className="flex justify-between mt-1 text-xs text-muted-foreground">
+                  <span>Generating implementation plan...</span>
+                  <span>{Math.round(progress)}%</span>
+                </div>
+              </>
+            ) : (
+              <>
+                <Progress className="h-2" />
+                <div className="flex justify-between mt-1 text-xs text-muted-foreground">
+                  <span>Processing implementation plan...</span>
+                </div>
+              </>
+            )}
           </div>
         )}
 
@@ -419,36 +367,81 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
           />
           
           {/* Navigation overlay at the bottom */}
-          {totalPlans > 1 && onNavigate && (
+          {(totalPlans > 1 && onNavigate) || onSelect ? (
             <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 z-10">
               <div className="flex items-center gap-2 bg-card/95 backdrop-blur-sm border border-border rounded-full px-3 py-1.5 shadow-lg">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => onNavigate('previous')}
-                  disabled={!hasPrevious}
-                  className="h-7 w-7 p-0 hover:bg-accent/50"
-                  title="Previous plan (←)"
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                </Button>
-                <span className="text-xs text-muted-foreground px-2 min-w-[60px] text-center">
-                  {currentIndex + 1} of {totalPlans}
-                </span>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => onNavigate('next')}
-                  disabled={!hasNext}
-                  className="h-7 w-7 p-0 hover:bg-accent/50"
-                  title="Next plan (→)"
-                >
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
+                {totalPlans > 1 && onNavigate && (
+                  <>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => onNavigate('previous')}
+                      disabled={!hasPrevious}
+                      className="h-7 w-7 p-0 hover:bg-accent/50"
+                      title="Previous plan (←)"
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    <span className="text-xs text-muted-foreground px-2 min-w-[60px] text-center">
+                      {currentIndex + 1} of {totalPlans}
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => onNavigate('next')}
+                      disabled={!hasNext}
+                      className="h-7 w-7 p-0 hover:bg-accent/50"
+                      title="Next plan (→)"
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </>
+                )}
+                
+                {onSelect && displayPlan.status === "completed" && (
+                  <>
+                    {totalPlans > 1 && onNavigate && (
+                      <div className="w-px h-4 bg-border mx-1" />
+                    )}
+                    {isSelected ? (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => onSelect(displayPlan.id)}
+                        className="h-7 px-2 text-xs hover:bg-red-50 dark:hover:bg-red-950/20 text-green-600 dark:text-green-400 hover:text-red-600 dark:hover:text-red-400 border border-green-200 dark:border-green-800 hover:border-red-200 dark:hover:border-red-800 transition-all duration-200"
+                        title="Remove from selection"
+                      >
+                        <Check className="h-3 w-3 mr-1" />
+                        Selected
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => onSelect(displayPlan.id)}
+                        className="h-7 px-2 text-xs hover:bg-green-50 dark:hover:bg-green-950/20 text-muted-foreground hover:text-green-600 dark:hover:text-green-400 border border-dashed border-muted-foreground/30 hover:border-green-200 dark:hover:border-green-800 transition-all duration-200"
+                        title="Add to selection for merging"
+                      >
+                        <Plus className="h-3 w-3 mr-1" />
+                        Select
+                      </Button>
+                    )}
+                  </>
+                )}
               </div>
             </div>
-          )}
+          ) : null}
         </div>
+
+        {/* Floating Merge Instructions - Inside Dialog to prevent modal close */}
+        {onMergeInstructionsChange && selectedCount > 0 && (
+          <FloatingMergeInstructions
+            mergeInstructions={mergeInstructions}
+            onMergeInstructionsChange={onMergeInstructionsChange}
+            isOpen={true}
+          />
+        )}
+
       </DialogContent>
     </Dialog>
   );

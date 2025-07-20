@@ -42,9 +42,7 @@ pub struct DetailedUsageRecord {
     pub total_requests: i64,
     pub total_input_tokens: i64,
     pub total_output_tokens: i64,
-    pub total_cached_input_tokens: i64,
-    pub total_cache_write_tokens: i64,
-    pub total_cache_read_tokens: i64,
+    pub total_cached_tokens: i64,
     pub total_duration_ms: i64,
 }
 
@@ -55,8 +53,7 @@ pub struct UsageSummary {
     pub total_requests: i64,
     pub total_input_tokens: i64,
     pub total_output_tokens: i64,
-    pub total_cache_write_tokens: i64,
-    pub total_cache_read_tokens: i64,
+    pub total_cached_tokens: i64,
     pub total_duration_ms: i64,
 }
 
@@ -137,8 +134,8 @@ impl ApiUsageRepository {
         })
     }
 
-    /// Updates API usage with final token counts and cost after provider response
-    pub async fn update_usage_with_executor(
+    /// Update API usage record with final token counts, cost, and metadata
+    pub async fn update_usage_with_metadata_executor(
         &self,
         request_id: &str,
         tokens_input: i64,
@@ -146,10 +143,11 @@ impl ApiUsageRepository {
         cache_write_tokens: i64,
         cache_read_tokens: i64,
         final_cost: BigDecimal,
+        metadata: Option<serde_json::Value>,
         status: &str,
         executor: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     ) -> Result<(), AppError> {
-        let rows_updated = query!(
+        let rows_updated = sqlx::query!(
             r#"
             UPDATE api_usage
             SET tokens_input = $1,
@@ -157,30 +155,33 @@ impl ApiUsageRepository {
                 cache_write_tokens = $3,
                 cache_read_tokens = $4,
                 cost = $5,
-                status = $6
-            WHERE request_id = $7
+                metadata = $6,
+                status = $7
+            WHERE request_id = $8
             "#,
             tokens_input as i32,
             tokens_output as i32,
             cache_write_tokens as i32,
             cache_read_tokens as i32,
             final_cost,
+            metadata,
             status,
             request_id
         )
         .execute(&mut **executor)
         .await
-        .map_err(|e| AppError::Database(format!("Failed to update API usage: {}", e)))?;
-
+        .map_err(|e| AppError::Database(format!("Failed to update API usage with metadata: {}", e)))?;
+        
         if rows_updated.rows_affected() == 0 {
-            return Err(AppError::Database(format!(
-                "No API usage record found with request_id: {}",
-                request_id
-            )));
+            return Err(AppError::NotFound(format!("No API usage record found for request_id: {}", request_id)));
         }
-
+        
+        debug!("Updated API usage record for request {} with metadata: tokens_input={}, tokens_output={}, cache_write_tokens={}, cache_read_tokens={}, cost={}, metadata_present={}", 
+               request_id, tokens_input, tokens_output, cache_write_tokens, cache_read_tokens, final_cost, metadata.is_some());
+        
         Ok(())
     }
+
 
     /// Records API usage for billing purposes (private - use record_usage_with_executor in transactions)
     async fn _record_usage(&self, entry: ApiUsageEntryDto, cost: BigDecimal) -> Result<ApiUsageRecord, AppError> {
@@ -296,8 +297,7 @@ impl ApiUsageRepository {
                 total_requests: 0,
                 total_input_tokens: 0,
                 total_output_tokens: 0,
-                total_cache_write_tokens: 0,
-                total_cache_read_tokens: 0,
+                total_cached_tokens: 0,
                 total_duration_ms: 0,
             },
             |mut acc, usage| {
@@ -305,8 +305,7 @@ impl ApiUsageRepository {
                 acc.total_requests += usage.total_requests;
                 acc.total_input_tokens += usage.total_input_tokens;
                 acc.total_output_tokens += usage.total_output_tokens;
-                acc.total_cache_write_tokens += usage.total_cache_write_tokens;
-                acc.total_cache_read_tokens += usage.total_cache_read_tokens;
+                acc.total_cached_tokens += usage.total_cached_tokens;
                 acc.total_duration_ms += usage.total_duration_ms;
                 acc
             }
@@ -350,9 +349,7 @@ impl ApiUsageRepository {
                 COUNT(DISTINCT COALESCE(u.request_id, u.id::text))::bigint as total_requests,
                 COALESCE(SUM(u.tokens_input), 0)::bigint as total_input_tokens,
                 COALESCE(SUM(u.tokens_output), 0)::bigint as total_output_tokens,
-                0::bigint as total_cached_input_tokens,
-                COALESCE(SUM(u.cache_write_tokens), 0)::bigint as total_cache_write_tokens,
-                COALESCE(SUM(u.cache_read_tokens), 0)::bigint as total_cache_read_tokens,
+                (COALESCE(SUM(u.cache_write_tokens), 0) + COALESCE(SUM(u.cache_read_tokens), 0))::bigint as total_cached_tokens,
                 0::bigint as total_duration_ms
             FROM usage_with_model_id u
             LEFT JOIN models m ON u.effective_model_id = m.id
@@ -376,9 +373,7 @@ impl ApiUsageRepository {
             total_requests: row.total_requests.unwrap_or(0),
             total_input_tokens: row.total_input_tokens.unwrap_or(0),
             total_output_tokens: row.total_output_tokens.unwrap_or(0),
-            total_cached_input_tokens: row.total_cached_input_tokens.unwrap_or(0),
-            total_cache_write_tokens: row.total_cache_write_tokens.unwrap_or(0),
-            total_cache_read_tokens: row.total_cache_read_tokens.unwrap_or(0),
+            total_cached_tokens: row.total_cached_tokens.unwrap_or(0),
             total_duration_ms: row.total_duration_ms.unwrap_or(0),
         }).collect();
 

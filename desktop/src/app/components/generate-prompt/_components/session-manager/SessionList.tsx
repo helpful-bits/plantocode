@@ -23,6 +23,8 @@ interface SessionListProps {
   disabled: boolean;
   globalIsSwitching: boolean;
   renderDeleteDialog: (sessionId: string, sessionName: string) => React.ReactElement;
+  totalSessionCount: number;
+  searchQuery: string;
 }
 
 const SessionList = ({
@@ -41,8 +43,10 @@ const SessionList = ({
   disabled,
   globalIsSwitching,
   renderDeleteDialog,
+  totalSessionCount,
+  searchQuery,
 }: SessionListProps) => {
-  if (isLoading && sessions.length === 0) { // This handles initial load for an empty project
+  if (isLoading && totalSessionCount === 0) {
     return (
       <div className="flex justify-center items-center py-8">
         <Loader2 className="h-4 w-4 animate-spin text-muted-foreground mr-2" />
@@ -53,10 +57,18 @@ const SessionList = ({
     );
   }
 
-  if (sessions.length === 0 && !isLoading) { // After loading, if still no sessions
+  if (totalSessionCount === 0 && !isLoading) {
     return (
       <div className="p-4 text-center text-muted-foreground text-sm">
         No saved sessions for this project.
+      </div>
+    );
+  }
+
+  if (sessions.length === 0 && searchQuery) {
+    return (
+      <div className="p-4 text-center text-muted-foreground text-sm">
+        No sessions match your search.
       </div>
     );
   }

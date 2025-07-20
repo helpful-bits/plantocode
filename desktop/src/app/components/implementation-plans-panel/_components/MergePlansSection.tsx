@@ -89,7 +89,7 @@ export const MergePlansSection = React.memo(function MergePlansSection({
                   placeholder="Provide specific instructions for how to merge these plans..."
                   value={localInstructions}
                   onChange={(e) => handleInstructionsChange(e.target.value)}
-                  className="min-h-[80px] resize-none"
+                  className="min-h-[80px] resize-y"
                 />
               </div>
               

@@ -84,6 +84,7 @@ pub fn generate_token(user_id: Uuid, email: &str, token_duration_days: i64) -> R
         email: email.to_string(),
         role: "user".to_string(), // Default role
         tbh: None, // No token binding by default
+        jti: Uuid::new_v4().to_string(),
     };
 
     // Get the JWT signing key
@@ -163,6 +164,7 @@ pub fn create_token(
         iss: Some(JWT_ISSUER.to_string()),
         // Add token binding hash if value is provided
         tbh: token_binding_value.map(hash_token_binding_value),
+        jti: Uuid::new_v4().to_string(),
     };
 
     // Get the JWT signing key

@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { invoke } from "@tauri-apps/api/core";
 
 import {
   getServerDefaultTaskModelSettings,
@@ -40,9 +39,6 @@ export default function SettingsForm({}: SettingsFormProps) {
     setError(null);
 
     try {
-      // First refresh runtime config to ensure we have latest task configurations
-      await invoke("fetch_runtime_ai_config");
-      
       const [serverDefaultsResult, projectSettingsResult, modelsResult] = await Promise.all([
         getServerDefaultTaskModelSettings(),
         getProjectTaskModelSettings(projectDirectory),
