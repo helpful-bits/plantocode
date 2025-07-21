@@ -79,7 +79,7 @@ impl JobProcessor for WebSearchPromptsGeneratorProcessor {
 
         // Setup LLM task configuration
         let llm_config = LlmTaskConfigBuilder::new(model_used.clone(), temperature, max_output_tokens)
-            .stream(false)
+            .stream(true)
             .build();
 
         // Create LLM task runner
@@ -117,8 +117,8 @@ impl JobProcessor for WebSearchPromptsGeneratorProcessor {
             directory_tree,
         };
 
-        // Execute LLM task
-        let llm_result = match task_runner.execute_llm_task(prompt_context, &settings_repo).await {
+        // Execute LLM task with streaming to handle large responses properly
+        let llm_result = match task_runner.execute_streaming_llm_task(prompt_context, &settings_repo, &repo, &job.id).await {
             Ok(result) => result,
             Err(e) => {
                 let error_msg = format!("WebSearchPromptsGeneration LLM task execution failed: {}", e);

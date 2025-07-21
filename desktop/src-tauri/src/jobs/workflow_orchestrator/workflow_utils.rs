@@ -21,6 +21,8 @@ pub(super) async fn get_stage_model_config(
                 TaskType::FileRelevanceAssessment => "FileRelevanceAssessment_model",
                 TaskType::ExtendedPathFinder => "ExtendedPathFinder_model",
                 TaskType::PathCorrection => "PathCorrection_model",
+                TaskType::WebSearchPromptsGeneration => "WebSearchPromptsGeneration_model",
+                TaskType::WebSearchExecution => "WebSearchExecution_model",
                 _ => "",
             };
 
@@ -32,20 +34,24 @@ pub(super) async fn get_stage_model_config(
             };
 
             // Use workflow model override or fall back to project/system defaults
-            let model = if let Some(workflow_model) = workflow_model {
-                workflow_model
+            if let Some(workflow_model) = workflow_model {
+                // If we have a workflow-specific model override, still get temperature and max_tokens from config
+                let temperature = crate::utils::config_helpers::get_default_temperature_for_task(Some(task_type), app_handle)
+                    .await?;
+                let max_tokens = crate::utils::config_helpers::get_default_max_tokens_for_task(Some(task_type), app_handle)
+                    .await?;
+                Ok(Some((workflow_model, temperature, max_tokens)))
             } else {
-                // CRITICAL: Always use proper configuration, never hardcoded fallbacks
-                crate::utils::config_helpers::get_model_for_task(task_type, app_handle)
-                    .await?
-            };
-
-            let temperature = crate::utils::config_helpers::get_default_temperature_for_task(Some(task_type), app_handle)
-                .await?;
-            let max_tokens = crate::utils::config_helpers::get_default_max_tokens_for_task(Some(task_type), app_handle)
-                .await?;
-
-            Ok(Some((model, temperature, max_tokens)))
+                // Use config resolver to get project-specific settings with proper fallback to server defaults
+                crate::utils::config_resolver::resolve_model_settings(
+                    app_handle,
+                    task_type,
+                    project_directory,
+                    None,
+                    None,
+                    None,
+                ).await
+            }
         }
     }
 }

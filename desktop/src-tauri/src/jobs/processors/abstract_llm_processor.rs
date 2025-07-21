@@ -217,69 +217,10 @@ impl LlmTaskRunner {
             .await;
         
         // Handle the stream result
-        let mut stream_result = stream_result?;
+        let stream_result = stream_result?;
         
-        // Extract request_id from the stream result
+        // Extract request_id from the stream result (no longer needed for cost polling)
         let request_id = stream_result.request_id.clone();
-        
-        // If we have a request_id, poll for final cost after stream completes
-        // Use robust retry logic to handle server processing delays
-        if let Some(ref req_id) = request_id {
-            info!("Initiating final cost polling for job {} with request_id: {}", job_id, req_id);
-            
-            // Get API client for polling
-            let llm_client = llm_api_utils::get_api_client(&self.app_handle)?;
-            
-            // Cast to ServerProxyClient to access polling methods
-            let proxy_client = llm_client.as_any()
-                .downcast_ref::<crate::api_clients::server_proxy_client::ServerProxyClient>()
-                .ok_or_else(|| AppError::InternalError("Cannot poll for final cost with non-server proxy client".to_string()))?;
-            
-            // Poll for final cost with robust exponential backoff retry
-            // This handles complex requests that may need extended server processing time
-            match proxy_client.poll_final_streaming_cost_with_retry(req_id).await {
-                Ok(Some(cost_data)) => {
-                    info!("Successfully retrieved final cost data for job {}: ${:.4} (tokens: {}+{}={})", 
-                          job_id, cost_data.final_cost, cost_data.tokens_input, cost_data.tokens_output, 
-                          cost_data.tokens_input + cost_data.tokens_output);
-                    
-                    // Update job with final cost and usage details
-                    if let Err(e) = repo.update_job_with_final_cost(job_id, &cost_data).await {
-                        warn!("Failed to update job {} with final cost and usage: {}", job_id, e);
-                    } else {
-                        // Update the LlmTaskResult with authoritative data from cost_data
-                        if let Some(ref mut usage) = stream_result.final_usage {
-                            usage.cost = Some(cost_data.final_cost);
-                            usage.prompt_tokens = cost_data.tokens_input as i32;
-                            usage.completion_tokens = cost_data.tokens_output as i32;
-                            usage.total_tokens = (cost_data.tokens_input + cost_data.tokens_output) as i32;
-                            usage.cache_write_tokens = cost_data.cache_write_tokens.unwrap_or(0) as i32;
-                            usage.cache_read_tokens = cost_data.cache_read_tokens.unwrap_or(0) as i32;
-                        } else {
-                            // Create new OpenRouterUsage object from authoritative cost_data
-                            stream_result.final_usage = Some(OpenRouterUsage {
-                                prompt_tokens: cost_data.tokens_input as i32,
-                                completion_tokens: cost_data.tokens_output as i32,
-                                total_tokens: (cost_data.tokens_input + cost_data.tokens_output) as i32,
-                                cost: Some(cost_data.final_cost),
-                                cached_input_tokens: 0,
-                                cache_write_tokens: cost_data.cache_write_tokens.unwrap_or(0) as i32,
-                                cache_read_tokens: cost_data.cache_read_tokens.unwrap_or(0) as i32,
-                                prompt_tokens_details: None,
-                            });
-                        }
-                    }
-                },
-                Ok(None) => {
-                    warn!("Final cost data not available for job {} with request_id {} after maximum retry attempts - server may still be processing", job_id, req_id);
-                },
-                Err(e) => {
-                    warn!("Failed to poll final cost for job {} with request_id {}: {} - this may indicate server processing issues", job_id, req_id, e);
-                }
-            }
-        } else {
-            warn!("No request_id available for job {} - cannot poll for final cost (likely using non-server proxy client)", job_id);
-        }
         
         // Log server-authoritative usage data for billing audit trail
         debug!("Server-authoritative usage data from streaming LLM response: {:?}", stream_result.final_usage);
@@ -395,17 +336,6 @@ impl LlmTaskRunner {
     
 }
 
-/// Extract request_id from job metadata for final cost polling
-pub fn extract_request_id_from_metadata(metadata: &Option<String>) -> Option<String> {
-    if let Some(metadata_str) = metadata {
-        if let Ok(metadata_json) = serde_json::from_str::<serde_json::Value>(metadata_str) {
-            return metadata_json.get("request_id")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
-        }
-    }
-    None
-}
 
 /// Builder for LlmTaskConfig
 pub struct LlmTaskConfigBuilder {

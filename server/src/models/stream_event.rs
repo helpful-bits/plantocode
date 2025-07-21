@@ -37,5 +37,12 @@ pub enum StreamEvent {
         error: ErrorDetails,
     },
     /// Stream has completed successfully
-    StreamCompleted,
+    StreamCompleted {
+        request_id: String,
+        final_cost: f64,
+        tokens_input: i64,
+        tokens_output: i64,
+        cache_read_tokens: i64,
+        cache_write_tokens: i64,
+    },
 }

@@ -212,7 +212,6 @@ fn main() {
             
             // Job commands
             commands::job_commands::clear_job_history_command,
-            commands::job_commands::get_active_jobs_command,
             commands::job_commands::get_all_visible_jobs_command,
             commands::job_commands::cancel_background_job_command,
             commands::job_commands::cancel_session_jobs_command,
@@ -265,6 +264,7 @@ fn main() {
             commands::workflow_commands::retry_workflow_command,
             commands::workflow_commands::retry_workflow_stage_command,
             commands::workflow_commands::get_workflow_state,
+            commands::workflow_commands::continue_workflow_from_job_command,
             
             
             // Generic task commands

@@ -2,7 +2,7 @@ use actix_web::web;
 use actix_web_lab::sse;
 use futures_util::{Stream, StreamExt};
 use serde_json::Value;
-use bigdecimal::BigDecimal;
+use bigdecimal::{BigDecimal, ToPrimitive};
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
@@ -14,10 +14,10 @@ use uuid::Uuid;
 
 use crate::clients::usage_extractor::ProviderUsage;
 use crate::db::repositories::model_repository::ModelWithProvider;
-use crate::db::repositories::api_usage_repository::ApiUsageEntryDto;
 use crate::error::AppError;
 use super::transformers::{StreamChunkTransformer, TransformResult};
 use crate::models::stream_event::{StreamEvent, UsageUpdate};
+use crate::models::model_pricing::ModelPricing;
 use crate::services::billing_service::BillingService;
 use crate::utils::stream_debug_logger::StreamDebugLogger;
 
@@ -132,9 +132,24 @@ where
                                     .event("error_details")
                                 )
                             }
-                            StreamEvent::StreamCompleted => {
+                            StreamEvent::StreamCompleted { 
+                                request_id, 
+                                final_cost,
+                                tokens_input,
+                                tokens_output,
+                                cache_read_tokens,
+                                cache_write_tokens 
+                            } => {
                                 sse::Event::Data(
-                                    sse::Data::new("[DONE]")
+                                    sse::Data::new(serde_json::to_string(&serde_json::json!({
+                                        "request_id": request_id,
+                                        "final_cost": final_cost,
+                                        "tokens_input": tokens_input,
+                                        "tokens_output": tokens_output,
+                                        "cache_read_tokens": cache_read_tokens,
+                                        "cache_write_tokens": cache_write_tokens
+                                    })).unwrap())
+                                    .event("stream_completed")
                                 )
                             }
                         };
@@ -156,75 +171,6 @@ where
         poll_fn(|cx| Pin::new(&mut *self).poll_next(cx)).await
     }
     
-    fn handle_billing(&self, usage: ProviderUsage) {
-        let billing_service = self.billing_service.clone();
-        let user_id = self.user_id;
-        let model = self.model.clone();
-        let request_id = self.request_id.clone();
-        
-        // Create usage entry for billing
-        let usage_entry = ApiUsageEntryDto {
-            user_id,
-            service_name: model.provider_code.clone(),
-            tokens_input: usage.prompt_tokens as i64,
-            tokens_output: usage.completion_tokens as i64,
-            cache_write_tokens: usage.cache_write_tokens as i64,
-            cache_read_tokens: usage.cache_read_tokens as i64,
-            request_id: Some(request_id.clone()),
-            metadata: Some(serde_json::json!({
-                "model_id": model.id,
-                "duration_ms": usage.duration_ms,
-                "streaming": true,
-            })),
-            provider_reported_cost: usage.cost.clone(),
-        };
-        
-        // Clone usage for cost calculation
-        let usage_for_cost = usage.clone();
-        
-        // Spawn billing task
-        tokio::spawn(async move {
-            // Calculate the actual cost using the model's pricing
-            let final_cost = match model.calculate_total_cost(&usage_for_cost) {
-                Ok(cost) => cost,
-                Err(e) => {
-                    error!("Failed to calculate cost for request {}: {}", request_id, e);
-                    // Use provider-reported cost or zero as fallback
-                    usage_for_cost.cost.unwrap_or_else(|| BigDecimal::from(0))
-                }
-            };
-            
-            match billing_service.charge_for_api_usage(
-                usage_entry,
-                final_cost.clone(),
-            ).await {
-                Ok((api_usage_record, _user_credit)) => {
-                    info!("Successfully billed streaming request {}: cost ${}", 
-                          request_id, api_usage_record.cost);
-                    
-                    // Manually store final cost in Redis for desktop client retrieval
-                    let final_cost_response = crate::models::billing::FinalCostResponse {
-                        status: "completed".to_string(),
-                        request_id: request_id.clone(),
-                        user_id: api_usage_record.user_id,
-                        final_cost: Some(api_usage_record.cost.to_f64().unwrap_or(0.0)),
-                        tokens_input: Some(usage.prompt_tokens.into()),
-                        tokens_output: Some(usage.completion_tokens.into()),
-                        cache_write_tokens: Some(usage.cache_write_tokens.into()),
-                        cache_read_tokens: Some(usage.cache_read_tokens.into()),
-                        service_name: api_usage_record.service_name.clone(),
-                    };
-                    
-                    if let Err(e) = billing_service.store_streaming_final_cost(&request_id, &final_cost_response).await {
-                        error!("Failed to store final cost in Redis for request {}: {}", request_id, e);
-                    }
-                }
-                Err(e) => {
-                    error!("Failed to process streaming billing for request {}: {}", request_id, e);
-                }
-            }
-        });
-    }
 }
 
 impl<S> Stream for ModernStreamHandler<S>
@@ -244,9 +190,10 @@ where
             })));
         }
         
-        // Send start event first
+        // Send start event immediately after connection establishment
         if !self.start_event_sent {
             self.start_event_sent = true;
+            info!("Sending StreamStarted event for request_id={}", self.request_id);
             return Poll::Ready(Some(Ok(StreamEvent::StreamStarted {
                 request_id: self.request_id.clone(),
             })));
@@ -268,20 +215,6 @@ where
                 
                 // Log the raw event
                 self.debug_logger.log_chunk(sse_event.data.as_bytes());
-                
-                // Handle [DONE] marker
-                if sse_event.data == "[DONE]" {
-                    debug!("Received [DONE] marker");
-                    self.stream_completed = true;
-                    
-                    // Handle billing if we have usage
-                    if let Some(usage) = self.final_usage.take() {
-                        self.handle_billing(usage);
-                    }
-                    
-                    self.debug_logger.log_stream_end();
-                    return Poll::Ready(Some(Ok(StreamEvent::StreamCompleted)));
-                }
                 
                 // Parse JSON data
                 let parsed_value = match serde_json::from_str::<Value>(&sse_event.data) {
@@ -305,6 +238,11 @@ where
                     return Poll::Ready(Some(Err(app_error)));
                 }
                 
+                // Try to extract usage from any chunk
+                if let Some(usage) = self.transformer.extract_usage_from_chunk(&parsed_value) {
+                    self.final_usage = Some(usage);
+                }
+                
                 // Transform the chunk
                 match self.transformer.transform_chunk(&parsed_value) {
                     Ok(TransformResult::Transformed(chunk)) => {
@@ -317,30 +255,10 @@ where
                         return Poll::Pending;
                     }
                     Ok(TransformResult::Done) => {
-                        debug!("Transformer signaled completion");
                         self.stream_completed = true;
-                        
-                        // Extract final usage
-                        if let Some(usage) = self.transformer.extract_final_usage(&parsed_value) {
-                            self.final_usage = Some(usage.clone());
-                            
-                            // Send usage update event
-                            let usage_update = UsageUpdate {
-                                request_id: self.request_id.clone(),
-                                tokens_input: usage.prompt_tokens as i64,
-                                tokens_output: usage.completion_tokens as i64,
-                                tokens_total: (usage.prompt_tokens + usage.completion_tokens) as i64,
-                                estimated_cost: 0.0, // Will be calculated by billing
-                                is_final: true,
-                                cache_write_tokens: Some(usage.cache_write_tokens as i64),
-                                cache_read_tokens: Some(usage.cache_read_tokens as i64),
-                            };
-                            
-                            cx.waker().wake_by_ref();
-                            return Poll::Ready(Some(Ok(StreamEvent::UsageUpdate(usage_update))));
-                        }
-                        
-                        return Poll::Ready(Some(Ok(StreamEvent::StreamCompleted)));
+                        // Continue processing - the stream will end naturally
+                        cx.waker().wake_by_ref();
+                        return Poll::Pending;
                     }
                     Err(e) => {
                         error!("Transform error: {:?}", e);
@@ -355,16 +273,68 @@ where
                 return Poll::Ready(Some(Err(e)));
             }
             Poll::Ready(None) => {
-                debug!("SSE stream ended");
                 self.stream_completed = true;
                 self.debug_logger.log_stream_end();
                 
-                // Handle billing if we have usage
+                // If we have final usage, calculate cost and send StreamCompleted with cost data
                 if let Some(usage) = self.final_usage.take() {
-                    self.handle_billing(usage);
+                    // Calculate the final cost synchronously
+                    let final_cost = match self.model.calculate_total_cost(&usage) {
+                        Ok(cost) => cost.to_f64().unwrap_or(0.0),
+                        Err(e) => {
+                            error!("Failed to calculate cost for request {}: {}", self.request_id, e);
+                            // Use provider-reported cost or zero as fallback
+                            usage.cost
+                                .as_ref()
+                                .and_then(|c| c.to_f64())
+                                .unwrap_or(0.0)
+                        }
+                    };
+                    
+                    // Clone variables for the spawned task (must satisfy 'static lifetime)
+                    let billing_service = self.billing_service.clone();
+                    let request_id = self.request_id.clone();
+                    let user_id = self.user_id.clone();
+                    let usage_clone = usage.clone();
+
+                    // Spawn billing finalization as a background task
+                    tokio::spawn(async move {
+                        match billing_service.finalize_api_charge_with_metadata(
+                            &request_id,
+                            &user_id,
+                            usage_clone,
+                            Some(serde_json::json!({ "streaming": true }))
+                        ).await {
+                            Ok(_) => {
+                                tracing::debug!("Successfully finalized billing for request {}", request_id);
+                            }
+                            Err(e) => {
+                                tracing::error!("Failed to finalize billing for request {}: {:?}", request_id, e);
+                            }
+                        }
+                    });
+                    
+                    // Send StreamCompleted with all cost data
+                    return Poll::Ready(Some(Ok(StreamEvent::StreamCompleted {
+                        request_id: self.request_id.clone(),
+                        final_cost,
+                        tokens_input: usage.prompt_tokens as i64,
+                        tokens_output: usage.completion_tokens as i64,
+                        cache_read_tokens: usage.cache_read_tokens as i64,
+                        cache_write_tokens: usage.cache_write_tokens as i64,
+                    })));
                 }
                 
-                return Poll::Ready(None);
+                // If no usage data available, send StreamCompleted with zeros
+                // This shouldn't normally happen but provides a fallback
+                return Poll::Ready(Some(Ok(StreamEvent::StreamCompleted {
+                    request_id: self.request_id.clone(),
+                    final_cost: 0.0,
+                    tokens_input: 0,
+                    tokens_output: 0,
+                    cache_read_tokens: 0,
+                    cache_write_tokens: 0,
+                })));
             }
             Poll::Pending => Poll::Pending,
         }

@@ -68,11 +68,6 @@ pub trait StreamChunkTransformer: Send + Sync {
         None
     }
     
-    /// Extract final usage from the stream
-    fn extract_final_usage(&self, _chunk: &Value) -> Option<ProviderUsage> {
-        None
-    }
-    
     /// Extract text delta from a streaming chunk (provider-specific)
     fn extract_text_delta(&self, _chunk: &Value) -> Option<String> {
         None

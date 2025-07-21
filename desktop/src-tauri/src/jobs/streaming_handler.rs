@@ -6,7 +6,7 @@ use serde_json;
 use tokio::time::{interval, Duration, Instant};
 
 use crate::error::{AppError, AppResult};
-use crate::models::{OpenRouterUsage, OpenRouterStreamChunk};
+use crate::models::{OpenRouterUsage, OpenRouterStreamChunk, OpenRouterPromptTokensDetails};
 use crate::models::stream_event::StreamEvent;
 use crate::db_utils::BackgroundJobRepository;
 use crate::jobs::job_processor_utils;
@@ -28,7 +28,6 @@ pub struct StreamConfig {
 pub struct StreamResult {
     pub accumulated_response: String,
     pub final_usage: Option<OpenRouterUsage>,
-    pub cost: Option<f64>, // Server-calculated cost
     pub request_id: Option<String>, // Server-generated request ID from stream_started event
 }
 
@@ -73,7 +72,7 @@ impl StreamedResponseHandler {
         let mut current_metadata_str = self.initial_db_job_metadata.clone();
         let mut accumulated_response = String::new();
         let mut current_usage: Option<OpenRouterUsage> = None;
-        let mut request_id: Option<String> = None;
+        let mut server_req_id: Option<String> = None;
         
         // Throttling setup
         let mut last_update = Instant::now();
@@ -84,10 +83,19 @@ impl StreamedResponseHandler {
             match event_result {
                 Ok(event) => {
                     match event {
-                        StreamEvent::StreamStarted { request_id: server_request_id } => {
-                            debug!("Stream started with server request_id: {}", server_request_id);
-                            // Store the request_id from the server for final cost polling
-                            request_id = Some(server_request_id);
+                        StreamEvent::StreamStarted { request_id } => {
+                            debug!("Stream started with server request_id: {}", request_id);
+                            // Store the request_id from the server
+                            server_req_id = Some(request_id.clone());
+                            
+                            // Persist request_id to job metadata
+                            if let Err(e) = crate::db_utils::job_metadata_updates::update_job_request_id(
+                                &self.repo,
+                                &self.job_id,
+                                &request_id
+                            ).await {
+                                warn!("Failed to update job {} with request_id {}: {}", self.job_id, request_id, e);
+                            }
                         },
                         StreamEvent::ContentChunk(chunk) => {
                             // Check if job has been canceled before processing chunk
@@ -112,10 +120,23 @@ impl StreamedResponseHandler {
                             
                             // Only use chunk usage if no authoritative usage has been received
                             // UsageUpdate events are authoritative and should take precedence
-                            if let Some(usage) = chunk.usage {
+                            if let Some(chunk_usage) = chunk.usage {
                                 if current_usage.is_none() {
-                                    // No existing usage, use the chunk's usage data as fallback
-                                    current_usage = Some(usage);
+                                    // No existing usage, convert the chunk's usage data as fallback
+                                    current_usage = Some(OpenRouterUsage {
+                                        prompt_tokens: chunk_usage.prompt_tokens,
+                                        completion_tokens: chunk_usage.completion_tokens,
+                                        total_tokens: chunk_usage.total_tokens,
+                                        cost: chunk_usage.cost,
+                                        cached_input_tokens: chunk_usage.cached_input_tokens,
+                                        cache_write_tokens: chunk_usage.cache_write_tokens,
+                                        cache_read_tokens: chunk_usage.cache_read_tokens,
+                                        prompt_tokens_details: chunk_usage.prompt_tokens_details.map(|details| {
+                                            OpenRouterPromptTokensDetails {
+                                                cached_tokens: details.cached_tokens,
+                                            }
+                                        }),
+                                    });
                                 }
                                 // If we already have usage from a UsageUpdate event, ignore chunk usage
                                 // as server UsageUpdate events are authoritative
@@ -174,22 +195,12 @@ impl StreamedResponseHandler {
                                 prompt_tokens_details: None,
                             });
                             
-                            // Calculate stream progress based on authoritative token counts
-                            let stream_progress = if self.config.max_tokens > 0 {
-                                let progress = (usage_update.tokens_output as f32 / self.config.max_tokens as f32) * 100.0;
-                                Some(progress.min(100.0))
-                            } else {
-                                None
-                            };
-                            
-                            // Update job state with authoritative usage data
-                            if let Err(e) = self.repo.update_job_stream_state(
+                            // Update job with server-authoritative usage data
+                            if let Err(e) = self.repo.update_job_stream_usage(
                                 &self.job_id,
-                                &accumulated_response,
-                                current_usage.as_ref(),
-                                stream_progress,
+                                &usage_update,
                             ).await {
-                                error!("Failed to update job stream state with authoritative usage update: {}", e);
+                                error!("Failed to update job stream usage with authoritative data: {}", e);
                             }
                         },
                         StreamEvent::StreamCancelled { request_id: server_request_id, reason } => {
@@ -209,8 +220,36 @@ impl StreamedResponseHandler {
                             // Return error with detailed message
                             return Err(AppError::JobError(format!("{}: {}", error.code, error.message)));
                         },
-                        StreamEvent::StreamCompleted => {
-                            debug!("Stream completed successfully for job {}", self.job_id);
+                        StreamEvent::StreamCompleted { 
+                            request_id: server_request_id, 
+                            final_cost, 
+                            tokens_input, 
+                            tokens_output, 
+                            cache_read_tokens, 
+                            cache_write_tokens 
+                        } => {
+                            info!("Stream completed successfully for job {} with final cost: ${:.6} (input={}, output={}, cache_read={}, cache_write={})", 
+                                  self.job_id, final_cost, tokens_input, tokens_output, cache_read_tokens, cache_write_tokens);
+                            
+                            // Update current_usage with the final authoritative data
+                            current_usage = Some(OpenRouterUsage {
+                                prompt_tokens: tokens_input as i32,
+                                completion_tokens: tokens_output as i32,
+                                total_tokens: (tokens_input + tokens_output) as i32,
+                                cost: Some(final_cost),
+                                cached_input_tokens: 0,
+                                cache_write_tokens: cache_write_tokens as i32,
+                                cache_read_tokens: cache_read_tokens as i32,
+                                prompt_tokens_details: None,
+                            });
+                            
+                            // Log that we received final data
+                            debug!("Received final stream data: cost={}, tokens={:?}/{:?}", 
+                                final_cost, tokens_input, tokens_output);
+                            
+                            // IMPORTANT: Do NOT call repo.update_job_with_final_cost here.
+                            // The handler should only process the stream and return data.
+                            
                             // Break out of the loop to finalize the stream
                             break;
                         }
@@ -266,9 +305,8 @@ impl StreamedResponseHandler {
         
         Ok(StreamResult {
             accumulated_response,
-            final_usage: usage_result.clone(),
-            cost: usage_result.and_then(|usage| usage.cost),
-            request_id, // Return captured request_id from StreamStarted event
+            final_usage: usage_result,
+            request_id: server_req_id, // Return captured request_id from StreamStarted event
         })
     }
 

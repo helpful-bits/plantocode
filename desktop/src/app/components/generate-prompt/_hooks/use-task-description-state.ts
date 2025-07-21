@@ -7,14 +7,12 @@ import { startWebSearchWorkflowOrchestratorAction, cancelWorkflowAction } from "
 import { getTaskDescriptionHistoryAction, syncTaskDescriptionHistoryAction } from "@/actions/session";
 import { useBackgroundJob } from "@/contexts/_hooks/use-background-job";
 import { useNotification } from "@/contexts/notification-context";
-import { useExistingWorkflowTracker } from "@/hooks/use-workflow-tracker";
 import { useProject } from "@/contexts/project-context";
 import { useSessionActionsContext, useSessionStateContext } from "@/contexts/session";
 import { extractErrorInfo, createUserFriendlyErrorMessage } from "@/utils/error-handling";
 
 // Import TaskDescriptionHandle type directly
 import type { TaskDescriptionHandle } from "../_components/task-description";
-import type { WorkflowState } from "@/types/workflow-types";
 
 interface HistoryState {
   entries: string[];
@@ -49,10 +47,21 @@ export function useTaskDescriptionState({
   const [taskRefinementJobId, setTaskRefinementJobId] = useState<
     string | undefined
   >(undefined);
-  const [isWebRefiningTask, setIsWebRefiningTask] = useState(false);
-  const [webSearchWorkflowId, setWebSearchWorkflowId] = useState<
-    string | undefined
-  >(undefined);
+  
+  // Simplified web search state management
+  interface WebSearchState {
+    isLoading: boolean;
+    workflowId: string | null;
+    results: string[] | null;
+    error: string | null;
+  }
+  
+  const [webSearchState, setWebSearchState] = useState<WebSearchState>({
+    isLoading: false,
+    workflowId: null,
+    results: null,
+    error: null
+  });
 
   // Undo/redo state
   const [historyState, setHistoryState] = useState<HistoryState>({
@@ -66,40 +75,124 @@ export function useTaskDescriptionState({
   const { showNotification } = useNotification();
   // Fetch the background job using typed hook
   const taskRefinementJob = useBackgroundJob(taskRefinementJobId ?? null);
-  // Fetch the web search workflow state
-  const webSearchResult = webSearchWorkflowId ? useExistingWorkflowTracker(webSearchWorkflowId, activeSessionId || '') : null;
-  const webSearchTracker = webSearchResult?.workflowTracker || null;
-  const [webSearchWorkflowState, setWebSearchWorkflowState] = useState<WorkflowState | null>(null);
-  const [webSearchResults, setWebSearchResults] = useState<string[] | null>(null);
+  // Note: We're removing the complex workflow tracker usage in favor of polling
   
-  // Update web search workflow state when tracker changes
+  // Simplified workflow completion detection with polling and timeout
   useEffect(() => {
-    if (!webSearchTracker || !webSearchWorkflowId) {
-      setWebSearchWorkflowState(null);
-      return;
-    }
-    
-    const updateState = async () => {
+    if (!webSearchState.workflowId || !webSearchState.isLoading) return;
+
+    const POLL_INTERVAL = 1000; // 1 second
+    const TIMEOUT_DURATION = 720000; // 12 minutes
+    let pollInterval: number;
+    let timeoutTimer: number;
+    let cancelled = false;
+
+    const checkWorkflowStatus = async () => {
+      if (cancelled) return;
+      
       try {
-        const state = await webSearchTracker.getStatus();
-        setWebSearchWorkflowState(state);
+        const { createWorkflowTracker } = await import('@/utils/workflow-utils');
+        const tracker = await createWorkflowTracker(webSearchState.workflowId!, activeSessionId || '');
+        
+        try {
+          const status = await tracker.getStatus();
+          
+          // Check for ANY terminal state
+          if (status.status === 'Completed' || 
+              status.status === 'Failed' || 
+              status.status === 'Canceled') {
+            
+            // Always clear loading state for terminal states
+            let results: string[] | null = null;
+            let error: string | null = null;
+            
+            if (status.status === 'Completed') {
+              try {
+                const workflowResults = await tracker.getResults();
+                results = workflowResults.intermediateData?.webSearchResults || null;
+                
+                // Show appropriate notification
+                if (results && results.length > 0) {
+                  showNotification({ 
+                    title: "Web search completed", 
+                    message: "Research findings are ready. Click 'Apply' to add them to your task description.", 
+                    type: "success" 
+                  });
+                } else {
+                  showNotification({ 
+                    title: "No results found", 
+                    message: "Web search completed but no research findings were generated.", 
+                    type: "warning" 
+                  });
+                }
+              } catch (e) {
+                error = 'Failed to fetch results';
+                console.error('Failed to get web search results:', e);
+              }
+            } else if (status.status === 'Failed') {
+              error = status.errorMessage || 'Workflow failed';
+              showNotification({ 
+                title: "Web search failed", 
+                message: error, 
+                type: "error" 
+              });
+            } else if (status.status === 'Canceled') {
+              error = 'Workflow cancelled';
+              // Don't show notification for user-initiated cancellation
+            }
+            
+            // Update state atomically
+            setWebSearchState({
+              isLoading: false,
+              workflowId: null,
+              results,
+              error
+            });
+            
+            // Cleanup
+            clearInterval(pollInterval);
+            clearTimeout(timeoutTimer);
+            cancelled = true;
+          }
+        } finally {
+          // Always destroy tracker after use
+          tracker.destroy();
+        }
       } catch (error) {
-        console.error('Failed to get web search workflow state:', error);
+        console.error('Error checking workflow status:', error);
+        // Don't clear loading state on transient errors
       }
     };
+
+    // Start polling
+    checkWorkflowStatus(); // Initial check
+    pollInterval = window.setInterval(checkWorkflowStatus, POLL_INTERVAL);
     
-    updateState();
-    
-    // Subscribe to progress updates
-    const unsubscribe = webSearchTracker.onProgress((state: WorkflowState) => {
-      setWebSearchWorkflowState(state);
-    });
-    
+    // Timeout fallback - ALWAYS clear loading state after timeout
+    timeoutTimer = window.setTimeout(() => {
+      if (!cancelled) {
+        setWebSearchState({
+          isLoading: false,
+          workflowId: null,
+          results: null,
+          error: 'Workflow timed out after 12 minutes'
+        });
+        clearInterval(pollInterval);
+        showNotification({ 
+          title: "Web search timed out", 
+          message: "The research task took too long and was stopped.", 
+          type: "error" 
+        });
+      }
+    }, TIMEOUT_DURATION);
+
+    // Cleanup function
     return () => {
-      unsubscribe();
+      cancelled = true;
+      clearInterval(pollInterval);
+      clearTimeout(timeoutTimer);
     };
-  }, [webSearchTracker, webSearchWorkflowId, activeSessionId]);
-  
+  }, [webSearchState.workflowId, webSearchState.isLoading, activeSessionId, showNotification]);
 
 
   // Reset function clears UI-related state
@@ -107,8 +200,12 @@ export function useTaskDescriptionState({
     setTaskCopySuccess(false);
     setIsRefiningTask(false);
     setTaskRefinementJobId(undefined);
-    setIsWebRefiningTask(false);
-    setWebSearchWorkflowId(undefined);
+    setWebSearchState({
+      isLoading: false,
+      workflowId: null,
+      results: null,
+      error: null
+    });
   }, []);
 
 
@@ -174,52 +271,7 @@ export function useTaskDescriptionState({
     handleJobCompletion();
   }, [taskRefinementJob.job?.status, taskRefinementJobId, isSwitchingSession, activeSessionId, onInteraction, showNotification, saveToHistory, sessionTaskDescription, sessionActions]);
 
-  // Web search workflow monitoring
-  useEffect(() => {
-    if (isSwitchingSession || !webSearchWorkflowId || !webSearchWorkflowState) return;
-
-    const workflow = webSearchWorkflowState;
-    if (!workflow?.status) return;
-
-    const handleWorkflowCompletion = async () => {
-      if (workflow.status === "Completed" && webSearchTracker && workflow.sessionId === activeSessionId) {
-        let results;
-        try {
-          results = await webSearchTracker.getResults();
-        } catch (error) {
-          console.error('Failed to get web search results:', error);
-          return;
-        }
-        // Extract web search results from workflow results
-        if (results.intermediateData?.webSearchResults && results.intermediateData.webSearchResults.length > 0) {
-          // Store the results for the Apply button
-          setWebSearchResults(results.intermediateData.webSearchResults);
-          setIsWebRefiningTask(false);
-          setWebSearchWorkflowId(undefined);
-          showNotification({ 
-            title: "Web search completed", 
-            message: "Research findings are ready. Click 'Apply' to add them to your task description.", 
-            type: "success" 
-          });
-        } else {
-          setIsWebRefiningTask(false);
-          setWebSearchWorkflowId(undefined);
-          showNotification({ 
-            title: "No results found", 
-            message: "Web search completed but no research findings were generated.", 
-            type: "warning" 
-          });
-        }
-      } else if ((workflow.status === "Failed" || workflow.status === "Canceled") && workflow.sessionId === activeSessionId) {
-        setIsWebRefiningTask(false);
-        setWebSearchWorkflowId(undefined);
-        setWebSearchResults(null);
-        showNotification({ title: "Web search failed", message: workflow.errorMessage || "Failed to enhance task description with web search.", type: "error" });
-      }
-    };
-
-    handleWorkflowCompletion();
-  }, [webSearchWorkflowState?.status, webSearchTracker, webSearchWorkflowId, isSwitchingSession, activeSessionId, showNotification]);
+  // Note: Old web search workflow monitoring effect removed - now handled by polling effect above
 
   // Function to copy task description to clipboard
   const copyTaskDescription = useCallback(async () => {
@@ -330,7 +382,7 @@ export function useTaskDescriptionState({
       return;
     }
 
-    if (isWebRefiningTask) {
+    if (webSearchState.isLoading) {
       showNotification({
         title: "Already enhancing task",
         message: "Please wait for the current web search to complete.",
@@ -343,9 +395,6 @@ export function useTaskDescriptionState({
       return;
     }
 
-    // Set loading state
-    setIsWebRefiningTask(true);
-
     try {
       // Call the web search workflow action
       const result = await startWebSearchWorkflowOrchestratorAction({
@@ -354,11 +403,13 @@ export function useTaskDescriptionState({
         sessionId: activeSessionId,
       });
 
-      if (result.isSuccess) {
-        // Store workflow ID to track progress
-        if (result.data?.workflowId) {
-          setWebSearchWorkflowId(result.data.workflowId);
-        }
+      if (result.isSuccess && result.data?.workflowId) {
+        setWebSearchState({
+          isLoading: true,
+          workflowId: result.data.workflowId,
+          results: null,
+          error: null
+        });
       } else {
         throw new Error(
           result.message || "Failed to start web search workflow."
@@ -366,7 +417,6 @@ export function useTaskDescriptionState({
       }
     } catch (error) {
       console.error("Error starting web search:", error);
-      setIsWebRefiningTask(false);
 
       // Extract error info and create user-friendly message
       const errorInfo = extractErrorInfo(error);
@@ -380,7 +430,7 @@ export function useTaskDescriptionState({
     }
   }, [
     sessionTaskDescription,
-    isWebRefiningTask,
+    webSearchState.isLoading,
     showNotification,
     isSwitchingSession,
     activeSessionId,
@@ -389,47 +439,28 @@ export function useTaskDescriptionState({
 
   // Handle canceling web search workflow
   const cancelWebSearch = useCallback(async (): Promise<void> => {
-    if (!webSearchWorkflowId) {
-      console.warn("No web search workflow ID to cancel");
-      return;
-    }
-
-    if (!isWebRefiningTask) {
-      console.warn("No active web search to cancel");
-      return;
-    }
-
+    if (!webSearchState.workflowId || !webSearchState.isLoading) return;
+    
     try {
-      const result = await cancelWorkflowAction(webSearchWorkflowId);
-      
-      if (result.isSuccess) {
-        // Reset state immediately
-        setIsWebRefiningTask(false);
-        setWebSearchWorkflowId(undefined);
-        setWebSearchResults(null);
-        
-        showNotification({
-          title: "Web search canceled",
-          message: "The web search workflow has been canceled successfully.",
-          type: "success",
-        });
-      } else {
-        throw new Error(result.message || "Failed to cancel web search workflow.");
-      }
+      await cancelWorkflowAction(webSearchState.workflowId);
     } catch (error) {
-      console.error("Error canceling web search:", error);
-      
-      // Extract error info and create user-friendly message
-      const errorInfo = extractErrorInfo(error);
-      const userFriendlyMessage = createUserFriendlyErrorMessage(errorInfo, 'cancel web search');
-      
-      showNotification({
-        title: "Error canceling web search",
-        message: userFriendlyMessage,
-        type: "error",
-      });
+      console.error('Error canceling workflow:', error);
     }
-  }, [webSearchWorkflowId, isWebRefiningTask, showNotification]);
+    
+    // Always clear state regardless of cancellation success
+    setWebSearchState({
+      isLoading: false,
+      workflowId: null,
+      results: null,
+      error: 'Workflow cancelled'
+    });
+    
+    showNotification({
+      title: "Web search canceled",
+      message: "The web search workflow has been canceled successfully.",
+      type: "success",
+    });
+  }, [webSearchState.workflowId, webSearchState.isLoading, showNotification]);
 
   useEffect(() => {
     if (debounceTimerRef.current) {
@@ -559,7 +590,7 @@ export function useTaskDescriptionState({
   // Apply web search results to task description
   const applyWebSearchResults = useCallback((resultsToApply?: string[]) => {
     // Use provided results or fallback to state
-    const results = resultsToApply || webSearchResults;
+    const results = resultsToApply || webSearchState.results;
     
     if (!results || results.length === 0) {
       return;
@@ -608,25 +639,48 @@ ${formattedResults}
     onInteraction?.();
     
     // Clear the web search results after applying
-    setWebSearchResults(null);
-    setWebSearchWorkflowId(undefined);
+    setWebSearchState(prev => ({ ...prev, results: null }));
     
     showNotification({ 
       title: "Research applied", 
       message: "Web search findings have been added to your task description.", 
       type: "success" 
     });
-  }, [sessionTaskDescription, sessionActions, onInteraction, showNotification, saveToHistory]);
+  }, [sessionTaskDescription, sessionActions, onInteraction, showNotification, saveToHistory, webSearchState.results]);
+
+  // Add safety cleanup on component unmount
+  useEffect(() => {
+    return () => {
+      // Force clear loading state on unmount
+      setWebSearchState(prev => ({
+        ...prev,
+        isLoading: false,
+        workflowId: null
+      }));
+    };
+  }, []);
+
+  // Clear any active workflows when switching sessions
+  useEffect(() => {
+    if (isSwitchingSession) {
+      setWebSearchState({
+        isLoading: false,
+        workflowId: null,
+        results: null,
+        error: null
+      });
+    }
+  }, [isSwitchingSession]);
 
   return useMemo(
     () => ({
       isRefiningTask,
-      isWebRefiningTask,
+      isWebRefiningTask: webSearchState.isLoading,
       taskCopySuccess,
       taskDescriptionRef,
       canUndo,
       canRedo,
-      webSearchResults,
+      webSearchResults: webSearchState.results,
 
       // Actions
       handleRefineTask,
@@ -641,12 +695,12 @@ ${formattedResults}
     }),
     [
       isRefiningTask,
-      isWebRefiningTask,
+      webSearchState.isLoading,
+      webSearchState.results,
       taskCopySuccess,
       taskDescriptionRef,
       canUndo,
       canRedo,
-      webSearchResults,
       handleRefineTask,
       handleWebRefineTask,
       cancelWebSearch,

@@ -11,7 +11,7 @@
 /// 4. NEVER forward unparseable chunks to prevent client errors
 
 use serde_json::Value;
-use tracing::{error, debug};
+use tracing::{error, debug, info};
 use uuid::Uuid;
 use chrono;
 use bigdecimal::BigDecimal;
@@ -151,10 +151,9 @@ impl StreamChunkTransformer for GoogleStreamTransformer {
                     Ok(TransformResult::Transformed(transformed_chunk))
                 } else if is_final_chunk {
                     // This is the final chunk with no content, just finishReason
-                    // Return Done to trigger [DONE] marker
-                    // According to SSE standards, we should not send special markers
-                    // Stream termination is handled by connection closure
-                    Ok(TransformResult::Ignore)
+                    // Return Done to signal stream completion
+                    info!("Google stream transformer: final chunk detected, returning Done");
+                    Ok(TransformResult::Done)
                 } else {
                     // Only ignore chunks that are truly empty
                     Ok(TransformResult::Ignore)
@@ -241,7 +240,8 @@ impl StreamChunkTransformer for GoogleStreamTransformer {
                 
                 // Check if this is a final chunk in the lenient parsing path
                 if is_final_chunk {
-                    // Return Done to trigger [DONE] marker
+                    // Return Done to signal stream completion
+                    info!("Google stream transformer: final chunk detected in lenient parsing, returning Done");
                     return Ok(TransformResult::Done);
                 }
                 
@@ -272,23 +272,17 @@ impl StreamChunkTransformer for GoogleStreamTransformer {
     }
     
     fn extract_usage_from_chunk(&self, chunk: &Value) -> Option<ProviderUsage> {
-        // Only extract usage from the final chunk to prevent multiple usage updates
-        let is_final_chunk = chunk.get("candidates")
-            .and_then(|c| c.as_array())
-            .and_then(|arr| arr.first())
-            .and_then(|candidate| candidate.get("finishReason"))
-            .is_some();
-        
-        if !is_final_chunk {
-            return None;
-        }
-        
-        // Google provides cumulative usage in every chunk with usageMetadata
+        // Google provides cumulative usage in chunks with usageMetadata
+        // Simply extract usageMetadata whenever it's present - don't check for is_final_chunk
+        // The last captured usage will be the final one
         if let Some(usage_metadata) = chunk.get("usageMetadata") {
             let prompt_tokens = usage_metadata.get("promptTokenCount")
                 .and_then(|v| v.as_i64())
                 .unwrap_or(0) as i32;
             let completion_tokens = usage_metadata.get("candidatesTokenCount")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0) as i32;
+            let total_tokens = usage_metadata.get("totalTokenCount")
                 .and_then(|v| v.as_i64())
                 .unwrap_or(0) as i32;
             let cache_read_tokens = usage_metadata.get("cachedContentTokenCount")
@@ -434,9 +428,9 @@ impl StreamChunkTransformer for OpenAIStreamTransformer {
                     }
                 } else if is_final_chunk {
                     // Final chunk with finish_reason but no content
-                    // According to SSE standards, stream termination should be connection-based
-                    // We ignore this chunk entirely - no [DONE] marker needed
-                    Ok(TransformResult::Ignore)
+                    // Return Done to signal stream completion
+                    info!("OpenAI stream transformer: final chunk detected, returning Done");
+                    Ok(TransformResult::Done)
                 } else if openai_chunk.usage.is_some() {
                     // Usage chunk - ignore here, will be handled by streaming handler
                     Ok(TransformResult::Ignore)
@@ -472,7 +466,13 @@ impl StreamChunkTransformer for OpenAIStreamTransformer {
     
     fn extract_usage_from_chunk(&self, chunk: &Value) -> Option<ProviderUsage> {
         // OpenAI sends usage in the final chunk with a usage field
+        // The final usage chunk has "choices": [] (empty array) and contains the usage object
         if let Some(usage) = chunk.get("usage") {
+            // Check if usage field is non-null
+            if usage.is_null() {
+                return None;
+            }
+            
             let prompt_tokens = usage.get("prompt_tokens")
                 .and_then(|v| v.as_i64())
                 .unwrap_or(0) as i32;

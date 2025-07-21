@@ -18,6 +18,9 @@ export type * from "./error-types";
 // Export task settings types
 export type * from "./task-settings-types";
 
+// Export stream event types
+export type * from "./stream-event-types";
+
 // Export consolidated task type definitions and validation utilities
 export * from "./task-type-defs";
 
