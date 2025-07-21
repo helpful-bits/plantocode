@@ -1,5 +1,5 @@
 use crate::error::AppError;
-use crate::models::billing::{BillingDashboardData, AutoTopOffSettings, CustomerBillingInfo, TaxIdInfo, FinalCostResponse};
+use crate::models::billing::{BillingDashboardData, AutoTopOffSettings, CustomerBillingInfo, TaxIdInfo};
 use crate::db::repositories::api_usage_repository::{ApiUsageRepository, DetailedUsageRecord, ApiUsageEntryDto, ApiUsageRecord};
 use crate::db::repositories::UserCredit;
 use crate::db::repositories::customer_billing_repository::{CustomerBillingRepository, CustomerBilling};
@@ -990,22 +990,6 @@ impl BillingService {
             warn!("Auto top-off check failed for user {}: {}", api_usage_record.user_id, e);
         }
         
-        // Store final cost in Redis for desktop client retrieval
-        let final_cost_response = FinalCostResponse {
-            status: "completed".to_string(),
-            request_id: request_id.to_string(),
-            user_id: api_usage_record.user_id,
-            final_cost: Some(api_usage_record.cost.to_f64().unwrap_or(0.0)),
-            tokens_input: Some(final_usage.prompt_tokens.into()),
-            tokens_output: Some(final_usage.completion_tokens.into()),
-            cache_write_tokens: Some(final_usage.cache_write_tokens.into()),
-            cache_read_tokens: Some(final_usage.cache_read_tokens.into()),
-            service_name: api_usage_record.service_name.clone(),
-        };
-        
-        if let Err(e) = self.store_streaming_final_cost(request_id, &final_cost_response).await {
-            warn!("Failed to store final cost in Redis for request {}: {}", request_id, e);
-        }
         
         Ok((api_usage_record, user_credit))
     }
@@ -1021,6 +1005,13 @@ impl BillingService {
         
         // Start a database transaction to ensure atomicity
         let mut tx = self.db_pools.user_pool.begin().await.map_err(AppError::from)?;
+        
+        // Set RLS context for the transaction - matches existing service pattern
+        sqlx::query("SELECT set_config('app.current_user_id', $1, true)")
+            .bind(entry.user_id.to_string())
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| AppError::Auth(format!("Failed to set RLS context: {}", e)))?;
         
         // Create API usage record
         let api_usage_record = self.api_usage_repository.record_usage_with_executor(entry, final_cost.clone(), &mut tx).await?;
@@ -1401,92 +1392,6 @@ impl BillingService {
 
 
 
-    /// Store final cost for later retrieval by desktop clients
-    /// This allows desktop clients to poll for final streaming costs after post-stream billing completes
-    
-    /// Store final streaming cost in Redis for desktop client retrieval
-    pub async fn store_streaming_final_cost(
-        &self,
-        request_id: &str,
-        final_cost_data: &FinalCostResponse,
-    ) -> Result<(), AppError> {
-        info!("Storing final streaming cost in Redis for desktop retrieval: request_id={}, cost=${:.4}", 
-              request_id, final_cost_data.final_cost.unwrap_or(0.0));
-        
-        // Check if Redis is available
-        if let Some(redis_client) = &self.redis_client {
-            use redis::AsyncCommands;
-            
-            // Serialize to JSON
-            let json_data = serde_json::to_string(&final_cost_data)
-                .map_err(|e| AppError::Internal(format!("Failed to serialize cost data: {}", e)))?;
-            
-            // Store in Redis with 5 minute TTL
-            let redis_key = format!("streaming_cost:{}", request_id);
-            let ttl_seconds = 300; // 5 minutes
-            
-            let mut conn = redis_client.as_ref().clone();
-            match conn.set_ex::<_, _, ()>(&redis_key, json_data, ttl_seconds).await {
-                Ok(_) => {
-                    info!("Final cost successfully stored in Redis: request_id={}, cost=${:.4}", 
-                          request_id, final_cost_data.final_cost.unwrap_or(0.0));
-                    Ok(())
-                }
-                Err(e) => {
-                    error!("Failed to store cost in Redis: {}", e);
-                    Err(AppError::Internal(format!("Redis storage failed: {}", e)))
-                }
-            }
-        } else {
-            warn!("Redis not configured, cannot store final streaming cost");
-            // Don't fail the billing if Redis is not available
-            Ok(())
-        }
-    }
-
-    /// Retrieve final streaming cost by request_id for desktop clients
-    pub async fn get_final_streaming_cost(
-        &self,
-        request_id: &str,
-    ) -> Result<Option<FinalCostResponse>, AppError> {
-        info!("Retrieving final streaming cost from Redis: request_id={}", request_id);
-        
-        // Check if Redis is available
-        if let Some(redis_client) = &self.redis_client {
-            use redis::AsyncCommands;
-            
-            let redis_key = format!("streaming_cost:{}", request_id);
-            let mut conn = redis_client.as_ref().clone();
-            
-            match conn.get::<_, Option<String>>(&redis_key).await {
-                Ok(Some(json_data)) => {
-                    // Deserialize the cost data
-                    match serde_json::from_str::<FinalCostResponse>(&json_data) {
-                        Ok(cost_data) => {
-                            info!("Final cost retrieved from Redis: request_id={}, cost=${:.4}", 
-                                  request_id, cost_data.final_cost.unwrap_or(0.0));
-                            Ok(Some(cost_data))
-                        }
-                        Err(e) => {
-                            error!("Failed to deserialize cost data from Redis: {}", e);
-                            Err(AppError::Internal(format!("Failed to parse cost data: {}", e)))
-                        }
-                    }
-                }
-                Ok(None) => {
-                    info!("No final cost found in Redis for request_id={}", request_id);
-                    Ok(None)
-                }
-                Err(e) => {
-                    error!("Failed to retrieve cost from Redis: {}", e);
-                    Err(AppError::Internal(format!("Redis retrieval failed: {}", e)))
-                }
-            }
-        } else {
-            warn!("Redis not configured, cannot retrieve final streaming cost");
-            Ok(None)
-        }
-    }
 
     /// Process a saved payment method from a completed SetupIntent
     /// This method handles setup mode checkout sessions where a payment method was added

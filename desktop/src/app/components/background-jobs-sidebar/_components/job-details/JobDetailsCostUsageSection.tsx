@@ -57,7 +57,7 @@ export function JobDetailsCostUsageSection() {
       </CardHeader>
       <CardContent className="pt-0">
         <div className="space-y-4">
-          <div className="grid grid-cols-3 gap-4">
+          <div className={`grid gap-4 ${totalCachedTokens > 0 ? 'grid-cols-4' : 'grid-cols-3'}`}>
             <div>
               <div className="flex items-center gap-2 mb-1">
                 <div className="w-2 h-2 rounded-full bg-blue-500"></div>
@@ -84,6 +84,21 @@ export function JobDetailsCostUsageSection() {
                 />
               </div>
             </div>
+            {totalCachedTokens > 0 && (
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <div className="w-2 h-2 rounded-full bg-amber-500"></div>
+                  <div className="text-xs text-muted-foreground">Cached</div>
+                </div>
+                <div className="text-sm font-mono font-medium text-foreground">
+                  <AnimatedNumber 
+                    value={totalCachedTokens} 
+                    duration={600}
+                    format={(v) => Math.round(v).toLocaleString()}
+                  />
+                </div>
+              </div>
+            )}
             <div>
               <div className="flex items-center gap-2 mb-1">
                 <div className="w-2 h-2 rounded-full bg-purple-500"></div>
@@ -98,29 +113,6 @@ export function JobDetailsCostUsageSection() {
               </div>
             </div>
           </div>
-          
-          {/* Cache Token Display Section - Only show if any cache tokens exist */}
-          {totalCachedTokens > 0 && (
-            <div className="pt-4 border-t border-border/50">
-              <div className="text-xs text-muted-foreground mb-2 font-medium">Cache Usage</div>
-              <div className="text-xs text-muted-foreground mb-3 leading-relaxed">
-                Cached tokens optimize performance and reduce costs by reusing content
-              </div>
-              <div className="flex items-center justify-between p-2 bg-muted/50 rounded-sm">
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-amber-500"></div>
-                  <div className="text-xs text-muted-foreground">Cached Tokens</div>
-                </div>
-                <div className="text-sm font-mono font-medium text-foreground">
-                  <AnimatedNumber 
-                    value={totalCachedTokens} 
-                    duration={600}
-                    format={(v) => Math.round(v).toLocaleString()}
-                  />
-                </div>
-              </div>
-            </div>
-          )}
           
           {/* Cost Display Section */}
           <div className="pt-2 border-t border-border/50">

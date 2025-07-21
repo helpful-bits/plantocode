@@ -52,8 +52,6 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig, strict_rate_limiter: RateL
                 web::scope("/usage")
                     .route("/providers", web::get().to(handlers::billing::usage_debug_handlers::get_usage_debug_data))
             )
-            // Final cost polling endpoint for desktop clients
-            .route("/final-cost/{request_id}", web::get().to(handlers::billing::cost_handlers::get_final_streaming_cost))
             // Customer billing lifecycle actions (cancel, resume, update) are handled by the billing portal
             // This prevents future additions of direct billing modification endpoints
     );

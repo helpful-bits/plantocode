@@ -32,9 +32,7 @@ export interface FileFinderWorkflowResult {
 }
 
 export interface WorkflowCommandResponse {
-  workflowId: string;
-  firstStageJobId: string;
-  status: string;
+  jobId: string;  // Changed from workflowId to match backend response
 }
 
 /**
@@ -81,8 +79,8 @@ export async function startFileFinderWorkflowAction(
 
     return {
       isSuccess: true,
-      message: `File finder workflow started successfully: ${result.workflowId}`,
-      data: { workflowId: result.workflowId },
+      message: `File finder workflow started successfully: ${result.jobId}`,
+      data: { workflowId: result.jobId },
     };
   } catch (error) {
     return handleActionError(error) as ActionState<{ workflowId: string }>;
@@ -129,8 +127,8 @@ export async function startWebSearchWorkflowOrchestratorAction(
 
     return {
       isSuccess: true,
-      message: `Web search workflow started successfully: ${result.workflowId}`,
-      data: { workflowId: result.workflowId },
+      message: `Web search workflow started successfully: ${result.jobId}`,
+      data: { workflowId: result.jobId },
     };
   } catch (error) {
     return handleActionError(error) as ActionState<{ workflowId: string }>;

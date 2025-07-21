@@ -1,9 +1,10 @@
 "use client";
 
 import { Loader2, Copy, Save, ChevronLeft, ChevronRight, Plus, Check } from "lucide-react";
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useMemo, useContext } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useNotification } from "@/contexts/notification-context";
+import { BackgroundJobsContext, type BackgroundJobsContextType } from "@/contexts/background-jobs/Provider";
 
 import { type BackgroundJob, JOB_STATUSES } from "@/types/session-types";
 import { type CopyButtonConfig } from "@/types/config-types";
@@ -69,46 +70,19 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
   const [editedContent, setEditedContent] = React.useState<string>("");
   const { showNotification } = useNotification();
   
-  // State for full job details (with response content)
-  const [fullPlanDetails, setFullPlanDetails] = useState<BackgroundJob | null>(null);
-  const [isLoadingFullDetails, setIsLoadingFullDetails] = useState(false);
+  // Get live jobs from context for real-time updates
+  const { jobs } = useContext(BackgroundJobsContext) as BackgroundJobsContextType;
+  
+  // Get the live version of the current plan
+  const livePlan = useMemo(() => {
+    if (!plan) return null;
+    return jobs.find((j: BackgroundJob) => j.id === plan.id) || plan;
+  }, [plan, jobs]);
 
   if (!plan) return null;
   
-  // Fetch full job details when plan changes or modal opens
-  useEffect(() => {
-    const fetchFullPlanDetails = async () => {
-      if (!plan || !open) {
-        setFullPlanDetails(null);
-        return;
-      }
-      
-      setIsLoadingFullDetails(true);
-      try {
-        const result = await invoke<BackgroundJob | null>('get_background_job_by_id_command', {
-          jobId: plan.id
-        });
-        
-        if (result) {
-          setFullPlanDetails(result);
-        } else {
-          // Fallback to the provided plan if fetch fails
-          setFullPlanDetails(plan);
-        }
-      } catch (error) {
-        console.error('Failed to fetch full plan details:', error);
-        // Fallback to the provided plan if fetch fails
-        setFullPlanDetails(plan);
-      } finally {
-        setIsLoadingFullDetails(false);
-      }
-    };
-    
-    fetchFullPlanDetails();
-  }, [plan?.id, open]);
-  
-  // Use full details if available, otherwise use the plan prop
-  const displayPlan = fullPlanDetails || plan;
+  // Use the live plan for real-time updates
+  const displayPlan = livePlan;
 
   if (!displayPlan) return null;
 
@@ -246,14 +220,6 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-6xl h-[95vh] !flex !flex-col !gap-0 text-foreground !bg-card rounded-xl shadow-lg !backdrop-blur-none">
-        {isLoadingFullDetails && (
-          <div className="absolute inset-0 bg-background/50 backdrop-blur-sm flex items-center justify-center z-10 rounded-xl">
-            <div className="flex flex-col items-center gap-2">
-              <Loader2 className="h-8 w-8 animate-spin text-primary" />
-              <p className="text-sm text-muted-foreground">Loading plan content...</p>
-            </div>
-          </div>
-        )}
         <DialogHeader className="flex flex-row items-start justify-between space-y-0 pb-2 flex-shrink-0">
           <DialogTitle className="text-lg">
             Implementation Plan: {sessionName}
@@ -275,6 +241,11 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
                   {displayPlan.status === "completed" && displayPlan.endTime && (
                     <span className="text-xs">
                       {formatCompletionDate(displayPlan.endTime)}
+                    </span>
+                  )}
+                  {displayPlan.status === "completed" && displayPlan.modelUsed && (
+                    <span className="text-xs text-muted-foreground mt-1">
+                      {displayPlan.modelUsed}
                     </span>
                   )}
                 </div>

@@ -328,6 +328,7 @@ async fn handle_job_success(
             };
             
             // Update job status to completed with comprehensive result data
+            // mark_job_completed will handle all fields including actual_cost
             background_job_repo.mark_job_completed(
                 job_id,
                 &response_str,

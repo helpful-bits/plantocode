@@ -118,7 +118,7 @@ pub use config_commands::{
 // Re-exports from job commands module
 pub use job_commands::{
     clear_job_history_command,
-    get_active_jobs_command,
+    get_all_visible_jobs_command,
     delete_background_job_command,
     cancel_background_job_command,
     cancel_session_jobs_command,

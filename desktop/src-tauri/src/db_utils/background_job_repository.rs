@@ -3,51 +3,53 @@ use std::str::FromStr;
 use sqlx::{sqlite::SqliteRow, Row, SqlitePool, Sqlite};
 use tauri::{Emitter, Manager};
 use crate::error::{AppError, AppResult};
-use crate::models::{BackgroundJob, JobStatus, TaskType, FinalCostData, OpenRouterUsage};
+use crate::models::{BackgroundJob, JobStatus, TaskType, OpenRouterUsage};
 use crate::utils::get_timestamp;
 use log::{info, warn, debug};
 use serde_json::{Value, json};
+use std::collections::HashMap;
+
+/// Helper function to deep merge JSON values
+fn deep_merge_json(target: &mut serde_json::Map<String, Value>, key: &str, value: Value) {
+    match target.get_mut(key) {
+        Some(existing) => {
+            if let (Some(existing_obj), Some(value_obj)) = (existing.as_object_mut(), value.as_object()) {
+                // Both are objects, merge recursively
+                for (k, v) in value_obj {
+                    deep_merge_json(existing_obj, k, v.clone());
+                }
+            } else {
+                // Not both objects, replace the value
+                target.insert(key.to_string(), value);
+            }
+        }
+        None => {
+            // Key doesn't exist, insert new value
+            target.insert(key.to_string(), value);
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct BackgroundJobRepository {
     pool: Arc<SqlitePool>,
     app_handle: Option<tauri::AppHandle>,
-    proxy_client: Option<Arc<crate::api_clients::server_proxy_client::ServerProxyClient>>,
 }
 
 impl BackgroundJobRepository {
     pub fn new(pool: Arc<SqlitePool>) -> Self {
-        Self { pool, app_handle: None, proxy_client: None }
+        Self { pool, app_handle: None }
     }
     
     pub fn new_with_app_handle(pool: Arc<SqlitePool>, app_handle: tauri::AppHandle) -> Self {
-        Self { pool, app_handle: Some(app_handle), proxy_client: None }
+        Self { pool, app_handle: Some(app_handle) }
     }
+    
     
     pub fn get_pool(&self) -> Arc<SqlitePool> {
         self.pool.clone()
     }
     
-    pub fn set_proxy_client(&mut self, proxy_client: Arc<crate::api_clients::server_proxy_client::ServerProxyClient>) {
-        self.proxy_client = Some(proxy_client);
-    }
-    
-    pub async fn extract_request_id_from_job(&self, job_id: &str) -> AppResult<Option<String>> {
-        let query = "SELECT metadata FROM background_jobs WHERE id = $1";
-        let row = sqlx::query(query)
-            .bind(job_id)
-            .fetch_optional(&*self.pool)
-            .await?;
-        
-        if let Some(row) = row {
-            if let Some(metadata_str) = row.get::<Option<String>, _>(0) {
-                if let Ok(metadata) = serde_json::from_str::<serde_json::Value>(&metadata_str) {
-                    return Ok(metadata.get("request_id").and_then(|v| v.as_str()).map(|s| s.to_string()));
-                }
-            }
-        }
-        Ok(None)
-    }
     
     /// Cancel a specific job by ID\n    /// \n    /// This is the canonical method for cancelling individual jobs. For workflow jobs,\n    /// consider using WorkflowOrchestrator::update_job_status() to allow proper \n    /// workflow state management and cancellation handling.
     pub async fn cancel_job(&self, job_id: &str, reason: &str) -> AppResult<()> {
@@ -77,76 +79,8 @@ impl BackgroundJobRepository {
             }
         }
         
-        // Extract request_id from job metadata if available
-        let request_id = if let Some(metadata_str) = &job.metadata {
-            if let Ok(metadata_json) = serde_json::from_str::<serde_json::Value>(metadata_str) {
-                metadata_json.get("request_id")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string())
-            } else {
-                None
-            }
-        } else {
-            None
-        };
-        
-        // If we have a request_id and proxy client, cancel the server request first
-        if let (Some(req_id), Some(proxy_client)) = (request_id.as_ref(), &self.proxy_client) {
-            info!("Attempting to cancel server request for job {}: request_id={}", job_id, req_id);
-            match proxy_client.cancel_llm_request(req_id).await {
-                Ok(()) => info!("Successfully cancelled server request for job {}", job_id),
-                Err(e) => warn!("Failed to cancel server request for job {}: {}. Proceeding with local cancellation.", job_id, e),
-            }
-        }
-        
-        // Mark job as canceled first
+        // Mark job as canceled
         self.mark_job_canceled(job_id, reason, None).await?;
-        
-        // If we have a request_id, spawn background task to poll and update final cost
-        if let Some(req_id) = request_id {
-            let job_id_clone = job_id.to_string();
-            let repo_clone = self.clone();
-            let app_handle_opt = self.app_handle.clone();
-            
-            tokio::spawn(async move {
-                // Try to get proxy client from repository first, then from app state
-                let proxy_client = if let Some(client) = &repo_clone.proxy_client {
-                    Some(client.clone())
-                } else if let Some(app_handle) = app_handle_opt {
-                    // Try to get from app state as a fallback
-                    app_handle.try_state::<Arc<crate::api_clients::server_proxy_client::ServerProxyClient>>()
-                        .map(|state| state.inner().clone())
-                } else {
-                    None
-                };
-                
-                if let Some(proxy_client) = proxy_client {
-                    info!("Polling for final cost for cancelled job {} with request_id {}", job_id_clone, req_id);
-                    
-                    match proxy_client.poll_final_streaming_cost_with_retry(&req_id).await {
-                        Ok(Some(final_cost_data)) => {
-                            info!("Received final cost data for cancelled job {}: ${:.4}", job_id_clone, final_cost_data.final_cost);
-                            
-                            if let Err(e) = repo_clone.update_job_with_final_cost(&job_id_clone, &final_cost_data).await {
-                                warn!("Failed to update cancelled job {} with final cost: {}", job_id_clone, e);
-                            } else {
-                                info!("Successfully updated cancelled job {} with final cost and marked as finalized", job_id_clone);
-                            }
-                        },
-                        Ok(None) => {
-                            info!("No final cost found for cancelled job {} - request may not have reached billing", job_id_clone);
-                        },
-                        Err(e) => {
-                            warn!("Failed to poll final cost for cancelled job {}: {}", job_id_clone, e);
-                        }
-                    }
-                } else {
-                    warn!("No proxy client available for final cost polling for cancelled job {}", job_id_clone);
-                }
-            });
-        } else {
-            debug!("No request_id available for cancelled job {} - skipping final cost polling", job_id);
-        }
         
         Ok(())
     }
@@ -293,6 +227,53 @@ impl BackgroundJobRepository {
         Ok(())
     }
     
+    /// Update job stream usage with server-authoritative data
+    /// Performs single SQL UPDATE for all usage fields and metadata
+    /// 
+    /// # Arguments
+    /// * `job_id` - The ID of the job to update
+    /// * `usage` - UsageUpdate payload from server with cumulative counts
+    pub async fn update_job_stream_usage(&self, job_id: &str, usage: &crate::models::usage_update::UsageUpdate) -> AppResult<()> {
+        let now = get_timestamp();
+        
+        // Perform atomic UPDATE with server-authoritative usage data
+        sqlx::query(
+            r#"
+            UPDATE background_jobs SET
+                tokens_sent = $1,
+                tokens_received = $2,
+                cache_read_tokens = $3,
+                cache_write_tokens = $4,
+                actual_cost = $5,
+                updated_at = $6
+            WHERE id = $7
+            "#)
+            .bind(usage.tokens_input as i64)
+            .bind(usage.tokens_output as i64)
+            .bind(usage.cache_read_tokens.map(|v| v as i64))
+            .bind(usage.cache_write_tokens.map(|v| v as i64))
+            .bind(usage.estimated_cost)
+            .bind(now)
+            .bind(job_id)
+            .execute(&*self.pool)
+            .await
+            .map_err(|e| AppError::DatabaseError(format!("Failed to update job stream usage: {}", e)))?;
+        
+        // Emit job_updated event
+        if let Some(ref app_handle) = self.app_handle {
+            if let Ok(Some(updated_job)) = self.get_job_by_id(job_id).await {
+                if let Err(e) = app_handle.emit("job_updated", &updated_job) {
+                    warn!("Failed to emit job_updated event for job {}: {}", job_id, e);
+                }
+            }
+        }
+        
+        debug!("Updated job {} stream usage: input={}, output={}, cost={}", 
+               job_id, usage.tokens_input, usage.tokens_output, usage.estimated_cost);
+        
+        Ok(())
+    }
+
     /// Update job streaming progress with server-provided usage data
     /// This method performs atomic UPDATE using server-authoritative token counts
     /// 
@@ -802,6 +783,11 @@ impl BackgroundJobRepository {
         // Build the SQL dynamically based on which parameters are provided
         let mut final_query = String::from("UPDATE background_jobs SET status = $1, response = $2, updated_at = $3, end_time = $4");
         let mut param_index = 5;
+        
+        // If actual_cost is provided, also set is_finalized to true
+        if actual_cost.is_some() {
+            final_query.push_str(", is_finalized = true");
+        }
         
         if metadata.is_some() {
             final_query.push_str(&format!(", metadata = ${}", param_index));
@@ -1857,6 +1843,59 @@ impl BackgroundJobRepository {
         Ok(())
     }
     
+    /// Update job with final cost and token counts from StreamCompleted event
+    /// This sets the is_finalized flag to true, indicating the cost is final
+    pub async fn update_job_with_final_cost(
+        &self,
+        job_id: &str,
+        final_cost: f64,
+        tokens_input: Option<i32>,
+        tokens_output: Option<i32>,
+        cache_read_tokens: Option<i32>,
+        cache_write_tokens: Option<i32>,
+    ) -> AppResult<BackgroundJob> {
+        debug!("Finalizing job {} with cost {} and tokens: input={:?}, output={:?}", 
+            job_id, final_cost, tokens_input, tokens_output);
+        
+        let mut conn = self.pool.acquire().await
+            .map_err(|e| AppError::DatabaseError(e.to_string()))?;
+
+        // Update the job with final metrics and mark as finalized
+        sqlx::query(
+            "UPDATE background_jobs 
+             SET actual_cost = ?, 
+                 tokens_sent = ?, 
+                 tokens_received = ?, 
+                 cache_read_tokens = ?,
+                 cache_write_tokens = ?,
+                 is_finalized = true,
+                 updated_at = datetime('now')
+             WHERE id = ?"
+        )
+        .bind(final_cost)
+        .bind(tokens_input)
+        .bind(tokens_output)
+        .bind(cache_read_tokens)
+        .bind(cache_write_tokens)
+        .bind(job_id)
+        .execute(&mut *conn)
+        .await
+        .map_err(|e| AppError::DatabaseError(e.to_string()))?;
+
+        // Fetch the updated job
+        let updated_job = self.get_job_by_id(job_id).await?
+            .ok_or_else(|| AppError::NotFoundError(format!("Job {} not found", job_id)))?;
+
+        // Emit the job_updated event with the finalized job
+        if let Some(ref app_handle) = self.app_handle {
+            if let Err(e) = app_handle.emit("job_updated", &updated_job) {
+                warn!("Failed to emit job_updated event: {}", e);
+            }
+        }
+
+        Ok(updated_job)
+    }
+    
     /// Update job prompt field with the actual executed prompts
     pub async fn update_job_prompt(&self, job_id: &str, prompt: &str) -> AppResult<()> {
         let now = get_timestamp();
@@ -1872,61 +1911,70 @@ impl BackgroundJobRepository {
     
     
 
-    /// Update job with final cost data and mark as finalized
-    /// Performs single UPDATE query to set final cost, all token counts, and isFinalized flag
-    pub async fn update_job_with_final_cost(
-        &self,
-        job_id: &str,
-        final_cost_data: &FinalCostData,
-    ) -> AppResult<()> {
-        info!("Updating job {} with final cost data: ${:.4} and marking as finalized", job_id, final_cost_data.final_cost);
-        
+    /// Update job metadata atomically with deep merge
+    /// Opens a transaction, SELECTs existing metadata, deep-merges patch into it, UPDATEs and commits
+    pub async fn update_job_metadata(&self, job_id: &str, patch: &serde_json::Value) -> AppResult<()> {
         let now = get_timestamp();
         
-        // Single UPDATE query to set final cost, all token counts, and isFinalized flag
-        sqlx::query(
-            r#"
-            UPDATE background_jobs SET
-                actual_cost = $1,
-                tokens_sent = $2,
-                tokens_received = $3,
-                cache_write_tokens = $4,
-                cache_read_tokens = $5,
-                is_finalized = $6,
-                updated_at = $7
-            WHERE id = $8
-            "#)
-            .bind(final_cost_data.final_cost)
-            .bind(final_cost_data.tokens_input as i64)
-            .bind(final_cost_data.tokens_output as i64)
-            .bind(final_cost_data.cache_write_tokens)
-            .bind(final_cost_data.cache_read_tokens)
-            .bind(true)
-            .bind(now)
-            .bind(job_id)
-            .execute(&*self.pool)
-            .await
-            .map_err(|e| AppError::DatabaseError(format!("Failed to update job with final cost: {}", e)))?;
-            
-        info!("Successfully updated job {} with final cost data and marked as finalized", job_id);
+        // Start a transaction for atomic update
+        let mut tx = self.pool.begin().await
+            .map_err(|e| AppError::DatabaseError(format!("Failed to begin transaction: {}", e)))?;
         
-        // Emit job_updated event if app_handle available
-        if let Some(ref app_handle) = self.app_handle {
-            let event_payload = serde_json::json!({
-                "id": job_id,
-                "actual_cost": final_cost_data.final_cost,
-                "tokens_sent": final_cost_data.tokens_input,
-                "tokens_received": final_cost_data.tokens_output,
-                "cache_write_tokens": final_cost_data.cache_write_tokens,
-                "cache_read_tokens": final_cost_data.cache_read_tokens,
-                "is_finalized": true,
-                "updated_at": now
-            });
-            if let Err(e) = app_handle.emit("job_updated", &event_payload) {
-                warn!("Failed to emit job_updated event for job {} with final cost: {}", job_id, e);
+        // Fetch existing metadata within transaction
+        let row = sqlx::query("SELECT metadata FROM background_jobs WHERE id = $1")
+            .bind(job_id)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(|e| AppError::DatabaseError(format!("Failed to fetch job metadata: {}", e)))?;
+        
+        if row.is_none() {
+            tx.rollback().await
+                .map_err(|e| AppError::DatabaseError(format!("Failed to rollback transaction: {}", e)))?;
+            return Err(AppError::NotFoundError(format!("Job {} not found", job_id)));
+        }
+        
+        // Parse existing metadata or create new object
+        let mut metadata_json = if let Some(metadata_str) = row.unwrap().get::<Option<String>, _>(0) {
+            serde_json::from_str::<Value>(&metadata_str).unwrap_or_else(|_| json!({}))
+        } else {
+            json!({})
+        };
+        
+        // Deep merge patch into existing metadata
+        if let (Some(metadata_obj), Some(patch_obj)) = (metadata_json.as_object_mut(), patch.as_object()) {
+            for (key, value) in patch_obj {
+                deep_merge_json(metadata_obj, key, value.clone());
             }
         }
         
+        // Serialize updated metadata
+        let updated_metadata = serde_json::to_string(&metadata_json)
+            .map_err(|e| AppError::SerializationError(format!("Failed to serialize metadata: {}", e)))?;
+        
+        // Update the row
+        sqlx::query("UPDATE background_jobs SET metadata = $1, updated_at = $2 WHERE id = $3")
+            .bind(&updated_metadata)
+            .bind(now)
+            .bind(job_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| AppError::DatabaseError(format!("Failed to update job metadata: {}", e)))?;
+        
+        // Commit transaction
+        tx.commit().await
+            .map_err(|e| AppError::DatabaseError(format!("Failed to commit transaction: {}", e)))?;
+        
+        // Emit job_updated event
+        if let Some(ref app_handle) = self.app_handle {
+            if let Ok(Some(updated_job)) = self.get_job_by_id(job_id).await {
+                if let Err(e) = app_handle.emit("job_updated", &updated_job) {
+                    warn!("Failed to emit job_updated event for job {}: {}", job_id, e);
+                }
+            }
+        }
+        
+        debug!("Successfully updated metadata for job {}", job_id);
         Ok(())
     }
+
 }

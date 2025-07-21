@@ -57,12 +57,12 @@ const ProjectSection = React.memo(function ProjectSection({}: ProjectSectionProp
 
   return (
     <>
-      <ProjectDirectorySelector disabled={lifecycleStatus !== 'READY'} />
+      <ProjectDirectorySelector disabled={lifecycleStatus !== 'READY' && lifecycleStatus !== 'IDLE'} />
 
       <div className="mt-6">
         <SessionManager
           projectDirectory={projectDirectory || ""}
-          disabled={lifecycleStatus !== 'READY'}
+          disabled={lifecycleStatus === 'INITIALIZING' || lifecycleStatus === 'RESTORING'}
           onLoadSession={handleLoadSessionWithFlush}
         />
       </div>

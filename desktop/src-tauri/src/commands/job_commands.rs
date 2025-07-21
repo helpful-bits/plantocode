@@ -1,5 +1,5 @@
 use tauri::{command, AppHandle, Manager, Emitter};
-use log::info;
+use log::{info, warn};
 use crate::error::{AppError, AppResult};
 use crate::models::{BackgroundJob, TaskType};
 use std::sync::Arc;
@@ -33,23 +33,6 @@ pub async fn clear_job_history_command(days_to_keep: i64, app_handle: AppHandle)
         .map_err(|e| AppError::DatabaseError(format!("Failed to clear job history: {}", e)))
 }
 
-#[command]
-pub async fn get_active_jobs_command(app_handle: AppHandle) -> AppResult<Vec<crate::models::BackgroundJob>> {
-    info!("Fetching active jobs");
-
-    let repo = app_handle.state::<Arc<crate::db_utils::BackgroundJobRepository>>()
-        .inner()
-        .clone();
-
-    let mut jobs = repo.get_all_visible_jobs()
-        .await
-        .map_err(|e| AppError::DatabaseError(format!("Failed to get active jobs: {}", e)))?;
-    
-    // Strip large content from implementation plans to reduce payload size
-    strip_implementation_plan_content(&mut jobs);
-    
-    Ok(jobs)
-}
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -88,6 +71,7 @@ pub async fn cancel_background_job_command(job_id: String, app_handle: AppHandle
         .inner()
         .clone();
 
+    // Cancel the job
     repo.cancel_job(&job_id, "Canceled by user")
         .await
         .map_err(|e| AppError::JobError(format!("Failed to cancel job: {}", e)))?;

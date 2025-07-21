@@ -100,7 +100,6 @@ pub struct OpenRouterResponseMessage {
 
 #[skip_serializing_none]
 #[derive(Debug, Deserialize, Serialize, Clone)]
-#[serde(rename_all = "camelCase")]
 pub struct OpenRouterUsage {
     pub prompt_tokens: i32,
     pub completion_tokens: i32,
@@ -125,7 +124,6 @@ pub struct OpenRouterPromptTokensDetails {
 // OpenRouter Streaming Structs
 #[skip_serializing_none]
 #[derive(Debug, Deserialize, Serialize, Clone)]
-#[serde(rename_all = "camelCase")]
 pub struct OpenRouterStreamChunk {
     pub id: String,
     pub choices: Vec<OpenRouterStreamChoice>,
