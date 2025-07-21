@@ -9,6 +9,7 @@ import { getSidebarStyle } from "@/utils/ui-utils";
 import { type BackgroundJob } from "@/types/session-types";
 import { useSessionStateContext, useSessionActionsContext } from "@/contexts/session";
 import { invoke } from '@tauri-apps/api/core';
+import { useNotification } from '@/contexts/notification-context';
 
 import { JobContent } from "./_components/job-content";
 import { useJobFiltering } from "./hooks/use-job-filtering";
@@ -26,6 +27,7 @@ export const BackgroundJobsSidebar = () => {
   const { jobs, isLoading, error } = useContext(BackgroundJobsContext);
   const { activeSessionId, currentSession } = useSessionStateContext();
   const { updateCurrentSessionFields, applyFileSelectionUpdate } = useSessionActionsContext();
+  const { showNotification } = useNotification();
 
   // Use the extracted sidebar state manager hook
   const {
@@ -86,6 +88,39 @@ export const BackgroundJobsSidebar = () => {
     });
     
   }, [currentSession, updateCurrentSessionFields]);
+
+  // Function to continue workflow from a completed web search prompts generation job
+  const handleContinueWorkflow = useCallback(async (job: BackgroundJob) => {
+    if (job.taskType !== 'web_search_prompts_generation' || job.status !== 'completed') {
+      return;
+    }
+
+    showNotification({
+      title: "Continuing research",
+      message: "Starting web search execution...",
+      type: "info"
+    });
+
+    try {
+      // Call the backend command to continue the workflow from this job
+      await invoke('continue_workflow_from_job_command', {
+        jobId: job.id
+      });
+
+      showNotification({
+        title: "Research continued",
+        message: "Web search execution is now running",
+        type: "success"
+      });
+    } catch (error) {
+      console.error('Failed to continue workflow:', error);
+      showNotification({
+        title: "Failed to continue research",
+        message: String(error),
+        type: "error"
+      });
+    }
+  }, [showNotification]);
 
   // Function to apply files from job to session
   const handleApplyFilesFromJob = async (job: BackgroundJob) => {
@@ -194,6 +229,7 @@ export const BackgroundJobsSidebar = () => {
               isDeleting={isDeleting}
               onSelect={handleSelectJob}
               onApplyFiles={handleApplyFilesFromJob}
+              onContinueWorkflow={handleContinueWorkflow}
               currentSessionId={activeSessionId || undefined}
             />
           </CollapsibleContent>

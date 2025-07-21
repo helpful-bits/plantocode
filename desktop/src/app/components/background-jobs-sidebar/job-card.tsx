@@ -6,6 +6,7 @@ import {
   Loader2,
   X,
   Trash2,
+  PlayCircle,
 } from "lucide-react";
 import React from "react";
 
@@ -40,7 +41,10 @@ export interface JobCardProps {
   isDeleting: Record<string, boolean>;
   onSelect: (job: BackgroundJob) => void;
   onApplyFiles?: (job: BackgroundJob) => Promise<void>;
+  onContinueWorkflow?: (job: BackgroundJob) => Promise<void>;
   currentSessionId?: string;
+  hasContinuationJob?: boolean; // Whether a web_search_execution job already exists for this job
+  isWorkflowActive?: boolean; // Whether this job's workflow is still active
 }
 
 const getErrorPreview = (errorMessage?: string) => {
@@ -52,7 +56,7 @@ const getErrorPreview = (errorMessage?: string) => {
 };
 
 export const JobCard = React.memo(
-  ({ job, handleCancel, handleDelete, isCancelling, isDeleting, onSelect, onApplyFiles, currentSessionId }: JobCardProps) => {
+  ({ job, handleCancel, handleDelete, isCancelling, isDeleting, onSelect, onApplyFiles, onContinueWorkflow, currentSessionId, hasContinuationJob = false, isWorkflowActive = false }: JobCardProps) => {
     
     // Hide workflow orchestrator jobs
     const isWorkflowJob = ['file_finder_workflow', 'web_search_workflow'].includes(job.taskType);
@@ -222,7 +226,32 @@ export const JobCard = React.memo(
         </div>
 
 
-        <div className="text-muted-foreground text-[10px] mt-2">{timeAgo}</div>
+        <div className="text-muted-foreground text-[10px] mt-2 flex items-center justify-between">
+          <span>{timeAgo}</span>
+          {job.taskType === "web_search_prompts_generation" && 
+           job.status === "completed" && 
+           onContinueWorkflow && 
+           !hasContinuationJob && 
+           !isWorkflowActive && (
+            <Button
+              variant="outline" 
+              size="xs"
+              onClick={async (e) => {
+                e.stopPropagation();
+                try {
+                  await onContinueWorkflow(job);
+                } catch (error) {
+                  console.error('Failed to continue workflow:', error);
+                }
+              }}
+              className="text-[10px] h-5 px-2 py-0 font-medium border-primary/40 hover:border-primary hover:bg-primary/10 flex items-center gap-1"
+              aria-label="Continue research workflow"
+            >
+              <PlayCircle className="h-3 w-3" />
+              Continue Research
+            </Button>
+          )}
+        </div>
 
         {/* Progress bar for active jobs */}
         {isJobRunning && (

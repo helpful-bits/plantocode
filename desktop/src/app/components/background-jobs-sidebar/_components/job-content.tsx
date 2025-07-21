@@ -20,7 +20,9 @@ const MemoizedJobCard = memo(JobCard, (prevProps, nextProps) => {
     prevProps.job.tokensReceived === nextProps.job.tokensReceived &&
     prevProps.isCancelling[prevProps.job.id] === nextProps.isCancelling[nextProps.job.id] &&
     prevProps.isDeleting[prevProps.job.id] === nextProps.isDeleting[nextProps.job.id] &&
-    prevProps.currentSessionId === nextProps.currentSessionId
+    prevProps.currentSessionId === nextProps.currentSessionId &&
+    prevProps.hasContinuationJob === nextProps.hasContinuationJob &&
+    prevProps.isWorkflowActive === nextProps.isWorkflowActive
   );
 });
 
@@ -34,6 +36,7 @@ interface JobContentProps {
   isDeleting: Record<string, boolean>;
   onSelect: (job: BackgroundJob) => void;
   onApplyFiles?: (job: BackgroundJob) => Promise<void>;
+  onContinueWorkflow?: (job: BackgroundJob) => Promise<void>;
   currentSessionId?: string;
 }
 
@@ -50,13 +53,17 @@ export const JobContent = ({
   isDeleting,
   onSelect,
   onApplyFiles,
+  onContinueWorkflow,
   currentSessionId,
 }: JobContentProps) => {
-  // Optimized job grouping with metadata caching
-  const jobGroups = useMemo(() => {
-    const groups: { workflowId: string | null; jobs: BackgroundJob[] }[] = [];
+  // Optimized job grouping with metadata caching and workflow status
+  const { jobGroups, continuationJobsMap } = useMemo(() => {
+    const groups: { workflowId: string | null; jobs: BackgroundJob[]; isActive: boolean }[] = [];
     const processedJobs = new Set<string>();
     const metadataCache = new Map<string, any>();
+    const continuationJobs = new Map<string, boolean>(); // Map of jobId -> hasContinuation
+    const activeWorkflowIds = new Set<string>();
+    const workflowsWithWebSearch = new Map<string, boolean>(); // Map of workflowId -> hasWebSearchExecution
     
     // Helper to get cached metadata
     const getCachedMetadata = (job: BackgroundJob) => {
@@ -66,6 +73,49 @@ export const JobContent = ({
       return metadataCache.get(job.id);
     };
     
+    // First pass: identify continuation jobs, active workflows, and workflows with web search execution
+    allJobsSorted.forEach((job) => {
+      const metadata = getCachedMetadata(job);
+      
+      // Check if this is a web_search_execution that continues from another job
+      if (job.taskType === 'web_search_execution' && metadata?.continuedFromJob) {
+        continuationJobs.set(metadata.continuedFromJob, true);
+      }
+      
+      // Check if this is a web_search_execution in a workflow
+      if (job.taskType === 'web_search_execution' && metadata?.workflowId) {
+        workflowsWithWebSearch.set(metadata.workflowId, true);
+      }
+      
+      // Check if this job's workflow is active
+      if (metadata?.workflowId) {
+        // Check if any job in the workflow is still running
+        const workflowJobs = allJobsSorted.filter((j) => {
+          const jMeta = getCachedMetadata(j);
+          return jMeta?.workflowId === metadata.workflowId;
+        });
+        
+        const hasActiveJob = workflowJobs.some(j => 
+          ['running', 'processingStream', 'queued', 'created', 'preparing'].includes(j.status)
+        );
+        
+        if (hasActiveJob) {
+          activeWorkflowIds.add(metadata.workflowId);
+        }
+      }
+    });
+    
+    // For web_search_prompts_generation jobs in workflows, mark them as having continuation if the workflow has web_search_execution
+    allJobsSorted.forEach((job) => {
+      const metadata = getCachedMetadata(job);
+      if (job.taskType === 'web_search_prompts_generation' && 
+          metadata?.workflowId && 
+          workflowsWithWebSearch.has(metadata.workflowId)) {
+        continuationJobs.set(job.id, true);
+      }
+    });
+    
+    // Second pass: group jobs
     allJobsSorted.forEach((job) => {
       if (processedJobs.has(job.id)) return;
       
@@ -82,15 +132,22 @@ export const JobContent = ({
         // Mark all workflow jobs as processed
         workflowJobs.forEach(j => processedJobs.add(j.id));
         
-        groups.push({ workflowId, jobs: workflowJobs });
+        groups.push({ 
+          workflowId, 
+          jobs: workflowJobs,
+          isActive: activeWorkflowIds.has(workflowId)
+        });
       } else {
         // Standalone job
         processedJobs.add(job.id);
-        groups.push({ workflowId: null, jobs: [job] });
+        groups.push({ workflowId: null, jobs: [job], isActive: false });
       }
     });
     
-    return groups;
+    return { 
+      jobGroups: groups, 
+      continuationJobsMap: continuationJobs
+    };
   }, [allJobsSorted]);
   
   return (
@@ -120,7 +177,10 @@ export const JobContent = ({
                         isDeleting={isDeleting}
                         onSelect={onSelect}
                         onApplyFiles={onApplyFiles}
+                        onContinueWorkflow={onContinueWorkflow}
                         currentSessionId={currentSessionId}
+                        hasContinuationJob={continuationJobsMap.has(job.id)}
+                        isWorkflowActive={group.isActive}
                       />
                     </div>
                   ))}

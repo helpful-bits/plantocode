@@ -29,6 +29,11 @@ export function areJobsEqual(
   if (!jobA || !jobB) return false;
   if (jobA.id !== jobB.id) return false;
 
+  // Finalization status change always triggers update
+  if (jobA.isFinalized !== jobB.isFinalized) {
+    return false;
+  }
+
   // Parse metadata once for both jobs
   const metaA = parseMetadata(jobA.metadata);
   const metaB = parseMetadata(jobB.metadata);
@@ -208,13 +213,6 @@ export function areJobsEqual(
     return false;
   }
 
-  // Check finalized status - this is critical for cost finalization
-  if (jobA.isFinalized !== jobB.isFinalized) {
-    logger.debug(
-      `Finalized status changed for job ${jobA.id}: ${jobA.isFinalized} → ${jobB.isFinalized}`
-    );
-    return false;
-  }
 
 
 

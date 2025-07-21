@@ -465,22 +465,27 @@ pub struct OpenRouterResponseMessage {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OpenRouterUsage {
+    #[serde(rename = "promptTokens")]
     pub prompt_tokens: i32,
+    #[serde(rename = "completionTokens")]
     pub completion_tokens: i32,
+    #[serde(rename = "totalTokens")]
     pub total_tokens: i32,
     pub cost: Option<f64>,
-    #[serde(default)]
+    #[serde(rename = "cachedInputTokens", default)]
     pub cached_input_tokens: i32,
-    #[serde(default)]
+    #[serde(rename = "cacheWriteTokens", default)]
     pub cache_write_tokens: i32,
-    #[serde(default)]
+    #[serde(rename = "cacheReadTokens", default)]
     pub cache_read_tokens: i32,
+    #[serde(rename = "promptTokensDetails")]
     pub prompt_tokens_details: Option<OpenRouterPromptTokensDetails>,
 }
 
 #[skip_serializing_none]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpenRouterPromptTokensDetails {
+    #[serde(rename = "cachedTokens")]
     pub cached_tokens: Option<i32>,
 }
 
@@ -520,7 +525,12 @@ pub struct ServerOpenRouterUsage {
     pub cache_write_tokens: i32,
     #[serde(default)]
     pub cache_read_tokens: i32,
-    pub prompt_tokens_details: Option<OpenRouterPromptTokensDetails>,
+    pub prompt_tokens_details: Option<ServerOpenRouterPromptTokensDetails>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ServerOpenRouterPromptTokensDetails {
+    pub cached_tokens: Option<i32>,
 }
 
 // Conversion implementations from Server structs to OpenRouter structs
@@ -566,21 +576,45 @@ impl From<ServerOpenRouterUsage> for OpenRouterUsage {
             cached_input_tokens: server_usage.cached_input_tokens,
             cache_write_tokens: server_usage.cache_write_tokens,
             cache_read_tokens: server_usage.cache_read_tokens,
-            prompt_tokens_details: server_usage.prompt_tokens_details,
+            prompt_tokens_details: server_usage.prompt_tokens_details.map(|details| {
+                OpenRouterPromptTokensDetails {
+                    cached_tokens: details.cached_tokens,
+                }
+            }),
         }
     }
 }
 
-// OpenRouter streaming response chunks
+// OpenRouter streaming response chunks for server parsing (snake_case)
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct OpenRouterStreamChunk {
     pub id: String,
     pub choices: Vec<OpenRouterStreamChoice>,
     pub created: Option<i64>,
     pub model: String,
     pub object: Option<String>,
-    pub usage: Option<OpenRouterUsage>,
+    pub usage: Option<OpenRouterStreamChunkUsage>,
+}
+
+// Usage structure specifically for stream chunks with snake_case fields
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OpenRouterStreamChunkUsage {
+    pub prompt_tokens: i32,
+    pub completion_tokens: i32,
+    pub total_tokens: i32,
+    pub cost: Option<f64>,
+    #[serde(default)]
+    pub cached_input_tokens: i32,
+    #[serde(default)]
+    pub cache_write_tokens: i32,
+    #[serde(default)]
+    pub cache_read_tokens: i32,
+    pub prompt_tokens_details: Option<OpenRouterPromptTokensDetailsSnake>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OpenRouterPromptTokensDetailsSnake {
+    pub cached_tokens: Option<i32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -834,32 +868,6 @@ pub struct ListInvoicesResponse {
     pub has_more: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct FinalCostResponse {
-    pub status: String,
-    pub request_id: String,
-    pub final_cost: Option<f64>,
-    pub tokens_input: Option<i64>,
-    pub tokens_output: Option<i64>,
-    pub cache_write_tokens: Option<i64>,
-    pub cache_read_tokens: Option<i64>,
-    pub user_id: uuid::Uuid,
-    pub service_name: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FinalCostData {
-    pub request_id: String,
-    pub provider: String,
-    pub model: String,
-    pub tokens_input: i64,
-    pub tokens_output: i64,
-    pub cache_read_tokens: Option<i64>,
-    pub cache_write_tokens: Option<i64>,
-    pub final_cost: f64,
-    pub timestamp: chrono::DateTime<chrono::Utc>,
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

@@ -68,15 +68,6 @@ where
         loop {
             match this.inner.as_mut().poll_next(cx) {
                 Poll::Ready(Some(Ok(event))) => {
-                    // Check for [DONE] marker
-                    if event.data == "[DONE]" {
-                        debug!("Received [DONE] marker");
-                        return Poll::Ready(Some(Ok(ParsedSseEvent {
-                            event_type: Some(event.event),
-                            data: "[DONE]".to_string(),
-                        })));
-                    }
-                    
                     let parsed_event = ParsedSseEvent {
                         event_type: Some(event.event),
                         data: event.data,

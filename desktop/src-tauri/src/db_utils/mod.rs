@@ -2,6 +2,7 @@ pub mod connection_manager;
 pub mod background_job_repository;
 pub mod session_repository;
 pub mod settings_repository;
+pub mod job_metadata_updates;
 
 // Re-export modules
 pub use connection_manager::*;
@@ -55,13 +56,7 @@ pub fn create_repositories(pool: std::sync::Arc<sqlx::SqlitePool>, app_handle: t
     crate::error::AppError
 > {
     let session_repo = SessionRepository::new(pool.clone());
-    let mut background_job_repo = BackgroundJobRepository::new_with_app_handle(pool.clone(), app_handle.clone());
-    
-    // Try to get the ServerProxyClient from app state and set it in the repository
-    if let Some(proxy_client_arc) = app_handle.try_state::<Arc<crate::api_clients::server_proxy_client::ServerProxyClient>>() {
-        background_job_repo.set_proxy_client(proxy_client_arc.inner().clone());
-    }
-    
+    let background_job_repo = BackgroundJobRepository::new_with_app_handle(pool.clone(), app_handle.clone());
     let settings_repo = SettingsRepository::with_app_handle(pool, app_handle);
     
     Ok((session_repo, background_job_repo, settings_repo))

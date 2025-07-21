@@ -206,6 +206,16 @@ export function useOrchestratedBackgroundJobsState({
   }, []);
   
   const upsertJobInternal = useCallback((prevJobs: BackgroundJob[], jobUpdate: Partial<BackgroundJob> & { id: string }, prepend = false) => {
+    // Special handling for finalized jobs - always replace with authoritative data
+    if (jobUpdate.isFinalized) {
+      console.debug(`[BackgroundJobs] Finalizing job ${jobUpdate.id} with authoritative data`);
+      
+      const newJobs = prevJobs.filter(j => j.id !== jobUpdate.id);
+      // Cast jobUpdate as full BackgroundJob since finalized updates contain all data
+      newJobs.push(jobUpdate as BackgroundJob);
+      return newJobs;
+    }
+    
     // Filter out workflow orchestrator jobs
     const workflowTypes = ['file_finder_workflow', 'web_search_workflow'];
     if (jobUpdate.taskType && workflowTypes.includes(jobUpdate.taskType)) {
@@ -225,7 +235,7 @@ export function useOrchestratedBackgroundJobsState({
         const updateMetadata = parseMetadata(jobUpdate.metadata);
         
         // For finalized updates, prioritize the update data completely
-        if (jobUpdate.isFinalized === true) {
+        if (jobUpdate.isFinalized) {
           mergedMetadata = updateMetadata || jobUpdate.metadata;
         } else if (existingMetadata && updateMetadata) {
           // Deep merge metadata objects to preserve existing fields while updating new ones
@@ -256,7 +266,8 @@ export function useOrchestratedBackgroundJobsState({
       };
       
       // For finalized cost updates, always update regardless of comparison
-      if (jobUpdate.isFinalized === true) {
+      if (jobUpdate.isFinalized) {
+        console.debug(`[BackgroundJobs] Finalizing job ${jobUpdate.id} - updating with authoritative data`);
         const newJobs = [...prevJobs];
         newJobs[existingJobIndex] = mergedJob;
         return newJobs;
@@ -340,7 +351,7 @@ export function useOrchestratedBackgroundJobsState({
                 upsertJob(finalizedUpdate);
                 
                 // Log finalized cost update for debugging
-                console.log(`[BackgroundJobs] Job ${jobUpdate.id} finalized with authoritative cost`);
+                console.debug(`[BackgroundJobs] Job ${jobUpdate.id} finalized with authoritative cost data`);
               } else if (jobUpdate.status === 'completed') {
                 // For completed jobs, always update to ensure final response overwrites streamed data
                 const completedUpdate = {
@@ -348,7 +359,7 @@ export function useOrchestratedBackgroundJobsState({
                   updatedAt: Date.now(),
                 };
                 upsertJob(completedUpdate);
-                console.log(`[BackgroundJobs] Job ${jobUpdate.id} completed - updating with final data`);
+                console.debug(`[BackgroundJobs] Job ${jobUpdate.id} completed - updating with final data`);
               } else {
                 upsertJob(jobUpdate);
               }

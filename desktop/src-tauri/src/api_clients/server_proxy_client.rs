@@ -465,11 +465,15 @@ impl ServerProxyClient {
                             // Log the raw message
                             stream_logger.log_chunk(message.data.as_bytes());
                             
-                            // Handle [DONE] marker
+                            // Enhanced debug logging
+                            debug!("SSE event received - type: '{}', data length: {} bytes", 
+                                   if message.event.is_empty() { "message" } else { &message.event },
+                                   message.data.len());
+                            
+                            // Handle [DONE] marker - skip it as the actual completion will come from stream_completed event
                             if message.data == "[DONE]" {
-                                debug!("Received [DONE] marker - stream complete");
-                                stream_logger.log_stream_end();
-                                return Some((Ok(StreamEvent::StreamCompleted), (event_source, stream_logger)));
+                                debug!("Received [DONE] marker - waiting for stream_completed event");
+                                continue;
                             }
                             
                             // Parse the message based on event type
@@ -479,10 +483,17 @@ impl ServerProxyClient {
                                 &message.event
                             };
                             
+                            debug!("Processing SSE event type: '{}'", event_type);
+                            
                             let stream_event = match event_type {
                                 "usage_update" => {
+                                    debug!("Parsing usage_update event");
                                     match serde_json::from_str::<crate::models::usage_update::UsageUpdate>(&message.data) {
-                                        Ok(usage) => Ok(StreamEvent::UsageUpdate(usage)),
+                                        Ok(usage) => {
+                                            debug!("Successfully parsed usage_update: input={}, output={}, cost={}", 
+                                                   usage.tokens_input, usage.tokens_output, usage.estimated_cost);
+                                            Ok(StreamEvent::UsageUpdate(usage))
+                                        },
                                         Err(e) => {
                                             error!("Failed to parse usage_update: {} - Data: '{}'", e, message.data);
                                             Err(AppError::InvalidResponse(format!("Failed to parse usage_update: {}", e)))
@@ -490,9 +501,11 @@ impl ServerProxyClient {
                                     }
                                 }
                                 "stream_started" => {
+                                    debug!("Parsing stream_started event");
                                     match serde_json::from_str::<serde_json::Value>(&message.data) {
                                         Ok(data) => {
                                             if let Some(request_id) = data.get("request_id").and_then(|v| v.as_str()) {
+                                                debug!("Successfully parsed stream_started with request_id: {}", request_id);
                                                 Ok(StreamEvent::StreamStarted { request_id: request_id.to_string() })
                                             } else {
                                                 error!("stream_started missing request_id");
@@ -552,13 +565,57 @@ impl ServerProxyClient {
                                     }
                                 }
                                 "stream_completed" => {
-                                    debug!("Received stream_completed event");
-                                    Ok(StreamEvent::StreamCompleted)
+                                    debug!("Received stream_completed event: {}", message.data);
+                                    match serde_json::from_str::<serde_json::Value>(&message.data) {
+                                        Ok(data) => {
+                                            // Extract the fields from the JSON data
+                                            let request_id = data.get("request_id")
+                                                .and_then(|v| v.as_str())
+                                                .unwrap_or("")
+                                                .to_string();
+                                            let final_cost = data.get("final_cost")
+                                                .and_then(|v| v.as_f64())
+                                                .unwrap_or(0.0);
+                                            let tokens_input = data.get("tokens_input")
+                                                .and_then(|v| v.as_i64())
+                                                .unwrap_or(0);
+                                            let tokens_output = data.get("tokens_output")
+                                                .and_then(|v| v.as_i64())
+                                                .unwrap_or(0);
+                                            let cache_read_tokens = data.get("cache_read_tokens")
+                                                .and_then(|v| v.as_i64())
+                                                .unwrap_or(0);
+                                            let cache_write_tokens = data.get("cache_write_tokens")
+                                                .and_then(|v| v.as_i64())
+                                                .unwrap_or(0);
+                                            
+                                            Ok(StreamEvent::StreamCompleted {
+                                                request_id,
+                                                final_cost,
+                                                tokens_input,
+                                                tokens_output,
+                                                cache_read_tokens,
+                                                cache_write_tokens,
+                                            })
+                                        }
+                                        Err(e) => {
+                                            error!("Failed to parse stream_completed data: {} - Data: '{}'", e, message.data);
+                                            Err(AppError::InvalidResponse(format!("Failed to parse stream_completed: {}", e)))
+                                        }
+                                    }
                                 }
                                 _ => {
                                     // Default: try to parse as content chunk
+                                    debug!("Parsing unknown event type '{}' as content chunk", event_type);
                                     match serde_json::from_str::<OpenRouterStreamChunk>(&message.data) {
-                                        Ok(chunk) => Ok(StreamEvent::ContentChunk(chunk)),
+                                        Ok(chunk) => {
+                                            let content_len: usize = chunk.choices.iter()
+                                                .filter_map(|c| c.delta.content.as_ref())
+                                                .map(|s| s.len())
+                                                .sum();
+                                            debug!("Successfully parsed content chunk with {} bytes of content", content_len);
+                                            Ok(StreamEvent::ContentChunk(chunk))
+                                        },
                                         Err(e) => {
                                             error!("Failed to parse as content chunk: {} - Data: '{}'", e, message.data);
                                             Err(AppError::InvalidResponse(format!("Failed to parse stream data: {}", e)))
@@ -698,236 +755,6 @@ impl ServerProxyClient {
         info!("Batch cost estimation through server proxy successful");
         Ok(cost_response)
     }
-}
-
-#[async_trait]
-impl TranscriptionClient for ServerProxyClient {
-    async fn transcribe(&self, audio_data: &[u8], filename: &str, model: &str, duration_ms: i64, language: Option<&str>) -> AppResult<String> {
-        info!("Sending transcription request through server proxy with model: {}", model);
-        debug!("Audio file: {}, size: {} bytes", filename, audio_data.len());
-
-        // Get auth token
-        let auth_token = self.get_auth_token().await?;
-        
-        // Use the audio transcriptions endpoint
-        let transcription_url = format!("{}/api/audio/transcriptions", self.server_url);
-
-        let mime_type_str = Self::get_mime_type_from_filename(filename)?;
-
-        let mut form = multipart::Form::new()
-            .text("model", model.to_string())
-            .text("duration_ms", duration_ms.to_string())
-            .part("file", multipart::Part::bytes(audio_data.to_vec())
-                .file_name(filename.to_string())
-                .mime_str(mime_type_str).map_err(|e| AppError::InternalError(format!("Invalid mime type: {}", e)))?); 
-
-        // Add language parameter if provided
-        if let Some(lang) = language {
-            form = form.text("language", lang.to_string());
-        }
-
-        let response = self.http_client
-            .post(&transcription_url)
-            .header("Authorization", format!("Bearer {}", auth_token))
-            .header("HTTP-Referer", APP_HTTP_REFERER)
-            .header("X-Title", APP_X_TITLE)
-            .multipart(form)
-            .send()
-            .await
-            .map_err(|e| AppError::HttpError(e.to_string()))?;
-
-        if !response.status().is_success() {
-            let status = response.status();
-            let error_text = response.text().await.unwrap_or_else(|_| "Failed to get error text".to_string());
-            error!("Server proxy transcription API error: {} - {}", status, error_text);
-            return Err(self.handle_auth_error(status.as_u16(), &error_text).await);
-        }
-
-        // Parse the response
-        let transcription_response: serde_json::Value = response.json().await
-            .map_err(|e| AppError::ServerProxyError(format!("Failed to parse transcription response: {}", e)))?;
-        
-        let text = transcription_response["text"].as_str().unwrap_or_default().to_string();
-
-        info!("Transcription through server proxy successful");
-        Ok(text)
-    }
-
-
-}
-
-#[async_trait]
-impl ApiClient for ServerProxyClient {
-    
-    /// Send a chat completion request with messages and get a response
-    async fn chat_completion(
-        &self, 
-        messages: Vec<crate::models::OpenRouterRequestMessage>, 
-        options: ApiClientOptions
-    ) -> AppResult<OpenRouterResponse> {
-        info!("Sending chat completion request to server proxy with model: {}", options.model);
-        debug!("Proxy options: {:?}", options);
-        
-        // Get auth token
-        let auth_token = self.get_auth_token().await?;
-        
-        // Perform the API call with duration measurement using internal helper
-        self.execute_chat_completion_with_duration(messages, options, auth_token).await
-    }
-    
-    
-    /// Send a streaming completion request with messages and get a stream of events
-    async fn chat_completion_stream(
-        &self,
-        messages: Vec<crate::models::OpenRouterRequestMessage>,
-        options: ApiClientOptions,
-    ) -> AppResult<Pin<Box<dyn Stream<Item = AppResult<crate::models::stream_event::StreamEvent>> + Send>>> {
-        info!("Sending streaming chat completion request to server proxy with model: {}", options.model);
-        debug!("Proxy options: {:?}", options);
-        
-        // Get auth token
-        let auth_token = self.get_auth_token().await?;
-        
-        // Execute streaming with duration measurement using internal helper
-        self.execute_chat_completion_stream_with_duration(messages, options, auth_token).await
-    }
-
-    /// Extract cost from response - uses server-authoritative cost from usage.cost field
-    fn extract_cost_from_response(&self, response: &OpenRouterResponse) -> f64 {
-        response.usage.as_ref()
-            .and_then(|usage| usage.cost)
-            .unwrap_or(0.0)
-    }
-    
-    /// Allow downcasting to concrete types for access to specific methods
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-}
-
-impl ServerProxyClient {
-    /// Poll for final streaming cost with robust exponential backoff retry
-    /// Polls /api/billing/final-cost/{request_id} endpoint
-    /// Uses exponential backoff with jitter (start at 200ms, max 10s)
-    /// Maximum 30 retries to handle complex requests that need more processing time
-    /// Returns FinalCostData struct
-    /// Handles 404 gracefully (cost not yet available)
-    /// Ensures sufficient time for server cost processing completion
-    pub async fn poll_final_streaming_cost_with_retry(
-        &self, 
-        request_id: &str
-    ) -> AppResult<Option<crate::models::FinalCostData>> {
-        info!("Polling for final streaming cost with robust exponential backoff: request_id={}", request_id);
-        
-        let max_attempts = 30; // Increased from 10 to handle complex requests
-        let base_delay_ms = 200; // Start at 200ms for better initial response
-        let max_delay_ms = 10000; // Max 10s to handle server processing delays
-        
-        for attempt in 1..=max_attempts {
-            match self.poll_final_streaming_cost_detailed(request_id).await {
-                Ok(Some(cost_data)) => {
-                    info!("Final cost retrieved on attempt {}: ${:.4}", attempt, cost_data.final_cost);
-                    return Ok(Some(cost_data));
-                }
-                Ok(None) => {
-                    if attempt < max_attempts {
-                        // Exponential backoff with jitter and cap at max_delay_ms
-                        let exponential_delay = base_delay_ms * (1 << std::cmp::min(attempt - 1, 6)); // Cap exponential growth
-                        let jitter = (attempt as f64 * 50.0).round() as u64; // Add jitter based on attempt
-                        let delay_ms = std::cmp::min(
-                            exponential_delay + jitter, 
-                            max_delay_ms
-                        );
-                        debug!("Final cost not available, waiting {}ms before attempt {} (with jitter)", delay_ms, attempt + 1);
-                        tokio::time::sleep(tokio::time::Duration::from_millis(delay_ms)).await;
-                    }
-                }
-                Err(e) => {
-                    warn!("Error polling for final cost on attempt {}: {}", attempt, e);
-                    if attempt < max_attempts {
-                        // Exponential backoff with jitter and cap at max_delay_ms
-                        let exponential_delay = base_delay_ms * (1 << std::cmp::min(attempt - 1, 6)); // Cap exponential growth
-                        let jitter = (attempt as f64 * 50.0).round() as u64; // Add jitter based on attempt
-                        let delay_ms = std::cmp::min(
-                            exponential_delay + jitter, 
-                            max_delay_ms
-                        );
-                        debug!("Retrying after error, waiting {}ms before attempt {} (with jitter)", delay_ms, attempt + 1);
-                        tokio::time::sleep(tokio::time::Duration::from_millis(delay_ms)).await;
-                    } else {
-                        return Err(e);
-                    }
-                }
-            }
-        }
-        
-        info!("Final cost not available after {} attempts for request {} - server may still be processing", max_attempts, request_id);
-        Ok(None)
-    }
-    
-    /// Poll for detailed final streaming cost data with request-specific timeout
-    async fn poll_final_streaming_cost_detailed(&self, request_id: &str) -> AppResult<Option<crate::models::FinalCostData>> {
-        info!("Polling for detailed final streaming cost: request_id={}", request_id);
-        
-        let auth_token = self.get_auth_token().await?;
-        let url = format!("{}/api/billing/final-cost/{}", self.server_url, request_id);
-        
-        // Use longer timeout for cost polling to handle server processing delays
-        let response = self.http_client
-            .get(&url)
-            .header(header::CONTENT_TYPE, "application/json")
-            .header("Authorization", format!("Bearer {}", auth_token))
-            .header("HTTP-Referer", APP_HTTP_REFERER)
-            .header("X-Title", APP_X_TITLE)
-            .timeout(std::time::Duration::from_secs(30)) // Extended timeout for complex requests
-            .send()
-            .await
-            .map_err(|e| AppError::HttpError(e.to_string()))?;
-            
-        if response.status() == 404 {
-            // Not found is expected when cost is not yet available
-            return Ok(None);
-        }
-        
-        if !response.status().is_success() {
-            let status = response.status();
-            let error_text = response.text().await.unwrap_or_else(|_| "Failed to get error text".to_string());
-            return Err(self.handle_auth_error(status.as_u16(), &error_text).await);
-        }
-        
-        let cost_response: crate::models::FinalCostResponse = response.json().await
-            .map_err(|e| AppError::ServerProxyError(format!("Failed to parse final cost response: {}", e)))?;
-        
-        // Check if the response indicates the cost is still pending
-        if cost_response.status == "pending" {
-            return Ok(None);
-        }
-        
-        // Extract required fields, returning None if essential data is missing
-        let final_cost = cost_response.final_cost.ok_or_else(|| {
-            AppError::ServerProxyError("Final cost not available in response".to_string())
-        })?;
-        
-        let tokens_input = cost_response.tokens_input.ok_or_else(|| {
-            AppError::ServerProxyError("Input tokens not available in response".to_string())
-        })?;
-        
-        let tokens_output = cost_response.tokens_output.ok_or_else(|| {
-            AppError::ServerProxyError("Output tokens not available in response".to_string())
-        })?;
-        
-        Ok(Some(crate::models::FinalCostData {
-            request_id: cost_response.request_id.clone(),
-            provider: cost_response.service_name.clone(), // Map service_name to provider
-            model: cost_response.service_name.clone(), // Use service_name as model ID
-            final_cost,
-            tokens_input,
-            tokens_output,
-            cache_write_tokens: cost_response.cache_write_tokens,
-            cache_read_tokens: cost_response.cache_read_tokens,
-            timestamp: chrono::Utc::now(), // Use current time since server doesn't provide timestamp
-        }))
-    }
     
     /// Get Featurebase SSO token
     pub async fn get_featurebase_sso_token(&self) -> AppResult<String> {
@@ -1040,5 +867,110 @@ impl ServerProxyClient {
         }
         
         Ok(())
+    }
+}
+
+#[async_trait]
+impl TranscriptionClient for ServerProxyClient {
+    async fn transcribe(&self, audio_data: &[u8], filename: &str, model: &str, duration_ms: i64, language: Option<&str>) -> AppResult<String> {
+        info!("Sending transcription request through server proxy with model: {}", model);
+        debug!("Audio file: {}, size: {} bytes", filename, audio_data.len());
+
+        // Get auth token
+        let auth_token = self.get_auth_token().await?;
+        
+        // Use the audio transcriptions endpoint
+        let transcription_url = format!("{}/api/audio/transcriptions", self.server_url);
+
+        let mime_type_str = Self::get_mime_type_from_filename(filename)?;
+
+        let mut form = multipart::Form::new()
+            .text("model", model.to_string())
+            .text("duration_ms", duration_ms.to_string())
+            .part("file", multipart::Part::bytes(audio_data.to_vec())
+                .file_name(filename.to_string())
+                .mime_str(mime_type_str).map_err(|e| AppError::InternalError(format!("Invalid mime type: {}", e)))?); 
+
+        // Add language parameter if provided
+        if let Some(lang) = language {
+            form = form.text("language", lang.to_string());
+        }
+
+        let response = self.http_client
+            .post(&transcription_url)
+            .header("Authorization", format!("Bearer {}", auth_token))
+            .header("HTTP-Referer", APP_HTTP_REFERER)
+            .header("X-Title", APP_X_TITLE)
+            .multipart(form)
+            .send()
+            .await
+            .map_err(|e| AppError::HttpError(e.to_string()))?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_text = response.text().await.unwrap_or_else(|_| "Failed to get error text".to_string());
+            error!("Server proxy transcription API error: {} - {}", status, error_text);
+            return Err(self.handle_auth_error(status.as_u16(), &error_text).await);
+        }
+
+        // Parse the response
+        let transcription_response: serde_json::Value = response.json().await
+            .map_err(|e| AppError::ServerProxyError(format!("Failed to parse transcription response: {}", e)))?;
+        
+        let text = transcription_response["text"].as_str().unwrap_or_default().to_string();
+
+        info!("Transcription through server proxy successful");
+        Ok(text)
+    }
+
+
+}
+
+#[async_trait]
+impl ApiClient for ServerProxyClient {
+    
+    /// Send a chat completion request with messages and get a response
+    async fn chat_completion(
+        &self, 
+        messages: Vec<crate::models::OpenRouterRequestMessage>, 
+        options: ApiClientOptions
+    ) -> AppResult<OpenRouterResponse> {
+        info!("Sending chat completion request to server proxy with model: {}", options.model);
+        debug!("Proxy options: {:?}", options);
+        
+        // Get auth token
+        let auth_token = self.get_auth_token().await?;
+        
+        // Perform the API call with duration measurement using internal helper
+        self.execute_chat_completion_with_duration(messages, options, auth_token).await
+    }
+    
+    
+    /// Send a streaming completion request with messages and get a stream of events
+    async fn chat_completion_stream(
+        &self,
+        messages: Vec<crate::models::OpenRouterRequestMessage>,
+        options: ApiClientOptions,
+    ) -> AppResult<Pin<Box<dyn Stream<Item = AppResult<crate::models::stream_event::StreamEvent>> + Send>>> {
+        info!("Sending streaming chat completion request to server proxy with model: {}", options.model);
+        debug!("Proxy options: {:?}", options);
+        
+        // Get auth token
+        let auth_token = self.get_auth_token().await?;
+        
+        // Execute streaming with duration measurement using internal helper
+        self.execute_chat_completion_stream_with_duration(messages, options, auth_token).await
+    }
+
+    /// Extract cost from response - uses server-authoritative cost from usage.cost field
+    fn extract_cost_from_response(&self, response: &OpenRouterResponse) -> f64 {
+        response.usage.as_ref()
+            .and_then(|usage| usage.cost)
+            .unwrap_or(0.0)
+    }
+    
+    /// Allow downcasting to concrete types for access to specific methods
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 }

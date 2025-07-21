@@ -106,19 +106,6 @@ pub struct UpdateAutoTopOffRequest {
     pub amount: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct FinalCostResponse {
-    pub status: String,
-    pub request_id: String,
-    pub final_cost: Option<f64>,
-    pub tokens_input: Option<i64>,
-    pub tokens_output: Option<i64>,
-    pub cache_write_tokens: Option<i64>,
-    pub cache_read_tokens: Option<i64>,
-    pub user_id: uuid::Uuid,
-    pub service_name: String,
-}
 
 // New unified credit history entry that includes API usage token details
 #[derive(Debug, Serialize, Deserialize)]

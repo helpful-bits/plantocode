@@ -261,8 +261,6 @@ export interface ClearJobHistoryCommandArgs {
   daysToKeep: number;
 }
 
-export interface GetActiveJobsCommandArgs {
-}
 
 export interface DeleteBackgroundJobCommandArgs {
   jobId: string;
@@ -580,7 +578,7 @@ export type TauriInvoke = {
   "update_implementation_plan_content_command": (args: UpdateImplementationPlanContentCommandArgs) => Promise<void>;
   "get_background_job_by_id_command": (args: GetBackgroundJobByIdCommandArgs) => Promise<import("@/types").BackgroundJob | null>;
   "clear_job_history_command": (args: ClearJobHistoryCommandArgs) => Promise<void>;
-  "get_active_jobs_command": () => Promise<import("@/types").BackgroundJob[]>;
+  "get_all_visible_jobs_command": () => Promise<import("@/types").BackgroundJob[]>;
   "delete_background_job_command": (args: DeleteBackgroundJobCommandArgs) => Promise<void>;
   "cancel_background_job_command": (args: CancelBackgroundJobCommandArgs) => Promise<void>;
   "cancel_session_jobs_command": (args: CancelSessionJobsCommandArgs) => Promise<void>;
