@@ -5,7 +5,7 @@ VALUES (
     "tasks": {
       "implementation_plan": {
         "model": "google/gemini-2.5-pro",
-        "allowed_models": ["openai/o3", "openai/o4-mini", "deepseek/deepseek-r1-0528", "moonshotai/kimi-k2", "google/gemini-2.5-pro", "xai/grok-4"],
+        "allowed_models": ["openai/o3", "openai/o4-mini", "deepseek/deepseek-r1-0528", "moonshotai/kimi-k2", "google/gemini-2.5-pro", "xai/grok-4", "anthropic/claude-sonnet-4-20250514"],
         "max_tokens": 23000,
         "temperature": 0.7,
         "copy_buttons": [

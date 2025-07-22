@@ -5,7 +5,7 @@ use log::{info};
 
 use crate::models::AuthenticatedUser;
 use crate::error::AppError;
-use crate::models::{Invoice, ListInvoicesResponse};
+use crate::models::ListInvoicesResponse;
 use crate::services::billing_service::BillingService;
 
 #[derive(Debug, Deserialize)]
