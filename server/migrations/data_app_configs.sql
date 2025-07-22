@@ -59,13 +59,13 @@ VALUES (
         "model": "google/gemini-2.5-flash",
         "allowed_models": ["google/gemini-2.5-flash", "openai/o4-mini"],
         "max_tokens": 8192,
-        "temperature": 0.3
+        "temperature": 0.15
       },
       "file_relevance_assessment": {
         "model": "google/gemini-2.5-flash",
         "allowed_models": ["google/gemini-2.5-flash", "openai/o4-mini"],
         "max_tokens": 24000,
-        "temperature": 0.15
+        "temperature": 0.2
       },
       "web_search_prompts_generation": {
         "model": "google/gemini-2.5-flash",

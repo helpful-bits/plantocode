@@ -16,6 +16,15 @@ OKLCH (Oklab Lightness Chroma Hue) provides perceptually uniform color manipulat
 - **Better Gradients**: Smooth, natural color transitions without muddy middle values
 - **Predictable Lightness**: Consistent brightness across different hues
 - **Wide Gamut Support**: Native support for P3 and future display technologies
+- **Performance Benefits**: Hardware-accelerated color calculations in modern browsers
+- **Future-Proof**: Designed for next-generation display technologies
+
+#### OKLCH Performance Considerations
+
+- Use CSS custom properties for color values to enable runtime theming
+- Prefer OKLCH over HSL/RGB for color manipulations to avoid color space conversions
+- Cache computed color values when generating dynamic palettes
+- Use `@supports` queries for graceful degradation in older browsers
 
 #### Color Palette
 
@@ -79,6 +88,37 @@ function getComplementary(color: string) {
 ### Core Principles
 
 Glass morphism creates depth and hierarchy through translucent surfaces with backdrop blur effects.
+
+### GlassCard Component Optimization
+
+The GlassCard component is optimized for performance while maintaining visual fidelity:
+
+```typescript
+// GlassCard Performance Optimizations
+export const GlassCard = React.memo(({ children, className, ...props }) => {
+  return (
+    <div 
+      className={cn(
+        'glass-card',
+        'will-change-[backdrop-filter]', // Hint for browser optimization
+        'contain-layout', // Contain layout calculations
+        className
+      )}
+      {...props}
+    >
+      {children}
+    </div>
+  );
+});
+```
+
+#### Performance Best Practices for Glass Effects
+
+1. **Limit Nesting**: Avoid nesting glass elements more than 2 levels deep
+2. **Use `will-change` Sparingly**: Only on elements that will animate
+3. **Implement Intersection Observer**: Disable backdrop-filter for off-screen elements
+4. **Provide Fallbacks**: Solid backgrounds for browsers without backdrop-filter support
+5. **Test on Mobile**: Glass effects are GPU-intensive on mobile devices
 
 #### Base Glass Styles
 
@@ -169,9 +209,34 @@ Glass morphism creates depth and hierarchy through translucent surfaces with bac
 }
 ```
 
+### Variable Fonts for Performance
+
+When using custom fonts, prefer variable fonts for reduced file size and better performance:
+
+```css
+@font-face {
+  font-family: 'Inter var';
+  font-weight: 100 900;
+  font-display: swap; /* Prevent FOIT */
+  font-style: normal;
+  font-named-instance: 'Regular';
+  src: url('/fonts/Inter.var.woff2') format('woff2-variations');
+}
+
+/* Fallback for non-variable font support */
+@supports not (font-variation-settings: normal) {
+  @font-face {
+    font-family: 'Inter';
+    font-weight: 400;
+    font-display: swap;
+    src: url('/fonts/Inter-Regular.woff2') format('woff2');
+  }
+}
+```
+
 ### Type Scale
 
-Using a modular scale with a ratio of 1.25 (Major Third):
+Using a modular scale with a ratio of 1.25 (Major Third) with fluid typography:
 
 ```css
 :root {
@@ -233,6 +298,31 @@ Based on 8px grid system:
   /* Spring animations */
   --spring-bounce: cubic-bezier(0.68, -0.6, 0.32, 1.6);
   --spring-smooth: cubic-bezier(0.4, 0.0, 0.2, 1.0);
+}
+```
+
+### Performance-Optimized Animation Patterns
+
+#### Transform-Only Animations
+Always prefer transform and opacity for animations as they can be handled by the compositor:
+
+```css
+/* Good - Compositor-only properties */
+.slide-in {
+  transform: translateX(-100%);
+  opacity: 0;
+  transition: transform 300ms ease-out, opacity 300ms ease-out;
+}
+
+.slide-in.active {
+  transform: translateX(0);
+  opacity: 1;
+}
+
+/* Avoid - Triggers layout recalculation */
+.bad-slide {
+  left: -100%;
+  transition: left 300ms ease-out;
 }
 ```
 
@@ -497,6 +587,37 @@ if (!supportsBackdropFilter) {
 }
 ```
 
+## Performance Monitoring
+
+### Design System Performance Metrics
+
+Track these metrics to ensure the design system maintains high performance:
+
+1. **Paint Metrics**
+   - First Contentful Paint (FCP) < 1.8s
+   - Largest Contentful Paint (LCP) < 2.5s
+   - Cumulative Layout Shift (CLS) < 0.1
+
+2. **Animation Performance**
+   - All animations maintain 60fps
+   - No animation causes layout thrashing
+   - Glass effects don't drop frames on mid-range devices
+
+3. **Color System Performance**
+   - OKLCH calculations cached where possible
+   - Dynamic theme switching < 100ms
+   - No flash of unstyled content (FOUC)
+
+### Performance Testing Checklist
+
+- [ ] Test all glass effects on mobile devices
+- [ ] Verify animations maintain 60fps in Chrome DevTools
+- [ ] Check color contrast ratios in both light and dark modes
+- [ ] Validate font loading doesn't block rendering
+- [ ] Ensure responsive typography scales smoothly
+- [ ] Test with CPU throttling enabled (4x slowdown)
+- [ ] Verify no memory leaks from animation loops
+
 ## Design Tokens Export
 
 ```typescript
@@ -525,5 +646,13 @@ export const animation = {
     inOut: 'cubic-bezier(0.4, 0.0, 0.2, 1.0)',
     elastic: 'cubic-bezier(0.68, -0.55, 0.265, 1.55)',
   },
+};
+
+// Performance hints
+export const performanceConfig = {
+  maxGlassLayers: 2,
+  animationBudget: 16.67, // ms per frame for 60fps
+  colorCacheSize: 100,
+  lazyLoadThreshold: '50px',
 };
 ```

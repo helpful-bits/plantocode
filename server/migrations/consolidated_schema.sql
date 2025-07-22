@@ -16,31 +16,32 @@ CREATE TABLE IF NOT EXISTS users (
 -- Refresh tokens for persistent sessions
 CREATE TABLE IF NOT EXISTS refresh_tokens (
     token UUID PRIMARY KEY,
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL,
     expires_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-    CONSTRAINT fk_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    CONSTRAINT fk_refresh_tokens_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 
 -- Customer billing for users
 CREATE TABLE IF NOT EXISTS customer_billing (
     id UUID PRIMARY KEY,
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL,
     stripe_customer_id VARCHAR(255),
     auto_top_off_enabled BOOLEAN NOT NULL DEFAULT false,
     auto_top_off_threshold DECIMAL(12, 4),
     auto_top_off_amount DECIMAL(12, 4),
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-    CONSTRAINT fk_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    CONSTRAINT fk_customer_billing_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT customer_billing_user_id_unique UNIQUE (user_id)
 );
 
 
 -- API usage tracking
 CREATE TABLE IF NOT EXISTS api_usage (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL,
     service_name TEXT NOT NULL,
     tokens_input BIGINT NOT NULL DEFAULT 0,
     tokens_output BIGINT NOT NULL DEFAULT 0,
@@ -55,7 +56,7 @@ CREATE TABLE IF NOT EXISTS api_usage (
     provider_reported_cost NUMERIC(20, 10),
     -- Status for insert-then-update billing pattern
     status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'completed', 'failed')),
-    CONSTRAINT fk_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    CONSTRAINT fk_api_usage_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 -- Add comments for token columns - Detailed token counting contract
@@ -76,13 +77,13 @@ CREATE INDEX IF NOT EXISTS idx_api_usage_user_status ON api_usage(user_id, statu
 -- API quotas for users per service
 CREATE TABLE IF NOT EXISTS api_quotas (
     id SERIAL PRIMARY KEY,
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL,
     service_name VARCHAR(50) NOT NULL,
     monthly_tokens_limit INTEGER,
     daily_requests_limit INTEGER,
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-    CONSTRAINT fk_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_api_quotas_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     CONSTRAINT unique_user_service_quota UNIQUE (user_id, service_name)
 );
 
@@ -504,12 +505,24 @@ ON customer_billing FOR SELECT
 TO vibe_manager_app
 USING (true);
 
+DROP POLICY IF EXISTS "App can insert customer billing" ON customer_billing;
+CREATE POLICY "App can insert customer billing"
+ON customer_billing FOR INSERT
+TO vibe_manager_app
+WITH CHECK (true);
+
 DROP POLICY IF EXISTS "App can update customer billing" ON customer_billing;
 CREATE POLICY "App can update customer billing"
 ON customer_billing FOR UPDATE
 TO vibe_manager_app
 USING (true)
 WITH CHECK (true);
+
+DROP POLICY IF EXISTS "App can delete customer billing" ON customer_billing;
+CREATE POLICY "App can delete customer billing"
+ON customer_billing FOR DELETE
+TO vibe_manager_app
+USING (true);
 
 -- DELETE typically handled by backend/service roles.
 -- Index idx_customer_billing_user_id already exists.

@@ -84,18 +84,26 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
-  
-  // Skip non-GET requests
+
   if (request.method !== 'GET') {
     return;
   }
   
-  // Skip cross-origin requests (unless for images)
   if (url.origin !== location.origin && !isImageRequest(request)) {
     return;
   }
-  
-  event.respondWith(handleRequest(request));
+
+  // Monitor and then handle the request
+  event.respondWith(
+    caches.match(request).then((cachedResponse) => {
+      const isCacheHit = !!cachedResponse;
+      if (typeof self.performance !== 'undefined' && !request.url.includes('google-analytics')) {
+        self.performance.mark(`cache-${isCacheHit ? 'hit' : 'miss'}-${request.url}`);
+      }
+      // Use the cached response if it exists, otherwise proceed with the original handler
+      return cachedResponse || handleRequest(request);
+    })
+  );
 });
 
 // Handle different types of requests
@@ -358,28 +366,6 @@ async function installStaticAssets() {
   await cache.addAll(STATIC_ASSETS);
 }
 
-// Performance monitoring
-self.addEventListener('fetch', (event) => {
-  // Skip monitoring for certain requests
-  if (event.request.url.includes('google-analytics') || 
-      event.request.url.includes('googletagmanager')) {
-    return;
-  }
-  
-  // Monitor cache hit rates
-  event.respondWith(
-    caches.match(event.request).then((cachedResponse) => {
-      const isCacheHit = !!cachedResponse;
-      
-      // Log cache performance (in development)
-      if (typeof self.performance !== 'undefined') {
-        self.performance.mark(`cache-${isCacheHit ? 'hit' : 'miss'}-${event.request.url}`);
-      }
-      
-      return cachedResponse || fetch(event.request);
-    })
-  );
-});
 
 // Cleanup old caches periodically
 setInterval(() => {

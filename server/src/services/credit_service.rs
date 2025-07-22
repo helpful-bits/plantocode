@@ -223,6 +223,12 @@ impl CreditService {
         let estimated_cost = existing_record.cost;
         let cost_delta = &final_cost - &estimated_cost;
         
+        // Determine status from metadata or default to "completed"
+        let status = metadata.as_ref()
+            .and_then(|m| m.get("status"))
+            .and_then(|s| s.as_str())
+            .unwrap_or("completed");
+
         // Update the api_usage record with final values and metadata
         self.api_usage_repository.update_usage_with_metadata_executor(
             request_id,
@@ -232,9 +238,36 @@ impl CreditService {
             final_usage.cache_read_tokens as i64,
             final_cost.clone(),
             metadata.clone(),
-            "completed",
+            status,
             tx,
         ).await?;
+        
+        // Skip balance adjustments for failed charges
+        if status == "failed" {
+            // Construct the updated record manually since we just updated it
+            let updated_record = ApiUsageRecord {
+                id: Some(existing_record.id),
+                user_id: existing_record.user_id,
+                service_name: existing_record.service_name,
+                tokens_input: final_usage.prompt_tokens as i64,
+                tokens_output: final_usage.completion_tokens as i64,
+                cache_write_tokens: final_usage.cache_write_tokens as i64,
+                cache_read_tokens: final_usage.cache_read_tokens as i64,
+                cost: final_cost.clone(),
+                request_id: Some(request_id.to_string()),
+                metadata: metadata.clone(),
+                timestamp: existing_record.timestamp,
+                provider_reported_cost: None,
+            };
+            
+            // Get current balance without modification
+            let current_balance = self.user_credit_repository
+                .get_balance_with_executor(&existing_record.user_id, tx)
+                .await?
+                .ok_or_else(|| AppError::NotFound("User credit record not found".to_string()))?;
+            
+            return Ok((updated_record, current_balance));
+        }
         
         // Get current balance
         let current_balance = self.user_credit_repository

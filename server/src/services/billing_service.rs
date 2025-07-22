@@ -12,6 +12,7 @@ use crate::services::credit_service::CreditService;
 use crate::services::audit_service::AuditService;
 use crate::services::cost_resolver::CostResolver;
 use crate::db::repositories::settings_repository::SettingsRepository;
+use crate::db::repositories::user_repository::UserRepository;
 use uuid::Uuid;
 use log::{debug, error, info, warn};
 use std::env;
@@ -136,99 +137,7 @@ impl BillingService {
     
     
     
-    // Create a simple customer billing record for credit-based billing
-    async fn create_simple_customer_billing_in_tx<'a>(
-        &self, 
-        user_id: &Uuid, 
-        tx: &mut sqlx::Transaction<'a, sqlx::Postgres>
-    ) -> Result<CustomerBilling, AppError>
-    {
-        // Set user context for RLS within the transaction
-        sqlx::query("SELECT set_config('app.current_user_id', $1, true)")
-            .bind(user_id.to_string())
-            .execute(&mut **tx)
-            .await
-            .map_err(|e| AppError::Database(format!("Failed to set user context in transaction: {}", e)))?;
-        
-        let now = Utc::now();
-        
-        // Create simple customer billing record for credit-based billing
-        let customer_billing_id = self.customer_billing_repository.create_with_executor(
-            user_id,
-            None, // No stripe customer ID initially
-            tx,
-        ).await?;
-        
-        // Grant initial free credits with database-driven configuration
-        let free_credits = self.settings_repository.get_free_credits_amount().await
-            .unwrap_or_else(|_| BigDecimal::from_str("2.00").unwrap());
-        let expiry_days = self.settings_repository.get_free_credits_expiry_days().await
-            .unwrap_or(3);
-        let free_credits_expires_at = now + Duration::days(expiry_days);
-        
-        // Update user_credits with free credits
-        sqlx::query(
-            "UPDATE user_credits 
-             SET free_credit_balance = $2,
-                 free_credits_granted_at = $3,
-                 free_credits_expires_at = $4,
-                 updated_at = CURRENT_TIMESTAMP
-             WHERE user_id = $1"
-        )
-        .bind(user_id)
-        .bind(&free_credits)
-        .bind(now)
-        .bind(free_credits_expires_at)
-        .execute(&mut **tx)
-        .await
-        .map_err(|e| AppError::Database(format!("Failed to grant free credits: {}", e)))?;
-        
-        // Construct the customer billing record from known data
-        let customer_billing = CustomerBilling {
-            id: customer_billing_id,
-            user_id: *user_id,
-            stripe_customer_id: None,
-            auto_top_off_enabled: false,
-            auto_top_off_threshold: None,
-            auto_top_off_amount: None,
-            created_at: now,
-            updated_at: now,
-        };
-        
-        info!("Created customer billing record and granted initial free credits for user {}", user_id);
-        Ok(customer_billing)
-    }
-
     
-    pub async fn create_default_customer_billing_for_new_user(&self, user_id: &Uuid) -> Result<CustomerBilling, AppError> {
-        let mut tx = self.db_pools.user_pool.begin().await
-            .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
-        
-        sqlx::query("SELECT set_config('app.current_user_id', $1, true)")
-            .bind(user_id.to_string())
-            .execute(&mut *tx)
-            .await
-            .map_err(|e| AppError::Database(format!("Failed to set user context in transaction: {}", e)))?;
-            
-        let customer_billing = self.create_simple_customer_billing_in_tx(user_id, &mut tx).await?;
-        
-        tx.commit().await
-            .map_err(|e| AppError::Database(format!("Failed to commit transaction: {}", e)))?;
-            
-        Ok(customer_billing)
-    }
-
-    // Ensure user has a customer billing record, create default one if missing
-    pub async fn ensure_user_has_customer_billing(&self, user_id: &Uuid) -> Result<CustomerBilling, AppError> {
-        // First try to get existing customer billing record
-        if let Some(existing_customer_billing) = self.customer_billing_repository.get_by_user_id(user_id).await? {
-            return Ok(existing_customer_billing);
-        }
-        
-        // No customer billing record exists, create default one
-        info!("User {} has no customer billing record, creating default credit-based billing", user_id);
-        self.create_default_customer_billing_for_new_user(user_id).await
-    }
 
     // Get the database pool for use by other components
     pub fn get_db_pool(&self) -> PgPool {
@@ -247,108 +156,25 @@ impl BillingService {
     
     
     
-    // Get or create a Stripe customer for a user within a transaction
-    async fn _get_or_create_stripe_customer_with_executor(
-        &self,
-        user_id: &Uuid,
-        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
-    ) -> Result<String, AppError> {
-        // Ensure Stripe is configured
-        let stripe_service = match &self.stripe_service {
-            Some(service) => service,
-            None => return Err(AppError::Configuration("Stripe not configured".to_string())),
-        };
-
-        // Fetch the user's billing info within the transaction
-        let customer_billing = self.customer_billing_repository.get_by_user_id_with_executor(user_id, tx).await?
-            .ok_or_else(|| AppError::NotFound(format!("No customer billing record found for user {}", user_id)))?;
-
-        // Check if customer billing already has a Stripe customer ID
-        if let Some(ref customer_id) = customer_billing.stripe_customer_id {
-            return Ok(customer_id.clone());
-        }
-
-        // Get user details from database using system pool (not affected by transaction)
-        let user = crate::db::repositories::user_repository::UserRepository::new(
-            self.db_pools.system_pool.clone()
-        ).get_by_id(user_id).await?;
-
-        // Create a new Stripe customer
-        let idempotency_key = uuid::Uuid::new_v4().to_string();
-        let customer = stripe_service.create_or_get_customer(
-            &idempotency_key,
-            user_id,
-            &user.email,
-            user.full_name.as_deref(),
-            customer_billing.stripe_customer_id.as_deref(),
-        ).await.map_err(|e| AppError::External(format!("Failed to create Stripe customer: {}", e)))?;
-
-        // Update the customer billing with the customer ID within the transaction
-        self.customer_billing_repository.set_stripe_customer_id_with_executor(&customer_billing.id, &customer.id, tx).await?;
-        info!("Updated customer billing {} with Stripe customer ID: {}", customer_billing.id, customer.id);
-
-        Ok(customer.id.to_string())
-    }
     
     // Create billing portal session with state locking
     pub async fn create_billing_portal_session(
         &self,
         user_id: &Uuid,
     ) -> Result<String, AppError> {
-        // Ensure Stripe is configured
-        let stripe_service = match &self.stripe_service {
-            Some(service) => service,
-            None => return Err(AppError::Configuration("Stripe not configured".to_string())),
-        };
+        let stripe_service = self.get_stripe_service()?;
+        
+        // This is now much simpler. The function below handles all logic.
+        let customer_id = self.get_or_create_stripe_customer(user_id).await?;
 
-        // Start database transaction for atomic state management
-        let mut tx = self.db_pools.user_pool.begin().await
-            .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
-
-        // Set user context for RLS within the transaction
-        sqlx::query("SELECT set_config('app.current_user_id', $1, true)")
-            .bind(user_id.to_string())
-            .execute(&mut *tx)
-            .await
-            .map_err(|e| AppError::Database(format!("Failed to set user context in transaction: {}", e)))?;
-
-        // Ensure user has customer billing, create default one if missing
-        let customer_billing = match self.customer_billing_repository.get_by_user_id_with_executor(user_id, &mut tx).await? {
-            Some(customer_billing) => customer_billing,
-            None => {
-                info!("User {} accessing billing portal has no customer billing, creating default customer billing", user_id);
-                let customer_billing = self.create_simple_customer_billing_in_tx(user_id, &mut tx).await?;
-                customer_billing
-            }
-        };
-
-        // Get or create Stripe customer ID within the transaction
-        let customer_id = if let Some(existing_customer_id) = &customer_billing.stripe_customer_id {
-            existing_customer_id.clone()
-        } else {
-            self._get_or_create_stripe_customer_with_executor(user_id, &mut tx).await?
-        };
-
-        // Create portal session
         let idempotency_key = uuid::Uuid::new_v4().to_string();
-        let session = match stripe_service.create_billing_portal_session(
+        let session = stripe_service.create_billing_portal_session(
             &idempotency_key,
             &customer_id,
             &self.app_settings.stripe.portal_return_url,
-        ).await {
-            Ok(session) => session,
-            Err(e) => {
-                let _ = tx.rollback().await;
-                return Err(AppError::External(format!("Failed to create billing portal session: {}", e)));
-            }
-        };
-
-        // Commit the transaction after successful portal session creation
-        tx.commit().await
-            .map_err(|e| AppError::Database(format!("Failed to commit portal session transaction: {}", e)))?;
-
-        info!("Created billing portal session for user {} and set management state to portal_active", user_id);
-
+        ).await.map_err(|e| AppError::External(format!("Failed to create billing portal session: {}", e)))?;
+        
+        info!("Created billing portal session for user {}", user_id);
         Ok(session.url)
     }
     
@@ -358,15 +184,27 @@ impl BillingService {
         debug!("Fetching billing dashboard data for user: {}", user_id);
 
         // Get credit balance, billing readiness, and customer billing info concurrently
-        let (credit_balance, billing_readiness, customer_billing_info) = tokio::join!(
+        let (credit_balance_res, billing_readiness_res, customer_billing_info_res) = tokio::join!(
             self.credit_service.get_user_balance(user_id),
             self._check_billing_readiness(user_id),
             self.get_customer_billing_info(user_id)
         );
 
-        let credit_balance = credit_balance?;
-        let (is_payment_method_required, is_billing_info_required) = billing_readiness.unwrap_or((false, false));
-        let customer_billing_info = customer_billing_info.unwrap_or(None);
+        let credit_balance = credit_balance_res?;
+
+        let usage_limit_usd = self.default_signup_credits;
+        let free_credit_balance_usd = credit_balance.free_credit_balance.to_f64().unwrap_or(0.0);
+        let current_usage = (usage_limit_usd - free_credit_balance_usd).max(0.0);
+
+        let (is_payment_method_required, is_billing_info_required) = match billing_readiness_res {
+            Ok(readiness) => readiness,
+            Err(e) => {
+                warn!("Could not check billing readiness for user {}: {}. Defaulting to not required to avoid blocking user.", user_id, e);
+                (false, false)
+            }
+        };
+
+        let customer_billing_info = customer_billing_info_res?;
         
         // Calculate total balance
         let total_balance = &credit_balance.balance + &credit_balance.free_credit_balance;
@@ -380,6 +218,8 @@ impl BillingService {
             is_payment_method_required,
             is_billing_info_required,
             customer_billing_info,
+            usage_limit_usd,
+            current_usage,
         };
 
         info!("Successfully assembled billing dashboard data for user: {}", user_id);
@@ -419,25 +259,46 @@ impl BillingService {
         let mut tx = self.db_pools.user_pool.begin().await
             .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
         
-        // Set user context for RLS within the transaction
         sqlx::query("SELECT set_config('app.current_user_id', $1, true)")
             .bind(user_id.to_string())
             .execute(&mut *tx)
             .await
             .map_err(|e| AppError::Database(format!("Failed to set user context in transaction: {}", e)))?;
+
+        // 1. Check local DB first
+        if let Some(customer_billing) = self.customer_billing_repository.get_by_user_id_with_executor(user_id, &mut tx).await? {
+            if let Some(stripe_id) = customer_billing.stripe_customer_id {
+                tx.commit().await.map_err(|e| AppError::Database(format!("Failed to commit transaction: {}", e)))?;
+                return Ok(stripe_id);
+            }
+        }
+
+        // 2. If not found locally, search Stripe
+        let stripe_service = self.get_stripe_service()?;
+        if let Some(customer) = stripe_service.search_customer_by_user_id(user_id).await
+            .map_err(|e| AppError::External(format!("Failed to search for Stripe customer: {}", e)))? {
+            self.customer_billing_repository.upsert_stripe_customer_id_with_executor(user_id, &customer.id, &mut tx).await?;
+            tx.commit().await.map_err(|e| AppError::Database(format!("Failed to commit transaction: {}", e)))?;
+            return Ok(customer.id);
+        }
+
+        // 3. If not found on Stripe, create a new Stripe customer
+        let user_repo = UserRepository::new(self.db_pools.system_pool.clone());
+        let user = user_repo.get_by_id(user_id).await?;
+        let idempotency_key = uuid::Uuid::new_v4().to_string();
+        let new_customer = stripe_service.create_customer(
+            &idempotency_key,
+            user_id,
+            &user.email,
+            user.full_name.as_deref(),
+        ).await.map_err(|e| AppError::External(format!("Failed to create Stripe customer: {}", e)))?;
         
-        // Ensure user has customer billing
-        let customer_billing = match self.customer_billing_repository.get_by_user_id_with_executor(user_id, &mut tx).await? {
-            Some(customer_billing) => customer_billing,
-            None => self.create_simple_customer_billing_in_tx(user_id, &mut tx).await?,
-        };
+        // 4. Upsert the new customer ID into our DB
+        self.customer_billing_repository.upsert_stripe_customer_id_with_executor(user_id, &new_customer.id, &mut tx).await?;
         
-        let customer_id = self._get_or_create_stripe_customer_with_executor(user_id, &mut tx).await?;
+        tx.commit().await.map_err(|e| AppError::Database(format!("Failed to commit transaction: {}", e)))?;
         
-        tx.commit().await
-            .map_err(|e| AppError::Database(format!("Failed to commit transaction: {}", e)))?;
-        
-        Ok(customer_id)
+        Ok(new_customer.id)
     }
 
     /// Get access to the StripeService for advanced operations
@@ -453,35 +314,10 @@ impl BillingService {
         &self,
         user_id: &Uuid,
     ) -> Result<Vec<serde_json::Value>, AppError> {
-        // Ensure Stripe is configured
-        let stripe_service = match &self.stripe_service {
-            Some(service) => service,
-            None => return Err(AppError::Configuration("Stripe not configured".to_string())),
-        };
-
-        // Start transaction for atomic customer operations
-        let mut tx = self.db_pools.user_pool.begin().await
-            .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
-
-        // Set user context for RLS within the transaction
-        sqlx::query("SELECT set_config('app.current_user_id', $1, true)")
-            .bind(user_id.to_string())
-            .execute(&mut *tx)
-            .await
-            .map_err(|e| AppError::Database(format!("Failed to set user context in transaction: {}", e)))?;
-
-        // Ensure user has customer billing
-        let customer_billing = match self.customer_billing_repository.get_by_user_id_with_executor(user_id, &mut tx).await? {
-            Some(customer_billing) => customer_billing,
-            None => self.create_simple_customer_billing_in_tx(user_id, &mut tx).await?,
-        };
-
-        // Get customer ID within transaction
-        let customer_id = self._get_or_create_stripe_customer_with_executor(user_id, &mut tx).await?;
-
-        // Commit transaction after customer operations
-        tx.commit().await
-            .map_err(|e| AppError::Database(format!("Failed to commit transaction: {}", e)))?;
+        let stripe_service = self.get_stripe_service()?;
+        
+        // Get or create Stripe customer
+        let customer_id = self.get_or_create_stripe_customer(user_id).await?;
 
         // Concurrently fetch customer details and payment methods
         let (customer, payment_methods) = tokio::try_join!(
@@ -994,6 +830,57 @@ impl BillingService {
         Ok((api_usage_record, user_credit))
     }
     
+    /// Mark an API charge as failed, ensuring no cost is billed to the user.
+    /// This is used for provider-side errors where the user should not be charged.
+    pub async fn fail_api_charge(
+        &self,
+        request_id: &str,
+        user_id: &Uuid,
+        error_message: &str,
+    ) -> Result<(), AppError> {
+        debug!("Failing API charge for request: {}", request_id);
+        
+        // Create metadata to indicate failure
+        let metadata = serde_json::json!({
+            "status": "failed",
+            "error": error_message,
+            "streaming": true,
+        });
+
+        // Use the existing finalize_charge_in_transaction_with_metadata method
+        // but with zero cost and zero usage to mark as failed
+        let zero_usage = ProviderUsage::new(0, 0, 0, 0, "unknown".to_string());
+        
+        // Start transaction
+        let pool = self.credit_service.get_user_credit_repository().get_pool();
+        let mut tx = pool.begin().await.map_err(AppError::from)?;
+        
+        // Set RLS context
+        sqlx::query("SELECT set_config('app.current_user_id', $1, true)")
+            .bind(user_id.to_string())
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| AppError::Database(format!("Failed to set user context in transaction: {}", e)))?;
+        
+        // Call the credit service to finalize with zero cost
+        // The credit service should be updated to check metadata.status == "failed" and set the appropriate status
+        let _ = self.credit_service
+            .finalize_charge_in_transaction_with_metadata(
+                request_id,
+                BigDecimal::from(0),
+                &zero_usage,
+                Some(metadata),
+                &mut tx
+            )
+            .await?;
+        
+        // Commit transaction
+        tx.commit().await.map_err(AppError::from)?;
+        
+        info!("Successfully marked charge as failed for request {}", request_id);
+        Ok(())
+    }
+    
     /// Record API usage with pre-resolved cost (simplified billing flow)
     /// This method takes a cost that has already been resolved by the CostResolver
     pub async fn charge_for_api_usage(
@@ -1229,124 +1116,81 @@ impl BillingService {
 
     /// Get customer billing information for display
     pub async fn get_customer_billing_info(&self, user_id: &Uuid) -> Result<Option<CustomerBillingInfo>, AppError> {
-        // Check if user has made a purchase - if not, no billing info needed
-        let has_purchased = self.credit_service.has_user_made_purchase(user_id).await?;
-        if !has_purchased {
-            return Ok(None);
-        }
-
-        // Ensure Stripe is configured
         let stripe_service = match &self.stripe_service {
             Some(service) => service,
-            None => return Ok(None), // Return None instead of error for better UX
-        };
-
-        // Get Stripe customer ID - return None if not found instead of creating
-        let mut tx = self.db_pools.user_pool.begin().await
-            .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
-
-        sqlx::query("SELECT set_config('app.current_user_id', $1, true)")
-            .bind(user_id.to_string())
-            .execute(&mut *tx)
-            .await
-            .map_err(|e| AppError::Database(format!("Failed to set user context: {}", e)))?;
-
-        let customer_billing = match self.customer_billing_repository.get_by_user_id_with_executor(user_id, &mut tx).await? {
-            Some(billing) => billing,
-            None => {
-                let _ = tx.rollback().await;
-                return Ok(None);
-            }
-        };
-
-        tx.commit().await
-            .map_err(|e| AppError::Database(format!("Failed to commit transaction: {}", e)))?;
-
-        let customer_id = match customer_billing.stripe_customer_id {
-            Some(id) => id,
             None => return Ok(None),
         };
 
-        // Fetch customer and tax IDs from Stripe concurrently
-        let (customer_result, tax_ids_result) = tokio::join!(
-            stripe_service.get_customer(&customer_id),
-            stripe_service.get_customer_tax_ids(&customer_id)
-        );
+        // This function is now strictly read-only regarding our database.
+        let mut tx = self.db_pools.user_pool.begin().await.map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
+        sqlx::query("SELECT set_config('app.current_user_id', $1, true)").bind(user_id.to_string()).execute(&mut *tx).await.map_err(|e| AppError::Database(format!("Failed to set user context: {}", e)))?;
+        
+        let maybe_stripe_id = if let Some(billing) = self.customer_billing_repository.get_by_user_id_with_executor(user_id, &mut tx).await? {
+            billing.stripe_customer_id
+        } else {
+            None
+        };
+        tx.commit().await.map_err(|e| AppError::Database(format!("Failed to commit transaction: {}", e)))?;
 
-        let customer = match customer_result {
-            Ok(customer) => customer,
-            Err(_) => return Ok(None), // Gracefully handle Stripe errors
+        let customer_id = if let Some(id) = maybe_stripe_id {
+            id
+        } else {
+            // If not found locally, search Stripe without writing to DB
+            if let Some(customer) = stripe_service.search_customer_by_user_id(user_id).await
+                .map_err(|e| AppError::External(format!("Failed to search for Stripe customer: {}", e)))? {
+                customer.id
+            } else {
+                return Ok(None); // No Stripe customer exists for this user.
+            }
         };
 
-        // Process tax IDs, ignore errors for better UX
-        let tax_ids = tax_ids_result
-            .unwrap_or_default()
-            .into_iter()
-            .map(|tax_id| TaxIdInfo {
-                r#type: tax_id.r#type,
-                value: tax_id.value,
-                country: tax_id.country,
-            })
-            .collect();
+        // Fetch full customer object from Stripe
+        let customer = stripe_service.get_customer(&customer_id).await.map_err(|e| {
+            error!("Failed to fetch customer {} from Stripe: {:?}", customer_id, e);
+            AppError::from(e)
+        })?;
 
-        Ok(Some(CustomerBillingInfo {
-            customer_name: customer.name.clone(),
-            customer_email: customer.email,
-            phone: customer.phone,
-            tax_exempt: customer.tax_exempt,
-            tax_ids,
-            address_line1: customer.address.as_ref().and_then(|a| a.line1.clone()),
-            address_line2: customer.address.as_ref().and_then(|a| a.line2.clone()),
-            address_city: customer.address.as_ref().and_then(|a| a.city.clone()),
-            address_state: customer.address.as_ref().and_then(|a| a.state.clone()),
-            address_postal_code: customer.address.as_ref().and_then(|a| a.postal_code.clone()),
-            address_country: customer.address.as_ref().and_then(|a| a.country.clone()),
-            has_billing_info: customer.name.is_some(),
-        }))
+        Ok(Some(CustomerBillingInfo::from(&customer)))
     }
 
 
     /// Check billing readiness requirements for a user
     async fn _check_billing_readiness(&self, user_id: &Uuid) -> Result<(bool, bool), AppError> {
-        // Check if user has made a purchase - if not, no billing requirements
-        let has_purchased = self.credit_service.has_user_made_purchase(user_id).await?;
-        if !has_purchased {
+        if !self.credit_service.has_user_made_purchase(user_id).await? {
             return Ok((false, false));
         }
 
-        // Ensure Stripe is configured
-        let stripe_service = match &self.stripe_service {
-            Some(service) => service,
-            None => return Err(AppError::Configuration("Stripe not configured".to_string())),
+        let stripe_service = self.get_stripe_service()?;
+        
+        // Read-only lookup for stripe_customer_id
+        let customer_id = {
+            let mut tx = self.db_pools.user_pool.begin().await.map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
+            sqlx::query("SELECT set_config('app.current_user_id', $1, true)").bind(user_id.to_string()).execute(&mut *tx).await.map_err(|e| AppError::Database(format!("Failed to set user context: {}", e)))?;
+            let maybe_id = self.customer_billing_repository.get_by_user_id_with_executor(user_id, &mut tx).await?.and_then(|b| b.stripe_customer_id);
+            tx.commit().await.map_err(|e| AppError::Database(format!("Failed to commit transaction: {}", e)))?;
+            
+            if let Some(id) = maybe_id {
+                id
+            } else if let Some(customer) = stripe_service.search_customer_by_user_id(user_id).await
+                .map_err(|e| AppError::External(format!("Failed to search for Stripe customer: {}", e)))? {
+                customer.id
+            } else {
+                // No stripe customer, so no readiness requirements apply.
+                return Ok((false, false));
+            }
         };
 
-        // Get or create Stripe customer ID
-        let customer_id = self.get_or_create_stripe_customer(user_id).await?;
-
-        // Fetch customer and payment methods concurrently
         let (customer, payment_methods) = tokio::try_join!(
             stripe_service.get_customer(&customer_id),
             stripe_service.list_payment_methods(&customer_id)
         ).map_err(|e| AppError::External(format!("Failed to fetch customer data: {}", e)))?;
 
-        // Check payment method requirements
-        let has_default_payment_method = customer.invoice_settings
-            .as_ref()
-            .and_then(|settings| settings.default_payment_method.as_ref())
-            .is_some();
+        let has_default_payment_method = customer.invoice_settings.as_ref().and_then(|s| s.default_payment_method.as_ref()).is_some();
         let has_any_payment_methods = !payment_methods.is_empty();
         let is_payment_method_required = !has_default_payment_method || !has_any_payment_methods;
-
-        // Check billing information requirements
-        let is_billing_info_required = customer.name.is_none() || 
-            customer.address.is_none() || 
-            customer.address.as_ref().map_or(true, |addr| {
-                addr.line1.is_none() || 
-                addr.city.is_none() || 
-                addr.postal_code.is_none() || 
-                addr.country.is_none()
-            });
-
+        let is_billing_address_complete = customer.address.as_ref().map_or(false, |addr| addr.line1.is_some() && addr.city.is_some() && addr.postal_code.is_some() && addr.country.is_some());
+        let is_shipping_address_complete = customer.shipping.as_ref().and_then(|s| s.address.as_ref()).map_or(false, |addr| addr.line1.is_some() && addr.city.is_some() && addr.postal_code.is_some() && addr.country.is_some());
+        let is_billing_info_required = customer.name.is_none() || (!is_billing_address_complete && !is_shipping_address_complete);
         Ok((is_payment_method_required, is_billing_info_required))
     }
 

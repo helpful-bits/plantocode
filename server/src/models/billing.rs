@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use crate::stripe_types;
 
 // Invoice-related models
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -47,9 +48,22 @@ pub struct CreditHistoryResponse {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct TaxIdInfo {
-    pub r#type: String,
+    #[serde(rename = "type_")]
+    pub type_: String,
     pub value: String,
     pub country: Option<String>,
+    pub verification_status: Option<String>,
+}
+
+impl From<&stripe_types::customer::TaxId> for TaxIdInfo {
+    fn from(tax_id: &stripe_types::customer::TaxId) -> Self {
+        Self {
+            type_: tax_id.r#type.clone(),
+            value: tax_id.value.clone(),
+            country: tax_id.country.clone(),
+            verification_status: tax_id.verification.as_ref().map(|v| v.status.clone()),
+        }
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -69,6 +83,49 @@ pub struct CustomerBillingInfo {
     pub has_billing_info: bool,
 }
 
+impl From<&stripe_types::customer::Customer> for CustomerBillingInfo {
+    fn from(customer: &stripe_types::customer::Customer) -> Self {
+        // Use billing address, fall back to shipping address if billing is missing
+        let address = customer.address.as_ref().or_else(|| {
+            customer.shipping.as_ref().and_then(|s| s.address.as_ref())
+        });
+        
+        // Calculate has_billing_info based on name and complete address
+        let has_billing_info = customer.name.is_some() && 
+            address.as_ref().map_or(false, |addr| {
+                addr.line1.is_some() && 
+                addr.city.is_some() && 
+                addr.country.is_some()
+            });
+        
+        // Convert tax_exempt enum to string
+        let tax_exempt = customer.tax_exempt.as_ref().map(|te| {
+            serde_json::to_string(te).unwrap_or_else(|_| "\"none\"".to_string())
+                .trim_matches('"').to_string()
+        });
+        
+        // Convert tax_ids from TaxIdList
+        let tax_ids = customer.tax_ids.as_ref()
+            .map(|list| list.data.iter().map(TaxIdInfo::from).collect())
+            .unwrap_or_default();
+        
+        Self {
+            customer_name: customer.name.clone(),
+            customer_email: customer.email.clone(),
+            phone: customer.phone.clone(),
+            tax_exempt,
+            tax_ids,
+            address_line1: address.and_then(|a| a.line1.clone()),
+            address_line2: address.and_then(|a| a.line2.clone()),
+            address_city: address.and_then(|a| a.city.clone()),
+            address_state: address.and_then(|a| a.state.clone()),
+            address_postal_code: address.and_then(|a| a.postal_code.clone()),
+            address_country: address.and_then(|a| a.country.clone()),
+            has_billing_info,
+        }
+    }
+}
+
 // Dashboard models
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -80,6 +137,8 @@ pub struct BillingDashboardData {
     pub is_payment_method_required: bool,
     pub is_billing_info_required: bool,
     pub customer_billing_info: Option<CustomerBillingInfo>,
+    pub usage_limit_usd: f64,
+    pub current_usage: f64,
 }
 
 #[derive(Debug, Deserialize)]

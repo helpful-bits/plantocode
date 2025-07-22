@@ -44,6 +44,7 @@ export function InvoicesList({ className }: InvoicesListProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState<number | null>(null);
   const [downloadingInvoice, setDownloadingInvoice] = useState<string | null>(null);
   const [downloadedFiles, setDownloadedFiles] = useState<Record<string, string>>({});
 
@@ -55,8 +56,38 @@ export function InvoicesList({ className }: InvoicesListProps) {
       const offset = (page - 1) * ITEMS_PER_PAGE;
       const response = await listInvoices(ITEMS_PER_PAGE, offset);
       
-      setInvoicesData(response);
-      setCurrentPage(page);
+      // Check if this page has data
+      if (response.invoices.length > 0) {
+        // Valid page with data
+        setInvoicesData(response);
+        setCurrentPage(page);
+        
+        // Track total pages based on hasMore
+        if (!response.hasMore) {
+          setTotalPages(page);
+        }
+      } else if (page === 1) {
+        // First page with no data - valid state
+        setInvoicesData(response);
+        setCurrentPage(page);
+        setTotalPages(0);
+      } else {
+        // Empty page beyond the first - this page doesn't exist
+        // The actual last page is the previous one
+        setTotalPages(page - 1);
+        
+        // Don't update invoicesData - keep showing the current page's data
+        // Just update hasMore to prevent further navigation
+        if (invoicesData) {
+          setInvoicesData({
+            ...invoicesData,
+            hasMore: false
+          });
+        }
+        
+        // Don't update currentPage - stay on the page that has data
+        // This way "Page X" remains accurate
+      }
     } catch (err) {
       const errorMessage = getErrorMessage(err);
       
@@ -123,7 +154,9 @@ export function InvoicesList({ className }: InvoicesListProps) {
     return <ErrorState message={error} onRetry={handleRetry} />;
   }
 
-  if (!invoicesData || invoicesData.invoices.length === 0) {
+  // Only show "No Billing History" if we're on the first page with no data
+  // If we're on a later page with no data, show the empty table with pagination
+  if (!invoicesData || (invoicesData.invoices.length === 0 && currentPage === 1)) {
     return (
       <Card className={className}>
         <CardHeader>
@@ -145,9 +178,6 @@ export function InvoicesList({ className }: InvoicesListProps) {
     );
   }
 
-  const hasNextPage = invoicesData.hasMore;
-  const hasPrevPage = currentPage > 1;
-
   return (
     <Card className={className}>
       <CardHeader>
@@ -159,86 +189,127 @@ export function InvoicesList({ className }: InvoicesListProps) {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        {/* Invoice List */}
-        <div className="space-y-3">
-          {invoicesData.invoices.map((invoice) => (
-            <div
-              key={invoice.id}
-              className="flex items-center justify-between p-4 border border-border/50 rounded-lg hover:bg-muted/50 transition-colors"
-            >
-              <div className="flex-1">
-                <div className="flex items-center gap-6 flex-wrap">
-                  <span className="font-medium">
-                    {formatUsdCurrency(invoice.amountDue / 100)}
-                  </span>
-                  <Badge variant={getStatusVariant(invoice.status)}>
-                    {invoice.status.charAt(0).toUpperCase() + invoice.status.slice(1)}
-                  </Badge>
-                  <span className="text-sm text-muted-foreground">
-                    {formatInvoiceDate(invoice.created)}
-                  </span>
-                  {invoice.dueDate && invoice.status.toLowerCase() !== 'paid' && (
-                    <span className="text-sm text-muted-foreground">
-                      Due: {formatInvoiceDate(invoice.dueDate)}
+        {/* Invoice Table */}
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-border/40">
+                <th className="text-left text-xs font-medium text-muted-foreground py-2 px-1">Amount</th>
+                <th className="text-left text-xs font-medium text-muted-foreground py-2 px-1">Status</th>
+                <th className="text-left text-xs font-medium text-muted-foreground py-2 px-1">Date</th>
+                <th className="text-right text-xs font-medium text-muted-foreground py-2 px-1">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {invoicesData.invoices.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="text-center py-8">
+                    <div className="space-y-2">
+                      <p className="text-sm text-muted-foreground">
+                        No invoices yet. Your invoice history will appear here after purchases.
+                      </p>
+                      {currentPage > 1 && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handlePageChange(currentPage - 1)}
+                          className="h-8 px-3"
+                        >
+                          <ChevronLeft className="h-4 w-4 mr-2" />
+                          Go Back
+                        </Button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                invoicesData.invoices.map((invoice) => (
+                <tr
+                  key={invoice.id}
+                  className="border-b border-border/30 hover:bg-muted/30 transition-colors"
+                >
+                  <td className="py-2 px-1">
+                    <span className="font-medium text-sm">
+                      {formatUsdCurrency(invoice.amountDue / 100)}
                     </span>
-                  )}
-                  {downloadedFiles[invoice.id] && (
-                    <button
-                      onClick={() => handleRevealInFolder(downloadedFiles[invoice.id])}
-                      className="text-sm text-success hover:underline cursor-pointer flex items-center gap-1"
-                    >
-                      <FolderOpen className="h-3 w-3" />
-                      Show in Folder
-                    </button>
-                  )}
-                </div>
-              </div>
-              
-              <div className="flex items-center gap-2">
-                {invoice.invoicePdfUrl && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleDownloadInvoice(invoice)}
-                    disabled={downloadingInvoice === invoice.id}
-                    className="flex items-center gap-2"
-                  >
-                    <Download className="h-4 w-4" />
-                    {downloadingInvoice === invoice.id ? 'Downloading...' : 'Download PDF'}
-                  </Button>
-                )}
-              </div>
-            </div>
-          ))}
+                  </td>
+                  <td className="py-2 px-1">
+                    <Badge variant={getStatusVariant(invoice.status)} className="text-xs">
+                      {invoice.status.charAt(0).toUpperCase() + invoice.status.slice(1)}
+                    </Badge>
+                  </td>
+                  <td className="py-2 px-1 text-sm text-muted-foreground">
+                    {formatInvoiceDate(invoice.created)}
+                  </td>
+                  <td className="py-2 px-1 text-right">
+                    <div className="flex items-center gap-2 justify-end">
+                      {downloadedFiles[invoice.id] && (
+                        <button
+                          onClick={() => handleRevealInFolder(downloadedFiles[invoice.id])}
+                          className="text-xs text-success hover:underline cursor-pointer flex items-center gap-1"
+                        >
+                          <FolderOpen className="h-3 w-3" />
+                          Show
+                        </button>
+                      )}
+                      {invoice.invoicePdfUrl && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleDownloadInvoice(invoice)}
+                          disabled={downloadingInvoice === invoice.id}
+                          className="h-7 text-xs px-2"
+                        >
+                          <Download className="h-3 w-3 mr-1" />
+                          {downloadingInvoice === invoice.id ? 'Downloading...' : 'PDF'}
+                        </Button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))
+              )}
+            </tbody>
+          </table>
         </div>
 
         {/* Pagination */}
-        {(hasNextPage || hasPrevPage) && (
-          <div className="flex items-center justify-between pt-4 border-t">
-            <div className="text-sm text-muted-foreground">
-              Page {currentPage}
-            </div>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => handlePageChange(currentPage - 1)}
-                disabled={!hasPrevPage}
-                className="flex items-center gap-1"
-              >
-                <ChevronLeft className="h-4 w-4" />
-                Previous
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => handlePageChange(currentPage + 1)}
-                disabled={!hasNextPage}
-                className="flex items-center gap-1"
-              >
-                Next
-                <ChevronRight className="h-4 w-4" />
-              </Button>
+        {(invoicesData.hasMore || currentPage > 1) && (
+          <div className="pt-4 border-t flex-shrink-0">
+            <div className="flex items-center justify-between">
+              <div className="text-sm text-muted-foreground">
+                Page {currentPage}{totalPages !== null ? ` of ${totalPages}` : ''}
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handlePageChange(1)}
+                  disabled={currentPage <= 1 || isLoading}
+                  className="h-8 px-2"
+                  title="First page"
+                >
+                  ««
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handlePageChange(currentPage - 1)}
+                  disabled={currentPage <= 1 || isLoading}
+                  className="h-8 px-3"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handlePageChange(currentPage + 1)}
+                  disabled={!invoicesData.hasMore || isLoading}
+                  className="h-8 px-3"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
           </div>
         )}

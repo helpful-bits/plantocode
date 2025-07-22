@@ -38,6 +38,7 @@
 // - Usage record reporting MUST be idempotent to prevent double billing
 //
 use crate::stripe_types::{self, *};
+use crate::utils::admin_alerting;
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use chrono::{DateTime, Utc};
 use hmac::{Hmac, Mac};
@@ -362,25 +363,61 @@ impl StripeService {
         Ok(event.clone())
     }
 
-    /// Create or retrieve existing customer
-    pub async fn create_or_get_customer(
+    /// Search for customers using Stripe's search API
+    pub async fn search_customers(&self, query: &str) -> Result<SearchResult<Customer>, StripeServiceError> {
+        let encoded_query = urlencoding::encode(query);
+        let response = self.make_stripe_request_with_idempotency(
+            reqwest::Method::GET,
+            &format!("customers/search?query={}", encoded_query),
+            None,
+            None,
+        ).await?;
+        
+        let search_result: SearchResult<Customer> = serde_json::from_value(response)
+            .map_err(|e| StripeServiceError::Configuration(format!("Failed to parse customer search response: {}", e)))?;
+        
+        info!("Customer search for query '{}' returned {} results", query, search_result.data.len());
+        Ok(search_result)
+    }
+
+    /// Search for a customer by user_id metadata
+    pub async fn search_customer_by_user_id(&self, user_id: &Uuid) -> Result<Option<Customer>, StripeServiceError> {
+        let query = format!("metadata['user_id']:'\"{}\"'", user_id);
+        let search_result = self.search_customers(&query).await?;
+
+        if search_result.data.len() > 1 {
+            let subject = "CRITICAL: Multiple Stripe Customers Found for Single User".to_string();
+            let message = format!(
+                "Data integrity alert: Found {} Stripe customers for user_id: {}. This requires immediate manual investigation. Customer IDs: {:?}",
+                search_result.data.len(),
+                user_id,
+                search_result.data.iter().map(|c| &c.id).collect::<Vec<_>>()
+            );
+            warn!("{}", &message);
+            // Asynchronously send an alert to admins
+            tokio::spawn(async move {
+                let alerting_service = admin_alerting::AdminAlertingService::new();
+                let alert = admin_alerting::AdminAlert::new(
+                    admin_alerting::AlertSeverity::Critical,
+                    admin_alerting::AlertType::DataIntegrityIssue,
+                    subject,
+                    message,
+                );
+                alerting_service.send_alert(alert).await;
+            });
+        }
+
+        Ok(search_result.data.into_iter().next())
+    }
+
+    /// Create a new customer in Stripe
+    pub async fn create_customer(
         &self,
         idempotency_key: &str,
         user_id: &Uuid,
         email: &str,
         name: Option<&str>,
-        existing_customer_id: Option<&str>,
     ) -> Result<stripe_types::Customer, StripeServiceError> {
-        // If we have an existing customer ID, try to retrieve it first
-        if let Some(customer_id) = existing_customer_id {
-            match self.get_customer(customer_id).await {
-                Ok(customer) => return Ok(customer),
-                Err(e) => {
-                    warn!("Failed to retrieve existing customer {}: {}", customer_id, e);
-                }
-            }
-        }
-
         // Create new customer using direct API call with idempotency key
         let mut customer_data = serde_json::json!({
             "email": email
@@ -416,7 +453,7 @@ impl StripeService {
     pub async fn get_customer(&self, customer_id: &str) -> Result<stripe_types::Customer, StripeServiceError> {
         let response = self.make_stripe_request_with_idempotency(
             reqwest::Method::GET,
-            &format!("customers/{}", customer_id),
+            &format!("customers/{}?expand[]=tax_ids", customer_id),
             None,
             None,
         ).await?;
@@ -425,18 +462,6 @@ impl StripeService {
         Ok(customer)
     }
 
-    /// Retrieve tax IDs for a customer
-    pub async fn get_customer_tax_ids(&self, customer_id: &str) -> Result<Vec<stripe_types::TaxId>, StripeServiceError> {
-        let response = self.make_stripe_request_with_idempotency(
-            reqwest::Method::GET,
-            &format!("customers/{}/tax_ids", customer_id),
-            None,
-            None,
-        ).await?;
-        let tax_id_list: stripe_types::TaxIdList = serde_json::from_value(response)
-            .map_err(|e| StripeServiceError::Configuration(format!("Failed to parse tax ID response: {}", e)))?;
-        Ok(tax_id_list.data)
-    }
 
     /// Create a payment intent for processing payments using latest Stripe patterns
     pub async fn create_payment_intent(

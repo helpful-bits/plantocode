@@ -12,6 +12,7 @@ interface NewSessionFormProps {
   isLoading: boolean;
   disabled: boolean;
   globalIsSwitching: boolean;
+  inputRef?: React.RefObject<HTMLInputElement>;
 }
 
 const NewSessionForm = ({
@@ -21,10 +22,12 @@ const NewSessionForm = ({
   isLoading,
   disabled,
   globalIsSwitching,
+  inputRef,
 }: NewSessionFormProps) => {
   return (
     <div className="flex items-center gap-2">
       <Input
+        ref={inputRef}
         value={sessionNameInput}
         onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
           onSessionNameInputChange(e.target.value)

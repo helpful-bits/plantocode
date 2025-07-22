@@ -124,6 +124,14 @@ impl CustomerBillingRepository {
     pub async fn get_by_user_id(&self, user_id: &Uuid) -> Result<Option<CustomerBilling>, AppError> {
         let mut tx = self.db_pool.begin().await
             .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
+        
+        // Set user context for RLS
+        sqlx::query("SELECT set_config('app.current_user_id', $1, true)")
+            .bind(user_id.to_string())
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| AppError::Database(format!("Failed to set user context: {}", e)))?;
+            
         let result = self.get_by_user_id_with_executor(user_id, &mut tx).await?;
         tx.commit().await
             .map_err(|e| AppError::Database(format!("Failed to commit transaction: {}", e)))?;
@@ -161,27 +169,26 @@ impl CustomerBillingRepository {
         threshold: Option<BigDecimal>,
         amount: Option<BigDecimal>,
     ) -> Result<(), AppError> {
-        let result = query!(
+        query!(
             r#"
-            UPDATE customer_billing 
-            SET auto_top_off_enabled = $1,
-                auto_top_off_threshold = $2,
-                auto_top_off_amount = $3,
+            INSERT INTO customer_billing 
+            (id, user_id, stripe_customer_id, auto_top_off_enabled, auto_top_off_threshold, auto_top_off_amount, created_at, updated_at)
+            VALUES 
+            (gen_random_uuid(), $1, NULL, $2, $3, $4, now(), now())
+            ON CONFLICT (user_id) DO UPDATE
+            SET auto_top_off_enabled = EXCLUDED.auto_top_off_enabled,
+                auto_top_off_threshold = EXCLUDED.auto_top_off_threshold,
+                auto_top_off_amount = EXCLUDED.auto_top_off_amount,
                 updated_at = now()
-            WHERE user_id = $4
             "#,
+            user_id,
             enabled,
             threshold,
-            amount,
-            user_id
+            amount
         )
         .execute(&self.db_pool)
         .await
         .map_err(|e| AppError::Database(format!("Failed to update auto top-off settings: {}", e)))?;
-
-        if result.rows_affected() == 0 {
-            return Err(AppError::Database("Customer billing record not found for update".to_string()));
-        }
 
         Ok(())
     }
@@ -210,6 +217,33 @@ impl CustomerBillingRepository {
         if result.rows_affected() == 0 {
             return Err(AppError::NotFound("Customer billing record not found to update stripe customer id".to_string()));
         }
+
+        Ok(())
+    }
+
+    // Upsert stripe customer ID with custom executor
+    pub async fn upsert_stripe_customer_id_with_executor(
+        &self,
+        user_id: &Uuid,
+        stripe_customer_id: &str,
+        executor: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    ) -> Result<(), AppError> {
+        query!(
+            r#"
+            INSERT INTO customer_billing 
+            (id, user_id, stripe_customer_id, auto_top_off_enabled, created_at, updated_at)
+            VALUES 
+            (gen_random_uuid(), $1, $2, false, now(), now())
+            ON CONFLICT (user_id) DO UPDATE
+            SET stripe_customer_id = EXCLUDED.stripe_customer_id,
+                updated_at = now()
+            "#,
+            user_id,
+            stripe_customer_id
+        )
+        .execute(&mut **executor)
+        .await
+        .map_err(|e| AppError::Database(format!("Failed to upsert stripe customer id: {}", e)))?;
 
         Ok(())
     }

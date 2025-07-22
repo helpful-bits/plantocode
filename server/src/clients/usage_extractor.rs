@@ -303,6 +303,27 @@ impl ProviderUsage {
         self.cost = Some(cost);
     }
     
+    pub fn merge_with(&mut self, other: &ProviderUsage) {
+        if other.prompt_tokens > 0 {
+            self.prompt_tokens = other.prompt_tokens;
+        }
+        if other.completion_tokens > 0 {
+            self.completion_tokens = other.completion_tokens;  
+        }
+        if other.cache_write_tokens > 0 {
+            self.cache_write_tokens = other.cache_write_tokens;
+        }
+        if other.cache_read_tokens > 0 {
+            self.cache_read_tokens = other.cache_read_tokens;
+        }
+        if other.cost.is_some() {
+            self.cost = other.cost.clone();
+        }
+        if other.metadata.is_some() {
+            self.metadata = other.metadata.clone();
+        }
+    }
+    
     
     
     /// Create a new ProviderUsage with provider-calculated cost information

@@ -68,21 +68,102 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
   const [isSaving, setIsSaving] = React.useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = React.useState(false);
   const [editedContent, setEditedContent] = React.useState<string>("");
+  const [fullPlanDetails, setFullPlanDetails] = React.useState<BackgroundJob | null>(null);
+  const [isLoadingFullDetails, setIsLoadingFullDetails] = React.useState(false);
   const { showNotification } = useNotification();
   
   // Get live jobs from context for real-time updates
   const { jobs } = useContext(BackgroundJobsContext) as BackgroundJobsContextType;
   
-  // Get the live version of the current plan
+  // Get the live version of the current plan for real-time streaming updates
   const livePlan = useMemo(() => {
     if (!plan) return null;
     return jobs.find((j: BackgroundJob) => j.id === plan.id) || plan;
   }, [plan, jobs]);
+  
+  // Fetch full plan details when modal opens or plan changes
+  useEffect(() => {
+    if (!plan || !open) {
+      setFullPlanDetails(null);
+      return;
+    }
+
+    const fetchFullDetails = async () => {
+      setIsLoadingFullDetails(true);
+      try {
+        const result = await invoke("get_background_job_by_id_command", { jobId: plan.id });
+        setFullPlanDetails(result as BackgroundJob);
+      } catch (error) {
+        console.error("Failed to fetch full plan details:", error);
+        // Fallback to using the plan prop
+        setFullPlanDetails(plan);
+      } finally {
+        setIsLoadingFullDetails(false);
+      }
+    };
+
+    fetchFullDetails();
+  }, [plan?.id, open]);
+
+  // Fetch full details when streaming completes
+  useEffect(() => {
+    if (!livePlan || !open) return;
+    
+    const isCompleted = livePlan.status === "completed";
+    const hasEndTime = !!livePlan.endTime;
+    
+    // If job is completed but we don't have full details yet, fetch them
+    // This handles the case where streaming just finished
+    if (isCompleted && hasEndTime && !fullPlanDetails && !isLoadingFullDetails) {
+      const fetchFullDetails = async () => {
+        try {
+          const result = await invoke("get_background_job_by_id_command", { jobId: livePlan.id });
+          setFullPlanDetails(result as BackgroundJob);
+        } catch (error) {
+          console.error("Failed to fetch full plan details after completion:", error);
+          // Don't set fullPlanDetails to livePlan here, let it keep trying
+        }
+      };
+      
+      // Small delay to ensure streaming has fully stopped and database is updated
+      const timeoutId = setTimeout(() => {
+        fetchFullDetails();
+      }, 1000);
+      
+      return () => clearTimeout(timeoutId);
+    }
+    
+    return undefined;
+  }, [livePlan?.status, livePlan?.endTime, livePlan?.id, open, fullPlanDetails, isLoadingFullDetails]);
 
   if (!plan) return null;
   
-  // Use the live plan for real-time updates
-  const displayPlan = livePlan;
+  // Smart plan selection logic:
+  // - For streaming jobs: always use live plan for real-time updates
+  // - For completed jobs: use full details if available AND if it has more complete content
+  const displayPlan = useMemo(() => {
+    if (!livePlan) return null;
+    
+    const isLiveStreaming = JOB_STATUSES.ACTIVE.includes(livePlan.status);
+    
+    if (isLiveStreaming) {
+      // For streaming jobs, always use live plan for real-time updates
+      return livePlan;
+    } else {
+      // For completed jobs, be conservative about switching to full details
+      if (fullPlanDetails) {
+        // Only use full details if they have more complete content than live plan
+        const liveResponseLength = livePlan.response?.length || 0;
+        const fullResponseLength = fullPlanDetails.response?.length || 0;
+        
+        if (fullResponseLength >= liveResponseLength) {
+          return fullPlanDetails;
+        }
+      }
+      // Fallback to live plan if full details aren't better
+      return livePlan;
+    }
+  }, [livePlan, fullPlanDetails]);
 
   if (!displayPlan) return null;
 
@@ -220,6 +301,14 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-6xl h-[95vh] !flex !flex-col !gap-0 text-foreground !bg-card rounded-xl shadow-lg !backdrop-blur-none">
+        {isLoadingFullDetails && (
+          <div className="absolute inset-0 bg-background/80 flex items-center justify-center z-50">
+            <div className="flex items-center gap-2">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <span>Loading plan details...</span>
+            </div>
+          </div>
+        )}
         <DialogHeader className="flex flex-row items-start justify-between space-y-0 pb-2 flex-shrink-0">
           <DialogTitle className="text-lg">
             Implementation Plan: {sessionName}

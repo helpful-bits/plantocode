@@ -1,9 +1,11 @@
 'use client';
 
-import Image from 'next/image';
+import React from 'react';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { GlassCard } from '@/components/ui/GlassCard';
+import Image from 'next/image';
+import { useTheme } from 'next-themes';
 
 interface CallToActionProps {
   title: string;
@@ -13,29 +15,30 @@ interface CallToActionProps {
 }
 
 export function CallToAction({ title, description, buttonText, buttonLink }: CallToActionProps) {
+  const { resolvedTheme } = useTheme();
+  const [mounted, setMounted] = React.useState(false);
+
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
+  
   return (
     <section className="relative py-20 px-4 overflow-hidden">
-      {/* Background image - changes based on theme */}
-      <Image
-        src="/images/features-background.png"
-        alt="Call to action background"
-        fill
-        quality={100}
-        className="object-cover object-center z-0 block dark:hidden"
-      />
-      <Image
-        src="/images/features-background-dark.png"
-        alt="Call to action background"
-        fill
-        quality={100}
-        className="object-cover object-center z-0 hidden dark:block"
-      />
-      
+      {/* Theme-based background images */}
+      {mounted && (
+        <Image
+          src={resolvedTheme === 'dark' ? '/images/features-background-dark.png' : '/images/features-background.png'}
+          alt="Section background"
+          fill
+          quality={100}
+          className="object-cover object-top z-0"
+        />
+      )}
       {/* Gradient overlay for better text contrast */}
-      <div className="absolute inset-0 z-1 bg-gradient-to-b from-background/60 via-transparent to-background/90" />
+      <div className="absolute inset-0 z-1 bg-gradient-to-b from-background/90 via-background/50 to-background/90 dark:from-background/95 dark:via-background/70 dark:to-background/95" />
       
       {/* Additional soft transition from top */}
-      <div className="absolute inset-x-0 top-0 h-32 z-2 bg-gradient-to-b from-background to-transparent" />
+      <div className="absolute inset-x-0 top-0 h-32 z-2 bg-gradient-to-b from-background to-transparent dark:from-background/90" />
       
       {/* Glass morphism overlay */}
       <div className="absolute inset-0 z-5 bg-gradient-to-b from-transparent via-background/10 to-transparent backdrop-blur-sm" />

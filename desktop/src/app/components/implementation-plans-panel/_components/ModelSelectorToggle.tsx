@@ -1,9 +1,8 @@
 "use client";
 
 import React from "react";
-import { Button } from "@/ui/button";
 import { AlertTriangle } from "lucide-react";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@/ui/dropdown-menu";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/ui/tooltip";
 import { type ModelInfo } from "@/types/config-types";
 
 interface ModelSelectorToggleProps {
@@ -16,49 +15,66 @@ interface ModelSelectorToggleProps {
 
 export function ModelSelectorToggle({ models, selectedModelId, onSelect, estimatedTokens, maxOutputTokens }: ModelSelectorToggleProps) {
   return (
-    <div className="flex items-center border border-border/50 rounded-lg overflow-hidden">
-      {models.map((model, index) => (
-        <React.Fragment key={model.id}>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => onSelect(model.id)}
-            className={`
-              h-7 px-3 text-xs border-0 rounded-none
-              ${selectedModelId === model.id 
-                ? "bg-primary/10 text-primary font-medium hover:bg-primary/15" 
-                : "text-muted-foreground hover:bg-accent/30 hover:text-accent-foreground"
-              }
-              transition-all duration-200 backdrop-blur-sm
-            `}
-          >
-            <div className="flex items-center gap-1.5">
-              {model.name}
-              {model.contextWindow && estimatedTokens && maxOutputTokens && (estimatedTokens + maxOutputTokens > model.contextWindow) && (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <AlertTriangle 
-                      className="text-amber-500 h-3 w-3" 
-                      onClick={(e) => e.stopPropagation()}
-                    />
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent>
-                    <div className="p-2 text-xs space-y-1">
-                      <div>Input Tokens: {estimatedTokens?.toLocaleString() || 'N/A'}</div>
-                      <div>Max Output Tokens: {maxOutputTokens?.toLocaleString() || 'N/A'}</div>
-                      <div>Estimated Total: {(estimatedTokens && maxOutputTokens) ? (estimatedTokens + maxOutputTokens).toLocaleString() : 'N/A'}</div>
-                      <div>Model Limit: {model.contextWindow?.toLocaleString() || 'N/A'}</div>
-                    </div>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              )}
-            </div>
-          </Button>
-          {index < models.length - 1 && (
-            <div className="w-[1px] h-6 bg-border/40" />
-          )}
-        </React.Fragment>
-      ))}
-    </div>
+    <TooltipProvider>
+      <div className="flex items-center border border-border/50 rounded-lg overflow-hidden">
+        {models.map((model, index) => {
+          const totalRequiredTokens = (estimatedTokens ?? 0) + (maxOutputTokens ?? 0);
+          const contextWindow = model.contextWindow ?? 0;
+          const exceedsLimit = contextWindow > 0 && totalRequiredTokens > contextWindow;
+          
+          return (
+            <React.Fragment key={model.id}>
+              <div className={`
+                flex items-center h-7 px-3 text-xs border-0 rounded-none transition-all duration-200 backdrop-blur-sm
+                ${selectedModelId === model.id 
+                  ? "bg-primary/10 hover:bg-primary/15" 
+                  : "hover:bg-accent/30"
+                }
+                ${exceedsLimit ? "hover:bg-destructive/10" : ""}
+              `}>
+<button
+                  type="button"
+                  onClick={() => !exceedsLimit && onSelect(model.id)}
+                  className={`
+                    flex-1 text-left transition-colors duration-200
+                    ${exceedsLimit 
+                      ? "text-destructive cursor-not-allowed" 
+                      : selectedModelId === model.id 
+                        ? "text-primary font-medium hover:text-primary cursor-pointer" 
+                        : "text-muted-foreground hover:text-accent-foreground cursor-pointer"
+                    }
+                  `}
+                >
+                  <div className="flex items-center gap-1.5">
+                    {model.name}
+                    {exceedsLimit && (
+                      <Tooltip>
+                        <TooltipTrigger>
+                          <AlertTriangle className="text-destructive h-3 w-3" />
+                        </TooltipTrigger>
+                        <TooltipContent className="w-64 bg-popover text-popover-foreground border border-border">
+                          <div className="p-2 text-xs space-y-1">
+                            <div>Input Tokens: {estimatedTokens?.toLocaleString() ?? 'N/A'}</div>
+                            <div>Max Output Tokens: {maxOutputTokens?.toLocaleString() ?? 'N/A'}</div>
+                            <div>Estimated Total: {totalRequiredTokens.toLocaleString()}</div>
+                            <div>Model Limit: {contextWindow.toLocaleString()}</div>
+                            <div className="font-bold text-destructive pt-1 border-t border-border/20 mt-2 pt-2">
+                              ⚠️ Exceeds limit by {(totalRequiredTokens - contextWindow).toLocaleString()} tokens
+                            </div>
+                          </div>
+                        </TooltipContent>
+                      </Tooltip>
+                    )}
+                  </div>
+                </button>
+              </div>
+            {index < models.length - 1 && (
+              <div className="w-[1px] h-6 bg-border/40" />
+            )}
+          </React.Fragment>
+        );
+        })}
+      </div>
+    </TooltipProvider>
   );
 }

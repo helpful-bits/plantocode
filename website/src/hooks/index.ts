@@ -1,4 +1,2 @@
-export {
-  useAnimationPerformance,
-  useAdaptiveAnimationQuality,
-} from './useAnimationPerformance';
+export { useAnimationFrame } from './useAnimationFrame';
+export { useLazyComponent } from './useLazyComponent';

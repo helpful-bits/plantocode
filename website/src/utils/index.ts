@@ -23,11 +23,6 @@ export {
 
 // Export performance hooks
 export {
-  useOptimizedImage,
-  usePreloadImages,
-} from '../hooks/useOptimizedImage';
-
-export {
   useAnimationFrame,
   useAnimationLoop,
   useFrameState,
@@ -41,13 +36,6 @@ export {
   useLazyDynamicImport,
   useAdvancedLazyLoading,
 } from '../hooks/useLazyComponent';
-
-// Export lazy component utilities from UI components
-export {
-  withLazyLoading,
-  createLazyComponent,
-  LazyComponentWrapper,
-} from '../components/ui/LazyComponent';
 
 
 // Common performance constants

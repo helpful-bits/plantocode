@@ -27,7 +27,6 @@ const BillingContext = createContext<BillingContextData | undefined>(undefined);
 
 export function BillingProvider({ children }: { children: React.ReactNode }) {
   const [dashboardData, setDashboardData] = useState<BillingDashboardData | null>(null);
-  const [customerBillingInfo, setCustomerBillingInfo] = useState<CustomerBillingInfo | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { showNotification } = useNotification();
@@ -53,7 +52,6 @@ export function BillingProvider({ children }: { children: React.ReactNode }) {
         const dashboardData = await invoke<BillingDashboardData>('get_billing_dashboard_data_command');
         
         setDashboardData(dashboardData);
-        setCustomerBillingInfo(dashboardData.customerBillingInfo);
       } catch (err) {
         const errorMessage = getErrorMessage(err);
         setError(errorMessage);
@@ -155,7 +153,7 @@ export function BillingProvider({ children }: { children: React.ReactNode }) {
 
   const contextValue = useMemo(() => ({
     dashboardData,
-    customerBillingInfo,
+    customerBillingInfo: dashboardData?.customerBillingInfo || null,
     creditBalance,
     creditBalanceUsd: creditBalance,
     isPaymentMethodRequired: dashboardData?.isPaymentMethodRequired || false,
@@ -169,7 +167,6 @@ export function BillingProvider({ children }: { children: React.ReactNode }) {
     freeCreditsExpiresAt: dashboardData?.freeCreditsExpiresAt || null,
   }), [
     dashboardData,
-    customerBillingInfo,
     creditBalance,
     isLoading,
     error,

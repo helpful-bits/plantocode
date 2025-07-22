@@ -1,6 +1,5 @@
 'use client';
 
-import Image from 'next/image';
 import Link from 'next/link';
 
 export function Footer() {
@@ -8,22 +7,6 @@ export function Footer() {
     <footer className="relative overflow-hidden">
       {/* Top gradient border */}
       <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-emerald-600/50 to-transparent" />
-      
-      {/* Background image - changes based on theme */}
-      <Image
-        src="/images/features-background.png"
-        alt="Footer background"
-        fill
-        quality={100}
-        className="object-cover object-bottom z-0 opacity-30 block dark:hidden"
-      />
-      <Image
-        src="/images/features-background-dark.png"
-        alt="Footer background"
-        fill
-        quality={100}
-        className="object-cover object-bottom z-0 opacity-30 hidden dark:block"
-      />
       
       {/* Gradient overlay with emerald tint */}
       <div className="absolute inset-0 z-1 bg-gradient-to-t from-background via-background/95 to-background/80" />

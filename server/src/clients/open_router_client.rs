@@ -390,37 +390,56 @@ impl OpenRouterClient {
         // Set cache_write_tokens to 0 unless OpenRouter provides explicit fields
         let cache_write_tokens = 0;
         
-        // Improve the cost parsing logic to robustly handle both numbers and strings
         let cost = usage.get("cost")
             .and_then(|v| match v {
                 serde_json::Value::Number(n) => n.as_f64(),
                 serde_json::Value::String(s) => {
-                    // Try to parse string as float
-                    s.parse::<f64>()
+                    if s.trim().is_empty() {
+                        tracing::warn!("Empty cost string in OpenRouter response");
+                        return None;
+                    }
+                    s.trim().parse::<f64>()
                         .map_err(|e| {
                             tracing::warn!("Failed to parse cost string '{}': {}", s, e);
                             e
                         })
                         .ok()
                 },
+                serde_json::Value::Null => {
+                    debug!("Cost field is null in OpenRouter response");
+                    None
+                }
                 _ => {
                     tracing::warn!("Invalid cost format in OpenRouter response: {:?}", v);
                     None
                 }
             })
             .and_then(|f| {
-                // Validate cost is non-negative
                 if f < 0.0 {
                     tracing::warn!("Negative cost value in OpenRouter response: {}", f);
                     None
-                } else if f.is_nan() || f.is_infinite() {
-                    tracing::warn!("Invalid cost value (NaN or Infinite) in OpenRouter response: {}", f);
+                } else if f.is_nan() {
+                    tracing::warn!("Cost value is NaN in OpenRouter response");
                     None
-                } else {
-                    // Convert to BigDecimal with proper precision handling
-                    BigDecimal::from_str(&format!("{:.10}", f))  // Use fixed precision to avoid scientific notation
+                } else if f.is_infinite() {
+                    tracing::warn!("Cost value is infinite in OpenRouter response");
+                    None
+                } else if f == 0.0 {
+                    BigDecimal::from_str("0")
                         .map_err(|e| {
-                            tracing::warn!("Failed to convert cost to BigDecimal: {} - {}", f, e);
+                            tracing::warn!("Failed to convert zero cost to BigDecimal: {}", e);
+                            e
+                        })
+                        .ok()
+                } else {
+                    let cost_str = if f < 1e-10 {
+                        format!("{:.15}", f)
+                    } else {
+                        format!("{:.10}", f)
+                    };
+                    BigDecimal::from_str(&cost_str)
+                        .map_err(|e| {
+                            tracing::warn!("Failed to convert cost {} to BigDecimal: {}", f, e);
                             e
                         })
                         .ok()
@@ -467,21 +486,7 @@ impl OpenRouterClient {
 
 impl UsageExtractor for OpenRouterClient {
     fn extract_usage(&self, raw_json: &serde_json::Value) -> Option<ProviderUsage> {
-        let usage = raw_json.get("usage")?;
-        
-        let prompt_tokens = usage.get("prompt_tokens")?.as_i64()? as i32;
-        let completion_tokens = usage.get("completion_tokens")?.as_i64()? as i32;
-        
-        let usage = ProviderUsage::new(
-            prompt_tokens,
-            completion_tokens,
-            0, // cache_write_tokens
-            0, // cache_read_tokens  
-            String::new(), // model_id will be empty for trait method
-        );
-        
-        usage.validate().ok()?;
-        Some(usage)
+        self.extract_usage_from_json(raw_json, "")
     }
 
     /// Extract usage information from OpenRouter HTTP response body

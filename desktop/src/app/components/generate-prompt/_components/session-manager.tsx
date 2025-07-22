@@ -1,7 +1,7 @@
 "use client";
 
 import { RefreshCw, PlusCircle, Search } from "lucide-react";
-import { memo, useState } from "react";
+import { memo, useState, useEffect, useRef } from "react";
 
 import { useSessionStateContext } from "@/contexts/session";
 import { type Session } from "@/types/session-types";
@@ -35,6 +35,7 @@ const SessionManager = ({
   onLoadSession,
 }: SessionManagerProps) => {
   const [isCreatingNew, setIsCreatingNew] = useState(false);
+  const newSessionInputRef = useRef<HTMLInputElement>(null);
   
   // Get contexts
   const { activeSessionId, isSessionLoading: globalIsSwitching } =
@@ -65,6 +66,13 @@ const SessionManager = ({
   } = useSessionManagerOrchestrator({
     projectDirectory,
   });
+
+  // Focus on the input when the form is opened
+  useEffect(() => {
+    if (isCreatingNew && newSessionInputRef.current) {
+      newSessionInputRef.current.focus();
+    }
+  }, [isCreatingNew]);
 
   // Function to render the delete confirmation dialog
   const renderDeleteDialog = (sessionId: string, sessionName: string) => (
@@ -149,6 +157,7 @@ const SessionManager = ({
               isLoading={isLoading}
               disabled={disabled}
               globalIsSwitching={globalIsSwitching}
+              inputRef={newSessionInputRef}
             />
           </div>
         </CollapsibleContent>
