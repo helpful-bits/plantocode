@@ -653,26 +653,7 @@ impl Clone for OpenAIClient {
 
 impl UsageExtractor for OpenAIClient {
     fn extract_usage(&self, raw_json: &serde_json::Value) -> Option<ProviderUsage> {
-        let usage = raw_json.get("usage")?;
-        
-        let prompt_tokens = usage.get("prompt_tokens")?.as_i64()? as i32;
-        let completion_tokens = usage.get("completion_tokens")?.as_i64()? as i32;
-        let cache_read_tokens = usage
-            .get("prompt_tokens_details")
-            .and_then(|details| details.get("cached_tokens"))
-            .and_then(|v| v.as_i64())
-            .unwrap_or(0) as i32;
-        
-        let usage = ProviderUsage::new(
-            prompt_tokens,
-            completion_tokens,
-            0, // cache_write_tokens
-            cache_read_tokens,
-            String::new(), // model_id will be empty for trait method
-        );
-        
-        usage.validate().ok()?;
-        Some(usage)
+        Self::extract_usage_from_json(raw_json, "")
     }
 
     /// Extract usage information from OpenAI HTTP response body (2025-07 format)

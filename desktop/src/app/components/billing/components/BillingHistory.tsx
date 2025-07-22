@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { DollarSign, ChevronLeft, ChevronRight, Search, Loader2, Calendar, X } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/ui/card";
 import { Button } from "@/ui/button";
@@ -57,30 +57,12 @@ export function BillingHistory({ className }: BillingHistoryProps) {
   const [sliderPage, setSliderPage] = useState(1);
   const [providers, setProviders] = useState<ProviderWithModels[]>([]);
   const [selectedPreset, setSelectedPreset] = useState<'last1hour' | 'last24hours' | 'last7days' | 'thisweek' | 'thismonth' | 'last30days' | null>('last24hours');
-  
-  const transactionsScrollRef = useRef<HTMLDivElement>(null);
-  const usageScrollRef = useRef<HTMLDivElement>(null);
 
   const getProviderDisplayName = (providerCode: string): string => {
     const provider = providers.find(p => p.provider.code === providerCode);
     return provider?.provider.name || providerCode;
   };
 
-  const updateScrollShadows = useCallback((scrollContainer: HTMLDivElement) => {
-    const parent = scrollContainer.parentElement;
-    if (!parent) return;
-
-    const topShadow = parent.querySelector('[data-scroll-shadow="top"]') as HTMLElement;
-    const bottomShadow = parent.querySelector('[data-scroll-shadow="bottom"]') as HTMLElement;
-
-    if (topShadow && bottomShadow) {
-      const { scrollTop, scrollHeight, clientHeight } = scrollContainer;
-      const isScrollable = scrollHeight > clientHeight;
-      
-      topShadow.style.display = isScrollable && scrollTop > 0 ? 'block' : 'none';
-      bottomShadow.style.display = isScrollable && scrollTop < scrollHeight - clientHeight - 1 ? 'block' : 'none';
-    }
-  }, []);
 
 
   const loadCreditHistory = useCallback(async (page: number = 1, search?: string) => {
@@ -171,43 +153,6 @@ export function BillingHistory({ className }: BillingHistoryProps) {
     getProvidersWithModels().then(setProviders).catch(console.error);
   }, [loadCreditHistory]);
 
-  // Handle scroll shadows for transactions
-  useEffect(() => {
-    const scrollContainer = transactionsScrollRef.current;
-    if (!scrollContainer) return;
-
-    const handleScroll = () => updateScrollShadows(scrollContainer);
-    
-    // Initial check
-    handleScroll();
-    
-    scrollContainer.addEventListener('scroll', handleScroll);
-    window.addEventListener('resize', handleScroll);
-    
-    return () => {
-      scrollContainer.removeEventListener('scroll', handleScroll);
-      window.removeEventListener('resize', handleScroll);
-    };
-  }, [activeTab, transactionHistoryData, updateScrollShadows]);
-
-  // Handle scroll shadows for usage
-  useEffect(() => {
-    const scrollContainer = usageScrollRef.current;
-    if (!scrollContainer) return;
-
-    const handleScroll = () => updateScrollShadows(scrollContainer);
-    
-    // Initial check
-    handleScroll();
-    
-    scrollContainer.addEventListener('scroll', handleScroll);
-    window.addEventListener('resize', handleScroll);
-    
-    return () => {
-      scrollContainer.removeEventListener('scroll', handleScroll);
-      window.removeEventListener('resize', handleScroll);
-    };
-  }, [activeTab, usageData, updateScrollShadows]);
 
 
   useEffect(() => {
@@ -377,7 +322,7 @@ export function BillingHistory({ className }: BillingHistoryProps) {
   );
 
   return (
-    <Card className={`${className} flex flex-col h-full`}>
+    <Card className={`${className} flex flex-col`}>
       <CardHeader className="flex-shrink-0">
         <div className="flex items-center justify-between">
           <div>
@@ -393,14 +338,14 @@ export function BillingHistory({ className }: BillingHistoryProps) {
           </div>
         </div>
       </CardHeader>
-      <CardContent className="flex-1 min-h-0 flex flex-col">
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full h-full flex flex-col">
+      <CardContent className="flex flex-col">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full flex flex-col">
           <TabsList className="grid w-full grid-cols-2 flex-shrink-0">
             <TabsTrigger value="transactions">Transactions</TabsTrigger>
             <TabsTrigger value="usage">Usage Details</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="transactions" className="flex-1 min-h-0 flex flex-col gap-4 mt-4">
+          <TabsContent value="transactions" className="flex flex-col gap-4 mt-4">
             {isTransactionsLoading ? (
               <LoadingSkeleton />
             ) : transactionsError ? (
@@ -416,7 +361,7 @@ export function BillingHistory({ className }: BillingHistoryProps) {
                 </div>
               </div>
             ) : (
-              <div className="flex-1 min-h-0 flex flex-col">
+              <div className="flex flex-col">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <div className="relative">
@@ -455,19 +400,10 @@ export function BillingHistory({ className }: BillingHistoryProps) {
                   </span>
                 </div>
 
-                <div className="relative flex-1 min-h-0">
-                  {/* Scroll shadow indicators */}
-                  <div className="absolute inset-x-0 top-0 h-8 bg-gradient-to-b from-muted to-background pointer-events-none z-20 hidden" data-scroll-shadow="top" />
-                  <div className="absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-muted to-background pointer-events-none z-20 hidden" data-scroll-shadow="bottom" />
-                  {/* Horizontal scroll indicator for mobile */}
-                  <div className="sm:hidden absolute bottom-2 right-2 text-xs text-muted-foreground bg-muted px-2 py-1 rounded-md z-30">
-                    Scroll → for more
-                  </div>
+                <div className="relative">
                   
                   <div 
-                    ref={transactionsScrollRef}
-                    className="overflow-x-auto overflow-y-auto h-full" 
-                    data-scrollable="transactions"
+                    className="overflow-x-auto" 
                   >
                     <table className="w-full min-w-[640px]">
                       <thead className="sticky top-0 z-10">
@@ -589,7 +525,7 @@ export function BillingHistory({ className }: BillingHistoryProps) {
             )}
           </TabsContent>
 
-          <TabsContent value="usage" className="flex-1 min-h-0 flex flex-col gap-4 mt-4">
+          <TabsContent value="usage" className="flex flex-col gap-4 mt-4">
             <div className="flex items-center justify-between p-3 bg-muted/20 rounded-lg border border-border/40 flex-shrink-0">
               <div className="flex flex-wrap items-center gap-2">
                 <Button
@@ -702,20 +638,11 @@ export function BillingHistory({ className }: BillingHistoryProps) {
             )}
 
             {(isUsageLoading || (!usageError && usageData.length > 0)) && (
-              <div className="flex-1 min-h-0 flex flex-col">
-                <div className="relative flex-1 min-h-0">
-                  {/* Scroll shadow indicators */}
-                  <div className="absolute inset-x-0 top-0 h-8 bg-gradient-to-b from-muted to-background pointer-events-none z-20 hidden" data-scroll-shadow="top" />
-                  <div className="absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-muted to-background pointer-events-none z-20 hidden" data-scroll-shadow="bottom" />
-                  {/* Horizontal scroll indicator for mobile */}
-                  <div className="sm:hidden absolute bottom-2 right-2 text-xs text-muted-foreground bg-muted px-2 py-1 rounded-md z-30">
-                    Scroll → for more
-                  </div>
+              <div className="flex flex-col">
+                <div className="relative">
                   
                   <div 
-                    ref={usageScrollRef}
-                    className="overflow-x-auto overflow-y-auto h-full" 
-                    data-scrollable="usage"
+                    className="overflow-x-auto" 
                   >
                   <table className="w-full min-w-[640px]">
                     <colgroup>

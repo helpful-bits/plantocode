@@ -263,17 +263,24 @@ fn check_rate_limit(operation: &str) -> Result<(), AppError> {
 #[serde(rename_all = "camelCase")]
 pub struct BillingDashboardData {
     pub credit_balance_usd: f64,
+    pub free_credit_balance_usd: f64,
+    pub free_credits_expires_at: Option<String>,
     pub services_blocked: bool,
     pub is_payment_method_required: bool,
     pub is_billing_info_required: bool,
+    pub customer_billing_info: Option<CustomerBillingInfo>,
+    pub usage_limit_usd: f64,
+    pub current_usage: f64,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct TaxIdInfo {
-    pub r#type: String,
+    #[serde(rename = "type_")]
+    pub type_: String,
     pub value: String,
     pub country: Option<String>,
+    pub verification_status: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

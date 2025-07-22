@@ -3,8 +3,9 @@ import './globals.css';
 import { fontClasses } from './fonts';
 import { StructuredData } from '@/components/seo/StructuredData';
 import type { WebSite } from 'schema-dts';
-import { ClientProviders } from '@/components/providers/ClientProviders';
+import { ThemeProvider } from '@/components/providers/ThemeProvider';
 import { GoogleAnalytics } from '@next/third-parties/google';
+import { ParallaxProvider } from '@/components/providers/ParallaxProvider';
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://vibemanager.app'),
@@ -90,7 +91,6 @@ export const metadata: Metadata = {
     'apple-mobile-web-app-title': 'Vibe Manager',
     'application-name': 'Vibe Manager',
     'msapplication-TileColor': 'oklch(0.18 0.02 206)',
-    'theme-color': 'oklch(0.98 0.01 195)', // Default to light theme for initial load
   },
 };
 
@@ -129,15 +129,17 @@ export default function RootLayout({
       <body className={fontClasses.sans}>
         <div className="fixed inset-0 -z-10 dynamic-bg" />
         
-        <ClientProviders>
-          <GoogleAnalytics gaId={process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID || "G-XXXXXXXXXX"} />
-          <StructuredData data={websiteJsonLd} />
-          
-          {/* Main content with proper z-index */}
-          <div className="relative z-10">
-            {children}
-          </div>
-        </ClientProviders>
+        <ThemeProvider>
+          <ParallaxProvider>
+            <GoogleAnalytics gaId={process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID || "G-XXXXXXXXXX"} />
+            <StructuredData data={websiteJsonLd} />
+            
+            {/* Main content with proper z-index */}
+            <div className="relative z-10">
+              {children}
+            </div>
+          </ParallaxProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

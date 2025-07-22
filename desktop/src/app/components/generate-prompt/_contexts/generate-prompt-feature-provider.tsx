@@ -5,6 +5,7 @@ import { useMemo, useRef, useCallback, useState, useEffect, type ReactNode } fro
 import { TooltipProvider } from "@/ui/tooltip";
 import { useNotification } from "@/contexts/notification-context";
 import { useProject } from "@/contexts/project-context";
+import { useRuntimeConfig } from "@/contexts/runtime-config-context";
 import {
   useSessionStateContext,
   useSessionActionsContext,
@@ -40,6 +41,7 @@ export function GeneratePromptFeatureProvider({
   const sessionState = useSessionStateContext();
   const sessionActions = useSessionActionsContext();
   const { showNotification } = useNotification();
+  const { config: runtimeConfig } = useRuntimeConfig();
 
   // Create DOM ref for TaskDescriptionHandle
   const taskDescriptionRef = useRef<TaskDescriptionHandle>(null);
@@ -163,7 +165,8 @@ export function GeneratePromptFeatureProvider({
           taskDescription,
           projectDirectory: projectDirectory || "",
           relevantFiles: includedFiles && includedFiles.length > 0 ? includedFiles : [],
-          taskType: "task_refinement"
+          taskType: "task_refinement",
+          model: runtimeConfig?.tasks?.task_refinement?.model || runtimeConfig?.tasks?.taskRefinement?.model || ""
         });
 
         if (result.isSuccess && result.data) {
