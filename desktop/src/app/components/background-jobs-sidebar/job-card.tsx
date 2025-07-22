@@ -7,8 +7,9 @@ import {
   X,
   Trash2,
   PlayCircle,
+  Check,
 } from "lucide-react";
-import React from "react";
+import React, { useState } from "react";
 
 import {
   type BackgroundJob,
@@ -20,6 +21,7 @@ import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
 import { Progress } from "@/ui/progress";
 import { cn } from "@/utils/utils";
+import { useNotification } from "@/contexts/notification-context";
 
 import {
   getStatusIconClass,
@@ -45,6 +47,7 @@ export interface JobCardProps {
   currentSessionId?: string;
   hasContinuationJob?: boolean; // Whether a web_search_execution job already exists for this job
   isWorkflowActive?: boolean; // Whether this job's workflow is still active
+  webSearchSystemPrompt?: string; // Pre-fetched system prompt for web search execution
 }
 
 const getErrorPreview = (errorMessage?: string) => {
@@ -55,8 +58,40 @@ const getErrorPreview = (errorMessage?: string) => {
     : errorMessage;
 };
 
+const CopyPromptButton = ({ prompt, systemPrompt, index, showNotification }: { prompt: string, systemPrompt: string, index: number, showNotification: (args: any) => void }) => {
+  const [isCopied, setIsCopied] = useState(false);
+
+  const handleCopy = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const instruction = `\n\nIMPORTANT: After executing this search and receiving the results, wrap your final answer with the following XML tag:\n<research_finding_${index + 1}>\n[Your research findings here]\n</research_finding_${index + 1}>`;
+    const textToCopy = systemPrompt ? `${systemPrompt}\n\n${prompt}${instruction}` : `${prompt}${instruction}`;
+    try {
+      await navigator.clipboard.writeText(textToCopy);
+      setIsCopied(true);
+      showNotification({ title: 'Prompt copied', message: `Prompt #${index + 1} copied to clipboard.`, type: 'success' });
+      setTimeout(() => setIsCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy prompt:', err);
+      showNotification({ title: 'Copy failed', message: 'Could not copy prompt to clipboard.', type: 'error' });
+    }
+  };
+
+  return (
+    <Button
+      size="xs"
+      variant="outline"
+      onClick={handleCopy}
+      className={cn("h-6 w-6 p-0 text-xs", isCopied && "bg-green-500/20 text-green-600 border-green-500/50")}
+      title={`Copy prompt ${index + 1}`}
+    >
+      {isCopied ? <Check className="h-3 w-3" /> : (index + 1)}
+    </Button>
+  );
+};
+
 export const JobCard = React.memo(
-  ({ job, handleCancel, handleDelete, isCancelling, isDeleting, onSelect, onApplyFiles, onContinueWorkflow, currentSessionId, hasContinuationJob = false, isWorkflowActive = false }: JobCardProps) => {
+  ({ job, handleCancel, handleDelete, isCancelling, isDeleting, onSelect, onApplyFiles, onContinueWorkflow, currentSessionId, hasContinuationJob = false, isWorkflowActive = false, webSearchSystemPrompt = '' }: JobCardProps) => {
+    const { showNotification } = useNotification();
     
     // Hide workflow orchestrator jobs
     const isWorkflowJob = ['file_finder_workflow', 'web_search_workflow'].includes(job.taskType);
@@ -464,40 +499,47 @@ export const JobCard = React.memo(
                         
                         // Handle web search prompts generation
                         if (job.taskType === "web_search_prompts_generation") {
-                          if (job.response) {
-                            try {
-                              let responseData: any;
-                              if (typeof job.response === 'string') {
-                                responseData = JSON.parse(job.response);
-                              } else {
-                                responseData = job.response;
+                          let prompts: string[] = [];
+                          let summary = 'No prompts generated';
+                          try {
+                            if (job.response) {
+                              const responseData = typeof job.response === 'string' ? JSON.parse(job.response) : job.response;
+                              if (Array.isArray(responseData.prompts)) {
+                                prompts = responseData.prompts;
                               }
-                              
-                              // First check if backend summary exists and render it
-                              if (responseData.summary) {
-                                return (
-                                  <span className="font-medium text-foreground">
-                                    {responseData.summary}
-                                  </span>
-                                );
-                              }
-                              
-                              // Fall back to prompts count summary
-                              const count = responseData.prompts?.length || 0;
-                              return (
-                                <span className="font-medium text-foreground">
-                                  {count > 0 ? `${count} search prompt${count !== 1 ? 's' : ''} generated` : 'No prompts generated'}
-                                </span>
-                              );
-                            } catch (e) {
-                              // Fall through to generic message
+                              const count = prompts.length;
+                              summary = responseData?.summary || (count > 0 ? `${count} search prompt${count !== 1 ? 's' : ''} generated` : 'No prompts generated');
                             }
+                          } catch (e) {
+                            console.error("Failed to parse job response for prompts", e);
                           }
-                          
+
+                          const MAX_BUTTONS = 20;
+
                           return (
-                            <span className="text-muted-foreground">
-                              No prompts generated
-                            </span>
+                            <div className="flex flex-col gap-2">
+                              <span className="font-medium text-foreground">
+                                {summary}
+                              </span>
+                              {prompts.length > 0 && (
+                                <div className="flex flex-wrap gap-1.5">
+                                  {prompts.slice(0, MAX_BUTTONS).map((prompt, index) => (
+                                    <CopyPromptButton
+                                      key={index}
+                                      prompt={prompt}
+                                      systemPrompt={webSearchSystemPrompt}
+                                      index={index}
+                                      showNotification={showNotification}
+                                    />
+                                  ))}
+                                  {prompts.length > MAX_BUTTONS && (
+                                    <Badge variant="secondary" className="text-xs h-6">
+                                      +{prompts.length - MAX_BUTTONS} more
+                                    </Badge>
+                                  )}
+                                </div>
+                              )}
+                            </div>
                           );
                         }
                         

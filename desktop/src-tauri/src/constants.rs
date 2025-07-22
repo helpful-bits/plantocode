@@ -70,7 +70,7 @@ pub static BINARY_EXTENSIONS: Lazy<HashSet<&'static str>> = Lazy::new(|| {
 });
 
 // Job settings - these serve as fallbacks when not configured via RuntimeAIConfig
-pub const DEFAULT_JOB_TIMEOUT_SECONDS: u64 = 600; // 10 minutes (used by dispatcher)
+pub const DEFAULT_JOB_TIMEOUT_SECONDS: u64 = 3600; // 60 minutes (used by dispatcher)
 pub const DEFAULT_JOB_RETRY_COUNT: u32 = 3;
 pub const DEFAULT_JOB_RETRY_DELAY_MS: u64 = 1000; // 1 second
 

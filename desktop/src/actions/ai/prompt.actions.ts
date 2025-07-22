@@ -93,3 +93,25 @@ export async function getPromptAction(params: {
     }>;
   }
 }
+
+export interface SystemPromptResponse {
+  systemPrompt: string;
+  systemPromptTemplate: string;
+  systemPromptId: string;
+}
+
+export interface GetSystemPromptForTaskArgs extends Record<string, unknown> {
+  sessionId: string;
+  taskType: string;
+}
+
+export async function getSystemPromptForTaskAction(
+  args: GetSystemPromptForTaskArgs
+): Promise<ActionState<SystemPromptResponse>> {
+  try {
+    const result = await invoke<SystemPromptResponse>('get_system_prompt_for_task', args);
+    return { isSuccess: true, data: result };
+  } catch (error) {
+    return handleActionError(error) as ActionState<SystemPromptResponse>;
+  }
+}

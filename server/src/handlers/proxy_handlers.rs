@@ -325,21 +325,38 @@ pub async fn llm_chat_completion_handler(
 
 
     // Calculate estimated input tokens for initial charge
-    let estimated_input_tokens = calculate_input_tokens(&payload, &model_with_provider.id);
-    info!("Estimated input tokens: {} tokens", estimated_input_tokens);
-
+    let base_input_tokens = calculate_input_tokens(&payload, &model_with_provider.id);
+    
+    // Get estimation coefficients from database for better accuracy
+    let estimation_repo = crate::db::repositories::EstimationCoefficientRepository::new(
+        model_repository.get_pool()
+    );
+    
+    let (estimated_input_tokens, estimated_output_tokens) = estimation_repo
+        .calculate_estimated_tokens(
+            &model_with_provider.id,
+            base_input_tokens as i64,
+            payload.max_tokens.map(|v| v as i32)
+        )
+        .await?;
+    
+    info!("Estimated tokens (preliminary - subject to provider adjustments) - input: {} (base: {}), output: {}", 
+          estimated_input_tokens, base_input_tokens, estimated_output_tokens);
+    
     // Create API usage entry for initial charge
     let api_usage_entry = ApiUsageEntryDto {
         user_id,
         service_name: model_with_provider.id.clone(),
         tokens_input: estimated_input_tokens as i64,
-        tokens_output: 0,
+        tokens_output: estimated_output_tokens,
         cache_write_tokens: 0,
         cache_read_tokens: 0,
         request_id: Some(request_id.clone()),
         metadata: Some(serde_json::json!({
             "billing_type": "initial_estimate",
-            "timestamp": chrono::Utc::now().to_rfc3339()
+            "timestamp": chrono::Utc::now().to_rfc3339(),
+            "estimated_output": true,
+            "pending_timeout_minutes": 10
         })),
         provider_reported_cost: None,
     };
@@ -348,8 +365,8 @@ pub async fn llm_chat_completion_handler(
     billing_service.initiate_api_charge(api_usage_entry).await?;
 
     info!(
-        "Initiated API charge for request {}: estimated {} input tokens",
-        request_id, estimated_input_tokens
+        "Initiated API charge for request {}: estimated {} input tokens, {} output tokens",
+        request_id, estimated_input_tokens, estimated_output_tokens
     );
 
     // Check if task type indicates web search functionality

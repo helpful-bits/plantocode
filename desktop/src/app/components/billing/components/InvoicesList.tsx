@@ -44,7 +44,6 @@ export function InvoicesList({ className }: InvoicesListProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
-  const [totalPages, setTotalPages] = useState<number | null>(null);
   const [downloadingInvoice, setDownloadingInvoice] = useState<string | null>(null);
   const [downloadedFiles, setDownloadedFiles] = useState<Record<string, string>>({});
 
@@ -56,42 +55,11 @@ export function InvoicesList({ className }: InvoicesListProps) {
       const offset = (page - 1) * ITEMS_PER_PAGE;
       const response = await listInvoices(ITEMS_PER_PAGE, offset);
       
-      // Check if this page has data
-      if (response.invoices.length > 0) {
-        // Valid page with data
-        setInvoicesData(response);
-        setCurrentPage(page);
-        
-        // Track total pages based on hasMore
-        if (!response.hasMore) {
-          setTotalPages(page);
-        }
-      } else if (page === 1) {
-        // First page with no data - valid state
-        setInvoicesData(response);
-        setCurrentPage(page);
-        setTotalPages(0);
-      } else {
-        // Empty page beyond the first - this page doesn't exist
-        // The actual last page is the previous one
-        setTotalPages(page - 1);
-        
-        // Don't update invoicesData - keep showing the current page's data
-        // Just update hasMore to prevent further navigation
-        if (invoicesData) {
-          setInvoicesData({
-            ...invoicesData,
-            hasMore: false
-          });
-        }
-        
-        // Don't update currentPage - stay on the page that has data
-        // This way "Page X" remains accurate
-      }
+      setInvoicesData(response);
+      setCurrentPage(page);
     } catch (err) {
       const errorMessage = getErrorMessage(err);
       
-      // Provide user-friendly error messages for legitimate errors
       let friendlyError = errorMessage;
       if (errorMessage.toLowerCase().includes('network') || errorMessage.toLowerCase().includes('fetch')) {
         friendlyError = 'Unable to load billing history. Please check your internet connection and try again.';
@@ -278,7 +246,7 @@ export function InvoicesList({ className }: InvoicesListProps) {
           <div className="pt-4 border-t flex-shrink-0">
             <div className="flex items-center justify-between">
               <div className="text-sm text-muted-foreground">
-                Page {currentPage}{totalPages !== null ? ` of ${totalPages}` : ''}
+                Page {currentPage}
               </div>
               <div className="flex items-center gap-2">
                 <Button

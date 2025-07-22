@@ -99,8 +99,8 @@ impl ApiUsageRepository {
 
         let result = query!(
             r#"
-            INSERT INTO api_usage (user_id, service_name, tokens_input, tokens_output, cache_write_tokens, cache_read_tokens, cost, request_id, metadata, provider_reported_cost, status)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'pending')
+            INSERT INTO api_usage (user_id, service_name, tokens_input, tokens_output, cache_write_tokens, cache_read_tokens, cost, request_id, metadata, provider_reported_cost, status, pending_timeout_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'pending', NOW() + INTERVAL '10 minutes')
             RETURNING id, user_id, service_name, tokens_input, tokens_output, cache_write_tokens, cache_read_tokens, cost, request_id, metadata, timestamp, provider_reported_cost
             "#,
             entry.user_id,

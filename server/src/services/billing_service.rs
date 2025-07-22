@@ -360,99 +360,6 @@ impl BillingService {
 
 
 
-    /// List invoices for a user with pagination
-    pub async fn list_invoices_for_user(
-        &self,
-        user_id: Uuid,
-        limit: i32,
-        starting_after: Option<String>,
-    ) -> Result<crate::models::ListInvoicesResponse, AppError> {
-        debug!("Listing invoices for user: {}", user_id);
-
-        // Check if user has a Stripe customer ID - if not, return empty list
-        let customer_id = match self.get_customer_billing_repository().get_by_user_id(&user_id).await? {
-            Some(billing) => match billing.stripe_customer_id {
-                Some(id) => id,
-                None => {
-                    debug!("User {} has no Stripe customer ID, returning empty invoice list", user_id);
-                    return Ok(crate::models::ListInvoicesResponse {
-                        total_invoices: 0,
-                        invoices: vec![],
-                        has_more: false,
-                    });
-                }
-            },
-            None => {
-                debug!("User {} has no customer billing record, returning empty invoice list", user_id);
-                return Ok(crate::models::ListInvoicesResponse {
-                    total_invoices: 0,
-                    invoices: vec![],
-                    has_more: false,
-                });
-            }
-        };
-
-        // Get the Stripe service
-        let stripe_service = match self.stripe_service.as_ref() {
-            Some(service) => service,
-            None => {
-                debug!("Stripe service not configured, returning empty invoice list");
-                return Ok(crate::models::ListInvoicesResponse {
-                    total_invoices: 0,
-                    invoices: vec![],
-                    has_more: false,
-                });
-            }
-        };
-
-        // List invoices from Stripe with pagination
-        let invoices_list = match stripe_service.list_invoices_with_filter(
-            &customer_id,
-            None, // No status filter
-            Some(limit as u64),
-            starting_after.as_deref(),
-        ).await {
-            Ok(list) => list,
-            Err(e) => {
-                warn!("Failed to list invoices from Stripe for user {}: {:?}", user_id, e);
-                // Return empty list instead of error for better UX
-                return Ok(crate::models::ListInvoicesResponse {
-                    total_invoices: 0,
-                    invoices: vec![],
-                    has_more: false,
-                });
-            }
-        };
-
-        // Convert Stripe invoices to our Invoice model
-        let invoices: Result<Vec<crate::models::Invoice>, AppError> = invoices_list.data
-            .into_iter()
-            .map(|stripe_invoice| {
-                Ok(crate::models::Invoice {
-                    id: stripe_invoice.id.to_string(),
-                    created: stripe_invoice.created,
-                    due_date: stripe_invoice.due_date,
-                    amount_due: stripe_invoice.amount_due,
-                    amount_paid: stripe_invoice.amount_paid,
-                    currency: stripe_invoice.currency,
-                    status: format!("{:?}", stripe_invoice.status).to_lowercase(),
-                    invoice_pdf_url: stripe_invoice.invoice_pdf,
-                })
-            })
-            .collect();
-            
-        let invoices = invoices?;
-
-        // Use Stripe's native has_more flag
-        let has_more = invoices_list.has_more;
-
-        Ok(crate::models::ListInvoicesResponse {
-            total_invoices: invoices.len() as i32,
-            invoices,
-            has_more,
-        })
-    }
-
 
     /// Create a custom credit purchase checkout session
     pub async fn create_credit_purchase_checkout_session(
@@ -662,13 +569,27 @@ impl BillingService {
             .await
             .map_err(|e| AppError::Database(format!("Failed to set user context in transaction: {}", e)))?;
 
-        // Update auto top-off settings using repository method
-        self.customer_billing_repository.update_auto_top_off_settings(
+        // Update auto top-off settings directly within the transaction to ensure RLS context
+        sqlx::query!(
+            r#"
+            INSERT INTO customer_billing 
+            (id, user_id, stripe_customer_id, auto_top_off_enabled, auto_top_off_threshold, auto_top_off_amount, created_at, updated_at)
+            VALUES 
+            (gen_random_uuid(), $1, NULL, $2, $3, $4, now(), now())
+            ON CONFLICT (user_id) DO UPDATE
+            SET auto_top_off_enabled = EXCLUDED.auto_top_off_enabled,
+                auto_top_off_threshold = EXCLUDED.auto_top_off_threshold,
+                auto_top_off_amount = EXCLUDED.auto_top_off_amount,
+                updated_at = now()
+            "#,
             user_id,
             enabled,
-            threshold.clone(),
-            amount.clone(),
-        ).await?;
+            threshold,
+            amount
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| AppError::Database(format!("Failed to update auto top-off settings: {}", e)))?;
 
         // Commit transaction
         tx.commit().await
@@ -991,23 +912,8 @@ impl BillingService {
         info!("User {} balance ({}) is below threshold ({}), triggering auto top-off of {}", 
               user_id, current_balance.balance, threshold, amount);
         
-        // Spawn async task to perform auto top-off
-        let billing_service = self.clone();
-        let user_id_clone = *user_id;
-        let amount_clone = amount.clone();
-        
-        tokio::spawn(async move {
-            let result = billing_service.perform_auto_top_off(&user_id_clone, &amount_clone).await;
-            
-            match result {
-                Ok(()) => {
-                    info!("Auto top-off completed successfully for user {}", user_id_clone);
-                }
-                Err(e) => {
-                    warn!("Auto top-off failed for user {}: {}", user_id_clone, e);
-                }
-            }
-        });
+        // Perform auto top-off directly
+        self.perform_auto_top_off(user_id, &amount).await?;
         
         Ok(())
     }
@@ -1090,27 +996,75 @@ impl BillingService {
             })?;
         debug!("Auto top-off execution flow: step 7 completed - transaction committed successfully");
 
-        debug!("Auto top-off execution flow: step 8 - preparing Stripe invoice creation");
-        // Create and pay invoice with Stripe for the auto top-off amount
-        let amount_cents = (amount.clone() * BigDecimal::from(100)).to_i64().unwrap_or(0);
-        let idempotency_key = format!("auto_topoff_{}_{}", user_id, Utc::now().timestamp());
-        debug!("Auto top-off execution flow: step 8 - invoice parameters prepared: amount_cents={}, idempotency_key={}", amount_cents, idempotency_key);
+        debug!("Auto top-off execution flow: step 8 - fetching full Stripe customer object");
+        // Fetch full Stripe Customer object
+        let customer = stripe_service.get_customer(&customer_id).await
+            .map_err(|e| {
+                warn!("Auto top-off execution flow: FAILED at step 8 - failed to fetch Stripe customer for user {}: {}", user_id, e);
+                AppError::External(format!("Failed to fetch Stripe customer: {}", e))
+            })?;
         
-        debug!("Auto top-off execution flow: step 9 - creating and paying Stripe invoice");
-        // Create invoice item and invoice, then pay it
-        let invoice = stripe_service.create_and_pay_invoice(
+        debug!("Auto top-off execution flow: step 9 - determining payment method");
+        // Extract default payment method ID from customer
+        let payment_method_id = if let Some(invoice_settings) = customer.invoice_settings {
+            if let Some(default_payment_method) = invoice_settings.default_payment_method {
+                info!("Using customer's default payment method: {}", default_payment_method);
+                default_payment_method
+            } else {
+                debug!("No default payment method set, listing available payment methods");
+                let payment_methods = stripe_service.list_payment_methods(&customer_id).await
+                    .map_err(|e| {
+                        warn!("Failed to list payment methods for user {}: {}", user_id, e);
+                        AppError::External(format!("Failed to list payment methods: {}", e))
+                    })?;
+                
+                if payment_methods.is_empty() {
+                    warn!("No payment methods available for user {}", user_id);
+                    return Err(AppError::PaymentMethodRequired("No payment methods available for auto top-off".to_string()));
+                }
+                
+                info!("Using first available payment method: {}", payment_methods[0].id);
+                payment_methods[0].id.clone()
+            }
+        } else {
+            debug!("No invoice settings found, listing available payment methods");
+            let payment_methods = stripe_service.list_payment_methods(&customer_id).await
+                .map_err(|e| {
+                    warn!("Failed to list payment methods for user {}: {}", user_id, e);
+                    AppError::External(format!("Failed to list payment methods: {}", e))
+                })?;
+            
+            if payment_methods.is_empty() {
+                warn!("No payment methods available for user {}", user_id);
+                return Err(AppError::PaymentMethodRequired("No payment methods available for auto top-off".to_string()));
+            }
+            
+            info!("Using first available payment method: {}", payment_methods[0].id);
+            payment_methods[0].id.clone()
+        };
+
+        debug!("Auto top-off execution flow: step 10 - preparing payment intent creation");
+        // Generate idempotency key
+        let amount_cents = (amount.clone() * BigDecimal::from(100)).to_i64().unwrap_or(0);
+        let idempotency_key = format!("auto_topoff_{}_{}_{}", user_id, amount_cents, Utc::now().timestamp_nanos());
+        debug!("Auto top-off execution flow: step 10 - payment intent parameters prepared: amount_cents={}, idempotency_key={}", amount_cents, idempotency_key);
+        
+        debug!("Auto top-off execution flow: step 11 - creating and confirming payment intent");
+        // Create and confirm payment intent
+        let payment_intent = stripe_service.create_and_confirm_payment_intent(
             &idempotency_key,
             &customer_id,
+            &payment_method_id,
             amount_cents as i64,
-            "USD",
+            "usd",
             &format!("Automatic credit top-off for ${}", amount),
         ).await.map_err(|e| {
-            warn!("Auto top-off execution flow: FAILED at step 9 - Stripe invoice creation/payment failed for user {}: {}", user_id, e);
-            AppError::External(format!("Failed to create and pay auto top-off invoice: {}", e))
+            warn!("Auto top-off execution flow: FAILED at step 11 - payment intent creation failed for user {}: {}", user_id, e);
+            AppError::External(format!("Failed to create payment intent for auto top-off: {}", e))
         })?;
-        info!("Auto top-off execution flow: step 9 completed - Stripe invoice created successfully: {} - relying on webhooks for credit fulfillment", invoice.id);
+        info!("Auto top-off execution flow: step 11 completed - payment intent created and confirmed successfully: {} - relying on webhooks for credit fulfillment", payment_intent.id);
 
-        info!("Auto top-off execution flow: COMPLETED SUCCESSFULLY - user {} auto top-off invoice created with amount {} - webhooks will handle credit fulfillment", user_id, amount);
+        info!("Auto top-off execution flow: COMPLETED SUCCESSFULLY - user {} auto top-off payment intent created with amount {} - webhooks will handle credit fulfillment", user_id, amount);
         Ok(())
     }
 

@@ -22,7 +22,8 @@ const MemoizedJobCard = memo(JobCard, (prevProps, nextProps) => {
     prevProps.isDeleting[prevProps.job.id] === nextProps.isDeleting[nextProps.job.id] &&
     prevProps.currentSessionId === nextProps.currentSessionId &&
     prevProps.hasContinuationJob === nextProps.hasContinuationJob &&
-    prevProps.isWorkflowActive === nextProps.isWorkflowActive
+    prevProps.isWorkflowActive === nextProps.isWorkflowActive &&
+    prevProps.webSearchSystemPrompt === nextProps.webSearchSystemPrompt
   );
 });
 
@@ -38,6 +39,7 @@ interface JobContentProps {
   onApplyFiles?: (job: BackgroundJob) => Promise<void>;
   onContinueWorkflow?: (job: BackgroundJob) => Promise<void>;
   currentSessionId?: string;
+  webSearchSystemPrompt?: string;
 }
 
 /**
@@ -55,6 +57,7 @@ export const JobContent = ({
   onApplyFiles,
   onContinueWorkflow,
   currentSessionId,
+  webSearchSystemPrompt,
 }: JobContentProps) => {
   // Optimized job grouping with metadata caching and workflow status
   const { jobGroups, continuationJobsMap } = useMemo(() => {
@@ -180,6 +183,7 @@ export const JobContent = ({
                         onContinueWorkflow={onContinueWorkflow}
                         currentSessionId={currentSessionId}
                         hasContinuationJob={continuationJobsMap.has(job.id)}
+                        webSearchSystemPrompt={webSearchSystemPrompt}
                         isWorkflowActive={group.isActive}
                       />
                     </div>

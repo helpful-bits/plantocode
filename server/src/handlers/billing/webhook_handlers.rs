@@ -15,6 +15,209 @@ use bigdecimal::{BigDecimal, ToPrimitive, FromPrimitive};
 use crate::stripe_types::*;
 use crate::stripe_types::enums::*;
 use serde::{Deserialize, Serialize};
+use crate::db::repositories::user_repository::User;
+
+/// Payment completion context for different payment types
+#[derive(Debug)]
+enum PaymentCompletionContext {
+    CreditPurchase {
+        payment_intent: PaymentIntent,
+        user_id: Uuid,
+    },
+    AutoTopOff {
+        payment_intent: PaymentIntent,
+        user: User,
+    },
+}
+
+/// Unified payment completion processor that handles all payment types
+/// Consolidates duplicated logic from process_credit_purchase, process_auto_topoff_payment, and handle_invoice_payment_succeeded
+async fn process_payment_completion(
+    context: PaymentCompletionContext,
+    billing_service: &BillingService,
+    email_service: Option<&crate::services::email_notification_service::EmailNotificationService>,
+) -> Result<(), AppError> {
+    match context {
+        PaymentCompletionContext::CreditPurchase { payment_intent, user_id } => {
+            info!("Processing credit purchase for PaymentIntent: {}", payment_intent.id);
+            
+            // Extract charge ID using latest_charge (Expandable)
+            let charge_id = match &payment_intent.latest_charge {
+                Some(expandable_charge) => {
+                    match expandable_charge {
+                        Expandable::Id(charge_id) => charge_id.clone(),
+                        Expandable::Object(charge) => charge.id.clone()
+                    }
+                },
+                None => {
+                    return Err(AppError::InvalidArgument("Missing charge ID in payment intent".to_string()));
+                }
+            };
+            
+            // Common charge processing
+            let (gross_amount, fee_amount, currency) = fetch_charge_amounts(billing_service, &charge_id).await?;
+            
+            // Create metadata for credit purchase
+            let metadata = serde_json::to_value(&payment_intent.metadata)
+                .map_err(|e| AppError::InvalidArgument(format!("Failed to serialize metadata: {}", e)))?;
+            
+            // Record credit purchase
+            let credit_service = billing_service.get_credit_service();
+            let audit_context = AuditContext::new(user_id);
+            
+            record_credit_transaction(
+                &credit_service,
+                &user_id,
+                &gross_amount,
+                &fee_amount,
+                &currency,
+                &charge_id,
+                metadata,
+                &audit_context,
+                &format!("credit purchase for payment intent {}", payment_intent.id),
+            ).await?;
+            
+            // Send email notification for credit purchases
+            if let Some(email_service) = email_service {
+                send_credit_purchase_email(email_service, billing_service, &user_id, &gross_amount, &fee_amount).await;
+            }
+        },
+        
+        PaymentCompletionContext::AutoTopOff { payment_intent, user } => {
+            info!("Processing auto top-off for PaymentIntent: {}", payment_intent.id);
+            
+            // Extract charge ID using latest_charge (same as credit purchase)
+            let charge_id = match &payment_intent.latest_charge {
+                Some(expandable_charge) => {
+                    match expandable_charge {
+                        Expandable::Id(charge_id) => charge_id.clone(),
+                        Expandable::Object(charge) => charge.id.clone()
+                    }
+                },
+                None => {
+                    return Err(AppError::InvalidArgument("Missing charge data in payment intent".to_string()));
+                }
+            };
+            
+            // Common charge processing
+            let (gross_amount, fee_amount, currency) = fetch_charge_amounts(billing_service, &charge_id).await?;
+            
+            // Create metadata for auto top-off
+            let metadata = serde_json::json!({
+                "payment_intent_id": payment_intent.id,
+                "charge_id": charge_id,
+                "customer_id": payment_intent.customer,
+                "payment_type": "auto_topoff",
+                "amount_charged_cents": payment_intent.amount,
+                "currency": payment_intent.currency,
+                "processed_via": "payment_intent.succeeded_webhook"
+            });
+            
+            // Record credit purchase
+            let credit_service = billing_service.get_credit_service();
+            let audit_context = AuditContext::new(user.id);
+            
+            record_credit_transaction(
+                &credit_service,
+                &user.id,
+                &gross_amount,
+                &fee_amount,
+                &currency,
+                &charge_id,
+                metadata,
+                &audit_context,
+                &format!("auto top-off for payment intent {}", payment_intent.id),
+            ).await?;
+            
+            // No email for auto top-off
+        },
+    }
+    
+    Ok(())
+}
+
+/// Unified charge amount fetching - consolidates duplicated charge fetching logic
+async fn fetch_charge_amounts(
+    billing_service: &BillingService,
+    charge_id: &str,
+) -> Result<(BigDecimal, BigDecimal, String), AppError> {
+    let stripe_service = billing_service.get_stripe_service()
+        .map_err(|e| AppError::Configuration(format!("Failed to get stripe service: {}", e)))?;
+    
+    let charge = stripe_service.get_charge(charge_id).await
+        .map_err(|e| AppError::External(format!("Failed to fetch charge data: {}", e)))?;
+    
+    let gross_amount = BigDecimal::from(charge.amount) / BigDecimal::from(100);
+    let fee_amount = match &charge.balance_transaction {
+        Some(balance_transaction) => BigDecimal::from(balance_transaction.fee) / BigDecimal::from(100),
+        None => {
+            warn!("No balance transaction found for charge {} - using zero fee", charge_id);
+            BigDecimal::from(0)
+        }
+    };
+    
+    Ok((gross_amount, fee_amount, charge.currency))
+}
+
+/// Unified credit transaction recording - consolidates duplicated recording logic
+async fn record_credit_transaction(
+    credit_service: &crate::services::credit_service::CreditService,
+    user_id: &Uuid,
+    gross_amount: &BigDecimal,
+    fee_amount: &BigDecimal,
+    currency: &str,
+    charge_id: &str,
+    metadata: serde_json::Value,
+    audit_context: &AuditContext,
+    description: &str,
+) -> Result<(), AppError> {
+    match credit_service.record_credit_purchase(
+        user_id,
+        gross_amount,
+        fee_amount,
+        currency,
+        charge_id,
+        metadata,
+        audit_context,
+    ).await {
+        Ok(updated_balance) => {
+            info!("Successfully processed {} - user {} new balance: ${}", 
+                  description, user_id, updated_balance.balance);
+        },
+        Err(AppError::AlreadyExists(_)) => {
+            info!("{} was already processed (duplicate)", description);
+            return Ok(());
+        },
+        Err(e) => {
+            error!("Failed to record {}: {}", description, e);
+            return Err(AppError::Payment(format!("Failed to record {}: {}", description, e)));
+        }
+    };
+    Ok(())
+}
+
+/// Send credit purchase email notification
+async fn send_credit_purchase_email(
+    email_service: &crate::services::email_notification_service::EmailNotificationService,
+    billing_service: &BillingService,
+    user_id: &Uuid,
+    gross_amount: &BigDecimal,
+    fee_amount: &BigDecimal,
+) {
+    let net_amount = gross_amount - fee_amount;
+    let user_repo = crate::db::repositories::user_repository::UserRepository::new(billing_service.get_system_db_pool());
+    
+    if let Ok(user) = user_repo.get_by_id(user_id).await {
+        if let Err(e) = email_service.send_credit_purchase_notification(
+            user_id,
+            &user.email,
+            &net_amount,
+            "USD",
+        ).await {
+            warn!("Failed to send credit purchase confirmation email to user {}: {}", user_id, e);
+        }
+    }
+}
 
 
 /// Handle Stripe webhook events with enhanced security
@@ -220,11 +423,9 @@ async fn process_stripe_webhook_event(
         },
         EVENT_PAYMENT_INTENT_SUCCEEDED => {
             info!("Processing payment intent succeeded: {}", event.id);
-            // Parse payment intent from event data
             let payment_intent: PaymentIntent = serde_json::from_value(event.data["object"].clone())
                 .map_err(|e| AppError::InvalidArgument(format!("Failed to parse payment intent: {}", e)))?;
             
-            // Determine payment type from metadata to differentiate credit purchase types
             let payment_type = payment_intent.metadata.as_ref()
                 .and_then(|metadata| metadata.get("type"))
                 .map(|t| t.as_str())
@@ -232,7 +433,6 @@ async fn process_stripe_webhook_event(
             
             info!("Payment intent {} type: {} - processing", payment_intent.id, payment_type);
             
-            // Log audit event for successful payment (excluding credit purchases, which have their own specific audit logging)
             if payment_type != "credit_purchase" {
                 if let Some(metadata) = &payment_intent.metadata {
                     if let Some(user_id_str) = metadata.get("user_id") {
@@ -264,26 +464,75 @@ async fn process_stripe_webhook_event(
                 "credit_purchase" => {
                     let user_id_str = payment_intent.metadata.as_ref()
                         .and_then(|metadata| metadata.get("user_id"))
-                        .map(|v| v.as_str()).unwrap_or("unknown");
+                        .map(|v| v.clone()).unwrap_or_else(|| "unknown".to_string());
                     let amount = payment_intent.metadata.as_ref()
                         .and_then(|metadata| metadata.get("amount")
                             .or_else(|| metadata.get("credit_amount")))
-                        .map(|v| v.as_str()).unwrap_or("unknown");
+                        .map(|v| v.clone()).unwrap_or_else(|| "unknown".to_string());
+                    
+                    let payment_intent_id = payment_intent.id.clone();
+                    let customer_id = payment_intent.customer.clone();
                     
                     info!("Processing credit purchase for payment intent {} - user_id: {}, amount: {}", 
-                          payment_intent.id, user_id_str, amount);
+                          payment_intent_id, user_id_str, amount);
                     
-                    match process_credit_purchase(&payment_intent, billing_service, &email_service).await {
+                    let user_id = match Uuid::parse_str(&user_id_str) {
+                        Ok(uuid) => uuid,
+                        Err(e) => {
+                            error!("Invalid user_id UUID format in payment intent {}: '{}' - {}", 
+                                   payment_intent_id, user_id_str, e);
+                            return Err(AppError::InvalidArgument(format!("Invalid user_id UUID: {}", e)));
+                        }
+                    };
+                    
+                    let context = PaymentCompletionContext::CreditPurchase {
+                        payment_intent,
+                        user_id,
+                    };
+                    
+                    match process_payment_completion(context, billing_service, Some(&email_service)).await {
                         Ok(_) => {
                             info!("Successfully processed credit purchase for payment intent {} - user_id: {}, amount: {}", 
-                                  payment_intent.id, user_id_str, amount);
+                                  payment_intent_id, user_id_str, amount);
                         },
                         Err(e) => {
                             error!("Failed to process credit purchase for payment intent {} - user_id: {}, amount: {} - Error: {}", 
-                                   payment_intent.id, user_id_str, amount, e);
+                                   payment_intent_id, user_id_str, amount, e);
                             crate::utils::admin_alerting::send_payment_processing_error_alert(
-                                &payment_intent.id,
-                                &payment_intent.customer.clone().unwrap_or_else(|| "unknown".to_string()),
+                                &payment_intent_id,
+                                &customer_id.unwrap_or_else(|| "unknown".to_string()),
+                                &format!("{}", e),
+                            ).await;
+                            return Err(e);
+                        }
+                    }
+                },
+                "auto_topoff" => {
+                    let payment_intent_id = payment_intent.id.clone();
+                    let customer_id_for_error = payment_intent.customer.clone();
+                    
+                    info!("Processing auto top-off for payment intent {} (PRIMARY handler)", payment_intent_id);
+                    
+                    let customer_id = payment_intent.customer.as_ref()
+                        .ok_or_else(|| AppError::InvalidArgument("No customer ID in payment intent".to_string()))?;
+                    
+                    let user_repo = UserRepository::new(billing_service.get_system_db_pool());
+                    let user = user_repo.get_by_stripe_customer_id(customer_id).await?;
+                    
+                    let context = PaymentCompletionContext::AutoTopOff {
+                        payment_intent,
+                        user,
+                    };
+                    
+                    match process_payment_completion(context, billing_service, None).await {
+                        Ok(_) => {
+                            info!("Successfully processed auto top-off for payment intent {}", payment_intent_id);
+                        },
+                        Err(e) => {
+                            error!("Failed to process auto top-off for payment intent {}: {}", payment_intent_id, e);
+                            crate::utils::admin_alerting::send_payment_processing_error_alert(
+                                &payment_intent_id,
+                                &customer_id_for_error.unwrap_or_else(|| "unknown".to_string()),
                                 &format!("{}", e),
                             ).await;
                             return Err(e);
@@ -291,23 +540,36 @@ async fn process_stripe_webhook_event(
                     }
                 },
                 _ => {
-                    warn!("Unknown payment type '{}' for payment intent {} - attempting credit purchase processing", payment_type, payment_intent.id);
-                    match process_credit_purchase(&payment_intent, billing_service, &email_service).await {
-                        Ok(_) => {
-                            info!("Successfully processed unknown payment type as credit purchase for payment intent {}", payment_intent.id);
-                        },
-                        Err(e) => {
-                            warn!("Failed to process unknown payment type for payment intent {}: {} - continuing webhook processing", payment_intent.id, e);
+                    let payment_intent_id = payment_intent.id.clone();
+                    
+                    warn!("Unknown payment type '{}' for payment intent {} - attempting credit purchase processing", payment_type, payment_intent_id);
+                    
+                    if let Some(user_id_str) = payment_intent.metadata.as_ref()
+                        .and_then(|metadata| metadata.get("user_id"))
+                        .map(|v| v.as_str()) {
+                        
+                        if let Ok(user_id) = Uuid::parse_str(user_id_str) {
+                            let context = PaymentCompletionContext::CreditPurchase {
+                                payment_intent,
+                                user_id,
+                            };
+                            
+                            match process_payment_completion(context, billing_service, Some(&email_service)).await {
+                                Ok(_) => {
+                                    info!("Successfully processed unknown payment type as credit purchase for payment intent {}", payment_intent_id);
+                                },
+                                Err(e) => {
+                                    warn!("Failed to process unknown payment type for payment intent {}: {} - continuing webhook processing", payment_intent_id, e);
+                                }
+                            }
+                        } else {
+                            warn!("Invalid user_id in unknown payment type for payment intent {}: {}", payment_intent_id, user_id_str);
                         }
+                    } else {
+                        warn!("No user_id found in metadata for unknown payment type payment intent {}", payment_intent_id);
                     }
                 }
             }
-        },
-        EVENT_INVOICE_PAYMENT_SUCCEEDED => {
-            info!("Processing invoice.payment_succeeded for event {}", event.id);
-            let invoice: Invoice = serde_json::from_value(event.data["object"].clone())
-                .map_err(|e| AppError::InvalidArgument(format!("Failed to parse invoice: {}", e)))?;
-            handle_invoice_payment_succeeded(&invoice, billing_service).await?;
         },
         EVENT_PAYMENT_METHOD_ATTACHED => {
             info!("Processing payment method attached: {}", event.id);
@@ -339,205 +601,6 @@ async fn process_stripe_webhook_event(
 // SIMPLIFIED WEBHOOK EVENT HANDLERS
 // ========================================
 
-
-/// Process credit purchase from successful payment intent (one-time top-up)
-/// This handles individual credit purchases for the credit-based billing system
-async fn process_credit_purchase(
-    payment_intent: &PaymentIntent,
-    billing_service: &BillingService,
-    email_service: &crate::services::email_notification_service::EmailNotificationService,
-) -> Result<(), AppError> {
-    info!("Processing credit purchase for PaymentIntent: {}", payment_intent.id);
-    
-    // Check if this is a credit purchase by examining metadata
-    let metadata = payment_intent.metadata.as_ref();
-    let payment_type = metadata
-        .and_then(|m| m.get("type"))
-        .map(|t| t.as_str())
-        .unwrap_or("unknown");
-    
-    if payment_type != "credit_purchase" {
-        info!("PaymentIntent {} is not a credit purchase (type: {}), skipping credit processing", payment_intent.id, payment_type);
-        return Ok(());
-    }
-    
-    info!("PaymentIntent {} confirmed as credit purchase, processing", payment_intent.id);
-    
-    let metadata = metadata.ok_or_else(|| {
-        error!("Missing metadata in PaymentIntent {}", payment_intent.id);
-        AppError::InvalidArgument("Missing metadata in credit purchase payment intent".to_string())
-    })?;
-    
-    info!("Validating metadata for PaymentIntent {}: available keys: {:?}", 
-          payment_intent.id, metadata.keys().collect::<Vec<_>>());
-    
-    let user_id_str = match metadata.get("user_id").map(|v| v.as_str()) {
-        Some(user_id) => {
-            info!("Found user_id in metadata for PaymentIntent {}: {}", payment_intent.id, user_id);
-            user_id
-        },
-        None => {
-            error!("Missing required metadata field 'user_id' in PaymentIntent {}. Available metadata keys: {:?}, full metadata: {:?}", 
-                   payment_intent.id, metadata.keys().collect::<Vec<_>>(), metadata);
-            return Err(AppError::InvalidArgument("Missing required user_id in credit purchase metadata. This field is required to identify the user for credit top-up.".to_string()));
-        }
-    };
-    
-    // Extract charge ID from payment intent to get authoritative amounts
-    let charge_id = match &payment_intent.latest_charge {
-        Some(expandable_charge) => {
-            // Handle Expandable type - extract ID regardless of whether it's expanded or not
-            match expandable_charge {
-                Expandable::Id(charge_id) => {
-                    info!("Found charge ID for PaymentIntent {}: {}", payment_intent.id, charge_id);
-                    charge_id.clone()
-                },
-                Expandable::Object(charge) => {
-                    info!("Found expanded charge for PaymentIntent {}: {}", payment_intent.id, charge.id);
-                    charge.id.clone()
-                }
-            }
-        },
-        None => {
-            error!("Missing charge ID in PaymentIntent {} - cannot fetch authoritative amounts", payment_intent.id);
-            return Err(AppError::InvalidArgument("Missing charge ID in payment intent - this is required for authoritative fee data".to_string()));
-        }
-    };
-    
-    // Fetch charge with balance transaction for authoritative amounts
-    let stripe_service = billing_service.get_stripe_service()
-        .map_err(|e| {
-            error!("Failed to get stripe service: {}", e);
-            AppError::Configuration(format!("Failed to get stripe service: {}", e))
-        })?;
-    
-    let charge = stripe_service.get_charge(&charge_id).await
-        .map_err(|e| {
-            error!("Failed to fetch charge {} for PaymentIntent {}: {}", charge_id, payment_intent.id, e);
-            AppError::External(format!("Failed to fetch authoritative charge data: {}", e))
-        })?;
-    
-    // Get authoritative amounts from charge
-    let gross_amount = BigDecimal::from(charge.amount) / BigDecimal::from(100); // Convert from cents
-    
-    let fee_amount = match &charge.balance_transaction {
-        Some(balance_transaction) => {
-            BigDecimal::from(balance_transaction.fee) / BigDecimal::from(100) // Convert from cents
-        },
-        None => {
-            warn!("No balance transaction found for charge {} - using zero fee", charge_id);
-            BigDecimal::from(0)
-        }
-    };
-    
-    info!("Retrieved authoritative amounts for PaymentIntent {}: gross=${}, fee=${}", 
-          payment_intent.id, gross_amount, fee_amount);
-    
-    // Get currency from payment intent (already validated by Stripe)
-    let currency = &payment_intent.currency;
-    
-    // Validate that the currency is USD
-    if currency.to_uppercase() != "USD" {
-        error!("PaymentIntent {} uses unsupported currency: {}. Only USD is supported.", 
-               payment_intent.id, currency);
-        return Err(AppError::InvalidArgument(
-            format!("Only USD currency is supported for credit purchases, got: {}", currency)
-        ));
-    }
-    
-    info!("All required metadata fields validated successfully for PaymentIntent {}", payment_intent.id);
-    
-    // Parse and validate user_id UUID with enhanced logging
-    let user_uuid = match Uuid::parse_str(user_id_str) {
-        Ok(uuid) => {
-            info!("Successfully parsed user_id UUID for PaymentIntent {}: {}", payment_intent.id, uuid);
-            uuid
-        },
-        Err(e) => {
-            error!("Invalid user_id UUID format in PaymentIntent {}: '{}' - {}", payment_intent.id, user_id_str, e);
-            return Err(AppError::InvalidArgument(format!("Invalid user_id UUID format '{}': {}. User ID must be a valid UUID.", user_id_str, e)));
-        }
-    };
-    
-    info!("Processing credit purchase for user {} with gross_amount {} {} (fee: {}) (payment type: {})", 
-          user_uuid, gross_amount, currency, fee_amount, payment_type);
-    
-    // Process credit purchase directly from amount
-    let db_pools = billing_service.get_db_pools();
-    let credit_service = crate::services::credit_service::CreditService::new(db_pools.clone());
-    
-    // Validate payment amount matches gross amount (convert to cents for comparison)
-    let expected_amount_cents = (&gross_amount * BigDecimal::from(100)).to_i64()
-        .ok_or_else(|| AppError::InvalidArgument("Invalid gross amount for cents conversion".to_string()))?;
-    
-    if payment_intent.amount != expected_amount_cents {
-        error!("Payment amount mismatch in PaymentIntent {}: expected {} cents, got {} cents", 
-               payment_intent.id, expected_amount_cents, payment_intent.amount);
-        return Err(AppError::Payment("Payment amount mismatch".to_string()));
-    }
-    
-    if payment_intent.currency.to_uppercase() != charge.currency.to_uppercase() {
-        error!("Currency mismatch in PaymentIntent {}: payment_intent currency {}, charge currency {}", 
-               payment_intent.id, payment_intent.currency, charge.currency);
-        return Err(AppError::Payment("Currency mismatch between payment intent and charge".to_string()));
-    }
-    
-    // Create audit context for the credit purchase
-    let audit_context = AuditContext::new(user_uuid);
-    
-    // Serialize payment intent metadata
-    let metadata_json = serde_json::to_value(&payment_intent.metadata)
-        .map_err(|e| AppError::InvalidArgument(format!("Failed to serialize payment intent metadata: {}", e)))?;
-    
-    // Process the credit purchase using the credit service
-    match credit_service.record_credit_purchase(
-        &user_uuid,
-        &gross_amount,
-        &fee_amount,
-        currency,
-        &charge_id,
-        metadata_json,
-        &audit_context,
-    ).await {
-        Ok(updated_balance) => {
-            info!("Successfully processed credit purchase for PaymentIntent {}: user {} new balance: {}", 
-                  payment_intent.id, user_uuid, updated_balance.balance);
-        },
-        Err(AppError::AlreadyExists(_)) => {
-            info!("Credit purchase for payment intent {} was already processed (duplicate), returning OK", payment_intent.id);
-            return Ok(());
-        },
-        Err(e) => {
-            error!("Failed to process credit purchase for PaymentIntent {}: {}", payment_intent.id, e);
-            return Err(AppError::Payment(format!("Credit purchase processing failed: {}", e)));
-        }
-    };
-    
-    // Calculate net amount for email notification
-    let net_amount = &gross_amount - &fee_amount;
-    
-    // Send success email notification
-    let user_repo = crate::db::repositories::user_repository::UserRepository::new(billing_service.get_system_db_pool());
-    if let Ok(user) = user_repo.get_by_id(&user_uuid).await {
-        email_service.send_credit_purchase_notification(
-            &user_uuid,
-            &user.email,
-            &net_amount,
-            &payment_intent.currency,
-        ).await.map_err(|e| {
-            error!("Failed to send credit purchase notification for PaymentIntent {}: {}", payment_intent.id, e);
-            e
-        }).unwrap_or_else(|e| {
-            error!("Failed to send credit purchase notification for PaymentIntent {}: {}", payment_intent.id, e);
-        });
-        
-        info!("Sent credit purchase success email notification for user {} after PaymentIntent {}", user_uuid, payment_intent.id);
-    } else {
-        warn!("Could not find user {} to send credit purchase email notification for PaymentIntent {}", user_uuid, payment_intent.id);
-    }
-    
-    Ok(())
-}
 
 
 
@@ -721,7 +784,21 @@ async fn handle_checkout_session_completed(
                 let payment_intent = stripe_service.get_payment_intent(payment_intent_id).await
                     .map_err(|e| AppError::External(format!("Failed to retrieve payment intent: {}", e)))?;
                 
-                process_credit_purchase(&payment_intent, billing_service, &email_service).await?;
+                // Extract user_id from metadata for checkout session credit purchase
+                let user_id_str = payment_intent.metadata.as_ref()
+                    .and_then(|metadata| metadata.get("user_id"))
+                    .map(|v| v.as_str())
+                    .ok_or_else(|| AppError::InvalidArgument("Missing user_id in payment intent metadata".to_string()))?;
+                
+                let user_id = Uuid::parse_str(user_id_str)
+                    .map_err(|e| AppError::InvalidArgument(format!("Invalid user_id UUID: {}", e)))?;
+                
+                let context = PaymentCompletionContext::CreditPurchase {
+                    payment_intent,
+                    user_id,
+                };
+                
+                process_payment_completion(context, billing_service, Some(email_service)).await?;
             }
         },
         CheckoutSessionMode::Setup => {
@@ -742,156 +819,6 @@ async fn handle_checkout_session_completed(
         },
     }
     
-    Ok(())
-}
-
-/// Handle invoice payment succeeded event for auto_topoff invoices
-async fn handle_invoice_payment_succeeded(
-    invoice: &Invoice,
-    billing_service: &BillingService,
-) -> Result<(), AppError> {
-    info!("Processing invoice.payment_succeeded for invoice: {}", invoice.id);
-    
-    // Check if this is an auto_topoff invoice
-    let invoice_type = invoice.metadata.as_ref()
-        .and_then(|metadata| metadata.get("type"))
-        .map(|t| t.as_str())
-        .unwrap_or("unknown");
-    
-    if invoice_type != "auto_topoff" {
-        info!("Invoice {} is not an auto_topoff invoice (type: {}), skipping processing", 
-              invoice.id, invoice_type);
-        return Ok(());
-    }
-    
-    info!("Processing auto_topoff invoice: {}", invoice.id);
-    
-    // Extract customer ID from invoice
-    let customer_id = &invoice.customer;
-    info!("Found customer ID for invoice {}: {}", invoice.id, customer_id);
-    
-    // Find the associated application user
-    let user_repo = UserRepository::new(billing_service.get_system_db_pool());
-    let user = match user_repo.get_by_stripe_customer_id(customer_id).await {
-        Ok(user) => {
-            info!("Found user {} for customer ID {} in invoice {}", 
-                  user.id, customer_id, invoice.id);
-            user
-        },
-        Err(e) => {
-            error!("Could not find user for customer ID {} in invoice {}: {}", 
-                   customer_id, invoice.id, e);
-            return Err(AppError::NotFound(format!(
-                "User not found for customer ID {} in invoice {}", 
-                customer_id, invoice.id
-            )));
-        }
-    };
-    
-    // Extract charge ID (serves as idempotency key)
-    let charge_id = match &invoice.charge {
-        Some(charge_id) => {
-            info!("Found charge ID for invoice {}: {}", invoice.id, charge_id);
-            charge_id
-        },
-        None => {
-            error!("Missing charge ID in invoice {} - cannot process payment", invoice.id);
-            return Err(AppError::InvalidArgument(format!(
-                "Missing charge ID in invoice {} - this is required for idempotency", 
-                invoice.id
-            )));
-        }
-    };
-    
-    // Fetch charge with balance transaction for authoritative fee data
-    let stripe_service = billing_service.get_stripe_service()
-        .map_err(|e| {
-            error!("Failed to get stripe service: {}", e);
-            AppError::Configuration(format!("Failed to get stripe service: {}", e))
-        })?;
-    
-    let charge = stripe_service.get_charge(charge_id).await
-        .map_err(|e| {
-            error!("Failed to fetch charge {} for invoice {}: {}", charge_id, invoice.id, e);
-            AppError::External(format!("Failed to fetch authoritative charge data: {}", e))
-        })?;
-    
-    // Use invoice amount as gross amount and get authoritative fee from charge
-    let gross_amount = BigDecimal::from(invoice.amount_paid) / BigDecimal::from(100);
-    
-    let fee_amount = match &charge.balance_transaction {
-        Some(balance_transaction) => {
-            BigDecimal::from(balance_transaction.fee) / BigDecimal::from(100) // Convert from cents
-        },
-        None => {
-            warn!("No balance transaction found for charge {} - using zero fee", charge_id);
-            BigDecimal::from(0)
-        }
-    };
-    
-    info!("Processing auto_topoff payment for user {} - gross: ${}, fee: ${} (charge: {})", 
-          user.id, gross_amount, fee_amount, charge_id);
-    
-    // Get currency from invoice
-    let currency = &invoice.currency;
-    
-    // Validate currency is USD
-    if currency.to_lowercase() != "usd" {
-        error!("Invoice {} uses unsupported currency: {}. Only USD is supported for auto_topoff", 
-               invoice.id, currency);
-        return Err(AppError::InvalidArgument(format!(
-            "Only USD currency is supported for auto_topoff, got: {} in invoice {}", 
-            currency, invoice.id
-        )));
-    }
-    
-    // Prepare metadata for the credit transaction
-    let metadata = serde_json::json!({
-        "invoice_id": invoice.id,
-        "charge_id": charge_id,
-        "customer_id": customer_id,
-        "invoice_type": invoice_type,
-        "amount_paid_cents": invoice.amount_paid,
-        "currency": currency,
-        "processed_via": "invoice.payment_succeeded_webhook"
-    });
-    
-    info!("Recording credit purchase for auto_topoff invoice {}: user {}, amount ${}, charge {}", 
-          invoice.id, user.id, gross_amount, charge_id);
-    
-    // Record the credit purchase
-    let credit_service = billing_service.get_credit_service();
-    let audit_context = AuditContext::new(user.id);
-    
-    match credit_service.record_credit_purchase(
-        &user.id,
-        &gross_amount,  // gross_amount (what they paid)
-        &fee_amount,    // fee_amount (authoritative Stripe processing fee)
-        currency,
-        charge_id,
-        metadata,
-        &audit_context,
-    ).await {
-        Ok(updated_balance) => {
-            info!("Successfully processed auto_topoff credit purchase for invoice {}: user {} new balance: ${}", 
-                  invoice.id, user.id, updated_balance.balance);
-        },
-        Err(AppError::AlreadyExists(_)) => {
-            info!("Auto_topoff credit purchase for invoice {} (charge {}) was already processed (duplicate)", 
-                  invoice.id, charge_id);
-            return Ok(());
-        },
-        Err(e) => {
-            error!("Failed to record auto_topoff credit purchase for invoice {}: {}", 
-                   invoice.id, e);
-            return Err(AppError::Payment(format!(
-                "Failed to record auto_topoff credit purchase for invoice {}: {}", 
-                invoice.id, e
-            )));
-        }
-    }
-    
-    info!("Successfully processed invoice.payment_succeeded for auto_topoff invoice {}", invoice.id);
     Ok(())
 }
 

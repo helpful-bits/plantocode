@@ -1,8 +1,9 @@
 "use client";
 
 import React from "react";
-import { FileText, Copy, Check } from "lucide-react";
+import { FileText, Copy } from "lucide-react";
 import { Button } from "@/ui/button";
+import { Checkbox } from "@/ui/checkbox";
 import { cn } from "@/utils/utils";
 import { humanFileSize } from "@/utils/file-size";
 import { formatTimeAgo } from "@/utils/date-utils";
@@ -47,37 +48,18 @@ export const FileItem = React.memo(function SimpleFileItem({
       {/* Select/Exclude columns */}
       <div className="w-16 flex items-center gap-1">
         {/* Include checkbox */}
-        <div
-          onClick={() => !file.excluded && onToggleSelection(file.path)}
-          className="custom-checkbox-container cursor-pointer"
-        >
-          <input
-            type="checkbox"
-            checked={file.included}
-            onChange={() => {}} // Controlled by onClick
-            disabled={file.excluded}
-            className="custom-checkbox"
-          />
-          <div className="custom-checkbox-checkmark">
-            <Check className="h-3 w-3" />
-          </div>
-        </div>
+        <Checkbox
+          checked={file.included}
+          onCheckedChange={() => !file.excluded && onToggleSelection(file.path)}
+          disabled={file.excluded}
+        />
 
         {/* Exclude checkbox */}
-        <div
-          onClick={() => onToggleExclusion(file.path)}
-          className="custom-checkbox-container cursor-pointer"
-        >
-          <input
-            type="checkbox"
-            checked={file.excluded}
-            onChange={() => {}} // Controlled by onClick
-            className="custom-checkbox destructive"
-          />
-          <div className="custom-checkbox-checkmark">
-            <Check className="h-3 w-3" />
-          </div>
-        </div>
+        <Checkbox
+          checked={file.excluded}
+          onCheckedChange={() => onToggleExclusion(file.path)}
+          className="destructive"
+        />
       </div>
 
       {/* File Name column */}

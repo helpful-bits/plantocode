@@ -57,15 +57,8 @@ export function BillingDashboard({}: BillingDashboardProps = {}) {
     // Check for session_id (post-payment handling)
     const sessionId = urlParams.get('session_id');
     if (sessionId) {
-      // Verify payment status and refresh billing data
-      const verifyPayment = async () => {
-        try {
-          await refreshBillingData();
-        } catch (err) {
-          console.error('Error verifying payment:', err);
-        }
-      };
-      verifyPayment();
+      // Immediately refresh billing data upon redirect from successful payment
+      refreshBillingData();
       
       // Clean up the URL parameter
       const newUrl = new URL(window.location.href);

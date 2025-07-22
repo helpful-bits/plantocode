@@ -546,7 +546,7 @@ export function ImplementationPlansPanel({
               <div className="mb-3">
                 <div className="space-y-2">
                   <div className="text-xs text-muted-foreground">
-                    Estimated tokens: <AnimatedNumber 
+                    Estimated tokens (preliminary): <AnimatedNumber 
                       value={estimatedTokens} 
                       previousValue={previousEstimatedTokens}
                       className="text-foreground font-medium"

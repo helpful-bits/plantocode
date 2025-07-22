@@ -20,8 +20,6 @@ pub enum EventObject {
     CheckoutSession(crate::stripe_types::CheckoutSession),
     #[serde(rename = "customer")]
     Customer(crate::stripe_types::Customer),
-    #[serde(rename = "invoice")]
-    Invoice(crate::stripe_types::Invoice),
     #[serde(rename = "payment_method")]
     PaymentMethod(crate::stripe_types::PaymentMethod),
 }
@@ -35,10 +33,6 @@ pub enum EventType {
     PaymentIntentPaymentFailed,
     #[serde(rename = "checkout.session.completed")]
     CheckoutSessionCompleted,
-    #[serde(rename = "invoice.payment_succeeded")]
-    InvoicePaymentSucceeded,
-    #[serde(rename = "invoice.payment_failed")]
-    InvoicePaymentFailed,
     #[serde(rename = "payment_method.attached")]
     PaymentMethodAttached,
     #[serde(rename = "payment_method.detached")]

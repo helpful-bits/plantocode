@@ -605,61 +605,6 @@ impl StripeService {
         Ok(payment_methods_list.data)
     }
 
-    /// List invoices for a customer from Stripe
-    pub async fn list_invoices(&self, customer_id: &str) -> Result<Vec<stripe_types::Invoice>, StripeServiceError> {
-        let response = self.make_stripe_request_with_idempotency(
-            reqwest::Method::GET,
-            &format!("invoices?customer={}&limit=100", customer_id),
-            None,
-            None,
-        ).await?;
-        
-        let invoices_list: stripe_types::InvoiceList = serde_json::from_value(response)
-            .map_err(|e| StripeServiceError::Configuration(format!("Failed to parse invoices response: {}", e)))?;
-        
-        info!("Retrieved {} invoices for customer: {}", invoices_list.data.len(), customer_id);
-        
-        Ok(invoices_list.data)
-    }
-
-    /// List invoices for a customer from Stripe with status filter and pagination
-    pub async fn list_invoices_with_filter(&self, customer_id: &str, status: Option<&str>, limit: Option<u64>, starting_after: Option<&str>) -> Result<stripe_types::InvoiceList, StripeServiceError> {
-        let mut query_params = vec![
-            ("customer".to_string(), customer_id.to_string()),
-        ];
-        
-        if let Some(limit_val) = limit {
-            query_params.push(("limit".to_string(), limit_val.to_string()));
-        }
-        
-        if let Some(starting_after_value) = starting_after {
-            query_params.push(("starting_after".to_string(), starting_after_value.to_string()));
-        }
-        
-        if let Some(status_str) = status {
-            query_params.push(("status".to_string(), status_str.to_string()));
-        }
-        
-        let query_string = query_params
-            .into_iter()
-            .map(|(k, v)| format!("{}={}", k, v))
-            .collect::<Vec<_>>()
-            .join("&");
-        
-        let response = self.make_stripe_request_with_idempotency(
-            reqwest::Method::GET,
-            &format!("invoices?{}", query_string),
-            None,
-            None,
-        ).await?;
-        
-        let invoices_list: stripe_types::InvoiceList = serde_json::from_value(response)
-            .map_err(|e| StripeServiceError::Configuration(format!("Failed to parse invoices response: {}", e)))?;
-        
-        info!("Retrieved {} invoices for customer: {} with pagination (limit: {:?}, starting_after: {:?})", invoices_list.data.len(), customer_id, limit, starting_after);
-        
-        Ok(invoices_list)
-    }
 
     /// Detach/delete a payment method in Stripe
     pub async fn detach_payment_method(&self, idempotency_key: &str, payment_method_id: &str) -> Result<stripe_types::PaymentMethod, StripeServiceError> {
@@ -948,62 +893,48 @@ impl StripeService {
         Ok(session)
     }
 
-    /// Create and automatically charge an invoice for auto top-off
-    /// This method creates an invoice with auto_advance enabled, letting Stripe handle
-    /// the payment automatically - fire-and-forget approach relying on webhooks
-    pub async fn create_and_pay_invoice(
+    pub async fn create_and_confirm_payment_intent(
         &self,
         idempotency_key: &str,
         customer_id: &str,
+        payment_method_id: &str,
         amount_cents: i64,
         currency: &str,
         description: &str,
-    ) -> Result<stripe_types::Invoice, StripeServiceError> {
-        info!("Creating auto-charging invoice for customer: {} with amount: {} {}", customer_id, amount_cents, currency);
+    ) -> Result<stripe_types::PaymentIntent, StripeServiceError> {
+        info!("Creating and confirming payment intent for customer: {} with amount: {} {}", customer_id, amount_cents, currency);
         
-        // First, create an invoice item
-        let invoice_item_data = serde_json::json!({
-            "customer": customer_id,
+        let payment_intent_data = serde_json::json!({
             "amount": amount_cents,
             "currency": currency.to_lowercase(),
-            "description": description,
-        });
-
-        let _invoice_item = self.make_stripe_request_with_idempotency(
-            reqwest::Method::POST,
-            "invoiceitems",
-            Some(invoice_item_data),
-            Some(&format!("{}_item", idempotency_key)),
-        ).await?;
-
-        // Create the invoice with automatic payment collection
-        // Setting auto_advance: true and collection_method: charge_automatically
-        // makes Stripe automatically finalize and charge the invoice
-        let invoice_data = serde_json::json!({
             "customer": customer_id,
-            "auto_advance": true, // Automatically finalize and attempt payment
-            "collection_method": "charge_automatically", // Charge the default payment method
+            "payment_method": payment_method_id,
             "description": description,
+            "off_session": true,
+            "confirm": true,
             "metadata": {
-                "type": "auto_topoff",
-                "created_by": "vibe_manager"
+                "type": "auto_topoff"
             }
         });
-
-        let invoice_response = self.make_stripe_request_with_idempotency(
+        
+        let response = self.make_stripe_request_with_idempotency(
             reqwest::Method::POST,
-            "invoices",
-            Some(invoice_data),
-            Some(&format!("{}_invoice", idempotency_key)),
-        ).await?;
-
-        // Parse the invoice response and return immediately
-        let invoice: stripe_types::Invoice = serde_json::from_value(invoice_response)
-            .map_err(|e| StripeServiceError::Configuration(format!("Failed to parse invoice response: {}", e)))?;
-
-        info!("Successfully created auto-charging invoice: {} for customer: {} - relying on webhooks for fulfillment", invoice.id, customer_id);
-        Ok(invoice)
+            "payment_intents",
+            Some(payment_intent_data),
+            Some(idempotency_key),
+        ).await.map_err(|e| {
+            error!("Failed to create payment intent for customer {}: {}", customer_id, e);
+            e
+        })?;
+        
+        let payment_intent: stripe_types::PaymentIntent = serde_json::from_value(response)
+            .map_err(|e| StripeServiceError::Configuration(format!("Failed to parse payment intent response: {}", e)))?;
+        
+        info!("Successfully created and confirmed payment intent: {} for customer: {}", payment_intent.id, customer_id);
+        Ok(payment_intent)
     }
+
+
 
 }
 

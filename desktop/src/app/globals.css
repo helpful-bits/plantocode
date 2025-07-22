@@ -385,6 +385,18 @@
     @apply border-primary/90 shadow-xl;
   }
 
+  .dark .file-row-selected .custom-checkbox:checked {
+    /* Consistent darker teal for selected rows */
+    background-color: color-mix(in oklch, var(--color-primary) 70%, black 30%);
+    border-color: color-mix(in oklch, var(--color-primary) 70%, black 30%);
+  }
+
+  .dark .file-row-selected .custom-checkbox.destructive:checked {
+    /* Consistent darker red for selected rows */
+    background-color: color-mix(in oklch, var(--color-destructive) 70%, black 30%);
+    border-color: color-mix(in oklch, var(--color-destructive) 70%, black 30%);
+  }
+
   /* SVG checkmark colors for better visibility */
   .custom-checkbox:checked + .custom-checkbox-checkmark svg {
     color: var(--color-primary-foreground);
@@ -401,6 +413,24 @@
 
   .dark .custom-checkbox.destructive:checked + .custom-checkbox-checkmark svg {
     color: oklch(0.97 0.01 25); /* Explicit light color for dark mode destructive checkmark */
+  }
+  
+  /* Dark mode improvements for regular checkboxes */
+  .dark .custom-checkbox {
+    @apply border-zinc-600 bg-zinc-900/50;
+  }
+  .dark .custom-checkbox:hover:not(:disabled) {
+    @apply border-primary/80 bg-zinc-800/70;
+  }
+  .dark .custom-checkbox:checked {
+    /* Use darker teal for better contrast with white checkmark */
+    background-color: color-mix(in oklch, var(--color-primary) 70%, black 30%);
+    border-color: color-mix(in oklch, var(--color-primary) 70%, black 30%);
+  }
+  .dark .custom-checkbox.destructive:checked {
+    /* Use darker red for better contrast with white checkmark */
+    background-color: color-mix(in oklch, var(--color-destructive) 70%, black 30%);
+    border-color: color-mix(in oklch, var(--color-destructive) 70%, black 30%);
   }
 }
 

@@ -4,6 +4,7 @@ import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 
 import { refineTaskDescriptionAction } from "@/actions/ai/task-refinement.actions";
 import { startWebSearchWorkflowOrchestratorAction, cancelWorkflowAction } from "@/actions/workflows/workflow.actions";
+import { startWebSearchPromptsGenerationJobAction } from '@/actions/ai/web-search-workflow.actions';
 import { getTaskDescriptionHistoryAction, syncTaskDescriptionHistoryAction } from "@/actions/session";
 import { useBackgroundJob } from "@/contexts/_hooks/use-background-job";
 import { useNotification } from "@/contexts/notification-context";
@@ -47,6 +48,8 @@ export function useTaskDescriptionState({
   const [taskRefinementJobId, setTaskRefinementJobId] = useState<
     string | undefined
   >(undefined);
+  const [isGeneratingPrompts, setIsGeneratingPrompts] = useState(false);
+  const [promptsJobId, setPromptsJobId] = useState<string | null>(null);
   
   // Simplified web search state management
   interface WebSearchState {
@@ -75,6 +78,7 @@ export function useTaskDescriptionState({
   const { showNotification } = useNotification();
   // Fetch the background job using typed hook
   const taskRefinementJob = useBackgroundJob(taskRefinementJobId ?? null);
+  const promptsJob = useBackgroundJob(promptsJobId);
   // Note: We're removing the complex workflow tracker usage in favor of polling
   
   // Simplified workflow completion detection with polling and timeout
@@ -271,6 +275,21 @@ export function useTaskDescriptionState({
     handleJobCompletion();
   }, [taskRefinementJob.job?.status, taskRefinementJobId, isSwitchingSession, activeSessionId, onInteraction, showNotification, saveToHistory, sessionTaskDescription, sessionActions]);
 
+  // Prompts generation job monitoring
+  useEffect(() => {
+    if (!promptsJob.job || !isGeneratingPrompts) return;
+
+    if (promptsJob.job.status === 'completed') {
+      setIsGeneratingPrompts(false);
+      setPromptsJobId(null);
+      showNotification({ title: "Prompts generated", message: "Search prompts are ready in the sidebar.", type: "success" });
+    } else if (promptsJob.job.status === 'failed' || promptsJob.job.status === 'canceled') {
+      setIsGeneratingPrompts(false);
+      setPromptsJobId(null);
+      showNotification({ title: "Prompt generation failed", message: promptsJob.job.errorMessage || "Failed to generate search prompts.", type: "error" });
+    }
+  }, [promptsJob.job?.status, isGeneratingPrompts, showNotification]);
+
   // Note: Old web search workflow monitoring effect removed - now handled by polling effect above
 
   // Function to copy task description to clipboard
@@ -372,7 +391,7 @@ export function useTaskDescriptionState({
   ]);
 
   // Handle web search workflow
-  const handleWebRefineTask = useCallback(async (): Promise<void> => {
+  const handleWebRefineTask = useCallback(async (justPrompts?: boolean): Promise<void> => {
     if (!sessionTaskDescription.trim()) {
       showNotification({
         title: "No task description",
@@ -391,46 +410,65 @@ export function useTaskDescriptionState({
       return;
     }
 
+    if (isGeneratingPrompts) {
+      showNotification({
+        title: "Already generating prompts",
+        message: "Please wait for the current request to complete.",
+        type: "warning",
+      });
+      return;
+    }
+
     if (isSwitchingSession || !activeSessionId) {
       return;
     }
 
     try {
-      // Call the web search workflow action
-      const result = await startWebSearchWorkflowOrchestratorAction({
-        taskDescription: sessionTaskDescription,
-        projectDirectory,
-        sessionId: activeSessionId,
-      });
-
-      if (result.isSuccess && result.data?.workflowId) {
-        setWebSearchState({
-          isLoading: true,
-          workflowId: result.data.workflowId,
-          results: null,
-          error: null
+      if (justPrompts) {
+        setIsGeneratingPrompts(true);
+        const result = await startWebSearchPromptsGenerationJobAction({
+          taskDescription: sessionTaskDescription,
+          projectDirectory,
+          sessionId: activeSessionId!,
         });
+
+        if (result.isSuccess && result.data?.jobId) {
+          setPromptsJobId(result.data.jobId);
+        } else {
+          throw new Error(result.message || "Failed to start prompt generation job.");
+        }
       } else {
-        throw new Error(
-          result.message || "Failed to start web search workflow."
-        );
+        const result = await startWebSearchWorkflowOrchestratorAction({
+          taskDescription: sessionTaskDescription,
+          projectDirectory,
+          sessionId: activeSessionId!,
+        });
+
+        if (result.isSuccess && result.data?.workflowId) {
+          setWebSearchState({
+            isLoading: true,
+            workflowId: result.data.workflowId,
+            results: null,
+            error: null
+          });
+        } else {
+          throw new Error(result.message || "Failed to start web search workflow.");
+        }
       }
     } catch (error) {
-      console.error("Error starting web search:", error);
+      setIsGeneratingPrompts(false);
+      console.error("Failed to start web research:", error);
 
-      // Extract error info and create user-friendly message
-      const errorInfo = extractErrorInfo(error);
-      const userFriendlyMessage = createUserFriendlyErrorMessage(errorInfo, 'web search workflow');
-      
       showNotification({
-        title: "Error starting web search",
-        message: userFriendlyMessage,
+        title: "Failed to start research",
+        message: error instanceof Error ? error.message : "An unexpected error occurred",
         type: "error",
       });
     }
   }, [
     sessionTaskDescription,
     webSearchState.isLoading,
+    isGeneratingPrompts,
     showNotification,
     isSwitchingSession,
     activeSessionId,
@@ -675,7 +713,7 @@ ${formattedResults}
   return useMemo(
     () => ({
       isRefiningTask,
-      isWebRefiningTask: webSearchState.isLoading,
+      isWebRefiningTask: webSearchState.isLoading || isGeneratingPrompts,
       taskCopySuccess,
       taskDescriptionRef,
       canUndo,
