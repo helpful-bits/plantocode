@@ -1,13 +1,8 @@
 import { Metadata } from 'next';
+import dynamic from 'next/dynamic';
 import { StructuredData } from '@/components/seo/StructuredData';
 import { Header } from '@/components/landing/Header';
 import { HeroSection } from '@/components/landing/HeroSection';
-import { Features } from '@/components/landing/Features';
-import { HowItWorks } from '@/components/landing/HowItWorks';
-import { Pricing } from '@/components/landing/Pricing';
-import { FAQ } from '@/components/landing/FAQ';
-import { CallToAction } from '@/components/landing/CallToAction';
-import { Footer } from '@/components/landing/Footer';
 import { 
   Search, 
   Globe, 
@@ -19,6 +14,30 @@ import {
   Shield 
 } from 'lucide-react';
 import type { SoftwareApplication } from 'schema-dts';
+
+const Features = dynamic(() => import('@/components/landing/Features').then(mod => ({ default: mod.Features })), { 
+  loading: () => <div className="h-[50vh]" /> 
+});
+
+const HowItWorks = dynamic(() => import('@/components/landing/HowItWorks').then(mod => ({ default: mod.HowItWorks })), { 
+  loading: () => <div className="h-[60vh]" /> 
+});
+
+const Pricing = dynamic(() => import('@/components/landing/Pricing').then(mod => ({ default: mod.Pricing })), { 
+  loading: () => <div className="h-[40vh]" /> 
+});
+
+const FAQ = dynamic(() => import('@/components/landing/FAQ').then(mod => ({ default: mod.FAQ })), { 
+  loading: () => <div className="h-[50vh]" /> 
+});
+
+const CallToAction = dynamic(() => import('@/components/landing/CallToAction').then(mod => ({ default: mod.CallToAction })), { 
+  loading: () => <div className="h-[30vh]" /> 
+});
+
+const Footer = dynamic(() => import('@/components/landing/Footer').then(mod => ({ default: mod.Footer })), { 
+  loading: () => <div className="h-[40vh]" /> 
+});
 
 export const metadata: Metadata = {
   title: 'Vibe Manager | AI-Powered Context Curation',

@@ -933,9 +933,10 @@ export interface BillingDashboardPlanDetails {
 }
 
 export interface TaxIdInfo {
-  type: string;
+  type_: string;
   value: string;
   country?: string | null;
+  verificationStatus?: string | null;
 }
 
 export interface CustomerBillingInfo {

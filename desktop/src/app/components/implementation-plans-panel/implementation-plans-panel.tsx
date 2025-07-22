@@ -1,6 +1,6 @@
 "use client";
 
-import { Loader2, FileCode, Eye, AlertTriangle, XCircle, ClipboardCopy } from "lucide-react";
+import { Loader2, FileCode, Eye, ClipboardCopy } from "lucide-react";
 import { useCallback, useState, useEffect, useMemo } from "react";
 
 import { JobDetailsModal } from "@/app/components/background-jobs-sidebar/job-details-modal";
@@ -28,7 +28,6 @@ import {
   Card,
 } from "@/ui/card";
 import { ScrollArea } from "@/ui/scroll-area";
-import { Alert, AlertDescription } from "@/ui/alert";
 import { AnimatedNumber } from "@/ui";
 
 import { estimatePromptTokensAction } from "@/actions/ai/prompt.actions";
@@ -286,7 +285,7 @@ export function ImplementationPlansPanel({
 
   // Token estimation effect
   useEffect(() => {
-    if (!canCreatePlan) {
+    if (!canCreatePlan || !selectedModelId) {
       setEstimatedTokens(null);
       return;
     }
@@ -303,6 +302,7 @@ export function ImplementationPlansPanel({
           projectDirectory: projectDirectory!,
           relevantFiles: finalIncludedPaths,
           taskType: "implementation_plan",
+          model: selectedModelId
         });
 
         if (result.isSuccess && result.data) {
@@ -323,7 +323,7 @@ export function ImplementationPlansPanel({
     // Debounce token estimation
     const timeoutId = setTimeout(estimateTokens, 500);
     return () => clearTimeout(timeoutId);
-  }, [canCreatePlan, sessionId, taskDescription, currentSession?.taskDescription, projectDirectory, includedPaths]);
+  }, [canCreatePlan, sessionId, taskDescription, currentSession?.taskDescription, projectDirectory, includedPaths, selectedModelId]);
 
 
   // Handle view prompt (renamed from copy prompt)
@@ -516,7 +516,7 @@ export function ImplementationPlansPanel({
       : "Create Implementation Plan";
 
   // Derive max output tokens from runtime config
-  const maxOutputTokens = runtimeConfig?.tasks?.implementationPlan?.maxTokens;
+  const maxOutputTokens = runtimeConfig?.tasks?.implementationPlan?.maxTokens ?? 0;
 
   return (
     <div className="space-y-4 p-4">
@@ -552,56 +552,6 @@ export function ImplementationPlansPanel({
                       className="text-foreground font-medium"
                     />
                   </div>
-                    {estimatedTokens && runtimeConfig && (() => {
-                      // Get the model config for implementation plan task
-                      const implementationPlanModel = runtimeConfig.tasks?.implementationPlan?.model;
-                      const modelInfo = runtimeConfig.providers?.flatMap(p => p.models).find(m => m.id === implementationPlanModel);
-                      const contextWindow = modelInfo?.contextWindow;
-                      
-                      if (!contextWindow) return null;
-                      
-                      const tokenPercentage = (estimatedTokens / contextWindow) * 100;
-                      
-                      if (tokenPercentage > 100) {
-                        return (
-                          <Alert variant="destructive">
-                            <XCircle className="h-4 w-4" />
-                            <AlertDescription className="text-xs">
-                              <strong>Prompt too large:</strong> {estimatedTokens.toLocaleString()} tokens exceeds the {contextWindow.toLocaleString()}-token limit for {modelInfo.name}. Please reduce the number of files or select a model with a larger context window.
-                            </AlertDescription>
-                          </Alert>
-                        );
-                      } else if (tokenPercentage > 90) {
-                        return (
-                          <Alert variant="warning">
-                            <AlertTriangle className="h-4 w-4" />
-                            <AlertDescription className="text-xs">
-                              <strong>Large prompt:</strong> Using {Math.round(tokenPercentage)}% of {modelInfo.name}'s context window. Generation might be slow or fail. Consider reducing files.
-                            </AlertDescription>
-                          </Alert>
-                        );
-                      } else if (tokenPercentage > 95) {
-                        return (
-                          <Alert variant="destructive">
-                            <XCircle className="h-4 w-4" />
-                            <AlertDescription className="text-xs">
-                              <strong>Safety limit reached:</strong> {Math.round(tokenPercentage)}% of context window used. Plan creation disabled to prevent API failures. Please reduce files or switch to a higher-context model.
-                            </AlertDescription>
-                          </Alert>
-                        );
-                      } else if (tokenPercentage > 80) {
-                        return (
-                          <Alert variant="warning">
-                            <AlertTriangle className="h-4 w-4" />
-                            <AlertDescription className="text-xs">
-                              <strong>Approaching limit:</strong> Using {Math.round(tokenPercentage)}% of context window ({estimatedTokens.toLocaleString()}/{contextWindow.toLocaleString()} tokens). Consider reviewing file selection.
-                            </AlertDescription>
-                          </Alert>
-                        );
-                      }
-                      
-                      return null;
-                    })()}
                 </div>
               </div>
             )}
@@ -646,17 +596,7 @@ export function ImplementationPlansPanel({
                 variant="default"
                 size="sm"
                 onClick={handleCreatePlan}
-                disabled={!canCreatePlan || (() => {
-                  // Disable if tokens exceed context window safety threshold
-                  if (!estimatedTokens || !runtimeConfig) return false;
-                  const implementationPlanModel = runtimeConfig.tasks?.implementationPlan?.model;
-                  const modelInfo = runtimeConfig.providers?.flatMap(p => p.models).find(m => m.id === implementationPlanModel);
-                  const contextWindow = modelInfo?.contextWindow;
-                  
-                  // Only disable if we have context window info and tokens exceed 95% of limit
-                  if (!contextWindow) return false; // Allow if we don't know the limit (fallback to server validation)
-                  return estimatedTokens > (contextWindow * 0.95); // 95% safety buffer
-                })()}
+                disabled={!canCreatePlan || (() => { if (!estimatedTokens || !runtimeConfig || !selectedModelId) return false; const modelInfo = allowedModelsForPlan.find(m => m.id === selectedModelId); const contextWindow = modelInfo?.contextWindow; if (!contextWindow) return false; const maxOutputTokens = runtimeConfig.tasks?.implementationPlan?.maxTokens ?? 0; return (estimatedTokens + maxOutputTokens) > contextWindow; })()}
                 className="flex items-center justify-center w-full h-9"
               >
                 <FileCode className="h-4 w-4 mr-2" />

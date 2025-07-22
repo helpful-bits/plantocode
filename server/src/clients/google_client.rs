@@ -17,7 +17,7 @@ use crate::services::model_mapping_service::ModelWithMapping;
 use tracing::{debug, info, error, instrument};
 
 // Base URL for Google AI API
-const GOOGLE_BASE_URL: &str = "https://generativelanguage.googleapis.com/v1beta";
+const GOOGLE_BASE_URL: &str = "https://generativeai.googleapis.com/v1beta";
 
 // Google Chat Completion Request Structs
 #[skip_serializing_none]
@@ -28,6 +28,8 @@ pub struct GoogleChatRequest {
     pub system_instruction: Option<GoogleSystemInstruction>,
     pub generation_config: Option<GoogleGenerationConfig>,
     pub safety_settings: Option<Vec<GoogleSafetySetting>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stream: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -359,6 +361,9 @@ impl GoogleClient {
                 let api_key = &api_keys[key_index];
                 let url = format!("{}/models/{}:streamGenerateContent?alt=sse", base_url, clean_model_id);
                 
+                let mut request = request.clone();
+                request.stream = Some(true);
+                
                 let response_result = client
                     .post(&url)
                     .header("x-goog-api-key", api_key)
@@ -574,6 +579,7 @@ impl GoogleClient {
             system_instruction,
             generation_config,
             safety_settings: None, // Use default safety settings
+            stream: None,
         };
 
         debug!("Converted to Google request with {} contents and system instruction: {}", 
@@ -689,22 +695,7 @@ impl GoogleClient {
 
 impl UsageExtractor for GoogleClient {
     fn extract_usage(&self, raw_json: &serde_json::Value) -> Option<ProviderUsage> {
-        let usage_metadata = raw_json.get("usageMetadata")?;
-        
-        let prompt_token_count = usage_metadata.get("promptTokenCount")?.as_i64()? as i32;
-        let candidates_token_count = usage_metadata.get("candidatesTokenCount")?.as_i64()? as i32;
-        let cached_content_token_count = usage_metadata.get("cachedContentTokenCount").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
-        
-        let usage = ProviderUsage::new(
-            prompt_token_count,
-            candidates_token_count,
-            0, // cache_write_tokens
-            cached_content_token_count,
-            String::new(), // model_id will be empty for trait method
-        );
-        
-        usage.validate().ok()?;
-        Some(usage)
+        self.extract_usage_from_json(raw_json, "")
     }
 
     /// Extract usage information from Google HTTP response body (non-streaming JSON format)

@@ -96,8 +96,6 @@ pub struct AnthropicResponseContent {
 pub struct AnthropicUsage {
     pub input_tokens: i32,
     pub output_tokens: i32,
-    pub cache_creation_input_tokens: Option<i32>,
-    pub cache_read_input_tokens: Option<i32>,
     /// Cost field available in Anthropic v2024-06 API
     pub cost: Option<f64>,
     #[serde(flatten)]
@@ -364,23 +362,7 @@ impl AnthropicClient {
 
 impl UsageExtractor for AnthropicClient {
     fn extract_usage(&self, raw_json: &serde_json::Value) -> Option<ProviderUsage> {
-        let usage = raw_json.get("usage")?;
-        
-        let input_tokens = usage.get("input_tokens")?.as_i64()? as i32;
-        let output_tokens = usage.get("output_tokens")?.as_i64()? as i32;
-        let cache_write_tokens = usage.get("cache_creation_input_tokens").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
-        let cache_read_tokens = usage.get("cache_read_input_tokens").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
-        
-        let usage = ProviderUsage::new(
-            input_tokens + cache_write_tokens + cache_read_tokens, // Total prompt tokens
-            output_tokens,
-            cache_write_tokens,
-            cache_read_tokens,
-            String::new(), // model_id will be empty for trait method
-        );
-        
-        usage.validate().ok()?;
-        Some(usage)
+        self.extract_usage_from_json(raw_json, "")
     }
 
     /// Extract usage information from Anthropic API HTTP response body (2025-07 format)
@@ -409,7 +391,7 @@ impl AnthropicClient {
         // Extract usage from parsed JSON
         let usage = json_value.get("usage")?;
         
-        // Anthropic's input_tokens is the base input tokens (not including cache tokens)
+        // Anthropic's input_tokens IS the total prompt tokens
         let input_tokens = match usage.get("input_tokens").and_then(|v| v.as_i64()) {
             Some(tokens) => tokens as i32,
             None => {
@@ -426,16 +408,6 @@ impl AnthropicClient {
             }
         };
         
-        // Extract cache tokens with proper error handling
-        let cache_creation_input_tokens = usage.get("cache_creation_input_tokens")
-            .and_then(|v| v.as_i64())
-            .unwrap_or(0) as i32;
-        let cache_read_input_tokens = usage.get("cache_read_input_tokens")
-            .and_then(|v| v.as_i64())
-            .unwrap_or(0) as i32;
-        
-        // Calculate total prompt tokens as sum of all input token types
-        let total_prompt_tokens = input_tokens + cache_creation_input_tokens + cache_read_input_tokens;
         
         // Extract optional cost field
         let cost = usage.get("cost")
@@ -445,19 +417,19 @@ impl AnthropicClient {
         
         let mut usage = if let Some(cost_val) = cost {
             ProviderUsage::with_cost(
-                total_prompt_tokens,
+                input_tokens,
                 output_tokens,
-                cache_creation_input_tokens,
-                cache_read_input_tokens,
+                0,
+                0,
                 model_id.to_string(),
                 cost_val
             )
         } else {
             ProviderUsage::new(
-                total_prompt_tokens,
+                input_tokens,
                 output_tokens,
-                cache_creation_input_tokens,
-                cache_read_input_tokens,
+                0,
+                0,
                 model_id.to_string()
             )
         };
@@ -467,80 +439,6 @@ impl AnthropicClient {
         Some(usage)
     }
     
-    /// Extract usage information from Anthropic streaming chunk
-    fn extract_usage_from_stream_chunk(&self, chunk_json: &serde_json::Value) -> Option<ProviderUsage> {
-        // For Anthropic streaming, usage info comes in message_start and message_delta events
-        let chunk_type = chunk_json.get("type")?.as_str()?;
-        
-        match chunk_type {
-            "message_start" => {
-                // Extract initial usage from message_start event
-                if let Some(message) = chunk_json.get("message") {
-                    if let Some(usage) = message.get("usage") {
-                        let input_tokens = usage.get("input_tokens").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
-                        let output_tokens = usage.get("output_tokens").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
-                        
-                        let cache_creation_input_tokens = usage.get("cache_creation_input_tokens")
-                            .and_then(|v| v.as_i64())
-                            .unwrap_or(0) as i32;
-                        let cache_read_input_tokens = usage.get("cache_read_input_tokens")
-                            .and_then(|v| v.as_i64())
-                            .unwrap_or(0) as i32;
-                        
-                        // Calculate total prompt tokens as sum of all input token types
-                        let total_prompt_tokens = input_tokens + cache_creation_input_tokens + cache_read_input_tokens;
-                        
-                        let mut usage = ProviderUsage::new(
-                            total_prompt_tokens,
-                            output_tokens,
-                            cache_creation_input_tokens,
-                            cache_read_input_tokens,
-                            "unknown".to_string()
-                        );
-                        
-                        usage.validate().ok()?;
-                        
-                        return Some(usage);
-                    }
-                }
-                None
-            },
-            "message_delta" => {
-                // Track cumulative usage from message_delta events
-                if let Some(usage) = chunk_json.get("usage") {
-                    let input_tokens = usage.get("input_tokens").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
-                    let output_tokens = usage.get("output_tokens").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
-                    
-                    // Extract cache tokens with proper error handling
-                    let cache_creation_input_tokens = usage.get("cache_creation_input_tokens")
-                        .and_then(|v| v.as_i64())
-                        .unwrap_or(0) as i32;
-                    let cache_read_input_tokens = usage.get("cache_read_input_tokens")
-                        .and_then(|v| v.as_i64())
-                        .unwrap_or(0) as i32;
-                    
-                    // Calculate total prompt tokens as sum of all input token types
-                    let total_prompt_tokens = input_tokens + cache_creation_input_tokens + cache_read_input_tokens;
-                    
-                    if input_tokens > 0 || output_tokens > 0 {
-                        let mut usage = ProviderUsage::new(
-                            total_prompt_tokens,
-                            output_tokens,
-                            cache_creation_input_tokens,
-                            cache_read_input_tokens,
-                            "unknown".to_string()
-                        );
-                        
-                        usage.validate().ok()?;
-                        
-                        return Some(usage);
-                    }
-                }
-                None
-            },
-            _ => None
-        }
-    }
 }
 
 impl Clone for AnthropicClient {

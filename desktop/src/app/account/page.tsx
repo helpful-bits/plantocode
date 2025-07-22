@@ -114,7 +114,7 @@ export default function AccountPage() {
                   Billing Information
                 </h3>
                 <Badge variant={billingInfo?.hasBillingInfo ? "default" : "secondary"}>
-                  {billingInfo?.hasBillingInfo ? "Complete" : "Incomplete"}
+                  {billingInfo?.hasBillingInfo ? "Complete" : "Setup Required"}
                 </Badge>
               </div>
               
@@ -172,9 +172,21 @@ export default function AccountPage() {
                             {billingInfo.taxIds.map((taxId, index) => (
                               <div key={index} className="text-sm font-medium">
                                 <span className="text-muted-foreground text-xs uppercase mr-2">
-                                  {taxId.type}{taxId.country && ` (${taxId.country})`}:
+                                  {taxId.type_}{taxId.country && ` (${taxId.country})`}:
                                 </span>
                                 <span>{taxId.value}</span>
+                                {taxId.verificationStatus && (
+                                  <Badge 
+                                    variant={
+                                      taxId.verificationStatus === 'verified' ? 'default' :
+                                      taxId.verificationStatus === 'pending' ? 'secondary' :
+                                      'destructive'
+                                    }
+                                    className="ml-2"
+                                  >
+                                    {taxId.verificationStatus}
+                                  </Badge>
+                                )}
                               </div>
                             ))}
                           </div>
@@ -207,9 +219,14 @@ export default function AccountPage() {
                   </div>
                 </div>
               ) : (
-                <p className="text-sm text-muted-foreground">
-                  No billing information on file. Billing details will appear after your first purchase.
-                </p>
+                <div className="space-y-2">
+                  <p className="text-sm text-muted-foreground">
+                    No billing information on file yet.
+                  </p>
+                  <p className="text-sm font-medium text-foreground">
+                    Please set up your billing information to enable credit purchases and access all features.
+                  </p>
+                </div>
               )}
             </div>
 
@@ -222,11 +239,11 @@ export default function AccountPage() {
                 disabled={isOpeningPortal}
                 className="w-full sm:w-auto px-4 py-2 font-medium"
               >
-                {isOpeningPortal ? "Opening..." : "Update Billing Information"}
+                {isOpeningPortal ? "Opening..." : billingInfo?.hasBillingInfo ? "Update Billing Information" : "Set Up Billing Information"}
               </Button>
               {!billingInfo?.hasBillingInfo && (
                 <p className="text-xs text-muted-foreground mt-2">
-                  Complete your billing information to ensure uninterrupted service
+                  Complete your billing information to enable purchases and ensure uninterrupted service
                 </p>
               )}
             </div>

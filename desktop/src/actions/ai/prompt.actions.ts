@@ -10,6 +10,7 @@ export async function estimatePromptTokensAction(params: {
   projectDirectory: string;
   relevantFiles: string[];
   taskType: TaskType;
+  model: string;
 }): Promise<ActionState<{
   estimatedTokens: number;
   systemPromptTokens: number;
@@ -28,6 +29,7 @@ export async function estimatePromptTokensAction(params: {
       projectDirectory: params.projectDirectory,
       relevantFiles: params.relevantFiles,
       taskType: params.taskType,
+      model: params.model,
     });
 
     return {

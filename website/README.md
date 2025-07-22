@@ -134,11 +134,12 @@ The website uses a cutting-edge design system aligned with the desktop applicati
 - **3D Integration**: Seamless blending of WebGL2 elements with 2D design system
 - **Scroll Animations**: Smooth parallax effects synchronized with page scroll
 - **Performance**: Lightning CSS optimization with critical CSS extraction
+- **Modern Stack**: Next.js 15 with React 19 for optimal performance and developer experience
 
 ### Documentation
 
-- **[Design System Documentation](./docs/DESIGN_SYSTEM.md)**: Comprehensive guide to OKLCH colors, glass morphism, and component patterns
-- **[Performance Guide](./docs/PERFORMANCE.md)**: Optimization strategies for 60fps animations and Core Web Vitals
+- **[Design System Documentation](./docs/DESIGN_SYSTEM.md)**: Comprehensive guide to OKLCH colors, glass morphism, component patterns, and performance best practices
+- **[Performance Guide](./docs/PERFORMANCE.md)**: Optimization strategies for lazy loading, animations, and Core Web Vitals
 
 ## Deployment
 
@@ -280,6 +281,18 @@ Large media assets (videos, high-resolution images) are hosted on S3:
 - [ ] Structured data (JSON-LD)
 - [ ] Alt text for all images
 - [ ] Descriptive link text
+
+## Performance
+
+Our performance optimization approach focuses on delivering a fast, smooth user experience while maintaining visual fidelity. For detailed implementation guidelines, see the **[Performance Guide](./docs/PERFORMANCE.md)**.
+
+### Key Performance Strategies
+
+1. **Lazy Loading**: Landing page sections are lazy-loaded using `next/dynamic` to improve initial page load
+2. **Animation Optimization**: GPU-accelerated animations using transform and opacity properties
+3. **Image Optimization**: Next.js Image component with responsive sizing and modern formats
+4. **Glass Morphism Performance**: Optimized backdrop-filter usage with proper containment
+5. **Service Worker**: Integrated caching strategy for static assets and API responses
 
 ## Performance Optimizations
 
