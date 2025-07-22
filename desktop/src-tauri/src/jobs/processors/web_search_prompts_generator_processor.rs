@@ -4,12 +4,14 @@ use tauri::AppHandle;
 use tokio::fs;
 
 use crate::error::{AppError, AppResult};
-use crate::jobs::processor_trait::JobProcessor;
-use crate::jobs::types::{Job, JobPayload, JobProcessResult, JobResultData};
 use crate::jobs::job_processor_utils;
-use crate::jobs::processors::{LlmTaskRunner, LlmTaskConfigBuilder, LlmPromptContext};
+use crate::jobs::processor_trait::JobProcessor;
+use crate::jobs::processors::{LlmPromptContext, LlmTaskConfigBuilder, LlmTaskRunner};
+use crate::jobs::types::{Job, JobPayload, JobProcessResult, JobResultData};
 use crate::models::TaskType;
-use crate::utils::xml_utils::{split_research_documents, extract_research_tasks, extract_query_from_task, extract_task_title};
+use crate::utils::xml_utils::{
+    extract_query_from_task, extract_research_tasks, extract_task_title, split_research_documents,
+};
 
 pub struct WebSearchPromptsGeneratorProcessor;
 
@@ -21,21 +23,23 @@ impl WebSearchPromptsGeneratorProcessor {
     /// Parse XML response to extract multiple sophisticated research task prompts
     fn parse_xml_response(&self, response: &str) -> (Vec<String>, serde_json::Value) {
         debug!("Parsing XML response for sophisticated research tasks");
-        
+
         // Extract complete research task XML documents (these become the prompts)
         let research_task_prompts = extract_research_tasks(response);
-        
+
         let parsing_info = serde_json::json!({
             "xmlParsingAttempted": true,
             "researchTasksFound": research_task_prompts.len(),
             "sophisticatedPrompts": true
         });
-        
+
         // If no research tasks found from XML parsing, this is an error condition
         if research_task_prompts.is_empty() {
-            debug!("No research tasks extracted from XML - this indicates a problem with the XML format");
+            debug!(
+                "No research tasks extracted from XML - this indicates a problem with the XML format"
+            );
         }
-        
+
         (research_task_prompts, parsing_info)
     }
 }
@@ -51,18 +55,18 @@ impl JobProcessor for WebSearchPromptsGeneratorProcessor {
     }
 
     async fn process(&self, job: Job, app_handle: AppHandle) -> AppResult<JobProcessResult> {
-
-        let (repo, session_repo, settings_repo, background_job) = job_processor_utils::setup_job_processing(&job.id, &app_handle).await?;
+        let (repo, session_repo, settings_repo, background_job) =
+            job_processor_utils::setup_job_processing(&job.id, &app_handle).await?;
 
         // Get session
-        let session = session_repo.get_session_by_id(&job.session_id).await?
+        let session = session_repo
+            .get_session_by_id(&job.session_id)
+            .await?
             .ok_or_else(|| AppError::JobError(format!("Session {} not found", job.session_id)))?;
 
         // Extract payload data
         let task_description = match &job.payload {
-            JobPayload::WebSearchPromptsGeneration(payload) => {
-                payload.task_description.clone()
-            }
+            JobPayload::WebSearchPromptsGeneration(payload) => payload.task_description.clone(),
             _ => {
                 return Err(AppError::JobError(
                     "Invalid payload type for WebSearchPromptsGenerator".to_string(),
@@ -74,13 +78,16 @@ impl JobProcessor for WebSearchPromptsGeneratorProcessor {
         let relevant_files = session.included_files.clone();
 
         // Get model settings using project-aware configuration
-        let model_settings = job_processor_utils::get_llm_task_config(&background_job, &app_handle, &session).await?;
+        let model_settings =
+            job_processor_utils::get_llm_task_config(&background_job, &app_handle, &session)
+                .await?;
         let (model_used, temperature, max_output_tokens) = model_settings;
 
         // Setup LLM task configuration
-        let llm_config = LlmTaskConfigBuilder::new(model_used.clone(), temperature, max_output_tokens)
-            .stream(true)
-            .build();
+        let llm_config =
+            LlmTaskConfigBuilder::new(model_used.clone(), temperature, max_output_tokens)
+                .stream(true)
+                .build();
 
         // Create LLM task runner
         let task_runner = LlmTaskRunner::new(app_handle.clone(), job.clone(), llm_config);
@@ -90,7 +97,8 @@ impl JobProcessor for WebSearchPromptsGeneratorProcessor {
         // Load content of files in relevant_files
         let mut file_contents = std::collections::HashMap::new();
         for relative_path_str in &relevant_files {
-            let full_path = std::path::Path::new(&session.project_directory).join(relative_path_str);
+            let full_path =
+                std::path::Path::new(&session.project_directory).join(relative_path_str);
             match fs::read_to_string(&full_path).await {
                 Ok(content) => {
                     file_contents.insert(relative_path_str.clone(), content);
@@ -102,7 +110,11 @@ impl JobProcessor for WebSearchPromptsGeneratorProcessor {
         }
 
         // Generate directory tree for context
-        let directory_tree = match crate::utils::directory_tree::get_directory_tree_with_defaults(&session.project_directory).await {
+        let directory_tree = match crate::utils::directory_tree::get_directory_tree_with_defaults(
+            &session.project_directory,
+        )
+        .await
+        {
             Ok(tree) => Some(tree),
             Err(e) => {
                 warn!("Failed to generate directory tree: {}", e);
@@ -118,25 +130,37 @@ impl JobProcessor for WebSearchPromptsGeneratorProcessor {
         };
 
         // Execute LLM task with streaming to handle large responses properly
-        let llm_result = match task_runner.execute_streaming_llm_task(prompt_context, &settings_repo, &repo, &job.id).await {
+        let llm_result = match task_runner
+            .execute_streaming_llm_task(prompt_context, &settings_repo, &repo, &job.id)
+            .await
+        {
             Ok(result) => result,
             Err(e) => {
-                let error_msg = format!("WebSearchPromptsGeneration LLM task execution failed: {}", e);
+                let error_msg = format!(
+                    "WebSearchPromptsGeneration LLM task execution failed: {}",
+                    e
+                );
                 return Ok(JobProcessResult::failure(job.id.clone(), error_msg));
             }
         };
 
         // Extract system prompt template and actual cost
         let system_prompt_template = llm_result.system_prompt_template.clone();
-        let actual_cost = llm_result.usage.as_ref().and_then(|u| u.cost).unwrap_or(0.0);
-
+        let actual_cost = llm_result
+            .usage
+            .as_ref()
+            .and_then(|u| u.cost)
+            .unwrap_or(0.0);
 
         // Parse XML response to extract sophisticated research task prompts
         let (prompts, parsing_info) = self.parse_xml_response(&llm_result.response);
-        
+
         if prompts.is_empty() {
             let error_msg = "No research prompts could be extracted from LLM response. This indicates the LLM did not follow the expected format.";
-            return Ok(JobProcessResult::failure(job.id.clone(), error_msg.to_string()));
+            return Ok(JobProcessResult::failure(
+                job.id.clone(),
+                error_msg.to_string(),
+            ));
         }
 
         let summary = if prompts.len() > 0 {
@@ -175,13 +199,16 @@ impl JobProcessor for WebSearchPromptsGeneratorProcessor {
 
         // Return success result with structured JSON and preserved LLM data
         Ok(JobProcessResult::success_with_metadata(
-            job.id.clone(), 
+            job.id.clone(),
             JobResultData::Json(result_json),
-            enhanced_metadata
+            enhanced_metadata,
         )
         .with_tokens(
             llm_result.usage.as_ref().map(|u| u.prompt_tokens as u32),
-            llm_result.usage.as_ref().map(|u| u.completion_tokens as u32)
+            llm_result
+                .usage
+                .as_ref()
+                .map(|u| u.completion_tokens as u32),
         )
         .with_system_prompt_template(system_prompt_template)
         .with_actual_cost(actual_cost))

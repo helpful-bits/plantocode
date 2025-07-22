@@ -1,8 +1,8 @@
-use tauri::{command, State};
-use std::sync::Arc;
-use log::info;
-use crate::error::AppResult;
 use crate::api_clients::server_proxy_client::ServerProxyClient;
+use crate::error::AppResult;
+use log::info;
+use std::sync::Arc;
+use tauri::{State, command};
 
 #[command]
 pub async fn get_featurebase_sso_token(

@@ -62,3 +62,6 @@ export { StatusMessages } from "./status-messages";
 
 // Settings components
 export { ModelSelector } from "../app/components/settings/model-selector";
+
+// Terminal components
+export { TerminalView } from "./TerminalView";

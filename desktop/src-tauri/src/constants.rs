@@ -1,5 +1,5 @@
-use std::collections::HashSet;
 use once_cell::sync::Lazy;
+use std::collections::HashSet;
 
 // API URLs
 pub const OPENROUTER_API_URL: &str = "https://openrouter.ai/api/v1/chat/completions";
@@ -48,24 +48,24 @@ pub static BINARY_EXTENSIONS: Lazy<HashSet<&'static str>> = Lazy::new(|| {
     set.insert("db");
     set.insert("sqlite");
     set.insert("db3");
-    set.insert("map");        // Source maps
-    set.insert("wasm");       // WebAssembly
-    set.insert("jar");        // Java Archives
-    set.insert("war");        // Java Web Archives
-    set.insert("ear");        // Java Enterprise Archives
-    set.insert("ttf");        // TrueType Fonts
-    set.insert("woff");       // Web Open Font Format
-    set.insert("woff2");      // Web Open Font Format 2
-    set.insert("otf");        // OpenType Fonts
-    set.insert("eot");        // Embedded OpenType
-    set.insert("pyc");        // Python compiled
-    set.insert("lockb");      // pnpm lockfile binary variant
-    set.insert("doc");        // Microsoft Word Document
-    set.insert("docx");       // Microsoft Word Document (XML)
-    set.insert("xls");        // Microsoft Excel Spreadsheet
-    set.insert("xlsx");       // Microsoft Excel Spreadsheet (XML)
-    set.insert("ppt");        // Microsoft PowerPoint Presentation
-    set.insert("pptx");       // Microsoft PowerPoint Presentation (XML)
+    set.insert("map"); // Source maps
+    set.insert("wasm"); // WebAssembly
+    set.insert("jar"); // Java Archives
+    set.insert("war"); // Java Web Archives
+    set.insert("ear"); // Java Enterprise Archives
+    set.insert("ttf"); // TrueType Fonts
+    set.insert("woff"); // Web Open Font Format
+    set.insert("woff2"); // Web Open Font Format 2
+    set.insert("otf"); // OpenType Fonts
+    set.insert("eot"); // Embedded OpenType
+    set.insert("pyc"); // Python compiled
+    set.insert("lockb"); // pnpm lockfile binary variant
+    set.insert("doc"); // Microsoft Word Document
+    set.insert("docx"); // Microsoft Word Document (XML)
+    set.insert("xls"); // Microsoft Excel Spreadsheet
+    set.insert("xlsx"); // Microsoft Excel Spreadsheet (XML)
+    set.insert("ppt"); // Microsoft PowerPoint Presentation
+    set.insert("pptx"); // Microsoft PowerPoint Presentation (XML)
     set
 });
 
@@ -105,14 +105,14 @@ pub static EXCLUDED_DIRS_FOR_SCAN: [&str; 20] = [
     ".idea",
     "target",
     "vendor",
-    ".cargo",          // Cargo cache and registry
-    ".rustup",         // Rust toolchain
-    ".npm",            // NPM cache
-    ".yarn",           // Yarn cache
-    ".pnpm-store",     // PNPM cache
-    "Library",         // macOS system library (when not in user directory)
-    "Applications",    // macOS applications (when at root)
-    "System"           // macOS system directory
+    ".cargo",       // Cargo cache and registry
+    ".rustup",      // Rust toolchain
+    ".npm",         // NPM cache
+    ".yarn",        // Yarn cache
+    ".pnpm-store",  // PNPM cache
+    "Library",      // macOS system library (when not in user directory)
+    "Applications", // macOS applications (when at root)
+    "System",       // macOS system directory
 ];
 
 // PathFinder truncation constants removed - full content is now sent to LLM
@@ -144,7 +144,7 @@ impl ServiceProvider {
     pub fn as_str(&self) -> &'static str {
         match self {
             ServiceProvider::ReplicateServerProxy => "replicate_server_proxy",
-            ServiceProvider::OpenRouterProxy => "openrouter_proxy", 
+            ServiceProvider::OpenRouterProxy => "openrouter_proxy",
             ServiceProvider::DirectApi => "direct_api",
         }
     }
@@ -180,7 +180,7 @@ impl ApiProvider {
 
     pub fn all_valid() -> Vec<&'static str> {
         vec![
-            Self::Claude.as_str(), 
+            Self::Claude.as_str(),
             Self::Replicate.as_str(),
             Self::OpenAI.as_str(),
             Self::Anthropic.as_str(),

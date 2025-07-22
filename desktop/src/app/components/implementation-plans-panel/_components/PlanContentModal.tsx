@@ -1,10 +1,13 @@
 "use client";
 
-import { Loader2, Copy, Save, ChevronLeft, ChevronRight, Plus, Check } from "lucide-react";
-import React, { useEffect, useMemo, useContext } from "react";
+import { Loader2, Copy, Save, ChevronLeft, ChevronRight, Plus, Check, Terminal } from "lucide-react";
+import React, { useEffect, useMemo, useContext, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useNotification } from "@/contexts/notification-context";
 import { BackgroundJobsContext, type BackgroundJobsContextType } from "@/contexts/background-jobs/Provider";
+import type { Command } from "@tauri-apps/plugin-shell";
+import { createClaudeCommand } from "@/actions/ai/claude.actions";
+import { ClaudeImplementationModal } from "./ClaudeImplementationModal";
 
 import { type BackgroundJob, JOB_STATUSES } from "@/types/session-types";
 import { type CopyButtonConfig } from "@/types/config-types";
@@ -70,6 +73,8 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
   const [editedContent, setEditedContent] = React.useState<string>("");
   const [fullPlanDetails, setFullPlanDetails] = React.useState<BackgroundJob | null>(null);
   const [isLoadingFullDetails, setIsLoadingFullDetails] = React.useState(false);
+  const [claudeCommand, setClaudeCommand] = useState<Command<string> | null>(null);
+  const [claudePrompt, setClaudePrompt] = useState<string>("");
   const { showNotification } = useNotification();
   
   // Get live jobs from context for real-time updates
@@ -262,6 +267,41 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
     }
   }, [plan?.id, editedContent, hasUnsavedChanges, onRefreshContent, showNotification]);
 
+  const handleImplementWithClaude = async () => {
+    try {
+      // Find the "Parallel Claude Coding Agents" button configuration
+      const parallelAgentsButton = copyButtons.find(
+        button => button.label.toLowerCase().includes("parallel") && 
+                  button.label.toLowerCase().includes("claude")
+      );
+      
+      let prompt: string;
+      if (parallelAgentsButton) {
+        // Use the button's content with placeholders replaced
+        const data = {
+          IMPLEMENTATION_PLAN: editedContent,
+          STEP_CONTENT: selectedStepNumber ? getContentForStep(editedContent, selectedStepNumber) : ''
+        };
+        prompt = replacePlaceholders(parallelAgentsButton.content, data);
+      } else {
+        // Fallback to a simple prompt if button not found
+        prompt = `Please implement the following plan:\n\n${editedContent}`;
+      }
+      
+      const command = await createClaudeCommand();
+      setClaudePrompt(prompt);
+      setClaudeCommand(command);
+    } catch (error) {
+      console.error("Failed to create Claude command:", error);
+      showNotification({
+        title: "Failed to launch Claude",
+        message: "Could not start Claude implementation",
+        type: "error",
+        duration: 3000,
+      });
+    }
+  };
+
   // Keyboard navigation
   useEffect(() => {
     if (!open || !onNavigate) return;
@@ -357,6 +397,21 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
                   <Save className="h-3 w-3 mr-1" />
                 )}
                 {isSaving ? "Saving..." : "Save"}
+              </Button>
+            )}
+
+            {/* Implement with Claude Button */}
+            {!isStreaming && displayPlan.status === "completed" && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleImplementWithClaude}
+                disabled={isStreaming}
+                className="text-xs h-7"
+                title="Implement this plan with Claude"
+              >
+                <Terminal className="h-3 w-3 mr-1" />
+                Implement with Claude
               </Button>
             )}
 
@@ -503,6 +558,17 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
         )}
 
       </DialogContent>
+      
+      {/* Claude Implementation Modal */}
+      <ClaudeImplementationModal
+        isOpen={!!claudeCommand}
+        onClose={() => {
+          setClaudeCommand(null);
+          setClaudePrompt("");
+        }}
+        command={claudeCommand}
+        prompt={claudePrompt}
+      />
     </Dialog>
   );
 };

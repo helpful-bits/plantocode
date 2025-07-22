@@ -1,6 +1,6 @@
+use git2::{Repository, Status, StatusOptions};
+use log::{debug, error, info};
 use std::path::{Path, PathBuf};
-use git2::{Repository, StatusOptions, Status};
-use log::{info, error, debug};
 
 use crate::error::{AppError, AppResult};
 
@@ -11,9 +11,7 @@ pub fn is_git_repository(path: impl AsRef<Path>) -> bool {
 
 /// Get the git repository for a path
 pub fn get_repository(path: impl AsRef<Path>) -> AppResult<Repository> {
-    Repository::open(path.as_ref()).map_err(|e| {
-        AppError::GitError(e.to_string())
-    })
+    Repository::open(path.as_ref()).map_err(|e| AppError::GitError(e.to_string()))
 }
 
 /// Get all non-ignored files in a git repository using git command (fast approach)
@@ -22,20 +20,20 @@ pub fn get_repository(path: impl AsRef<Path>) -> AppResult<Repository> {
 /// This uses the same efficient approach as the frontend: `git ls-files --cached --others --exclude-standard`
 pub fn get_all_non_ignored_files(path: impl AsRef<Path>) -> AppResult<(Vec<PathBuf>, bool)> {
     let path = path.as_ref();
-    
+
     // First check if this is a git repository
     if !is_git_repository(path) {
         debug!("Path {} is not a git repository", path.display());
         return Ok((Vec::new(), false));
     }
-    
+
     // Use git command to get tracked and untracked files (excluding ignored ones)
     // This matches the frontend approach: git ls-files --cached --others --exclude-standard
     let output = std::process::Command::new("git")
         .args(&["ls-files", "--cached", "--others", "--exclude-standard"])
         .current_dir(path)
         .output();
-    
+
     match output {
         Ok(output) => {
             if output.status.success() {
@@ -45,8 +43,12 @@ pub fn get_all_non_ignored_files(path: impl AsRef<Path>) -> AppResult<(Vec<PathB
                     .filter(|line| !line.trim().is_empty())
                     .map(|line| PathBuf::from(line.trim()))
                     .collect();
-                
-                debug!("Found {} non-ignored files in git repository at {} using git ls-files", files.len(), path.display());
+
+                debug!(
+                    "Found {} non-ignored files in git repository at {} using git ls-files",
+                    files.len(),
+                    path.display()
+                );
                 Ok((files, true))
             } else {
                 let stderr = String::from_utf8_lossy(&output.stderr);
@@ -72,9 +74,9 @@ fn get_all_non_ignored_files_fallback(path: &Path) -> AppResult<(Vec<PathBuf>, b
             return Ok((Vec::new(), false));
         }
     };
-    
+
     let mut files = Vec::new();
-    
+
     // Get all tracked files from the index
     let index = match repo.index() {
         Ok(i) => i,
@@ -83,7 +85,7 @@ fn get_all_non_ignored_files_fallback(path: &Path) -> AppResult<(Vec<PathBuf>, b
             return Ok((Vec::new(), true)); // Still a git repo, but couldn't get index
         }
     };
-    
+
     // Add all tracked files from the index
     for entry in index.iter() {
         let path_str = std::str::from_utf8(&entry.path).unwrap_or("");
@@ -92,14 +94,14 @@ fn get_all_non_ignored_files_fallback(path: &Path) -> AppResult<(Vec<PathBuf>, b
             files.push(relative_path);
         }
     }
-    
+
     // Also get untracked files that are not ignored
     let mut status_opts = StatusOptions::new();
     status_opts
         .include_ignored(false)
         .include_untracked(true)
         .recurse_untracked_dirs(true);
-        
+
     if let Ok(statuses) = repo.statuses(Some(&mut status_opts)) {
         for entry in statuses.iter() {
             // Only include untracked files (not already in index)
@@ -111,8 +113,12 @@ fn get_all_non_ignored_files_fallback(path: &Path) -> AppResult<(Vec<PathBuf>, b
             }
         }
     }
-    
-    debug!("Found {} non-ignored files in git repository at {} using git2 fallback", files.len(), path.display());
+
+    debug!(
+        "Found {} non-ignored files in git repository at {} using git2 fallback",
+        files.len(),
+        path.display()
+    );
     Ok((files, true))
 }
 
@@ -120,23 +126,21 @@ fn get_all_non_ignored_files_fallback(path: &Path) -> AppResult<(Vec<PathBuf>, b
 pub fn get_all_tracked_files(path: impl AsRef<Path>) -> AppResult<Vec<PathBuf>> {
     let path = path.as_ref();
     let repo = get_repository(path)?;
-    
+
     // Get the repository workdir
     let workdir = repo.workdir().ok_or_else(|| {
         AppError::GitError(git2::Error::from_str("Repository has no working directory").to_string())
     })?;
-    
+
     // Create status options
     let mut status_opts = StatusOptions::new();
-    status_opts
-        .include_ignored(false)
-        .include_untracked(false);
-        
+    status_opts.include_ignored(false).include_untracked(false);
+
     // Get the status
-    let statuses = repo.statuses(Some(&mut status_opts)).map_err(|e| {
-        AppError::GitError(e.to_string())
-    })?;
-    
+    let statuses = repo
+        .statuses(Some(&mut status_opts))
+        .map_err(|e| AppError::GitError(e.to_string()))?;
+
     // Collect the file paths
     let mut files = Vec::new();
     for entry in statuses.iter() {
@@ -144,55 +148,56 @@ pub fn get_all_tracked_files(path: impl AsRef<Path>) -> AppResult<Vec<PathBuf>> 
         if entry.status().contains(Status::WT_NEW) {
             continue;
         }
-        
+
         if let Some(path_str) = entry.path() {
             let file_path = workdir.join(path_str);
             files.push(file_path);
         }
     }
-    
+
     Ok(files)
 }
 
 /// Check if a file is ignored by git
 pub fn is_ignored(repo: &Repository, path: impl AsRef<Path>) -> AppResult<bool> {
     let path = path.as_ref();
-    
+
     // Get the repository workdir
     let workdir = repo.workdir().ok_or_else(|| {
         AppError::GitError(git2::Error::from_str("Repository has no working directory").to_string())
     })?;
-    
+
     // Make the path relative to the repository
     let relative_path = if path.starts_with(workdir) {
         if let Ok(rel) = path.strip_prefix(workdir) {
             rel.to_path_buf()
         } else {
-            return Err(AppError::GitError(git2::Error::from_str("Failed to get relative path").to_string()));
+            return Err(AppError::GitError(
+                git2::Error::from_str("Failed to get relative path").to_string(),
+            ));
         }
     } else {
-        return Err(AppError::GitError(git2::Error::from_str("Path is not in repository").to_string()));
+        return Err(AppError::GitError(
+            git2::Error::from_str("Path is not in repository").to_string(),
+        ));
     };
-    
+
     // Check if the file is ignored
-    repo.is_path_ignored(&relative_path).map_err(|e| {
-        AppError::GitError(e.to_string())
-    })
+    repo.is_path_ignored(&relative_path)
+        .map_err(|e| AppError::GitError(e.to_string()))
 }
 
 /// Get the git branch name
 pub fn get_branch_name(path: impl AsRef<Path>) -> AppResult<String> {
     let repo = get_repository(path)?;
-    
+
     // Get the HEAD reference
-    let head = repo.head().map_err(|e| {
-        AppError::GitError(e.to_string())
-    })?;
-    
+    let head = repo.head().map_err(|e| AppError::GitError(e.to_string()))?;
+
     // Get the branch name
     let branch_name = head.shorthand().ok_or_else(|| {
         AppError::GitError(git2::Error::from_str("Failed to get branch name").to_string())
     })?;
-    
+
     Ok(branch_name.to_string())
 }

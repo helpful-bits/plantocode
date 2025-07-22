@@ -1,17 +1,20 @@
-use tauri::{command, AppHandle, Manager, Emitter};
-use log::{info, warn};
 use crate::error::{AppError, AppResult};
 use crate::models::{BackgroundJob, TaskType};
-use std::sync::Arc;
-use serde::{Serialize, Deserialize};
+use log::{info, warn};
+use serde::{Deserialize, Serialize};
 use serde_json::json;
-
+use std::sync::Arc;
+use tauri::{AppHandle, Emitter, Manager, command};
 
 #[command]
-pub async fn get_background_job_by_id_command(job_id: String, app_handle: AppHandle) -> AppResult<Option<crate::models::BackgroundJob>> {
+pub async fn get_background_job_by_id_command(
+    job_id: String,
+    app_handle: AppHandle,
+) -> AppResult<Option<crate::models::BackgroundJob>> {
     info!("Fetching background job by ID: {}", job_id);
 
-    let repo = app_handle.state::<Arc<crate::db_utils::BackgroundJobRepository>>()
+    let repo = app_handle
+        .state::<Arc<crate::db_utils::BackgroundJobRepository>>()
         .inner()
         .clone();
 
@@ -24,7 +27,8 @@ pub async fn get_background_job_by_id_command(job_id: String, app_handle: AppHan
 pub async fn clear_job_history_command(days_to_keep: i64, app_handle: AppHandle) -> AppResult<()> {
     info!("Clearing job history with days_to_keep={}", days_to_keep);
 
-    let repo = app_handle.state::<Arc<crate::db_utils::BackgroundJobRepository>>()
+    let repo = app_handle
+        .state::<Arc<crate::db_utils::BackgroundJobRepository>>()
         .inner()
         .clone();
 
@@ -32,7 +36,6 @@ pub async fn clear_job_history_command(days_to_keep: i64, app_handle: AppHandle)
         .await
         .map_err(|e| AppError::DatabaseError(format!("Failed to clear job history: {}", e)))
 }
-
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -44,7 +47,8 @@ pub struct DeleteBackgroundJobArgs {
 pub async fn delete_background_job_command(job_id: String, app_handle: AppHandle) -> AppResult<()> {
     info!("Deleting background job: {}", job_id);
 
-    let repo = app_handle.state::<Arc<crate::db_utils::BackgroundJobRepository>>()
+    let repo = app_handle
+        .state::<Arc<crate::db_utils::BackgroundJobRepository>>()
         .inner()
         .clone();
 
@@ -67,7 +71,8 @@ pub struct CancelJobArgs {
 pub async fn cancel_background_job_command(job_id: String, app_handle: AppHandle) -> AppResult<()> {
     info!("Cancelling background job: {}", job_id);
 
-    let repo = app_handle.state::<Arc<crate::db_utils::BackgroundJobRepository>>()
+    let repo = app_handle
+        .state::<Arc<crate::db_utils::BackgroundJobRepository>>()
         .inner()
         .clone();
 
@@ -86,36 +91,46 @@ pub struct CancelSessionJobsArgs {
 }
 
 #[command]
-pub async fn cancel_session_jobs_command(session_id: String, app_handle: AppHandle) -> AppResult<usize> {
+pub async fn cancel_session_jobs_command(
+    session_id: String,
+    app_handle: AppHandle,
+) -> AppResult<usize> {
     info!("Cancelling all jobs for session: {}", session_id);
 
     // Get the repository
-    let repo = app_handle.state::<Arc<crate::db_utils::BackgroundJobRepository>>()
+    let repo = app_handle
+        .state::<Arc<crate::db_utils::BackgroundJobRepository>>()
         .inner()
         .clone();
 
     // Use the single call to cancel session jobs
-    let cancelled_count = repo.cancel_session_jobs(&session_id).await
+    let cancelled_count = repo
+        .cancel_session_jobs(&session_id)
+        .await
         .map_err(|e| AppError::JobError(format!("Failed to cancel session jobs: {}", e)))?;
 
     Ok(cancelled_count)
 }
 
 #[command]
-pub async fn get_all_visible_jobs_command(app_handle: AppHandle) -> AppResult<Vec<crate::models::BackgroundJob>> {
+pub async fn get_all_visible_jobs_command(
+    app_handle: AppHandle,
+) -> AppResult<Vec<crate::models::BackgroundJob>> {
     info!("Fetching all visible jobs");
 
-    let repo = app_handle.state::<Arc<crate::db_utils::BackgroundJobRepository>>()
+    let repo = app_handle
+        .state::<Arc<crate::db_utils::BackgroundJobRepository>>()
         .inner()
         .clone();
 
-    let mut jobs = repo.get_all_visible_jobs()
+    let mut jobs = repo
+        .get_all_visible_jobs()
         .await
         .map_err(|e| AppError::DatabaseError(format!("Failed to get all visible jobs: {}", e)))?;
-    
+
     // Strip large content from implementation plans to reduce payload size
     strip_implementation_plan_content(&mut jobs);
-    
+
     Ok(jobs)
 }
 

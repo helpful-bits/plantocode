@@ -1,6 +1,6 @@
-use std::sync::Arc;
+use chrono::{DateTime, Duration, Utc};
 use dashmap::DashMap;
-use chrono::{DateTime, Utc, Duration};
+use std::sync::Arc;
 
 #[derive(Debug)]
 pub enum AuthError {
@@ -38,7 +38,12 @@ impl Auth0StateStore {
         }
     }
 
-    pub fn store_attempt(&self, pid: String, verifier: String, csrf: String) -> Result<(), AuthError> {
+    pub fn store_attempt(
+        &self,
+        pid: String,
+        verifier: String,
+        csrf: String,
+    ) -> Result<(), AuthError> {
         self.attempts.insert(
             pid,
             Auth0LoginAttempt {
@@ -52,7 +57,10 @@ impl Auth0StateStore {
 
     pub fn get_attempt(&self, pid: &str) -> Result<Option<(String, String)>, AuthError> {
         if let Some(attempt) = self.attempts.get(pid) {
-            Ok(Some((attempt.pkce_verifier.clone(), attempt.tauri_csrf_token.clone())))
+            Ok(Some((
+                attempt.pkce_verifier.clone(),
+                attempt.tauri_csrf_token.clone(),
+            )))
         } else {
             Ok(None)
         }
@@ -73,10 +81,10 @@ impl Default for Auth0StateStore {
 pub fn cleanup_old_attempts(store: &Auth0StateStore) -> Result<(), AuthError> {
     let now = Utc::now();
     let cutoff_duration = Duration::try_minutes(10).unwrap_or(Duration::zero());
-    
-    store.attempts.retain(|_, attempt| {
-        now.signed_duration_since(attempt.created_at) < cutoff_duration
-    });
-    
+
+    store
+        .attempts
+        .retain(|_, attempt| now.signed_duration_since(attempt.created_at) < cutoff_duration);
+
     Ok(())
 }

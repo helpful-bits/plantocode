@@ -64,4 +64,5 @@ export type Session = {
   forceExcludedFiles: string[]; // Array of comparablePath strings (normalized, project-relative paths) forced excluded even if they match inclusion criteria
   searchSelectedFilesOnly: boolean; // Whether to search only in selected files
   modelUsed?: string; // The model used for this session
+  filterMode?: 'all' | 'selected'; // Filter mode for the file browser
 };

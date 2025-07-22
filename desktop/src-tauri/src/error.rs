@@ -1,4 +1,4 @@
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use std::fmt;
 use thiserror::Error;
 
@@ -6,178 +6,178 @@ use thiserror::Error;
 pub enum AppError {
     #[error("IO error: {0}")]
     IoError(String),
-    
+
     #[error("Serde JSON error: {0}")]
     SerdeError(String),
-    
+
     #[error("Database error: {0}")]
     DatabaseError(String),
-    
+
     #[error("OpenRouter API error: {0}")]
     OpenRouterError(String),
-    
+
     #[error("Server proxy error: {0}")]
     ServerProxyError(String),
-    
+
     #[error("HTTP client error: {0}")]
     HttpError(String),
-    
+
     #[error("Tauri error: {0}")]
     TauriError(String),
-    
+
     #[error("Keyring error: {0}")]
     KeyringError(String),
-    
+
     #[error("Configuration error: {0}")]
     ConfigError(String),
-    
+
     #[error("Configuration validation error: {0}")]
     ConfigurationError(String),
-    
+
     #[error("Invalid task type: {0}")]
     InvalidTaskTypeError(String),
-    
+
     #[error("Cache validation error: {0}")]
     CacheValidationError(String),
-    
+
     #[error("Job error: {0}")]
     JobError(String),
-    
+
     #[error("File system error: {0}")]
     FileSystemError(String),
-    
+
     #[error("Git error: {0}")]
     GitError(String),
-    
+
     #[error("Validation error: {0}")]
     ValidationError(String),
-    
+
     #[error("Invalid path: {0}")]
     InvalidPath(String),
-    
+
     #[error("Not found: {0}")]
     NotFoundError(String),
-    
+
     #[error("Authentication error: {0}")]
     AuthError(String),
-    
+
     #[error("Security error: {0}")]
     SecurityError(String),
-    
+
     #[error("Internal error: {0}")]
     InternalError(String),
-    
+
     #[error("File lock error: {0}")]
     FileLockError(String),
-    
+
     #[error("Initialization error: {0}")]
     InitializationError(String),
-    
+
     #[error("Application error: {0}")]
     ApplicationError(String),
-    
+
     #[error("Serialization error: {0}")]
     SerializationError(String),
-    
+
     #[error("SQLx error: {0}")]
     SqlxError(String),
-    
+
     #[error("Access denied: {0}")]
     AccessDenied(String),
 
     #[error("Billing error: {0}")]
     BillingError(String),
-    
+
     #[error("Invalid argument: {0}")]
     InvalidArgument(String),
-    
+
     #[error("Network error: {0}")]
     NetworkError(String),
-    
+
     #[error("External service error: {0}")]
     ExternalServiceError(String),
-    
+
     #[error("Invalid response: {0}")]
     InvalidResponse(String),
-    
+
     #[error("Storage error: {0}")]
     StorageError(String),
-    
+
     #[error("Token limit exceeded: {0}")]
     TokenLimitExceededError(String),
-    
+
     // Billing-specific errors matching server error types
     #[error("Payment failed: {0}")]
     PaymentFailed(String),
-    
+
     #[error("Payment declined: {0}")]
     PaymentDeclined(String),
-    
+
     #[error("Payment authentication required: {0}")]
     PaymentAuthenticationRequired(String),
-    
+
     #[error("Customer billing expired: {0}")]
     BillingExpired(String),
-    
+
     #[error("Customer billing cancelled: {0}")]
     BillingCancelled(String),
-    
+
     #[error("Insufficient credits: {0}")]
     CreditInsufficient(String),
-    
+
     #[error("Credit purchase required: {0}")]
     CreditPurchaseRequired(String),
-    
+
     #[error("Payment method required: {0}")]
     PaymentMethodRequired(String),
-    
+
     #[error("Billing address required: {0}")]
     BillingAddressRequired(String),
-    
+
     #[error("Customer billing conflict: {0}")]
     BillingConflict(String),
-    
+
     #[error("Spending limit exceeded: {0}")]
     SpendingLimitExceeded(String),
-    
+
     #[error("Invoice error: {0}")]
     InvoiceError(String),
-    
+
     #[error("Stripe error: {0}")]
     StripeError(String),
-    
+
     #[error("Checkout error: {0}")]
     CheckoutError(String),
-    
+
     // Additional billing error variants to match server
     #[error("Payment required: {0}")]
     PaymentRequired(String),
-    
+
     #[error("Payment error: {0}")]
     PaymentError(String),
-    
+
     // Additional error variants to match server AppError for complete synchronization
     #[error("Unauthorized: {0}")]
     Unauthorized(String),
-    
+
     #[error("Forbidden: {0}")]
     Forbidden(String),
-    
+
     #[error("Bad request: {0}")]
     BadRequest(String),
-    
+
     #[error("Too many requests: {0}")]
     TooManyRequests(String),
-    
+
     #[error("Not implemented: {0}")]
     NotImplemented(String),
-    
+
     #[error("Lock poisoned: {0}")]
     LockPoisoned(String),
-    
+
     #[error("Task initiation failed: {0}")]
     TaskInitiationFailed(String),
-    
+
     #[error("Task finalization failed: {0}")]
     TaskFinalizationFailed(String),
 }
@@ -205,7 +205,6 @@ impl From<git2::Error> for AppError {
         AppError::GitError(err.to_string())
     }
 }
-
 
 // Removed Stronghold From implementation
 
@@ -303,8 +302,9 @@ impl From<AppError> for SerializableError {
             AppError::LockPoisoned(_) => "LOCK_POISONED",
             AppError::TaskInitiationFailed(_) => "TASK_INITIATION_FAILED",
             AppError::TaskFinalizationFailed(_) => "TASK_FINALIZATION_FAILED",
-        }.to_string();
-        
+        }
+        .to_string();
+
         SerializableError {
             code,
             message: error.to_string(),
@@ -341,7 +341,7 @@ impl AppError {
         };
         AppError::ConfigurationError(message)
     }
-    
+
     /// Create a detailed invalid task type error with available options
     pub fn invalid_task_type_error(
         provided_task: &str,
@@ -362,7 +362,7 @@ impl AppError {
         };
         AppError::InvalidTaskTypeError(message)
     }
-    
+
     /// Create a detailed cache validation error
     pub fn cache_validation_error(
         validation_type: &str,
@@ -375,26 +375,24 @@ impl AppError {
         );
         AppError::CacheValidationError(message)
     }
-    
+
     /// Create a missing model configuration error
-    pub fn missing_model_config_error(
-        task_type: &str,
-        available_models: &[String],
-    ) -> Self {
+    pub fn missing_model_config_error(task_type: &str, available_models: &[String]) -> Self {
         let available_list = available_models.join(", ");
         let message = format!(
             "Missing Model Configuration for task '{}'.\nThis task requires a valid model to be configured.\nAvailable models: {}\nSuggestion: Configure a model for this task in the server settings.",
-            task_type, 
-            if available_list.is_empty() { "No models available" } else { &available_list }
+            task_type,
+            if available_list.is_empty() {
+                "No models available"
+            } else {
+                &available_list
+            }
         );
         AppError::ConfigurationError(message)
     }
-    
+
     /// Create a missing task configuration error
-    pub fn missing_task_config_error(
-        task_type: &str,
-        required_fields: &[&str],
-    ) -> Self {
+    pub fn missing_task_config_error(task_type: &str, required_fields: &[&str]) -> Self {
         let fields_list = required_fields.join(", ");
         let message = format!(
             "Missing Task Configuration for '{}'.\nRequired fields: {}\nSuggestion: Add complete configuration for this task in the server settings including all required fields.",
@@ -402,7 +400,7 @@ impl AppError {
         );
         AppError::ConfigurationError(message)
     }
-    
+
     /// Create an invalid configuration value error
     pub fn invalid_config_value_error(
         field_name: &str,
@@ -423,7 +421,7 @@ impl AppError {
         };
         AppError::ConfigurationError(message)
     }
-    
+
     /// Create a model availability error
     pub fn model_not_available_error(
         model_id: &str,
@@ -433,25 +431,30 @@ impl AppError {
         let available_list = available_models.join(", ");
         let message = format!(
             "Model '{}' is not available for task '{}'.\nThis model is either not configured or not accessible.\nAvailable models: {}\nSuggestion: Either configure the missing model or update the task to use an available model.",
-            model_id, 
-            task_type, 
-            if available_list.is_empty() { "No models available" } else { &available_list }
+            model_id,
+            task_type,
+            if available_list.is_empty() {
+                "No models available"
+            } else {
+                &available_list
+            }
         );
         AppError::ConfigurationError(message)
     }
-    
+
     /// Create a configuration consistency error
     pub fn configuration_consistency_error(
         inconsistency_type: &str,
         details: &str,
         resolution_steps: &[&str],
     ) -> Self {
-        let steps_list = resolution_steps.iter()
+        let steps_list = resolution_steps
+            .iter()
             .enumerate()
             .map(|(i, step)| format!("{}. {}", i + 1, step))
             .collect::<Vec<_>>()
             .join("\n");
-        
+
         let message = format!(
             "Configuration Consistency Error: {}\nDetails: {}\nResolution Steps:\n{}\nSuggestion: Follow the resolution steps above to fix the configuration inconsistency.",
             inconsistency_type, details, steps_list

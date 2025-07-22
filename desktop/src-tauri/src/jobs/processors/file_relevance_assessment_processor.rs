@@ -1,17 +1,22 @@
-use std::collections::HashMap;
-use log::{debug, info, error, warn};
-use serde_json::json;
-use tauri::AppHandle;
-use futures::future;
 use chrono;
+use futures::future;
+use log::{debug, error, info, warn};
+use serde_json::json;
+use std::collections::HashMap;
+use tauri::AppHandle;
 use tokio::fs;
 
-
 use crate::error::{AppError, AppResult};
-use crate::jobs::processor_trait::JobProcessor;
-use crate::jobs::types::{Job, JobPayload, JobProcessResult, JobResultData, FileRelevanceAssessmentPayload, FileRelevanceAssessmentResponse, FileRelevanceAssessmentProcessingDetails, FileRelevanceAssessmentQualityDetails};
 use crate::jobs::job_processor_utils;
-use crate::jobs::processors::abstract_llm_processor::{LlmTaskRunner, LlmTaskConfig, LlmTaskConfigBuilder, LlmPromptContext};
+use crate::jobs::processor_trait::JobProcessor;
+use crate::jobs::processors::abstract_llm_processor::{
+    LlmPromptContext, LlmTaskConfig, LlmTaskConfigBuilder, LlmTaskRunner,
+};
+use crate::jobs::types::{
+    FileRelevanceAssessmentPayload, FileRelevanceAssessmentProcessingDetails,
+    FileRelevanceAssessmentQualityDetails, FileRelevanceAssessmentResponse, Job, JobPayload,
+    JobProcessResult, JobResultData,
+};
 
 pub struct FileRelevanceAssessmentProcessor;
 
@@ -33,7 +38,7 @@ impl FileRelevanceAssessmentProcessor {
         file_paths: &[String],
     ) -> AppResult<u32> {
         let mut total_tokens = 0u32;
-        
+
         for file_path in file_paths {
             let full_path = project_dir.join(file_path);
             if let Ok(content) = fs::read_to_string(&full_path).await {
@@ -41,29 +46,32 @@ impl FileRelevanceAssessmentProcessor {
                     .extension()
                     .and_then(|ext| ext.to_str())
                     .unwrap_or("");
-                
+
                 let tokens = match extension {
                     "json" | "xml" | "yml" | "yaml" | "toml" => {
                         Self::estimate_tokens(&content, 5) // Structured data
                     }
-                    "rs" | "ts" | "js" | "tsx" | "jsx" | "py" | "java" | "cpp" | "c" | "h" | "cs" | "go" | "php" | "rb" | "swift" | "kt" => {
+                    "rs" | "ts" | "js" | "tsx" | "jsx" | "py" | "java" | "cpp" | "c" | "h"
+                    | "cs" | "go" | "php" | "rb" | "swift" | "kt" => {
                         Self::estimate_tokens(&content, 3) // Code
                     }
                     _ => {
                         Self::estimate_tokens(&content, 4) // Regular text
                     }
                 };
-                
+
                 total_tokens += tokens;
             }
         }
-        
+
         Ok(total_tokens)
     }
 
     /// Parse paths from LLM text response using newline separation (as instructed in system prompt)
-    fn parse_paths_from_text_response(response_text: &str, _project_directory: &str) -> AppResult<Vec<String>> {
-        
+    fn parse_paths_from_text_response(
+        response_text: &str,
+        _project_directory: &str,
+    ) -> AppResult<Vec<String>> {
         // Parse newline-separated paths as instructed in system prompt
         let paths: Vec<String> = response_text
             .lines()
@@ -71,10 +79,10 @@ impl FileRelevanceAssessmentProcessor {
             .filter(|line| !line.is_empty())
             .map(|line| line.to_string())
             .collect();
-        
+
         Ok(Self::deduplicate_paths(paths))
     }
-    
+
     /// Remove duplicates while preserving order
     fn deduplicate_paths(paths: Vec<String>) -> Vec<String> {
         let mut unique_paths = Vec::new();
@@ -87,19 +95,21 @@ impl FileRelevanceAssessmentProcessor {
         unique_paths
     }
 
-
     /// Create intelligent chunks based on ACTUAL file sizes - no fallbacks!
-    async fn create_content_aware_chunks(files: &[String], project_directory: &str, max_chunk_tokens: u32) -> AppResult<Vec<Vec<String>>> {
+    async fn create_content_aware_chunks(
+        files: &[String],
+        project_directory: &str,
+        max_chunk_tokens: u32,
+    ) -> AppResult<Vec<Vec<String>>> {
         let mut chunks = Vec::new();
         let mut current_chunk = Vec::new();
         let mut current_chunk_tokens = 0u32;
         let mut skipped_files = Vec::new();
-        
+
         // Reserve tokens for system prompt, task description, and response
         let prompt_overhead = 2000u32; // Conservative estimate for prompt overhead
         let available_tokens = max_chunk_tokens.saturating_sub(prompt_overhead);
-        
-        
+
         for file_path in files {
             // Get content-based token estimation using standard utilities
             let full_path = std::path::Path::new(project_directory).join(file_path);
@@ -113,7 +123,8 @@ impl FileRelevanceAssessmentProcessor {
                         "json" | "xml" | "yml" | "yaml" | "toml" => {
                             Self::estimate_tokens(&content, 5) // Structured data: ~5 chars per token
                         }
-                        "rs" | "ts" | "js" | "tsx" | "jsx" | "py" | "java" | "cpp" | "c" | "h" | "cs" | "go" | "php" | "rb" | "swift" | "kt" => {
+                        "rs" | "ts" | "js" | "tsx" | "jsx" | "py" | "java" | "cpp" | "c" | "h"
+                        | "cs" | "go" | "php" | "rb" | "swift" | "kt" => {
                             Self::estimate_tokens(&content, 3) // Code: ~3 chars per token
                         }
                         _ => {
@@ -127,24 +138,26 @@ impl FileRelevanceAssessmentProcessor {
                     continue;
                 }
             };
-            
+
             // If this single file exceeds available tokens, put it in its own chunk
             if file_tokens > available_tokens {
-                warn!("File {} has {} tokens, exceeding chunk limit of {}. Processing separately.", 
-                    file_path, file_tokens, available_tokens);
-                
+                warn!(
+                    "File {} has {} tokens, exceeding chunk limit of {}. Processing separately.",
+                    file_path, file_tokens, available_tokens
+                );
+
                 // Save current chunk if not empty
                 if !current_chunk.is_empty() {
                     chunks.push(current_chunk);
                     current_chunk = Vec::new();
                     current_chunk_tokens = 0;
                 }
-                
+
                 // Create dedicated chunk for this large file
                 chunks.push(vec![file_path.clone()]);
                 continue;
             }
-            
+
             // Check if adding this file would exceed chunk limit
             if current_chunk_tokens + file_tokens > available_tokens && !current_chunk.is_empty() {
                 // Finalize current chunk and start new one
@@ -152,22 +165,25 @@ impl FileRelevanceAssessmentProcessor {
                 current_chunk = Vec::new();
                 current_chunk_tokens = 0;
             }
-            
+
             // Add file to current chunk
             current_chunk.push(file_path.clone());
             current_chunk_tokens += file_tokens;
         }
-        
+
         // Don't forget the last chunk
         if !current_chunk.is_empty() {
             chunks.push(current_chunk);
         }
-        
+
         if !skipped_files.is_empty() {
-            warn!("Skipped {} inaccessible files: {:?}", skipped_files.len(), skipped_files);
+            warn!(
+                "Skipped {} inaccessible files: {:?}",
+                skipped_files.len(),
+                skipped_files
+            );
         }
-        
-        
+
         Ok(chunks)
     }
 
@@ -182,11 +198,19 @@ impl FileRelevanceAssessmentProcessor {
         settings_repo: &crate::db_utils::SettingsRepository,
         repo: &crate::db_utils::BackgroundJobRepository,
         job_id: &str,
-    ) -> AppResult<(Vec<String>, Option<crate::models::OpenRouterUsage>, String, String)> {
-        
+    ) -> AppResult<(
+        Vec<String>,
+        Option<crate::models::OpenRouterUsage>,
+        String,
+        String,
+    )> {
         // Check for cancellation before processing this chunk
         if job_processor_utils::check_job_canceled(repo, job_id).await? {
-            info!("Job {} has been canceled during chunk {} processing", job_id, chunk_index + 1);
+            info!(
+                "Job {} has been canceled during chunk {} processing",
+                job_id,
+                chunk_index + 1
+            );
             return Err(AppError::JobError("Job was canceled by user".to_string()));
         }
 
@@ -203,7 +227,6 @@ impl FileRelevanceAssessmentProcessor {
                 }
             }
         }
-        
 
         // Create prompt context for this chunk
         let prompt_context = LlmPromptContext {
@@ -213,17 +236,37 @@ impl FileRelevanceAssessmentProcessor {
         };
 
         // Log the system prompt being used for this chunk
-        
+
         // Execute LLM task for this chunk
-        let llm_result = task_runner.execute_llm_task(prompt_context, settings_repo).await
-            .map_err(|e| AppError::JobError(format!("Failed to process chunk {}: {}", chunk_index + 1, e)))?;
+        let llm_result = task_runner
+            .execute_llm_task(prompt_context, settings_repo)
+            .await
+            .map_err(|e| {
+                AppError::JobError(format!(
+                    "Failed to process chunk {}: {}",
+                    chunk_index + 1,
+                    e
+                ))
+            })?;
 
         // Parse the LLM response for this chunk
-        let chunk_relevant_paths = Self::parse_paths_from_text_response(&llm_result.response, project_directory)
-            .map_err(|e| AppError::JobError(format!("Failed to parse chunk {} results: {}", chunk_index + 1, e)))?;
+        let chunk_relevant_paths =
+            Self::parse_paths_from_text_response(&llm_result.response, project_directory).map_err(
+                |e| {
+                    AppError::JobError(format!(
+                        "Failed to parse chunk {} results: {}",
+                        chunk_index + 1,
+                        e
+                    ))
+                },
+            )?;
 
-
-        Ok((chunk_relevant_paths, llm_result.usage, llm_result.system_prompt_id, llm_result.system_prompt_template))
+        Ok((
+            chunk_relevant_paths,
+            llm_result.usage,
+            llm_result.system_prompt_id,
+            llm_result.system_prompt_template,
+        ))
     }
 
     /// Merge and deduplicate results from all chunks
@@ -243,7 +286,6 @@ impl FileRelevanceAssessmentProcessor {
 
         all_results
     }
-
 }
 
 #[async_trait::async_trait]
@@ -251,58 +293,69 @@ impl JobProcessor for FileRelevanceAssessmentProcessor {
     fn name(&self) -> &'static str {
         "FileRelevanceAssessment"
     }
-    
+
     fn can_handle(&self, job: &Job) -> bool {
         matches!(job.payload, JobPayload::FileRelevanceAssessment(_))
     }
-    
+
     async fn process(&self, job: Job, app_handle: AppHandle) -> AppResult<JobProcessResult> {
         // Get payload
         let payload = match &job.payload {
             JobPayload::FileRelevanceAssessment(p) => p,
             _ => return Err(AppError::JobError("Invalid payload type".to_string())),
         };
-        
+
         // Setup job processing using standardized utility
-        let (repo, session_repo, settings_repo, db_job) = job_processor_utils::setup_job_processing(
-            &job.id,
-            &app_handle,
-        ).await?;
-        
+        let (repo, session_repo, settings_repo, db_job) =
+            job_processor_utils::setup_job_processing(&job.id, &app_handle).await?;
+
         // Get project directory from session
-        let session = session_repo.get_session_by_id(&job.session_id).await?
+        let session = session_repo
+            .get_session_by_id(&job.session_id)
+            .await?
             .ok_or_else(|| AppError::JobError(format!("Session {} not found", job.session_id)))?;
         let project_directory = &session.project_directory;
-        
+
         // Get model settings using project-aware configuration
-        let model_settings = job_processor_utils::get_llm_task_config(&db_job, &app_handle, &session).await?;
+        let model_settings =
+            job_processor_utils::get_llm_task_config(&db_job, &app_handle, &session).await?;
         let (model_used, temperature, max_output_tokens) = model_settings;
-        
+
         job_processor_utils::log_job_start(&job.id, "File Relevance Assessment");
-        
+
         // Initialize processing duration tracking
         let mut parallel_duration = std::time::Duration::from_secs(0);
-        
+
         // Check if job has been canceled using standardized utility
         if job_processor_utils::check_job_canceled(&repo, &job.id).await? {
             info!("Job {} has been canceled before processing", job.id);
-            return Ok(JobProcessResult::canceled(job.id.clone(), "Job was canceled by user".to_string()));
+            return Ok(JobProcessResult::canceled(
+                job.id.clone(),
+                "Job was canceled by user".to_string(),
+            ));
         }
 
         // Initialize LlmTaskRunner with appropriate model settings
-        let task_config = LlmTaskConfigBuilder::new(model_used.clone(), temperature, max_output_tokens)
-            .stream(false)
-            .build();
-            
+        let task_config =
+            LlmTaskConfigBuilder::new(model_used.clone(), temperature, max_output_tokens)
+                .stream(false)
+                .build();
+
         let task_runner = LlmTaskRunner::new(app_handle.clone(), job.clone(), task_config);
 
         // INTELLIGENT CHUNKED PROCESSING - Process ALL files without limits
-        
+
         // Get the model's INPUT context window limit - not output limit!
-        let model_context_window = crate::utils::config_helpers::get_model_context_window(&model_used, &app_handle).await
-            .map_err(|e| AppError::JobError(format!("Failed to get model context window for {}: {}", model_used, e)))?;
-        
-        
+        let model_context_window =
+            crate::utils::config_helpers::get_model_context_window(&model_used, &app_handle)
+                .await
+                .map_err(|e| {
+                    AppError::JobError(format!(
+                        "Failed to get model context window for {}: {}",
+                        model_used, e
+                    ))
+                })?;
+
         // Create content-aware chunks based on ACTUAL file sizes using INPUT context window
         // Use 60% of INPUT context window for aggressive chunking while leaving room for response
         let chunk_token_limit = (model_context_window as f64 * 0.6) as u32;
@@ -310,7 +363,9 @@ impl JobProcessor for FileRelevanceAssessmentProcessor {
             &payload.locally_filtered_files,
             project_directory,
             chunk_token_limit,
-        ).await {
+        )
+        .await
+        {
             Ok(chunks) => chunks,
             Err(e) => {
                 let error_msg = format!("Failed to create chunks using actual file sizes: {}", e);
@@ -319,47 +374,56 @@ impl JobProcessor for FileRelevanceAssessmentProcessor {
             }
         };
 
-
         // Check for cancellation before starting parallel processing
         if job_processor_utils::check_job_canceled(&repo, &job.id).await? {
-            info!("Job {} has been canceled before parallel processing", job.id);
-            return Ok(JobProcessResult::canceled(job.id.clone(), "Job was canceled by user".to_string()));
+            info!(
+                "Job {} has been canceled before parallel processing",
+                job.id
+            );
+            return Ok(JobProcessResult::canceled(
+                job.id.clone(),
+                "Job was canceled by user".to_string(),
+            ));
         }
 
         // PARALLEL PROCESSING - Process ALL chunks concurrently for maximum speed!
         let start_time = std::time::Instant::now();
-        
+
         // Create futures for all chunks
-        let chunk_futures: Vec<_> = chunks.iter().enumerate().map(|(chunk_index, chunk)| {
-            let chunk = chunk.clone();
-            let task_description = payload.task_description.clone();
-            let project_directory = project_directory.to_string();
-            let task_runner = task_runner.clone();
-            let settings_repo = settings_repo.clone();
-            let repo = repo.clone();
-            let job_id = job.id.clone();
-            let total_chunks = chunks.len();
-            
-            tokio::spawn(async move {
-                let result = Self::process_file_chunk(
-                    &chunk,
-                    chunk_index,
-                    total_chunks,
-                    &task_description,
-                    &project_directory,
-                    &task_runner,
-                    &settings_repo,
-                    &repo,
-                    &job_id,
-                ).await;
-                (chunk_index, chunk.len(), result)
+        let chunk_futures: Vec<_> = chunks
+            .iter()
+            .enumerate()
+            .map(|(chunk_index, chunk)| {
+                let chunk = chunk.clone();
+                let task_description = payload.task_description.clone();
+                let project_directory = project_directory.to_string();
+                let task_runner = task_runner.clone();
+                let settings_repo = settings_repo.clone();
+                let repo = repo.clone();
+                let job_id = job.id.clone();
+                let total_chunks = chunks.len();
+
+                tokio::spawn(async move {
+                    let result = Self::process_file_chunk(
+                        &chunk,
+                        chunk_index,
+                        total_chunks,
+                        &task_description,
+                        &project_directory,
+                        &task_runner,
+                        &settings_repo,
+                        &repo,
+                        &job_id,
+                    )
+                    .await;
+                    (chunk_index, chunk.len(), result)
+                })
             })
-        }).collect();
+            .collect();
 
         // Wait for all chunks to complete concurrently
         let chunk_results = futures::future::join_all(chunk_futures).await;
         parallel_duration = start_time.elapsed();
-        
 
         // Process results from parallel execution
         let mut all_chunk_results = Vec::new();
@@ -376,17 +440,24 @@ impl JobProcessor for FileRelevanceAssessmentProcessor {
             match join_result {
                 Ok((chunk_index, chunk_file_count, chunk_result)) => {
                     match chunk_result {
-                        Ok((chunk_relevant_paths, chunk_usage, system_prompt_id, system_prompt_template)) => {
+                        Ok((
+                            chunk_relevant_paths,
+                            chunk_usage,
+                            system_prompt_id,
+                            system_prompt_template,
+                        )) => {
                             total_processed_files += chunk_file_count;
                             all_chunk_results.push(chunk_relevant_paths);
                             successful_chunks += 1;
-                            
+
                             // Capture system prompt info from first successful chunk
-                            if captured_system_prompt_template.is_empty() && !system_prompt_template.is_empty() {
+                            if captured_system_prompt_template.is_empty()
+                                && !system_prompt_template.is_empty()
+                            {
                                 captured_system_prompt_id = system_prompt_id;
                                 captured_system_prompt_template = system_prompt_template;
                             }
-                            
+
                             // Aggregate server-provided usage information from this chunk
                             if let Some(usage) = chunk_usage {
                                 total_input_tokens += usage.prompt_tokens;
@@ -394,10 +465,14 @@ impl JobProcessor for FileRelevanceAssessmentProcessor {
                                 // Sum server-calculated costs from multiple chunks
                                 total_cost += usage.cost.unwrap_or(0.0);
                             }
-                            
                         }
                         Err(e) => {
-                            let error_msg = format!("Chunk {}/{} processing failed: {}", chunk_index + 1, chunks.len(), e);
+                            let error_msg = format!(
+                                "Chunk {}/{} processing failed: {}",
+                                chunk_index + 1,
+                                chunks.len(),
+                                e
+                            );
                             error!("✗ {}", error_msg);
                             chunk_processing_errors.push(error_msg);
                         }
@@ -411,13 +486,15 @@ impl JobProcessor for FileRelevanceAssessmentProcessor {
             }
         }
 
-
         // Check if we have any successful results
         if all_chunk_results.is_empty() && !chunks.is_empty() {
-            let error_msg = format!("All {} chunks failed to process. Errors: {:?}", 
-                chunks.len(), chunk_processing_errors);
+            let error_msg = format!(
+                "All {} chunks failed to process. Errors: {:?}",
+                chunks.len(),
+                chunk_processing_errors
+            );
             error!("{}", error_msg);
-            
+
             return Ok(JobProcessResult::failure(job.id.clone(), error_msg));
         }
 
@@ -425,40 +502,49 @@ impl JobProcessor for FileRelevanceAssessmentProcessor {
         let successful_chunks_count = all_chunk_results.len();
         let relevant_paths = Self::merge_chunk_results(all_chunk_results);
 
-        
         // Validate the parsed paths against the filesystem
         let mut validated_relevant_paths = Vec::new();
         let mut invalid_relevant_paths = Vec::new();
-        
+
         for relative_path in &relevant_paths {
             let absolute_path = std::path::Path::new(project_directory).join(relative_path);
             match tokio::fs::metadata(&absolute_path).await {
                 Ok(metadata) if metadata.is_file() => {
                     validated_relevant_paths.push(relative_path.clone());
-                },
+                }
                 _ => {
-                    debug!("Path doesn't exist or isn't a regular file: {}", absolute_path.display());
+                    debug!(
+                        "Path doesn't exist or isn't a regular file: {}",
+                        absolute_path.display()
+                    );
                     invalid_relevant_paths.push(relative_path.clone());
                 }
             }
         }
-        
-        
+
         // Calculate token count for validated relevant paths
-        let token_count = match Self::estimate_tokens_for_file_batch(&std::path::Path::new(project_directory), &validated_relevant_paths).await {
+        let token_count = match Self::estimate_tokens_for_file_batch(
+            &std::path::Path::new(project_directory),
+            &validated_relevant_paths,
+        )
+        .await
+        {
             Ok(count) => count,
             Err(e) => {
                 error!("Failed to estimate tokens for file batch: {}", e);
                 0
             }
         };
-        
+
         // Check for cancellation after LLM processing using standardized utility
         if job_processor_utils::check_job_canceled(&repo, &job.id).await? {
             info!("Job {} has been canceled after LLM processing", job.id);
-            return Ok(JobProcessResult::canceled(job.id.clone(), "Job was canceled by user".to_string()));
+            return Ok(JobProcessResult::canceled(
+                job.id.clone(),
+                "Job was canceled by user".to_string(),
+            ));
         }
-        
+
         // Create chunk details outside the JSON macro
         let mut chunk_details = Vec::new();
         for (i, chunk) in chunks.iter().enumerate() {
@@ -474,7 +560,8 @@ impl JobProcessor for FileRelevanceAssessmentProcessor {
                         "json" | "xml" | "yml" | "yaml" | "toml" => {
                             Self::estimate_tokens(&content, 5) // Structured data: ~5 chars per token
                         }
-                        "rs" | "ts" | "js" | "tsx" | "jsx" | "py" | "java" | "cpp" | "c" | "h" | "cs" | "go" | "php" | "rb" | "swift" | "kt" => {
+                        "rs" | "ts" | "js" | "tsx" | "jsx" | "py" | "java" | "cpp" | "c" | "h"
+                        | "cs" | "go" | "php" | "rb" | "swift" | "kt" => {
                             Self::estimate_tokens(&content, 3) // Code: ~3 chars per token
                         }
                         _ => {
@@ -517,21 +604,25 @@ impl JobProcessor for FileRelevanceAssessmentProcessor {
             "taskDescription": payload.task_description,
             "projectDirectory": project_directory,
             "modelUsed": model_used,
-            "summary": format!("COMPREHENSIVE File Relevance Assessment: {} total files → {} chunks → {} processed files → {} relevant files found", 
+            "summary": format!("COMPREHENSIVE File Relevance Assessment: {} total files → {} chunks → {} processed files → {} relevant files found",
                 payload.locally_filtered_files.len(),
                 chunks.len(),
                 total_processed_files,
                 validated_relevant_paths.len()),
             "chunkDetails": chunk_details
         });
-        
+
         // Create comprehensive response with strongly-typed structs
         let summary = if total_processed_files > 0 {
-            format!("Assessed {} files, found {} relevant", total_processed_files, validated_relevant_paths.len())
+            format!(
+                "Assessed {} files, found {} relevant",
+                total_processed_files,
+                validated_relevant_paths.len()
+            )
         } else {
             "No files to assess".to_string()
         };
-            
+
         let processing_details = FileRelevanceAssessmentProcessingDetails {
             approach: "intelligent_chunked_processing".to_string(),
             total_files: payload.locally_filtered_files.len(),
@@ -541,21 +632,24 @@ impl JobProcessor for FileRelevanceAssessmentProcessor {
             failed_chunks: chunk_processing_errors.len(),
             chunk_token_limit: chunk_token_limit as usize,
             model_context_window: model_context_window as usize,
-            context_window_utilization: format!("{:.1}%", (chunk_token_limit as f64 / model_context_window as f64) * 100.0),
+            context_window_utilization: format!(
+                "{:.1}%",
+                (chunk_token_limit as f64 / model_context_window as f64) * 100.0
+            ),
             parallel_processing: true,
             concurrent_chunks: chunks.len(),
             processing_duration_seconds: parallel_duration.as_secs_f64(),
             no_limits_applied: true,
             comprehensive_analysis: true,
         };
-        
+
         let quality_details = FileRelevanceAssessmentQualityDetails {
             all_files_processed: total_processed_files == payload.locally_filtered_files.len(),
             validated_results: true,
             duplicates_removed: true,
             filesystem_validated: true,
         };
-        
+
         let relevant_files_count = validated_relevant_paths.len();
         let response = FileRelevanceAssessmentResponse {
             count: relevant_files_count,
@@ -565,10 +659,10 @@ impl JobProcessor for FileRelevanceAssessmentProcessor {
             processing: processing_details,
             quality: quality_details,
         };
-        
+
         let response_json_content = serde_json::to_string(&response)
             .map_err(|e| AppError::JobError(format!("Failed to serialize response: {}", e)))?;
-        
+
         // Create aggregated usage information from all chunks
         let aggregated_usage = if total_input_tokens > 0 || total_output_tokens > 0 {
             Some(crate::models::OpenRouterUsage {
@@ -584,41 +678,56 @@ impl JobProcessor for FileRelevanceAssessmentProcessor {
         } else {
             None
         };
-        
 
         // For chunked processing, we need to handle finalization differently
         // Since we processed multiple chunks, create a synthetic combined result
         let combined_llm_result = crate::jobs::processors::abstract_llm_processor::LlmTaskResult {
-            response: format!("CHUNKED PROCESSING COMPLETED: {} relevant files identified from {} files across {} chunks", 
-                validated_relevant_paths.len(), 
+            response: format!(
+                "CHUNKED PROCESSING COMPLETED: {} relevant files identified from {} files across {} chunks",
+                validated_relevant_paths.len(),
                 payload.locally_filtered_files.len(),
-                chunks.len()),
+                chunks.len()
+            ),
             usage: aggregated_usage, // Aggregated usage from all chunks
-            system_prompt_id: if captured_system_prompt_id.is_empty() { "chunked_processing".to_string() } else { captured_system_prompt_id },
+            system_prompt_id: if captured_system_prompt_id.is_empty() {
+                "chunked_processing".to_string()
+            } else {
+                captured_system_prompt_id
+            },
             system_prompt_template: captured_system_prompt_template, // Use actual template from first successful chunk
             request_id: None, // Chunked processing doesn't use request_id for final cost polling
         };
 
         debug!("File relevance assessment completed for job {}", job.id);
-        
+
         // Construct FileRelevanceAssessmentResponse struct, serialize to serde_json::Value
-        let response_value = serde_json::to_value(&response)
-            .map_err(|e| AppError::JobError(format!("Failed to serialize response to Value: {}", e)))?;
-        
+        let response_value = serde_json::to_value(&response).map_err(|e| {
+            AppError::JobError(format!("Failed to serialize response to Value: {}", e))
+        })?;
+
         // Extract system prompt template and actual cost from combined result
         let system_prompt_template = combined_llm_result.system_prompt_template.clone();
-        let actual_cost = combined_llm_result.usage.as_ref().and_then(|u| u.cost).unwrap_or(0.0);
-        
+        let actual_cost = combined_llm_result
+            .usage
+            .as_ref()
+            .and_then(|u| u.cost)
+            .unwrap_or(0.0);
+
         // Return JobProcessResult::success() with structured JSON data
-        Ok(JobProcessResult::success(
-            job.id.clone(), 
-            JobResultData::Json(response_value)
+        Ok(
+            JobProcessResult::success(job.id.clone(), JobResultData::Json(response_value))
+                .with_tokens(
+                    combined_llm_result
+                        .usage
+                        .as_ref()
+                        .map(|u| u.prompt_tokens as u32),
+                    combined_llm_result
+                        .usage
+                        .as_ref()
+                        .map(|u| u.completion_tokens as u32),
+                )
+                .with_system_prompt_template(system_prompt_template)
+                .with_actual_cost(actual_cost),
         )
-        .with_tokens(
-            combined_llm_result.usage.as_ref().map(|u| u.prompt_tokens as u32),
-            combined_llm_result.usage.as_ref().map(|u| u.completion_tokens as u32)
-        )
-        .with_system_prompt_template(system_prompt_template)
-        .with_actual_cost(actual_cost))
     }
 }

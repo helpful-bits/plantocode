@@ -1,10 +1,10 @@
-use std::sync::Arc;
-use std::str::FromStr;
-use tauri::{AppHandle, Manager};
+use crate::db_utils::session_repository::SessionRepository;
 use crate::error::{AppError, AppResult};
 use crate::models::{BackgroundJob, TaskType};
-use crate::db_utils::session_repository::SessionRepository;
 use crate::utils::directory_tree;
+use std::str::FromStr;
+use std::sync::Arc;
+use tauri::{AppHandle, Manager};
 
 /// Resolve project directory from session
 pub async fn get_project_directory_from_session(
@@ -12,12 +12,14 @@ pub async fn get_project_directory_from_session(
     app_handle: &AppHandle,
 ) -> AppResult<String> {
     let session_repo = app_handle.state::<Arc<SessionRepository>>().inner().clone();
-    let session = session_repo.get_session_by_id(session_id).await?
+    let session = session_repo
+        .get_session_by_id(session_id)
+        .await?
         .ok_or_else(|| AppError::NotFoundError(format!("Session {} not found", session_id)))?;
     Ok(session.project_directory)
 }
 
-/// Get directory tree from session ID 
+/// Get directory tree from session ID
 /// This utility function fetches the project directory from the session
 /// and generates a directory tree, avoiding repeated session lookups
 pub async fn get_directory_tree_from_session(

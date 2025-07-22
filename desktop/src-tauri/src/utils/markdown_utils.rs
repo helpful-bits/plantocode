@@ -2,19 +2,17 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 
 static JSON_FENCE_REGEX: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"(?s)```json\s*\n?(.*?)\n?```")
-        .expect("JSON fence regex pattern should be valid")
+    Regex::new(r"(?s)```json\s*\n?(.*?)\n?```").expect("JSON fence regex pattern should be valid")
 });
 
 static GENERIC_FENCE_REGEX: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"(?s)```\s*\n?(.*?)\n?```")
-        .expect("Generic fence regex pattern should be valid")
+    Regex::new(r"(?s)```\s*\n?(.*?)\n?```").expect("Generic fence regex pattern should be valid")
 });
 
 /// Extracts JSON content from markdown code blocks
 pub fn extract_json_from_markdown(content: &str) -> String {
     let trimmed_content = content.trim();
-    
+
     if trimmed_content.is_empty() {
         return String::new();
     }

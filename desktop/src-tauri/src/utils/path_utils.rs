@@ -1,42 +1,42 @@
-use std::path::{Path, PathBuf};
-use std::fs;
-use log::{info, warn};
 use chrono::Local;
-use uuid::Uuid;
+use log::{info, warn};
+use std::fs;
+use std::path::{Path, PathBuf};
 use tauri::Manager;
+use uuid::Uuid;
 
 use crate::error::{AppError, AppResult};
 use crate::utils::{fs_utils, git_utils};
 
 /// Normalize a path (sync version)
-/// 
+///
 /// This function canonicalizes the path to resolve symlinks and get the absolute path.
 /// If canonicalization fails, returns an error instead of falling back to unsafe normalization.
 pub fn normalize_path(path: impl AsRef<Path>) -> AppResult<PathBuf> {
     let path = path.as_ref();
-    
+
     // Canonicalize the path - fail fast if this doesn't work
     fs::canonicalize(path).map_err(|e| {
         AppError::FileSystemError(format!(
-            "Failed to canonicalize path {}: {}", 
-            path.display(), 
+            "Failed to canonicalize path {}: {}",
+            path.display(),
             e
         ))
     })
 }
 
 /// Normalize a path (async version)
-/// 
+///
 /// This function canonicalizes the path asynchronously.
 /// If canonicalization fails, returns an error instead of falling back.
 pub async fn normalize_path_async(path: impl AsRef<Path>) -> AppResult<PathBuf> {
     let path = path.as_ref();
-    
+
     // Canonicalize the path - fail fast if this doesn't work
     tokio::fs::canonicalize(path).await.map_err(|e| {
         AppError::FileSystemError(format!(
-            "Failed to canonicalize path {}: {}", 
-            path.display(), 
+            "Failed to canonicalize path {}: {}",
+            path.display(),
             e
         ))
     })
@@ -54,12 +54,16 @@ pub fn get_parent_directory(path: impl AsRef<Path>) -> Option<PathBuf> {
 
 /// Get the file name of a path
 pub fn get_file_name(path: impl AsRef<Path>) -> Option<String> {
-    path.as_ref().file_name().map(|n| n.to_string_lossy().to_string())
+    path.as_ref()
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
 }
 
 /// Get the extension of a path
 pub fn get_file_extension(path: impl AsRef<Path>) -> Option<String> {
-    path.as_ref().extension().map(|ext| ext.to_string_lossy().to_string())
+    path.as_ref()
+        .extension()
+        .map(|ext| ext.to_string_lossy().to_string())
 }
 
 /// Join paths
@@ -68,22 +72,22 @@ pub fn join_paths(base: impl AsRef<Path>, path: impl AsRef<Path>) -> PathBuf {
 }
 
 /// Make a path relative to a base path
-/// 
+///
 /// This function normalizes both paths and makes one relative to the other.
 /// No graceful fallbacks - either it works or it fails.
 pub fn make_relative_to(path: impl AsRef<Path>, base: impl AsRef<Path>) -> AppResult<PathBuf> {
     let path = path.as_ref();
     let base = base.as_ref();
-    
+
     // Normalize paths to handle case sensitivity and resolve symlinks
     let path_norm = normalize_path(path)?;
     let base_norm = normalize_path(base)?;
-    
+
     // Handle exact match case
     if path_norm == base_norm {
         return Ok(PathBuf::from("."));
     }
-    
+
     // Check if the path is a descendant of the base
     // On case-insensitive filesystems, we need to be careful about comparisons
     if !path_norm.starts_with(&base_norm) {
@@ -109,32 +113,35 @@ pub fn make_relative_to(path: impl AsRef<Path>, base: impl AsRef<Path>) -> AppRe
             )));
         }
     }
-    
+
     // Get the relative path
-    path_norm.strip_prefix(&base_norm).map(|p| p.to_path_buf()).map_err(|e| {
-        AppError::ValidationError(format!(
-            "Failed to make path {} relative to {}: {}",
-            path_norm.display(),
-            base_norm.display(),
-            e
-        ))
-    })
+    path_norm
+        .strip_prefix(&base_norm)
+        .map(|p| p.to_path_buf())
+        .map_err(|e| {
+            AppError::ValidationError(format!(
+                "Failed to make path {} relative to {}: {}",
+                path_norm.display(),
+                base_norm.display(),
+                e
+            ))
+        })
 }
 
 /// Check if a path matches any pattern in a list
 pub fn matches_any_pattern(path: impl AsRef<Path>, patterns: &[String]) -> bool {
     let path = path.as_ref();
-    
+
     for pattern in patterns {
         let glob_pattern = glob::Pattern::new(pattern).ok();
-        
+
         if let Some(glob) = glob_pattern {
             if glob.matches_path(path) {
                 return true;
             }
         }
     }
-    
+
     false
 }
 
@@ -147,7 +154,7 @@ pub fn matches_pattern(text: &str, pattern: &str) -> bool {
         } else {
             text.to_string()
         };
-        
+
         // Convert string to a PathBuf for matching
         let path = Path::new(&text_to_check);
         glob_pattern.matches_path(path)
@@ -157,46 +164,45 @@ pub fn matches_pattern(text: &str, pattern: &str) -> bool {
     }
 }
 
-
 /// Check if a path is ignored by gitignore
 pub fn is_ignored_by_git(path: impl AsRef<Path>, base_dir: impl AsRef<Path>) -> bool {
     let path = path.as_ref();
     let base_dir = base_dir.as_ref();
-    
+
     // Get the gitignore path
     let gitignore_path = base_dir.join(".gitignore");
-    
+
     // Check if the gitignore file exists
     if !gitignore_path.exists() {
         return false;
     }
-    
+
     // Try to make the path relative to the base directory
     let relative_path = match make_relative_to(path, base_dir) {
         Ok(rel) => rel,
         Err(_) => return false,
     };
-    
+
     // Read the gitignore file
     let gitignore_content = match fs::read_to_string(&gitignore_path) {
         Ok(content) => content,
         Err(_) => return false,
     };
-    
+
     // Parse the gitignore file
     let mut patterns = Vec::new();
     for line in gitignore_content.lines() {
         let line = line.trim();
-        
+
         // Skip empty lines and comments
         if line.is_empty() || line.starts_with('#') {
             continue;
         }
-        
+
         // Add the pattern
         patterns.push(line.to_string());
     }
-    
+
     // Check if the path matches any pattern
     matches_any_pattern(relative_path, &patterns)
 }
@@ -208,7 +214,7 @@ pub fn filter_paths_by_patterns(
     exclude_patterns: &[String],
 ) -> Vec<PathBuf> {
     let mut result = Vec::new();
-    
+
     for path in paths {
         // Check if the path should be included
         let mut include = include_patterns.is_empty();
@@ -220,7 +226,7 @@ pub fn filter_paths_by_patterns(
                 }
             }
         }
-        
+
         // Check if the path should be excluded
         for pattern in exclude_patterns {
             if let Ok(glob) = glob::Pattern::new(pattern) {
@@ -230,25 +236,29 @@ pub fn filter_paths_by_patterns(
                 }
             }
         }
-        
+
         if include {
             result.push(path.clone());
         }
     }
-    
+
     result
 }
 
 /// Get the application's root data directory (async version)
 pub async fn get_app_data_root_dir(app_handle: &tauri::AppHandle) -> AppResult<PathBuf> {
-    let data_dir = app_handle.path().app_local_data_dir()
-        .map_err(|e| AppError::FileSystemError(format!("Could not determine app local data directory: {}", e)))?;
-    
+    let data_dir = app_handle.path().app_local_data_dir().map_err(|e| {
+        AppError::FileSystemError(format!(
+            "Could not determine app local data directory: {}",
+            e
+        ))
+    })?;
+
     // Create the directory if it doesn't exist
     if !fs_utils::path_exists(&data_dir).await? {
         fs_utils::create_directory(&data_dir).await?;
     }
-    
+
     Ok(data_dir)
 }
 
@@ -256,12 +266,12 @@ pub async fn get_app_data_root_dir(app_handle: &tauri::AppHandle) -> AppResult<P
 pub async fn get_app_output_files_directory(app_handle: &tauri::AppHandle) -> AppResult<PathBuf> {
     let mut output_dir = get_app_data_root_dir(app_handle).await?;
     output_dir.push("output_files");
-    
+
     // Create the directory if it doesn't exist
     if !fs_utils::path_exists(&output_dir).await? {
         fs_utils::create_directory(&output_dir).await?;
     }
-    
+
     Ok(output_dir)
 }
 
@@ -270,12 +280,12 @@ pub async fn get_project_output_files_directory(project_dir: &Path) -> AppResult
     let mut output_dir = project_dir.to_path_buf();
     output_dir.push(".vibe_manager");
     output_dir.push("output_files");
-    
+
     // Create the directory if it doesn't exist
     if !fs_utils::path_exists(&output_dir).await? {
         fs_utils::create_directory(&output_dir).await?;
     }
-    
+
     Ok(output_dir)
 }
 
@@ -284,58 +294,65 @@ pub async fn get_project_implementation_plans_directory(project_dir: &Path) -> A
     let mut plans_dir = project_dir.to_path_buf();
     plans_dir.push(".vibe_manager");
     plans_dir.push("implementation_plans");
-    
+
     // Create the directory if it doesn't exist
     if !fs_utils::path_exists(&plans_dir).await? {
         fs_utils::create_directory(&plans_dir).await?;
     }
-    
+
     Ok(plans_dir)
 }
 
 /// Create a custom directory under the project's .vibe_manager directory (async version)
-pub async fn get_project_custom_directory(project_dir: &Path, dir_name: &str) -> AppResult<PathBuf> {
+pub async fn get_project_custom_directory(
+    project_dir: &Path,
+    dir_name: &str,
+) -> AppResult<PathBuf> {
     let mut custom_dir = project_dir.to_path_buf();
     custom_dir.push(".vibe_manager");
     custom_dir.push(dir_name);
-    
+
     // Create the directory if it doesn't exist
     if !fs_utils::path_exists(&custom_dir).await? {
         fs_utils::create_directory(&custom_dir).await?;
     }
-    
+
     Ok(custom_dir)
 }
 
 /// Sanitize a filename by replacing invalid characters with underscores
 pub fn sanitize_filename(name: &str) -> String {
     // Characters not allowed in filenames on most systems
-    let invalid_chars = ['/', '\\', ':', '*', '?', '"', '<', '>', '|', '\0', '\r', '\n', '\t'];
-    
+    let invalid_chars = [
+        '/', '\\', ':', '*', '?', '"', '<', '>', '|', '\0', '\r', '\n', '\t',
+    ];
+
     // Additional security checks for problematic patterns
     let sanitized_input = name
         .replace("..", "_") // Prevent directory traversal
-        .replace("~", "_")  // Prevent home directory expansion
-        .replace("$", "_")  // Prevent variable expansion
+        .replace("~", "_") // Prevent home directory expansion
+        .replace("$", "_") // Prevent variable expansion
         .trim()
         .to_string();
-    
+
     // Replace invalid characters with underscores
     let mut sanitized = sanitized_input;
     for c in invalid_chars {
         sanitized = sanitized.replace(c, "_");
     }
-    
+
     // Remove any remaining control characters (0-31 and 127)
-    sanitized = sanitized.chars()
+    sanitized = sanitized
+        .chars()
         .filter(|&c| c as u32 >= 32 && c as u32 != 127)
         .collect();
-    
+
     // Prevent reserved Windows filenames
-    let reserved_names = ["CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", 
-                         "COM5", "COM6", "COM7", "COM8", "COM9", "LPT1", "LPT2", 
-                         "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"];
-    
+    let reserved_names = [
+        "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8",
+        "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+    ];
+
     let upper_sanitized = sanitized.to_uppercase();
     for reserved in &reserved_names {
         if upper_sanitized == *reserved || upper_sanitized.starts_with(&format!("{}.", reserved)) {
@@ -343,17 +360,17 @@ pub fn sanitize_filename(name: &str) -> String {
             break;
         }
     }
-    
+
     // Trim leading and trailing dots and spaces (problematic on Windows)
     let sanitized = sanitized.trim_matches(|c| c == '.' || c == ' ').to_string();
-    
+
     // Ensure we have a non-empty result
     let sanitized = if sanitized.is_empty() {
         "unnamed".to_string()
     } else {
         sanitized
     };
-    
+
     // Truncate to a reasonable length (60 chars)
     if sanitized.len() > 60 {
         sanitized[0..60].to_string()
@@ -363,10 +380,14 @@ pub fn sanitize_filename(name: &str) -> String {
 }
 
 /// Ensure a filepath is unique by appending suffixes as needed
-async fn ensure_unique_filepath(base_dir: &Path, base_filename: &str, extension: &str) -> AppResult<PathBuf> {
+async fn ensure_unique_filepath(
+    base_dir: &Path,
+    base_filename: &str,
+    extension: &str,
+) -> AppResult<PathBuf> {
     let filename = format!("{}.{}", base_filename, extension);
     let mut output_path = base_dir.join(filename);
-    
+
     // If the path already exists, append a short random suffix
     if fs_utils::path_exists(&output_path).await? {
         info!("Output path already exists, adding a unique suffix");
@@ -375,49 +396,53 @@ async fn ensure_unique_filepath(base_dir: &Path, base_filename: &str, extension:
             // Generate a short unique suffix using UUID
             let suffix = Uuid::new_v4().simple().to_string();
             let suffix = &suffix[0..6]; // Use just 6 characters from the UUID
-            
+
             let filename_with_suffix = format!("{}_{}.{}", base_filename, suffix, extension);
             output_path = base_dir.join(filename_with_suffix);
             counter += 1;
         }
-        
+
         // If we still have a conflict after 10 tries, append the full timestamp
         if fs_utils::path_exists(&output_path).await? {
             let full_timestamp = Local::now().timestamp_nanos_opt().unwrap_or(0);
-            let filename_with_timestamp = format!("{}_{}.{}", base_filename, full_timestamp, extension);
+            let filename_with_timestamp =
+                format!("{}_{}.{}", base_filename, full_timestamp, extension);
             output_path = base_dir.join(filename_with_timestamp);
         }
     }
-    
+
     Ok(output_path)
 }
 
 /// Create a unique output filepath for job outputs (async version)
 pub async fn create_unique_output_filepath(
-    session_id: &str, 
-    task_name: &str, 
-    project_dir: Option<&Path>, 
+    session_id: &str,
+    task_name: &str,
+    project_dir: Option<&Path>,
     extension: &str,
     target_dir_name: Option<&str>,
-    app_handle: &tauri::AppHandle
+    app_handle: &tauri::AppHandle,
 ) -> AppResult<PathBuf> {
     // Generate a timestamp string (YYYYMMDD_HHMMSS)
     let timestamp = Local::now().format("%Y%m%d_%H%M%S").to_string();
-    
+
     // Sanitize the task name for use in the filename
     let sanitized_task_name = sanitize_filename(task_name);
-    
+
     // Get the first 8 characters of the session ID
     let session_id_short = if session_id.len() > 8 {
         &session_id[0..8]
     } else {
         session_id
     };
-    
+
     // Create the base filename (without extension)
-    let base_filename = format!("{}_{}_{}_{}", timestamp, sanitized_task_name, session_id_short, "");
+    let base_filename = format!(
+        "{}_{}_{}_{}",
+        timestamp, sanitized_task_name, session_id_short, ""
+    );
     let base_filename = base_filename.trim_end_matches('_'); // Remove trailing underscore
-    
+
     // Determine the base directory
     let base_dir = if let Some(project_dir) = project_dir {
         if let Some(target_dir) = target_dir_name {
@@ -439,7 +464,7 @@ pub async fn create_unique_output_filepath(
     } else {
         get_app_output_files_directory(app_handle).await?
     };
-    
+
     // Use the shared helper to ensure uniqueness
     ensure_unique_filepath(&base_dir, base_filename, extension).await
 }
@@ -450,39 +475,50 @@ pub fn validate_llm_path(llm_path: &str, project_dir: &Path) -> AppResult<PathBu
     if llm_path.contains('\0') || llm_path.len() > 500 {
         return Err(AppError::SecurityError("Invalid path format".to_string()));
     }
-    
+
     // Remove any leading/trailing whitespace and normalize line endings
     let cleaned_path = llm_path.trim().replace('\r', "").replace('\n', "");
-    
+
     // Check for suspicious patterns that could indicate injection attempts
     let suspicious_patterns = [
-        "://", "file://", "ftp://", "http://", "https://",
-        "\\\\", "\\Device\\", "\\??\\", "\\Global\\",
-        "CON:", "PRN:", "AUX:", "NUL:",
+        "://",
+        "file://",
+        "ftp://",
+        "http://",
+        "https://",
+        "\\\\",
+        "\\Device\\",
+        "\\??\\",
+        "\\Global\\",
+        "CON:",
+        "PRN:",
+        "AUX:",
+        "NUL:",
     ];
-    
+
     for pattern in &suspicious_patterns {
         if cleaned_path.contains(pattern) {
             return Err(AppError::SecurityError(format!(
-                "Path contains suspicious pattern: {}", pattern
+                "Path contains suspicious pattern: {}",
+                pattern
             )));
         }
     }
-    
+
     // Convert to PathBuf and normalize
     let path = Path::new(&cleaned_path);
     let normalized_path = normalize_path(path)?;
-    
+
     // Ensure the path is within the project directory
     crate::utils::fs_utils::ensure_path_within_project(project_dir, &normalized_path)?;
-    
+
     Ok(normalized_path)
 }
 
 /// Validate a collection of paths from LLM response
 pub fn validate_llm_paths(llm_paths: &[String], project_dir: &Path) -> AppResult<Vec<PathBuf>> {
     let mut validated_paths = Vec::new();
-    
+
     for path_str in llm_paths {
         match validate_llm_path(path_str, project_dir) {
             Ok(validated_path) => {
@@ -495,15 +531,12 @@ pub fn validate_llm_paths(llm_paths: &[String], project_dir: &Path) -> AppResult
             }
         }
     }
-    
+
     Ok(validated_paths)
 }
 
-
-
-
 /// Creates a unique file path for an output file, similar to TypeScript's createUniqueFilePath
-/// 
+///
 /// This is an async version that closely mirrors the TypeScript implementation
 /// with file locking integration
 pub async fn create_custom_unique_filepath(
@@ -512,25 +545,28 @@ pub async fn create_custom_unique_filepath(
     project_dir: Option<&Path>,
     extension: &str,
     target_dir_name: Option<&str>,
-    app_handle: &tauri::AppHandle
+    app_handle: &tauri::AppHandle,
 ) -> AppResult<PathBuf> {
     // Format timestamp as ISO string with T replaced by _ and : replaced by -
     let timestamp = Local::now().format("%Y-%m-%d_%H-%M-%S").to_string();
-    
+
     // Sanitize the session name for use in the filename
     let safe_session_name = sanitize_filename(session_name);
-    
+
     // Use part of request ID to keep filename reasonable length
     let request_id_short = if request_id.len() > 8 {
         &request_id[0..8]
     } else {
         request_id
     };
-    
+
     // Create the base filename (without extension)
-    let base_filename = format!("{}_{}_{}_{}", timestamp, safe_session_name, request_id_short, "");
+    let base_filename = format!(
+        "{}_{}_{}_{}",
+        timestamp, safe_session_name, request_id_short, ""
+    );
     let base_filename = base_filename.trim_end_matches('_'); // Remove trailing underscore
-    
+
     // Determine the base directory
     let base_dir = if let Some(project_dir) = project_dir {
         if let Some(target_dir) = target_dir_name {
@@ -546,8 +582,7 @@ pub async fn create_custom_unique_filepath(
     } else {
         get_app_output_files_directory(app_handle).await?
     };
-    
+
     // Use the shared helper to ensure uniqueness
     ensure_unique_filepath(&base_dir, base_filename, extension).await
 }
-

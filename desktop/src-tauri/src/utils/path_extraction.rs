@@ -3,13 +3,11 @@ use regex::Regex;
 use std::collections::HashSet;
 
 // Compile regexes once at startup for better performance
-static PATH_TAG_REGEX: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"<path>([^<]+)</path>").expect("Valid path tag regex")
-});
+static PATH_TAG_REGEX: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"<path>([^<]+)</path>").expect("Valid path tag regex"));
 
-static FILE_TAG_REGEX: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"<file>([^<]+)</file>").expect("Valid file tag regex")
-});
+static FILE_TAG_REGEX: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"<file>([^<]+)</file>").expect("Valid file tag regex"));
 
 static FILE_ATTR_REGEX: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r#"<\w+\s+(?:file|path)=["']([^"']+)["']"#).expect("Valid file attribute regex")
@@ -30,15 +28,16 @@ static CONTEXT_PATH_REGEX: Lazy<Regex> = Lazy::new(|| {
 /// Extracts file paths from implementation plan XML content
 pub fn extract_file_paths_from_implementation_plan(xml_content: &str) -> HashSet<String> {
     let mut paths = HashSet::new();
-    
+
     // Extract paths from <path> tags
     extract_paths_from_xml_tags(xml_content, &mut paths);
-    
+
     // Extract paths from general text content
     extract_paths_from_text(xml_content, &mut paths);
-    
+
     // Filter out invalid paths
-    paths.into_iter()
+    paths
+        .into_iter()
         .filter(|path| is_valid_file_path(path))
         .collect()
 }
@@ -54,7 +53,7 @@ fn extract_paths_from_xml_tags(content: &str, paths: &mut HashSet<String>) {
             }
         }
     }
-    
+
     // Extract from <file> tags
     for cap in FILE_TAG_REGEX.captures_iter(content) {
         if let Some(path) = cap.get(1) {
@@ -64,7 +63,7 @@ fn extract_paths_from_xml_tags(content: &str, paths: &mut HashSet<String>) {
             }
         }
     }
-    
+
     // Extract from file/path attributes in any tag
     for cap in FILE_ATTR_REGEX.captures_iter(content) {
         if let Some(path) = cap.get(1) {
@@ -87,7 +86,7 @@ fn extract_paths_from_text(content: &str, paths: &mut HashSet<String>) {
             }
         }
     }
-    
+
     // Extract paths in various contexts (quotes, natural language, etc.)
     for cap in CONTEXT_PATH_REGEX.captures_iter(content) {
         if let Some(path) = cap.get(1) {
@@ -102,15 +101,16 @@ fn extract_paths_from_text(content: &str, paths: &mut HashSet<String>) {
 /// Validates if a given string is a valid file path
 pub fn is_valid_file_path(path: &str) -> bool {
     // Check basic length requirements
-    if path.len() < 3 || path.len() > 260 {  // 260 is Windows MAX_PATH
+    if path.len() < 3 || path.len() > 260 {
+        // 260 is Windows MAX_PATH
         return false;
     }
-    
+
     // Must have a file extension
     if !path.contains('.') || path.ends_with('.') {
         return false;
     }
-    
+
     // Check for common invalid patterns
     if path.starts_with('/') ||  // Absolute path
        path.starts_with('.') ||  // Hidden file
@@ -120,21 +120,23 @@ pub fn is_valid_file_path(path: &str) -> bool {
        path.ends_with('/') ||    // Ends with slash
        path.contains("://") ||   // URL pattern
        path.starts_with("http") || // HTTP URLs
-       path.contains('\\') {     // Windows path separators
+       path.contains('\\')
+    {
+        // Windows path separators
         return false;
     }
-    
+
     // Validate extension
     if let Some(extension) = path.split('.').last() {
-        if extension.is_empty() || 
-           extension.len() > 10 || 
-           !extension.chars().all(|c| c.is_alphanumeric()) {
+        if extension.is_empty()
+            || extension.len() > 10
+            || !extension.chars().all(|c| c.is_alphanumeric())
+        {
             return false;
         }
     }
-    
+
     // Check for valid path characters
-    path.chars().all(|c| {
-        c.is_alphanumeric() || c == '/' || c == '-' || c == '_' || c == '.'
-    })
+    path.chars()
+        .all(|c| c.is_alphanumeric() || c == '/' || c == '-' || c == '_' || c == '.')
 }

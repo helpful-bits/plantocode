@@ -13,6 +13,9 @@ declare global {
    * Tauri's __TAURI__ global object containing various API hooks
    */
   interface Window {
+    __TAURI_EVENT_PLUGIN_INTERNALS__?: {
+      unregisterListener: (listenerId: number) => void;
+    };
     __TAURI__: {
       /**
        * Tauri's invoke function to call Rust commands

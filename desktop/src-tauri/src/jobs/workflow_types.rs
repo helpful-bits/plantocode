@@ -1,7 +1,7 @@
-use serde::{Serialize, Deserialize};
-use std::collections::HashMap;
 use crate::models::JobStatus;
 use crate::models::TaskType;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 /// Workflow execution status
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -139,7 +139,12 @@ pub struct WorkflowStageJob {
 }
 
 impl WorkflowStageJob {
-    pub fn new(stage_name: String, task_type: TaskType, job_id: String, depends_on: Option<String>) -> Self {
+    pub fn new(
+        stage_name: String,
+        task_type: TaskType,
+        job_id: String,
+        depends_on: Option<String>,
+    ) -> Self {
         let now = chrono::Utc::now().timestamp_millis();
         Self {
             name: stage_name,
@@ -162,7 +167,9 @@ impl WorkflowStageJob {
             None => true, // No dependencies, can execute
             Some(dep_job_id) => {
                 // Find the dependency job and check if it's completed
-                workflow_state.stages.iter()
+                workflow_state
+                    .stages
+                    .iter()
                     .find(|job| &job.job_id == dep_job_id)
                     .map(|job| job.status == JobStatus::Completed)
                     .unwrap_or(false)
@@ -232,22 +239,29 @@ impl WorkflowState {
         if total_stages == 0.0 {
             return 0.0;
         }
-        
-        let completed_stages = self.stages.iter()
+
+        let completed_stages = self
+            .stages
+            .iter()
             .filter(|job| job.status == JobStatus::Completed)
             .count() as f32;
-        
+
         (completed_stages / total_stages * 100.0).min(100.0)
     }
 
     /// Calculate overall workflow progress with accurate total stage count from definition
-    pub fn calculate_progress_with_definition(&self, workflow_definition: &WorkflowDefinition) -> f32 {
+    pub fn calculate_progress_with_definition(
+        &self,
+        workflow_definition: &WorkflowDefinition,
+    ) -> f32 {
         let total_stages = workflow_definition.stages.len() as f32;
         if total_stages == 0.0 {
             return 100.0; // Empty workflow is considered complete
         }
 
-        let completed_stages = self.stages.iter()
+        let completed_stages = self
+            .stages
+            .iter()
             .filter(|job| job.status == JobStatus::Completed)
             .count() as f32;
 
@@ -257,26 +271,33 @@ impl WorkflowState {
     /// Get current active stage (running or next to run)
     pub fn current_stage(&self) -> Option<&WorkflowStageJob> {
         // First, look for any running stage
-        if let Some(running_stage) = self.stages.iter().find(|job| job.status == JobStatus::Running) {
+        if let Some(running_stage) = self
+            .stages
+            .iter()
+            .find(|job| job.status == JobStatus::Running)
+        {
             return Some(running_stage);
         }
 
         // If no running stage, find the next stage that can be executed
-        self.stages.iter()
+        self.stages
+            .iter()
             .filter(|job| job.status == JobStatus::Queued && job.can_execute(self))
             .next() // Remove stage_index dependency for now, TODO: implement proper ordering
     }
 
     /// Get all completed stages
     pub fn completed_stages(&self) -> Vec<&WorkflowStageJob> {
-        self.stages.iter()
+        self.stages
+            .iter()
             .filter(|job| job.status == JobStatus::Completed)
             .collect()
     }
 
     /// Get all failed stages
     pub fn failed_stages(&self) -> Vec<&WorkflowStageJob> {
-        self.stages.iter()
+        self.stages
+            .iter()
             .filter(|job| job.status == JobStatus::Failed)
             .collect()
     }
@@ -285,18 +306,25 @@ impl WorkflowState {
     pub fn is_completed(&self) -> bool {
         // For now, check if all stage jobs are completed
         // TODO: This should be updated to work with workflow definitions
-        !self.stages.is_empty() && 
-        self.stages.iter().all(|job| job.status == JobStatus::Completed)
+        !self.stages.is_empty()
+            && self
+                .stages
+                .iter()
+                .all(|job| job.status == JobStatus::Completed)
     }
 
     /// Check if any stage has failed
     pub fn has_failed(&self) -> bool {
-        self.stages.iter().any(|job| job.status == JobStatus::Failed)
+        self.stages
+            .iter()
+            .any(|job| job.status == JobStatus::Failed)
     }
 
     /// Check if any stage has been cancelled
     pub fn has_cancelled(&self) -> bool {
-        self.stages.iter().any(|job| job.status == JobStatus::Canceled)
+        self.stages
+            .iter()
+            .any(|job| job.status == JobStatus::Canceled)
     }
 
     /// Check if workflow should stop (failed or cancelled)
@@ -305,10 +333,15 @@ impl WorkflowState {
     }
 
     /// Update stage job status
-    pub fn update_stage_job(&mut self, job_id: &str, status: JobStatus, error_message: Option<String>) {
+    pub fn update_stage_job(
+        &mut self,
+        job_id: &str,
+        status: JobStatus,
+        error_message: Option<String>,
+    ) {
         if let Some(stage_job) = self.stages.iter_mut().find(|job| job.job_id == job_id) {
             let now = chrono::Utc::now().timestamp_millis();
-            
+
             match status {
                 JobStatus::Running => {
                     stage_job.started_at = Some(now);
@@ -318,7 +351,7 @@ impl WorkflowState {
                 }
                 _ => {}
             }
-            
+
             stage_job.status = status;
             stage_job.error_message = error_message;
             self.updated_at = now;
@@ -326,10 +359,16 @@ impl WorkflowState {
     }
 
     /// Update stage job status with sub-status message
-    pub fn update_stage_job_with_sub_status(&mut self, job_id: &str, status: JobStatus, error_message: Option<String>, sub_status_message: Option<String>) {
+    pub fn update_stage_job_with_sub_status(
+        &mut self,
+        job_id: &str,
+        status: JobStatus,
+        error_message: Option<String>,
+        sub_status_message: Option<String>,
+    ) {
         if let Some(stage_job) = self.stages.iter_mut().find(|job| job.job_id == job_id) {
             let now = chrono::Utc::now().timestamp_millis();
-            
+
             match status {
                 JobStatus::Running => {
                     stage_job.started_at = Some(now);
@@ -339,7 +378,7 @@ impl WorkflowState {
                 }
                 _ => {}
             }
-            
+
             stage_job.status = status;
             stage_job.error_message = error_message;
             stage_job.sub_status_message = sub_status_message;
@@ -348,7 +387,13 @@ impl WorkflowState {
     }
 
     /// Add a stage job to the workflow
-    pub fn add_stage_job(&mut self, stage_name: String, task_type: TaskType, job_id: String, depends_on: Option<String>) {
+    pub fn add_stage_job(
+        &mut self,
+        stage_name: String,
+        task_type: TaskType,
+        job_id: String,
+        depends_on: Option<String>,
+    ) {
         let stage_job = WorkflowStageJob::new(stage_name, task_type, job_id, depends_on);
         self.stages.push(stage_job);
         self.updated_at = chrono::Utc::now().timestamp_millis();
@@ -406,16 +451,16 @@ impl WorkflowIntermediateData {
     /// Get all final selected files from the workflow
     pub fn get_final_selected_files(&self) -> Vec<String> {
         // The method should combine files from the final relevant stages.
-        // For the FileFinderWorkflow, this means the extended_verified_paths 
+        // For the FileFinderWorkflow, this means the extended_verified_paths
         // (which are the result of FileRelevanceAssessment further processed by ExtendedPathFinder)
         // and then any extended_corrected_paths.
         let mut files = self.extended_verified_paths.clone();
         files.extend(self.extended_corrected_paths.clone());
-        
+
         // Remove duplicates while preserving order and sort
         files.sort_unstable();
         files.dedup();
-        
+
         files
     }
 }
@@ -484,8 +529,9 @@ impl WorkflowResult {
         let total_stages = workflow_state.stages.len();
         let completed_stages = workflow_state.completed_stages().len();
         let failed_stages = workflow_state.failed_stages().len();
-        
-        let total_duration_ms = workflow_state.completed_at
+
+        let total_duration_ms = workflow_state
+            .completed_at
             .map(|completed| completed - workflow_state.created_at);
 
         Self {
@@ -507,16 +553,13 @@ impl WorkflowResult {
 #[serde(rename_all = "camelCase")]
 pub enum RecoveryStrategy {
     /// Retry the stage with specified max attempts and delay
-    RetryStage { 
-        max_attempts: u32, 
-        delay_ms: u64 
-    },
+    RetryStage { max_attempts: u32, delay_ms: u64 },
     /// Retry a specific stage within a workflow
-    RetrySpecificStage { 
-        job_id: String, 
+    RetrySpecificStage {
+        job_id: String,
         stage_name: String,
-        task_type: TaskType, 
-        attempt_count: u32 
+        task_type: TaskType,
+        attempt_count: u32,
     },
     /// Abort the entire workflow
     AbortWorkflow,
@@ -539,13 +582,37 @@ pub struct ErrorRecoveryConfig {
 impl Default for ErrorRecoveryConfig {
     fn default() -> Self {
         let mut strategy_map = HashMap::new();
-        
+
         // Define default strategies for each stage
-        strategy_map.insert("RegexFileFilter".to_string(), RecoveryStrategy::RetryStage { max_attempts: 3, delay_ms: 3000 });
-        strategy_map.insert("FileRelevanceAssessment".to_string(), RecoveryStrategy::RetryStage { max_attempts: 3, delay_ms: 4000 });
-        strategy_map.insert("ExtendedPathFinder".to_string(), RecoveryStrategy::RetryStage { max_attempts: 2, delay_ms: 5000 });
-        strategy_map.insert("PathCorrection".to_string(), RecoveryStrategy::RetryStage { max_attempts: 2, delay_ms: 3000 });
-        
+        strategy_map.insert(
+            "RegexFileFilter".to_string(),
+            RecoveryStrategy::RetryStage {
+                max_attempts: 3,
+                delay_ms: 3000,
+            },
+        );
+        strategy_map.insert(
+            "FileRelevanceAssessment".to_string(),
+            RecoveryStrategy::RetryStage {
+                max_attempts: 3,
+                delay_ms: 4000,
+            },
+        );
+        strategy_map.insert(
+            "ExtendedPathFinder".to_string(),
+            RecoveryStrategy::RetryStage {
+                max_attempts: 2,
+                delay_ms: 5000,
+            },
+        );
+        strategy_map.insert(
+            "PathCorrection".to_string(),
+            RecoveryStrategy::RetryStage {
+                max_attempts: 2,
+                delay_ms: 3000,
+            },
+        );
+
         Self {
             strategy_map,
             max_consecutive_failures: 3,
@@ -628,7 +695,9 @@ impl WorkflowDefinition {
 
     /// Get a stage definition by name
     pub fn get_stage(&self, stage_name: &str) -> Option<&WorkflowStageDefinition> {
-        self.stages.iter().find(|stage| stage.stage_name == stage_name)
+        self.stages
+            .iter()
+            .find(|stage| stage.stage_name == stage_name)
     }
 
     /// Get all stages that depend on the given stage

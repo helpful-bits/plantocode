@@ -1,31 +1,31 @@
-use std::sync::Arc;
-use log::{info, error, debug, warn};
-use tauri::{AppHandle, Manager, Emitter};
-use tokio::time::{timeout, Duration};
 use chrono::Utc;
+use log::{debug, error, info, warn};
+use std::sync::Arc;
+use tauri::{AppHandle, Emitter, Manager};
+use tokio::time::{Duration, timeout};
 
 use crate::constants::DEFAULT_JOB_TIMEOUT_SECONDS;
-use crate::error::{AppError, AppResult};
-use crate::jobs::types::{Job, JobProcessResult, JobPayload, JobResultData};
-use crate::jobs::queue::{get_job_queue, JobPriority};
-use crate::jobs::registry::get_job_registry;
 use crate::db_utils::background_job_repository::BackgroundJobRepository;
-use crate::models::{JobStatus, BackgroundJob, TaskType};
-use crate::jobs::processor_trait;
-use crate::jobs::{job_payload_utils, retry_utils};
+use crate::error::{AppError, AppResult};
 use crate::jobs::job_processor_utils;
+use crate::jobs::processor_trait;
+use crate::jobs::queue::{JobPriority, get_job_queue};
+use crate::jobs::registry::get_job_registry;
+use crate::jobs::types::{Job, JobPayload, JobProcessResult, JobResultData};
 use crate::jobs::workflow_orchestrator::get_workflow_orchestrator;
+use crate::jobs::{job_payload_utils, retry_utils};
+use crate::models::{BackgroundJob, JobStatus, TaskType};
+use serde_json::{Value, json};
 use std::str::FromStr;
-use serde_json::{json, Value};
 
 /// Check if a task type is a file-finding task
 fn is_file_finding_task(task_type: &TaskType) -> bool {
     matches!(
         task_type,
-        TaskType::RegexFileFilter | 
-        TaskType::FileRelevanceAssessment |
-        TaskType::ExtendedPathFinder |
-        TaskType::PathCorrection
+        TaskType::RegexFileFilter
+            | TaskType::FileRelevanceAssessment
+            | TaskType::ExtendedPathFinder
+            | TaskType::PathCorrection
     )
 }
 
@@ -43,20 +43,21 @@ fn standardize_file_finding_response(response: Value, task_type: &TaskType) -> V
             } else {
                 response
             }
-        },
+        }
         TaskType::FileRelevanceAssessment => {
             // File Relevance Assessment already returns standardized format: {"files": [...], "count": n, "summary": "..."}
             // No transformation needed
             response
-        },
+        }
         TaskType::ExtendedPathFinder => {
             // Extended Path Finder already returns standardized format: {"files": [...], "count": n, "summary": "..."}
             // No transformation needed
             response
-        },
+        }
         TaskType::PathCorrection => {
             // {"correctedPaths": [...]} -> {"files": [...], "count": n}
-            if let Some(corrected_paths) = response.get("correctedPaths").and_then(|v| v.as_array()) {
+            if let Some(corrected_paths) = response.get("correctedPaths").and_then(|v| v.as_array())
+            {
                 json!({
                     "files": corrected_paths,
                     "count": corrected_paths.len(),
@@ -65,8 +66,8 @@ fn standardize_file_finding_response(response: Value, task_type: &TaskType) -> V
             } else {
                 response
             }
-        },
-        _ => response
+        }
+        _ => response,
     }
 }
 
@@ -76,10 +77,10 @@ fn standardize_file_finding_response(response: Value, task_type: &TaskType) -> V
 pub async fn dispatch_job(job: Job, app_handle: AppHandle) -> AppResult<()> {
     // Get the job queue
     let queue = get_job_queue().await?;
-    
+
     // Enqueue the job with normal priority
     queue.enqueue(job, JobPriority::Normal).await?;
-    
+
     Ok(())
 }
 
@@ -88,7 +89,7 @@ pub async fn process_next_job(app_handle: AppHandle) -> AppResult<Option<JobProc
     // Get the job queue and registry
     let queue = get_job_queue().await?;
     let registry = get_job_registry().await?;
-    
+
     // Try to get a job permit
     let permit = match queue.get_permit().await {
         Some(permit) => permit,
@@ -97,7 +98,7 @@ pub async fn process_next_job(app_handle: AppHandle) -> AppResult<Option<JobProc
             return Ok(None);
         }
     };
-    
+
     // Dequeue a job
     let job = match queue.dequeue().await {
         Some(job) => job,
@@ -107,11 +108,11 @@ pub async fn process_next_job(app_handle: AppHandle) -> AppResult<Option<JobProc
             return Ok(None);
         }
     };
-    
+
     let job_id = job.id().to_string();
     let task_type = job.task_type_str();
     info!("Processing job {} with task type {}", job_id, task_type);
-    
+
     // Get background job repository
     let background_job_repo = match app_handle.try_state::<Arc<BackgroundJobRepository>>() {
         Some(repo) => repo,
@@ -121,23 +122,44 @@ pub async fn process_next_job(app_handle: AppHandle) -> AppResult<Option<JobProc
             ));
         }
     };
-    
+
     // Update job status to preparing
-    background_job_repo.update_job_status(&job_id, &JobStatus::Preparing, Some("Finding available processor...")).await?;
-    
+    background_job_repo
+        .update_job_status(
+            &job_id,
+            &JobStatus::Preparing,
+            Some("Finding available processor..."),
+        )
+        .await?;
+
     // Emit job update event for Preparing status
-    app_handle.emit("job_updated", json!({
-        "id": job_id,
-        "status": "Preparing",
-        "errorMessage": "Finding available processor..."
-    }))?;
-    
+    app_handle.emit(
+        "job_updated",
+        json!({
+            "id": job_id,
+            "status": "Preparing",
+            "errorMessage": "Finding available processor..."
+        }),
+    )?;
+
     // Check if this is a workflow job - workflows don't have processors
     // They are orchestrated by the WorkflowOrchestrator which creates individual stage jobs
-    if matches!(job.task_type, TaskType::FileFinderWorkflow | TaskType::WebSearchWorkflow) {
-        info!("Skipping processor lookup for workflow job {} - will be handled by WorkflowOrchestrator", job_id);
+    if matches!(
+        job.task_type,
+        TaskType::FileFinderWorkflow | TaskType::WebSearchWorkflow
+    ) {
+        info!(
+            "Skipping processor lookup for workflow job {} - will be handled by WorkflowOrchestrator",
+            job_id
+        );
         // Mark the workflow job as acknowledged since it will be handled by the orchestrator
-        background_job_repo.update_job_status(&job_id, &JobStatus::AcknowledgedByWorker, Some("Workflow orchestration started")).await?;
+        background_job_repo
+            .update_job_status(
+                &job_id,
+                &JobStatus::AcknowledgedByWorker,
+                Some("Workflow orchestration started"),
+            )
+            .await?;
         drop(permit);
         return Ok(None);
     }
@@ -148,76 +170,75 @@ pub async fn process_next_job(app_handle: AppHandle) -> AppResult<Option<JobProc
     let processor = match processor_opt_result {
         Ok(p) => p,
         Err(e) => {
-            error!("Error finding processor for job {} (task type: {}): {}", job_id, task_type, e);
-            let error_message = format!("Error finding processor for task type '{}': {}", task_type, e);
+            error!(
+                "Error finding processor for job {} (task type: {}): {}",
+                job_id, task_type, e
+            );
+            let error_message = format!(
+                "Error finding processor for task type '{}': {}",
+                task_type, e
+            );
             let app_error = AppError::JobError(error_message.clone());
-            handle_job_failure_or_retry(
-                &app_handle,
-                &background_job_repo,
-                &job_id,
-                &app_error,
-            ).await?;
+            handle_job_failure_or_retry(&app_handle, &background_job_repo, &job_id, &app_error)
+                .await?;
             drop(permit);
             return Ok(Some(JobProcessResult::failure(job_id, error_message)));
         }
     };
-    
+
     // Mark job as running now that we have a processor
     background_job_repo.mark_job_running(&job_id).await?;
-    
+
     // Emit job update event for Running status
-    app_handle.emit("job_updated", json!({
-        "id": job_id,
-        "status": "Running"
-    }))?;
-    
+    app_handle.emit(
+        "job_updated",
+        json!({
+            "id": job_id,
+            "status": "Running"
+        }),
+    )?;
+
     // Process the job with timeout
-    let job_result = execute_job_with_processor(
-        &job_id, 
-        processor.as_ref(), 
-        job, 
-        app_handle.clone()
-    ).await;
-    
+    let job_result =
+        execute_job_with_processor(&job_id, processor.as_ref(), job, app_handle.clone()).await;
+
     match job_result {
         Ok(result) => {
-            info!("Job {} completed successfully with status: {:?}", job_id, result.status);
-            
+            info!(
+                "Job {} completed successfully with status: {:?}",
+                job_id, result.status
+            );
+
             // Reset retry count and log any errors
             if let Err(e) = queue.reset_retry_count(&job_id) {
                 error!("Failed to reset retry count for job {}: {}", job_id, e);
             }
-            
+
             // Handle successful job completion
-            handle_job_success(
-                &app_handle,
-                &background_job_repo,
-                &job_id,
-                &result,
-            ).await?;
-            
+            handle_job_success(&app_handle, &background_job_repo, &job_id, &result).await?;
+
             drop(permit);
             Ok(Some(result))
-        },
+        }
         Err(app_error) => {
-            error!("Job {} (task type: {}) failed during processing: {}", job_id, task_type, app_error);
-            
+            error!(
+                "Job {} (task type: {}) failed during processing: {}",
+                job_id, task_type, app_error
+            );
+
             // Handle job failure or retry
-            let handled = handle_job_failure_or_retry(
-                &app_handle,
-                &background_job_repo,
-                &job_id,
-                &app_error,
-            ).await?;
-            
+            let handled =
+                handle_job_failure_or_retry(&app_handle, &background_job_repo, &job_id, &app_error)
+                    .await?;
+
             drop(permit);
-            
+
             // Return None if the job is being retried, or Some with failure result if job permanently failed
             match handled {
                 JobFailureHandlingResult::Retrying => {
                     info!("Job {} is being retried after failure", job_id);
                     Ok(None)
-                },
+                }
                 JobFailureHandlingResult::PermanentFailure(failure_reason) => {
                     error!("Job {} permanently failed: {}", job_id, failure_reason);
                     Ok(Some(JobProcessResult::failure(job_id, failure_reason)))
@@ -237,20 +258,30 @@ async fn execute_job_with_processor(
     // Process the job with timeout
     let timeout_result = timeout(
         Duration::from_secs(DEFAULT_JOB_TIMEOUT_SECONDS),
-        processor.process(job, app_handle.clone())
-    ).await;
-    
+        processor.process(job, app_handle.clone()),
+    )
+    .await;
+
     match timeout_result {
         // Job completed within timeout
         Ok(process_result) => {
-            debug!("Job {} completed within timeout ({} seconds)", job_id, DEFAULT_JOB_TIMEOUT_SECONDS);
+            debug!(
+                "Job {} completed within timeout ({} seconds)",
+                job_id, DEFAULT_JOB_TIMEOUT_SECONDS
+            );
             process_result
-        },
+        }
         // Job timed out
         Err(_elapsed) => {
-            let timeout_message = format!("Job {} timed out after {} seconds", job_id, DEFAULT_JOB_TIMEOUT_SECONDS);
+            let timeout_message = format!(
+                "Job {} timed out after {} seconds",
+                job_id, DEFAULT_JOB_TIMEOUT_SECONDS
+            );
             error!("Timeout occurred: {}", timeout_message);
-            warn!("Consider increasing timeout limit for processor: {}", processor.name());
+            warn!(
+                "Consider increasing timeout limit for processor: {}",
+                processor.name()
+            );
             Err(AppError::JobError(timeout_message))
         }
     }
@@ -265,15 +296,22 @@ async fn handle_job_success(
 ) -> AppResult<()> {
     match result.status {
         JobStatus::Completed => {
-            info!("Job {} completed successfully with status: {:?}", job_id, result.status);
-            
+            info!(
+                "Job {} completed successfully with status: {:?}",
+                job_id, result.status
+            );
+
             // Get the original job to preserve workflow metadata
-            let original_job = background_job_repo.get_job_by_id(job_id).await?
+            let original_job = background_job_repo
+                .get_job_by_id(job_id)
+                .await?
                 .ok_or_else(|| AppError::NotFoundError(format!("Job {} not found", job_id)))?;
-            
+
             // Merge the original metadata with the result metadata
             let merged_metadata = if let Some(original_metadata_str) = &original_job.metadata {
-                if let Ok(mut original_metadata) = serde_json::from_str::<serde_json::Value>(original_metadata_str) {
+                if let Ok(mut original_metadata) =
+                    serde_json::from_str::<serde_json::Value>(original_metadata_str)
+                {
                     if let Some(result_metadata) = &result.metadata {
                         if let serde_json::Value::Object(ref mut original_map) = original_metadata {
                             if let serde_json::Value::Object(result_map) = result_metadata {
@@ -287,22 +325,28 @@ async fn handle_job_success(
                     serde_json::to_string(&original_metadata).ok()
                 } else {
                     // If we can't parse original metadata, just use result metadata
-                    result.metadata.as_ref().and_then(|m| serde_json::to_string(m).ok())
+                    result
+                        .metadata
+                        .as_ref()
+                        .and_then(|m| serde_json::to_string(m).ok())
                 }
             } else {
                 // No original metadata, just use result metadata
-                result.metadata.as_ref().and_then(|m| serde_json::to_string(m).ok())
+                result
+                    .metadata
+                    .as_ref()
+                    .and_then(|m| serde_json::to_string(m).ok())
             };
-            
+
             let metadata_string = merged_metadata;
-            
+
             // Extract model_used from metadata if present
             let model_used = if let Some(metadata) = &result.metadata {
                 metadata.get("model_used").and_then(|v| v.as_str())
             } else {
                 None
             };
-            
+
             // Extract and potentially standardize response
             let response_str = if let Some(response_data) = &result.response {
                 match response_data {
@@ -320,32 +364,38 @@ async fn handle_job_success(
                         };
                         serde_json::to_string(&standardized)
                             .unwrap_or_else(|_| "JSON serialization failed".to_string())
-                    },
+                    }
                     JobResultData::Text(text) => text.clone(),
                 }
             } else {
                 "No response content".to_string()
             };
-            
+
             // Update job status to completed with comprehensive result data
             // mark_job_completed will handle all fields including actual_cost
-            background_job_repo.mark_job_completed(
-                job_id,
-                &response_str,
-                metadata_string.as_deref(),
-                result.tokens_sent.map(|v| v as i32),
-                result.tokens_received.map(|v| v as i32),
-                model_used,
-                result.system_prompt_template.as_deref(),
-                result.actual_cost,
-                result.cache_write_tokens,
-                result.cache_read_tokens
-            ).await?;
-            
+            background_job_repo
+                .mark_job_completed(
+                    job_id,
+                    &response_str,
+                    metadata_string.as_deref(),
+                    result.tokens_sent.map(|v| v as i32),
+                    result.tokens_received.map(|v| v as i32),
+                    model_used,
+                    result.system_prompt_template.as_deref(),
+                    result.actual_cost,
+                    result.cache_write_tokens,
+                    result.cache_read_tokens,
+                )
+                .await?;
+
             // Get the completed job from database to extract actual cost
-            let completed_job = background_job_repo.get_job_by_id(job_id).await?
-                .ok_or_else(|| AppError::NotFoundError(format!("Job {} not found after completion", job_id)))?;
-            
+            let completed_job = background_job_repo
+                .get_job_by_id(job_id)
+                .await?
+                .ok_or_else(|| {
+                    AppError::NotFoundError(format!("Job {} not found after completion", job_id))
+                })?;
+
             // Emit job update event with entire completed job object
             app_handle.emit("job_updated", &completed_job)?;
 
@@ -355,27 +405,46 @@ async fn handle_job_success(
                 debug!("Job {} metadata: {}", job_id, metadata_str);
                 if let Ok(metadata_json) = serde_json::from_str::<serde_json::Value>(metadata_str) {
                     // Check both at root level and inside workflowId field (due to JobUIMetadata structure)
-                    let workflow_id = metadata_json.get("workflowId")
+                    let workflow_id = metadata_json
+                        .get("workflowId")
                         .and_then(|v| v.as_str())
                         .or_else(|| {
                             // Also check inside the metadata structure itself
-                            metadata_json.as_object()
-                                .and_then(|obj| obj.values().find_map(|v| {
-                                    v.as_object()?.get("workflowId")?.as_str()
-                                }))
+                            metadata_json.as_object().and_then(|obj| {
+                                obj.values()
+                                    .find_map(|v| v.as_object()?.get("workflowId")?.as_str())
+                            })
                         });
-                    
+
                     if let Some(workflow_id) = workflow_id {
-                        info!("Job {} is part of workflow {}, notifying WorkflowOrchestrator", job_id, workflow_id);
-                        
+                        info!(
+                            "Job {} is part of workflow {}, notifying WorkflowOrchestrator",
+                            job_id, workflow_id
+                        );
+
                         match get_workflow_orchestrator().await {
                             Ok(orchestrator) => {
-                                if let Err(e) = orchestrator.update_job_status(job_id, result.status.clone(), result.error.clone(), result.response.clone(), completed_job.actual_cost).await {
-                                    error!("Failed to notify WorkflowOrchestrator about job {} completion: {}", job_id, e);
+                                if let Err(e) = orchestrator
+                                    .update_job_status(
+                                        job_id,
+                                        result.status.clone(),
+                                        result.error.clone(),
+                                        result.response.clone(),
+                                        completed_job.actual_cost,
+                                    )
+                                    .await
+                                {
+                                    error!(
+                                        "Failed to notify WorkflowOrchestrator about job {} completion: {}",
+                                        job_id, e
+                                    );
                                 }
                             }
                             Err(e) => {
-                                error!("Failed to get workflow orchestrator for job {}: {}", job_id, e);
+                                error!(
+                                    "Failed to get workflow orchestrator for job {}: {}",
+                                    job_id, e
+                                );
                             }
                         }
                     } else {
@@ -389,72 +458,116 @@ async fn handle_job_success(
             } else {
                 debug!("Job {} has no metadata", job_id);
             }
-        },
+        }
         JobStatus::Failed => {
-            let error_message = result.error.clone().unwrap_or_else(|| "Unknown error".to_string());
+            let error_message = result
+                .error
+                .clone()
+                .unwrap_or_else(|| "Unknown error".to_string());
             error!("Job {} failed: {}", job_id, error_message);
-            
-            let metadata_string = result.metadata.as_ref().and_then(|m| serde_json::to_string(m).ok());
-            
+
+            let metadata_string = result
+                .metadata
+                .as_ref()
+                .and_then(|m| serde_json::to_string(m).ok());
+
             // Update job status to failed with detailed error information
-            background_job_repo.mark_job_failed(job_id, &error_message, metadata_string.as_deref(), None, None, None, result.actual_cost).await?;
-            
+            background_job_repo
+                .mark_job_failed(
+                    job_id,
+                    &error_message,
+                    metadata_string.as_deref(),
+                    None,
+                    None,
+                    None,
+                    result.actual_cost,
+                )
+                .await?;
+
             // Fetch full job and emit it in job_updated
             if let Ok(Some(failed_job)) = background_job_repo.get_job_by_id(job_id).await {
                 app_handle.emit("job_updated", &failed_job)?;
             }
-        },
+        }
         JobStatus::Canceled => {
             // Update job status to canceled with error message
             let cancel_reason = result.error.as_deref().unwrap_or("Job canceled");
-            background_job_repo.mark_job_canceled(job_id, cancel_reason, None).await?;
-            
+            background_job_repo
+                .mark_job_canceled(job_id, cancel_reason, None)
+                .await?;
+
             // Emit job update event for canceled job
             if let Ok(Some(canceled_job)) = background_job_repo.get_job_by_id(job_id).await {
                 app_handle.emit("job_updated", &canceled_job)?;
             }
-            
+
             // Get the canceled job to access its original metadata
-            let canceled_job = background_job_repo.get_job_by_id(job_id).await?
-                .ok_or_else(|| AppError::NotFoundError(format!("Job {} not found after cancellation", job_id)))?;
-            
+            let canceled_job = background_job_repo
+                .get_job_by_id(job_id)
+                .await?
+                .ok_or_else(|| {
+                    AppError::NotFoundError(format!("Job {} not found after cancellation", job_id))
+                })?;
+
             // Check if this job is part of a workflow and notify WorkflowOrchestrator
             // Use the canceled_job's metadata which contains the original workflowId
             if let Some(metadata_str) = &canceled_job.metadata {
                 if let Ok(metadata_json) = serde_json::from_str::<serde_json::Value>(metadata_str) {
                     // Check both at root level and inside workflowId field (due to JobUIMetadata structure)
-                    let workflow_id = metadata_json.get("workflowId")
+                    let workflow_id = metadata_json
+                        .get("workflowId")
                         .and_then(|v| v.as_str())
                         .or_else(|| {
                             // Also check inside the metadata structure itself
-                            metadata_json.as_object()
-                                .and_then(|obj| obj.values().find_map(|v| {
-                                    v.as_object()?.get("workflowId")?.as_str()
-                                }))
+                            metadata_json.as_object().and_then(|obj| {
+                                obj.values()
+                                    .find_map(|v| v.as_object()?.get("workflowId")?.as_str())
+                            })
                         });
-                    
+
                     if let Some(workflow_id) = workflow_id {
-                        info!("Canceled job {} is part of workflow {}, notifying WorkflowOrchestrator", job_id, workflow_id);
-                        
+                        info!(
+                            "Canceled job {} is part of workflow {}, notifying WorkflowOrchestrator",
+                            job_id, workflow_id
+                        );
+
                         match get_workflow_orchestrator().await {
                             Ok(orchestrator) => {
-                                if let Err(e) = orchestrator.update_job_status(job_id, result.status.clone(), result.error.clone(), None, canceled_job.actual_cost).await {
-                                    error!("Failed to notify WorkflowOrchestrator about canceled job {} completion: {}", job_id, e);
+                                if let Err(e) = orchestrator
+                                    .update_job_status(
+                                        job_id,
+                                        result.status.clone(),
+                                        result.error.clone(),
+                                        None,
+                                        canceled_job.actual_cost,
+                                    )
+                                    .await
+                                {
+                                    error!(
+                                        "Failed to notify WorkflowOrchestrator about canceled job {} completion: {}",
+                                        job_id, e
+                                    );
                                 }
                             }
                             Err(e) => {
-                                error!("Failed to get workflow orchestrator for canceled job {}: {}", job_id, e);
+                                error!(
+                                    "Failed to get workflow orchestrator for canceled job {}: {}",
+                                    job_id, e
+                                );
                             }
                         }
                     }
                 }
             }
-        },
+        }
         _ => {
-            warn!("Unexpected job status in handle_job_success: {:?}", result.status);
+            warn!(
+                "Unexpected job status in handle_job_success: {:?}",
+                result.status
+            );
         }
     }
-    
+
     Ok(())
 }
 
@@ -463,7 +576,6 @@ enum JobFailureHandlingResult {
     Retrying,
     PermanentFailure(String),
 }
-
 
 /// Handle a job failure by checking if it can be retried
 async fn handle_job_failure_or_retry(
@@ -478,17 +590,18 @@ async fn handle_job_failure_or_retry(
         Ok(None) => {
             error!("Job {} not found in database for failure handling", job_id);
             return Ok(JobFailureHandlingResult::PermanentFailure(
-                "Job not found in database".to_string()
+                "Job not found in database".to_string(),
             ));
         }
         Err(e) => {
             error!("Failed to fetch job {} from database: {}", job_id, e);
-            return Ok(JobFailureHandlingResult::PermanentFailure(
-                format!("Database error: {}", e)
-            ));
+            return Ok(JobFailureHandlingResult::PermanentFailure(format!(
+                "Database error: {}",
+                e
+            )));
         }
     };
-    
+
     // Call internal function with the fetched job
     handle_job_failure_or_retry_internal(app_handle, background_job_repo, job_id, error, &job).await
 }
@@ -501,20 +614,24 @@ async fn handle_job_failure_or_retry_internal(
     error: &AppError,
     job_copy: &BackgroundJob,
 ) -> AppResult<JobFailureHandlingResult> {
-    error!("Failed to process job {} (retry count: {}): {} [AppError Variant: {:?}]", 
-        job_id, 
-        retry_utils::get_retry_count_from_job(job_copy).unwrap_or(0), 
+    error!(
+        "Failed to process job {} (retry count: {}): {} [AppError Variant: {:?}]",
+        job_id,
+        retry_utils::get_retry_count_from_job(job_copy).unwrap_or(0),
         error.to_string(),
         error
     );
-    
+
     // Check if it's a workflow job from job_copy.metadata
     let is_workflow_job = if let Some(meta_str) = &job_copy.metadata {
         if let Ok(metadata_json) = serde_json::from_str::<serde_json::Value>(meta_str) {
             // Check for workflowId in metadata (could be at root or in task_data)
-            metadata_json.get("workflowId").is_some() || 
-            metadata_json.get("workflow_id").is_some() ||
-            (metadata_json.get("task_data").and_then(|td| td.get("workflowId")).is_some())
+            metadata_json.get("workflowId").is_some()
+                || metadata_json.get("workflow_id").is_some()
+                || (metadata_json
+                    .get("task_data")
+                    .and_then(|td| td.get("workflowId"))
+                    .is_some())
         } else {
             false
         }
@@ -523,203 +640,265 @@ async fn handle_job_failure_or_retry_internal(
     };
 
     if is_workflow_job {
-        info!("Job {} is part of a workflow. Passing to WorkflowOrchestrator.", job_copy.id);
-        
+        info!(
+            "Job {} is part of a workflow. Passing to WorkflowOrchestrator.",
+            job_copy.id
+        );
+
         // Ensure job is marked as Failed in DB for the orchestrator to pick up
         let user_facing_error = format_user_error(error);
-        if let Err(e) = background_job_repo.update_job_status(
-            job_id,
-            &JobStatus::Failed,
-            Some(&user_facing_error)
-        ).await {
-            error!("Critical error: Failed to update workflow job {} status to failed in database: {}", job_id, e);
+        if let Err(e) = background_job_repo
+            .update_job_status(job_id, &JobStatus::Failed, Some(&user_facing_error))
+            .await
+        {
+            error!(
+                "Critical error: Failed to update workflow job {} status to failed in database: {}",
+                job_id, e
+            );
         }
-        
+
         // Fetch and emit full job
         if let Ok(Some(failed_job)) = background_job_repo.get_job_by_id(job_id).await {
             app_handle.emit("job_updated", &failed_job)?;
         }
-        
+
         // ALWAYS pass to WorkflowOrchestrator if job has workflowId
         match get_workflow_orchestrator().await {
             Ok(orchestrator) => {
-                if let Err(e) = orchestrator.update_job_status(&job_id, JobStatus::Failed, Some(error.to_string()), None, job_copy.actual_cost).await {
-                    error!("Failed to notify WorkflowOrchestrator about job {} failure: {}", job_id, e);
+                if let Err(e) = orchestrator
+                    .update_job_status(
+                        &job_id,
+                        JobStatus::Failed,
+                        Some(error.to_string()),
+                        None,
+                        job_copy.actual_cost,
+                    )
+                    .await
+                {
+                    error!(
+                        "Failed to notify WorkflowOrchestrator about job {} failure: {}",
+                        job_id, e
+                    );
                 }
             }
             Err(e) => {
-                error!("Failed to get workflow orchestrator for failed job {}: {}", job_id, e);
+                error!(
+                    "Failed to get workflow orchestrator for failed job {}: {}",
+                    job_id, e
+                );
             }
         }
-        
-        return Ok(JobFailureHandlingResult::PermanentFailure(format!("Workflow job failed. Orchestrator will handle: {}", error.to_string())));
+
+        return Ok(JobFailureHandlingResult::PermanentFailure(format!(
+            "Workflow job failed. Orchestrator will handle: {}",
+            error.to_string()
+        )));
     }
-    
+
     // Check if this error type is retryable and get current retry count
-    let (is_retryable, current_retry_count) = retry_utils::get_retry_info(job_copy, Some(error)).await;
-    
+    let (is_retryable, current_retry_count) =
+        retry_utils::get_retry_info(job_copy, Some(error)).await;
+
     // Check if we can retry this job
     if is_retryable && current_retry_count < retry_utils::MAX_RETRY_COUNT {
         // Calculate exponential backoff delay
         let retry_delay = retry_utils::calculate_retry_delay(current_retry_count);
         let next_retry_count = current_retry_count + 1;
-        
-        warn!("Job {} failed with retryable error [Type: {:?}]. Scheduling retry #{}/{} in {} seconds: {}", 
-            job_id, 
+
+        warn!(
+            "Job {} failed with retryable error [Type: {:?}]. Scheduling retry #{}/{} in {} seconds: {}",
+            job_id,
             error,
-            next_retry_count, 
-            retry_utils::MAX_RETRY_COUNT, 
-            retry_delay, 
+            next_retry_count,
+            retry_utils::MAX_RETRY_COUNT,
+            retry_delay,
             error.to_string()
         );
-        
+
         // Prepare enhanced metadata for the retry using JobUIMetadata structure
-        let retry_metadata = match retry_utils::prepare_retry_metadata(job_copy, next_retry_count, error).await {
+        let retry_metadata = match retry_utils::prepare_retry_metadata(
+            job_copy,
+            next_retry_count,
+            error,
+        )
+        .await
+        {
             Ok(metadata) => metadata,
             Err(metadata_error) => {
-                error!("Failed to prepare retry metadata for job {}: {}. Treating as permanent failure.", job_id, metadata_error);
-                
+                error!(
+                    "Failed to prepare retry metadata for job {}: {}. Treating as permanent failure.",
+                    job_id, metadata_error
+                );
+
                 // If metadata preparation fails, treat as permanent failure
-                let failure_reason = format!("Failed to prepare retry metadata: {}", metadata_error);
-                
+                let failure_reason =
+                    format!("Failed to prepare retry metadata: {}", metadata_error);
+
                 // Update job status to failed
                 let user_facing_error = format_user_error(error);
-                if let Err(e) = background_job_repo.update_job_status(
-                    job_id,
-                    &JobStatus::Failed,
-                    Some(&user_facing_error)
-                ).await {
-                    error!("Critical error: Failed to update job {} status to failed in database: {}. This may lead to inconsistent state!", job_id, e);
+                if let Err(e) = background_job_repo
+                    .update_job_status(job_id, &JobStatus::Failed, Some(&user_facing_error))
+                    .await
+                {
+                    error!(
+                        "Critical error: Failed to update job {} status to failed in database: {}. This may lead to inconsistent state!",
+                        job_id, e
+                    );
                 }
-                
+
                 // Emit job updated event with user-friendly message
                 if let Ok(Some(failed_job)) = background_job_repo.get_job_by_id(job_id).await {
                     if let Err(e) = app_handle.emit("job_updated", &failed_job) {
-                        error!("Failed to emit job updated event for permanently failed job {}: {}. UI may not reflect current state.", job_id, e);
+                        error!(
+                            "Failed to emit job updated event for permanently failed job {}: {}. UI may not reflect current state.",
+                            job_id, e
+                        );
                     }
                 }
-                
+
                 return Ok(JobFailureHandlingResult::PermanentFailure(failure_reason));
             }
         };
-        
+
         // Create user-friendly retry message with error context
         let retry_message = format!(
-            "Retry #{} scheduled (will retry in {} seconds). Error Type: {:?}. Last error: {}", 
-            next_retry_count, 
+            "Retry #{} scheduled (will retry in {} seconds). Error Type: {:?}. Last error: {}",
+            next_retry_count,
             retry_delay,
             error,
             truncate_error_for_display(&error.to_string(), 100)
         );
-            
+
         // Update job status to queued for retry with metadata
         // Note: Using the deprecated method temporarily for retry logic
         // TODO: Consider creating a specific method for retry scheduling
-        if let Err(e) = background_job_repo.update_job_status_with_metadata(
-            job_id,
-            &JobStatus::Queued,
-            Some(&retry_message),
-            retry_metadata
-        ).await {
+        if let Err(e) = background_job_repo
+            .update_job_status_with_metadata(
+                job_id,
+                &JobStatus::Queued,
+                Some(&retry_message),
+                retry_metadata,
+            )
+            .await
+        {
             error!("Failed to schedule job for retry: {}", e);
         }
-        
+
         // Emit job updated event with job id, status, and metadata
         if let Ok(Some(retry_job)) = background_job_repo.get_job_by_id(job_id).await {
             app_handle.emit("job_updated", &retry_job)?;
         }
-        
+
         // Re-queue the job with delay instead of sleeping
-        if let Err(e) = re_queue_job_with_delay(app_handle, job_copy, retry_delay as u64 * 1000).await {
+        if let Err(e) =
+            re_queue_job_with_delay(app_handle, job_copy, retry_delay as u64 * 1000).await
+        {
             error!("Failed to re-queue job {} for retry: {}", job_id, e);
             // If re-queueing fails, treat as permanent failure
-            return Ok(JobFailureHandlingResult::PermanentFailure(
-                format!("Failed to schedule retry: {}", e)
-            ));
+            return Ok(JobFailureHandlingResult::PermanentFailure(format!(
+                "Failed to schedule retry: {}",
+                e
+            )));
         }
-        
+
         Ok(JobFailureHandlingResult::Retrying)
     } else {
         // Job is not retryable or max retries reached - provide detailed failure logging with enhanced context
         let failure_reason = if !is_retryable {
             let user_friendly_reason = format_user_friendly_error(error);
-            let detailed_reason = format!("Non-retryable error [{:?}]: {}", 
-                error, 
-                user_friendly_reason
+            let detailed_reason = format!(
+                "Non-retryable error [{:?}]: {}",
+                error, user_friendly_reason
             );
-            
-            error!("Job {} permanently failed due to non-retryable {:?} error. Job details: task_type={}, session_id={}, created_at={}. Error: {}", 
-                job_id, 
+
+            error!(
+                "Job {} permanently failed due to non-retryable {:?} error. Job details: task_type={}, session_id={}, created_at={}. Error: {}",
+                job_id,
                 error,
                 job_copy.task_type,
-                job_copy.session_id, 
+                job_copy.session_id,
                 job_copy.created_at,
                 error.to_string()
             );
-            
+
             // Log additional context if metadata is available
             log_job_metadata_context(job_id, &job_copy.metadata);
-            
+
             // Log specific error type context
-            error!("Job {} failed with AppError type: {:?} (Retryable: false)", job_id, error);
-            
+            error!(
+                "Job {} failed with AppError type: {:?} (Retryable: false)",
+                job_id, error
+            );
+
             detailed_reason
         } else {
             let user_friendly_reason = format_user_friendly_error(error);
-            let detailed_reason = format!("Failed after {}/{} retries [{:?}]: {}", 
-                current_retry_count, 
-                retry_utils::MAX_RETRY_COUNT, 
+            let detailed_reason = format!(
+                "Failed after {}/{} retries [{:?}]: {}",
+                current_retry_count,
+                retry_utils::MAX_RETRY_COUNT,
                 error,
                 user_friendly_reason
             );
-            
-            error!("Job {} permanently failed after exhausting all retries. Job details: task_type={}, session_id={}, created_at={}. Retry history: {}/{} attempts. Final error [{:?}]: {}", 
-                job_id, 
+
+            error!(
+                "Job {} permanently failed after exhausting all retries. Job details: task_type={}, session_id={}, created_at={}. Retry history: {}/{} attempts. Final error [{:?}]: {}",
+                job_id,
                 job_copy.task_type,
-                job_copy.session_id, 
+                job_copy.session_id,
                 job_copy.created_at,
                 current_retry_count,
                 retry_utils::MAX_RETRY_COUNT,
                 error,
                 error.to_string()
             );
-            
+
             // Log enhanced retry metadata if available
             log_retry_history_context(job_id, &job_copy.metadata);
             log_job_metadata_context(job_id, &job_copy.metadata);
-            
+
             detailed_reason
         };
-        
-        error!("PERMANENT JOB FAILURE: Job {} has been marked as permanently failed. Reason: {}", job_id, failure_reason);
-        
+
+        error!(
+            "PERMANENT JOB FAILURE: Job {} has been marked as permanently failed. Reason: {}",
+            job_id, failure_reason
+        );
+
         // Check if job incurred costs and report to server for cancelled job billing
         if let Err(e) = report_cancelled_job_cost_if_needed(app_handle, job_copy).await {
-            error!("Failed to report cancelled job cost for job {}: {}", job_id, e);
+            error!(
+                "Failed to report cancelled job cost for job {}: {}",
+                job_id, e
+            );
             // Don't fail the entire operation if cost reporting fails
         }
-        
+
         // Update job status to failed with user-friendly error message
         let user_facing_error = format_user_error(error);
-        if let Err(e) = background_job_repo.update_job_status(
-            job_id,
-            &JobStatus::Failed,
-            Some(&user_facing_error)
-        ).await {
-            error!("Critical error: Failed to update job {} status to failed in database: {}. This may lead to inconsistent state!", job_id, e);
+        if let Err(e) = background_job_repo
+            .update_job_status(job_id, &JobStatus::Failed, Some(&user_facing_error))
+            .await
+        {
+            error!(
+                "Critical error: Failed to update job {} status to failed in database: {}. This may lead to inconsistent state!",
+                job_id, e
+            );
         }
-        
+
         // Emit job updated event with user-friendly message
         if let Ok(Some(failed_job)) = background_job_repo.get_job_by_id(job_id).await {
             if let Err(e) = app_handle.emit("job_updated", &failed_job) {
-                error!("Failed to emit job updated event for permanently failed job {}: {}. UI may not reflect current state.", job_id, e);
+                error!(
+                    "Failed to emit job updated event for permanently failed job {}: {}. UI may not reflect current state.",
+                    job_id, e
+                );
             }
         }
-        
+
         Ok(JobFailureHandlingResult::PermanentFailure(failure_reason))
     }
 }
-
 
 /// Create a user-friendly error message based on AppError
 fn format_user_friendly_error(error: &AppError) -> String {
@@ -752,7 +931,7 @@ fn format_user_friendly_error(error: &AppError) -> String {
 /// Create a user-facing error message that combines technical context with user-friendly language
 fn format_user_error(error: &AppError) -> String {
     let friendly_message = format_user_friendly_error(error);
-    
+
     // For some error types, add the technical detail in a user-friendly way
     match error {
         AppError::HttpError(msg) => {
@@ -761,10 +940,13 @@ fn format_user_error(error: &AppError) -> String {
             } else {
                 friendly_message
             }
-        },
+        }
         AppError::InternalError(_) => friendly_message,
         _ => {
-            let error_type = std::any::type_name::<AppError>().split("::").last().unwrap_or("Unknown");
+            let error_type = std::any::type_name::<AppError>()
+                .split("::")
+                .last()
+                .unwrap_or("Unknown");
             format!("{} (Type: {})", friendly_message, error_type)
         }
     }
@@ -786,11 +968,17 @@ fn log_job_metadata_context(job_id: &str, metadata: &Option<String>) {
             if let Some(model) = meta_json.get("model").and_then(|m| m.as_str()) {
                 error!("Failed job {} was using model: {}", job_id, model);
             }
-            if let Some(priority) = meta_json.get("jobPriorityForWorker").and_then(|p| p.as_str()) {
+            if let Some(priority) = meta_json
+                .get("jobPriorityForWorker")
+                .and_then(|p| p.as_str())
+            {
                 error!("Failed job {} had priority: {}", job_id, priority);
             }
             if let Some(app_error_type) = meta_json.get("app_error_type").and_then(|t| t.as_str()) {
-                error!("Failed job {} detected AppError type: {}", job_id, app_error_type);
+                error!(
+                    "Failed job {} detected AppError type: {}",
+                    job_id, app_error_type
+                );
             }
         }
     }
@@ -801,12 +989,28 @@ fn log_retry_history_context(job_id: &str, metadata: &Option<String>) {
     if let Some(metadata) = metadata {
         if let Ok(meta_json) = serde_json::from_str::<serde_json::Value>(metadata) {
             if let Some(errors) = meta_json.get("errors").and_then(|e| e.as_array()) {
-                error!("Failed job {} retry history ({} attempts):", job_id, errors.len());
+                error!(
+                    "Failed job {} retry history ({} attempts):",
+                    job_id,
+                    errors.len()
+                );
                 for (i, error_entry) in errors.iter().enumerate() {
                     if let Some(error_msg) = error_entry.get("message").and_then(|m| m.as_str()) {
-                        let timestamp = error_entry.get("timestamp").and_then(|t| t.as_str()).unwrap_or("Unknown");
-                        let error_type = error_entry.get("app_error_type").and_then(|t| t.as_str()).unwrap_or("Unknown");
-                        error!("  Attempt {}: [{}] {} - {}", i + 1, error_type, timestamp, truncate_error_for_display(error_msg, 100));
+                        let timestamp = error_entry
+                            .get("timestamp")
+                            .and_then(|t| t.as_str())
+                            .unwrap_or("Unknown");
+                        let error_type = error_entry
+                            .get("app_error_type")
+                            .and_then(|t| t.as_str())
+                            .unwrap_or("Unknown");
+                        error!(
+                            "  Attempt {}: [{}] {} - {}",
+                            i + 1,
+                            error_type,
+                            timestamp,
+                            truncate_error_for_display(error_msg, 100)
+                        );
                     }
                 }
             }
@@ -814,7 +1018,7 @@ fn log_retry_history_context(job_id: &str, metadata: &Option<String>) {
     }
 }
 
-// Helper functions that need to be accessible in this module  
+// Helper functions that need to be accessible in this module
 fn extract_http_status_code(error_msg: &str) -> Option<u16> {
     // Simple pattern matching for HTTP status codes
     if let Some(start) = error_msg.find("status ") {
@@ -828,7 +1032,6 @@ fn extract_http_status_code(error_msg: &str) -> Option<u16> {
     None
 }
 
-
 /// Re-queue a job with a delay for retry processing
 async fn re_queue_job_with_delay(
     app_handle: &AppHandle,
@@ -837,20 +1040,22 @@ async fn re_queue_job_with_delay(
 ) -> AppResult<()> {
     // Get the job queue
     let queue = get_job_queue().await?;
-    
+
     // Convert the database job back to a Rust Job struct
     let job = job_payload_utils::convert_db_job_to_job(db_job)?;
-    
+
     // Re-queue with the delay
-    queue.enqueue_with_delay(job, JobPriority::Normal, delay_ms).await?;
-    
-    debug!("Re-queued job {} with {}ms delay for retry", db_job.id, delay_ms);
-    
+    queue
+        .enqueue_with_delay(job, JobPriority::Normal, delay_ms)
+        .await?;
+
+    debug!(
+        "Re-queued job {} with {}ms delay for retry",
+        db_job.id, delay_ms
+    );
+
     Ok(())
 }
-
-
-
 
 /// Report cancelled job cost to server if the job incurred costs
 /// This ensures that cancelled jobs that had partial execution costs are still billed
@@ -861,18 +1066,24 @@ async fn report_cancelled_job_cost_if_needed(
 ) -> AppResult<()> {
     // Extract cost and token information from job metadata or actual_cost field
     let (final_cost, token_counts) = extract_job_cost_data(job)?;
-    
+
     // Only report if there is an actual cost incurred
     if let Some(cost) = final_cost {
         if cost > 0.0 {
-            info!("Cancelled job {} has cost ${:.6} that would be reported", job.id, cost);
+            info!(
+                "Cancelled job {} has cost ${:.6} that would be reported",
+                job.id, cost
+            );
         } else {
             debug!("Job {} had zero cost, no billing report needed", job.id);
         }
     } else {
-        debug!("Job {} had no cost information, no billing report needed", job.id);
+        debug!(
+            "Job {} had no cost information, no billing report needed",
+            job.id
+        );
     }
-    
+
     Ok(())
 }
 
@@ -880,13 +1091,13 @@ async fn report_cancelled_job_cost_if_needed(
 fn extract_job_cost_data(job: &BackgroundJob) -> AppResult<(Option<f64>, serde_json::Value)> {
     // First check the actual_cost field from the database
     let final_cost = job.actual_cost;
-    
+
     // Extract token counts from job fields and metadata
     let mut token_counts = serde_json::json!({
         "input_tokens": job.tokens_sent,
         "output_tokens": job.tokens_received
     });
-    
+
     // Try to extract additional token information from metadata
     if let Some(metadata_str) = &job.metadata {
         if let Ok(metadata_value) = serde_json::from_str::<serde_json::Value>(metadata_str) {
@@ -901,16 +1112,18 @@ fn extract_job_cost_data(job: &BackgroundJob) -> AppResult<(Option<f64>, serde_j
                 if let Some(cache_read) = task_data.get("cacheReadTokens") {
                     token_counts["cache_read_tokens"] = cache_read.clone();
                 }
-                
+
                 // Also check for cost in metadata if not in actual_cost field
                 if final_cost.is_none() {
-                    if let Some(metadata_cost) = task_data.get("actual_cost").and_then(|v| v.as_f64()) {
+                    if let Some(metadata_cost) =
+                        task_data.get("actual_cost").and_then(|v| v.as_f64())
+                    {
                         return Ok((Some(metadata_cost), token_counts));
                     }
                 }
             }
         }
     }
-    
+
     Ok((final_cost, token_counts))
 }

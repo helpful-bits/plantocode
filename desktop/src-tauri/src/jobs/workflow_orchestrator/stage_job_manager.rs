@@ -1,17 +1,17 @@
-use std::sync::Arc;
+use log::{error, info};
 use std::collections::HashMap;
-use log::{info, error};
+use std::sync::Arc;
 use tauri::AppHandle;
 
-use crate::error::AppResult;
-use crate::models::TaskType;
-use crate::jobs::types::JobPayload;
-use crate::utils::job_creation_utils;
-use crate::db_utils::settings_repository::SettingsRepository;
 use super::super::workflow_types::{
-    WorkflowState, WorkflowStage, WorkflowStageDefinition, WorkflowDefinition
+    WorkflowDefinition, WorkflowStage, WorkflowStageDefinition, WorkflowState,
 };
 use super::{payload_builder, workflow_utils};
+use crate::db_utils::settings_repository::SettingsRepository;
+use crate::error::AppResult;
+use crate::jobs::types::JobPayload;
+use crate::models::TaskType;
+use crate::utils::job_creation_utils;
 
 /// Create and queue a job for a specific workflow stage using abstract workflow definitions
 /// This is the canonical method for creating stage jobs with workflow lock held
@@ -24,10 +24,16 @@ pub async fn create_abstract_stage_job_with_lock_internal(
     settings_repo: &Arc<SettingsRepository>,
 ) -> AppResult<String> {
     let task_type = stage_definition.task_type;
-    
+
     // Create stage payload based on task type and dependency data
-    let job_payload = payload_builder::create_abstract_stage_payload(app_handle, workflow_state, stage_definition, workflow_definition).await?;
-    
+    let job_payload = payload_builder::create_abstract_stage_payload(
+        app_handle,
+        workflow_state,
+        stage_definition,
+        workflow_definition,
+    )
+    .await?;
+
     // Convert to WorkflowStage for model configuration
     let stage = match task_type {
         TaskType::RegexFileFilter => WorkflowStage::RegexFileFilter,
@@ -36,16 +42,22 @@ pub async fn create_abstract_stage_job_with_lock_internal(
         TaskType::PathCorrection => WorkflowStage::PathCorrection,
         TaskType::WebSearchPromptsGeneration => WorkflowStage::WebSearchPromptsGeneration,
         TaskType::WebSearchExecution => WorkflowStage::WebSearchExecution,
-        _ => return Err(crate::error::AppError::JobError(format!("Unsupported task type for workflow stage: {:?}", task_type))),
+        _ => {
+            return Err(crate::error::AppError::JobError(format!(
+                "Unsupported task type for workflow stage: {:?}",
+                task_type
+            )));
+        }
     };
-    
+
     // Get model configuration for the stage
     let model_settings = get_stage_model_config_for_definition_internal(
         stage_definition,
         &workflow_state.project_directory,
         app_handle,
-        settings_repo
-    ).await?;
+        settings_repo,
+    )
+    .await?;
 
     // Determine API type based on whether the task requires LLM
     let api_type_str = if model_settings.is_some() {
@@ -64,8 +76,8 @@ pub async fn create_abstract_stage_job_with_lock_internal(
         &workflow_state.task_description,
         model_settings,
         job_payload,
-        10, // High priority for workflow jobs
-        Some(workflow_state.workflow_id.clone()), // workflow_id
+        10,                                        // High priority for workflow jobs
+        Some(workflow_state.workflow_id.clone()),  // workflow_id
         Some(stage_definition.stage_name.clone()), // workflow_stage
         Some(serde_json::json!({
             "workflowId": workflow_state.workflow_id,
@@ -74,7 +86,8 @@ pub async fn create_abstract_stage_job_with_lock_internal(
             "workflowTaskDescription": workflow_state.task_description.clone()
         })),
         app_handle,
-    ).await?;
+    )
+    .await?;
 
     // Add the stage job to workflow state using the provided mutable reference
     if let Some(workflow) = workflows.get_mut(&workflow_state.workflow_id) {
@@ -82,23 +95,31 @@ pub async fn create_abstract_stage_job_with_lock_internal(
             None
         } else {
             // Find the job ID of the first dependency
-            stage_definition.dependencies.first()
-                .and_then(|dep_stage_name| {
-                    workflow_definition.get_stage(dep_stage_name)
-                })
+            stage_definition
+                .dependencies
+                .first()
+                .and_then(|dep_stage_name| workflow_definition.get_stage(dep_stage_name))
                 .and_then(|dep_stage_def| {
-                    workflow.stages.iter()
-                        .find(|job| {
-                                        job.task_type == dep_stage_def.task_type
-                        })
+                    workflow
+                        .stages
+                        .iter()
+                        .find(|job| job.task_type == dep_stage_def.task_type)
                 })
                 .map(|job| job.job_id.clone())
         };
-        
-        workflow.add_stage_job(stage_definition.stage_name.clone(), stage_definition.task_type, job_id.clone(), depends_on);
+
+        workflow.add_stage_job(
+            stage_definition.stage_name.clone(),
+            stage_definition.task_type,
+            job_id.clone(),
+            depends_on,
+        );
     }
 
-    info!("Created abstract stage job {} for stage '{}'", job_id, stage_definition.stage_name);
+    info!(
+        "Created abstract stage job {} for stage '{}'",
+        job_id, stage_definition.stage_name
+    );
     Ok(job_id)
 }
 
@@ -114,6 +135,7 @@ pub async fn get_stage_model_config_for_definition_internal(
         app_handle,
         stage_definition.task_type,
         project_directory,
-        settings_repo
-    ).await
+        settings_repo,
+    )
+    .await
 }

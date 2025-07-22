@@ -1,15 +1,15 @@
+use log::{error, info, warn};
 use std::sync::Arc;
-use log::{info, warn, error};
 use tauri::AppHandle;
 
-use crate::error::{AppError, AppResult};
 use crate::db_utils::background_job_repository::BackgroundJobRepository;
-use crate::utils::error_utils::log_workflow_error;
+use crate::error::{AppError, AppResult};
 use crate::jobs::queue::get_job_queue;
-use crate::jobs::workflow_types::{
-    WorkflowStage, ErrorRecoveryConfig, RecoveryStrategy, WorkflowErrorResponse
-};
 use crate::jobs::workflow_orchestrator::get_workflow_orchestrator;
+use crate::jobs::workflow_types::{
+    ErrorRecoveryConfig, RecoveryStrategy, WorkflowErrorResponse, WorkflowStage,
+};
+use crate::utils::error_utils::log_workflow_error;
 
 /// Service responsible for managing errors that occur within a workflow
 pub struct WorkflowErrorHandler {
@@ -21,8 +21,8 @@ pub struct WorkflowErrorHandler {
 impl WorkflowErrorHandler {
     /// Create a new WorkflowErrorHandler
     pub fn new(
-        background_job_repository: Arc<BackgroundJobRepository>, 
-        app_handle: AppHandle
+        background_job_repository: Arc<BackgroundJobRepository>,
+        app_handle: AppHandle,
     ) -> Self {
         Self {
             background_job_repository,
@@ -52,8 +52,10 @@ impl WorkflowErrorHandler {
         stage: WorkflowStage,
         error: &str,
     ) -> AppResult<WorkflowErrorResponse> {
-        info!("Handling stage failure for workflow {}, job {}, stage {:?}: {}", 
-              workflow_id, failed_job_id, stage, error);
+        info!(
+            "Handling stage failure for workflow {}, job {}, stage {:?}: {}",
+            workflow_id, failed_job_id, stage, error
+        );
 
         // Create comprehensive error message with workflow context
         let stage_display_name = stage.display_name();
@@ -69,49 +71,71 @@ impl WorkflowErrorHandler {
             "Stage failure",
             Some(workflow_id),
             Some(&format!("{:?}", stage)),
-            Some(failed_job_id)
+            Some(failed_job_id),
         );
 
         // Get the recovery strategy for this stage
         let stage_name = format!("{:?}", stage);
-        let strategy = self.error_recovery_config.strategy_map
+        let strategy = self
+            .error_recovery_config
+            .strategy_map
             .get(&stage_name)
             .cloned()
             .unwrap_or_else(|| self.error_recovery_config.default_strategy.clone());
 
         // Log recovery strategy choice
-        info!("Using recovery strategy {:?} for stage {:?} in workflow {}", 
-              strategy, stage, workflow_id);
+        info!(
+            "Using recovery strategy {:?} for stage {:?} in workflow {}",
+            strategy, stage, workflow_id
+        );
 
         // Implement the recovery strategy
         match strategy {
-            RecoveryStrategy::RetryStage { max_attempts, delay_ms } => {
+            RecoveryStrategy::RetryStage {
+                max_attempts,
+                delay_ms,
+            } => {
                 self.handle_retry_strategy(
-                    workflow_id, 
-                    failed_job_id, 
-                    stage, 
-                    max_attempts, 
+                    workflow_id,
+                    failed_job_id,
+                    stage,
+                    max_attempts,
                     delay_ms,
-                    &comprehensive_error
-                ).await
+                    &comprehensive_error,
+                )
+                .await
             }
-            RecoveryStrategy::RetrySpecificStage { job_id, stage_name, task_type, attempt_count } => {
+            RecoveryStrategy::RetrySpecificStage {
+                job_id,
+                stage_name,
+                task_type,
+                attempt_count,
+            } => {
                 // Convert task_type to WorkflowStage for the retry
-                let retry_stage = crate::jobs::workflow_types::WorkflowStage::from_task_type(&task_type)
-                    .ok_or_else(|| AppError::JobError(format!("Cannot determine workflow stage from task type: {:?}", task_type)))?;
+                let retry_stage =
+                    crate::jobs::workflow_types::WorkflowStage::from_task_type(&task_type)
+                        .ok_or_else(|| {
+                            AppError::JobError(format!(
+                                "Cannot determine workflow stage from task type: {:?}",
+                                task_type
+                            ))
+                        })?;
                 self.handle_specific_stage_retry(
                     workflow_id,
                     &job_id,
                     retry_stage,
                     attempt_count,
-                    &comprehensive_error
-                ).await
+                    &comprehensive_error,
+                )
+                .await
             }
             RecoveryStrategy::AbortWorkflow => {
-                self.handle_abort_strategy(workflow_id, &comprehensive_error).await
+                self.handle_abort_strategy(workflow_id, &comprehensive_error)
+                    .await
             }
             RecoveryStrategy::SkipStage => {
-                self.handle_skip_strategy(workflow_id, stage, &comprehensive_error).await
+                self.handle_skip_strategy(workflow_id, stage, &comprehensive_error)
+                    .await
             }
         }
     }
@@ -127,14 +151,15 @@ impl WorkflowErrorHandler {
         comprehensive_error: &str,
     ) -> AppResult<WorkflowErrorResponse> {
         // Special handling for initialization errors - use longer delay and different tracking
-        let (actual_delay, actual_max_attempts) = if comprehensive_error.contains("Database pool not yet initialized") {
-            // For initialization errors, use exponential backoff starting at 10 seconds
-            // and limit retries to 5 attempts over 5 minutes total
-            let backoff_delay = 10000; // 10 seconds base delay
-            (backoff_delay, 5) // Max 5 attempts for init errors
-        } else {
-            (delay_ms, max_attempts)
-        };
+        let (actual_delay, actual_max_attempts) =
+            if comprehensive_error.contains("Database pool not yet initialized") {
+                // For initialization errors, use exponential backoff starting at 10 seconds
+                // and limit retries to 5 attempts over 5 minutes total
+                let backoff_delay = 10000; // 10 seconds base delay
+                (backoff_delay, 5) // Max 5 attempts for init errors
+            } else {
+                (delay_ms, max_attempts)
+            };
 
         // Use workflow stage as key for retry tracking instead of job ID
         // since new job IDs are created for each retry
@@ -143,45 +168,69 @@ impl WorkflowErrorHandler {
         let current_retry_count = queue.get_retry_count(&stage_retry_key)?;
 
         if current_retry_count >= actual_max_attempts {
-            warn!("Stage {:?} in workflow {} has reached max retry attempts ({}), aborting workflow", 
-                  stage, workflow_id, actual_max_attempts);
-            let abort_message = format!("Max retry attempts ({}) exceeded for stage '{}'. Original error: {}", 
-                                      actual_max_attempts, stage.display_name(), comprehensive_error);
-            return self.handle_abort_strategy(workflow_id, &abort_message).await;
+            warn!(
+                "Stage {:?} in workflow {} has reached max retry attempts ({}), aborting workflow",
+                stage, workflow_id, actual_max_attempts
+            );
+            let abort_message = format!(
+                "Max retry attempts ({}) exceeded for stage '{}'. Original error: {}",
+                actual_max_attempts,
+                stage.display_name(),
+                comprehensive_error
+            );
+            return self
+                .handle_abort_strategy(workflow_id, &abort_message)
+                .await;
         }
 
         // Increment retry count for the stage
         let new_retry_count = queue.increment_retry_count(&stage_retry_key)?;
-        info!("Retrying stage {:?} for workflow {}, attempt {} of {}", 
-              stage, workflow_id, new_retry_count, actual_max_attempts);
+        info!(
+            "Retrying stage {:?} for workflow {}, attempt {} of {}",
+            stage, workflow_id, new_retry_count, actual_max_attempts
+        );
 
         // Delegate to the WorkflowOrchestrator's retry mechanism
         let orchestrator = get_workflow_orchestrator().await?;
-        
-        // Use the orchestrator's centralized retry functionality with delay and retry count
-        match orchestrator.retry_workflow_stage_with_config(
-            workflow_id, 
-            stage.clone(), 
-            failed_job_id,
-            Some(actual_delay),
-            Some(new_retry_count),
-        ).await {
-            Ok(retry_job_id) => {
 
-                Ok(WorkflowErrorResponse {
-                    error_handled: true,
-                    recovery_attempted: true,
-                    next_action: format!("Retrying stage '{}' with job {} (attempt {} of {}). Original error: {}", 
-                                       stage.display_name(), retry_job_id, new_retry_count, max_attempts, comprehensive_error),
-                    should_continue: true,
-                    retry_job_id: Some(retry_job_id),
-                })
-            }
+        // Use the orchestrator's centralized retry functionality with delay and retry count
+        match orchestrator
+            .retry_workflow_stage_with_config(
+                workflow_id,
+                stage.clone(),
+                failed_job_id,
+                Some(actual_delay),
+                Some(new_retry_count),
+            )
+            .await
+        {
+            Ok(retry_job_id) => Ok(WorkflowErrorResponse {
+                error_handled: true,
+                recovery_attempted: true,
+                next_action: format!(
+                    "Retrying stage '{}' with job {} (attempt {} of {}). Original error: {}",
+                    stage.display_name(),
+                    retry_job_id,
+                    new_retry_count,
+                    max_attempts,
+                    comprehensive_error
+                ),
+                should_continue: true,
+                retry_job_id: Some(retry_job_id),
+            }),
             Err(e) => {
-                error!("Failed to retry stage {:?} for workflow {}: {}", stage, workflow_id, e);
-                let abort_message = format!("Failed to retry stage '{}': {}. Original error: {}", 
-                                          stage.display_name(), e, comprehensive_error);
-                self.handle_abort_strategy(workflow_id, &abort_message).await
+                error!(
+                    "Failed to retry stage {:?} for workflow {}: {}",
+                    stage, workflow_id, e
+                );
+                let abort_message = format!(
+                    "Failed to retry stage '{}': {}. Original error: {}",
+                    stage.display_name(),
+                    e,
+                    comprehensive_error
+                );
+                self.handle_abort_strategy(workflow_id, &abort_message)
+                    .await
             }
         }
     }
@@ -203,7 +252,10 @@ impl WorkflowErrorHandler {
         Ok(WorkflowErrorResponse {
             error_handled: true,
             recovery_attempted: false,
-            next_action: format!("Workflow '{}' has been aborted. Reason: {}", workflow_id, error),
+            next_action: format!(
+                "Workflow '{}' has been aborted. Reason: {}",
+                workflow_id, error
+            ),
             should_continue: false,
             retry_job_id: None,
         })
@@ -220,7 +272,7 @@ impl WorkflowErrorHandler {
 
         // Get the workflow orchestrator to progress to the next stage
         let orchestrator = get_workflow_orchestrator().await?;
-        
+
         // Try to start the next stage if there is one
         if let Some(_next_stage) = stage.next_stage() {
             // This would require exposing a method to start a specific stage
@@ -229,20 +281,25 @@ impl WorkflowErrorHandler {
         } else {
             // If this was the last stage, mark workflow as completed
             if let Err(e) = orchestrator.mark_workflow_completed(workflow_id).await {
-                error!("Failed to mark workflow {} as completed after skipping last stage: {}", workflow_id, e);
+                error!(
+                    "Failed to mark workflow {} as completed after skipping last stage: {}",
+                    workflow_id, e
+                );
             }
         }
 
         Ok(WorkflowErrorResponse {
             error_handled: true,
             recovery_attempted: true,
-            next_action: format!("Skipped stage '{}' and continuing with workflow. Original error: {}", 
-                               stage.display_name(), comprehensive_error),
+            next_action: format!(
+                "Skipped stage '{}' and continuing with workflow. Original error: {}",
+                stage.display_name(),
+                comprehensive_error
+            ),
             should_continue: true,
             retry_job_id: None,
         })
     }
-
 
     /// Retry a specific failed stage within a workflow
     pub async fn retry_failed_stage(
@@ -250,23 +307,37 @@ impl WorkflowErrorHandler {
         workflow_id: &str,
         failed_stage_job_id: &str,
     ) -> AppResult<String> {
-        info!("Retrying failed stage for workflow {}, job {}", workflow_id, failed_stage_job_id);
+        info!(
+            "Retrying failed stage for workflow {}, job {}",
+            workflow_id, failed_stage_job_id
+        );
 
         // Get the workflow orchestrator to access workflow state
         let orchestrator = get_workflow_orchestrator().await?;
         let workflow_state = orchestrator.get_workflow_status(workflow_id).await?;
-        
+
         // Find the failed job in the workflow
-        let stage_job = workflow_state.get_stage_job(failed_stage_job_id)
-            .ok_or_else(|| AppError::JobError(format!("Job {} not found in workflow {}", failed_stage_job_id, workflow_id)))?;
-        
+        let stage_job = workflow_state
+            .get_stage_job(failed_stage_job_id)
+            .ok_or_else(|| {
+                AppError::JobError(format!(
+                    "Job {} not found in workflow {}",
+                    failed_stage_job_id, workflow_id
+                ))
+            })?;
+
         // Verify the job is indeed failed
         if stage_job.status != crate::models::JobStatus::Failed {
-            return Err(AppError::JobError(format!("Job {} is not in failed state, current status: {:?}", failed_stage_job_id, stage_job.status)));
+            return Err(AppError::JobError(format!(
+                "Job {} is not in failed state, current status: {:?}",
+                failed_stage_job_id, stage_job.status
+            )));
         }
 
         // Use the workflow orchestrator to retry this specific stage
-        orchestrator.retry_workflow_stage(workflow_id, failed_stage_job_id).await
+        orchestrator
+            .retry_workflow_stage(workflow_id, failed_stage_job_id)
+            .await
     }
 
     /// Handle specific stage retry strategy
@@ -278,31 +349,46 @@ impl WorkflowErrorHandler {
         attempt_count: u32,
         comprehensive_error: &str,
     ) -> AppResult<WorkflowErrorResponse> {
-        info!("Handling specific stage retry for workflow {}, job {}, stage {:?}, attempt {}", 
-              workflow_id, failed_job_id, stage, attempt_count);
+        info!(
+            "Handling specific stage retry for workflow {}, job {}, stage {:?}, attempt {}",
+            workflow_id, failed_job_id, stage, attempt_count
+        );
 
         // Get the workflow orchestrator to recreate the stage job
         let orchestrator = get_workflow_orchestrator().await?;
-        
+
         // Use the workflow orchestrator's retry functionality
-        match orchestrator.retry_workflow_stage(workflow_id, failed_job_id).await {
-            Ok(new_job_id) => {
-                Ok(WorkflowErrorResponse {
-                    error_handled: true,
-                    recovery_attempted: true,
-                    next_action: format!("Retrying specific stage '{}' with new job {} (attempt {}). Original error: {}", 
-                                       stage.display_name(), new_job_id, attempt_count, comprehensive_error),
-                    should_continue: true,
-                    retry_job_id: Some(new_job_id),
-                })
-            }
+        match orchestrator
+            .retry_workflow_stage(workflow_id, failed_job_id)
+            .await
+        {
+            Ok(new_job_id) => Ok(WorkflowErrorResponse {
+                error_handled: true,
+                recovery_attempted: true,
+                next_action: format!(
+                    "Retrying specific stage '{}' with new job {} (attempt {}). Original error: {}",
+                    stage.display_name(),
+                    new_job_id,
+                    attempt_count,
+                    comprehensive_error
+                ),
+                should_continue: true,
+                retry_job_id: Some(new_job_id),
+            }),
             Err(e) => {
-                error!("Failed to retry specific stage {:?} for workflow {}: {}", stage, workflow_id, e);
-                let abort_message = format!("Failed to retry stage '{}': {}. Original error: {}", 
-                                          stage.display_name(), e, comprehensive_error);
-                self.handle_abort_strategy(workflow_id, &abort_message).await
+                error!(
+                    "Failed to retry specific stage {:?} for workflow {}: {}",
+                    stage, workflow_id, e
+                );
+                let abort_message = format!(
+                    "Failed to retry stage '{}': {}. Original error: {}",
+                    stage.display_name(),
+                    e,
+                    comprehensive_error
+                );
+                self.handle_abort_strategy(workflow_id, &abort_message)
+                    .await
             }
         }
     }
-
 }

@@ -1,11 +1,11 @@
+use crate::error::AppResult;
+use crate::jobs::processor_trait::JobProcessor;
+use crate::jobs::types::{Job, JobProcessResult};
 use async_trait::async_trait;
 use tauri::AppHandle;
-use crate::error::AppResult;
-use crate::jobs::types::{Job, JobProcessResult};
-use crate::jobs::processor_trait::JobProcessor;
 
 /// Base processor that provides common functionality for all job processors
-/// 
+///
 /// Note: For reducing boilerplate, processors should use utility functions from
 /// `job_processor_utils.rs` for common tasks like:
 /// - `setup_job_processing()` for initialization and marking jobs as running

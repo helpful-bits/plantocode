@@ -1,13 +1,10 @@
-use tauri::{AppHandle, command};
-use crate::error::{AppResult, AppError};
+use crate::error::{AppError, AppResult};
 use crate::error_recovery::config_recovery::{
-    attempt_configuration_recovery,
-    detect_and_fix_common_config_issues,
-    rebuild_cache_from_server,
-    emergency_configuration_reset,
-    ConfigurationValidationError,
+    ConfigurationValidationError, attempt_configuration_recovery,
+    detect_and_fix_common_config_issues, emergency_configuration_reset, rebuild_cache_from_server,
 };
-use log::{info, warn, error};
+use log::{error, info, warn};
+use tauri::{AppHandle, command};
 
 /// Attempt comprehensive configuration recovery
 #[command]
@@ -18,7 +15,9 @@ pub async fn attempt_config_recovery(app_handle: AppHandle) -> AppResult<Vec<Str
 
 /// Detect and fix common configuration issues
 #[command]
-pub async fn detect_config_issues(app_handle: AppHandle) -> AppResult<Vec<ConfigurationValidationError>> {
+pub async fn detect_config_issues(
+    app_handle: AppHandle,
+) -> AppResult<Vec<ConfigurationValidationError>> {
     info!("Configuration issue detection requested via command");
     detect_and_fix_common_config_issues(&app_handle).await
 }
@@ -41,13 +40,16 @@ pub async fn emergency_config_reset(app_handle: AppHandle) -> AppResult<String> 
 #[command]
 pub async fn validate_current_config(app_handle: AppHandle) -> AppResult<String> {
     info!("Configuration validation requested via command");
-    
+
     match crate::utils::config_helpers::get_runtime_ai_config_from_cache(&app_handle).await {
-        Ok(_) => Ok("Configuration validation passed - all required settings are present and valid".to_string()),
+        Ok(_) => Ok(
+            "Configuration validation passed - all required settings are present and valid"
+                .to_string(),
+        ),
         Err(e) => Err(AppError::ConfigurationError(format!(
             "Configuration validation failed: {}\nSuggestion: Run configuration recovery or refresh from server",
             e
-        )))
+        ))),
     }
 }
 
@@ -55,7 +57,7 @@ pub async fn validate_current_config(app_handle: AppHandle) -> AppResult<String>
 #[command]
 pub async fn get_config_health_status(app_handle: AppHandle) -> AppResult<ConfigHealthStatus> {
     info!("Configuration health status requested via command");
-    
+
     let mut status = ConfigHealthStatus {
         overall_health: "healthy".to_string(),
         issues: Vec::new(),
@@ -65,31 +67,37 @@ pub async fn get_config_health_status(app_handle: AppHandle) -> AppResult<Config
         task_config_count: 0,
         missing_configurations: Vec::new(),
     };
-    
+
     // Check cache status
     match crate::utils::config_helpers::get_runtime_ai_config_from_cache(&app_handle).await {
         Ok(config) => {
             status.cache_status = "healthy".to_string();
             status.provider_count = config.providers.len();
             status.task_config_count = config.tasks.len();
-            
+
             // Check for common issues
             if config.providers.is_empty() {
                 status.overall_health = "critical".to_string();
                 status.issues.push("No providers configured".to_string());
-                status.suggestions.push("Add at least one AI provider configuration".to_string());
+                status
+                    .suggestions
+                    .push("Add at least one AI provider configuration".to_string());
             }
-            
+
             if config.tasks.is_empty() {
                 status.overall_health = "critical".to_string();
-                status.issues.push("No task configurations found".to_string());
-                status.suggestions.push("Add task configurations for required operations".to_string());
+                status
+                    .issues
+                    .push("No task configurations found".to_string());
+                status
+                    .suggestions
+                    .push("Add task configurations for required operations".to_string());
             }
-            
+
             // Check for missing essential tasks
             let required_tasks = [
                 "implementation_plan",
-                "voice_transcription", 
+                "voice_transcription",
                 "text_improvement",
                 "path_correction",
                 "task_refinement",
@@ -99,7 +107,7 @@ pub async fn get_config_health_status(app_handle: AppHandle) -> AppResult<Config
                 "web_search_prompts_generation",
                 "web_search_execution",
             ];
-            
+
             for task in required_tasks {
                 if !config.tasks.contains_key(task) {
                     status.missing_configurations.push(task.to_string());
@@ -108,17 +116,25 @@ pub async fn get_config_health_status(app_handle: AppHandle) -> AppResult<Config
                     }
                 }
             }
-            
+
             if !status.missing_configurations.is_empty() {
-                status.issues.push(format!("Missing {} task configurations", status.missing_configurations.len()));
-                status.suggestions.push("Configure missing task types in server settings".to_string());
+                status.issues.push(format!(
+                    "Missing {} task configurations",
+                    status.missing_configurations.len()
+                ));
+                status
+                    .suggestions
+                    .push("Configure missing task types in server settings".to_string());
             }
-            
-            
+
             // Check concurrent jobs setting
             if config.max_concurrent_jobs.is_none() {
-                status.issues.push("Max concurrent jobs not configured".to_string());
-                status.suggestions.push("Set max_concurrent_jobs in server configuration".to_string());
+                status
+                    .issues
+                    .push("Max concurrent jobs not configured".to_string());
+                status
+                    .suggestions
+                    .push("Set max_concurrent_jobs in server configuration".to_string());
                 if status.overall_health == "healthy" {
                     status.overall_health = "warning".to_string();
                 }
@@ -127,11 +143,15 @@ pub async fn get_config_health_status(app_handle: AppHandle) -> AppResult<Config
         Err(e) => {
             status.overall_health = "critical".to_string();
             status.cache_status = "failed".to_string();
-            status.issues.push(format!("Failed to load configuration: {}", e));
-            status.suggestions.push("Refresh configuration from server or check connection".to_string());
+            status
+                .issues
+                .push(format!("Failed to load configuration: {}", e));
+            status
+                .suggestions
+                .push("Refresh configuration from server or check connection".to_string());
         }
     }
-    
+
     Ok(status)
 }
 

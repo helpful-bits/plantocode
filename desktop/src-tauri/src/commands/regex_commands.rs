@@ -1,9 +1,9 @@
-use tauri::{command, AppHandle};
+use crate::error::{AppError, AppResult};
+use crate::jobs::types::{JobPayload, RegexFileFilterPayload};
+use crate::models::{JobCommandResponse, TaskType};
 use log::info;
 use serde::Deserialize;
-use crate::error::{AppError, AppResult};
-use crate::models::{TaskType, JobCommandResponse};
-use crate::jobs::types::{RegexFileFilterPayload, JobPayload};
+use tauri::{AppHandle, command};
 
 /// Arguments for regex generation command (for the command handler service)
 #[derive(Debug, Deserialize)]
@@ -33,7 +33,6 @@ pub struct GenerateRegexPatternsArgs {
     pub max_tokens_override: Option<u32>,
 }
 
-
 /// Command to generate regex patterns for filtering based on task description
 #[command]
 pub async fn generate_regex_patterns_command(
@@ -44,10 +43,13 @@ pub async fn generate_regex_patterns_command(
     model_override: Option<String>,
     temperature_override: Option<f32>,
     max_tokens_override: Option<u32>,
-    app_handle: AppHandle
+    app_handle: AppHandle,
 ) -> AppResult<JobCommandResponse> {
-    info!("Creating regex pattern generation job for task: {}", task_description);
-    
+    info!(
+        "Creating regex pattern generation job for task: {}",
+        task_description
+    );
+
     // Recreate args struct for internal use
     let args = GenerateRegexPatternsArgs {
         session_id,
@@ -58,20 +60,26 @@ pub async fn generate_regex_patterns_command(
         temperature_override,
         max_tokens_override,
     };
-    
+
     // Validate required fields
     if args.session_id.is_empty() {
-        return Err(AppError::ValidationError("Session ID is required".to_string()));
+        return Err(AppError::ValidationError(
+            "Session ID is required".to_string(),
+        ));
     }
-    
+
     if args.task_description.is_empty() {
-        return Err(AppError::ValidationError("Task description is required".to_string()));
+        return Err(AppError::ValidationError(
+            "Task description is required".to_string(),
+        ));
     }
-    
+
     if args.project_directory.is_empty() {
-        return Err(AppError::ValidationError("Project directory is required".to_string()));
+        return Err(AppError::ValidationError(
+            "Project directory is required".to_string(),
+        ));
     }
-    
+
     // Get model configuration for this task using centralized resolver
     let model_settings = crate::utils::config_resolver::resolve_model_settings(
         &app_handle,
@@ -80,24 +88,25 @@ pub async fn generate_regex_patterns_command(
         args.model_override.clone(),
         args.temperature_override,
         args.max_tokens_override,
-    ).await?;
-    
+    )
+    .await?;
+
     // Create the payload for the RegexFileFilterProcessor
     let processor_payload = RegexFileFilterPayload {
         task_description: args.task_description.clone(),
     };
-    
+
     // Create additional metadata for the job
     let mut additional_params = serde_json::json!({
         "task_description": args.task_description,
     });
-    
+
     // Add optional fields to metadata
     if let Some(directory_tree) = &args.directory_tree {
         additional_params["directory_tree"] = serde_json::to_value(directory_tree)
             .map_err(|e| AppError::SerdeError(e.to_string()))?;
     }
-    
+
     // Use the job creation utility to create and queue the job
     let job_id = crate::utils::job_creation_utils::create_and_queue_background_job(
         &args.session_id,
@@ -108,13 +117,14 @@ pub async fn generate_regex_patterns_command(
         &args.task_description,
         model_settings,
         JobPayload::RegexFileFilter(processor_payload),
-        2, // Priority
+        2,    // Priority
         None, // No workflow_id
         None, // No workflow_stage
         Some(additional_params),
         &app_handle,
-    ).await?;
-    
+    )
+    .await?;
+
     info!("Created regex pattern generation job: {}", job_id);
     Ok(JobCommandResponse { job_id })
 }
@@ -132,10 +142,13 @@ pub async fn generate_regex_command(
     temperature_override: Option<f32>,
     max_tokens_override: Option<u32>,
     target_field: Option<String>,
-    app_handle: AppHandle
+    app_handle: AppHandle,
 ) -> AppResult<String> {
-    info!("Creating regex generation job for description: {}", description);
-    
+    info!(
+        "Creating regex generation job for description: {}",
+        description
+    );
+
     // Convert to the new pattern generation command format
     let result = generate_regex_patterns_command(
         session_id,
@@ -145,8 +158,9 @@ pub async fn generate_regex_command(
         model_override,
         temperature_override,
         max_tokens_override,
-        app_handle
-    ).await?;
-    
+        app_handle,
+    )
+    .await?;
+
     Ok(result.job_id)
 }

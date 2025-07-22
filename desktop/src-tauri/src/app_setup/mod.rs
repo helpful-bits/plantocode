@@ -1,21 +1,21 @@
-use tauri::{AppHandle, Manager};
 use crate::error::AppError;
-use log::{info, error, warn};
+use log::{error, info, warn};
+use tauri::{AppHandle, Manager};
 
-pub mod database;
-pub mod services;
 pub mod config;
-pub mod job_system;
+pub mod database;
 pub mod file_management;
+pub mod job_system;
+pub mod services;
 
 // Re-export important functions for easy access
 pub use services::initialize_system_prompts;
 
 /// Run asynchronous initialization steps for the application
-/// 
+///
 /// This function initializes various subsystems in the following order:
 /// 1. Database (critical path)
-/// 2. Application configuration 
+/// 2. Application configuration
 /// 3. API clients
 /// 4. File lock manager
 /// 5. Job system
@@ -44,7 +44,7 @@ pub async fn run_async_initialization(app_handle: &AppHandle) -> Result<(), AppE
         error!("System prompts initialization failed: {}", e);
         return Err(e);
     }
-    
+
     // Initialize backup service
     if let Err(e) = services::initialize_backup_service(app_handle).await {
         error!("Backup service initialization failed: {}", e);
@@ -65,7 +65,10 @@ pub async fn run_async_initialization(app_handle: &AppHandle) -> Result<(), AppE
 
     // Initialize configuration sync manager
     if let Err(e) = config::initialize_config_sync(app_handle).await {
-        warn!("Configuration sync initialization failed (non-critical): {}", e);
+        warn!(
+            "Configuration sync initialization failed (non-critical): {}",
+            e
+        );
         // Don't fail startup for config sync issues
     }
 

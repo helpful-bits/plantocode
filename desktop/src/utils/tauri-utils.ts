@@ -29,11 +29,6 @@ export function safeCleanupListener(cleanupFn: () => void): void {
  * Handles both promise rejection and cleanup function errors
  */
 export function safeCleanupListenerPromise(unlistenPromise: Promise<() => void>): void {
-  if (!isTauriAvailable()) {
-    // Tauri context already destroyed, skip cleanup
-    return;
-  }
-
   void unlistenPromise.then((cleanupFn) => {
     safeCleanupListener(cleanupFn);
   }).catch(() => {

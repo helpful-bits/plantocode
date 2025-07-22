@@ -1,15 +1,17 @@
-use std::sync::Arc;
+use log::{debug, error, info, warn};
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
-use std::time::{SystemTime, UNIX_EPOCH};
 use std::str::FromStr;
-use serde::{Serialize, Deserialize};
+use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter};
-use log::{error, warn, info, debug};
 
-use crate::error::{AppError, AppResult};
+use super::workflow_types::{
+    CancellationResult, FailedCancellation, WorkflowDefinition, WorkflowStage,
+};
 use crate::db_utils::background_job_repository::BackgroundJobRepository;
-use crate::models::{JobStatus, BackgroundJob};
-use super::workflow_types::{CancellationResult, FailedCancellation, WorkflowDefinition, WorkflowStage};
+use crate::error::{AppError, AppResult};
+use crate::models::{BackgroundJob, JobStatus};
 
 /// Service for handling workflow-wide cancellation propagation
 pub struct WorkflowCancellationHandler {
@@ -24,9 +26,8 @@ impl WorkflowCancellationHandler {
 
     /// Safe job status parsing with validation
     fn safe_job_status_from_str(s: &str) -> Result<JobStatus, AppError> {
-        JobStatus::from_str(s).map_err(|e| {
-            AppError::JobError(format!("Invalid job status '{}': {}", s, e))
-        })
+        JobStatus::from_str(s)
+            .map_err(|e| AppError::JobError(format!("Invalid job status '{}': {}", s, e)))
     }
 
     /// Cancel all jobs in a workflow
@@ -34,26 +35,35 @@ impl WorkflowCancellationHandler {
         &self,
         workflow_id: &str,
         reason: &str,
-        app_handle: &AppHandle
+        app_handle: &AppHandle,
     ) -> AppResult<CancellationResult> {
         log::info!("Canceling workflow {} with reason: {}", workflow_id, reason);
 
-        let workflow_jobs = self.repo.get_jobs_by_metadata_field("workflowId", workflow_id).await?;
+        let workflow_jobs = self
+            .repo
+            .get_jobs_by_metadata_field("workflowId", workflow_id)
+            .await?;
         let mut canceled_jobs = Vec::new();
         let mut failed_cancellations = Vec::new();
 
         for job in workflow_jobs {
             // Only attempt to cancel jobs that are not already completed or failed
             let status = Self::safe_job_status_from_str(&job.status).unwrap_or_else(|e| {
-                warn!("Failed to parse job status '{}' for job {}: {}. Defaulting to Idle.", job.status, job.id, e);
+                warn!(
+                    "Failed to parse job status '{}' for job {}: {}. Defaulting to Idle.",
+                    job.status, job.id, e
+                );
                 JobStatus::Idle
             });
             if status.is_active() {
-                match self.cancel_individual_job(&job.id, reason, app_handle).await {
+                match self
+                    .cancel_individual_job(&job.id, reason, app_handle)
+                    .await
+                {
                     Ok(_) => {
                         canceled_jobs.push(job.id.clone());
                         log::debug!("Successfully canceled job: {}", job.id);
-                    },
+                    }
                     Err(e) => {
                         failed_cancellations.push(FailedCancellation {
                             job_id: job.id.clone(),
@@ -66,7 +76,9 @@ impl WorkflowCancellationHandler {
         }
 
         // Attempt cleanup after cancellation
-        let _cleanup_performed = self.perform_workflow_cleanup(workflow_id, app_handle).await
+        let _cleanup_performed = self
+            .perform_workflow_cleanup(workflow_id, app_handle)
+            .await
             .unwrap_or_else(|e| {
                 log::error!("Cleanup failed for workflow {}: {}", workflow_id, e);
                 false
@@ -89,24 +101,35 @@ impl WorkflowCancellationHandler {
         from_stage_name: &str,
         workflow_definition: &WorkflowDefinition,
         reason: &str,
-        app_handle: &AppHandle
+        app_handle: &AppHandle,
     ) -> AppResult<CancellationResult> {
-        log::info!("Canceling workflow {} from stage {} with reason: {}", workflow_id, from_stage_name, reason);
+        log::info!(
+            "Canceling workflow {} from stage {} with reason: {}",
+            workflow_id,
+            from_stage_name,
+            reason
+        );
 
-        let workflow_jobs = self.repo.get_jobs_by_metadata_field("workflowId", workflow_id).await?;
+        let workflow_jobs = self
+            .repo
+            .get_jobs_by_metadata_field("workflowId", workflow_id)
+            .await?;
         let stages_to_cancel = self.get_subsequent_stages(from_stage_name, workflow_definition);
-        
+
         let mut canceled_jobs = Vec::new();
         let mut failed_cancellations = Vec::new();
 
         for job in workflow_jobs {
             // Check if this job belongs to a stage that should be canceled
             if self.should_cancel_job_for_stage(&job, &stages_to_cancel) {
-                match self.cancel_individual_job(&job.id, reason, app_handle).await {
+                match self
+                    .cancel_individual_job(&job.id, reason, app_handle)
+                    .await
+                {
                     Ok(_) => {
                         canceled_jobs.push(job.id.clone());
                         log::debug!("Successfully canceled job: {}", job.id);
-                    },
+                    }
                     Err(e) => {
                         failed_cancellations.push(FailedCancellation {
                             job_id: job.id.clone(),
@@ -118,7 +141,9 @@ impl WorkflowCancellationHandler {
             }
         }
 
-        let _cleanup_performed = self.perform_partial_cleanup(workflow_id, &canceled_jobs, app_handle).await
+        let _cleanup_performed = self
+            .perform_partial_cleanup(workflow_id, &canceled_jobs, app_handle)
+            .await
             .unwrap_or_else(|e| {
                 log::error!("Partial cleanup failed for workflow {}: {}", workflow_id, e);
                 false
@@ -137,24 +162,34 @@ impl WorkflowCancellationHandler {
     pub async fn should_cancel_workflow(
         &self,
         workflow_id: &str,
-        consecutive_failures: u32
+        consecutive_failures: u32,
     ) -> AppResult<bool> {
         // Configurable thresholds
         const MAX_CONSECUTIVE_FAILURES: u32 = 3;
         const MAX_TOTAL_FAILURES: u32 = 5;
 
         if consecutive_failures >= MAX_CONSECUTIVE_FAILURES {
-            log::warn!("Workflow {} has {} consecutive failures, recommending cancellation", 
-                      workflow_id, consecutive_failures);
+            log::warn!(
+                "Workflow {} has {} consecutive failures, recommending cancellation",
+                workflow_id,
+                consecutive_failures
+            );
             return Ok(true);
         }
 
         // Check total failure count
-        let workflow_jobs = self.repo.get_jobs_by_metadata_field("workflowId", workflow_id).await?;
-        let total_failures = workflow_jobs.iter()
+        let workflow_jobs = self
+            .repo
+            .get_jobs_by_metadata_field("workflowId", workflow_id)
+            .await?;
+        let total_failures = workflow_jobs
+            .iter()
             .filter(|job| {
                 let status = Self::safe_job_status_from_str(&job.status).unwrap_or_else(|e| {
-                    warn!("Failed to parse job status '{}' for job {}: {}. Defaulting to Idle.", job.status, job.id, e);
+                    warn!(
+                        "Failed to parse job status '{}' for job {}: {}. Defaulting to Idle.",
+                        job.status, job.id, e
+                    );
                     JobStatus::Idle
                 });
                 status == JobStatus::Failed
@@ -162,14 +197,23 @@ impl WorkflowCancellationHandler {
             .count() as u32;
 
         if total_failures >= MAX_TOTAL_FAILURES {
-            log::warn!("Workflow {} has {} total failures, recommending cancellation", 
-                      workflow_id, total_failures);
+            log::warn!(
+                "Workflow {} has {} total failures, recommending cancellation",
+                workflow_id,
+                total_failures
+            );
             return Ok(true);
         }
 
         // Check for critical stage failures
-        if self.has_critical_stage_failure(workflow_id, &workflow_jobs).await? {
-            log::warn!("Workflow {} has critical stage failure, recommending cancellation", workflow_id);
+        if self
+            .has_critical_stage_failure(workflow_id, &workflow_jobs)
+            .await?
+        {
+            log::warn!(
+                "Workflow {} has critical stage failure, recommending cancellation",
+                workflow_id
+            );
             return Ok(true);
         }
 
@@ -180,7 +224,7 @@ impl WorkflowCancellationHandler {
     pub async fn propagate_cancellation(
         &self,
         canceled_job_id: &str,
-        app_handle: &AppHandle
+        app_handle: &AppHandle,
     ) -> AppResult<Vec<String>> {
         log::info!("Propagating cancellation for job: {}", canceled_job_id);
 
@@ -188,11 +232,14 @@ impl WorkflowCancellationHandler {
         let mut propagated_cancellations = Vec::new();
 
         for job_id in dependent_jobs {
-            match self.cancel_individual_job(&job_id, "Dependency canceled", app_handle).await {
+            match self
+                .cancel_individual_job(&job_id, "Dependency canceled", app_handle)
+                .await
+            {
                 Ok(_) => {
                     propagated_cancellations.push(job_id.clone());
                     log::debug!("Propagated cancellation to dependent job: {}", job_id);
-                },
+                }
                 Err(e) => {
                     log::error!("Failed to propagate cancellation to job {}: {}", job_id, e);
                 }
@@ -207,15 +254,18 @@ impl WorkflowCancellationHandler {
         &self,
         job_id: &str,
         timeout_ms: u64,
-        app_handle: &AppHandle
+        app_handle: &AppHandle,
     ) -> AppResult<bool> {
         let reason = format!("Job timed out after {}ms", timeout_ms);
-        
-        match self.cancel_individual_job(job_id, &reason, app_handle).await {
+
+        match self
+            .cancel_individual_job(job_id, &reason, app_handle)
+            .await
+        {
             Ok(_) => {
                 log::info!("Successfully canceled job {} due to timeout", job_id);
                 Ok(true)
-            },
+            }
             Err(e) => {
                 log::error!("Failed to cancel job {} due to timeout: {}", job_id, e);
                 Ok(false)
@@ -224,16 +274,20 @@ impl WorkflowCancellationHandler {
     }
 
     /// Emergency cancellation for system shutdown
-    pub async fn emergency_cancel_all(
-        &self,
-        app_handle: &AppHandle
-    ) -> AppResult<Vec<String>> {
+    pub async fn emergency_cancel_all(&self, app_handle: &AppHandle) -> AppResult<Vec<String>> {
         log::warn!("Performing emergency cancellation of all active jobs");
 
-        let active_jobs = self.repo.get_all_jobs().await?.into_iter()
+        let active_jobs = self
+            .repo
+            .get_all_jobs()
+            .await?
+            .into_iter()
             .filter(|job| {
                 let status = Self::safe_job_status_from_str(&job.status).unwrap_or_else(|e| {
-                    warn!("Failed to parse job status '{}' for job {}: {}. Defaulting to Idle.", job.status, job.id, e);
+                    warn!(
+                        "Failed to parse job status '{}' for job {}: {}. Defaulting to Idle.",
+                        job.status, job.id, e
+                    );
                     JobStatus::Idle
                 });
                 status.is_active()
@@ -242,32 +296,47 @@ impl WorkflowCancellationHandler {
         let mut canceled_jobs = Vec::new();
 
         for job in active_jobs {
-            match self.cancel_individual_job(&job.id, "Emergency system shutdown", app_handle).await {
+            match self
+                .cancel_individual_job(&job.id, "Emergency system shutdown", app_handle)
+                .await
+            {
                 Ok(_) => {
                     canceled_jobs.push(job.id.clone());
-                },
+                }
                 Err(e) => {
                     log::error!("Emergency cancellation failed for job {}: {}", job.id, e);
                 }
             }
         }
 
-        log::info!("Emergency cancellation completed. Canceled {} jobs", canceled_jobs.len());
+        log::info!(
+            "Emergency cancellation completed. Canceled {} jobs",
+            canceled_jobs.len()
+        );
         Ok(canceled_jobs)
     }
 
     /// Check if cancellation is safe (no critical operations in progress)
     pub async fn is_cancellation_safe(&self, workflow_id: &str) -> AppResult<bool> {
-        let workflow_jobs = self.repo.get_jobs_by_metadata_field("workflowId", workflow_id).await?;
-        
+        let workflow_jobs = self
+            .repo
+            .get_jobs_by_metadata_field("workflowId", workflow_id)
+            .await?;
+
         // Check for jobs that shouldn't be interrupted
         for job in workflow_jobs {
             let status = Self::safe_job_status_from_str(&job.status).unwrap_or_else(|e| {
-                warn!("Failed to parse job status '{}' for job {}: {}. Defaulting to Idle.", job.status, job.id, e);
+                warn!(
+                    "Failed to parse job status '{}' for job {}: {}. Defaulting to Idle.",
+                    job.status, job.id, e
+                );
                 JobStatus::Idle
             });
             if self.is_critical_job(&job) && status == JobStatus::Running {
-                log::warn!("Cancellation not safe: critical job {} is in progress", job.id);
+                log::warn!(
+                    "Cancellation not safe: critical job {} is in progress",
+                    job.id
+                );
                 return Ok(false);
             }
         }
@@ -281,7 +350,7 @@ impl WorkflowCancellationHandler {
         &self,
         job_id: &str,
         reason: &str,
-        app_handle: &AppHandle
+        app_handle: &AppHandle,
     ) -> AppResult<()> {
         // Cancel the job using the enhanced cancel_job method
         self.repo.cancel_job(job_id, reason).await?;
@@ -304,17 +373,17 @@ impl WorkflowCancellationHandler {
     async fn perform_workflow_cleanup(
         &self,
         workflow_id: &str,
-        app_handle: &AppHandle
+        app_handle: &AppHandle,
     ) -> AppResult<bool> {
         // Implementation would clean up workflow-specific resources
         log::info!("Performing cleanup for workflow: {}", workflow_id);
-        
+
         // Real implementation would:
         // 1. Clean up temporary files
         // 2. Release any held resources
         // 3. Clear workflow state
         // 4. Emit cleanup events
-        
+
         Ok(true)
     }
 
@@ -322,25 +391,32 @@ impl WorkflowCancellationHandler {
         &self,
         workflow_id: &str,
         canceled_job_ids: &[String],
-        app_handle: &AppHandle
+        app_handle: &AppHandle,
     ) -> AppResult<bool> {
-        log::info!("Performing partial cleanup for workflow {} with {} canceled jobs", 
-                  workflow_id, canceled_job_ids.len());
-        
+        log::info!(
+            "Performing partial cleanup for workflow {} with {} canceled jobs",
+            workflow_id,
+            canceled_job_ids.len()
+        );
+
         // Clean up only resources related to canceled jobs
         for job_id in canceled_job_ids {
             // Implementation would clean up job-specific resources
             log::debug!("Cleaning up resources for canceled job: {}", job_id);
         }
-        
+
         Ok(true)
     }
 
-    fn get_subsequent_stages(&self, from_stage_name: &str, workflow_definition: &WorkflowDefinition) -> HashSet<String> {
+    fn get_subsequent_stages(
+        &self,
+        from_stage_name: &str,
+        workflow_definition: &WorkflowDefinition,
+    ) -> HashSet<String> {
         let mut stages_to_cancel = HashSet::new();
         let mut visited = HashSet::new();
         let mut stack = vec![from_stage_name.to_string()];
-        
+
         // Use DFS to find all stages that depend on the from_stage_name (directly or indirectly)
         while let Some(current_stage) = stack.pop() {
             if visited.contains(&current_stage) {
@@ -348,22 +424,31 @@ impl WorkflowCancellationHandler {
             }
             visited.insert(current_stage.clone());
             stages_to_cancel.insert(current_stage.clone());
-            
+
             // Find all stages that depend on the current stage
             for stage_def in &workflow_definition.stages {
-                if stage_def.dependencies.contains(&current_stage) && !visited.contains(&stage_def.stage_name) {
+                if stage_def.dependencies.contains(&current_stage)
+                    && !visited.contains(&stage_def.stage_name)
+                {
                     stack.push(stage_def.stage_name.clone());
                 }
             }
         }
-        
+
         stages_to_cancel
     }
 
-    fn should_cancel_job_for_stage(&self, job: &BackgroundJob, stages_to_cancel: &HashSet<String>) -> bool {
+    fn should_cancel_job_for_stage(
+        &self,
+        job: &BackgroundJob,
+        stages_to_cancel: &HashSet<String>,
+    ) -> bool {
         // Only cancel jobs that are not already completed or failed
         let status = Self::safe_job_status_from_str(&job.status).unwrap_or_else(|e| {
-            warn!("Failed to parse job status '{}' for job {}: {}. Defaulting to Idle.", job.status, job.id, e);
+            warn!(
+                "Failed to parse job status '{}' for job {}: {}. Defaulting to Idle.",
+                job.status, job.id, e
+            );
             JobStatus::Idle
         });
         if !status.is_active() {
@@ -382,7 +467,8 @@ impl WorkflowCancellationHandler {
         // First try to extract from job metadata
         if let Some(metadata_str) = &job.metadata {
             if let Ok(metadata) = serde_json::from_str::<serde_json::Value>(metadata_str) {
-                if let Some(workflow_stage) = metadata.get("workflowStage").and_then(|v| v.as_str()) {
+                if let Some(workflow_stage) = metadata.get("workflowStage").and_then(|v| v.as_str())
+                {
                     return Some(workflow_stage.to_string());
                 }
                 if let Some(stage_name) = metadata.get("stageName").and_then(|v| v.as_str()) {
@@ -390,7 +476,7 @@ impl WorkflowCancellationHandler {
                 }
             }
         }
-        
+
         // Fallback: derive stage name from task type
         Some(job.task_type.clone())
     }
@@ -405,23 +491,29 @@ impl WorkflowCancellationHandler {
     async fn has_critical_stage_failure(
         &self,
         workflow_id: &str,
-        workflow_jobs: &[BackgroundJob]
+        workflow_jobs: &[BackgroundJob],
     ) -> AppResult<bool> {
         // Check if any critical stages have failed
         for job in workflow_jobs {
             let status = Self::safe_job_status_from_str(&job.status).unwrap_or_else(|e| {
-                warn!("Failed to parse job status '{}' for job {}: {}. Defaulting to Idle.", job.status, job.id, e);
+                warn!(
+                    "Failed to parse job status '{}' for job {}: {}. Defaulting to Idle.",
+                    job.status, job.id, e
+                );
                 JobStatus::Idle
             });
             if status == JobStatus::Failed {
                 // Consider RegexFileFilter as critical since it's usually the first stage
                 if job.task_type == crate::models::TaskType::RegexFileFilter.to_string() {
-                    log::warn!("Critical stage failure detected in workflow {}: RegexFileFilter", workflow_id);
+                    log::warn!(
+                        "Critical stage failure detected in workflow {}: RegexFileFilter",
+                        workflow_id
+                    );
                     return Ok(true);
                 }
             }
         }
-        
+
         Ok(false)
     }
 
@@ -456,7 +548,10 @@ impl CancellationCoordinator {
     /// Safe wrapper to get active cancellations with timeout protection
     fn get_active_cancellations(&self) -> Result<std::sync::MutexGuard<HashSet<String>>, AppError> {
         self.active_cancellations.lock().map_err(|e| {
-            AppError::JobError(format!("Failed to acquire active cancellations lock: {}", e))
+            AppError::JobError(format!(
+                "Failed to acquire active cancellations lock: {}",
+                e
+            ))
         })
     }
 
@@ -465,21 +560,25 @@ impl CancellationCoordinator {
         &self,
         workflow_id: &str,
         reason: &str,
-        app_handle: &AppHandle
+        app_handle: &AppHandle,
     ) -> AppResult<CancellationResult> {
         // Check if cancellation is already in progress
         {
             let mut active = self.get_active_cancellations()?;
             if active.contains(workflow_id) {
-                return Err(AppError::ValidationError(
-                    format!("Cancellation already in progress for workflow: {}", workflow_id)
-                ));
+                return Err(AppError::ValidationError(format!(
+                    "Cancellation already in progress for workflow: {}",
+                    workflow_id
+                )));
             }
             active.insert(workflow_id.to_string());
         }
 
         // Perform the cancellation
-        let result = self.cancellation_handler.cancel_workflow(workflow_id, reason, app_handle).await;
+        let result = self
+            .cancellation_handler
+            .cancel_workflow(workflow_id, reason, app_handle)
+            .await;
 
         // Remove from active cancellations
         {
