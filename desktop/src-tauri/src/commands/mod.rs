@@ -18,8 +18,10 @@ pub mod database_maintenance_commands;
 pub mod error_recovery_commands;
 pub mod generic_task_commands;
 pub mod implementation_plan_commands;
+pub mod prompt_commands;
 pub mod setup_commands;
 pub mod text_commands;
+pub mod web_search_commands;
 pub mod workflow_commands;
 
 // Re-export all command functions for easier imports
@@ -49,8 +51,16 @@ pub use workflow_commands::{
     get_workflow_details_command, get_workflow_results, get_workflow_results_legacy,
     get_workflow_state, get_workflow_status, pause_workflow, resume_workflow,
     retry_workflow_command, retry_workflow_stage_command, start_file_finder_workflow,
+};
+
+// Re-exports from web search commands module
+pub use web_search_commands::{
+    continue_workflow_from_job_command, start_web_search_prompts_generation_job,
     start_web_search_workflow,
 };
+
+// Re-exports from prompt commands module
+pub use prompt_commands::get_system_prompt_for_task;
 
 // Re-exports from generic task commands module
 pub use generic_task_commands::generic_llm_stream_command;

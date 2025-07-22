@@ -5,7 +5,7 @@ use crate::error::AppError;
 use crate::services::billing_service::BillingService;
 use crate::models::AuthenticatedUser;
 use crate::models::billing::{AutoTopOffSettings, UpdateAutoTopOffRequest};
-use log::{info};
+use log::{info, warn};
 use bigdecimal::{BigDecimal, FromPrimitive};
 
 
@@ -72,6 +72,15 @@ pub async fn update_auto_top_off_settings_handler(
         threshold_decimal,
         amount_decimal,
     ).await?;
+    
+    // If auto top-off was enabled, immediately check if we need to trigger it
+    if request.enabled {
+        info!("Auto top-off enabled for user {}, checking if immediate top-off is needed", user.user_id);
+        if let Err(e) = billing_service.check_and_trigger_auto_top_off(&user.user_id).await {
+            warn!("Failed to check auto top-off immediately after enabling for user {}: {}", user.user_id, e);
+            // Don't fail the settings update, just log the error
+        }
+    }
     
     info!("Successfully updated auto top-off settings for user: {}", user.user_id);
     Ok(HttpResponse::Ok().json(settings))

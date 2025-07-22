@@ -234,7 +234,8 @@ fn main() {
             commands::implementation_plan_commands::create_merged_implementation_plan_command,
             // Workflow commands (new stage-based approach)
             commands::workflow_commands::start_file_finder_workflow,
-            commands::workflow_commands::start_web_search_workflow,
+            commands::web_search_commands::start_web_search_workflow,
+            commands::web_search_commands::start_web_search_prompts_generation_job,
             commands::workflow_commands::get_workflow_status,
             commands::workflow_commands::cancel_workflow,
             commands::workflow_commands::pause_workflow,
@@ -246,9 +247,11 @@ fn main() {
             commands::workflow_commands::retry_workflow_command,
             commands::workflow_commands::retry_workflow_stage_command,
             commands::workflow_commands::get_workflow_state,
-            commands::workflow_commands::continue_workflow_from_job_command,
+            commands::web_search_commands::continue_workflow_from_job_command,
             // Generic task commands
             commands::generic_task_commands::generic_llm_stream_command,
+            // Prompt commands
+            commands::prompt_commands::get_system_prompt_for_task,
             commands::generic_task_commands::refine_task_description_command,
             // Other task-specific commands
             commands::regex_commands::generate_regex_patterns_command,
