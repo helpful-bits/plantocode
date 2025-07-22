@@ -15,7 +15,7 @@ import {
   CardTitle,
 } from "@/ui/card";
 import { Progress } from "@/ui/progress";
-// Note: Using native checkbox as there's no Checkbox component in the UI library
+import { Checkbox } from "@/ui/checkbox";
 
 import { getParsedMetadata } from "../../background-jobs-sidebar/utils";
 import { getJobDisplaySessionName } from "../../background-jobs-sidebar/_utils/job-display-utils";
@@ -120,12 +120,12 @@ const ImplementationPlanCard = React.memo<ImplementationPlanCardProps>(({
         <div className="flex justify-between items-start">
           <div className="flex items-start gap-2 flex-1">
             {onToggleSelection && JOB_STATUSES.COMPLETED.includes(plan.status) && (
-              <input
-                type="checkbox"
-                checked={isSelected}
-                onChange={() => onToggleSelection(plan.id)}
-                className="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
-              />
+              <div className="flex items-center mt-1">
+                <Checkbox
+                  checked={isSelected}
+                  onCheckedChange={() => onToggleSelection(plan.id)}
+                />
+              </div>
             )}
             <div className="flex-1">
               <CardTitle className="text-base">

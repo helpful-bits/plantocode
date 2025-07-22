@@ -19,16 +19,8 @@ pub const CHECKOUT_SESSION_STATUS_OPEN: &str = "open";
 pub const CHECKOUT_SESSION_MODE_PAYMENT: &str = "payment";
 pub const CHECKOUT_SESSION_MODE_SETUP: &str = "setup";
 
-// Invoice Statuses
-pub const INVOICE_STATUS_DRAFT: &str = "draft";
-pub const INVOICE_STATUS_OPEN: &str = "open";
-pub const INVOICE_STATUS_PAID: &str = "paid";
-pub const INVOICE_STATUS_UNCOLLECTIBLE: &str = "uncollectible";
-pub const INVOICE_STATUS_VOID: &str = "void";
-
 // Webhook Event Types
 pub const EVENT_PAYMENT_INTENT_SUCCEEDED: &str = "payment_intent.succeeded";
-pub const EVENT_INVOICE_PAYMENT_SUCCEEDED: &str = "invoice.payment_succeeded";
 pub const EVENT_PAYMENT_METHOD_ATTACHED: &str = "payment_method.attached";
 pub const EVENT_PAYMENT_METHOD_DETACHED: &str = "payment_method.detached";
 pub const EVENT_CUSTOMER_DEFAULT_SOURCE_UPDATED: &str = "customer.default_source_updated";

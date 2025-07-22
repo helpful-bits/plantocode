@@ -167,6 +167,100 @@ impl CreditService {
         Ok((request_id, updated_balance))
     }
     
+    /// Validate adjustment limits in Rust to replace SQL function
+    async fn validate_adjustment_limits_in_rust(
+        &self,
+        estimated_cost: &BigDecimal,
+        final_cost: &BigDecimal,
+        executor: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    ) -> Result<(bool, Option<String>, bool), AppError> {
+        // Query application configurations for adjustment limits
+        let config = sqlx::query!(
+            r#"
+            SELECT config_value
+            FROM application_configurations
+            WHERE config_key = 'billing_adjustment_limits'
+            "#
+        )
+        .fetch_optional(&mut **executor)
+        .await
+        .map_err(|e| AppError::Database(format!("Failed to fetch application configuration: {}", e)))?;
+        
+        // Extract limits from JSONB config, using defaults if not found
+        let (max_amount, max_percentage, alert_amount, alert_percentage) = match config {
+            Some(cfg) => {
+                let json_val = cfg.config_value;
+                (
+                    json_val.get("max_adjustment_amount")
+                        .and_then(|v| v.as_f64())
+                        .and_then(BigDecimal::from_f64)
+                        .unwrap_or(BigDecimal::from(50)),
+                    json_val.get("max_adjustment_percentage")
+                        .and_then(|v| v.as_i64())
+                        .map(BigDecimal::from)
+                        .unwrap_or(BigDecimal::from(500)),
+                    json_val.get("alert_threshold_amount")
+                        .and_then(|v| v.as_f64())
+                        .and_then(BigDecimal::from_f64)
+                        .unwrap_or(BigDecimal::from(10)),
+                    json_val.get("alert_threshold_percentage")
+                        .and_then(|v| v.as_i64())
+                        .map(BigDecimal::from)
+                        .unwrap_or(BigDecimal::from(200))
+                )
+            },
+            None => (
+                BigDecimal::from(50),   // max_adjustment_amount
+                BigDecimal::from(500),  // max_adjustment_percentage
+                BigDecimal::from(10),   // alert_threshold_amount
+                BigDecimal::from(200)   // alert_threshold_percentage
+            )
+        };
+        
+        // Calculate the adjustment amount (this is the absolute change in balance)
+        let adjustment_amount = (final_cost - estimated_cost).abs();
+        
+        // Calculate percentage change
+        let percentage_change = if estimated_cost != &BigDecimal::from(0) {
+            (&adjustment_amount / estimated_cost) * BigDecimal::from(100)
+        } else if final_cost != &BigDecimal::from(0) {
+            // If estimated is 0 but final is not, this is effectively infinite percentage
+            BigDecimal::from(999999)
+        } else {
+            // Both are 0, no difference
+            BigDecimal::from(0)
+        };
+        
+        // Check if adjustment exceeds limits
+        let exceeds_amount_limit = adjustment_amount > max_amount;
+        let exceeds_percentage_limit = percentage_change > max_percentage;
+        let exceeds_limit = exceeds_amount_limit || exceeds_percentage_limit;
+        
+        // Check if we should alert (even if within limits)
+        let should_alert = adjustment_amount > alert_amount || percentage_change > alert_percentage;
+        
+        // Determine violation reason if limit exceeded
+        let violation_reason = if exceeds_limit {
+            if exceeds_amount_limit {
+                Some(format!(
+                    "Adjustment amount ${:.2} exceeds maximum allowed ${:.2}",
+                    adjustment_amount,
+                    max_amount
+                ))
+            } else {
+                Some(format!(
+                    "Adjustment percentage {:.0}% exceeds maximum allowed {}%",
+                    percentage_change,
+                    max_percentage
+                ))
+            }
+        } else {
+            None
+        };
+        
+        Ok((!exceeds_limit, violation_reason, should_alert))
+    }
+
     /// Finalize a charge with actual cost and metadata - updates api_usage to 'completed' and creates adjustment transaction
     pub async fn finalize_charge_in_transaction_with_metadata(
         &self,
@@ -279,19 +373,107 @@ impl CreditService {
         
         // If there's a cost difference, create adjustment transaction
         if cost_delta != BigDecimal::from(0) {
-            // Validate that the adjustment won't result in a negative balance
-            crate::utils::financial_validation::validate_balance_adjustment(&current_balance.balance, &cost_delta, "Usage finalization")?;
+            // CRITICAL FIX: Negate the cost_delta for balance adjustment
+            // When final_cost > estimated_cost, we need to CHARGE more (negative adjustment)
+            // When final_cost < estimated_cost, we need to REFUND (positive adjustment)
+            let balance_adjustment = -&cost_delta;
             
-            // Adjust the balance
-            final_balance = self.user_credit_repository
-                .increment_balance_with_executor(&existing_record.user_id, &cost_delta, tx)
-                .await?;
+            // Validate adjustment against limits using Rust function
+            let (is_valid, violation_reason, should_alert) = self.validate_adjustment_limits_in_rust(
+                &estimated_cost,
+                &final_cost,
+                tx
+            ).await?;
             
-            // Create adjustment transaction
-            let adjustment_description = if !cost_delta.is_negative() && !cost_delta.is_zero() {
-                format!("Usage adjustment refund for request {}", request_id)
+            if !is_valid {
+                // Log the violation and create alert
+                let percentage_change = if estimated_cost != BigDecimal::from(0) {
+                    (((&final_cost - &estimated_cost) / &estimated_cost) * BigDecimal::from(100)).round(2)
+                } else {
+                    BigDecimal::from(999999)
+                };
+                
+                sqlx::query!(
+                    r#"
+                    INSERT INTO billing_adjustment_alerts 
+                    (user_id, request_id, model_id, estimated_cost, final_cost, 
+                     adjustment_amount, percentage_change, alert_type, alert_reason)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                    "#,
+                    existing_record.user_id,
+                    request_id,
+                    final_usage.model_id,
+                    estimated_cost,
+                    final_cost,
+                    balance_adjustment,
+                    percentage_change,
+                    "limit_exceeded",
+                    violation_reason.as_deref()
+                )
+                .execute(&mut **tx)
+                .await
+                .map_err(|e| AppError::Database(format!("Failed to create adjustment alert: {}", e)))?;
+                
+                // Use the estimated cost instead of making extreme adjustment
+                warn!(
+                    "Adjustment limit exceeded for request {}: {}. Using estimated cost.",
+                    request_id,
+                    violation_reason.unwrap_or_default()
+                );
+                
+                // Skip the adjustment and keep the original estimated charge
+                final_balance = current_balance.clone();
             } else {
+                // Check if we should create an alert even for valid adjustments
+                if should_alert {
+                    let percentage_change = if estimated_cost != BigDecimal::from(0) {
+                        (((&final_cost - &estimated_cost) / &estimated_cost) * BigDecimal::from(100)).round(2)
+                    } else {
+                        BigDecimal::from(999999)
+                    };
+                    
+                    let alert_type = if balance_adjustment.abs() > BigDecimal::from(10) {
+                        "high_amount"
+                    } else {
+                        "high_percentage"
+                    };
+                    
+                    sqlx::query!(
+                        r#"
+                        INSERT INTO billing_adjustment_alerts 
+                        (user_id, request_id, model_id, estimated_cost, final_cost, 
+                         adjustment_amount, percentage_change, alert_type, alert_reason)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                        "#,
+                        existing_record.user_id,
+                        request_id,
+                        final_usage.model_id,
+                        estimated_cost,
+                        final_cost,
+                        balance_adjustment,
+                        percentage_change,
+                        alert_type,
+                        format!("Large adjustment: ${:.2} ({}%)", balance_adjustment.abs(), percentage_change.abs())
+                    )
+                    .execute(&mut **tx)
+                    .await
+                    .map_err(|e| AppError::Database(format!("Failed to create adjustment alert: {}", e)))?;
+                }
+            
+                // Validate that the adjustment won't result in a negative balance
+                crate::utils::financial_validation::validate_balance_adjustment(&current_balance.balance, &balance_adjustment, "Usage finalization")?;
+                
+                // Adjust the balance with the negated amount
+                final_balance = self.user_credit_repository
+                    .increment_balance_with_executor(&existing_record.user_id, &balance_adjustment, tx)
+                    .await?;
+            }
+            
+            // Create adjustment transaction description based on the original cost_delta
+            let adjustment_description = if cost_delta.is_positive() {
                 format!("Usage adjustment charge for request {}", request_id)
+            } else {
+                format!("Usage adjustment refund for request {}", request_id)
             };
             
             let adjustment_metadata = serde_json::json!({
@@ -310,7 +492,7 @@ impl CreditService {
                 id: uuid::Uuid::new_v4(),
                 user_id: existing_record.user_id,
                 transaction_type: "adjustment".to_string(),
-                net_amount: cost_delta.clone(),
+                net_amount: balance_adjustment.clone(),
                 gross_amount: None,
                 fee_amount: None,
                 currency: "USD".to_string(),
@@ -794,6 +976,29 @@ impl CreditService {
                 .await
                 .map_err(|e| AppError::Database(format!("Failed to set user context: {}", e)))?;
 
+            // Check if a transaction with this stripe_charge_id already exists
+            let existing_transaction = sqlx::query!(
+                r#"
+                SELECT id, user_id, stripe_charge_id
+                FROM credit_transactions
+                WHERE stripe_charge_id = $1
+                LIMIT 1
+                "#,
+                stripe_charge_id
+            )
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(|e| AppError::Database(format!("Failed to check for existing transaction: {}", e)))?;
+
+            if let Some(existing) = existing_transaction {
+                info!("Transaction with stripe_charge_id {} already exists (id: {}, user_id: {})", 
+                      stripe_charge_id, existing.id, existing.user_id);
+                return Err(AppError::AlreadyExists(format!(
+                    "Credit purchase for stripe charge {} was already processed", 
+                    stripe_charge_id
+                )));
+            }
+
             // Lock the user row to prevent concurrent modifications during auto-top-off
             let current_balance = sqlx::query_as!(
                 UserCredit,
@@ -885,11 +1090,9 @@ impl CreditService {
                     return Ok(updated_balance);
                 },
                 Err(e) => {
-                    // Check if this is a database constraint violation (duplicate key)
                     if let sqlx::Error::Database(db_error) = &e {
-                        if db_error.code().as_deref() == Some("23505") { // PostgreSQL unique constraint violation
-                            info!("Credit purchase for stripe charge {} was already recorded (duplicate constraint violation), returning success for idempotency", stripe_charge_id);
-                            // Return success with current balance for idempotency - this is the expected behavior for webhook handlers
+                        if db_error.code().as_deref() == Some("23505") {
+                            info!("Credit purchase for stripe charge {} was already recorded (duplicate constraint violation)", stripe_charge_id);
                             return Err(AppError::AlreadyExists(format!("Credit purchase for stripe charge {} was already processed", stripe_charge_id)));
                         }
                         // Handle serialization failures that can occur with SERIALIZABLE isolation

@@ -1,6 +1,6 @@
 "use client";
 
-import { useContext, useCallback } from "react";
+import { useContext, useCallback, useState, useEffect, useMemo } from "react";
 
 import { BackgroundJobsContext } from "@/contexts/background-jobs";
 import { SidebarHeader, StatusMessages } from "@/ui";
@@ -10,6 +10,7 @@ import { type BackgroundJob } from "@/types/session-types";
 import { useSessionStateContext, useSessionActionsContext } from "@/contexts/session";
 import { invoke } from '@tauri-apps/api/core';
 import { useNotification } from '@/contexts/notification-context';
+import { getSystemPromptForTaskAction } from "@/actions/ai/prompt.actions";
 
 import { JobContent } from "./_components/job-content";
 import { useJobFiltering } from "./hooks/use-job-filtering";
@@ -28,6 +29,10 @@ export const BackgroundJobsSidebar = () => {
   const { activeSessionId, currentSession } = useSessionStateContext();
   const { updateCurrentSessionFields, applyFileSelectionUpdate } = useSessionActionsContext();
   const { showNotification } = useNotification();
+  
+  // System prompt cache for web search execution
+  const [webSearchSystemPrompt, setWebSearchSystemPrompt] = useState<string>('');
+  const [isLoadingSystemPrompt, setIsLoadingSystemPrompt] = useState(false);
 
   // Use the extracted sidebar state manager hook
   const {
@@ -54,6 +59,38 @@ export const BackgroundJobsSidebar = () => {
     shouldShowLoading,
     shouldShowEmpty,
   } = useJobFiltering(jobs, isLoading);
+  
+  // Check if we have any completed web_search_prompts_generation jobs
+  const hasWebSearchPromptsJob = useMemo(() => {
+    return allJobsSorted.some(job => 
+      job.taskType === "web_search_prompts_generation" && 
+      job.status === "completed"
+    );
+  }, [allJobsSorted]);
+  
+  // Fetch system prompt once when we have a relevant job and a session
+  useEffect(() => {
+    if (hasWebSearchPromptsJob && activeSessionId && !webSearchSystemPrompt && !isLoadingSystemPrompt) {
+      const fetchSystemPrompt = async () => {
+        setIsLoadingSystemPrompt(true);
+        try {
+          const result = await getSystemPromptForTaskAction({
+            sessionId: activeSessionId,
+            taskType: 'web_search_execution'
+          });
+          if (result.isSuccess && result.data) {
+            setWebSearchSystemPrompt(result.data.systemPrompt);
+          }
+        } catch (error) {
+          console.error('Failed to fetch web search system prompt:', error);
+        } finally {
+          setIsLoadingSystemPrompt(false);
+        }
+      };
+      
+      fetchSystemPrompt();
+    }
+  }, [hasWebSearchPromptsJob, activeSessionId, webSearchSystemPrompt, isLoadingSystemPrompt]);
 
   // Function to apply web search results to the session
   const applyWebSearchResultsToSession = useCallback((results: any[]) => {
@@ -230,6 +267,7 @@ export const BackgroundJobsSidebar = () => {
               onSelect={handleSelectJob}
               onApplyFiles={handleApplyFilesFromJob}
               onContinueWorkflow={handleContinueWorkflow}
+              webSearchSystemPrompt={webSearchSystemPrompt}
               currentSessionId={activeSessionId || undefined}
             />
           </CollapsibleContent>

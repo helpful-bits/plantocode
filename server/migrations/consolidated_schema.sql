@@ -1220,6 +1220,158 @@ COMMENT ON FUNCTION run_rls_security_tests() IS
 'Convenience function that runs all RLS security tests and provides a summary.
 Run with: SELECT * FROM run_rls_security_tests();';
 
+-- Model estimation coefficients for improved cost estimation accuracy
+-- This table stores adjustment factors to improve initial token estimates
+CREATE TABLE IF NOT EXISTS model_estimation_coefficients (
+    model_id VARCHAR(255) PRIMARY KEY REFERENCES models(id),
+    
+    -- Input token estimation coefficients
+    input_multiplier DECIMAL(5,3) NOT NULL DEFAULT 1.000,
+    input_offset BIGINT NOT NULL DEFAULT 0,
+    
+    -- Output token estimation coefficients  
+    output_multiplier DECIMAL(5,3) NOT NULL DEFAULT 1.000,
+    output_offset BIGINT NOT NULL DEFAULT 0,
+    
+    -- Average output length for this model (for better estimates)
+    avg_output_tokens BIGINT,
+    
+    -- Confidence metrics
+    sample_count INTEGER NOT NULL DEFAULT 0,
+    last_updated TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    
+    -- Constraints
+    CHECK (input_multiplier > 0 AND input_multiplier <= 10),
+    CHECK (output_multiplier > 0 AND output_multiplier <= 10),
+    CHECK (input_offset >= -100000 AND input_offset <= 100000),
+    CHECK (output_offset >= -100000 AND output_offset <= 100000)
+);
+
+-- Create index for faster lookups
+CREATE INDEX IF NOT EXISTS idx_estimation_coefficients_updated ON model_estimation_coefficients(last_updated);
+
+-- RLS for model_estimation_coefficients table
+ALTER TABLE model_estimation_coefficients ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "App users can select estimation coefficients" ON model_estimation_coefficients;
+CREATE POLICY "App users can select estimation coefficients"
+ON model_estimation_coefficients FOR SELECT
+TO vibe_manager_app, authenticated
+USING (true);
+
+-- Grant permissions
+GRANT SELECT ON model_estimation_coefficients TO authenticated;
+GRANT SELECT ON model_estimation_coefficients TO vibe_manager_app;
+
+-- Load initial estimation coefficients
+\i data_estimation_coefficients.sql
+
+-- Add safeguards for billing adjustments
+-- Configuration for maximum allowed adjustments
+INSERT INTO application_configurations (config_key, config_value, description)
+VALUES (
+    'billing_adjustment_limits',
+    jsonb_build_object(
+        'max_adjustment_amount', 50.00,
+        'max_adjustment_percentage', 500,
+        'alert_threshold_amount', 10.00,
+        'alert_threshold_percentage', 200
+    ),
+    'Limits and thresholds for billing adjustment safeguards'
+)
+ON CONFLICT (config_key) DO NOTHING;
+
+-- Table to track adjustment alerts
+CREATE TABLE IF NOT EXISTS billing_adjustment_alerts (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id),
+    request_id TEXT NOT NULL,
+    model_id TEXT NOT NULL,
+    estimated_cost DECIMAL(12,6) NOT NULL,
+    final_cost DECIMAL(12,6) NOT NULL,
+    adjustment_amount DECIMAL(12,6) NOT NULL,
+    percentage_change DECIMAL(8,2) NOT NULL,
+    alert_type TEXT NOT NULL,
+    alert_reason TEXT,
+    handled BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    handled_at TIMESTAMPTZ,
+    handled_by TEXT,
+    notes TEXT
+);
+
+CREATE INDEX idx_billing_alerts_unhandled ON billing_adjustment_alerts(created_at DESC) 
+WHERE handled = FALSE;
+CREATE INDEX idx_billing_alerts_user ON billing_adjustment_alerts(user_id, created_at DESC);
+
+-- Pending usage timeout handling
+ALTER TABLE api_usage 
+ADD COLUMN IF NOT EXISTS pending_timeout_at TIMESTAMPTZ;
+
+CREATE INDEX IF NOT EXISTS idx_api_usage_pending_timeout 
+ON api_usage(pending_timeout_at) 
+WHERE status = 'pending' AND pending_timeout_at IS NOT NULL;
+
+-- Function to finalize timed-out pending charges
+CREATE OR REPLACE FUNCTION finalize_timed_out_pending_usage()
+RETURNS TABLE (
+    finalized_count INTEGER,
+    total_cost_recovered DECIMAL(12,6)
+) AS $$
+DECLARE
+    v_count INTEGER := 0;
+    v_total_cost DECIMAL(12,6) := 0;
+    v_record RECORD;
+BEGIN
+    FOR v_record IN 
+        SELECT id, user_id, request_id, service_name, tokens_input, tokens_output, cost, metadata
+        FROM api_usage
+        WHERE status = 'pending'
+            AND pending_timeout_at IS NOT NULL
+            AND pending_timeout_at < NOW()
+        FOR UPDATE SKIP LOCKED
+        LIMIT 100
+    LOOP
+        UPDATE api_usage
+        SET 
+            status = 'completed',
+            metadata = COALESCE(metadata, '{}'::jsonb) || 
+                       jsonb_build_object(
+                           'finalization_type', 'timeout',
+                           'finalized_at', NOW(),
+                           'timeout_minutes', 10,
+                           'original_status', 'pending'
+                       )
+        WHERE id = v_record.id;
+        
+        v_count := v_count + 1;
+        v_total_cost := v_total_cost + v_record.cost;
+        
+        INSERT INTO audit_logs (
+            user_id, action_type, entity_type, entity_id, metadata, performed_by, status
+        ) VALUES (
+            v_record.user_id, 'api_usage_timeout_finalization', 'api_usage', v_record.id::TEXT,
+            jsonb_build_object(
+                'request_id', v_record.request_id,
+                'service_name', v_record.service_name,
+                'cost', v_record.cost,
+                'tokens_input', v_record.tokens_input,
+                'tokens_output', v_record.tokens_output,
+                'timeout_after_minutes', 10
+            ),
+            'system', 'completed'
+        );
+    END LOOP;
+    
+    RETURN QUERY SELECT v_count, v_total_cost;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Grant permissions
+GRANT SELECT, INSERT ON billing_adjustment_alerts TO vibe_manager_app;
+GRANT SELECT, INSERT ON billing_adjustment_alerts TO authenticated;
+GRANT EXECUTE ON FUNCTION finalize_timed_out_pending_usage TO vibe_manager_app;
+
 -- =============================================================================
 -- COMPREHENSIVE SECURITY IMPLEMENTATION STATUS
 -- =============================================================================
@@ -1256,6 +1408,21 @@ Run with: SELECT * FROM run_rls_security_tests();';
 --    - Application-level service (see src/services/reconciliation_service.rs)
 --    - Automated hourly balance verification
 --    - Discrepancy detection and reporting
+
+-- ✅ STEP 7: Token Estimation Accuracy
+--    - Model estimation coefficients table for per-model adjustment factors
+--    - Input and output token multipliers and offsets
+--    - Average output token tracking for better predictions
+--    - Database function for coefficient-based estimation
+--    - Reduces discrepancy between estimated and actual costs
+
+-- ✅ STEP 8: Billing Safeguards and Protection
+--    - Maximum adjustment limits ($50 or 500%)
+--    - Alert thresholds for large adjustments
+--    - Billing adjustment alerts table for monitoring
+--    - Pending usage timeout handling (10 minutes)
+--    - Automatic finalization of timed-out charges
+--    - Protection against indefinite pending charges
 
 -- =============================================================================
 -- SECURITY VERIFICATION COMMANDS
