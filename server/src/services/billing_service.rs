@@ -1148,6 +1148,101 @@ impl BillingService {
         Ok((is_payment_method_required, is_billing_info_required))
     }
 
+    /// List invoices for a user with pagination
+    pub async fn list_invoices_for_user(
+        &self,
+        user_id: Uuid,
+        limit: i32,
+        starting_after: Option<String>,
+    ) -> Result<crate::models::ListInvoicesResponse, AppError> {
+        debug!("Listing invoices for user: {}", user_id);
+
+        // Get customer ID for the user
+        let customer_id = match self.get_or_create_stripe_customer(&user_id).await {
+            Ok(id) => id,
+            Err(_) => {
+                // If no Stripe customer, return empty list
+                return Ok(crate::models::ListInvoicesResponse {
+                    total_invoices: 0,
+                    invoices: vec![],
+                    has_more: false,
+                });
+            }
+        };
+
+        // Get the Stripe service
+        let stripe_service = self.get_stripe_service()?;
+
+        // List invoices from Stripe
+        let invoices_json = match stripe_service.list_invoices(
+            &customer_id,
+            Some(limit as u64),
+            starting_after.as_deref(),
+        ).await {
+            Ok(json) => json,
+            Err(e) => {
+                warn!("Failed to list invoices from Stripe for user {}: {:?}", user_id, e);
+                return Ok(crate::models::ListInvoicesResponse {
+                    total_invoices: 0,
+                    invoices: vec![],
+                    has_more: false,
+                });
+            }
+        };
+
+        // Parse the JSON response
+        let empty_vec = Vec::new();
+        let data_array = invoices_json.get("data")
+            .and_then(|d| d.as_array())
+            .unwrap_or(&empty_vec);
+        
+        let has_more = invoices_json.get("has_more")
+            .and_then(|h| h.as_bool())
+            .unwrap_or(false);
+
+        // Convert Stripe invoices to our Invoice model
+        let mut invoices = Vec::new();
+        for invoice_json in data_array {
+            let invoice = crate::models::Invoice {
+                id: invoice_json.get("id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+                created: invoice_json.get("created")
+                    .and_then(|v| v.as_i64())
+                    .unwrap_or(0),
+                due_date: invoice_json.get("due_date")
+                    .and_then(|v| v.as_i64()),
+                amount_due: invoice_json.get("amount_due")
+                    .and_then(|v| v.as_i64())
+                    .unwrap_or(0),
+                amount_paid: invoice_json.get("amount_paid")
+                    .and_then(|v| v.as_i64())
+                    .unwrap_or(0),
+                currency: invoice_json.get("currency")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("usd")
+                    .to_string(),
+                status: invoice_json.get("status")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("unknown")
+                    .to_string(),
+                invoice_pdf_url: invoice_json.get("invoice_pdf")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()),
+            };
+            invoices.push(invoice);
+        }
+
+        info!("Successfully retrieved {} invoices for user {}", invoices.len(), user_id);
+
+        Ok(crate::models::ListInvoicesResponse {
+            total_invoices: invoices.len() as i32,
+            invoices,
+            has_more,
+        })
+    }
+
     /// Calculate cost for streaming tokens using server-side model pricing
     pub async fn calculate_streaming_cost(
         &self,

@@ -743,6 +743,36 @@ impl StripeService {
         Ok(setup_intent)
     }
 
+    /// List invoices for a customer with pagination
+    pub async fn list_invoices(&self, customer_id: &str, limit: Option<u64>, starting_after: Option<&str>) -> Result<serde_json::Value, StripeServiceError> {
+        let mut query_params = vec![
+            ("customer".to_string(), customer_id.to_string()),
+        ];
+        
+        if let Some(limit_val) = limit {
+            query_params.push(("limit".to_string(), limit_val.to_string()));
+        }
+        
+        if let Some(starting_after_value) = starting_after {
+            query_params.push(("starting_after".to_string(), starting_after_value.to_string()));
+        }
+        
+        let query_string = query_params
+            .into_iter()
+            .map(|(k, v)| format!("{}={}", k, v))
+            .collect::<Vec<_>>()
+            .join("&");
+        
+        let response = self.make_stripe_request_with_idempotency(
+            reqwest::Method::GET,
+            &format!("invoices?{}", query_string),
+            None,
+            None,
+        ).await?;
+        
+        Ok(response)
+    }
+
     /// Create a Stripe Checkout Session (generic for payment and setup modes)
     pub async fn create_checkout_session(
         &self,
