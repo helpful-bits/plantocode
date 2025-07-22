@@ -35,7 +35,7 @@ export function useFileSelection(projectDirectory?: string) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
-  const [filterMode, setFilterMode] = useState<"all" | "selected">("all");
+  const [filterMode, setFilterMode] = useState<"all" | "selected">(currentSession?.filterMode || "all");
   const [sortBy, setSortBy] = useState<"name" | "size" | "modified">("name");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
   
@@ -47,6 +47,12 @@ export function useFileSelection(projectDirectory?: string) {
   // Create stable references for current session data
   const sessionIncluded = useMemo(() => currentSession?.includedFiles || [], [currentSession?.includedFiles]);
   const sessionExcluded = useMemo(() => currentSession?.forceExcludedFiles || [], [currentSession?.forceExcludedFiles]);
+  
+  // Handle filter mode changes with persistence
+  const handleSetFilterMode = useCallback((newMode: "all" | "selected") => {
+    setFilterMode(newMode);
+    updateCurrentSessionFields({ filterMode: newMode });
+  }, [updateCurrentSessionFields]);
   
   // Computed files that combines filesystem data with session selection state
   const files = useMemo((): ExtendedFileInfo[] => {
@@ -92,6 +98,26 @@ export function useFileSelection(projectDirectory?: string) {
   useEffect(() => {
     loadFiles();
   }, [loadFiles]);
+
+  // Listen for file selection applied events and switch to selected view
+  useEffect(() => {
+    const handleFileSelectionApplied = () => {
+      handleSetFilterMode("selected");
+    };
+
+    window.addEventListener("file-selection-applied", handleFileSelectionApplied);
+
+    return () => {
+      window.removeEventListener("file-selection-applied", handleFileSelectionApplied);
+    };
+  }, [handleSetFilterMode]);
+
+  // Sync filter mode when currentSession.filterMode changes externally
+  useEffect(() => {
+    if (currentSession?.filterMode && currentSession.filterMode !== filterMode) {
+      setFilterMode(currentSession.filterMode);
+    }
+  }, [currentSession?.filterMode, filterMode]);
 
   // Load history when session changes
   useEffect(() => {
@@ -350,7 +376,7 @@ export function useFileSelection(projectDirectory?: string) {
     searchTerm,
     setSearchTerm,
     filterMode,
-    setFilterMode,
+    setFilterMode: handleSetFilterMode,
     sortBy,
     setSortBy,
     sortOrder,

@@ -181,36 +181,34 @@ pub fn log_error_with_metadata(error: &AppError, context: &str, metadata: Option
 
 /// Log a workflow-specific error with enhanced context
 pub fn log_workflow_error(
-    error: &AppError, 
-    context: &str, 
+    error: &AppError,
+    context: &str,
     workflow_id: Option<&str>,
     stage_name: Option<&str>,
-    stage_job_id: Option<&str>
+    stage_job_id: Option<&str>,
 ) {
     let mut log_parts = vec![format!("{}: {}", context, error)];
-    
+
     if let Some(wf_id) = workflow_id {
         log_parts.push(format!("WorkflowId: {}", wf_id));
     }
-    
+
     if let Some(stage) = stage_name {
         log_parts.push(format!("Stage: {}", stage));
     }
-    
+
     if let Some(job_id) = stage_job_id {
         log_parts.push(format!("JobId: {}", job_id));
     }
-    
+
     error!("{}", log_parts.join(" | "));
 }
 
 /// Convert a serialized error string back to a SerializableError
 pub fn parse_error_string(error_string: &str) -> crate::error::SerializableError {
-    serde_json::from_str(error_string).unwrap_or_else(|_| {
-        crate::error::SerializableError {
-            code: "UNKNOWN_ERROR".to_string(),
-            message: error_string.to_string(),
-            details: None,
-        }
+    serde_json::from_str(error_string).unwrap_or_else(|_| crate::error::SerializableError {
+        code: "UNKNOWN_ERROR".to_string(),
+        message: error_string.to_string(),
+        details: None,
     })
 }

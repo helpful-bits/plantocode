@@ -1,16 +1,16 @@
-use std::sync::Arc;
-use tauri::{AppHandle, Manager};
+use chrono;
 use log::{debug, info, warn};
 use serde_json::Value;
-use chrono;
+use std::sync::Arc;
+use tauri::{AppHandle, Manager};
 use tokio::fs;
 
-use crate::error::{AppError, AppResult};
-use crate::models::OpenRouterUsage;
 use crate::db_utils::BackgroundJobRepository;
+use crate::error::{AppError, AppResult};
 use crate::jobs::job_processor_utils;
 use crate::jobs::processors::utils::{llm_api_utils, prompt_utils};
 use crate::jobs::types::Job;
+use crate::models::OpenRouterUsage;
 use crate::utils::unified_prompt_system::ComposedPrompt;
 
 /// Configuration for an LLM task execution
@@ -73,32 +73,42 @@ impl LlmTaskRunner {
 
         // Build unified prompt
         let composed_prompt = self.build_prompt(context).await?;
-        
+
         // Extract system and user prompts using direct field access
         let system_prompt = composed_prompt.system_prompt.clone();
         let user_prompt = composed_prompt.user_prompt.clone();
         let system_prompt_id = composed_prompt.system_prompt_id.clone();
         let system_prompt_template = composed_prompt.system_prompt_template.clone();
-        
+
         // Store system prompt template early in the process (before LLM request)
         // This ensures the template is available even if the job fails
         if !system_prompt_template.is_empty() {
-            if let Some(repo) = self.app_handle.try_state::<Arc<crate::db_utils::BackgroundJobRepository>>() {
-                if let Err(e) = repo.update_system_prompt_template(&self.job.id, &system_prompt_template).await {
-                    warn!("Failed to store system prompt template early for job {}: {}", self.job.id, e);
+            if let Some(repo) = self
+                .app_handle
+                .try_state::<Arc<crate::db_utils::BackgroundJobRepository>>()
+            {
+                if let Err(e) = repo
+                    .update_system_prompt_template(&self.job.id, &system_prompt_template)
+                    .await
+                {
+                    warn!(
+                        "Failed to store system prompt template early for job {}: {}",
+                        self.job.id, e
+                    );
                     // Don't fail the job for this, just log the warning
                 }
             }
         }
-        
+
         // Log the actual system prompt being sent to the LLM
-        
+
         // Log full prompt to file for debugging
-        self.log_prompt_to_file(&system_prompt, &user_prompt, "non_streaming").await;
-        
+        self.log_prompt_to_file(&system_prompt, &user_prompt, "non_streaming")
+            .await;
+
         // Create messages
         let messages = llm_api_utils::create_openrouter_messages(&system_prompt, &user_prompt);
-        
+
         // Create API options
         let mut api_options = llm_api_utils::create_api_client_options(
             self.config.model.clone(),
@@ -106,32 +116,43 @@ impl LlmTaskRunner {
             self.config.max_tokens,
             self.config.stream,
         )?;
-        
+
         // Add task type for web mode detection
         api_options.task_type = Some(self.job.task_type.to_string());
-        
-        
+
         // Execute the LLM call
-        let response = llm_api_utils::execute_llm_chat_completion(
-            &self.app_handle,
-            messages,
-            api_options,
-        ).await?;
-        
+        let response =
+            llm_api_utils::execute_llm_chat_completion(&self.app_handle, messages, api_options)
+                .await?;
+
         // Log server-authoritative usage data for billing audit trail
-        debug!("Server-authoritative usage data from non-streaming LLM response: {:?}", response.usage);
-        
-        let response_text = response.choices
+        debug!(
+            "Server-authoritative usage data from non-streaming LLM response: {:?}",
+            response.usage
+        );
+
+        let response_text = response
+            .choices
             .first()
             .map(|choice| choice.message.content.clone())
             .unwrap_or_default();
-        
+
         // Server provides authoritative cost and token counts - no client-side calculation needed
-        debug!("Non-streaming LLM response usage (server-calculated): {:?}", response.usage);
-        
+        debug!(
+            "Non-streaming LLM response usage (server-calculated): {:?}",
+            response.usage
+        );
+
         // Log complete interaction (prompt + response) to file for debugging
-        self.log_complete_interaction(&system_prompt, &user_prompt, &response_text, &response.usage, "non_streaming").await;
-        
+        self.log_complete_interaction(
+            &system_prompt,
+            &user_prompt,
+            &response_text,
+            &response.usage,
+            "non_streaming",
+        )
+        .await;
+
         Ok(LlmTaskResult {
             response: response_text,
             usage: response.usage, // Server-authoritative usage data including cost
@@ -152,31 +173,41 @@ impl LlmTaskRunner {
         debug!("Executing streaming LLM task for job {}", self.job.id);
 
         // Fetch the current job's metadata before starting the stream
-        let initial_db_job = repo.get_job_by_id(job_id).await?
-            .ok_or_else(|| AppError::JobError(format!("Job {} not found for streaming metadata", job_id)))?;
+        let initial_db_job = repo.get_job_by_id(job_id).await?.ok_or_else(|| {
+            AppError::JobError(format!("Job {} not found for streaming metadata", job_id))
+        })?;
 
         // Build unified prompt
         let composed_prompt = self.build_prompt(context).await?;
-        
+
         // Extract system and user prompts using direct field access
         let system_prompt = composed_prompt.system_prompt.clone();
         let user_prompt = composed_prompt.user_prompt.clone();
         let system_prompt_id = composed_prompt.system_prompt_id.clone();
         let system_prompt_template = composed_prompt.system_prompt_template.clone();
-        
+
         // Store system prompt template early in the process (before LLM request)
         // This ensures the template is available even if the job fails
         if !system_prompt_template.is_empty() {
-            if let Some(repo) = self.app_handle.try_state::<Arc<crate::db_utils::BackgroundJobRepository>>() {
-                if let Err(e) = repo.update_system_prompt_template(&self.job.id, &system_prompt_template).await {
-                    warn!("Failed to store system prompt template early for job {}: {}", self.job.id, e);
+            if let Some(repo) = self
+                .app_handle
+                .try_state::<Arc<crate::db_utils::BackgroundJobRepository>>()
+            {
+                if let Err(e) = repo
+                    .update_system_prompt_template(&self.job.id, &system_prompt_template)
+                    .await
+                {
+                    warn!(
+                        "Failed to store system prompt template early for job {}: {}",
+                        self.job.id, e
+                    );
                     // Don't fail the job for this, just log the warning
                 }
             }
         }
-        
+
         // DO NOT generate request_id locally - it will be received from stream_started event
-        
+
         // Create API options with streaming enabled (DO NOT set request_id - server will generate it)
         let mut api_options = llm_api_utils::create_api_client_options(
             self.config.model.clone(),
@@ -185,23 +216,28 @@ impl LlmTaskRunner {
             true, // Force streaming
         )?;
         // DO NOT set request_id - server will generate and return it in stream_started event
-        
+
         // Add task type for web mode detection
         api_options.task_type = Some(self.job.task_type.to_string());
-        
+
         // Log full prompt to file for debugging
-        self.log_prompt_to_file(&system_prompt, &user_prompt, "streaming").await;
-        
-        
+        self.log_prompt_to_file(&system_prompt, &user_prompt, "streaming")
+            .await;
+
         // Get API client
         let llm_client = llm_api_utils::get_api_client(&self.app_handle)?;
-        
+
         // Create messages for structured streaming (preferred approach)
         let messages = llm_api_utils::create_openrouter_messages(&system_prompt, &user_prompt);
-        
+
         // Create streaming handler configuration
-        let stream_config = crate::jobs::streaming_handler::create_stream_config(&system_prompt, &user_prompt, &self.config.model, self.config.max_tokens as usize);
-        
+        let stream_config = crate::jobs::streaming_handler::create_stream_config(
+            &system_prompt,
+            &user_prompt,
+            &self.config.model,
+            self.config.max_tokens as usize,
+        );
+
         // Create streaming handler
         let streaming_handler = crate::jobs::streaming_handler::StreamedResponseHandler::new(
             repo.clone(),
@@ -210,27 +246,37 @@ impl LlmTaskRunner {
             stream_config,
             Some(self.app_handle.clone()),
         );
-        
+
         // Process the stream using structured messages (preferred for LLM provider compliance)
         let stream_result = streaming_handler
             .process_stream_from_client_with_messages(&llm_client, messages, api_options)
             .await;
-        
+
         // Handle the stream result
         let stream_result = stream_result?;
-        
+
         // Extract request_id from the stream result (no longer needed for cost polling)
         let request_id = stream_result.request_id.clone();
-        
+
         // Log server-authoritative usage data for billing audit trail
-        debug!("Server-authoritative usage data from streaming LLM response: {:?}", stream_result.final_usage);
-        
+        debug!(
+            "Server-authoritative usage data from streaming LLM response: {:?}",
+            stream_result.final_usage
+        );
+
         // Use the usage data from the stream result (updated with authoritative cost data)
         let final_usage = stream_result.final_usage.clone();
-        
+
         // Log complete interaction (prompt + response) to file for debugging
-        self.log_complete_interaction(&system_prompt, &user_prompt, &stream_result.accumulated_response, &final_usage, "streaming").await;
-        
+        self.log_complete_interaction(
+            &system_prompt,
+            &user_prompt,
+            &stream_result.accumulated_response,
+            &final_usage,
+            "streaming",
+        )
+        .await;
+
         Ok(LlmTaskResult {
             response: stream_result.accumulated_response,
             usage: final_usage, // Server-authoritative usage data including cost
@@ -242,13 +288,13 @@ impl LlmTaskRunner {
 
     /// Helper method to build unified prompt from context
     /// Gracefully handles None or empty values in LlmPromptContext
-    async fn build_prompt(
-        &self,
-        context: LlmPromptContext,
-    ) -> AppResult<ComposedPrompt> {
+    async fn build_prompt(&self, context: LlmPromptContext) -> AppResult<ComposedPrompt> {
         // Validate that we have at least task_description for meaningful prompt generation
         if context.task_description.trim().is_empty() {
-            warn!("LlmTaskRunner (job {}): Task description is empty, prompt quality may be poor", self.job.id);
+            warn!(
+                "LlmTaskRunner (job {}): Task description is empty, prompt quality may be poor",
+                self.job.id
+            );
         }
 
         // Use unified prompt system - it handles None values gracefully
@@ -260,54 +306,75 @@ impl LlmTaskRunner {
             context.file_contents,
             context.directory_tree,
             &self.config.model,
-        ).await
+        )
+        .await
     }
-
-
 
     /// Log prompt to temporary file for debugging
     #[cfg(debug_assertions)]
     async fn log_prompt_to_file(&self, system_prompt: &str, user_prompt: &str, prompt_type: &str) {
         let base_dir = std::path::Path::new("/Users/kirylkazlovich/dev/vibe-manager/tmp");
-        let task_type_dir = base_dir.join("llm_logs").join(format!("{:?}", self.job.task_type));
-        
+        let task_type_dir = base_dir
+            .join("llm_logs")
+            .join(format!("{:?}", self.job.task_type));
+
         if let Err(_) = fs::create_dir_all(&task_type_dir).await {
             // Silently fail if can't create directory
             return;
         }
-        
+
         let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S%.3f");
         let filename = format!("prompt_{}_{}.txt", self.job.id, timestamp);
         let filepath = task_type_dir.join(filename);
-        
+
         let full_prompt = format!(
             "=== JOB ID: {} ===\n=== TASK TYPE: {:?} ===\n=== MODEL: {} ===\n=== TEMPERATURE: {} ===\n=== PROMPT TYPE: {} ===\n\n=== SYSTEM PROMPT ===\n{}\n\n=== USER PROMPT ===\n{}\n\n=== END ===\n",
-            self.job.id, self.job.task_type, self.config.model, self.config.temperature, prompt_type, system_prompt, user_prompt
+            self.job.id,
+            self.job.task_type,
+            self.config.model,
+            self.config.temperature,
+            prompt_type,
+            system_prompt,
+            user_prompt
         );
-        
+
         let _ = fs::write(&filepath, full_prompt).await;
     }
-    
+
     #[cfg(not(debug_assertions))]
-    async fn log_prompt_to_file(&self, _system_prompt: &str, _user_prompt: &str, _prompt_type: &str) {
+    async fn log_prompt_to_file(
+        &self,
+        _system_prompt: &str,
+        _user_prompt: &str,
+        _prompt_type: &str,
+    ) {
         // No-op in release builds
     }
-    
+
     /// Log complete LLM interaction (prompt + response) to temporary file for debugging
     #[cfg(debug_assertions)]
-    async fn log_complete_interaction(&self, system_prompt: &str, user_prompt: &str, response: &str, usage: &Option<crate::models::OpenRouterUsage>, prompt_type: &str) {
+    async fn log_complete_interaction(
+        &self,
+        system_prompt: &str,
+        user_prompt: &str,
+        response: &str,
+        usage: &Option<crate::models::OpenRouterUsage>,
+        prompt_type: &str,
+    ) {
         let base_dir = std::path::Path::new("/Users/kirylkazlovich/dev/vibe-manager/tmp");
-        let task_type_dir = base_dir.join("llm_interactions").join(format!("{:?}", self.job.task_type));
-        
+        let task_type_dir = base_dir
+            .join("llm_interactions")
+            .join(format!("{:?}", self.job.task_type));
+
         if let Err(_) = fs::create_dir_all(&task_type_dir).await {
             // Silently fail if can't create directory
             return;
         }
-        
+
         let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S%.3f");
         let filename = format!("interaction_{}_{}.txt", self.job.id, timestamp);
         let filepath = task_type_dir.join(filename);
-        
+
         // Format usage information
         let usage_info = if let Some(usage) = usage {
             format!(
@@ -320,22 +387,35 @@ impl LlmTaskRunner {
         } else {
             "=== USAGE ===\nNo usage information available\n\n".to_string()
         };
-        
+
         let full_interaction = format!(
             "=== LLM INTERACTION LOG ===\n=== JOB ID: {} ===\n=== TASK TYPE: {:?} ===\n=== MODEL: {} ===\n=== TEMPERATURE: {} ===\n=== PROMPT TYPE: {} ===\n\n{}\n=== SYSTEM PROMPT ===\n{}\n\n=== USER PROMPT ===\n{}\n\n=== LLM RESPONSE ===\n{}\n\n=== END INTERACTION ===\n",
-            self.job.id, self.job.task_type, self.config.model, self.config.temperature, prompt_type, usage_info, system_prompt, user_prompt, response
+            self.job.id,
+            self.job.task_type,
+            self.config.model,
+            self.config.temperature,
+            prompt_type,
+            usage_info,
+            system_prompt,
+            user_prompt,
+            response
         );
-        
+
         let _ = fs::write(&filepath, full_interaction).await;
     }
-    
+
     #[cfg(not(debug_assertions))]
-    async fn log_complete_interaction(&self, _system_prompt: &str, _user_prompt: &str, _response: &str, _usage: &Option<crate::models::OpenRouterUsage>, _prompt_type: &str) {
+    async fn log_complete_interaction(
+        &self,
+        _system_prompt: &str,
+        _user_prompt: &str,
+        _response: &str,
+        _usage: &Option<crate::models::OpenRouterUsage>,
+        _prompt_type: &str,
+    ) {
         // No-op in release builds
     }
-    
 }
-
 
 /// Builder for LlmTaskConfig
 pub struct LlmTaskConfigBuilder {

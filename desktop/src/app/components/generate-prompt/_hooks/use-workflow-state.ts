@@ -94,24 +94,28 @@ export function useWorkflowState() {
   useEffect(() => {
     if (!fileFinderWorkflowJob) return;
     
-    if (fileFinderWorkflowJob.status === 'completed' && !processedJobIds.current.has(fileFinderWorkflowJob.id)) {
-      processedJobIds.current.add(fileFinderWorkflowJob.id);
-      
-      // Only apply if this workflow belongs to the current session
-      if (fileFinderWorkflowJob.sessionId === currentSession?.id) {
-        try {
-          const parsedResponse = typeof fileFinderWorkflowJob.response === 'string' 
-            ? JSON.parse(fileFinderWorkflowJob.response) 
-            : fileFinderWorkflowJob.response;
-          
-          if (parsedResponse?.selectedFiles && Array.isArray(parsedResponse.selectedFiles)) {
-            applyFileSelectionUpdate(parsedResponse.selectedFiles, "AI File Finder");
+    const handleWorkflowCompletion = async () => {
+      if (fileFinderWorkflowJob.status === 'completed' && !processedJobIds.current.has(fileFinderWorkflowJob.id)) {
+        processedJobIds.current.add(fileFinderWorkflowJob.id);
+        
+        // Only apply if this workflow belongs to the current session
+        if (fileFinderWorkflowJob.sessionId === currentSession?.id) {
+          try {
+            const parsedResponse = typeof fileFinderWorkflowJob.response === 'string' 
+              ? JSON.parse(fileFinderWorkflowJob.response) 
+              : fileFinderWorkflowJob.response;
+            
+            if (parsedResponse?.selectedFiles && Array.isArray(parsedResponse.selectedFiles)) {
+              await applyFileSelectionUpdate(parsedResponse.selectedFiles, "AI File Finder");
+            }
+          } catch (error) {
+            console.error('Failed to parse workflow response:', error);
           }
-        } catch (error) {
-          console.error('Failed to parse workflow response:', error);
         }
       }
-    }
+    };
+    
+    handleWorkflowCompletion();
   }, [fileFinderWorkflowJob, currentSession?.id, applyFileSelectionUpdate]);
 
   return {

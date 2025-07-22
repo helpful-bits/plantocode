@@ -1,15 +1,15 @@
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
 use std::collections::HashMap;
 use std::str::FromStr;
 
-pub mod usage_update;
-pub mod stream_event;
 pub mod error_details;
+pub mod stream_event;
+pub mod usage_update;
 
+pub use error_details::{ErrorContext, ErrorDetails, ProviderErrorInfo};
 pub use stream_event::StreamEvent;
 pub use usage_update::UsageUpdate;
-pub use error_details::{ErrorDetails, ProviderErrorInfo, ErrorContext};
 
 // Common response for job-creating commands
 #[derive(Debug, Serialize)]
@@ -31,9 +31,9 @@ pub struct FrontendUser {
 #[serde(rename_all = "camelCase")]
 pub struct AuthDataResponse {
     pub user: FrontendUser,
-    pub token: String, // This will be the application JWT
+    pub token: String,      // This will be the application JWT
     pub token_type: String, // Always "Bearer"
-    pub expires_in: i64, // Token lifetime in seconds
+    pub expires_in: i64,    // Token lifetime in seconds
 }
 
 // Session model - stores user context and preferences, NOT workflow artifacts
@@ -112,7 +112,13 @@ impl ToString for JobStatus {
 
 impl JobStatus {
     pub fn is_terminal(&self) -> bool {
-        matches!(self, JobStatus::Completed | JobStatus::Failed | JobStatus::Canceled | JobStatus::CompletedByTag)
+        matches!(
+            self,
+            JobStatus::Completed
+                | JobStatus::Failed
+                | JobStatus::Canceled
+                | JobStatus::CompletedByTag
+        )
     }
 
     pub fn is_active(&self) -> bool {
@@ -139,7 +145,9 @@ impl FromStr for JobStatus {
             "idle" => Ok(JobStatus::Idle),
             "created" => Ok(JobStatus::Created),
             "queued" => Ok(JobStatus::Queued),
-            "acknowledgedByWorker" | "acknowledged_by_worker" => Ok(JobStatus::AcknowledgedByWorker),
+            "acknowledgedByWorker" | "acknowledged_by_worker" => {
+                Ok(JobStatus::AcknowledgedByWorker)
+            }
             "preparing" => Ok(JobStatus::Preparing),
             "preparingInput" | "preparing_input" => Ok(JobStatus::PreparingInput),
             "generatingStream" | "generating_stream" => Ok(JobStatus::GeneratingStream),
@@ -261,11 +269,9 @@ impl TaskType {
             | TaskType::WebSearchPromptsGeneration
             | TaskType::WebSearchExecution => true,
             // Workflows don't require LLM - they are orchestrated, not processed
-            TaskType::FileFinderWorkflow
-            | TaskType::WebSearchWorkflow => false,
+            TaskType::FileFinderWorkflow | TaskType::WebSearchWorkflow => false,
             // Streaming and Unknown default to true for safety
-            TaskType::Streaming
-            | TaskType::Unknown => true,
+            TaskType::Streaming | TaskType::Unknown => true,
         }
     }
 
@@ -277,8 +283,7 @@ impl TaskType {
             // Extended workflow stages use OpenRouter API
             TaskType::FileRelevanceAssessment
             | TaskType::ExtendedPathFinder
-            | TaskType::ImplementationPlanMerge
-            => ApiType::OpenRouter,
+            | TaskType::ImplementationPlanMerge => ApiType::OpenRouter,
             // All other LLM tasks use OpenRouter API
             _ => ApiType::OpenRouter,
         }
@@ -385,7 +390,6 @@ pub struct VoiceTranscriptionMetadata {
     pub duration_seconds: Option<f32>,
 }
 
-
 // DTO for file operations
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -408,15 +412,15 @@ pub struct OpenRouterRequestMessage {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum OpenRouterContent {
-    Text { 
+    Text {
         #[serde(rename = "type")]
-        content_type: String, 
-        text: String 
+        content_type: String,
+        text: String,
     },
-    Image { 
+    Image {
         #[serde(rename = "type")]
-        content_type: String, 
-        image_url: ImageUrl 
+        content_type: String,
+        image_url: ImageUrl,
     },
 }
 
@@ -538,7 +542,11 @@ impl From<ServerOpenRouterResponse> for OpenRouterResponse {
     fn from(server_response: ServerOpenRouterResponse) -> Self {
         OpenRouterResponse {
             id: server_response.id,
-            choices: server_response.choices.into_iter().map(|choice| choice.into()).collect(),
+            choices: server_response
+                .choices
+                .into_iter()
+                .map(|choice| choice.into())
+                .collect(),
             created: server_response.created,
             model: server_response.model,
             object: server_response.object,
@@ -630,7 +638,6 @@ pub struct OpenRouterDelta {
     pub content: Option<String>,
 }
 
-
 // Directory information model
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -640,20 +647,16 @@ pub struct DirectoryInfo {
     pub is_accessible: bool,
 }
 
-
-
-
 // Git-based project file information with metadata
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectFileInfo {
-    pub path: String,           // RELATIVE from project root
-    pub name: String,           // File name only
-    pub size: Option<u64>,      // File size
-    pub modified_at: Option<i64>, // Timestamp 
-    pub is_binary: bool,        // Binary detection
+    pub path: String,             // RELATIVE from project root
+    pub name: String,             // File name only
+    pub size: Option<u64>,        // File size
+    pub modified_at: Option<i64>, // Timestamp
+    pub is_binary: bool,          // Binary detection
 }
-
 
 // Request arguments for create_path_finder_job command
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -669,7 +672,6 @@ pub struct PathFinderRequestArgs {
     pub included_files: Option<Vec<String>>,
     pub excluded_files: Option<Vec<String>>,
 }
-
 
 // Request arguments for read_implementation_plan command
 #[derive(Debug, Deserialize)]
@@ -736,11 +738,10 @@ pub struct ProviderWithModels {
 pub struct RuntimeAIConfig {
     pub tasks: HashMap<String, TaskSpecificModelConfig>,
     pub providers: Vec<ProviderWithModels>,
-    
+
     // Job concurrency configuration
     pub max_concurrent_jobs: Option<u32>,
 }
-
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -758,7 +759,7 @@ pub struct DatabaseInfo {
     pub integrity_check: String,
     pub wal_enabled: bool,
     pub journal_mode: String,
-    pub size_bytes: Option<u64>, // Size of the main DB file
+    pub size_bytes: Option<u64>,     // Size of the main DB file
     pub wal_size_bytes: Option<u64>, // Size of the WAL file, if present
 }
 
@@ -770,21 +771,21 @@ pub struct Settings {
     pub theme: Option<String>,
     pub default_project_directory: Option<String>,
     pub recent_directories: Option<Vec<String>>,
-    
+
     // AI models configuration
     pub api_options: Option<RuntimeAIConfig>,
-    
+
     // UI preferences
     pub sidebar_width: Option<i32>,
     pub editor_font_size: Option<i32>,
     pub code_view_theme: Option<String>,
     pub hide_file_extensions: Option<bool>,
     pub show_hidden_files: Option<bool>,
-    
+
     // Performance settings
     pub max_concurrent_jobs: Option<i32>,
     pub clear_job_history_after_days: Option<i32>,
-    
+
     // Added timestamp for tracking changes
     pub last_updated: Option<i64>,
 }
@@ -811,7 +812,7 @@ pub struct DatabaseHealthData {
     pub file_exists: bool,
     pub file_size: Option<u64>,
     pub file_permissions: Option<String>, // e.g., "0o644"
-    pub setup_success: bool, // From app initialization
+    pub setup_success: bool,              // From app initialization
     pub integrity_status: Option<String>, // Result of PRAGMA integrity_check
     pub integrity_details: Option<serde_json::Value>,
     pub recovery_mode: bool,
@@ -820,7 +821,7 @@ pub struct DatabaseHealthData {
     pub error_category: Option<String>, // Corresponds to DatabaseErrorCategory
     pub error_severity: Option<String>, // Corresponds to DatabaseErrorSeverity
     pub details: Option<serde_json::Value>, // Other diagnostic details
-    pub last_modified: Option<String>, // ISO 8601 string
+    pub last_modified: Option<String>,  // ISO 8601 string
 }
 
 /// Customer billing plan model that matches server response and frontend expectations
@@ -867,7 +868,6 @@ pub struct ListInvoicesResponse {
     pub total_invoices: i32,
     pub has_more: bool,
 }
-
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

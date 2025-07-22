@@ -10,7 +10,7 @@
  */
 
 import { useEffect, useState, useCallback } from "react";
-import { listen } from "@tauri-apps/api/event";
+import { safeListen } from "@/utils/tauri-event-utils";
 import { Routes, Route } from "react-router-dom";
 
 import { AppShell } from "@/app/components/app-shell";
@@ -130,7 +130,7 @@ export default function App() {
 
     const setupAppCloseListener = async () => {
       try {
-        const unlisten = await listen("app-will-close", () => {
+        const unlisten = await safeListen("app-will-close", () => {
           // This event is emitted when the user tries to close the app
           // The session context will handle saving if needed
           if (typeof window !== "undefined") {
@@ -157,10 +157,23 @@ export default function App() {
       });
 
     return () => {
-      if (cleanup) {
-        cleanup();
-      }
+      cleanup?.();
       // Cleanup billing system on app shutdown (removed due to missing module)
+    };
+  }, []);
+
+  useEffect(() => {
+    const handleRejection = (event: PromiseRejectionEvent) => {
+      if (event.reason?.message?.includes('unregisterListener')) {
+        console.warn('Caught a late-unmount Tauri listener error. Safely ignored.', event.reason);
+        event.preventDefault();
+      }
+    };
+
+    window.addEventListener('unhandledrejection', handleRejection);
+
+    return () => {
+      window.removeEventListener('unhandledrejection', handleRejection);
     };
   }, []);
 

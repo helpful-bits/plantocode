@@ -1,16 +1,16 @@
-use std::path::{Path, PathBuf, Component};
-use log::{info, error, debug};
 use ::dirs;
+use async_recursion::async_recursion;
+use log::{debug, error, info};
+use std::path::{Component, Path, PathBuf};
 use tokio::fs;
 use tokio::io::AsyncReadExt;
-use async_recursion::async_recursion;
 
+use crate::constants::BINARY_EXTENSIONS;
 use crate::error::{AppError, AppResult};
 use crate::models::FileInfo;
-use crate::constants::BINARY_EXTENSIONS;
+use crate::utils::file_lock_manager::get_global_file_lock_manager;
 use crate::utils::path_utils;
 use crate::utils::{FileLockManager, LockMode};
-use crate::utils::file_lock_manager::get_global_file_lock_manager;
 
 /// Check if a file exists (async version)
 pub async fn file_exists(path: impl AsRef<Path>) -> bool {
@@ -24,13 +24,14 @@ pub async fn path_exists(path: impl AsRef<Path>) -> AppResult<bool> {
 
 /// Check if a path is a directory (async version)
 pub async fn is_directory(path: impl AsRef<Path>) -> AppResult<bool> {
-    let metadata = fs::metadata(path.as_ref()).await
-        .map_err(|e| AppError::FileSystemError(format!(
+    let metadata = fs::metadata(path.as_ref()).await.map_err(|e| {
+        AppError::FileSystemError(format!(
             "Failed to check if path is directory {}: {}",
             path.as_ref().display(),
             e
-        )))?;
-    
+        ))
+    })?;
+
     Ok(metadata.is_dir())
 }
 
@@ -60,11 +61,11 @@ pub async fn read_file_to_bytes(path: impl AsRef<Path>) -> AppResult<Vec<u8>> {
 /// Uses file lock manager to coordinate write operations
 pub async fn write_string_to_file(path: impl AsRef<Path>, content: &str) -> AppResult<()> {
     let path = path.as_ref();
-    
+
     // Acquire a write lock - essential for write coordination
     let lock_manager = get_global_file_lock_manager().await?;
     let _guard = lock_manager.acquire(path, LockMode::Write).await?;
-    
+
     // Create the directory if it doesn't exist
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).await.map_err(|e| {
@@ -75,14 +76,10 @@ pub async fn write_string_to_file(path: impl AsRef<Path>, content: &str) -> AppR
             ))
         })?;
     }
-    
+
     // Write the file
     fs::write(path, content).await.map_err(|e| {
-        AppError::FileSystemError(format!(
-            "Failed to write file {}: {}",
-            path.display(),
-            e
-        ))
+        AppError::FileSystemError(format!("Failed to write file {}: {}", path.display(), e))
     })
     // The lock is automatically released when _guard goes out of scope
 }
@@ -91,11 +88,11 @@ pub async fn write_string_to_file(path: impl AsRef<Path>, content: &str) -> AppR
 /// Uses file lock manager to coordinate write operations
 pub async fn write_bytes_to_file(path: impl AsRef<Path>, content: &[u8]) -> AppResult<()> {
     let path = path.as_ref();
-    
+
     // Acquire a write lock - essential for write coordination
     let lock_manager = get_global_file_lock_manager().await?;
     let _guard = lock_manager.acquire(path, LockMode::Write).await?;
-    
+
     // Create the directory if it doesn't exist
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).await.map_err(|e| {
@@ -106,14 +103,10 @@ pub async fn write_bytes_to_file(path: impl AsRef<Path>, content: &[u8]) -> AppR
             ))
         })?;
     }
-    
+
     // Write the file
     fs::write(path, content).await.map_err(|e| {
-        AppError::FileSystemError(format!(
-            "Failed to write file {}: {}",
-            path.display(),
-            e
-        ))
+        AppError::FileSystemError(format!("Failed to write file {}: {}", path.display(), e))
     })
     // The lock is automatically released when _guard goes out of scope
 }
@@ -121,7 +114,7 @@ pub async fn write_bytes_to_file(path: impl AsRef<Path>, content: &[u8]) -> AppR
 /// Create a directory (async version)
 pub async fn create_directory(path: impl AsRef<Path>) -> AppResult<()> {
     let path = path.as_ref();
-    
+
     // Create the directory
     fs::create_dir_all(path).await.map_err(|e| {
         AppError::FileSystemError(format!(
@@ -135,7 +128,7 @@ pub async fn create_directory(path: impl AsRef<Path>) -> AppResult<()> {
 /// List files in a directory (async version)
 pub async fn list_directory(path: impl AsRef<Path>) -> AppResult<Vec<FileInfo>> {
     let path = path.as_ref();
-    
+
     // Check if the directory exists
     if !file_exists(path).await {
         return Err(AppError::FileSystemError(format!(
@@ -143,7 +136,7 @@ pub async fn list_directory(path: impl AsRef<Path>) -> AppResult<Vec<FileInfo>> 
             path.display()
         )));
     }
-    
+
     // Check if the path is a directory
     if !is_directory(path).await? {
         return Err(AppError::FileSystemError(format!(
@@ -151,7 +144,7 @@ pub async fn list_directory(path: impl AsRef<Path>) -> AppResult<Vec<FileInfo>> 
             path.display()
         )));
     }
-    
+
     // Read the directory
     let mut entries = fs::read_dir(path).await.map_err(|e| {
         AppError::FileSystemError(format!(
@@ -160,20 +153,20 @@ pub async fn list_directory(path: impl AsRef<Path>) -> AppResult<Vec<FileInfo>> 
             e
         ))
     })?;
-    
+
     // Convert entries to FileInfo
     let mut files = Vec::new();
-    while let Some(entry) = entries.next_entry().await.map_err(|e| {
-        AppError::FileSystemError(format!(
-            "Failed to read directory entry: {}",
-            e
-        ))
-    })? {
+    while let Some(entry) = entries
+        .next_entry()
+        .await
+        .map_err(|e| AppError::FileSystemError(format!("Failed to read directory entry: {}", e)))?
+    {
         let path = entry.path();
-        let name = path.file_name()
+        let name = path
+            .file_name()
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_default();
-            
+
         let metadata = entry.metadata().await.map_err(|e| {
             AppError::FileSystemError(format!(
                 "Failed to read metadata for {}: {}",
@@ -181,29 +174,29 @@ pub async fn list_directory(path: impl AsRef<Path>) -> AppResult<Vec<FileInfo>> 
                 e
             ))
         })?;
-        
+
         let file_info = FileInfo {
             path: path.to_string_lossy().to_string(),
             name,
             is_dir: metadata.is_dir(),
             size: Some(metadata.len()),
-            modified_at: metadata.modified()
-                .ok()
-                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH)
+            modified_at: metadata.modified().ok().and_then(|t| {
+                t.duration_since(std::time::UNIX_EPOCH)
                     .map(|d| d.as_millis() as i64)
-                    .ok()),
+                    .ok()
+            }),
         };
-        
+
         files.push(file_info);
     }
-    
+
     Ok(files)
 }
 
 /// Fast binary file check based on extension only (non-blocking)
 pub fn is_binary_file_fast(path: impl AsRef<Path>) -> bool {
     let path = path.as_ref();
-    
+
     // Check if the file has a binary extension
     if let Some(extension) = path.extension() {
         let ext = extension.to_string_lossy().to_lowercase();
@@ -211,19 +204,19 @@ pub fn is_binary_file_fast(path: impl AsRef<Path>) -> bool {
             return true;
         }
     }
-    
+
     false
 }
 
 /// Check if a file is a binary file based on extension (async version)
 pub async fn is_binary_file(path: impl AsRef<Path>) -> bool {
     let path = path.as_ref();
-    
+
     // First do the fast extension check
     if is_binary_file_fast(path) {
         return true;
     }
-    
+
     // Check for binary content (read a small chunk and check for null bytes)
     if let Ok(mut file) = fs::File::open(path).await {
         let mut buffer = [0u8; 1024];
@@ -234,7 +227,7 @@ pub async fn is_binary_file(path: impl AsRef<Path>) -> bool {
                     return true;
                 }
             }
-            
+
             // If no null bytes found, check for high ratio of non-printable characters
             let mut non_printable_count = 0;
             for i in 0..n {
@@ -244,14 +237,14 @@ pub async fn is_binary_file(path: impl AsRef<Path>) -> bool {
                     non_printable_count += 1;
                 }
             }
-            
+
             // If more than 10% are non-printable, consider it binary
             if n > 0 && (non_printable_count as f64 / n as f64) > 0.1 {
                 return true;
             }
         }
     }
-    
+
     false
 }
 
@@ -264,7 +257,7 @@ pub async fn get_file_size(path: impl AsRef<Path>) -> AppResult<u64> {
             e
         ))
     })?;
-    
+
     Ok(metadata.len())
 }
 
@@ -272,44 +265,47 @@ pub async fn get_file_size(path: impl AsRef<Path>) -> AppResult<u64> {
 /// Uses file lock manager to coordinate with other write operations
 pub async fn remove_file(path: impl AsRef<Path>) -> AppResult<()> {
     let path = path.as_ref();
-    
+
     // Check if the file exists
     if !file_exists(path).await {
-        return Ok(());  // File doesn't exist, no need to remove it (idempotent)
+        return Ok(()); // File doesn't exist, no need to remove it (idempotent)
     }
-    
+
     // Check if the path is a directory
-    let metadata = fs::metadata(path).await
-        .map_err(|e| AppError::FileSystemError(format!(
+    let metadata = fs::metadata(path).await.map_err(|e| {
+        AppError::FileSystemError(format!(
             "Failed to get metadata for {}: {}",
             path.display(),
             e
-        )))?;
-        
+        ))
+    })?;
+
     if metadata.is_dir() {
         return Err(AppError::FileSystemError(format!(
             "Path is a directory, not a file: {}",
             path.display()
         )));
     }
-    
+
     // Acquire a write lock - essential for write coordination
     let lock_manager = get_global_file_lock_manager().await?;
     let _guard = lock_manager.acquire(path, LockMode::Write).await?;
-    
+
     // Remove the file
-    fs::remove_file(path).await
-        .map_err(|e| AppError::FileSystemError(format!(
-            "Failed to remove file {}: {}",
-            path.display(),
-            e
-        )))
+    fs::remove_file(path).await.map_err(|e| {
+        AppError::FileSystemError(format!("Failed to remove file {}: {}", path.display(), e))
+    })
 }
 
 /// Move a file or directory from source to destination.
 /// This function will handle file locking, overwrite handling, and directory creation.
 /// Uses file lock manager to coordinate with other write operations
-pub async fn move_item(source_path: &Path, dest_path: &Path, overwrite: bool, project_dir: &Path) -> AppResult<()> {
+pub async fn move_item(
+    source_path: &Path,
+    dest_path: &Path,
+    overwrite: bool,
+    project_dir: &Path,
+) -> AppResult<()> {
     // Check if source_path exists
     if !path_exists(source_path).await? {
         return Err(AppError::NotFoundError(format!(
@@ -317,34 +313,39 @@ pub async fn move_item(source_path: &Path, dest_path: &Path, overwrite: bool, pr
             source_path.display()
         )));
     }
-    
+
     // Validate both source and destination paths are within project bounds
     ensure_path_within_project(project_dir, source_path)?;
     ensure_path_within_project(project_dir, dest_path)?;
-    
+
     // Acquire a write lock on the source path - essential for write coordination
     let lock_manager = get_global_file_lock_manager().await?;
-    let _source_guard = FileLockManager::acquire(lock_manager.clone(), source_path, LockMode::Write).await?;
-    
+    let _source_guard =
+        FileLockManager::acquire(lock_manager.clone(), source_path, LockMode::Write).await?;
+
     let dest_lock_path = if path_exists(dest_path).await? {
         dest_path.to_path_buf()
     } else {
-        dest_path.parent()
-            .ok_or_else(|| AppError::InvalidPath("Destination path has no parent directory".to_string()))?
+        dest_path
+            .parent()
+            .ok_or_else(|| {
+                AppError::InvalidPath("Destination path has no parent directory".to_string())
+            })?
             .to_path_buf()
     };
-    
+
     // Acquire a write lock on the destination path or its parent - essential for write coordination
-    let _dest_guard = FileLockManager::acquire(lock_manager.clone(), &dest_lock_path, LockMode::Write).await?;
-    
+    let _dest_guard =
+        FileLockManager::acquire(lock_manager.clone(), &dest_lock_path, LockMode::Write).await?;
+
     // Check if destination exists and handle according to overwrite flag
     if path_exists(dest_path).await? {
         if !overwrite {
             return Err(AppError::FileSystemError(
-                "Destination path already exists and overwrite is not specified".to_string()
+                "Destination path already exists and overwrite is not specified".to_string(),
             ));
         }
-        
+
         // Get destination metadata to determine if it's a file or directory
         let dest_metadata = fs::metadata(dest_path).await.map_err(|e| {
             AppError::FileSystemError(format!(
@@ -353,7 +354,7 @@ pub async fn move_item(source_path: &Path, dest_path: &Path, overwrite: bool, pr
                 e
             ))
         })?;
-        
+
         // Remove the destination based on its type
         if dest_metadata.is_dir() {
             fs::remove_dir_all(dest_path).await.map_err(|e| {
@@ -373,7 +374,7 @@ pub async fn move_item(source_path: &Path, dest_path: &Path, overwrite: bool, pr
             })?;
         }
     }
-    
+
     // Ensure the parent directory of dest_path exists
     if let Some(parent) = dest_path.parent() {
         fs::create_dir_all(parent).await.map_err(|e| {
@@ -384,7 +385,7 @@ pub async fn move_item(source_path: &Path, dest_path: &Path, overwrite: bool, pr
             ))
         })?;
     }
-    
+
     // Perform the move operation
     fs::rename(source_path, dest_path).await.map_err(|e| {
         AppError::FileSystemError(format!(
@@ -394,7 +395,7 @@ pub async fn move_item(source_path: &Path, dest_path: &Path, overwrite: bool, pr
             e
         ))
     })?;
-    
+
     Ok(())
     // Both locks are automatically released when _source_guard and _dest_guard go out of scope
 }
@@ -405,8 +406,10 @@ pub fn get_home_directory() -> AppResult<String> {
         Some(path) => {
             let normalized_path = path_utils::normalize_path(&path)?;
             Ok(normalized_path.to_string_lossy().to_string())
-        },
-        None => Err(AppError::FileSystemError("Could not determine home directory".to_string()))
+        }
+        None => Err(AppError::FileSystemError(
+            "Could not determine home directory".to_string(),
+        )),
     }
 }
 
@@ -414,18 +417,19 @@ pub fn get_home_directory() -> AppResult<String> {
 pub async fn get_app_temp_dir() -> AppResult<PathBuf> {
     // Get the system's temporary directory
     let sys_temp_dir = std::env::temp_dir();
-    
+
     // Append app-specific subdirectory
     let app_temp_dir = sys_temp_dir.join(crate::constants::APP_TEMP_SUBDIR_NAME);
-    
+
     // Create the directory if it doesn't exist
-    fs::create_dir_all(&app_temp_dir).await
-        .map_err(|e| AppError::FileSystemError(format!(
+    fs::create_dir_all(&app_temp_dir).await.map_err(|e| {
+        AppError::FileSystemError(format!(
             "Failed to create application temp directory {}: {}",
             app_temp_dir.display(),
             e
-        )))?;
-    
+        ))
+    })?;
+
     info!("Application temp directory: {}", app_temp_dir.display());
     Ok(app_temp_dir)
 }
@@ -436,7 +440,11 @@ pub async fn get_app_temp_dir() -> AppResult<PathBuf> {
 pub fn ensure_path_within_project(project_dir: &Path, target_path: &Path) -> AppResult<()> {
     // Get canonical project root
     let project_root_canonical = project_dir.canonicalize().map_err(|e| {
-        AppError::InvalidPath(format!("Invalid project directory {}: {}", project_dir.display(), e))
+        AppError::InvalidPath(format!(
+            "Invalid project directory {}: {}",
+            project_dir.display(),
+            e
+        ))
     })?;
 
     // Resolve target to an absolute path (either it is, or join with canonical root)
@@ -487,7 +495,6 @@ pub fn ensure_path_within_project(project_dir: &Path, target_path: &Path) -> App
             }
         }
     }
-    
+
     Ok(())
 }
-

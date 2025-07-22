@@ -12,7 +12,7 @@ interface NewSessionFormProps {
   isLoading: boolean;
   disabled: boolean;
   globalIsSwitching: boolean;
-  inputRef?: React.RefObject<HTMLInputElement>;
+  inputRef?: React.RefObject<HTMLInputElement | null>;
 }
 
 const NewSessionForm = ({

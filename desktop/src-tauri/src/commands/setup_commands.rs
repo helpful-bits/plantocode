@@ -1,7 +1,7 @@
-use keyring::Entry;
-use log::{info, warn, error};
 use crate::auth::token_persistence; // To access SERVICE_NAME and ACCOUNT_NAME
 use crate::constants::USE_SESSION_STORAGE;
+use keyring::Entry;
+use log::{error, info, warn};
 
 #[tauri::command]
 pub fn trigger_initial_keychain_access() -> Result<(), String> {
@@ -15,11 +15,14 @@ pub fn trigger_initial_keychain_access() -> Result<(), String> {
 
     // Use the same service and account names that will be used for actual token storage.
     // This ensures the "Always Allow" permission applies to the correct item.
-    let entry = Entry::new(token_persistence::SERVICE_NAME_FOR_KEYRING, token_persistence::ACCOUNT_NAME_FOR_KEYRING)
-        .map_err(|e| {
-            error!("Onboarding: Keychain entry creation failed: {}", e);
-            format!("Keychain setup failed (entry creation): {}", e)
-        })?;
+    let entry = Entry::new(
+        token_persistence::SERVICE_NAME_FOR_KEYRING,
+        token_persistence::ACCOUNT_NAME_FOR_KEYRING,
+    )
+    .map_err(|e| {
+        error!("Onboarding: Keychain entry creation failed: {}", e);
+        format!("Keychain setup failed (entry creation): {}", e)
+    })?;
 
     // Attempting to get a password for a non-existent item or setting a dummy one
     // will trigger the prompt if permissions aren't already granted.
@@ -44,7 +47,10 @@ pub fn trigger_initial_keychain_access() -> Result<(), String> {
         }
         Err(e) => {
             error!("Onboarding: Keychain interaction (set) failed: {}", e);
-            Err(format!("An error occurred with Keychain: {}. Please ensure Keychain is accessible.", e))
+            Err(format!(
+                "An error occurred with Keychain: {}. Please ensure Keychain is accessible.",
+                e
+            ))
         }
     }
 }

@@ -1,4 +1,4 @@
-use super::{OpenRouterStreamChunk, usage_update::UsageUpdate, error_details::ErrorDetails};
+use super::{OpenRouterStreamChunk, error_details::ErrorDetails, usage_update::UsageUpdate};
 use serde::Deserialize;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -7,10 +7,12 @@ use serde::Deserialize;
 pub enum StreamEvent {
     ContentChunk(OpenRouterStreamChunk),
     UsageUpdate(UsageUpdate),
-    StreamStarted { request_id: String },
-    StreamCancelled { 
-        request_id: String, 
-        reason: String 
+    StreamStarted {
+        request_id: String,
+    },
+    StreamCancelled {
+        request_id: String,
+        reason: String,
     },
     // Note: error_details variant uses snake_case, but the ErrorDetails struct itself uses camelCase
     // This matches the server's serialization format

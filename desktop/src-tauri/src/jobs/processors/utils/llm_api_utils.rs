@@ -1,14 +1,17 @@
 //! LLM API Utilities
-//! 
+//!
 //! This module provides utilities for interacting with LLM APIs including
 //! message formatting, client options creation, and API execution.
 
 use std::sync::Arc;
 use tauri::AppHandle;
 
+use crate::api_clients::{
+    client_factory,
+    client_trait::{ApiClient, ApiClientOptions},
+};
 use crate::error::AppResult;
-use crate::models::{OpenRouterRequestMessage, OpenRouterContent, OpenRouterResponse};
-use crate::api_clients::{client_factory, client_trait::{ApiClient, ApiClientOptions}};
+use crate::models::{OpenRouterContent, OpenRouterRequestMessage, OpenRouterResponse};
 
 /// Create OpenRouter messages for LLM API calls
 /// Standardized message format for system and user prompts
@@ -34,7 +37,6 @@ pub fn create_openrouter_messages(
     ]
 }
 
-
 /// Creates API client options for LLM calls using provided model settings
 pub fn create_api_client_options(
     model: String,
@@ -48,7 +50,7 @@ pub fn create_api_client_options(
         temperature,
         stream,
         request_id: None, // Will be set by calling code if needed
-        task_type: None, // Will be set by calling code if needed
+        task_type: None,  // Will be set by calling code if needed
     })
 }
 
@@ -64,9 +66,6 @@ pub async fn execute_llm_chat_completion(
 
 /// Get API client from app state
 /// Convenience wrapper for client_factory::get_api_client
-pub fn get_api_client(
-    app_handle: &AppHandle,
-) -> AppResult<Arc<dyn ApiClient>> {
+pub fn get_api_client(app_handle: &AppHandle) -> AppResult<Arc<dyn ApiClient>> {
     client_factory::get_api_client(app_handle)
 }
-

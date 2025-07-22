@@ -1,18 +1,20 @@
-use tauri::{command, AppHandle, Manager};
-use log::info;
-use serde::{Serialize, Deserialize};
-use uuid::Uuid;
-use std::sync::Arc;
-use futures::future::join_all;
-use crate::models::BackgroundJob;
-use crate::models::JobStatus;
-use crate::utils::get_timestamp;
-use crate::models::TaskType;
 use crate::db_utils::{BackgroundJobRepository, SessionRepository, SettingsRepository};
 use crate::error::{AppError, AppResult};
+use crate::jobs::types::{ImplementationPlanMergePayload, JobPayload};
+use crate::models::BackgroundJob;
 use crate::models::JobCommandResponse;
-use crate::utils::unified_prompt_system::{UnifiedPromptProcessor, UnifiedPromptContextBuilder, ComposedPrompt as UnifiedComposedPrompt};
-use crate::jobs::types::{JobPayload, ImplementationPlanMergePayload};
+use crate::models::JobStatus;
+use crate::models::TaskType;
+use crate::utils::get_timestamp;
+use crate::utils::unified_prompt_system::{
+    ComposedPrompt as UnifiedComposedPrompt, UnifiedPromptContextBuilder, UnifiedPromptProcessor,
+};
+use futures::future::join_all;
+use log::info;
+use serde::{Deserialize, Serialize};
+use std::sync::Arc;
+use tauri::{AppHandle, Manager, command};
+use uuid::Uuid;
 
 /// Request payload for the implementation plan generation command
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -27,7 +29,6 @@ pub struct CreateImplementationPlanArgs {
     pub temperature: Option<f32>,
     pub max_tokens: Option<u32>,
 }
-
 
 /// Creates an implementation plan for a development task
 #[command]
@@ -52,21 +53,30 @@ pub async fn create_implementation_plan_command(
         temperature,
         max_tokens,
     };
-    info!("Creating implementation plan job for task: {}", args.task_description);
-    
+    info!(
+        "Creating implementation plan job for task: {}",
+        args.task_description
+    );
+
     // Validate required fields
     if args.session_id.is_empty() {
-        return Err(AppError::ValidationError("Session ID is required".to_string()));
+        return Err(AppError::ValidationError(
+            "Session ID is required".to_string(),
+        ));
     }
-    
+
     if args.task_description.is_empty() {
-        return Err(AppError::ValidationError("Task description is required".to_string()));
+        return Err(AppError::ValidationError(
+            "Task description is required".to_string(),
+        ));
     }
-    
+
     if args.project_directory.is_empty() {
-        return Err(AppError::ValidationError("Project directory is required".to_string()));
+        return Err(AppError::ValidationError(
+            "Project directory is required".to_string(),
+        ));
     }
-    
+
     // Get model configuration for this task using centralized resolver
     let model_settings = crate::utils::config_resolver::resolve_model_settings(
         &app_handle,
@@ -75,14 +85,15 @@ pub async fn create_implementation_plan_command(
         args.model,
         args.temperature,
         args.max_tokens,
-    ).await?;
-    
+    )
+    .await?;
+
     // Use the job creation utility to create and queue the job
     let payload = crate::jobs::types::ImplementationPlanPayload {
         task_description: args.task_description.clone(),
         relevant_files: args.relevant_files,
     };
-    
+
     // Create and queue the job
     let job_id = crate::utils::job_creation_utils::create_and_queue_background_job(
         &args.session_id,
@@ -93,15 +104,16 @@ pub async fn create_implementation_plan_command(
         &args.task_description.clone(),
         model_settings,
         JobPayload::ImplementationPlan(payload),
-        2, // Priority
+        2,    // Priority
         None, // No workflow_id
         None, // No workflow_stage
         None, // No extra metadata
         &app_handle,
-    ).await?;
-    
+    )
+    .await?;
+
     info!("Created implementation plan job: {}", job_id);
-    
+
     // Return the job ID
     Ok(JobCommandResponse { job_id })
 }
@@ -154,66 +166,97 @@ pub async fn estimate_prompt_tokens_command(
     app_handle: AppHandle,
 ) -> AppResult<PromptTokenEstimateResponse> {
     info!("Estimating tokens for {} prompt", task_type);
-    
+
     // Validate required fields
     if session_id.is_empty() {
-        return Err(AppError::ValidationError("Session ID is required".to_string()));
+        return Err(AppError::ValidationError(
+            "Session ID is required".to_string(),
+        ));
     }
-    
+
     if task_description.is_empty() {
-        return Err(AppError::ValidationError("Task description is required".to_string()));
+        return Err(AppError::ValidationError(
+            "Task description is required".to_string(),
+        ));
     }
-    
+
     if project_directory.is_empty() {
-        return Err(AppError::ValidationError("Project directory is required".to_string()));
+        return Err(AppError::ValidationError(
+            "Project directory is required".to_string(),
+        ));
     }
-    
+
     // Parse task_type string into TaskType enum using the FromStr implementation
-    let parsed_task_type = task_type.parse::<TaskType>()
+    let parsed_task_type = task_type
+        .parse::<TaskType>()
         .map_err(|_| AppError::ValidationError(format!("Unsupported task type: {}", task_type)))?;
-    
+
     // Get session to access actual project directory
-    let background_job_repo = app_handle.state::<Arc<BackgroundJobRepository>>().inner().clone();
+    let background_job_repo = app_handle
+        .state::<Arc<BackgroundJobRepository>>()
+        .inner()
+        .clone();
     let session_repo = crate::db_utils::SessionRepository::new(background_job_repo.get_pool());
-    let session = session_repo.get_session_by_id(&session_id).await?
+    let session = session_repo
+        .get_session_by_id(&session_id)
+        .await?
         .ok_or_else(|| AppError::JobError(format!("Session {} not found", session_id)))?;
     let actual_project_directory = &session.project_directory;
-    
+
     // Read file contents for relevant files - using parallel direct file reading to avoid lock contention
-    let file_futures: Vec<_> = relevant_files.iter().map(|relative_path_str| {
-        let full_path = std::path::Path::new(actual_project_directory).join(relative_path_str);
-        let relative_path_clone = relative_path_str.clone();
-        async move {
-            let content_result = tokio::fs::read_to_string(&full_path).await;
-            match content_result {
-                Ok(content) => Some((relative_path_clone, content)),
-                Err(e) => {
-                    log::warn!("Failed to read file {}: {}", full_path.display(), e);
-                    None
+    let file_futures: Vec<_> = relevant_files
+        .iter()
+        .map(|relative_path_str| {
+            let full_path = std::path::Path::new(actual_project_directory).join(relative_path_str);
+            let relative_path_clone = relative_path_str.clone();
+            async move {
+                let content_result = tokio::fs::read_to_string(&full_path).await;
+                match content_result {
+                    Ok(content) => Some((relative_path_clone, content)),
+                    Err(e) => {
+                        log::warn!("Failed to read file {}: {}", full_path.display(), e);
+                        None
+                    }
                 }
             }
-        }
-    }).collect();
-    
-    let results = join_all(file_futures).await;
-    let file_contents_map: std::collections::HashMap<String, String> = results
-        .into_iter()
-        .filter_map(|result| result)
+        })
         .collect();
-    
-    let directory_tree = match crate::utils::directory_tree::get_directory_tree_with_defaults(actual_project_directory).await {
+
+    let results = join_all(file_futures).await;
+    let file_contents_map: std::collections::HashMap<String, String> =
+        results.into_iter().filter_map(|result| result).collect();
+
+    let directory_tree = match crate::utils::directory_tree::get_directory_tree_with_defaults(
+        actual_project_directory,
+    )
+    .await
+    {
         Ok(tree) => Some(tree),
         Err(e) => {
-            log::warn!("Failed to generate directory tree for prompt context: {}", e);
+            log::warn!(
+                "Failed to generate directory tree for prompt context: {}",
+                e
+            );
             None
         }
     };
-    
-    let model_settings = crate::utils::config_resolver::resolve_model_settings(&app_handle, parsed_task_type, actual_project_directory, None, None, None).await?;
-    
+
+    let model_settings = crate::utils::config_resolver::resolve_model_settings(
+        &app_handle,
+        parsed_task_type,
+        actual_project_directory,
+        None,
+        None,
+        None,
+    )
+    .await?;
+
     // Get settings repository for UnifiedPromptProcessor
-    let settings_repo = app_handle.state::<Arc<SettingsRepository>>().inner().clone();
-    
+    let settings_repo = app_handle
+        .state::<Arc<SettingsRepository>>()
+        .inner()
+        .clone();
+
     // Create unified prompt context
     let context = UnifiedPromptContextBuilder::new(
         actual_project_directory.clone(),
@@ -221,7 +264,11 @@ pub async fn estimate_prompt_tokens_command(
         task_description.clone(),
     )
     .directory_tree(directory_tree)
-    .file_contents(if file_contents_map.is_empty() { None } else { Some(file_contents_map.clone()) })
+    .file_contents(if file_contents_map.is_empty() {
+        None
+    } else {
+        Some(file_contents_map.clone())
+    })
     .model_name(model_settings.map(|settings| settings.0))
     .build();
 
@@ -230,7 +277,7 @@ pub async fn estimate_prompt_tokens_command(
     let composed_prompt = prompt_processor
         .compose_prompt(&context, &app_handle)
         .await?;
-    
+
     Ok(PromptTokenEstimateResponse {
         estimated_tokens: composed_prompt.estimated_total_tokens.unwrap_or(0) as u32,
         system_prompt_tokens: composed_prompt.estimated_system_tokens.unwrap_or(0) as u32,
@@ -249,65 +296,91 @@ pub async fn get_prompt_command(
     relevant_files: Vec<String>,
     app_handle: AppHandle,
 ) -> AppResult<PromptResponse> {
-    info!("Getting {} prompt for task: {}", task_type, task_description);
-    
+    info!(
+        "Getting {} prompt for task: {}",
+        task_type, task_description
+    );
+
     // Validate required fields
     if session_id.is_empty() {
-        return Err(AppError::ValidationError("Session ID is required".to_string()));
+        return Err(AppError::ValidationError(
+            "Session ID is required".to_string(),
+        ));
     }
-    
+
     if task_description.is_empty() {
-        return Err(AppError::ValidationError("Task description is required".to_string()));
+        return Err(AppError::ValidationError(
+            "Task description is required".to_string(),
+        ));
     }
-    
+
     if project_directory.is_empty() {
-        return Err(AppError::ValidationError("Project directory is required".to_string()));
+        return Err(AppError::ValidationError(
+            "Project directory is required".to_string(),
+        ));
     }
-    
+
     // Get session to access actual project directory
-    let background_job_repo = app_handle.state::<Arc<BackgroundJobRepository>>().inner().clone();
+    let background_job_repo = app_handle
+        .state::<Arc<BackgroundJobRepository>>()
+        .inner()
+        .clone();
     let session_repo = SessionRepository::new(background_job_repo.get_pool());
-    let session = session_repo.get_session_by_id(&session_id).await?
+    let session = session_repo
+        .get_session_by_id(&session_id)
+        .await?
         .ok_or_else(|| AppError::JobError(format!("Session {} not found", session_id)))?;
     let actual_project_directory = &session.project_directory;
-    
+
     // Parse task_type string into TaskType enum using the FromStr implementation
-    let parsed_task_type = task_type.parse::<TaskType>()
+    let parsed_task_type = task_type
+        .parse::<TaskType>()
         .map_err(|_| AppError::ValidationError(format!("Unsupported task type: {}", task_type)))?;
-    
+
     // Read file contents for relevant files - using parallel direct file reading to avoid lock contention
-    let file_futures: Vec<_> = relevant_files.iter().map(|relative_path_str| {
-        let full_path = std::path::Path::new(actual_project_directory).join(relative_path_str);
-        let relative_path_clone = relative_path_str.clone();
-        async move {
-            let content_result = tokio::fs::read_to_string(&full_path).await;
-            match content_result {
-                Ok(content) => Some((relative_path_clone, content)),
-                Err(e) => {
-                    log::warn!("Failed to read file {}: {}", full_path.display(), e);
-                    None
+    let file_futures: Vec<_> = relevant_files
+        .iter()
+        .map(|relative_path_str| {
+            let full_path = std::path::Path::new(actual_project_directory).join(relative_path_str);
+            let relative_path_clone = relative_path_str.clone();
+            async move {
+                let content_result = tokio::fs::read_to_string(&full_path).await;
+                match content_result {
+                    Ok(content) => Some((relative_path_clone, content)),
+                    Err(e) => {
+                        log::warn!("Failed to read file {}: {}", full_path.display(), e);
+                        None
+                    }
                 }
             }
-        }
-    }).collect();
-    
-    let results = join_all(file_futures).await;
-    let file_contents_map: std::collections::HashMap<String, String> = results
-        .into_iter()
-        .filter_map(|result| result)
+        })
         .collect();
-    
-    let directory_tree = match crate::utils::directory_tree::get_directory_tree_with_defaults(actual_project_directory).await {
+
+    let results = join_all(file_futures).await;
+    let file_contents_map: std::collections::HashMap<String, String> =
+        results.into_iter().filter_map(|result| result).collect();
+
+    let directory_tree = match crate::utils::directory_tree::get_directory_tree_with_defaults(
+        actual_project_directory,
+    )
+    .await
+    {
         Ok(tree) => Some(tree),
         Err(e) => {
-            log::warn!("Failed to generate directory tree for prompt context: {}", e);
+            log::warn!(
+                "Failed to generate directory tree for prompt context: {}",
+                e
+            );
             None
         }
     };
-    
+
     // Get settings repository for UnifiedPromptProcessor
-    let settings_repo = app_handle.state::<Arc<SettingsRepository>>().inner().clone();
-    
+    let settings_repo = app_handle
+        .state::<Arc<SettingsRepository>>()
+        .inner()
+        .clone();
+
     // Create unified prompt context
     let context = UnifiedPromptContextBuilder::new(
         actual_project_directory.clone(),
@@ -315,7 +388,11 @@ pub async fn get_prompt_command(
         task_description.clone(),
     )
     .directory_tree(directory_tree)
-    .file_contents(if file_contents_map.is_empty() { None } else { Some(file_contents_map.clone()) })
+    .file_contents(if file_contents_map.is_empty() {
+        None
+    } else {
+        Some(file_contents_map.clone())
+    })
     .build();
 
     // Use UnifiedPromptProcessor to generate the complete prompt
@@ -323,7 +400,7 @@ pub async fn get_prompt_command(
     let composed_prompt = prompt_processor
         .compose_prompt(&context, &app_handle)
         .await?;
-    
+
     // Use the clean separated prompts from the unified system
     let system_prompt = composed_prompt.system_prompt;
     let user_prompt = composed_prompt.user_prompt;
@@ -331,7 +408,7 @@ pub async fn get_prompt_command(
 
     Ok(PromptResponse {
         system_prompt,
-        user_prompt, 
+        user_prompt,
         combined_prompt,
     })
 }
@@ -344,51 +421,69 @@ pub async fn read_implementation_plan_command(
 ) -> AppResult<ImplementationPlanDataResponse> {
     let args = ReadImplementationPlanArgs { job_id };
     info!("Reading implementation plan for job: {}", args.job_id);
-    
+
     // Get the background job repository
-    let repo = app_handle.state::<Arc<BackgroundJobRepository>>()
+    let repo = app_handle
+        .state::<Arc<BackgroundJobRepository>>()
         .inner()
         .clone();
-    
+
     // Get the job from the database
-    let job = repo.get_job_by_id(&args.job_id).await
+    let job = repo
+        .get_job_by_id(&args.job_id)
+        .await
         .map_err(|e| AppError::DatabaseError(format!("Failed to get job: {}", e)))?
         .ok_or_else(|| AppError::NotFoundError(format!("Job not found: {}", args.job_id)))?;
-    
+
     // Verify job type
     if job.task_type != "implementation_plan" && job.task_type != "implementation_plan_merge" {
-        return Err(AppError::ValidationError(format!("Job is not an implementation plan: {}", args.job_id)));
+        return Err(AppError::ValidationError(format!(
+            "Job is not an implementation plan: {}",
+            args.job_id
+        )));
     }
-    
+
     // Check if job is complete
     if job.status != JobStatus::Completed.to_string() {
-        return Err(AppError::ValidationError(format!("Implementation plan job is not completed: {}", args.job_id)));
+        return Err(AppError::ValidationError(format!(
+            "Implementation plan job is not completed: {}",
+            args.job_id
+        )));
     }
-    
+
     // Check if the response is available
     if job.response.is_none() {
-        return Err(AppError::NotFoundError(format!("Implementation plan response is not available: {}", args.job_id)));
+        return Err(AppError::NotFoundError(format!(
+            "Implementation plan response is not available: {}",
+            args.job_id
+        )));
     }
-    
+
     // Extract job details
     let created_at = job.created_at;
     let job_response = job.response.clone().unwrap_or_default();
-    
+
     // job.response now contains clean XML directly
     let implementation_plan_content = job_response;
-    
+
     // Try to parse the title from metadata
     let title = if let Some(metadata) = job.metadata.as_ref() {
         if let Ok(metadata_json) = serde_json::from_str::<serde_json::Value>(metadata) {
-            metadata_json["planTitle"].as_str().map(|s| s.to_string())
-                .or_else(|| metadata_json["generated_title"].as_str().map(|s| s.to_string()))
+            metadata_json["planTitle"]
+                .as_str()
+                .map(|s| s.to_string())
+                .or_else(|| {
+                    metadata_json["generated_title"]
+                        .as_str()
+                        .map(|s| s.to_string())
+                })
         } else {
             None
         }
     } else {
         None
     };
-    
+
     // Create and return the response
     Ok(ImplementationPlanDataResponse {
         id: job.id,
@@ -416,33 +511,43 @@ pub async fn update_implementation_plan_content_command(
     app_handle: AppHandle,
 ) -> AppResult<()> {
     info!("Updating implementation plan content for job: {}", job_id);
-    
+
     // Validate required fields
     if job_id.is_empty() {
         return Err(AppError::ValidationError("Job ID is required".to_string()));
     }
-    
+
     // Get the background job repository
-    let repo = app_handle.state::<Arc<BackgroundJobRepository>>()
+    let repo = app_handle
+        .state::<Arc<BackgroundJobRepository>>()
         .inner()
         .clone();
-    
+
     // Get the job from the database
-    let job = repo.get_job_by_id(&job_id).await
+    let job = repo
+        .get_job_by_id(&job_id)
+        .await
         .map_err(|e| AppError::DatabaseError(format!("Failed to get job: {}", e)))?
         .ok_or_else(|| AppError::NotFoundError(format!("Job not found: {}", job_id)))?;
-    
+
     // Verify job type
     if job.task_type != "implementation_plan" && job.task_type != "implementation_plan_merge" {
-        return Err(AppError::ValidationError(format!("Job is not an implementation plan: {}", job_id)));
+        return Err(AppError::ValidationError(format!(
+            "Job is not an implementation plan: {}",
+            job_id
+        )));
     }
-    
+
     // Update the job response with the new content
     // Keep the status, metadata, and token counts unchanged, only update the response content
-    repo.update_job_response(&job_id, &new_content, None, None, None, None, None).await
+    repo.update_job_response(&job_id, &new_content, None, None, None, None, None)
+        .await
         .map_err(|e| AppError::DatabaseError(format!("Failed to update job response: {}", e)))?;
-    
-    info!("Successfully updated implementation plan content for job: {}", job_id);
+
+    info!(
+        "Successfully updated implementation plan content for job: {}",
+        job_id
+    );
     Ok(())
 }
 
@@ -454,39 +559,61 @@ pub async fn create_merged_implementation_plan_command(
     source_job_ids: Vec<String>,
     merge_instructions: Option<String>,
 ) -> AppResult<JobCommandResponse> {
-    info!("Creating merged implementation plan for {} source plans", source_job_ids.len());
-    
+    info!(
+        "Creating merged implementation plan for {} source plans",
+        source_job_ids.len()
+    );
+
     // Validate required fields
     if session_id.is_empty() {
-        return Err(AppError::ValidationError("Session ID is required".to_string()));
+        return Err(AppError::ValidationError(
+            "Session ID is required".to_string(),
+        ));
     }
-    
+
     if source_job_ids.is_empty() {
-        return Err(AppError::ValidationError("At least one source job ID is required".to_string()));
+        return Err(AppError::ValidationError(
+            "At least one source job ID is required".to_string(),
+        ));
     }
-    
+
     // Get session to find the project directory
-    let background_job_repo = app_handle.state::<Arc<BackgroundJobRepository>>().inner().clone();
+    let background_job_repo = app_handle
+        .state::<Arc<BackgroundJobRepository>>()
+        .inner()
+        .clone();
     let session_repo = SessionRepository::new(background_job_repo.get_pool());
-    let session = session_repo.get_session_by_id(&session_id).await?
+    let session = session_repo
+        .get_session_by_id(&session_id)
+        .await?
         .ok_or_else(|| AppError::JobError(format!("Session {} not found", session_id)))?;
-    
+
     // Get model configuration for this task using centralized resolver
     let model_settings = crate::utils::config_resolver::resolve_model_settings(
         &app_handle,
         TaskType::ImplementationPlanMerge,
         &session.project_directory,
-        None,  // No model override
-        None,  // No temperature override
-        None,  // No max_tokens override
-    ).await?;
-    
+        None, // No model override
+        None, // No temperature override
+        None, // No max_tokens override
+    )
+    .await?;
+
     // Create the prompt description including the task description from session
     let prompt_description = if let Some(ref task_desc) = session.task_description {
         if let Some(ref instructions) = merge_instructions {
-            format!("{} - Merge {} plans with instructions: {}", task_desc, source_job_ids.len(), instructions)
+            format!(
+                "{} - Merge {} plans with instructions: {}",
+                task_desc,
+                source_job_ids.len(),
+                instructions
+            )
         } else {
-            format!("{} - Merged from {} implementation plans", task_desc, source_job_ids.len())
+            format!(
+                "{} - Merged from {} implementation plans",
+                task_desc,
+                source_job_ids.len()
+            )
         }
     } else {
         // Fallback if no task description in session
@@ -496,12 +623,12 @@ pub async fn create_merged_implementation_plan_command(
             format!("Merged from {} implementation plans", source_job_ids.len())
         }
     };
-    
+
     let payload = JobPayload::ImplementationPlanMerge(ImplementationPlanMergePayload {
         source_job_ids,
         merge_instructions,
     });
-    
+
     let job_id = crate::utils::job_creation_utils::create_and_queue_background_job(
         &session_id,
         &session.project_directory,
@@ -511,14 +638,15 @@ pub async fn create_merged_implementation_plan_command(
         &prompt_description,
         model_settings,
         payload,
-        2, // Priority
+        2,    // Priority
         None, // No workflow_id
         None, // No workflow_stage
         None, // No extra metadata
         &app_handle,
-    ).await?;
-    
+    )
+    .await?;
+
     info!("Created merged implementation plan job: {}", job_id);
-    
+
     Ok(JobCommandResponse { job_id })
 }

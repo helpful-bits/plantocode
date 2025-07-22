@@ -1,15 +1,15 @@
 //! Prompt Building Utilities
-//! 
+//!
 //! This module provides utilities for building and composing prompts using the unified prompt system.
 
 use std::sync::Arc;
 use tauri::{AppHandle, Manager};
 
-use crate::error::{AppResult, AppError};
 use crate::db_utils::SessionRepository;
+use crate::error::{AppError, AppResult};
 use crate::jobs::types::Job;
 use crate::utils::unified_prompt_system::{
-    UnifiedPromptProcessor, UnifiedPromptContextBuilder, ComposedPrompt
+    ComposedPrompt, UnifiedPromptContextBuilder, UnifiedPromptProcessor,
 };
 
 /// Get session name by ID for context building
@@ -25,7 +25,7 @@ pub async fn get_session_name(
             ));
         }
     };
-    
+
     if let Some(session) = session_repo.get_session_by_id(session_id).await? {
         Ok(Some(session.name))
     } else {
@@ -46,11 +46,14 @@ pub async fn get_project_directory_from_session(
             ));
         }
     };
-    
+
     if let Some(session) = session_repo.get_session_by_id(session_id).await? {
         Ok(session.project_directory)
     } else {
-        Err(AppError::ConfigError(format!("Session not found: {}", session_id)))
+        Err(AppError::ConfigError(format!(
+            "Session not found: {}",
+            session_id
+        )))
     }
 }
 
@@ -65,21 +68,18 @@ pub async fn build_unified_prompt(
 ) -> AppResult<ComposedPrompt> {
     // Check if cache service is available and refresh if needed
     refresh_system_prompts_if_needed(app_handle).await;
-    
+
     // Get session name and project directory
     let session_name = get_session_name(&job.session_id, app_handle).await?;
     let project_directory = get_project_directory_from_session(&job.session_id, app_handle).await?;
-    
-    let context = UnifiedPromptContextBuilder::new(
-        project_directory,
-        job.task_type,
-        task_description,
-    )
-    .file_contents(file_contents)
-    .directory_tree(directory_tree)
-    .session_name(session_name)
-    .model_name(Some(model_name.to_string()))
-    .build();
+
+    let context =
+        UnifiedPromptContextBuilder::new(project_directory, job.task_type, task_description)
+            .file_contents(file_contents)
+            .directory_tree(directory_tree)
+            .session_name(session_name)
+            .model_name(Some(model_name.to_string()))
+            .build();
 
     let prompt_processor = UnifiedPromptProcessor::new();
     prompt_processor.compose_prompt(&context, app_handle).await
@@ -88,7 +88,7 @@ pub async fn build_unified_prompt(
 /// Refresh system prompts using cache service if available and needed
 async fn refresh_system_prompts_if_needed(app_handle: &AppHandle) {
     use tauri::Manager;
-    
+
     // Note: System prompt cache service now operates on-demand
     // No background refresh needed as prompts are fetched when requested
 }

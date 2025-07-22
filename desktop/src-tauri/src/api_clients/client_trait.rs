@@ -1,11 +1,11 @@
 use async_trait::async_trait;
-use std::pin::Pin;
 use futures::Stream;
 use serde_json::Value;
+use std::pin::Pin;
 
 use crate::error::AppResult;
-use crate::models::{OpenRouterResponse, OpenRouterStreamChunk};
 use crate::models::stream_event::StreamEvent;
+use crate::models::{OpenRouterResponse, OpenRouterStreamChunk};
 
 /// Common options for API clients
 #[derive(Debug, Clone)]
@@ -21,33 +21,33 @@ pub struct ApiClientOptions {
 // Default implementation removed to force explicit model configuration
 
 /// Common trait for all API clients
-/// 
+///
 /// ## Cost Calculation Authority
-/// 
+///
 /// **IMPORTANT**: The `cost` field within the `OpenRouterUsage` struct returned by both
 /// `chat_completion` and `chat_completion_stream` methods contains the final, server-authoritative
 /// cost calculation. This cost should be treated as the single source of truth for:
 /// - User-facing cost display
 /// - Billing calculations
 /// - Usage tracking and analytics
-/// 
+///
 /// The desktop client should NEVER perform local cost calculations or attempt to override
 /// the server-provided cost values. All cost-related logic must defer to the server's
 /// authoritative calculations to ensure consistency across the application.
 #[async_trait]
 pub trait ApiClient: Send + Sync {
     /// Send a completion request with messages and get a response
-    /// 
+    ///
     /// The returned `OpenRouterResponse.usage.cost` field contains the server-authoritative
     /// cost and should be used as the ground truth for billing purposes.
     async fn chat_completion(
-        &self, 
-        messages: Vec<crate::models::OpenRouterRequestMessage>, 
-        options: ApiClientOptions
+        &self,
+        messages: Vec<crate::models::OpenRouterRequestMessage>,
+        options: ApiClientOptions,
     ) -> AppResult<OpenRouterResponse>;
-    
+
     /// Send a streaming completion request with messages and get a stream of events
-    /// 
+    ///
     /// The stream can contain either content chunks or usage updates.
     /// The final stream chunk's `OpenRouterStreamChunk.usage.cost` field contains the
     /// server-authoritative cost and should be used as the ground truth for billing purposes.
@@ -59,11 +59,13 @@ pub trait ApiClient: Send + Sync {
 
     /// Extract cost from response - uses usage.cost field as source of truth
     fn extract_cost_from_response(&self, response: &OpenRouterResponse) -> f64 {
-        response.usage.as_ref()
+        response
+            .usage
+            .as_ref()
             .and_then(|usage| usage.cost)
             .unwrap_or(0.0)
     }
-    
+
     /// Allow downcasting to concrete types for access to specific methods
     fn as_any(&self) -> &dyn std::any::Any;
 }
@@ -72,5 +74,12 @@ pub trait ApiClient: Send + Sync {
 #[async_trait]
 pub trait TranscriptionClient: Send + Sync {
     /// Transcribe audio data
-    async fn transcribe(&self, audio_data: &[u8], filename: &str, model: &str, duration_ms: i64, language: Option<&str>) -> AppResult<String>;
+    async fn transcribe(
+        &self,
+        audio_data: &[u8],
+        filename: &str,
+        model: &str,
+        duration_ms: i64,
+        language: Option<&str>,
+    ) -> AppResult<String>;
 }

@@ -12,6 +12,17 @@
     "dialog:default",
     "fs:default",
     "shell:default",
+    {
+      "identifier": "shell:allow-spawn",
+      "allow": [
+        {
+          "name": "claude-cmd",
+          "cmd": "claude",
+          "args": true,
+          "sidecar": false
+        }
+      ]
+    },
     "shell:allow-open",
     "store:default"
   ]

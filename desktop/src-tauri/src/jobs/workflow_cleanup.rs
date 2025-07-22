@@ -1,15 +1,15 @@
-use std::sync::Arc;
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
-use std::time::{SystemTime, UNIX_EPOCH, Duration};
 use std::str::FromStr;
-use serde::{Serialize, Deserialize};
-use tauri::{AppHandle, Manager, Emitter};
+use std::sync::Arc;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use tauri::{AppHandle, Emitter, Manager};
 
-use crate::error::{AppError, AppResult};
 use crate::db_utils::background_job_repository::BackgroundJobRepository;
-use crate::models::{JobStatus, BackgroundJob};
+use crate::error::{AppError, AppResult};
 use crate::jobs::types::CleanupResult;
 use crate::jobs::workflow_types::WorkflowStage;
+use crate::models::{BackgroundJob, JobStatus};
 
 /// Service for cleaning up workflow resources and orphaned jobs
 pub struct WorkflowCleanupHandler {
@@ -26,11 +26,14 @@ impl WorkflowCleanupHandler {
     pub async fn cleanup_workflow(
         &self,
         workflow_id: &str,
-        app_handle: &AppHandle
+        app_handle: &AppHandle,
     ) -> AppResult<CleanupResult> {
         log::info!("Starting cleanup for workflow: {}", workflow_id);
 
-        let workflow_jobs = self.repo.get_jobs_by_metadata_field("workflowId", workflow_id).await?;
+        let workflow_jobs = self
+            .repo
+            .get_jobs_by_metadata_field("workflowId", workflow_id)
+            .await?;
         let mut cleaned_jobs = Vec::new();
         let mut failed_cleanups = Vec::new();
 
@@ -40,7 +43,7 @@ impl WorkflowCleanupHandler {
                 Ok(_) => {
                     cleaned_jobs.push(job.id.clone());
                     log::debug!("Successfully cleaned up job: {}", job.id);
-                },
+                }
                 Err(e) => {
                     failed_cleanups.push(job.id.clone());
                     log::error!("Failed to clean up job {}: {}", job.id, e);
@@ -49,14 +52,21 @@ impl WorkflowCleanupHandler {
         }
 
         // Clean up workflow-specific resources
-        let resources_freed = self.cleanup_workflow_resources(workflow_id, app_handle).await
+        let resources_freed = self
+            .cleanup_workflow_resources(workflow_id, app_handle)
+            .await
             .unwrap_or_else(|e| {
-                log::error!("Failed to clean up workflow resources for {}: {}", workflow_id, e);
+                log::error!(
+                    "Failed to clean up workflow resources for {}: {}",
+                    workflow_id,
+                    e
+                );
                 false
             });
 
         // Emit cleanup completion event
-        self.emit_cleanup_event(workflow_id, &cleaned_jobs, app_handle).await;
+        self.emit_cleanup_event(workflow_id, &cleaned_jobs, app_handle)
+            .await;
 
         let result = CleanupResult {
             workflow_id: Some(workflow_id.to_string()),
@@ -70,10 +80,7 @@ impl WorkflowCleanupHandler {
     }
 
     /// Clean up orphaned jobs (jobs without valid workflow)
-    pub async fn cleanup_orphaned_jobs(
-        &self,
-        app_handle: &AppHandle
-    ) -> AppResult<Vec<String>> {
+    pub async fn cleanup_orphaned_jobs(&self, app_handle: &AppHandle) -> AppResult<Vec<String>> {
         log::info!("Starting cleanup of orphaned jobs");
 
         let all_jobs = self.repo.get_all_jobs().await?;
@@ -94,12 +101,12 @@ impl WorkflowCleanupHandler {
             match self.cleanup_job_resources(&job, app_handle).await {
                 Ok(_) => {
                     cleaned_job_ids.push(job.id.clone());
-                    
+
                     // Remove the job from database if it's truly orphaned
                     if let Err(e) = self.repo.delete_job(&job.id).await {
                         log::error!("Failed to delete orphaned job {}: {}", job.id, e);
                     }
-                },
+                }
                 Err(e) => {
                     log::error!("Failed to clean up orphaned job {}: {}", job.id, e);
                 }
@@ -114,13 +121,16 @@ impl WorkflowCleanupHandler {
     pub async fn cleanup_expired_workflows(
         &self,
         max_age_hours: u64,
-        app_handle: &AppHandle
+        app_handle: &AppHandle,
     ) -> AppResult<CleanupResult> {
-        log::info!("Starting cleanup of workflows older than {} hours", max_age_hours);
+        log::info!(
+            "Starting cleanup of workflows older than {} hours",
+            max_age_hours
+        );
 
         let cutoff_time = self.current_timestamp() - (max_age_hours * 3600 * 1000) as i64;
         let expired_workflows = self.find_expired_workflows(cutoff_time).await?;
-        
+
         let mut total_cleaned_jobs = Vec::new();
         let mut total_failed_cleanups = Vec::new();
         let mut workflows_cleaned = 0;
@@ -131,7 +141,7 @@ impl WorkflowCleanupHandler {
                     total_cleaned_jobs.extend(result.cleaned_jobs);
                     total_failed_cleanups.extend(result.failed_cleanups);
                     workflows_cleaned += 1;
-                },
+                }
                 Err(e) => {
                     log::error!("Failed to clean up expired workflow {}: {}", workflow_id, e);
                 }
@@ -145,21 +155,21 @@ impl WorkflowCleanupHandler {
             resources_freed: workflows_cleaned > 0,
         };
 
-        log::info!("Expired workflow cleanup completed: {} workflows, {} jobs", 
-                  workflows_cleaned, result.cleaned_jobs.len());
+        log::info!(
+            "Expired workflow cleanup completed: {} workflows, {} jobs",
+            workflows_cleaned,
+            result.cleaned_jobs.len()
+        );
         Ok(result)
     }
 
     /// Emergency cleanup for system shutdown
-    pub async fn emergency_cleanup(
-        &self,
-        app_handle: &AppHandle
-    ) -> AppResult<()> {
+    pub async fn emergency_cleanup(&self, app_handle: &AppHandle) -> AppResult<()> {
         log::warn!("Performing emergency cleanup for system shutdown");
 
         // Clean up all active jobs
         let active_jobs = self.repo.get_active_jobs().await?;
-        
+
         for job in active_jobs {
             // Force cleanup without error handling to ensure fast shutdown
             let _ = self.force_cleanup_job(&job).await;
@@ -175,7 +185,7 @@ impl WorkflowCleanupHandler {
     /// Clean up temporary files for a specific workflow
     pub async fn cleanup_temp_files(&self, workflow_id: &str) -> AppResult<u64> {
         log::debug!("Cleaning up temporary files for workflow: {}", workflow_id);
-        
+
         let temp_dir = self.get_workflow_temp_dir(workflow_id);
         let mut files_cleaned = 0;
 
@@ -184,7 +194,7 @@ impl WorkflowCleanupHandler {
                 Ok(_) => {
                     files_cleaned = 1; // Directory removed
                     log::debug!("Removed temp directory: {}", temp_dir);
-                },
+                }
                 Err(e) => {
                     log::error!("Failed to remove temp directory {}: {}", temp_dir, e);
                 }
@@ -197,13 +207,13 @@ impl WorkflowCleanupHandler {
     /// Clean up memory caches for a workflow
     pub async fn cleanup_memory_caches(&self, workflow_id: &str) -> AppResult<()> {
         log::debug!("Cleaning up memory caches for workflow: {}", workflow_id);
-        
+
         // Implementation would clear any in-memory caches
         // related to this workflow, such as:
         // - File content caches
         // - Directory tree caches
         // - Intermediate processing results
-        
+
         Ok(())
     }
 
@@ -212,20 +222,27 @@ impl WorkflowCleanupHandler {
         &self,
         interval_hours: u64,
         max_age_hours: u64,
-        app_handle: &AppHandle
+        app_handle: &AppHandle,
     ) -> AppResult<()> {
-        log::info!("Scheduling automatic cleanup every {} hours for data older than {} hours", 
-                  interval_hours, max_age_hours);
-        
+        log::info!(
+            "Scheduling automatic cleanup every {} hours for data older than {} hours",
+            interval_hours,
+            max_age_hours
+        );
+
         // In a real implementation, this would set up a recurring timer
         // For now, we'll just log the configuration
-        
+
         Ok(())
     }
 
     // Private helper methods
 
-    async fn cleanup_job_resources(&self, job: &BackgroundJob, app_handle: &AppHandle) -> AppResult<()> {
+    async fn cleanup_job_resources(
+        &self,
+        job: &BackgroundJob,
+        app_handle: &AppHandle,
+    ) -> AppResult<()> {
         log::debug!("Cleaning up resources for job: {}", job.id);
 
         // Clean up job-specific temporary files
@@ -243,8 +260,15 @@ impl WorkflowCleanupHandler {
         Ok(())
     }
 
-    async fn cleanup_workflow_resources(&self, workflow_id: &str, app_handle: &AppHandle) -> AppResult<bool> {
-        log::debug!("Cleaning up workflow-specific resources for: {}", workflow_id);
+    async fn cleanup_workflow_resources(
+        &self,
+        workflow_id: &str,
+        app_handle: &AppHandle,
+    ) -> AppResult<bool> {
+        log::debug!(
+            "Cleaning up workflow-specific resources for: {}",
+            workflow_id
+        );
 
         // Clean up workflow temporary files
         let temp_files_cleaned = self.cleanup_temp_files(workflow_id).await?;
@@ -260,7 +284,7 @@ impl WorkflowCleanupHandler {
 
     async fn is_job_orphaned(&self, job: &BackgroundJob) -> AppResult<bool> {
         // Check various conditions that indicate a job is orphaned:
-        
+
         // Parse job status to enum for proper type safety
         let job_status = match JobStatus::from_str(&job.status) {
             Ok(status) => status,
@@ -270,7 +294,8 @@ impl WorkflowCleanupHandler {
         // 1. Jobs older than 24 hours that are still queued
         if matches!(job_status, JobStatus::Queued | JobStatus::Created) {
             let job_age_ms = self.current_timestamp() - job.created_at;
-            if job_age_ms > 24 * 3600 * 1000 { // 24 hours
+            if job_age_ms > 24 * 3600 * 1000 {
+                // 24 hours
                 return Ok(true);
             }
         }
@@ -278,7 +303,8 @@ impl WorkflowCleanupHandler {
         // 2. Jobs in progress for more than 2 hours
         if matches!(job_status, JobStatus::Running | JobStatus::Preparing) {
             let job_age_ms = self.current_timestamp() - job.created_at;
-            if job_age_ms > 2 * 3600 * 1000 { // 2 hours
+            if job_age_ms > 2 * 3600 * 1000 {
+                // 2 hours
                 return Ok(true);
             }
         }
@@ -288,7 +314,13 @@ impl WorkflowCleanupHandler {
             if let Ok(meta_obj) = serde_json::from_str::<serde_json::Value>(metadata) {
                 if let Some(workflow_id) = meta_obj.get("workflowId") {
                     // Check if workflow still exists
-                    let workflow_jobs = self.repo.get_jobs_by_metadata_field("workflowId", workflow_id.as_str().unwrap_or("")).await?;
+                    let workflow_jobs = self
+                        .repo
+                        .get_jobs_by_metadata_field(
+                            "workflowId",
+                            workflow_id.as_str().unwrap_or(""),
+                        )
+                        .await?;
                     if workflow_jobs.is_empty() {
                         return Ok(true);
                     }
@@ -310,8 +342,11 @@ impl WorkflowCleanupHandler {
                     if let Some(workflow_id) = meta_obj.get("workflowId") {
                         let workflow_id = workflow_id.as_str().unwrap_or("");
                         let job_time = job.created_at;
-                        
-                        let current_time = workflow_last_activity.get(workflow_id).copied().unwrap_or(0);
+
+                        let current_time = workflow_last_activity
+                            .get(workflow_id)
+                            .copied()
+                            .unwrap_or(0);
                         if job_time > current_time {
                             workflow_last_activity.insert(workflow_id.to_string(), job_time);
                         }
@@ -340,7 +375,7 @@ impl WorkflowCleanupHandler {
 
     async fn cleanup_global_resources(&self, app_handle: &AppHandle) -> AppResult<()> {
         log::debug!("Cleaning up global resources");
-        
+
         // Clean up global temporary directories
         let global_temp_dir = "/tmp/vibe_manager_jobs";
         if std::path::Path::new(global_temp_dir).exists() {
@@ -382,7 +417,10 @@ impl WorkflowCleanupHandler {
     }
 
     async fn cleanup_workflow_coordination_data(&self, workflow_id: &str) -> AppResult<()> {
-        log::debug!("Cleaning up coordination data for workflow: {}", workflow_id);
+        log::debug!(
+            "Cleaning up coordination data for workflow: {}",
+            workflow_id
+        );
         // Implementation would clean up:
         // - Job dependency tracking
         // - Stage completion status
@@ -394,7 +432,12 @@ impl WorkflowCleanupHandler {
         format!("/tmp/vibe_manager_workflow_{}", workflow_id)
     }
 
-    async fn emit_cleanup_event(&self, workflow_id: &str, cleaned_jobs: &[String], app_handle: &AppHandle) {
+    async fn emit_cleanup_event(
+        &self,
+        workflow_id: &str,
+        cleaned_jobs: &[String],
+        app_handle: &AppHandle,
+    ) {
         let event_payload = serde_json::json!({
             "workflowId": workflow_id,
             "cleanedJobs": cleaned_jobs,
@@ -445,8 +488,8 @@ impl Default for CleanupConfig {
     fn default() -> Self {
         Self {
             auto_cleanup_enabled: true,
-            cleanup_interval_hours: 24, // Daily cleanup
-            max_job_age_hours: 72,      // 3 days
+            cleanup_interval_hours: 24,  // Daily cleanup
+            max_job_age_hours: 72,       // 3 days
             max_workflow_age_hours: 168, // 1 week
             cleanup_temp_files: true,
             cleanup_orphaned_jobs: true,
@@ -469,33 +512,38 @@ impl CleanupScheduler {
             return Ok(());
         }
 
-        log::info!("Starting scheduled cleanup with interval: {} hours", self.config.cleanup_interval_hours);
-        
+        log::info!(
+            "Starting scheduled cleanup with interval: {} hours",
+            self.config.cleanup_interval_hours
+        );
+
         // In a real implementation, this would start a timer
         // For now, we'll just perform one cleanup cycle
         self.perform_cleanup_cycle(app_handle).await?;
-        
+
         Ok(())
     }
 
     /// Perform a full cleanup cycle
     pub async fn perform_cleanup_cycle(&self, app_handle: &AppHandle) -> AppResult<CleanupSummary> {
         log::info!("Starting cleanup cycle");
-        
+
         let mut summary = CleanupSummary::default();
 
         // Clean up expired workflows
-        if let Ok(result) = self.cleanup_handler.cleanup_expired_workflows(
-            self.config.max_workflow_age_hours, 
-            app_handle
-        ).await {
+        if let Ok(result) = self
+            .cleanup_handler
+            .cleanup_expired_workflows(self.config.max_workflow_age_hours, app_handle)
+            .await
+        {
             summary.expired_workflows_cleaned += 1;
             summary.total_jobs_cleaned += result.cleaned_jobs.len();
         }
 
         // Clean up orphaned jobs
         if self.config.cleanup_orphaned_jobs {
-            if let Ok(orphaned_jobs) = self.cleanup_handler.cleanup_orphaned_jobs(app_handle).await {
+            if let Ok(orphaned_jobs) = self.cleanup_handler.cleanup_orphaned_jobs(app_handle).await
+            {
                 summary.orphaned_jobs_cleaned = orphaned_jobs.len();
             }
         }
@@ -524,7 +572,7 @@ mod tests {
         let pool = Arc::new(SqlitePool::connect(":memory:").await.unwrap());
         let repo = Arc::new(BackgroundJobRepository::new(pool));
         let handler = WorkflowCleanupHandler::new(repo);
-        
+
         // Basic creation test
         assert!(true); // Handler created successfully
     }
@@ -543,7 +591,7 @@ mod tests {
         let pool = Arc::new(SqlitePool::connect(":memory:").await.unwrap());
         let repo = Arc::new(BackgroundJobRepository::new(pool));
         let handler = WorkflowCleanupHandler::new(repo);
-        
+
         let temp_dir = handler.get_workflow_temp_dir("workflow_123");
         assert_eq!(temp_dir, "/tmp/vibe_manager_workflow_workflow_123");
     }

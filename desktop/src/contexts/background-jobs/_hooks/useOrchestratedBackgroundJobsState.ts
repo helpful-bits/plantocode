@@ -1,7 +1,7 @@
 "use client";
 
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
+import type { UnlistenFn } from "@tauri-apps/api/event";
 import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 
 import {
@@ -10,7 +10,7 @@ import {
 } from "@/types/session-types";
 import { areJobArraysEqual, areJobsEqual } from "../_utils/job-state-helpers";
 import { logError, getErrorMessage } from "@/utils/error-handling";
-import { isTauriAvailable, safeCleanupListenerPromise } from "@/utils/tauri-utils";
+import { safeListen } from "@/utils/tauri-event-utils";
 import { getAllVisibleJobsAction } from "@/actions/background-jobs/jobs.actions";
 import { getParsedMetadata } from "@/app/components/background-jobs-sidebar/utils";
 
@@ -303,14 +303,14 @@ export function useOrchestratedBackgroundJobsState({
   
   // Listen for SSE events from the Rust backend
   useEffect(() => {
-    let unlistenJobCreatedPromise: Promise<() => void> | null = null;
-    let unlistenJobDeletedPromise: Promise<() => void> | null = null;
-    let unlistenJobUpdatedPromise: Promise<() => void> | null = null;
+    let unlistenJobCreated: UnlistenFn | null = null;
+    let unlistenJobDeleted: UnlistenFn | null = null;
+    let unlistenJobUpdated: UnlistenFn | null = null;
     
     const setupListeners = async () => {
       try {
         // Listen for job created events
-        unlistenJobCreatedPromise = listen("job_created", async (event) => {
+        unlistenJobCreated = await safeListen("job_created", async (event) => {
           try {
             const newJob = event.payload as BackgroundJob;
             // Filter out workflow orchestrator jobs
@@ -324,7 +324,7 @@ export function useOrchestratedBackgroundJobsState({
         });
 
         // Listen for job deleted events
-        unlistenJobDeletedPromise = listen("job_deleted", async (event) => {
+        unlistenJobDeleted = await safeListen("job_deleted", async (event) => {
           try {
             const payload = event.payload as { jobId: string };
             setJobs((prev) => prev.filter((job) => job.id !== payload.jobId));
@@ -334,7 +334,7 @@ export function useOrchestratedBackgroundJobsState({
         });
 
         // Listen for job updated events
-        unlistenJobUpdatedPromise = listen("job_updated", async (event) => {
+        unlistenJobUpdated = await safeListen("job_updated", async (event) => {
           try {
             const jobUpdate = event.payload as Partial<BackgroundJob> & { id: string };
             // Filter out workflow orchestrator jobs
@@ -378,22 +378,9 @@ export function useOrchestratedBackgroundJobsState({
 
     // Clean up the listeners when component unmounts
     return () => {
-      if (!isTauriAvailable()) {
-        // Tauri context already destroyed, skip cleanup
-        return;
-      }
-
-      // No metadata cache to clear
-
-      if (unlistenJobCreatedPromise) {
-        safeCleanupListenerPromise(unlistenJobCreatedPromise);
-      }
-      if (unlistenJobDeletedPromise) {
-        safeCleanupListenerPromise(unlistenJobDeletedPromise);
-      }
-      if (unlistenJobUpdatedPromise) {
-        safeCleanupListenerPromise(unlistenJobUpdatedPromise);
-      }
+      unlistenJobCreated?.();
+      unlistenJobDeleted?.();
+      unlistenJobUpdated?.();
     };
   }, [upsertJob]);
 

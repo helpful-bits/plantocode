@@ -1,23 +1,21 @@
-use quick_xml::events::Event;
-use quick_xml::Reader;
-use std::io::BufRead;
 use once_cell::sync::Lazy;
+use quick_xml::Reader;
+use quick_xml::events::Event;
 use regex::Regex;
+use std::io::BufRead;
 
 static XML_FENCE_REGEX: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"(?s)```xml\s*\n?(.*?)\n?```")
-        .expect("XML fence regex pattern should be valid")
+    Regex::new(r"(?s)```xml\s*\n?(.*?)\n?```").expect("XML fence regex pattern should be valid")
 });
 
 static GENERIC_FENCE_REGEX: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"(?s)```\s*\n?(.*?)\n?```")
-        .expect("Generic fence regex pattern should be valid")
+    Regex::new(r"(?s)```\s*\n?(.*?)\n?```").expect("Generic fence regex pattern should be valid")
 });
 
 /// Extracts XML content from markdown-formatted text
 pub fn extract_xml_from_markdown(content: &str) -> String {
     let trimmed_content = content.trim();
-    
+
     if trimmed_content.is_empty() {
         return String::new();
     }
@@ -104,7 +102,9 @@ pub fn extract_query_from_task(xml: &str) -> Option<String> {
                         if let Ok(attr) = attr {
                             let key = std::str::from_utf8(attr.key.as_ref()).unwrap_or("");
                             if key == "value" || key == "text" {
-                                return Some(std::str::from_utf8(&attr.value).unwrap_or("").to_string());
+                                return Some(
+                                    std::str::from_utf8(&attr.value).unwrap_or("").to_string(),
+                                );
                             }
                         }
                     }
@@ -144,7 +144,9 @@ pub fn extract_task_title(xml: &str) -> Option<String> {
                         if let Ok(attr) = attr {
                             let key = std::str::from_utf8(attr.key.as_ref()).unwrap_or("");
                             if key == "title" {
-                                return Some(std::str::from_utf8(&attr.value).unwrap_or("").to_string());
+                                return Some(
+                                    std::str::from_utf8(&attr.value).unwrap_or("").to_string(),
+                                );
                             }
                         }
                     }
