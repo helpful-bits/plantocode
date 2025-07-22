@@ -1,18 +1,18 @@
-use tauri::{AppHandle, Manager};
-use crate::error::{AppResult, AppError};
-use crate::db_utils::SettingsRepository;
-use std::sync::Arc;
-use crate::utils::hash_utils::hash_string;
-use serde_json::{json, Map};
-use serde::{Serialize, Deserialize};
-use log;
-use heck::{ToLowerCamelCase, ToSnakeCase};
 use crate::api_clients::ServerProxyClient;
+use crate::db_utils::SettingsRepository;
+use crate::error::{AppError, AppResult};
+use crate::models::RuntimeAIConfig;
 use crate::models::{DefaultSystemPrompt, ProjectSystemPrompt, TaskType};
 use crate::services::config_cache_service::ConfigCache;
-use crate::models::RuntimeAIConfig;
+use crate::utils::hash_utils::hash_string;
+use heck::{ToLowerCamelCase, ToSnakeCase};
+use log;
+use serde::{Deserialize, Serialize};
+use serde_json::{Map, json};
 use std::collections::HashMap;
 use std::str::FromStr;
+use std::sync::Arc;
+use tauri::{AppHandle, Manager};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ConfigurationHealthReport {
@@ -33,7 +33,10 @@ pub enum ProjectConfigStatus {
 }
 
 #[tauri::command]
-pub async fn validate_configuration_health(app_handle: AppHandle, project_directory: Option<String>) -> AppResult<ConfigurationHealthReport> {
+pub async fn validate_configuration_health(
+    app_handle: AppHandle,
+    project_directory: Option<String>,
+) -> AppResult<ConfigurationHealthReport> {
     let mut report = ConfigurationHealthReport {
         server_connectivity: false,
         server_config_complete: false,
@@ -51,89 +54,154 @@ pub async fn validate_configuration_health(app_handle: AppHandle, project_direct
                 available_frontend_keys.push(snake_case_key.to_lower_camel_case());
             }
             let mut server_frontend_map = Map::new();
-            
+
             for (snake_case_key, _) in &runtime_config.tasks {
                 let camel_case_key = snake_case_key.to_lower_camel_case();
                 server_frontend_map.insert(camel_case_key, json!({}));
             }
-            
+
             // Server config is complete if we have any LLM tasks configured
             report.server_config_complete = !server_frontend_map.is_empty();
-        },
+        }
         Err(_) => {
-            report.validation_errors.push("Server configuration not loaded".to_string());
-            report.recommendations.push("Call fetch_runtime_ai_config to load server configuration".to_string());
+            report
+                .validation_errors
+                .push("Server configuration not loaded".to_string());
+            report
+                .recommendations
+                .push("Call fetch_runtime_ai_config to load server configuration".to_string());
         }
     }
-    
+
     // Project configuration is no longer stored locally - always using server defaults
     if project_directory.is_some() {
         report.project_config_status = ProjectConfigStatus::NoProjectConfig;
-        report.recommendations.push("Project settings are now managed by the server - no local configuration needed".to_string());
+        report.recommendations.push(
+            "Project settings are now managed by the server - no local configuration needed"
+                .to_string(),
+        );
     }
-    
+
     if !report.server_connectivity {
-        report.recommendations.push("Server connection required for configuration loading".to_string());
+        report
+            .recommendations
+            .push("Server connection required for configuration loading".to_string());
     }
-    
+
     if !report.server_config_complete {
-        report.recommendations.push("Server database missing required task configurations".to_string());
+        report
+            .recommendations
+            .push("Server database missing required task configurations".to_string());
     }
-    
+
     Ok(report)
 }
 
 #[tauri::command]
-pub async fn get_key_value_command(app_handle: AppHandle, key: String) -> AppResult<Option<String>> {
-    let settings_repo = app_handle.state::<Arc<SettingsRepository>>().inner().clone();
+pub async fn get_key_value_command(
+    app_handle: AppHandle,
+    key: String,
+) -> AppResult<Option<String>> {
+    let settings_repo = app_handle
+        .state::<Arc<SettingsRepository>>()
+        .inner()
+        .clone();
     settings_repo.get_value(&key).await
 }
 
 #[tauri::command]
-pub async fn set_key_value_command(app_handle: AppHandle, key: String, value: String) -> AppResult<()> {
-    let settings_repo = app_handle.state::<Arc<SettingsRepository>>().inner().clone();
+pub async fn set_key_value_command(
+    app_handle: AppHandle,
+    key: String,
+    value: String,
+) -> AppResult<()> {
+    let settings_repo = app_handle
+        .state::<Arc<SettingsRepository>>()
+        .inner()
+        .clone();
     settings_repo.set_value(&key, &value).await
 }
 
-
-
 #[tauri::command]
 pub async fn set_onboarding_completed_command(app_handle: AppHandle) -> AppResult<()> {
-    let settings_repo = app_handle.state::<Arc<SettingsRepository>>().inner().clone();
-    settings_repo.set_value("onboarding_completed", "true").await
+    let settings_repo = app_handle
+        .state::<Arc<SettingsRepository>>()
+        .inner()
+        .clone();
+    settings_repo
+        .set_value("onboarding_completed", "true")
+        .await
 }
 
 #[tauri::command]
 pub async fn is_onboarding_completed_command(app_handle: AppHandle) -> AppResult<bool> {
-    let settings_repo = app_handle.state::<Arc<SettingsRepository>>().inner().clone();
+    let settings_repo = app_handle
+        .state::<Arc<SettingsRepository>>()
+        .inner()
+        .clone();
     let value = settings_repo.get_value("onboarding_completed").await?;
     Ok(value.as_deref() == Some("true"))
 }
 
 #[tauri::command]
-pub async fn get_workflow_setting_command(app_handle: AppHandle, workflow_name: String, setting_key: String) -> AppResult<Option<String>> {
-    let settings_repo = app_handle.state::<Arc<SettingsRepository>>().inner().clone();
-    settings_repo.get_workflow_setting(&workflow_name, &setting_key).await
+pub async fn get_workflow_setting_command(
+    app_handle: AppHandle,
+    workflow_name: String,
+    setting_key: String,
+) -> AppResult<Option<String>> {
+    let settings_repo = app_handle
+        .state::<Arc<SettingsRepository>>()
+        .inner()
+        .clone();
+    settings_repo
+        .get_workflow_setting(&workflow_name, &setting_key)
+        .await
 }
 
 #[tauri::command]
-pub async fn set_workflow_setting_command(app_handle: AppHandle, workflow_name: String, setting_key: String, value: String) -> AppResult<()> {
-    let settings_repo = app_handle.state::<Arc<SettingsRepository>>().inner().clone();
-    settings_repo.set_workflow_setting(&workflow_name, &setting_key, &value).await
+pub async fn set_workflow_setting_command(
+    app_handle: AppHandle,
+    workflow_name: String,
+    setting_key: String,
+    value: String,
+) -> AppResult<()> {
+    let settings_repo = app_handle
+        .state::<Arc<SettingsRepository>>()
+        .inner()
+        .clone();
+    settings_repo
+        .set_workflow_setting(&workflow_name, &setting_key, &value)
+        .await
 }
 
 #[tauri::command]
-pub async fn delete_workflow_setting_command(app_handle: AppHandle, workflow_name: String, setting_key: String) -> AppResult<()> {
-    let settings_repo = app_handle.state::<Arc<SettingsRepository>>().inner().clone();
-    settings_repo.delete_workflow_setting(&workflow_name, &setting_key).await
+pub async fn delete_workflow_setting_command(
+    app_handle: AppHandle,
+    workflow_name: String,
+    setting_key: String,
+) -> AppResult<()> {
+    let settings_repo = app_handle
+        .state::<Arc<SettingsRepository>>()
+        .inner()
+        .clone();
+    settings_repo
+        .delete_workflow_setting(&workflow_name, &setting_key)
+        .await
 }
 
 #[tauri::command]
-pub async fn get_all_workflow_settings_command(app_handle: AppHandle, workflow_name: String) -> AppResult<std::collections::HashMap<String, String>> {
-    let settings_repo = app_handle.state::<Arc<SettingsRepository>>().inner().clone();
-    settings_repo.get_all_workflow_settings(&workflow_name).await
+pub async fn get_all_workflow_settings_command(
+    app_handle: AppHandle,
+    workflow_name: String,
+) -> AppResult<std::collections::HashMap<String, String>> {
+    let settings_repo = app_handle
+        .state::<Arc<SettingsRepository>>()
+        .inner()
+        .clone();
+    settings_repo
+        .get_all_workflow_settings(&workflow_name)
+        .await
 }
-
 
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -146,15 +214,13 @@ struct FrontendReadyTaskModelConfig {
     allowed_models: Option<Vec<String>>,
 }
 
-
-
-
-
-
 #[tauri::command]
-pub async fn get_server_default_task_model_settings_command(app_handle: AppHandle) -> AppResult<String> {
-    let runtime_ai_config = crate::utils::config_helpers::get_runtime_ai_config_from_cache(&app_handle).await?;
-    
+pub async fn get_server_default_task_model_settings_command(
+    app_handle: AppHandle,
+) -> AppResult<String> {
+    let runtime_ai_config =
+        crate::utils::config_helpers::get_runtime_ai_config_from_cache(&app_handle).await?;
+
     // Convert server tasks to frontend format
     let mut server_frontend_map = Map::new();
     for (snake_case_key, task_config) in &runtime_ai_config.tasks {
@@ -172,38 +238,43 @@ pub async fn get_server_default_task_model_settings_command(app_handle: AppHandl
                     allowed_models: task_config.allowed_models.clone(),
                 };
                 server_frontend_map.insert(
-                    camel_case_key, 
-                    serde_json::to_value(frontend_config)
-                        .map_err(|e| AppError::SerializationError(format!("Failed to serialize task config for {}: {}", snake_case_key, e)))?
+                    camel_case_key,
+                    serde_json::to_value(frontend_config).map_err(|e| {
+                        AppError::SerializationError(format!(
+                            "Failed to serialize task config for {}: {}",
+                            snake_case_key, e
+                        ))
+                    })?,
                 );
             }
             Err(_) => {
                 // Task type is invalid or deprecated, filter it out
-                log::warn!("Filtering out unknown task type from server config: {}", snake_case_key);
+                log::warn!(
+                    "Filtering out unknown task type from server config: {}",
+                    snake_case_key
+                );
             }
         }
     }
-    
+
     log::info!("Returning server default task model settings only");
     let result_json = serde_json::Value::Object(server_frontend_map);
     Ok(result_json.to_string())
 }
 
-
-
-
-
-
-
-
 #[tauri::command]
-pub async fn fetch_default_system_prompts_from_server(app_handle: AppHandle) -> AppResult<Vec<DefaultSystemPrompt>> {
+pub async fn fetch_default_system_prompts_from_server(
+    app_handle: AppHandle,
+) -> AppResult<Vec<DefaultSystemPrompt>> {
     let server_client = app_handle.state::<Arc<ServerProxyClient>>().inner().clone();
     server_client.get_default_system_prompts().await
 }
 
 #[tauri::command]
-pub async fn fetch_default_system_prompt_from_server(app_handle: AppHandle, task_type: String) -> AppResult<Option<serde_json::Value>> {
+pub async fn fetch_default_system_prompt_from_server(
+    app_handle: AppHandle,
+    task_type: String,
+) -> AppResult<Option<serde_json::Value>> {
     let server_client = app_handle.state::<Arc<ServerProxyClient>>().inner().clone();
     let result = server_client.get_default_system_prompt(&task_type).await?;
     Ok(result.map(|prompt| serde_json::to_value(prompt).unwrap_or_default()))
@@ -212,32 +283,48 @@ pub async fn fetch_default_system_prompt_from_server(app_handle: AppHandle, task
 #[tauri::command]
 pub async fn initialize_system_prompts_from_server(app_handle: AppHandle) -> AppResult<()> {
     let server_client = app_handle.state::<Arc<ServerProxyClient>>().inner().clone();
-    let settings_repo = app_handle.state::<Arc<SettingsRepository>>().inner().clone();
-    server_client.populate_default_system_prompts_cache(&*settings_repo).await
+    let settings_repo = app_handle
+        .state::<Arc<SettingsRepository>>()
+        .inner()
+        .clone();
+    server_client
+        .populate_default_system_prompts_cache(&*settings_repo)
+        .await
 }
 
 #[tauri::command]
-pub async fn is_setting_customized_command(app_handle: AppHandle, setting_key: String) -> AppResult<bool> {
-    let settings_repo = app_handle.state::<Arc<SettingsRepository>>().inner().clone();
-    
+pub async fn is_setting_customized_command(
+    app_handle: AppHandle,
+    setting_key: String,
+) -> AppResult<bool> {
+    let settings_repo = app_handle
+        .state::<Arc<SettingsRepository>>()
+        .inner()
+        .clone();
+
     // Check if the setting exists in the database
     let value = settings_repo.get_value(&setting_key).await?;
     Ok(value.is_some())
 }
 
 #[tauri::command]
-pub async fn reset_setting_to_default_command(app_handle: AppHandle, setting_key: String) -> AppResult<()> {
-    let settings_repo = app_handle.state::<Arc<SettingsRepository>>().inner().clone();
-    
+pub async fn reset_setting_to_default_command(
+    app_handle: AppHandle,
+    setting_key: String,
+) -> AppResult<()> {
+    let settings_repo = app_handle
+        .state::<Arc<SettingsRepository>>()
+        .inner()
+        .clone();
+
     // Reset by removing the project-specific entry
     settings_repo.delete_value(&setting_key).await
 }
 
-
 /// Helper function to get RuntimeAIConfig from cache
 async fn get_runtime_ai_config_from_cache(app_handle: &AppHandle) -> AppResult<RuntimeAIConfig> {
     let config_cache = app_handle.state::<ConfigCache>();
-    
+
     match config_cache.lock() {
         Ok(cache_guard) => {
             if let Some(config_value) = cache_guard.get("runtime_ai_config") {
@@ -249,132 +336,222 @@ async fn get_runtime_ai_config_from_cache(app_handle: &AppHandle) -> AppResult<R
                     }
                 }
             } else {
-                Err(AppError::ConfigError("Runtime AI configuration not found in cache. Please refresh configuration.".to_string()))
+                Err(AppError::ConfigError(
+                    "Runtime AI configuration not found in cache. Please refresh configuration."
+                        .to_string(),
+                ))
             }
         }
         Err(e) => {
             log::error!("Failed to acquire cache lock: {}", e);
-            Err(AppError::InternalError(format!("Failed to read configuration cache: {}", e)))
+            Err(AppError::InternalError(format!(
+                "Failed to read configuration cache: {}",
+                e
+            )))
         }
     }
 }
 
 #[tauri::command]
-pub async fn get_project_task_model_settings_command(app_handle: AppHandle, project_directory: String) -> AppResult<String> {
+pub async fn get_project_task_model_settings_command(
+    app_handle: AppHandle,
+    project_directory: String,
+) -> AppResult<String> {
     let project_hash = hash_string(&project_directory);
-    let settings_repo = app_handle.state::<Arc<SettingsRepository>>().inner().clone();
-    
+    let settings_repo = app_handle
+        .state::<Arc<SettingsRepository>>()
+        .inner()
+        .clone();
+
     // Get server defaults
     let runtime_ai_config = get_runtime_ai_config_from_cache(&app_handle).await?;
-    
+
     // Get project overrides
-    let project_overrides = settings_repo.get_all_project_task_settings(&project_hash).await?;
-    
+    let project_overrides = settings_repo
+        .get_all_project_task_settings(&project_hash)
+        .await?;
+
     // Initialize result object with server defaults
     let mut result = serde_json::Map::new();
-    
+
     for (snake_case_key, server_task_config) in &runtime_ai_config.tasks {
         let camel_case_key = snake_case_key.to_lower_camel_case();
-        
+
         // Start with server defaults
         let mut task_config = serde_json::Map::new();
         task_config.insert("model".to_string(), json!(server_task_config.model.clone()));
-        task_config.insert("maxTokens".to_string(), json!(server_task_config.max_tokens));
-        task_config.insert("temperature".to_string(), json!(server_task_config.temperature));
+        task_config.insert(
+            "maxTokens".to_string(),
+            json!(server_task_config.max_tokens),
+        );
+        task_config.insert(
+            "temperature".to_string(),
+            json!(server_task_config.temperature),
+        );
         if let Some(copy_buttons) = &server_task_config.copy_buttons {
             task_config.insert("copyButtons".to_string(), json!(copy_buttons));
         }
         if let Some(allowed_models) = &server_task_config.allowed_models {
             task_config.insert("allowedModels".to_string(), json!(allowed_models));
         }
-        
+
         // Apply project-specific overrides
         for (override_key, override_value) in &project_overrides {
-            if let Some(task_and_setting) = override_key.strip_prefix(&format!("{}:", snake_case_key)) {
+            if let Some(task_and_setting) =
+                override_key.strip_prefix(&format!("{}:", snake_case_key))
+            {
                 // Parse the JSON value and apply it
-                if let Ok(parsed_value) = serde_json::from_str::<serde_json::Value>(override_value) {
+                if let Ok(parsed_value) = serde_json::from_str::<serde_json::Value>(override_value)
+                {
                     task_config.insert(task_and_setting.to_string(), parsed_value);
                 }
             }
         }
-        
+
         result.insert(camel_case_key, serde_json::Value::Object(task_config));
     }
-    
+
     Ok(serde_json::Value::Object(result).to_string())
 }
 
 #[tauri::command]
-pub async fn set_project_task_setting_command(app_handle: AppHandle, project_directory: String, task_key: String, setting_key: String, value_json: String) -> AppResult<()> {
+pub async fn set_project_task_setting_command(
+    app_handle: AppHandle,
+    project_directory: String,
+    task_key: String,
+    setting_key: String,
+    value_json: String,
+) -> AppResult<()> {
     let project_hash = hash_string(&project_directory);
-    let settings_repo = app_handle.state::<Arc<SettingsRepository>>().inner().clone();
-    
-    let key = format!("project_task_settings:{}:{}:{}", project_hash, task_key.to_snake_case(), setting_key);
+    let settings_repo = app_handle
+        .state::<Arc<SettingsRepository>>()
+        .inner()
+        .clone();
+
+    let key = format!(
+        "project_task_settings:{}:{}:{}",
+        project_hash,
+        task_key.to_snake_case(),
+        setting_key
+    );
     settings_repo.set_value(&key, &value_json).await
 }
 
 #[tauri::command]
-pub async fn reset_project_task_setting_command(app_handle: AppHandle, project_directory: String, task_key: String, setting_key: String) -> AppResult<()> {
+pub async fn reset_project_task_setting_command(
+    app_handle: AppHandle,
+    project_directory: String,
+    task_key: String,
+    setting_key: String,
+) -> AppResult<()> {
     let project_hash = hash_string(&project_directory);
-    let settings_repo = app_handle.state::<Arc<SettingsRepository>>().inner().clone();
-    
-    let key = format!("project_task_settings:{}:{}:{}", project_hash, task_key.to_snake_case(), setting_key);
+    let settings_repo = app_handle
+        .state::<Arc<SettingsRepository>>()
+        .inner()
+        .clone();
+
+    let key = format!(
+        "project_task_settings:{}:{}:{}",
+        project_hash,
+        task_key.to_snake_case(),
+        setting_key
+    );
     settings_repo.delete_value(&key).await
 }
 
 #[tauri::command]
-pub async fn get_project_system_prompt_command(app_handle: AppHandle, project_directory: String, task_type: String) -> AppResult<Option<ProjectSystemPrompt>> {
+pub async fn get_project_system_prompt_command(
+    app_handle: AppHandle,
+    project_directory: String,
+    task_type: String,
+) -> AppResult<Option<ProjectSystemPrompt>> {
     let project_hash = hash_string(&project_directory);
-    let settings_repo = app_handle.state::<Arc<SettingsRepository>>().inner().clone();
-    settings_repo.get_project_system_prompt(&project_hash, &task_type).await
+    let settings_repo = app_handle
+        .state::<Arc<SettingsRepository>>()
+        .inner()
+        .clone();
+    settings_repo
+        .get_project_system_prompt(&project_hash, &task_type)
+        .await
 }
 
 #[tauri::command]
-pub async fn set_project_system_prompt_command(app_handle: AppHandle, project_directory: String, task_type: String, system_prompt: String) -> AppResult<()> {
+pub async fn set_project_system_prompt_command(
+    app_handle: AppHandle,
+    project_directory: String,
+    task_type: String,
+    system_prompt: String,
+) -> AppResult<()> {
     let project_hash = hash_string(&project_directory);
-    let settings_repo = app_handle.state::<Arc<SettingsRepository>>().inner().clone();
-    settings_repo.set_project_system_prompt(&project_hash, &task_type, &system_prompt).await
+    let settings_repo = app_handle
+        .state::<Arc<SettingsRepository>>()
+        .inner()
+        .clone();
+    settings_repo
+        .set_project_system_prompt(&project_hash, &task_type, &system_prompt)
+        .await
 }
 
 #[tauri::command]
-pub async fn reset_project_system_prompt_command(app_handle: AppHandle, project_directory: String, task_type: String) -> AppResult<()> {
+pub async fn reset_project_system_prompt_command(
+    app_handle: AppHandle,
+    project_directory: String,
+    task_type: String,
+) -> AppResult<()> {
     let project_hash = hash_string(&project_directory);
-    let settings_repo = app_handle.state::<Arc<SettingsRepository>>().inner().clone();
-    settings_repo.delete_project_system_prompt(&project_hash, &task_type).await
+    let settings_repo = app_handle
+        .state::<Arc<SettingsRepository>>()
+        .inner()
+        .clone();
+    settings_repo
+        .delete_project_system_prompt(&project_hash, &task_type)
+        .await
 }
 
 #[tauri::command]
-pub async fn is_project_system_prompt_customized_command(app_handle: AppHandle, project_directory: String, task_type: String) -> AppResult<bool> {
+pub async fn is_project_system_prompt_customized_command(
+    app_handle: AppHandle,
+    project_directory: String,
+    task_type: String,
+) -> AppResult<bool> {
     let project_hash = hash_string(&project_directory);
-    let settings_repo = app_handle.state::<Arc<SettingsRepository>>().inner().clone();
-    settings_repo.has_custom_system_prompt(&project_hash, &task_type).await
+    let settings_repo = app_handle
+        .state::<Arc<SettingsRepository>>()
+        .inner()
+        .clone();
+    settings_repo
+        .has_custom_system_prompt(&project_hash, &task_type)
+        .await
 }
 
 #[tauri::command]
 pub async fn get_server_default_system_prompts_command(app_handle: AppHandle) -> AppResult<String> {
     // This connects to the server PostgreSQL database to fetch default_system_prompts
     // organized by task_type for easy lookup
-    
+
     let server_client = app_handle.state::<Arc<ServerProxyClient>>().inner().clone();
-    
+
     // Make HTTP request to server to get default system prompts
     match server_client.get_default_system_prompts().await {
         Ok(prompts) => {
             // Organize prompts by task_type for easy lookup
             let mut prompts_by_task_type = std::collections::HashMap::new();
-            
+
             for prompt in prompts {
                 prompts_by_task_type.insert(prompt.task_type.clone(), prompt);
             }
-            
-            let prompts_json = serde_json::to_string(&prompts_by_task_type)
-                .map_err(|e| AppError::SerializationError(format!("Failed to serialize system prompts: {}", e)))?;
+
+            let prompts_json = serde_json::to_string(&prompts_by_task_type).map_err(|e| {
+                AppError::SerializationError(format!("Failed to serialize system prompts: {}", e))
+            })?;
             Ok(prompts_json)
-        },
+        }
         Err(e) => {
             log::error!("Failed to fetch default system prompts from server: {}", e);
-            Err(AppError::HttpError(format!("Failed to fetch system prompts: {}", e)))
+            Err(AppError::HttpError(format!(
+                "Failed to fetch system prompts: {}",
+                e
+            )))
         }
     }
 }
-

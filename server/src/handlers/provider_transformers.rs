@@ -428,9 +428,10 @@ impl StreamChunkTransformer for OpenAIStreamTransformer {
                     }
                 } else if is_final_chunk {
                     // Final chunk with finish_reason but no content
-                    // Return Done to signal stream completion
-                    info!("OpenAI stream transformer: final chunk detected, returning Done");
-                    Ok(TransformResult::Done)
+                    // For OpenAI, we should NOT return Done here because usage data comes in a subsequent chunk
+                    // Return Ignore to allow processing of the following usage chunk
+                    debug!("OpenAI stream transformer: final chunk detected, but ignoring to allow usage chunk processing");
+                    Ok(TransformResult::Ignore)
                 } else if openai_chunk.usage.is_some() {
                     // Usage chunk - ignore here, will be handled by streaming handler
                     Ok(TransformResult::Ignore)

@@ -5,7 +5,7 @@ import { useState, useCallback, useMemo } from "react";
 
 import { useNotification } from "@/contexts/notification-context";
 import { useProject } from "@/contexts/project-context";
-import { useSessionStateContext } from "@/contexts/session";
+import { useSessionStateContext, useSessionActionsContext } from "@/contexts/session";
 
 /**
  * Hook for managing implementation plan UI interactions
@@ -14,6 +14,7 @@ import { useSessionStateContext } from "@/contexts/session";
 export function useImplementationPlanActions() {
   const { projectDirectory } = useProject();
   const { activeSessionId } = useSessionStateContext();
+  const { flushSaves } = useSessionActionsContext();
   const { showNotification, showError } = useNotification();
 
   // UI state for plan creation
@@ -53,6 +54,9 @@ export function useImplementationPlanActions() {
       setPlanCreationState("submitting");
 
       try {
+        // Ensure session data is persisted before backend operation
+        await flushSaves();
+        
         // Call the Tauri command directly
         await invoke<{ jobId: string }>(
           "create_implementation_plan_command",
@@ -89,7 +93,7 @@ export function useImplementationPlanActions() {
         showError(error, "Implementation plan creation", "creating implementation plan");
       }
     },
-    [projectDirectory, activeSessionId, showError]
+    [projectDirectory, activeSessionId, showError, showNotification, flushSaves]
   );
 
   return useMemo(

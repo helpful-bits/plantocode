@@ -1,16 +1,15 @@
-use std::collections::HashMap;
-use serde::{Serialize, Deserialize};
-use regex::Regex;
+use crate::api_clients::ServerProxyClient;
+use crate::db_utils::SettingsRepository;
 use crate::error::{AppError, AppResult};
 use crate::models::TaskType;
-use crate::db_utils::SettingsRepository;
-use crate::api_clients::ServerProxyClient;
 use crate::utils::hash_utils::generate_project_hash;
-use tauri::{AppHandle, Manager};
-use std::sync::Arc;
-use chrono::{Utc, Datelike};
+use chrono::{Datelike, Utc};
 use log;
-
+use regex::Regex;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::sync::Arc;
+use tauri::{AppHandle, Manager};
 
 /// **UNIFIED PROMPT SYSTEM**
 /// This provides a single, comprehensive prompt processing system that handles
@@ -47,37 +46,37 @@ impl PromptPlaceholders {
     pub fn new() -> Self {
         Self::default()
     }
-    
+
     pub fn with_project_context(mut self, value: Option<&str>) -> Self {
         self.project_context = value.map(|s| s.to_string());
         self
     }
-    
+
     pub fn with_custom_instructions(mut self, value: Option<&str>) -> Self {
         self.custom_instructions = value.map(|s| s.to_string());
         self
     }
-    
+
     pub fn with_file_contents(mut self, value: Option<&str>) -> Self {
         self.file_contents = value.map(|s| s.to_string());
         self
     }
-    
+
     pub fn with_directory_tree(mut self, value: Option<&str>) -> Self {
         self.directory_tree = value.map(|s| s.to_string());
         self
     }
-    
+
     pub fn with_model_name(mut self, value: Option<&str>) -> Self {
         self.model_name = value.map(|s| s.to_string());
         self
     }
-    
+
     pub fn with_session_name(mut self, value: Option<&str>) -> Self {
         self.session_name = value.map(|s| s.to_string());
         self
     }
-    
+
     pub fn with_task_type(mut self, value: Option<&str>) -> Self {
         self.task_type = value.map(|s| s.to_string());
         self
@@ -90,20 +89,20 @@ pub struct UnifiedPromptContext {
     pub project_directory: String,
     pub task_type: TaskType,
     pub task_description: String,
-    
+
     // Basic placeholders
     pub custom_instructions: Option<String>,
     pub model_name: Option<String>,
     pub session_name: Option<String>,
-    
+
     // Rich context data
     pub file_contents: Option<HashMap<String, String>>,
     pub relevant_files: Option<Vec<String>>,
     pub directory_tree: Option<String>,
-    
+
     // Advanced features
     pub metadata: Option<HashMap<String, String>>,
-    
+
     // Language setting for transcription and other language-specific tasks
     pub language: Option<String>,
 }
@@ -137,12 +136,15 @@ impl UnifiedPromptProcessor {
         task_type: &str,
     ) -> AppResult<(String, String, String)> {
         // First: Check for custom project system prompt in database
-        let repo = app_handle.state::<Arc<crate::db_utils::BackgroundJobRepository>>().inner().clone();
+        let repo = app_handle
+            .state::<Arc<crate::db_utils::BackgroundJobRepository>>()
+            .inner()
+            .clone();
         let settings_repo = crate::db_utils::SettingsRepository::new(repo.get_pool());
-        
+
         // Get project hash from directory
         let project_hash = generate_project_hash(project_directory);
-        
+
         let (resolved_prompt, original_template, prompt_id) = 
             // Check for custom project system prompt
             if let Ok(Some(custom_prompt)) = settings_repo.get_project_system_prompt(&project_hash, task_type).await {
@@ -174,28 +176,33 @@ impl UnifiedPromptProcessor {
         app_handle: &AppHandle,
     ) -> AppResult<ComposedPrompt> {
         // Get the system prompt template from project settings or server defaults
-        let (system_template, original_template, system_prompt_id) = self.get_effective_system_prompt(
-            app_handle,
-            &context.project_directory,
-            &context.task_type.to_string(),
-        ).await?;
+        let (system_template, original_template, system_prompt_id) = self
+            .get_effective_system_prompt(
+                app_handle,
+                &context.project_directory,
+                &context.task_type.to_string(),
+            )
+            .await?;
 
         // Process the template with placeholder substitution
         let processed_system = self.process_template(&system_template, context)?;
-        
+
         // Create user prompt with context
         let user_prompt = self.generate_user_prompt(context)?;
-        
-        
+
         // Use server-side token estimation for accurate counts
         let model_name = context.model_name.as_deref().unwrap_or("gpt-4");
-        let system_tokens = self.estimate_tokens_with_fallback(&processed_system, model_name, app_handle).await as usize;
-        let user_tokens = self.estimate_tokens_with_fallback(&user_prompt, model_name, app_handle).await as usize;
+        let system_tokens = self
+            .estimate_tokens_with_fallback(&processed_system, model_name, app_handle)
+            .await as usize;
+        let user_tokens = self
+            .estimate_tokens_with_fallback(&user_prompt, model_name, app_handle)
+            .await as usize;
         let total_tokens = system_tokens + user_tokens;
-        
+
         // Track context sections used
         let context_sections = self.get_context_sections_used(context);
-        
+
         Ok(ComposedPrompt {
             system_prompt: processed_system,
             user_prompt,
@@ -216,10 +223,9 @@ impl UnifiedPromptProcessor {
     ) -> AppResult<String> {
         let mut result = template.to_string();
 
-        
         // Substitute basic placeholders
         result = self.substitute_basic_placeholders(&result, context)?;
-        
+
         // Process rich content sections
         result = self.process_rich_content(&result, context)?;
 
@@ -230,12 +236,13 @@ impl UnifiedPromptProcessor {
     /// Handles None and empty values gracefully by only adding non-empty content
     fn create_placeholders(&self, context: &UnifiedPromptContext) -> AppResult<PromptPlaceholders> {
         let mut placeholders = PromptPlaceholders::new();
-        
-        placeholders = placeholders.with_custom_instructions(context.custom_instructions.as_deref());
+
+        placeholders =
+            placeholders.with_custom_instructions(context.custom_instructions.as_deref());
         placeholders = placeholders.with_model_name(context.model_name.as_deref());
         placeholders = placeholders.with_session_name(context.session_name.as_deref());
         placeholders = placeholders.with_task_type(Some(&context.task_type.to_string()));
-        
+
         if !context.project_directory.trim().is_empty() {
             placeholders = placeholders.with_project_context(Some(&context.project_directory));
         }
@@ -263,11 +270,14 @@ impl UnifiedPromptProcessor {
         Ok(placeholders)
     }
 
-
     /// Substitute basic placeholders
-    fn substitute_basic_placeholders(&self, template: &str, context: &UnifiedPromptContext) -> AppResult<String> {
+    fn substitute_basic_placeholders(
+        &self,
+        template: &str,
+        context: &UnifiedPromptContext,
+    ) -> AppResult<String> {
         let mut result = template.to_string();
-        
+
         // Pre-generate XML content to avoid borrow checker issues
         let file_contents_xml = if let Some(ref file_contents) = context.file_contents {
             if !file_contents.is_empty() {
@@ -278,7 +288,7 @@ impl UnifiedPromptProcessor {
         } else {
             String::new()
         };
-        
+
         let directory_tree_xml = if let Some(ref directory_tree) = context.directory_tree {
             if !directory_tree.trim().is_empty() {
                 self.generate_project_structure_xml(directory_tree)
@@ -288,62 +298,66 @@ impl UnifiedPromptProcessor {
         } else {
             String::new()
         };
-        
+
         // Create substitution map
         let mut substitutions = HashMap::new();
-        
+
         if let Some(ref instructions) = context.custom_instructions {
             substitutions.insert("{{CUSTOM_INSTRUCTIONS}}", instructions.as_str());
         }
-        
+
         if let Some(ref model) = context.model_name {
             substitutions.insert("{{MODEL_NAME}}", model.as_str());
         }
-        
+
         if let Some(ref session) = context.session_name {
             substitutions.insert("{{SESSION_NAME}}", session.as_str());
         }
-        
+
         let task_type_str = context.task_type.to_string();
         substitutions.insert("{{TASK_TYPE}}", &task_type_str);
-        
+
         if !context.project_directory.trim().is_empty() {
             substitutions.insert("{{PROJECT_DIRECTORY}}", &context.project_directory);
         }
-        
+
         if let Some(ref language) = context.language {
             substitutions.insert("{{LANGUAGE}}", language.as_str());
         }
-        
+
         // Add current date in ISO format (YYYY-MM-DD)
         let current_date = Utc::now().format("%Y-%m-%d").to_string();
         substitutions.insert("{{CURRENT_DATE}}", &current_date);
-        
+
         // Handle XML content placeholders
         if !file_contents_xml.is_empty() {
             substitutions.insert("{{FILE_CONTENTS}}", file_contents_xml.as_str());
         }
-        
+
         if !directory_tree_xml.is_empty() {
             substitutions.insert("{{DIRECTORY_TREE}}", directory_tree_xml.as_str());
         }
-        
+
         // Apply substitutions
         for (placeholder, value) in substitutions {
             result = result.replace(placeholder, value);
         }
-        
+
         // Clean up any remaining {{LANGUAGE}} placeholders if no language was provided
         result = result.replace("{{LANGUAGE}}", "");
-        
+
         Ok(result)
     }
 
     /// Process rich content placeholders with conditional sections
     /// Removes empty placeholders and cleans up formatting to prevent malformed prompts
-    fn process_rich_content(&self, template: &str, context: &UnifiedPromptContext) -> AppResult<String> {
+    fn process_rich_content(
+        &self,
+        template: &str,
+        context: &UnifiedPromptContext,
+    ) -> AppResult<String> {
         let mut result = template.to_string();
-        
+
         // Only remove placeholders that still exist in the result (meaning substitution failed)
         // This prevents removing successfully substituted XML content
         let placeholders_to_check = vec![
@@ -355,34 +369,38 @@ impl UnifiedPromptProcessor {
             "{{SESSION_NAME}}",
             "{{LANGUAGE}}",
         ];
-        
+
         // Remove lines containing unsubstituted placeholders and clean up remaining placeholder text
         for placeholder in placeholders_to_check {
             if result.contains(placeholder) {
                 // Remove entire lines that contain only this placeholder (with optional whitespace)
                 let lines: Vec<&str> = result.lines().collect();
-                let filtered_lines: Vec<&str> = lines.into_iter()
+                let filtered_lines: Vec<&str> = lines
+                    .into_iter()
                     .filter(|line| {
                         let trimmed = line.trim();
                         // Keep lines that are not empty and don't contain only the placeholder
-                        !(trimmed == placeholder || trimmed.is_empty() && line.contains(placeholder))
+                        !(trimmed == placeholder
+                            || trimmed.is_empty() && line.contains(placeholder))
                     })
                     .collect();
                 result = filtered_lines.join("\n");
-                
+
                 // Remove any remaining placeholder text
                 result = result.replace(placeholder, "");
             }
         }
-        
+
         // Clean up excessive whitespace and newlines
         if let Ok(re_multiple_newlines) = Regex::new(r"\n\s*\n\s*\n+") {
-            result = re_multiple_newlines.replace_all(&result, "\n\n").to_string();
+            result = re_multiple_newlines
+                .replace_all(&result, "\n\n")
+                .to_string();
         }
-        
+
         // Clean up leading/trailing whitespace
         result = result.trim().to_string();
-        
+
         Ok(result)
     }
 
@@ -392,7 +410,6 @@ impl UnifiedPromptProcessor {
         Ok(format!("<task>\n{}\n</task>", context.task_description))
     }
 
-
     /// Generate file contents XML
     fn generate_file_contents_xml(&self, file_contents: &HashMap<String, String>) -> String {
         if file_contents.is_empty() {
@@ -400,7 +417,10 @@ impl UnifiedPromptProcessor {
         }
         let mut xml = String::from("<file_contents>\n");
         for (path, content) in file_contents {
-            xml.push_str(&format!("  <file path=\"{}\">\n{}\n  </file>\n", path, content));
+            xml.push_str(&format!(
+                "  <file path=\"{}\">\n{}\n  </file>\n",
+                path, content
+            ));
         }
         xml.push_str("</file_contents>");
         xml
@@ -411,13 +431,16 @@ impl UnifiedPromptProcessor {
         if directory_tree.trim().is_empty() {
             return String::new();
         }
-        format!("<project_structure>\n{}\n</project_structure>", directory_tree)
+        format!(
+            "<project_structure>\n{}\n</project_structure>",
+            directory_tree
+        )
     }
 
     /// Get context sections used
     fn get_context_sections_used(&self, context: &UnifiedPromptContext) -> Vec<String> {
         let mut sections = Vec::new();
-        
+
         if context.file_contents.is_some() {
             sections.push("file_contents".to_string());
         }
@@ -427,94 +450,100 @@ impl UnifiedPromptProcessor {
         if context.custom_instructions.is_some() {
             sections.push("custom_instructions".to_string());
         }
-        
+
         sections
     }
 
     /// Estimate tokens using local tiktoken-rs library
-    async fn estimate_tokens_with_fallback(&self, text: &str, model_name: &str, _app_handle: &AppHandle) -> u32 {
+    async fn estimate_tokens_with_fallback(
+        &self,
+        text: &str,
+        model_name: &str,
+        _app_handle: &AppHandle,
+    ) -> u32 {
         // Use local token estimator instead of server requests
         crate::utils::token_estimator::estimate_tokens(text, model_name)
     }
-
 }
 
 /// Substitute placeholders in a system prompt template with actual values
-pub fn substitute_placeholders(template: &str, placeholders: &PromptPlaceholders) -> AppResult<String> {
+pub fn substitute_placeholders(
+    template: &str,
+    placeholders: &PromptPlaceholders,
+) -> AppResult<String> {
     let mut result = template.to_string();
-    
+
     // Handle conditional sections first - remove entire lines/sections if placeholder is empty
     result = handle_conditional_sections(&result, placeholders);
-    
+
     // Create a mapping of placeholder patterns to their values
     let mut substitutions = HashMap::new();
-    
+
     if let Some(ref value) = placeholders.project_context {
         substitutions.insert("{{PROJECT_CONTEXT}}", value.as_str());
         substitutions.insert("{{project_context}}", value.as_str());
     }
-    
+
     if let Some(ref value) = placeholders.custom_instructions {
         substitutions.insert("{{CUSTOM_INSTRUCTIONS}}", value.as_str());
         substitutions.insert("{{custom_instructions}}", value.as_str());
     }
-    
+
     if let Some(ref value) = placeholders.file_contents {
         substitutions.insert("{{FILE_CONTENTS}}", value.as_str());
         substitutions.insert("{{file_contents}}", value.as_str());
     }
-    
+
     if let Some(ref value) = placeholders.directory_tree {
         substitutions.insert("{{DIRECTORY_TREE}}", value.as_str());
         substitutions.insert("{{directory_tree}}", value.as_str());
     }
-    
+
     if let Some(ref value) = placeholders.model_name {
         substitutions.insert("{{MODEL_NAME}}", value.as_str());
         substitutions.insert("{{model_name}}", value.as_str());
     }
-    
+
     if let Some(ref value) = placeholders.session_name {
         substitutions.insert("{{SESSION_NAME}}", value.as_str());
         substitutions.insert("{{session_name}}", value.as_str());
     }
-    
+
     if let Some(ref value) = placeholders.task_type {
         substitutions.insert("{{TASK_TYPE}}", value.as_str());
         substitutions.insert("{{task_type}}", value.as_str());
     }
-    
+
     // Apply substitutions
     for (placeholder, value) in substitutions {
         result = result.replace(placeholder, value);
     }
-    
-    
+
     // Clean up excessive blank lines
     result = clean_excessive_whitespace(&result);
-    
+
     Ok(result)
 }
 
 /// Handle conditional sections in templates
 fn handle_conditional_sections(template: &str, placeholders: &PromptPlaceholders) -> String {
     let mut result = template.to_string();
-    
+
     // Remove lines containing only placeholders that have no value
     let lines: Vec<&str> = result.lines().collect();
     let mut filtered_lines = Vec::new();
-    
+
     for line in lines {
         let trimmed = line.trim();
-        
+
         // Skip lines that contain only empty placeholders
         if should_skip_line(trimmed, placeholders) {
             continue;
         }
-        
+
         filtered_lines.push(line);
     }
-    
+
     filtered_lines.join("\n")
 }
 
@@ -533,7 +562,7 @@ fn should_skip_line(line: &str, placeholders: &PromptPlaceholders) -> bool {
     if line == "{{PROJECT_CONTEXT}}" && placeholders.project_context.is_none() {
         return true;
     }
-    
+
     false
 }
 
@@ -543,7 +572,7 @@ fn clean_excessive_whitespace(text: &str) -> String {
     let lines: Vec<&str> = text.lines().collect();
     let mut result_lines = Vec::new();
     let mut blank_count = 0;
-    
+
     for line in lines {
         if line.trim().is_empty() {
             blank_count += 1;
@@ -555,7 +584,7 @@ fn clean_excessive_whitespace(text: &str) -> String {
             result_lines.push(line);
         }
     }
-    
+
     result_lines.join("\n")
 }
 
@@ -563,13 +592,13 @@ fn clean_excessive_whitespace(text: &str) -> String {
 /// This is useful for migrating existing prompts to the template system
 pub fn convert_to_template(prompt: &str) -> String {
     let mut template = prompt.to_string();
-    
+
     // This is a simple heuristic-based conversion
     // More sophisticated logic could be added based on specific patterns
-    
+
     // Since task descriptions are now handled in user prompts,
     // this function mainly handles other placeholders like LANGUAGE, etc.
-    
+
     template
 }
 
@@ -609,7 +638,6 @@ impl UnifiedPromptContextBuilder {
             },
         }
     }
-
 
     pub fn file_contents(mut self, file_contents: Option<HashMap<String, String>>) -> Self {
         self.context.file_contents = file_contents;

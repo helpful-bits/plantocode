@@ -1,31 +1,40 @@
-use tauri::{AppHandle, Manager};
 use crate::error::AppResult;
-use crate::models::{Session, CreateSessionRequest, FileSelectionHistoryEntry, FileSelectionHistoryEntryWithTimestamp};
-use serde_json::Value;
+use crate::models::{
+    CreateSessionRequest, FileSelectionHistoryEntry, FileSelectionHistoryEntryWithTimestamp,
+    Session,
+};
 use crate::utils::hash_utils::hash_string;
+use serde_json::Value;
 use std::sync::Arc;
+use tauri::{AppHandle, Manager};
 
 /// Create a new session in the database
 #[tauri::command]
-pub async fn create_session_command(app_handle: AppHandle, session_data: CreateSessionRequest) -> AppResult<Session> {
+pub async fn create_session_command(
+    app_handle: AppHandle,
+    session_data: CreateSessionRequest,
+) -> AppResult<Session> {
     log::debug!("Creating session with data: {:?}", session_data);
-    
-    let repo = app_handle.state::<Arc<crate::db_utils::session_repository::SessionRepository>>()
+
+    let repo = app_handle
+        .state::<Arc<crate::db_utils::session_repository::SessionRepository>>()
         .inner()
         .clone();
 
     let now = chrono::Utc::now().timestamp_millis();
-    
+
     // Build the complete session with defaults
     let session = Session {
-        id: session_data.id.unwrap_or_else(|| {
-            format!("session_{}_{}", now, uuid::Uuid::new_v4().to_string())
-        }),
-        name: session_data.name.unwrap_or_else(|| "Untitled Session".to_string()),
+        id: session_data
+            .id
+            .unwrap_or_else(|| format!("session_{}_{}", now, uuid::Uuid::new_v4().to_string())),
+        name: session_data
+            .name
+            .unwrap_or_else(|| "Untitled Session".to_string()),
         project_directory: session_data.project_directory.clone(),
-        project_hash: session_data.project_hash.unwrap_or_else(|| {
-            hash_string(&session_data.project_directory)
-        }),
+        project_hash: session_data
+            .project_hash
+            .unwrap_or_else(|| hash_string(&session_data.project_directory)),
         task_description: session_data.task_description,
         search_term: session_data.search_term,
         search_selected_files_only: session_data.search_selected_files_only.unwrap_or(false),
@@ -47,8 +56,12 @@ pub async fn create_session_command(app_handle: AppHandle, session_data: CreateS
 
 /// Get a session by ID
 #[tauri::command]
-pub async fn get_session_command(app_handle: AppHandle, session_id: String) -> AppResult<Option<Session>> {
-    let repo = app_handle.state::<Arc<crate::db_utils::session_repository::SessionRepository>>()
+pub async fn get_session_command(
+    app_handle: AppHandle,
+    session_id: String,
+) -> AppResult<Option<Session>> {
+    let repo = app_handle
+        .state::<Arc<crate::db_utils::session_repository::SessionRepository>>()
         .inner()
         .clone();
 
@@ -57,8 +70,12 @@ pub async fn get_session_command(app_handle: AppHandle, session_id: String) -> A
 
 /// Get all sessions for a project
 #[tauri::command]
-pub async fn get_sessions_for_project_command(app_handle: AppHandle, project_directory: String) -> AppResult<Vec<Session>> {
-    let repo = app_handle.state::<Arc<crate::db_utils::session_repository::SessionRepository>>()
+pub async fn get_sessions_for_project_command(
+    app_handle: AppHandle,
+    project_directory: String,
+) -> AppResult<Vec<Session>> {
+    let repo = app_handle
+        .state::<Arc<crate::db_utils::session_repository::SessionRepository>>()
         .inner()
         .clone();
 
@@ -73,10 +90,14 @@ pub async fn get_sessions_for_project_command(app_handle: AppHandle, project_dir
 
 /// Update an existing session
 #[tauri::command]
-pub async fn update_session_command(app_handle: AppHandle, session_data: Session) -> AppResult<Session> {
+pub async fn update_session_command(
+    app_handle: AppHandle,
+    session_data: Session,
+) -> AppResult<Session> {
     log::debug!("Updating session with data: {:?}", session_data);
-    
-    let repo = app_handle.state::<Arc<crate::db_utils::session_repository::SessionRepository>>()
+
+    let repo = app_handle
+        .state::<Arc<crate::db_utils::session_repository::SessionRepository>>()
         .inner()
         .clone();
 
@@ -94,10 +115,12 @@ pub async fn update_session_command(app_handle: AppHandle, session_data: Session
 /// Delete a session and cancel any related background jobs
 #[tauri::command]
 pub async fn delete_session_command(app_handle: AppHandle, session_id: String) -> AppResult<()> {
-    let session_repo = app_handle.state::<Arc<crate::db_utils::session_repository::SessionRepository>>()
+    let session_repo = app_handle
+        .state::<Arc<crate::db_utils::session_repository::SessionRepository>>()
         .inner()
         .clone();
-    let job_repo = app_handle.state::<Arc<crate::db_utils::background_job_repository::BackgroundJobRepository>>()
+    let job_repo = app_handle
+        .state::<Arc<crate::db_utils::background_job_repository::BackgroundJobRepository>>()
         .inner()
         .clone();
 
@@ -110,15 +133,25 @@ pub async fn delete_session_command(app_handle: AppHandle, session_id: String) -
 
 /// Rename a session
 #[tauri::command]
-pub async fn rename_session_command(app_handle: AppHandle, session_id: String, name: String) -> AppResult<()> {
-    let repo = app_handle.state::<Arc<crate::db_utils::session_repository::SessionRepository>>()
+pub async fn rename_session_command(
+    app_handle: AppHandle,
+    session_id: String,
+    name: String,
+) -> AppResult<()> {
+    let repo = app_handle
+        .state::<Arc<crate::db_utils::session_repository::SessionRepository>>()
         .inner()
         .clone();
 
     // Get the current session
     let session = match repo.get_session_by_id(&session_id).await? {
         Some(s) => s,
-        None => return Err(crate::error::AppError::NotFoundError(format!("Session with ID {} not found", session_id))),
+        None => {
+            return Err(crate::error::AppError::NotFoundError(format!(
+                "Session with ID {} not found",
+                session_id
+            )));
+        }
     };
 
     // Update with new name
@@ -132,15 +165,25 @@ pub async fn rename_session_command(app_handle: AppHandle, session_id: String, n
 
 /// Update a session's project directory and hash
 #[tauri::command]
-pub async fn update_session_project_directory_command(app_handle: AppHandle, session_id: String, project_directory: String) -> AppResult<()> {
-    let repo = app_handle.state::<Arc<crate::db_utils::session_repository::SessionRepository>>()
+pub async fn update_session_project_directory_command(
+    app_handle: AppHandle,
+    session_id: String,
+    project_directory: String,
+) -> AppResult<()> {
+    let repo = app_handle
+        .state::<Arc<crate::db_utils::session_repository::SessionRepository>>()
         .inner()
         .clone();
 
     // Get the current session
     let session = match repo.get_session_by_id(&session_id).await? {
         Some(s) => s,
-        None => return Err(crate::error::AppError::NotFoundError(format!("Session with ID {} not found", session_id))),
+        None => {
+            return Err(crate::error::AppError::NotFoundError(format!(
+                "Session with ID {} not found",
+                session_id
+            )));
+        }
     };
 
     // Update with new project directory and hash
@@ -155,11 +198,16 @@ pub async fn update_session_project_directory_command(app_handle: AppHandle, ses
 
 /// Clear all sessions for a project
 #[tauri::command]
-pub async fn clear_all_project_sessions_command(app_handle: AppHandle, project_directory: String) -> AppResult<()> {
-    let session_repo = app_handle.state::<Arc<crate::db_utils::session_repository::SessionRepository>>()
+pub async fn clear_all_project_sessions_command(
+    app_handle: AppHandle,
+    project_directory: String,
+) -> AppResult<()> {
+    let session_repo = app_handle
+        .state::<Arc<crate::db_utils::session_repository::SessionRepository>>()
         .inner()
         .clone();
-    let job_repo = app_handle.state::<Arc<crate::db_utils::background_job_repository::BackgroundJobRepository>>()
+    let job_repo = app_handle
+        .state::<Arc<crate::db_utils::background_job_repository::BackgroundJobRepository>>()
         .inner()
         .clone();
 
@@ -167,13 +215,15 @@ pub async fn clear_all_project_sessions_command(app_handle: AppHandle, project_d
     let project_hash = hash_string(&project_directory);
 
     // Get all sessions for this project
-    let project_sessions = session_repo.get_sessions_by_project_hash(&project_hash).await?;
+    let project_sessions = session_repo
+        .get_sessions_by_project_hash(&project_hash)
+        .await?;
 
     // Cancel all jobs and delete all sessions for this project
     for session in project_sessions {
         // Cancel any active jobs
         job_repo.cancel_session_jobs(&session.id).await?;
-        
+
         // Delete the session
         session_repo.delete_session(&session.id).await?;
     }
@@ -183,15 +233,25 @@ pub async fn clear_all_project_sessions_command(app_handle: AppHandle, project_d
 
 /// Update specific fields of a session
 #[tauri::command]
-pub async fn update_session_fields_command(app_handle: AppHandle, session_id: String, fields_to_update: Value) -> AppResult<()> {
-    let repo = app_handle.state::<Arc<crate::db_utils::session_repository::SessionRepository>>()
+pub async fn update_session_fields_command(
+    app_handle: AppHandle,
+    session_id: String,
+    fields_to_update: Value,
+) -> AppResult<()> {
+    let repo = app_handle
+        .state::<Arc<crate::db_utils::session_repository::SessionRepository>>()
         .inner()
         .clone();
 
     // Get the current session
     let session = match repo.get_session_by_id(&session_id).await? {
         Some(s) => s,
-        None => return Err(crate::error::AppError::NotFoundError(format!("Session with ID {} not found", session_id))),
+        None => {
+            return Err(crate::error::AppError::NotFoundError(format!(
+                "Session with ID {} not found",
+                session_id
+            )));
+        }
     };
 
     // Create a mutable copy of the session to update
@@ -232,7 +292,6 @@ pub async fn update_session_fields_command(app_handle: AppHandle, session_id: St
             }
         }
 
-
         // Handle search_selected_files_only
         if fields.contains_key("searchSelectedFilesOnly") {
             if let Some(search_selected_files_only) = fields["searchSelectedFilesOnly"].as_bool() {
@@ -251,7 +310,11 @@ pub async fn update_session_fields_command(app_handle: AppHandle, session_id: St
 
         // Handle included_files (maps to selectedFiles from frontend)
         if fields.contains_key("selectedFiles") || fields.contains_key("includedFiles") {
-            let key = if fields.contains_key("selectedFiles") { "selectedFiles" } else { "includedFiles" };
+            let key = if fields.contains_key("selectedFiles") {
+                "selectedFiles"
+            } else {
+                "includedFiles"
+            };
             if let Some(included_files_arr) = fields[key].as_array() {
                 let mut included_files = Vec::new();
                 for file in included_files_arr {
@@ -280,7 +343,6 @@ pub async fn update_session_fields_command(app_handle: AppHandle, session_id: St
             }
         }
 
-
         // Update timestamp
         updated_session.updated_at = chrono::Utc::now().timestamp_millis();
     }
@@ -290,33 +352,50 @@ pub async fn update_session_fields_command(app_handle: AppHandle, session_id: St
 }
 
 #[tauri::command]
-pub async fn get_task_description_history_command(app_handle: AppHandle, session_id: String) -> AppResult<Vec<String>> {
-    let repo = app_handle.state::<Arc<crate::db_utils::session_repository::SessionRepository>>()
+pub async fn get_task_description_history_command(
+    app_handle: AppHandle,
+    session_id: String,
+) -> AppResult<Vec<String>> {
+    let repo = app_handle
+        .state::<Arc<crate::db_utils::session_repository::SessionRepository>>()
         .inner()
         .clone();
 
     let history_with_timestamps = repo.get_task_description_history(&session_id).await?;
-    let descriptions: Vec<String> = history_with_timestamps.into_iter().map(|(desc, _)| desc).collect();
+    let descriptions: Vec<String> = history_with_timestamps
+        .into_iter()
+        .map(|(desc, _)| desc)
+        .collect();
     Ok(descriptions)
 }
 
 #[tauri::command]
-pub async fn sync_task_description_history_command(app_handle: AppHandle, session_id: String, history: Vec<String>) -> AppResult<()> {
-    let repo = app_handle.state::<Arc<crate::db_utils::session_repository::SessionRepository>>()
+pub async fn sync_task_description_history_command(
+    app_handle: AppHandle,
+    session_id: String,
+    history: Vec<String>,
+) -> AppResult<()> {
+    let repo = app_handle
+        .state::<Arc<crate::db_utils::session_repository::SessionRepository>>()
         .inner()
         .clone();
 
-    repo.sync_task_description_history(&session_id, &history).await
+    repo.sync_task_description_history(&session_id, &history)
+        .await
 }
 
 #[tauri::command]
-pub async fn get_file_selection_history_command(app_handle: AppHandle, session_id: String) -> AppResult<Vec<FileSelectionHistoryEntryWithTimestamp>> {
-    let repo = app_handle.state::<Arc<crate::db_utils::session_repository::SessionRepository>>()
+pub async fn get_file_selection_history_command(
+    app_handle: AppHandle,
+    session_id: String,
+) -> AppResult<Vec<FileSelectionHistoryEntryWithTimestamp>> {
+    let repo = app_handle
+        .state::<Arc<crate::db_utils::session_repository::SessionRepository>>()
         .inner()
         .clone();
 
     let history_tuples = repo.get_file_selection_history(&session_id).await?;
-    
+
     let mut history = Vec::new();
     for (included_files_text, force_excluded_files_text, created_at) in history_tuples {
         let included_files = included_files_text
@@ -324,35 +403,44 @@ pub async fn get_file_selection_history_command(app_handle: AppHandle, session_i
             .filter(|line| !line.is_empty())
             .map(|line| line.to_string())
             .collect();
-        
+
         let force_excluded_files = force_excluded_files_text
             .lines()
             .filter(|line| !line.is_empty())
             .map(|line| line.to_string())
             .collect();
-        
+
         history.push(FileSelectionHistoryEntryWithTimestamp {
             included_files,
             force_excluded_files,
             created_at,
         });
     }
-    
+
     Ok(history)
 }
 
 #[tauri::command]
-pub async fn sync_file_selection_history_command(app_handle: AppHandle, session_id: String, history: Vec<FileSelectionHistoryEntry>) -> AppResult<()> {
-    let repo = app_handle.state::<Arc<crate::db_utils::session_repository::SessionRepository>>()
+pub async fn sync_file_selection_history_command(
+    app_handle: AppHandle,
+    session_id: String,
+    history: Vec<FileSelectionHistoryEntry>,
+) -> AppResult<()> {
+    let repo = app_handle
+        .state::<Arc<crate::db_utils::session_repository::SessionRepository>>()
         .inner()
         .clone();
 
-    let history_tuples: Vec<(String, String)> = history.into_iter().map(|entry| {
-        (
-            entry.included_files.join("\n"),
-            entry.force_excluded_files.join("\n")
-        )
-    }).collect();
+    let history_tuples: Vec<(String, String)> = history
+        .into_iter()
+        .map(|entry| {
+            (
+                entry.included_files.join("\n"),
+                entry.force_excluded_files.join("\n"),
+            )
+        })
+        .collect();
 
-    repo.sync_file_selection_history(&session_id, &history_tuples).await
+    repo.sync_file_selection_history(&session_id, &history_tuples)
+        .await
 }

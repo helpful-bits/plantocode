@@ -1,11 +1,14 @@
-use serde::{Serialize, Deserialize};
-use std::sync::Arc;
-use std::convert::TryFrom;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::convert::TryFrom;
+use std::sync::Arc;
 
 use crate::error::{AppError, AppResult};
+use crate::jobs::workflow_types::{
+    CancellationResult, ErrorRecoveryConfig, FailedCancellation, RecoveryStrategy,
+    WorkflowErrorResponse, WorkflowStage,
+};
 use crate::models::{BackgroundJob, JobStatus, TaskType};
-use crate::jobs::workflow_types::{CancellationResult, ErrorRecoveryConfig, FailedCancellation, RecoveryStrategy, WorkflowErrorResponse, WorkflowStage};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -18,9 +21,6 @@ pub struct JobUIMetadata {
     pub display_name: Option<String>,
 }
 
-
-
-
 // Event emitted when a job response is updated
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -29,7 +29,6 @@ pub struct JobResponseUpdateEvent {
     pub response_chunk: String,
     pub complete: bool,
 }
-
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -41,8 +40,6 @@ pub struct OpenRouterLlmPayload {
     pub stream: bool,
 }
 
-
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ImplementationPlanPayload {
@@ -50,15 +47,11 @@ pub struct ImplementationPlanPayload {
     pub relevant_files: Vec<String>,
 }
 
-
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PathCorrectionPayload {
     pub paths_to_correct: Vec<String>,
 }
-
-
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -82,15 +75,12 @@ pub struct GenericLlmStreamPayload {
     pub metadata: Option<serde_json::Value>,
 }
 
-
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExtendedPathFinderPayload {
     pub task_description: String,
     pub initial_paths: Vec<String>,
 }
-
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -295,7 +285,7 @@ impl JobProcessResult {
             actual_cost: None,
         }
     }
-    
+
     // Create a new failed result
     pub fn failure(job_id: String, error: String) -> Self {
         Self {
@@ -312,9 +302,13 @@ impl JobProcessResult {
             actual_cost: None,
         }
     }
-    
+
     // Create a new successful result with metadata
-    pub fn success_with_metadata(job_id: String, response: JobResultData, metadata: serde_json::Value) -> Self {
+    pub fn success_with_metadata(
+        job_id: String,
+        response: JobResultData,
+        metadata: serde_json::Value,
+    ) -> Self {
         Self {
             job_id,
             status: JobStatus::Completed,
@@ -329,7 +323,7 @@ impl JobProcessResult {
             actual_cost: None,
         }
     }
-    
+
     // Create a new canceled result
     pub fn canceled(job_id: String, message: String) -> Self {
         Self {
@@ -346,37 +340,33 @@ impl JobProcessResult {
             actual_cost: None,
         }
     }
-    
+
     // Set token usage information
     /// Set token usage for this job result
-    /// 
+    ///
     /// TOKEN MAPPING CONVENTION:
     /// - `tokens_sent` = input/prompt tokens (what was sent TO the model)
     /// - `tokens_received` = output/completion tokens (what was received FROM the model)
-    /// 
+    ///
     /// This maps from ProviderUsage fields:
     /// - `prompt_tokens` → `tokens_sent`
     /// - `completion_tokens` → `tokens_received`
-    pub fn with_tokens(
-        mut self,
-        tokens_sent: Option<u32>,
-        tokens_received: Option<u32>,
-    ) -> Self {
+    pub fn with_tokens(mut self, tokens_sent: Option<u32>, tokens_received: Option<u32>) -> Self {
         self.tokens_sent = tokens_sent;
         self.tokens_received = tokens_received;
         self
     }
-    
+
     pub fn with_system_prompt_template(mut self, template: String) -> Self {
         self.system_prompt_template = Some(template);
         self
     }
-    
+
     pub fn with_actual_cost(mut self, cost: f64) -> Self {
         self.actual_cost = Some(cost);
         self
     }
-    
+
     /// Set cache token usage for this job result
     pub fn with_cache_tokens(
         mut self,
@@ -403,16 +393,15 @@ impl Job {
     pub fn id(&self) -> &str {
         &self.id
     }
-    
+
     pub fn task_type_str(&self) -> String {
         self.task_type.to_string()
     }
-    
+
     pub fn session_id(&self) -> &str {
         &self.session_id
     }
 }
-
 
 // Cleanup result types
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -456,5 +445,3 @@ pub struct WorkflowHealthMetrics {
     pub most_common_error_types: Vec<(String, u32)>,
     pub most_problematic_stages: Vec<(String, u32)>,
 }
-
-

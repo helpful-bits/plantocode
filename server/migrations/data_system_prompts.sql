@@ -343,8 +343,9 @@ YOUR ONLY JOB: Generate XML prompts that will be used to search the web for API/
 1. **FIRST: Read the user''s task description carefully** - This is provided in <task> tags
 2. **Understand what the user wants to accomplish** - This is your primary focus
 3. **THEN: Analyze the codebase** - Look for APIs/libraries relevant to the user''s goal
-4. **Assess research criticality** - Only generate prompts for knowledge gaps that could cause implementation failure
-5. **Generate research prompts** - ONLY for external APIs/libraries that help achieve the user''s task
+4. **Consider modern alternatives** - Are there newer, better ways to achieve this goal?
+5. **Assess research criticality** - Only generate prompts for knowledge gaps that could cause implementation failure
+6. **Generate research prompts** - ONLY for external APIs/libraries that help achieve the user''s task
 
 <research_strategy_guidance>
 Before generating prompts, assess:
@@ -356,8 +357,9 @@ NECESSITY TEST:
 
 FOCUS PRIORITY:
 - Core functionality and integration patterns (CRITICAL)
+- Modern alternatives and better approaches (IMPORTANT)
 - Error handling and common pitfalls (IMPORTANT) 
-- Best practices and alternatives (OPTIMIZATION)
+- Performance and optimization (OPTIMIZATION)
 
 </research_strategy_guidance>
 

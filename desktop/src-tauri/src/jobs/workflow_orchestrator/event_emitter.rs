@@ -1,18 +1,19 @@
 use log::warn;
 use tauri::{AppHandle, Emitter};
 
-use crate::models::JobStatus;
 use crate::jobs::workflow_types::{
-    WorkflowState, WorkflowStageJob, WorkflowStatusEvent, WorkflowStageEvent
+    WorkflowStageEvent, WorkflowStageJob, WorkflowState, WorkflowStatusEvent,
 };
+use crate::models::JobStatus;
 
 /// Emit workflow status event to frontend
 pub(super) async fn emit_workflow_status_event_internal(
     app_handle: &AppHandle,
     workflow_state: &WorkflowState,
-    message: &str
+    message: &str,
 ) {
-    let current_stage = workflow_state.current_stage()
+    let current_stage = workflow_state
+        .current_stage()
         .map(|stage_job| stage_job.name.clone());
 
     let event = WorkflowStatusEvent {
@@ -52,4 +53,3 @@ pub(super) async fn emit_workflow_stage_event_internal(
         warn!("Failed to emit workflow stage event: {}", e);
     }
 }
-

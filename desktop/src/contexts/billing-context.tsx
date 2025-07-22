@@ -1,11 +1,11 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { listen } from '@tauri-apps/api/event';
+import { type UnlistenFn } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
 import { type BillingDashboardData, type CustomerBillingInfo } from '@/types/tauri-commands';
 import { JOB_STATUSES, type JobStatus } from '@/types/session-types';
 import { useNotification } from '@/contexts/notification-context';
 import { getErrorMessage } from '@/utils/error-handling';
-import { isTauriAvailable, safeCleanupListenerPromise } from '@/utils/tauri-utils';
+import { safeListen } from '@/utils/tauri-event-utils';
 
 export interface BillingContextData {
   dashboardData: BillingDashboardData | null;
@@ -90,11 +90,11 @@ export function BillingProvider({ children }: { children: React.ReactNode }) {
 
   // Listen for job_updated events to refresh billing data in real-time
   useEffect(() => {
-    let unlistenPromise: Promise<() => void> | null = null;
+    let unlisten: UnlistenFn | null = null;
 
     const setupListener = async () => {
       try {
-        unlistenPromise = listen('job_updated', async (event) => {
+        unlisten = await safeListen('job_updated', async (event) => {
           try {
             // Event payload includes job details
             const payload = event.payload as { id: string; status: JobStatus; actualCost?: number | null };
@@ -116,14 +116,7 @@ export function BillingProvider({ children }: { children: React.ReactNode }) {
 
     // Cleanup listener on unmount
     return () => {
-      if (!isTauriAvailable()) {
-        // Tauri context already destroyed, skip cleanup
-        return;
-      }
-
-      if (unlistenPromise) {
-        safeCleanupListenerPromise(unlistenPromise);
-      }
+      unlisten?.();
     };
   }, [refreshBillingData]);
 

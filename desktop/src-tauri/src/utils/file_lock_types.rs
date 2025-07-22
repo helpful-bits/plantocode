@@ -1,6 +1,6 @@
-use std::path::PathBuf;
 use std::fmt;
 use std::hash::{Hash, Hasher};
+use std::path::PathBuf;
 use std::sync::Arc;
 
 /// A unique identifier for a file lock
@@ -30,7 +30,7 @@ impl Hash for FileLockId {
 pub enum LockMode {
     /// Multiple readers can access a file simultaneously
     Read,
-    
+
     /// Only one writer can access a file, and it's exclusive
     Write,
 }

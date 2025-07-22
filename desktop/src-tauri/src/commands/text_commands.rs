@@ -1,15 +1,12 @@
-use tauri::{command, AppHandle, Manager};
-use log::info;
-use serde::{Serialize, Deserialize};
-use std::sync::Arc;
-use crate::error::AppResult;
-use crate::models::{JobStatus, JobCommandResponse};
+use crate::db_utils::{BackgroundJobRepository, SessionRepository};
 use crate::error::AppError;
+use crate::error::AppResult;
 use crate::jobs::types::JobPayload;
-use crate::db_utils::{SessionRepository, BackgroundJobRepository};
-
-
-
+use crate::models::{JobCommandResponse, JobStatus};
+use log::info;
+use serde::{Deserialize, Serialize};
+use std::sync::Arc;
+use tauri::{AppHandle, Manager, command};
 
 // Request arguments for text improvement command
 #[derive(Debug, Deserialize)]
@@ -37,29 +34,37 @@ pub async fn improve_text_command(
         project_directory,
     };
     info!("Creating text improvement job");
-    
+
     // Validate required fields
     if args.session_id.is_empty() {
-        return Err(AppError::ValidationError("Session ID is required".to_string()));
+        return Err(AppError::ValidationError(
+            "Session ID is required".to_string(),
+        ));
     }
-    
+
     if args.text_to_improve.is_empty() {
-        return Err(AppError::ValidationError("Text to improve is required".to_string()));
+        return Err(AppError::ValidationError(
+            "Text to improve is required".to_string(),
+        ));
     }
-    
-    
+
     // Create the job payload
     let payload = crate::jobs::types::TextImprovementPayload {
         text_to_improve: args.text_to_improve.clone(),
         original_transcription_job_id: args.original_transcription_job_id.clone(),
     };
-    
+
     // Get session to access project directory
-    let background_job_repo = app_handle.state::<Arc<BackgroundJobRepository>>().inner().clone();
+    let background_job_repo = app_handle
+        .state::<Arc<BackgroundJobRepository>>()
+        .inner()
+        .clone();
     let session_repo = SessionRepository::new(background_job_repo.get_pool());
-    let session = session_repo.get_session_by_id(&args.session_id).await?
+    let session = session_repo
+        .get_session_by_id(&args.session_id)
+        .await?
         .ok_or_else(|| AppError::JobError(format!("Session {} not found", args.session_id)))?;
-    
+
     // Get the model and settings for this task using centralized resolver
     let model_settings = crate::utils::config_resolver::resolve_model_settings(
         &app_handle,
@@ -68,8 +73,9 @@ pub async fn improve_text_command(
         None, // no model override for this command
         None, // no temperature override for this command
         None, // no max_tokens override for this command
-    ).await?;
-    
+    )
+    .await?;
+
     // Use the job creation utility to create and queue the job
     let job_id = crate::utils::job_creation_utils::create_and_queue_background_job(
         &args.session_id,
@@ -80,15 +86,16 @@ pub async fn improve_text_command(
         &args.text_to_improve,
         model_settings,
         JobPayload::TextImprovement(payload),
-        1, // Priority
+        1,    // Priority
         None, // No workflow_id
         None, // No workflow_stage
         None, // No extra metadata
         &app_handle,
-    ).await?;
-    
+    )
+    .await?;
+
     info!("Created text improvement job: {}", job_id);
-    
+
     // Return the job ID
     Ok(JobCommandResponse { job_id })
 }
@@ -118,18 +125,20 @@ pub async fn generate_simple_text_command(
     app_handle: AppHandle,
 ) -> AppResult<String> {
     info!("Generating simple text with prompt: {}", prompt);
-    
+
     // Validate required fields
     if prompt.trim().is_empty() {
-        return Err(AppError::ValidationError("Prompt is required and cannot be empty".to_string()));
+        return Err(AppError::ValidationError(
+            "Prompt is required and cannot be empty".to_string(),
+        ));
     }
-    
+
     // Parse task type or use default
     let task_type_enum = task_type
         .as_deref()
         .and_then(|t| t.parse::<crate::models::TaskType>().ok())
         .unwrap_or(crate::models::TaskType::Unknown);
-    
+
     let resolved_settings = crate::utils::config_resolver::resolve_model_settings(
         &app_handle,
         task_type_enum,
@@ -137,14 +146,15 @@ pub async fn generate_simple_text_command(
         model_override,
         temperature_override,
         max_tokens_override,
-    ).await?;
-    
+    )
+    .await?;
+
     let (resolved_model, resolved_temperature, resolved_max_tokens) = resolved_settings
         .ok_or_else(|| AppError::ConfigError("Model settings could not be resolved".to_string()))?;
-    
+
     // Construct messages for LLM
     let mut messages = Vec::new();
-    
+
     // Add system prompt if provided
     if let Some(sys_prompt) = system_prompt {
         messages.push(crate::models::OpenRouterRequestMessage {
@@ -155,7 +165,7 @@ pub async fn generate_simple_text_command(
             }],
         });
     }
-    
+
     // Add user prompt
     messages.push(crate::models::OpenRouterRequestMessage {
         role: "user".to_string(),
@@ -164,24 +174,26 @@ pub async fn generate_simple_text_command(
             text: prompt,
         }],
     });
-    
+
     // Get API client
     let api_client = crate::api_clients::client_factory::get_api_client(&app_handle)?;
-    
+
     // Prepare request options
     let options = crate::api_clients::client_trait::ApiClientOptions {
         model: resolved_model,
         max_tokens: resolved_max_tokens,
         temperature: resolved_temperature,
-        stream: false, // Non-streaming
+        stream: false,    // Non-streaming
         request_id: None, // No request tracking needed for non-streaming
-        task_type: None, // Not a workflow task, no task type needed
+        task_type: None,  // Not a workflow task, no task type needed
     };
-    
+
     // Call chat completion (non-streaming)
-    let response = api_client.chat_completion(messages, options).await
+    let response = api_client
+        .chat_completion(messages, options)
+        .await
         .map_err(|e| AppError::JobError(format!("API call failed: {}", e)))?;
-    
+
     // Extract and return the text content from the response
     if let Some(choice) = response.choices.first() {
         Ok(choice.message.content.clone())

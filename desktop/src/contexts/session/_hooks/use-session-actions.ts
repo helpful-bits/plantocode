@@ -137,7 +137,7 @@ export function useSessionActions({
 
   // Update specific fields in the current session
   const updateCurrentSessionFields = useCallback(
-    (fields: Partial<Session>) => {
+    async (fields: Partial<Session>) => {
       // Using Session type for the function parameter ensures proper typing
       if (!currentSessionRef.current) {
         return;
@@ -183,7 +183,7 @@ export function useSessionActions({
         setCurrentSession(updatedSession);
         
         // Save immediately
-        void saveCurrentSession();
+        await saveCurrentSession();
       }
     },
     [
@@ -492,10 +492,17 @@ export function useSessionActions({
   );
 
   const applyFileSelectionUpdate = useCallback(
-    (paths: string[], source?: string) => {
+    async (paths: string[], source?: string) => {
       if (!currentSessionRef.current) return;
       
       const { includedFiles = [], forceExcludedFiles = [] } = currentSessionRef.current;
+      
+      // Calculate delta before updating
+      const currentIncludedSet = new Set(includedFiles);
+      
+      // Files being added (in paths but not already in includedFiles)
+      const filesBeingAdded = paths.filter(path => !currentIncludedSet.has(path));
+      const added = filesBeingAdded.length;
       
       // Extend logic: add new paths to existing included files
       const newIncludedFiles = Array.from(new Set([...includedFiles, ...paths]));
@@ -505,18 +512,36 @@ export function useSessionActions({
         (path) => !paths.includes(path)
       );
       
-      updateCurrentSessionFields({
+      await updateCurrentSessionFields({
         includedFiles: newIncludedFiles,
         forceExcludedFiles: newExcludedFiles,
       });
       
-      if (source) {
+      // Show notification with delta information
+      if (added > 0) {
+        if (source) {
+          showNotification({
+            title: 'Files Applied',
+            message: `Added ${added} files from ${source} to selection.`,
+            type: 'success',
+          });
+        } else {
+          showNotification({
+            title: 'Files Applied',
+            message: `Added ${added} files to selection.`,
+            type: 'success',
+          });
+        }
+      } else {
         showNotification({
-          title: 'Files Applied',
-          message: `Applied ${paths.length} files from ${source}`,
-          type: 'success',
+          title: 'No New Files',
+          message: source ? `All files from ${source} were already selected.` : 'All files were already selected.',
+          type: 'info',
         });
       }
+      
+      // Dispatch custom event after update
+      window.dispatchEvent(new CustomEvent('file-selection-applied'));
     },
     [updateCurrentSessionFields, showNotification]
   );

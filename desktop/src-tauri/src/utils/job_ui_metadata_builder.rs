@@ -1,5 +1,5 @@
-use serde_json::{json, Value};
-use crate::jobs::types::{JobUIMetadata, JobPayload};
+use crate::jobs::types::{JobPayload, JobUIMetadata};
+use serde_json::{Value, json};
 
 pub struct JobUIMetadataBuilder {
     job_payload: JobPayload,
@@ -58,7 +58,7 @@ impl JobUIMetadataBuilder {
         }
         self
     }
-    
+
     pub fn display_name(mut self, display_name: Option<String>) -> Self {
         self.display_name = display_name;
         self
@@ -87,10 +87,7 @@ pub fn create_workflow_job_ui_metadata(
         .build()
 }
 
-pub fn create_streaming_job_ui_metadata(
-    job_payload: JobPayload,
-    progress: f64,
-) -> JobUIMetadata {
+pub fn create_streaming_job_ui_metadata(job_payload: JobPayload, progress: f64) -> JobUIMetadata {
     JobUIMetadataBuilder::new(job_payload)
         .streaming_progress(progress, true)
         .build()

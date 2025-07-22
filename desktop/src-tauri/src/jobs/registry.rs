@@ -1,5 +1,5 @@
-use std::sync::Arc;
 use log::debug;
+use std::sync::Arc;
 use tokio::sync::{Mutex, OnceCell};
 
 use crate::error::{AppError, AppResult};
@@ -19,28 +19,31 @@ impl JobRegistry {
             processors: Mutex::new(Vec::new()),
         }
     }
-    
+
     /// Register a processor
     pub async fn register(&self, processor: Arc<dyn JobProcessor>) {
         let name = processor.name();
         debug!("Registering job processor: {}", name);
-        
+
         let mut processors = self.processors.lock().await;
         processors.push(processor);
     }
-    
+
     /// Find a processor for a job
     pub async fn find_processor(&self, job: &Job) -> AppResult<Arc<dyn JobProcessor>> {
         let processors = self.processors.lock().await;
-        
+
         for processor in processors.iter() {
             if processor.can_handle(job) {
                 return Ok(processor.clone());
             }
         }
-        
+
         // Create a more specific error with job_type as a String
-        Err(AppError::JobError(format!("No processor found for job type: {:?}", job.task_type)))
+        Err(AppError::JobError(format!(
+            "No processor found for job type: {:?}",
+            job.task_type
+        )))
     }
 }
 
@@ -50,12 +53,14 @@ pub static JOB_REGISTRY: OnceCell<Arc<JobRegistry>> = OnceCell::const_new();
 /// Initialize the job registry
 pub async fn init_job_registry() -> AppResult<Arc<JobRegistry>> {
     let registry = Arc::new(JobRegistry::new());
-    
+
     // Store the registry in the global static
     if let Err(_) = JOB_REGISTRY.set(registry.clone()) {
-        return Err(AppError::JobError("Failed to initialize job registry".to_string()));
+        return Err(AppError::JobError(
+            "Failed to initialize job registry".to_string(),
+        ));
     }
-    
+
     Ok(registry)
 }
 

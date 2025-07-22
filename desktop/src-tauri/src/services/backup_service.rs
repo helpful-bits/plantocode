@@ -1,12 +1,12 @@
-use std::path::{Path, PathBuf};
+use crate::constants::DB_FILENAME;
+use crate::error::AppResult;
+use chrono::{DateTime, Utc};
+use log::{error, info, warn};
+use sqlx::SqlitePool;
 use std::fs;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::time;
-use log::{info, warn, error};
-use chrono::{DateTime, Utc};
-use sqlx::SqlitePool;
-use crate::error::AppResult;
-use crate::constants::DB_FILENAME;
 
 /// Configuration for the backup service
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -41,7 +41,7 @@ impl BackupService {
     /// Create a new backup service
     pub fn new(app_data_dir: PathBuf, db_pool: SqlitePool, config: BackupConfig) -> Self {
         let backup_dir = app_data_dir.join("backups");
-        
+
         Self {
             config,
             app_data_dir,
@@ -83,19 +83,22 @@ impl BackupService {
 
         let interval_duration = Duration::from_secs(self.config.backup_interval_minutes * 60);
         let mut interval = time::interval(interval_duration);
-        
-        info!("Starting backup scheduler with interval: {} minutes", self.config.backup_interval_minutes);
+
+        info!(
+            "Starting backup scheduler with interval: {} minutes",
+            self.config.backup_interval_minutes
+        );
 
         loop {
             interval.tick().await;
-            
+
             match self.should_create_backup().await {
                 Ok(should_backup) => {
                     if should_backup {
                         if let Err(e) = self.create_backup().await {
                             error!("Scheduled backup failed: {}", e);
                         }
-                        
+
                         if let Err(e) = self.cleanup_old_backups().await {
                             warn!("Backup cleanup failed: {}", e);
                         }
@@ -118,7 +121,7 @@ impl BackupService {
 
         // Get the latest backup file
         let latest_backup = self.get_latest_backup()?;
-        
+
         match latest_backup {
             Some(backup_path) => {
                 // Check if the latest backup is older than our interval
@@ -141,10 +144,10 @@ impl BackupService {
     /// Create a backup of the database (internal method)
     async fn create_backup(&self) -> AppResult<PathBuf> {
         let db_path = self.app_data_dir.join(DB_FILENAME);
-        
+
         if !db_path.exists() {
             return Err(crate::error::AppError::DatabaseError(
-                "Database file does not exist".to_string()
+                "Database file does not exist".to_string(),
             ));
         }
 
@@ -154,45 +157,57 @@ impl BackupService {
         let backup_path = self.backup_dir.join(&backup_filename);
 
         // Ensure WAL checkpoint before backup to get all data
-        match sqlx::query("PRAGMA wal_checkpoint(FULL)").execute(&self.db_pool).await {
+        match sqlx::query("PRAGMA wal_checkpoint(FULL)")
+            .execute(&self.db_pool)
+            .await
+        {
             Ok(_) => info!("WAL checkpoint completed before backup"),
             Err(e) => warn!("WAL checkpoint failed before backup: {}", e),
         }
 
         // Copy the database file
         fs::copy(&db_path, &backup_path)?;
-        
+
         // Verify backup integrity
         self.verify_backup(&backup_path).await?;
 
-        info!("Database backup created successfully: {}", backup_path.display());
+        info!(
+            "Database backup created successfully: {}",
+            backup_path.display()
+        );
         Ok(backup_path)
     }
 
     /// Verify backup integrity
     async fn verify_backup(&self, backup_path: &Path) -> AppResult<()> {
         let backup_url = format!("sqlite:{}", backup_path.display());
-        
+
         // Create a temporary connection to the backup
-        let backup_pool = SqlitePool::connect(&backup_url).await
-            .map_err(|e| crate::error::AppError::DatabaseError(
-                format!("Failed to connect to backup for verification: {}", e)
-            ))?;
+        let backup_pool = SqlitePool::connect(&backup_url).await.map_err(|e| {
+            crate::error::AppError::DatabaseError(format!(
+                "Failed to connect to backup for verification: {}",
+                e
+            ))
+        })?;
 
         // Run integrity check on backup
         let result = sqlx::query_scalar::<_, String>("PRAGMA integrity_check")
             .fetch_one(&backup_pool)
             .await
-            .map_err(|e| crate::error::AppError::DatabaseError(
-                format!("Backup integrity check failed: {}", e)
-            ))?;
+            .map_err(|e| {
+                crate::error::AppError::DatabaseError(format!(
+                    "Backup integrity check failed: {}",
+                    e
+                ))
+            })?;
 
         backup_pool.close().await;
 
         if result != "ok" {
-            return Err(crate::error::AppError::DatabaseError(
-                format!("Backup integrity check failed: {}", result)
-            ));
+            return Err(crate::error::AppError::DatabaseError(format!(
+                "Backup integrity check failed: {}",
+                result
+            )));
         }
 
         info!("Backup integrity verified successfully");
@@ -202,21 +217,25 @@ impl BackupService {
     /// Clean up old backups beyond the retention limit
     async fn cleanup_old_backups(&self) -> AppResult<()> {
         let mut backup_files = self.get_all_backups()?;
-        
+
         if backup_files.len() <= self.config.max_backup_count {
             return Ok(()); // Nothing to clean up
         }
 
         // Sort by modification time (newest first)
         backup_files.sort_by(|a, b| {
-            let a_time = fs::metadata(a).and_then(|m| m.modified()).unwrap_or(UNIX_EPOCH);
-            let b_time = fs::metadata(b).and_then(|m| m.modified()).unwrap_or(UNIX_EPOCH);
+            let a_time = fs::metadata(a)
+                .and_then(|m| m.modified())
+                .unwrap_or(UNIX_EPOCH);
+            let b_time = fs::metadata(b)
+                .and_then(|m| m.modified())
+                .unwrap_or(UNIX_EPOCH);
             b_time.cmp(&a_time)
         });
 
         // Remove old backups beyond the retention limit
         let files_to_remove = backup_files.into_iter().skip(self.config.max_backup_count);
-        
+
         for file_path in files_to_remove {
             match fs::remove_file(&file_path) {
                 Ok(_) => info!("Removed old backup: {}", file_path.display()),
@@ -234,16 +253,18 @@ impl BackupService {
         }
 
         let mut backups = Vec::new();
-        
+
         for entry in fs::read_dir(&self.backup_dir)? {
             let entry = entry?;
             let path = entry.path();
-            
-            if path.is_file() && 
-               path.file_name()
-                   .and_then(|n| n.to_str())
-                   .map(|s| s.starts_with("appdata_backup_") && s.ends_with(".db"))
-                   .unwrap_or(false) {
+
+            if path.is_file()
+                && path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .map(|s| s.starts_with("appdata_backup_") && s.ends_with(".db"))
+                    .unwrap_or(false)
+            {
                 backups.push(path);
             }
         }
@@ -254,18 +275,16 @@ impl BackupService {
     /// Get the most recent backup file
     fn get_latest_backup(&self) -> AppResult<Option<PathBuf>> {
         let backups = self.get_all_backups()?;
-        
+
         if backups.is_empty() {
             return Ok(None);
         }
 
-        let latest = backups
-            .into_iter()
-            .max_by_key(|path| {
-                fs::metadata(path)
-                    .and_then(|m| m.modified())
-                    .unwrap_or(UNIX_EPOCH)
-            });
+        let latest = backups.into_iter().max_by_key(|path| {
+            fs::metadata(path)
+                .and_then(|m| m.modified())
+                .unwrap_or(UNIX_EPOCH)
+        });
 
         Ok(latest)
     }
@@ -274,8 +293,9 @@ impl BackupService {
     fn get_file_age(&self, file_path: &Path) -> AppResult<u64> {
         let metadata = fs::metadata(file_path)?;
         let modified = metadata.modified()?;
-        let duration = SystemTime::now().duration_since(modified)
-            .map_err(|e| crate::error::AppError::InitializationError(format!("Time calculation error: {}", e)))?;
+        let duration = SystemTime::now().duration_since(modified).map_err(|e| {
+            crate::error::AppError::InitializationError(format!("Time calculation error: {}", e))
+        })?;
         Ok(duration.as_secs())
     }
 
@@ -283,7 +303,7 @@ impl BackupService {
     pub fn get_backup_stats(&self) -> AppResult<BackupStats> {
         let backups = self.get_all_backups()?;
         let backup_count = backups.len();
-        
+
         let total_size = backups
             .iter()
             .map(|path| fs::metadata(path).map(|m| m.len()).unwrap_or(0))
@@ -294,7 +314,11 @@ impl BackupService {
             .map(|path| {
                 fs::metadata(path)
                     .and_then(|m| m.modified())
-                    .map(|time| time.duration_since(UNIX_EPOCH).unwrap_or_default().as_secs())
+                    .map(|time| {
+                        time.duration_since(UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_secs()
+                    })
                     .unwrap_or(0)
             })
             .max();
@@ -322,7 +346,11 @@ impl BackupService {
 
             let created_timestamp = metadata
                 .modified()
-                .map(|time| time.duration_since(UNIX_EPOCH).unwrap_or_default().as_secs())
+                .map(|time| {
+                    time.duration_since(UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs()
+                })
                 .unwrap_or(0);
 
             // Verify backup integrity
@@ -346,27 +374,33 @@ impl BackupService {
     /// Verify a backup file without opening the main database
     async fn verify_backup_file(&self, backup_path: &Path) -> AppResult<()> {
         let backup_url = format!("sqlite:{}", backup_path.display());
-        
+
         // Create a temporary connection to the backup
-        let backup_pool = SqlitePool::connect(&backup_url).await
-            .map_err(|e| crate::error::AppError::DatabaseError(
-                format!("Failed to connect to backup for verification: {}", e)
-            ))?;
+        let backup_pool = SqlitePool::connect(&backup_url).await.map_err(|e| {
+            crate::error::AppError::DatabaseError(format!(
+                "Failed to connect to backup for verification: {}",
+                e
+            ))
+        })?;
 
         // Run integrity check on backup
         let result = sqlx::query_scalar::<_, String>("PRAGMA integrity_check")
             .fetch_one(&backup_pool)
             .await
-            .map_err(|e| crate::error::AppError::DatabaseError(
-                format!("Backup integrity check failed: {}", e)
-            ))?;
+            .map_err(|e| {
+                crate::error::AppError::DatabaseError(format!(
+                    "Backup integrity check failed: {}",
+                    e
+                ))
+            })?;
 
         backup_pool.close().await;
 
         if result != "ok" {
-            return Err(crate::error::AppError::DatabaseError(
-                format!("Backup integrity check failed: {}", result)
-            ));
+            return Err(crate::error::AppError::DatabaseError(format!(
+                "Backup integrity check failed: {}",
+                result
+            )));
         }
 
         Ok(())
@@ -376,7 +410,7 @@ impl BackupService {
     pub async fn restore_from_backup(&self, backup_path: &Path) -> AppResult<()> {
         if !backup_path.exists() {
             return Err(crate::error::AppError::DatabaseError(
-                "Backup file does not exist".to_string()
+                "Backup file does not exist".to_string(),
             ));
         }
 
@@ -384,24 +418,32 @@ impl BackupService {
         self.verify_backup_file(backup_path).await?;
 
         let main_db_path = self.app_data_dir.join(DB_FILENAME);
-        
+
         // Create a backup of the current database before restoring
         if main_db_path.exists() {
             let timestamp = Utc::now().format("%Y%m%d_%H%M%S");
-            let pre_restore_backup = self.backup_dir.join(format!("pre_restore_backup_{}.db", timestamp));
+            let pre_restore_backup = self
+                .backup_dir
+                .join(format!("pre_restore_backup_{}.db", timestamp));
             fs::copy(&main_db_path, &pre_restore_backup)?;
-            info!("Created pre-restore backup: {}", pre_restore_backup.display());
+            info!(
+                "Created pre-restore backup: {}",
+                pre_restore_backup.display()
+            );
         }
 
         // Perform WAL checkpoint on current database before replacement
-        match sqlx::query("PRAGMA wal_checkpoint(TRUNCATE)").execute(&self.db_pool).await {
+        match sqlx::query("PRAGMA wal_checkpoint(TRUNCATE)")
+            .execute(&self.db_pool)
+            .await
+        {
             Ok(_) => info!("WAL checkpoint completed before restore"),
             Err(e) => warn!("WAL checkpoint failed before restore: {}", e),
         }
 
         // Copy backup to replace main database
         fs::copy(backup_path, &main_db_path)?;
-        
+
         info!("Database restored from backup: {}", backup_path.display());
         Ok(())
     }
@@ -409,7 +451,7 @@ impl BackupService {
     /// Find and restore from the latest valid backup automatically
     pub async fn auto_restore_latest_backup(&self) -> AppResult<Option<String>> {
         let backups = self.get_backup_list().await?;
-        
+
         // Find the latest valid backup
         for backup in backups {
             if backup.is_valid {

@@ -1,10 +1,10 @@
-use tauri::{command, State, AppHandle, Manager};
-use std::sync::Arc;
 use crate::AppState;
+use crate::db_utils;
 use crate::error::{AppError, AppResult};
 use crate::models::DatabaseInfo;
-use crate::db_utils;
 use log::info;
+use std::sync::Arc;
+use tauri::{AppHandle, Manager, State, command};
 
 #[command]
 pub fn get_app_info() -> String {
@@ -13,8 +13,9 @@ pub fn get_app_info() -> String {
 
 #[command]
 pub fn get_config_load_error(app_state: State<'_, AppState>) -> AppResult<Option<String>> {
-    let error = app_state.config_load_error.lock()
-        .map_err(|e| AppError::InternalError(format!("Failed to acquire config_load_error lock: {}", e)))?;
+    let error = app_state.config_load_error.lock().map_err(|e| {
+        AppError::InternalError(format!("Failed to acquire config_load_error lock: {}", e))
+    })?;
     Ok(error.clone())
 }
 
@@ -28,4 +29,3 @@ pub async fn get_database_info_command(app_handle: AppHandle) -> AppResult<Datab
         .await
         .map_err(|e| AppError::DatabaseError(format!("Failed to get database info: {}", e)))
 }
-

@@ -5,36 +5,34 @@ use std::env;
 
 use tauri::Emitter;
 
+pub mod api_clients;
+pub mod app_setup;
+pub mod auth;
 mod commands;
 pub mod constants;
 pub mod db_utils;
 pub mod error;
-pub mod models;
-pub mod utils;
-pub mod jobs;
-pub mod services;
-pub mod api_clients;
-pub mod app_setup;
-pub mod auth;
-pub mod validation;
 pub mod error_recovery;
+pub mod jobs;
+pub mod models;
+pub mod services;
+pub mod utils;
+pub mod validation;
 
-use std::sync::{Arc, Mutex};
-use std::collections::HashMap;
-use std::time::Duration;
-use tauri::Manager;
-use log::{info, error, warn, debug};
-use tokio::sync::OnceCell;
-use dotenv::dotenv;
-use crate::db_utils::{
-    SessionRepository, BackgroundJobRepository, SettingsRepository
-};
-use crate::error::AppError;
-use crate::utils::FileLockManager;
 use crate::auth::TokenManager;
 use crate::auth::auth0_state::{Auth0StateStore, cleanup_old_attempts};
+use crate::db_utils::{BackgroundJobRepository, SessionRepository, SettingsRepository};
+use crate::error::AppError;
 use crate::services::config_cache_service::ConfigCache;
+use crate::utils::FileLockManager;
+use dotenv::dotenv;
+use log::{debug, error, info, warn};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+use tauri::Manager;
+use tokio::sync::OnceCell;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RuntimeConfig {
@@ -44,7 +42,8 @@ pub struct RuntimeConfig {
 impl Default for RuntimeConfig {
     fn default() -> Self {
         Self {
-            server_url: std::env::var("MAIN_SERVER_BASE_URL").expect("MAIN_SERVER_BASE_URL environment variable must be set"),
+            server_url: std::env::var("MAIN_SERVER_BASE_URL")
+                .expect("MAIN_SERVER_BASE_URL environment variable must be set"),
         }
     }
 }
@@ -71,12 +70,11 @@ impl Default for AppState {
     }
 }
 
-
 pub(crate) static FILE_LOCK_MANAGER: OnceCell<Arc<FileLockManager>> = OnceCell::const_new();
 
 fn main() {
     dotenv().ok();
-    
+
     // Initialize logger with environment variables
     // Set RUST_LOG=info,vibe_manager=debug for enhanced logging during development
     // Set RUST_LOG=warn for production to reduce noise
@@ -85,9 +83,9 @@ fn main() {
         .format_module_path(true)
         .format_target(false) // Hide target module path to reduce log verbosity
         .init();
-    
+
     info!("Starting Vibe Manager Desktop application");
-    
+
     let tauri_context = tauri::generate_context!();
     let app_identifier = &tauri_context.config().identifier;
 
@@ -107,7 +105,6 @@ fn main() {
         .setup(|app| {
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Regular);
-            
 
             // Keyring is used for secure storage (OS native credential vault)
             info!("Using OS keyring for secure credential storage.");
@@ -127,8 +124,8 @@ fn main() {
             // Spawn background task for Auth0 state cleanup
             let auth0_store = app.state::<AppState>().auth0_state_store.clone();
             tauri::async_runtime::spawn(async move {
-                use tokio::time::{interval, Duration};
-                
+                use tokio::time::{Duration, interval};
+
                 let mut cleanup_interval = interval(Duration::from_secs(300)); // 5 minutes
                 loop {
                     cleanup_interval.tick().await;
@@ -146,7 +143,7 @@ fn main() {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 // Emit an event to the frontend to handle potential unsaved changes
                 let _ = window.emit("app-will-close", ());
-                
+
                 // For now, allow the window to close
                 // In the future, we could prevent default close behavior if needed
                 // api.prevent_close();
@@ -157,7 +154,6 @@ fn main() {
             commands::app_commands::get_app_info,
             commands::app_commands::get_config_load_error,
             commands::app_commands::get_database_info_command,
-            
             // Auth0 commands (includes JWT token management)
             commands::auth0_commands::start_auth0_login_flow,
             commands::auth0_commands::check_auth_status_and_exchange_token,
@@ -167,10 +163,8 @@ fn main() {
             commands::auth0_commands::get_app_jwt,
             commands::auth0_commands::set_app_jwt,
             commands::auth0_commands::clear_stored_app_jwt,
-            
             // Featurebase commands
             commands::featurebase_commands::get_featurebase_sso_token,
-            
             // Billing commands
             commands::billing_commands::get_billing_dashboard_data_command,
             commands::billing_commands::get_customer_billing_info_command,
@@ -179,37 +173,29 @@ fn main() {
             commands::billing_commands::get_spending_analytics_command,
             commands::billing_commands::get_spending_forecast_command,
             commands::billing_commands::get_payment_methods_command,
-            
             // Auto top-off commands
             commands::billing_commands::get_auto_top_off_settings_command,
             commands::billing_commands::update_auto_top_off_settings_command,
-            
             // Credit system commands
             commands::billing_commands::get_credit_history_command,
             commands::billing_commands::get_credit_balance_command,
             commands::billing_commands::get_credit_details_command,
             commands::billing_commands::get_credit_stats_command,
-            
             // Stripe Checkout commands
             commands::billing_commands::create_credit_purchase_checkout_session_command,
             commands::billing_commands::create_setup_checkout_session_command,
             commands::billing_commands::get_checkout_session_status_command,
-            
-            
             // Customer billing lifecycle management
             commands::billing_commands::get_detailed_usage_with_summary_command,
             commands::billing_commands::create_billing_portal_session_command,
             commands::billing_commands::list_invoices_command,
             commands::billing_commands::download_invoice_pdf_command,
             commands::billing_commands::reveal_file_in_explorer_command,
-            
             // Config commands
             commands::config_commands::get_providers_with_models,
             commands::config_commands::get_default_task_configurations,
             commands::config_commands::fetch_runtime_ai_config,
             commands::config_commands::get_server_url,
-            
-            
             // Job commands
             commands::job_commands::clear_job_history_command,
             commands::job_commands::get_all_visible_jobs_command,
@@ -217,7 +203,6 @@ fn main() {
             commands::job_commands::cancel_session_jobs_command,
             commands::job_commands::delete_background_job_command,
             commands::job_commands::get_background_job_by_id_command,
-            
             // File system commands
             commands::file_system_commands::get_home_directory_command,
             commands::file_system_commands::list_project_files_command,
@@ -237,11 +222,9 @@ fn main() {
             commands::file_system_commands::get_temp_dir_command,
             commands::file_system_commands::path_is_absolute_command,
             commands::workflow_commands::cancel_workflow_stage_command,
-            
             // Text commands
             commands::text_commands::improve_text_command,
             commands::text_commands::generate_simple_text_command,
-            
             // Implementation plan commands
             commands::implementation_plan_commands::create_implementation_plan_command,
             commands::implementation_plan_commands::read_implementation_plan_command,
@@ -249,7 +232,6 @@ fn main() {
             commands::implementation_plan_commands::get_prompt_command,
             commands::implementation_plan_commands::estimate_prompt_tokens_command,
             commands::implementation_plan_commands::create_merged_implementation_plan_command,
-
             // Workflow commands (new stage-based approach)
             commands::workflow_commands::start_file_finder_workflow,
             commands::workflow_commands::start_web_search_workflow,
@@ -265,21 +247,16 @@ fn main() {
             commands::workflow_commands::retry_workflow_stage_command,
             commands::workflow_commands::get_workflow_state,
             commands::workflow_commands::continue_workflow_from_job_command,
-            
-            
             // Generic task commands
             commands::generic_task_commands::generic_llm_stream_command,
             commands::generic_task_commands::refine_task_description_command,
-            
             // Other task-specific commands
             commands::regex_commands::generate_regex_patterns_command,
-            
             // Database commands
             commands::db_commands::db_execute_query,
             commands::db_commands::db_select_query,
             commands::db_commands::db_execute_transaction,
             commands::db_commands::db_table_exists,
-            
             // Settings commands
             commands::settings_commands::get_key_value_command,
             commands::settings_commands::set_key_value_command,
@@ -304,8 +281,6 @@ fn main() {
             commands::settings_commands::get_project_task_model_settings_command,
             commands::settings_commands::set_project_task_setting_command,
             commands::settings_commands::reset_project_task_setting_command,
-            
-            
             // Session commands
             commands::session_commands::create_session_command,
             commands::session_commands::get_session_command,
@@ -320,21 +295,17 @@ fn main() {
             commands::session_commands::sync_task_description_history_command,
             commands::session_commands::get_file_selection_history_command,
             commands::session_commands::sync_file_selection_history_command,
-            
             // Setup commands
             commands::setup_commands::trigger_initial_keychain_access,
             commands::setup_commands::get_storage_mode,
-            
             // Database maintenance commands
             commands::database_maintenance_commands::check_database_health_command,
             commands::database_maintenance_commands::repair_database_command,
             commands::database_maintenance_commands::reset_database_command,
-            
             // Configuration cache commands
             commands::config_cache_commands::refresh_config_cache_command,
             commands::config_cache_commands::get_cached_config_value,
             commands::config_cache_commands::get_all_cached_config_values_command,
-            
             // Backup commands
             commands::backup_commands::get_backup_stats_command,
             commands::backup_commands::list_backups_command,
