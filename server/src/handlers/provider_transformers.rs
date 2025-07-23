@@ -796,6 +796,20 @@ impl StreamChunkTransformer for OpenRouterStreamTransformer {
             return Err(self.handle_error_chunk(error_obj));
         }
         
+        // Special handling for final usage chunk from OpenRouter
+        // OpenRouter sends a final chunk with empty choices but containing usage data
+        if let Some(choices) = chunk.get("choices") {
+            if choices.as_array().map(|arr| arr.is_empty()).unwrap_or(false) {
+                if chunk.get("usage").is_some() {
+                    debug!("OpenRouter final usage chunk detected with empty choices");
+                    // Extract usage data before returning the chunk
+                    if let Some(usage) = self.extract_usage_from_chunk(chunk) {
+                        debug!("Extracted final usage from OpenRouter: {:?}", usage);
+                    }
+                }
+            }
+        }
+        
         // If it's a valid OpenRouter chunk, return it directly
         match serde_json::from_value::<OpenRouterStreamChunk>(chunk.clone()) {
             Ok(openrouter_chunk) => {

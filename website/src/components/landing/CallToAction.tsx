@@ -4,8 +4,7 @@ import React from 'react';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { GlassCard } from '@/components/ui/GlassCard';
-import Image from 'next/image';
-import { useTheme } from 'next-themes';
+import { motion } from 'framer-motion';
 
 interface CallToActionProps {
   title: string;
@@ -15,75 +14,146 @@ interface CallToActionProps {
 }
 
 export function CallToAction({ title, description, buttonText, buttonLink }: CallToActionProps) {
-  const { resolvedTheme } = useTheme();
-  const [mounted, setMounted] = React.useState(false);
-
-  React.useEffect(() => {
-    setMounted(true);
-  }, []);
   
   return (
-    <section className="relative py-20 px-4 overflow-hidden">
-      {/* Theme-based background images */}
-      {mounted && (
-        <Image
-          src={resolvedTheme === 'dark' ? '/images/features-background-dark.png' : '/images/features-background.png'}
-          alt="Section background"
-          fill
-          quality={100}
-          className="object-cover object-top z-0"
-        />
-      )}
-      {/* Gradient overlay for better text contrast */}
-      <div className="absolute inset-0 z-1 bg-gradient-to-b from-background/90 via-background/50 to-background/90 dark:from-background/95 dark:via-background/70 dark:to-background/95" />
+    <section className="relative py-24 px-4 overflow-hidden">
+      {/* Radial burst background pattern */}
+      <div className="absolute inset-0 z-0 burst-radial-subtle burst-animated" />
       
-      {/* Additional soft transition from top */}
-      <div className="absolute inset-x-0 top-0 h-32 z-2 bg-gradient-to-b from-background to-transparent dark:from-background/90" />
+      {/* Enhanced background effects */}
+      <div className="absolute inset-0 z-1 bg-transparent dark:bg-gradient-to-b dark:from-background/95 dark:via-background/70 dark:to-background/95" />
       
-      {/* Glass morphism overlay */}
-      <div className="absolute inset-0 z-5 bg-gradient-to-b from-transparent via-background/10 to-transparent backdrop-blur-sm" />
-      
-      {/* Radial gradient for focus */}
-      <div 
-        className="absolute inset-0 z-3"
-        style={{
-          background: 'radial-gradient(circle at 50% 50%, rgba(16, 185, 129, 0.1) 0%, transparent 50%)'
-        }}
-      />
       
       <div className="container mx-auto relative z-10">
-        <div className="max-w-3xl mx-auto">
-          <GlassCard highlighted={true}>
-            <div className="text-center p-12">
-              <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-4 text-gray-900 dark:text-white">
-                {title}
-              </h2>
-              
-              <p className="text-lg sm:text-xl mb-8 max-w-2xl mx-auto leading-relaxed font-medium text-gray-700 dark:text-gray-200">
-                {description}
-              </p>
-              
-              <div className="relative inline-block group">
-                {/* Glow effect */}
-                <div className="absolute -inset-2 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 blur-lg opacity-40 group-hover:opacity-60 transition-opacity duration-300 animate-pulse" />
+        <motion.div 
+          className="max-w-4xl mx-auto"
+          initial={{ opacity: 0, scale: 0.85, y: 50 }}
+          whileInView={{ opacity: 1, scale: 1, y: 0 }}
+          viewport={{ once: true, margin: "-100px" }}
+          transition={{ 
+            duration: 0.8, 
+            type: "spring",
+            damping: 20,
+            stiffness: 80
+          }}
+        >
+          <motion.div
+            className="relative"
+            whileHover={{ scale: 1.02 }}
+            transition={{ type: "spring", stiffness: 300, damping: 20 }}
+          >
+            
+            <GlassCard highlighted={true} className="relative">
+              <div className="text-center p-16 relative">
+                {/* Enhanced burst pattern overlay */}
+                <div className="absolute inset-0 opacity-8">
+                  <div className="absolute inset-0 bg-[radial-gradient(circle_at_1px_1px,_hsl(var(--primary))_1px,_transparent_1px)] bg-[size:32px_32px]" />
+                  <div 
+                    className="absolute inset-0 opacity-30"
+                    style={{
+                      background: `radial-gradient(circle at center, 
+                        transparent 30%, 
+                        oklch(0.68 0.085 195 / 0.05) 50%, 
+                        transparent 70%),
+                      conic-gradient(from 0deg at 50% 50%, 
+                        oklch(0.68 0.085 195 / 0.03) 0deg,
+                        transparent 20deg,
+                        oklch(0.68 0.085 195 / 0.03) 40deg,
+                        transparent 60deg,
+                        oklch(0.68 0.085 195 / 0.03) 80deg,
+                        transparent 100deg,
+                        oklch(0.68 0.085 195 / 0.03) 120deg,
+                        transparent 140deg,
+                        oklch(0.68 0.085 195 / 0.03) 160deg,
+                        transparent 180deg,
+                        oklch(0.68 0.085 195 / 0.03) 200deg,
+                        transparent 220deg,
+                        oklch(0.68 0.085 195 / 0.03) 240deg,
+                        transparent 260deg,
+                        oklch(0.68 0.085 195 / 0.03) 280deg,
+                        transparent 300deg,
+                        oklch(0.68 0.085 195 / 0.03) 320deg,
+                        transparent 340deg,
+                        oklch(0.68 0.085 195 / 0.03) 360deg)`
+                    }}
+                  />
+                </div>
                 
-                <Button asChild size="lg" className="relative shadow-2xl hover:shadow-emerald-500/25">
-                  <Link href={buttonLink} className="group">
-                    {buttonText}
-                    <svg 
-                      className="ml-3 w-6 h-6 group-hover:translate-x-1 transition-transform duration-300" 
-                      fill="none" 
-                      stroke="currentColor" 
-                      viewBox="0 0 24 24"
-                    >
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                <motion.h2 
+                  className="text-3xl sm:text-4xl lg:text-5xl xl:text-6xl mb-6 text-primary-emphasis relative z-10"
+                  initial={{ opacity: 0, y: 30 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ 
+                    duration: 0.7, 
+                    delay: 0.2,
+                    type: "spring",
+                    damping: 15
+                  }}
+                >
+                  {title}
+                </motion.h2>
+                
+                <motion.p 
+                  className="text-lg sm:text-xl lg:text-2xl mb-10 max-w-2xl mx-auto leading-relaxed font-medium text-foreground/80 relative z-10"
+                  initial={{ opacity: 0, y: 20 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ duration: 0.6, delay: 0.3 }}
+                >
+                  {description}
+                </motion.p>
+                
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ duration: 0.6, delay: 0.4 }}
+                >
+                  <Button 
+                    asChild 
+                    variant="primary"
+                    size="xl"
+                  >
+                    <Link href={buttonLink} className="flex items-center gap-3">
+                      <span>{buttonText}</span>
+                      <svg 
+                        className="w-5 h-5" 
+                        fill="none" 
+                        stroke="currentColor" 
+                        viewBox="0 0 24 24"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                      </svg>
+                    </Link>
+                  </Button>
+                </motion.div>
+                
+                {/* Additional visual cues */}
+                <motion.div
+                  className="mt-8 flex items-center justify-center gap-8 text-sm text-foreground/60"
+                  initial={{ opacity: 0 }}
+                  whileInView={{ opacity: 1 }}
+                  viewport={{ once: true }}
+                  transition={{ duration: 0.6, delay: 0.6 }}
+                >
+                  <div className="flex items-center gap-2">
+                    <svg className="w-5 h-5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                     </svg>
-                  </Link>
-                </Button>
+                    <span>No credit card required</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <svg className="w-5 h-5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span>Setup in 5 minutes</span>
+                  </div>
+                </motion.div>
               </div>
-            </div>
-          </GlassCard>
-        </div>
+            </GlassCard>
+          </motion.div>
+        </motion.div>
       </div>
     </section>
   );

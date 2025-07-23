@@ -26,3 +26,10 @@ pub const EVENT_PAYMENT_METHOD_DETACHED: &str = "payment_method.detached";
 pub const EVENT_CUSTOMER_DEFAULT_SOURCE_UPDATED: &str = "customer.default_source_updated";
 pub const EVENT_CHECKOUT_SESSION_COMPLETED: &str = "checkout.session.completed";
 
+// Invoice Event Types
+pub const EVENT_INVOICE_CREATED: &str = "invoice.created";
+pub const EVENT_INVOICE_FINALIZED: &str = "invoice.finalized";
+pub const EVENT_INVOICE_PAID: &str = "invoice.paid";
+pub const EVENT_INVOICE_PAYMENT_FAILED: &str = "invoice.payment_failed";
+pub const EVENT_INVOICE_PAYMENT_SUCCEEDED: &str = "invoice.payment_succeeded";
+

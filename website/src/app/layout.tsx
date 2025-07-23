@@ -6,6 +6,8 @@ import type { WebSite } from 'schema-dts';
 import { ThemeProvider } from '@/components/providers/ThemeProvider';
 import { GoogleAnalytics } from '@next/third-parties/google';
 import { ParallaxProvider } from '@/components/providers/ParallaxProvider';
+import { ClientWrapper } from '@/components/ClientWrapper';
+import { InteractiveBackground } from '@/components/landing/InteractiveBackground';
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://vibemanager.app'),
@@ -87,10 +89,18 @@ export const metadata: Metadata = {
   verification: {
     google: 'google-site-verification-code',
   },
+  applicationName: 'Vibe Manager',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'default',
+    title: 'Vibe Manager',
+  },
   other: {
     'apple-mobile-web-app-title': 'Vibe Manager',
     'application-name': 'Vibe Manager',
     'msapplication-TileColor': 'oklch(0.18 0.02 206)',
+    'msapplication-tooltip': 'Vibe Manager - AI-Powered Context Curation',
+    'mobile-web-app-capable': 'yes',
   },
 };
 
@@ -115,24 +125,17 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" suppressHydrationWarning className={fontClasses.variables}>
-      <head>
-        {/* Font preload for critical Inter font */}
-        <link
-          rel="preload"
-          href="/fonts/inter-variable.woff2"
-          as="font"
-          type="font/woff2"
-          crossOrigin="anonymous"
-        />
-        
-      </head>
-      <body className={fontClasses.sans}>
-        <div className="fixed inset-0 -z-10 dynamic-bg" />
+      <head></head>
+      <body className={`${fontClasses.sans} bg-background dark:bg-background`}>
+        <ClientWrapper />
         
         <ThemeProvider>
           <ParallaxProvider>
             <GoogleAnalytics gaId={process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID || "G-XXXXXXXXXX"} />
             <StructuredData data={websiteJsonLd} />
+            
+            {/* 3D Particle Background */}
+            <InteractiveBackground particleCount={300} />
             
             {/* Main content with proper z-index */}
             <div className="relative z-10">

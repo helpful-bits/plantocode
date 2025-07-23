@@ -3,69 +3,165 @@
 import React from 'react';
 import { Button } from '@/components/ui/button';
 import { GlassCard } from '@/components/ui/GlassCard';
-import Image from 'next/image';
-import { useTheme } from 'next-themes';
+import { motion } from 'framer-motion';
 
 export function Pricing() {
-  const { resolvedTheme } = useTheme();
-  const [mounted, setMounted] = React.useState(false);
+  const cardVariants = {
+    hidden: { 
+      opacity: 0, 
+      scale: 0.8,
+      rotateX: -30
+    },
+    visible: { 
+      opacity: 1, 
+      scale: 1,
+      rotateX: 0,
+      transition: {
+        type: "spring",
+        stiffness: 100,
+        damping: 20,
+        duration: 0.8
+      }
+    }
+  };
 
-  React.useEffect(() => {
-    setMounted(true);
-  }, []);
+  const glowVariants = {
+    initial: { opacity: 0, scale: 0.8 },
+    animate: {
+      opacity: [0, 0.5, 0],
+      scale: [0.8, 1.2, 0.8],
+      transition: {
+        duration: 3,
+        repeat: Infinity,
+        ease: "easeInOut"
+      }
+    }
+  };
 
   return (
-    <section id="pricing" className="relative py-16 px-4 overflow-hidden">
-      {/* Theme-based background images */}
-      {mounted && (
-        <Image
-          src={resolvedTheme === 'dark' ? '/images/features-background-dark.png' : '/images/features-background.png'}
-          alt="Section background"
-          fill
-          quality={100}
-          className="object-cover object-top z-0"
-        />
-      )}
-      {/* Gradient overlay for better text contrast and smooth transition */}
-      <div className="absolute inset-0 z-1 bg-gradient-to-b from-background/90 via-background/50 to-background/90 dark:from-background/95 dark:via-background/70 dark:to-background/95" />
+    <section id="pricing" className="relative py-20 px-4 overflow-hidden perspective-1000">
+      {/* Radial burst background pattern */}
+      <div className="absolute inset-0 z-0 burst-radial-primary burst-animated" />
       
-      {/* Additional soft transition from top */}
-      <div className="absolute inset-x-0 top-0 h-32 z-2 bg-gradient-to-b from-background to-transparent dark:from-background/90" />
+      <div className="absolute inset-0 z-1 bg-transparent dark:bg-gradient-to-b dark:from-background/95 dark:via-background/70 dark:to-background/95" />
       
-      {/* Glass morphism overlay */}
-      <div className="absolute inset-0 z-5 bg-gradient-to-b from-transparent via-background/10 to-transparent backdrop-blur-sm" />
       
       <div className="container mx-auto relative z-10">
-        <div className="text-center mb-12">
-          <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-4 text-teal-900 dark:text-white">Simple Pricing</h2>
-          <p className="text-lg sm:text-xl max-w-3xl mx-auto leading-relaxed font-medium text-teal-950 dark:text-gray-100">
+        <motion.div 
+          className="text-center mb-16"
+          initial={{ opacity: 0, y: 30 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ 
+            duration: 0.5,
+            ease: "easeOut"
+          }}
+        >
+          <motion.h2 
+            className="text-4xl sm:text-5xl lg:text-6xl mb-6 text-primary-emphasis font-bold text-shadow-subtle"
+            initial={{ opacity: 0, scale: 0.9, y: 20 }}
+            whileInView={{ opacity: 1, scale: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ 
+              duration: 0.4, 
+              delay: 0.1,
+              ease: "easeOut"
+            }}
+          >
+            Simple Pricing
+          </motion.h2>
+          <motion.p 
+            className="text-lg sm:text-xl max-w-3xl mx-auto leading-relaxed font-medium text-description-muted"
+            initial={{ opacity: 0, y: 10 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.6, delay: 0.2 }}
+          >
             Pay-as-you-go. No subscriptions. Transparent costs.
-          </p>
-        </div>
+          </motion.p>
+        </motion.div>
         
-        <div className="max-w-2xl mx-auto">
-          <GlassCard highlighted={true}>
-            <div className="p-8 text-center">
-              <h3 className="text-2xl font-bold mb-4 text-gray-900 dark:text-white">
-                Start Free, Pay for Usage
-              </h3>
-              <p className="text-lg mb-6 text-gray-700 dark:text-gray-200">
-                All costs displayed upfront. Only charged for AI processing.
-              </p>
-              <div className="bg-emerald-50 dark:bg-emerald-900/20 rounded-xl p-6 mb-6">
-                <h4 className="font-semibold mb-2 text-emerald-900 dark:text-emerald-400">
-                  $1.50 Free Credit
-                </h4>
-                <p className="text-emerald-800 dark:text-emerald-300">
-                  No payment info needed. Full access to all features.
-                </p>
+        <motion.div 
+          className="max-w-2xl mx-auto relative"
+          variants={cardVariants}
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true, margin: "-100px" }}
+        >
+          <motion.div
+            whileHover={{ scale: 1.02 }}
+            transition={{ duration: 0.2, ease: "easeOut" }}
+            className="relative will-change-transform"
+          >
+            <GlassCard highlighted={true} className="relative overflow-hidden">
+              
+              <div className="content-spacing-lg sm:responsive-spacing-x text-center relative z-10 text-safe-padding">
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ duration: 0.6, delay: 0.4 }}
+                >
+                  <h3 className="text-3xl font-semibold mb-6 text-primary-emphasis">
+                    Start Free, Pay for Usage
+                  </h3>
+                  <p className="text-lg mb-8 text-muted-foreground">
+                    All costs displayed upfront. Only charged for AI processing.
+                  </p>
+                </motion.div>
+                
+                <motion.div 
+                  className="relative bg-gradient-to-br from-primary/10 to-primary/5 rounded-2xl p-8 mb-8 ring-1 ring-primary/20"
+                  initial={{ opacity: 0, y: 20, scale: 0.95 }}
+                  whileInView={{ opacity: 1, y: 0, scale: 1 }}
+                  viewport={{ once: true }}
+                  transition={{ duration: 0.6, delay: 0.5 }}
+                  whileHover={{ scale: 1.02 }}
+                >
+                  <motion.div
+                    className="absolute -top-3 -right-3"
+                    initial={{ opacity: 0, scale: 0 }}
+                    whileInView={{ opacity: 1, scale: 1 }}
+                    viewport={{ once: true }}
+                    transition={{ duration: 0.4, delay: 0.7 }}
+                    whileHover={{ scale: 1.05 }}
+                  >
+                    <div className="inline-flex items-center justify-center px-3 py-1.5 bg-gradient-to-r from-emerald-500 to-teal-600 text-white text-xs font-bold rounded-full shadow-lg ring-2 ring-white/30 backdrop-blur-sm">
+                      <span className="tracking-wider">FREE</span>
+                    </div>
+                  </motion.div>
+                  
+                  <h4 className="text-4xl font-bold mb-3 text-primary text-shadow-subtle">
+                    $1.50
+                  </h4>
+                  <p className="text-lg font-medium text-accent-highlight">
+                    Free Credit Included
+                  </p>
+                  <p className="text-sm text-muted-foreground mt-2">
+                    No payment info needed. Full access to all features.
+                  </p>
+                </motion.div>
+                
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ duration: 0.6, delay: 0.6 }}
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                >
+                  <Button 
+                    variant="cta"
+                    size="xl"
+                    className="w-full sm:w-auto"
+                  >
+                    Get Started
+                  </Button>
+                </motion.div>
               </div>
-              <Button size="lg" className="w-full sm:w-auto">
-                Get Started
-              </Button>
-            </div>
-          </GlassCard>
-        </div>
+            </GlassCard>
+          </motion.div>
+        </motion.div>
       </div>
     </section>
   );

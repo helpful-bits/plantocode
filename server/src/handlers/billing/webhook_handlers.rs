@@ -589,6 +589,30 @@ async fn process_stripe_webhook_event(
                 .map_err(|e| AppError::InvalidArgument(format!("Failed to parse customer: {}", e)))?;
             handle_customer_default_source_updated(&customer, billing_service).await?;
         },
+        // Log invoice events for monitoring without processing
+        EVENT_INVOICE_CREATED | EVENT_INVOICE_FINALIZED | EVENT_INVOICE_PAID => {
+            warn!("Received unexpected invoice event: {} - This shouldn't happen with direct credit purchases. Event data: {:?}", 
+                  event.type_, event.data.get("object").and_then(|o| o.get("id")));
+            
+            // Send alert to investigate why invoices are being created
+            if event.type_ == EVENT_INVOICE_FINALIZED {
+                if let Some(amount_due) = event.data.get("object").and_then(|o| o.get("amount_due")).and_then(|a| a.as_i64()) {
+                    if amount_due == 0 {
+                        error!("ALERT: $0 invoice detected! Event ID: {} - This requires investigation", event.id);
+                        
+                        // Send admin alert for $0 invoice
+                        let alerting_service = crate::utils::admin_alerting::AdminAlertingService::new();
+                        let alert = crate::utils::admin_alerting::AdminAlert::new(
+                            crate::utils::admin_alerting::AlertSeverity::Critical,
+                            crate::utils::admin_alerting::AlertType::PaymentProcessingError,
+                            "Unexpected $0 Invoice Detected".to_string(),
+                            format!("A $0 invoice was finalized (Event: {}). This shouldn't happen with direct credit purchases. Please investigate in Stripe Dashboard.", event.id),
+                        );
+                        alerting_service.send_alert(alert).await;
+                    }
+                }
+            }
+        }
         _ => {
             info!("Ignoring Stripe event type: {} - handled by Customer Portal", event.type_);
         }

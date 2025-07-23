@@ -33,7 +33,7 @@ const nextConfig: NextConfig = {
   },
 
   // Bundle optimization
-  transpilePackages: ['three'],
+  transpilePackages: ['three', '@react-three/fiber', '@react-three/drei', '@react-three/postprocessing'],
   
   // Advanced image optimization
   images: {
