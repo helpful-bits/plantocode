@@ -42,6 +42,7 @@
     "**/*.tsx",
     "**/*.d.ts",
     ".next/types/**/*.ts",
+    "shader.d.ts"
   ],
   "exclude": ["node_modules"]
 }

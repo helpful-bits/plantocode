@@ -16,11 +16,13 @@
   },
   "dependencies": {
     "@next/third-parties": "15.3.5",
+    "@radix-ui/react-dropdown-menu": "^2.1.15",
     "@radix-ui/react-slot": "1.2.3",
     "@react-three/drei": "10.5.0",
     "@react-three/fiber": "9.2.0",
     "@react-three/postprocessing": "3.0.4",
     "class-variance-authority": "0.7.1",
+    "framer-motion": "^11.2.12",
     "glslify": "7.1.1",
     "lucide-react": "0.417.0",
     "next": "15.3.5",

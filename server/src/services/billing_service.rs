@@ -378,6 +378,14 @@ impl BillingService {
         if amount_decimal <= BigDecimal::from(0) || amount_decimal > BigDecimal::from(10000) {
             return Err(AppError::InvalidArgument("Amount must be between $0.01 and $10,000.00".to_string()));
         }
+        
+        // Check for Stripe's minimum chargeable amount ($0.50)
+        let min_amount = BigDecimal::from_str("0.50").unwrap();
+        if amount_decimal < min_amount {
+            return Err(AppError::InvalidArgument(
+                format!("Amount must be at least $0.50 (Stripe's minimum chargeable amount). Amounts below $0.50 will result in a $0 invoice and the balance will be added to the customer's invoice balance for future charges.")
+            ));
+        }
 
         // Calculate fee and net amounts
         let (fee_amount, net_amount) = Self::_calculate_fee_and_net(&amount_decimal);

@@ -167,9 +167,7 @@ where
     
     /// Handle stream termination for billable cases (successful completion or user cancellation)
     fn handle_stream_termination(&mut self, was_cancelled: bool) -> Poll<Option<Result<StreamEvent, AppError>>> {
-        if self.stream_completed {
-            return Poll::Ready(None);
-        }
+        // Note: stream_completed might already be true if set by [DONE] marker
         self.stream_completed = true;
         self.debug_logger.log_stream_end();
 
@@ -247,6 +245,11 @@ where
             return self.handle_stream_termination(true);
         }
         
+        // 2. Check if stream was marked as completed (e.g., by [DONE] marker)
+        if self.stream_completed {
+            return self.handle_stream_termination(false);
+        }
+        
         if !self.start_event_sent {
             self.start_event_sent = true;
             info!("Sending StreamStarted event for request_id={}", self.request_id);
@@ -261,14 +264,45 @@ where
             }
         }
         
+        // Check if we have pending events to process
         match self.sse_stream.as_mut().poll_next(cx) {
             Poll::Ready(Some(Ok(sse_event))) => {
                 self.last_activity = std::time::Instant::now();
 
+                // Special handling for OpenRouter to detect usage patterns
+                if self.model.provider_code == "openrouter" {
+                    // Check if this looks like a usage-only chunk
+                    if sse_event.data.contains("\"usage\"") && !sse_event.data.contains("\"delta\"") {
+                        info!("OpenRouter potential usage-only SSE event detected: {}", sse_event.data);
+                    }
+                }
+
+                // Check for [DONE] marker which signals end of stream
+                if sse_event.data.trim() == "[DONE]" {
+                    debug!("Received [DONE] marker from {}", self.model.provider_code);
+                    // Don't process [DONE] as JSON, just mark stream as completed
+                    self.stream_completed = true;
+                    cx.waker().wake_by_ref();
+                    return Poll::Pending;
+                }
+
                 self.debug_logger.log_chunk(sse_event.data.as_bytes());
                 
                 let parsed_value = match serde_json::from_str::<Value>(&sse_event.data) {
-                    Ok(value) => value,
+                    Ok(value) => {
+                        // Log chunks for OpenRouter to debug missing usage
+                        if self.model.provider_code == "openrouter" {
+                            if let Some(usage) = value.get("usage") {
+                                info!("OpenRouter chunk with usage data: {}", serde_json::to_string_pretty(&usage).unwrap_or_default());
+                            }
+                            if let Some(choices) = value.get("choices") {
+                                if choices.as_array().map(|arr| arr.is_empty()).unwrap_or(false) {
+                                    info!("OpenRouter chunk with empty choices: {}", serde_json::to_string_pretty(&value).unwrap_or_default());
+                                }
+                            }
+                        }
+                        value
+                    },
                     Err(e) => {
                         warn!("Failed to parse JSON: {} - Data: {}", e, sse_event.data);
                         cx.waker().wake_by_ref();
@@ -298,6 +332,10 @@ where
                 }
                 
                 if let Some(usage) = self.transformer.extract_usage_from_chunk(&parsed_value) {
+                    if self.model.provider_code == "openrouter" {
+                        info!("Extracted usage from OpenRouter chunk: prompt_tokens={}, completion_tokens={}, cost={:?}", 
+                              usage.prompt_tokens, usage.completion_tokens, usage.cost);
+                    }
                     if let Some(final_usage) = self.final_usage.as_mut() {
                         final_usage.merge_with(&usage);
                     } else {
@@ -345,6 +383,14 @@ where
             }
             // 3. Handle normal completion
             Poll::Ready(None) => {
+                if self.model.provider_code == "openrouter" {
+                    info!("OpenRouter stream ended. Final usage collected: {}", 
+                         self.final_usage.is_some());
+                    if let Some(ref usage) = self.final_usage {
+                        info!("Final OpenRouter usage: prompt_tokens={}, completion_tokens={}, cost={:?}", 
+                              usage.prompt_tokens, usage.completion_tokens, usage.cost);
+                    }
+                }
                 return self.handle_stream_termination(false);
             }
             Poll::Pending => Poll::Pending,
