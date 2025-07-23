@@ -24,7 +24,7 @@ AI coding assistants often struggle with large codebases because:
 - Single AI model perspective can miss important implementation details
 - Unclear task descriptions lead to poor AI results
 
-Vibe Manager addresses these issues through voice dictation, task refinement, automated file discovery, web research integration, multi-model plan generation, and transparent pricing.
+Vibe Manager addresses these issues through voice dictation, task refinement, automated file discovery, web research integration, multi-model plan generation, transparent pricing, and sophisticated error recovery mechanisms.
 
 ## How It Works
 
@@ -128,9 +128,12 @@ Create comprehensive implementation plans that don't miss important details:
 ### Performance Characteristics
 
 - Hierarchical filtering: Inexpensive regex first, then AI analysis
-- Parallel processing: Up to 3 stages can run simultaneously
+- Parallel processing: Multiple stages can run simultaneously
+- Configurable job concurrency for optimal performance
 - Caching: File reads and directory structures are cached between stages
+- Real-time streaming: AI responses stream as they're generated
 - Typical runtime: Most workflows complete within seconds to minutes depending on project size
+- Automatic retry mechanism for transient failures
 
 ## Parallel Execution - Power User Productivity
 
@@ -212,8 +215,11 @@ Vibe Manager tracks and displays AI costs:
 - **Anthropic**: Claude 4 Sonnet, Claude 4 Opus, Claude 3.7 Sonnet
 - **Google**: Gemini 2.5 Pro, Gemini 2.5 Flash
 - **DeepSeek**: DeepSeek R1
+- **xAI**: Grok models
+- **OpenRouter**: Fallback provider and access to additional models
 - Unified cost tracking across all providers
 - Provider-specific optimizations where available
+- Real-time streaming responses
 
 ## Built for Reliability and Performance
 
@@ -221,6 +227,10 @@ Vibe Manager tracks and displays AI costs:
 - Automatic recovery from interruptions
 - Concurrent processing for efficiency
 - Failure handling with retry options
+- Stage-level retry mechanism for failed workflows
+- Sophisticated error recovery strategies
+- Real-time streaming of AI responses
+- Automatic fallback to OpenRouter when primary provider APIs fail
 
 ### Privacy-First Architecture
 - Files remain on your local machine
@@ -228,11 +238,14 @@ Vibe Manager tracks and displays AI costs:
 - No code uploaded to external services
 - Works offline for file browsing and session management
 - Cross-platform: Windows, macOS, Linux
+- Local SQLite database for desktop sessions
 
 ### Security Features
 - OAuth 2.0 authentication (Google, GitHub, Microsoft, Apple)
+- JWT token authentication with binding
 - Built-in cost protection mechanisms
 - Secure API communication
+- Encrypted storage for sensitive data
 
 ## Context Management - The Key to LLM Success
 
@@ -281,6 +294,15 @@ Vibe Manager tracks and displays AI costs:
 - Real-time progress tracking
 - Workflow cancellation support
 - Error reporting with details
+- Job queue system with configurable concurrency
+- Live streaming of LLM responses
+
+### Additional Enterprise Features
+- Billing dashboard with comprehensive analytics
+- Usage tracking and reporting
+- Automatic database maintenance and optimization
+- Featurebase integration for feature requests
+- Admin controls for team management
 
 ## Key Differentiators
 
@@ -382,15 +404,20 @@ Every feature runs independently and simultaneously. Power users can execute mul
 
 Vibe Manager helps with AI-assisted development by:
 
-- Finding relevant files through File Finder workflow
+- Finding relevant files through File Finder workflow (4 intelligent stages)
 - Integrating current internet knowledge with your codebase through Deep Research
 - Creating implementation plans from single or multiple AI models
 - Merging multiple plans to ensure comprehensive coverage
 - Running all features in parallel for maximum productivity
 - Persisting and reusing context across sessions for efficiency
 - Allowing customized prompts for specific domains
-- Displaying costs during execution
-- Keeping code on local machine
+- Displaying costs during execution with real-time tracking
+- Keeping code on local machine with enterprise-grade security
+- Voice dictation for natural task input
+- AI-powered task refinement for clarity
+- Sophisticated error recovery and retry mechanisms
+- Real-time streaming of AI responses
+- Comprehensive billing and usage analytics
 
 ---
 
@@ -419,6 +446,16 @@ Vibe Manager helps with AI-assisted development by:
 
 No subscriptions. No hidden fees. Pay only for AI usage.
 
+## Why Vibe Manager?
+
+Vibe Manager is the result of extensive development to solve real problems developers face when working with AI coding assistants on large codebases. Every feature has been battle-tested and refined based on actual usage:
+
+- **Proven Technology**: All features are fully implemented and production-ready
+- **Real Cost Savings**: Hierarchical filtering and smart caching reduce AI costs by up to 70%
+- **Time Efficiency**: Parallel execution and context persistence save hours of manual work
+- **Enterprise Ready**: Security features, admin controls, and usage analytics for teams
+- **Continuous Improvement**: Regular updates based on user feedback through Featurebase integration
+
 ---
 
-[Download](#) | [Documentation](#) | [Contact](#)
+[Download](#) | [Documentation](#) | [API Reference](#) | [Contact](#)

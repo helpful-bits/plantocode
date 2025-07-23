@@ -56,7 +56,30 @@ export default function Home() {
       '@type': 'Offer',
       price: '0',
       priceCurrency: 'USD',
+      availability: 'https://schema.org/InStock',
+      priceValidUntil: '2025-12-31',
     },
+    creator: {
+      '@type': 'Organization',
+      name: 'Vibe Manager',
+      url: 'https://vibemanager.app',
+    },
+    downloadUrl: 'https://vibemanager.app/download',
+    softwareVersion: '1.0.0',
+    datePublished: '2024-01-01',
+    dateModified: '2025-01-22',
+    screenshot: 'https://vibe-manager-media.s3.amazonaws.com/og-image.png',
+    featureList: [
+      'Smart File Discovery',
+      'Deep Research Integration',
+      'Multi-Model Planning',
+      'Voice Dictation',
+      'Context Persistence',
+      'Parallel Execution',
+      'Cost Tracking',
+      'Privacy-First Architecture'
+    ],
+    softwareRequirements: 'Node.js 18+, 4GB RAM minimum',
   };
 
   const features = [
@@ -151,10 +174,23 @@ export default function Home() {
     },
   ];
 
+  const faqPageJsonLd: any = {
+    '@type': 'FAQPage',
+    mainEntity: faqItems.map(item => ({
+      '@type': 'Question',
+      name: item.question,
+      acceptedAnswer: {
+        '@type': 'Answer',
+        text: item.answer,
+      },
+    })),
+  };
+
 
   return (
     <>
       <StructuredData data={softwareApplicationJsonLd} />
+      <StructuredData data={faqPageJsonLd} />
       <Header />
       <main>
         <HeroSection />

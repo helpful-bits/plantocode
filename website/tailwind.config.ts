@@ -10,25 +10,25 @@ const config: Config = {
     extend: {
       colors: {
         // Map semantic names to CSS variables using OKLCH
-        primary: 'oklch(var(--primary) / <alpha-value>)',
-        secondary: 'oklch(var(--secondary) / <alpha-value>)',
-        destructive: 'oklch(var(--destructive) / <alpha-value>)',
-        muted: 'oklch(var(--muted) / <alpha-value>)',
-        accent: 'oklch(var(--accent) / <alpha-value>)',
-        card: 'oklch(var(--card) / <alpha-value>)',
-        popover: 'oklch(var(--popover) / <alpha-value>)',
-        border: 'oklch(var(--border) / <alpha-value>)',
-        input: 'oklch(var(--input) / <alpha-value>)',
-        ring: 'oklch(var(--ring) / <alpha-value>)',
-        background: 'oklch(var(--background) / <alpha-value>)',
-        foreground: 'oklch(var(--foreground) / <alpha-value>)',
-        'primary-foreground': 'oklch(var(--primary-foreground) / <alpha-value>)',
-        'secondary-foreground': 'oklch(var(--secondary-foreground) / <alpha-value>)',
-        'destructive-foreground': 'oklch(var(--destructive-foreground) / <alpha-value>)',
-        'muted-foreground': 'oklch(var(--muted-foreground) / <alpha-value>)',
-        'accent-foreground': 'oklch(var(--accent-foreground) / <alpha-value>)',
-        'card-foreground': 'oklch(var(--card-foreground) / <alpha-value>)',
-        'popover-foreground': 'oklch(var(--popover-foreground) / <alpha-value>)',
+        primary: 'oklch(var(--color-primary) / <alpha-value>)',
+        secondary: 'oklch(var(--color-secondary) / <alpha-value>)',
+        destructive: 'oklch(var(--color-destructive) / <alpha-value>)',
+        muted: 'oklch(var(--color-muted) / <alpha-value>)',
+        accent: 'oklch(var(--color-accent) / <alpha-value>)',
+        card: 'oklch(var(--color-card) / <alpha-value>)',
+        popover: 'oklch(var(--color-popover) / <alpha-value>)',
+        border: 'oklch(var(--color-border) / <alpha-value>)',
+        input: 'oklch(var(--color-input) / <alpha-value>)',
+        ring: 'oklch(var(--color-ring) / <alpha-value>)',
+        background: 'oklch(var(--color-background) / <alpha-value>)',
+        foreground: 'oklch(var(--color-foreground) / <alpha-value>)',
+        'primary-foreground': 'oklch(var(--color-primary-foreground) / <alpha-value>)',
+        'secondary-foreground': 'oklch(var(--color-secondary-foreground) / <alpha-value>)',
+        'destructive-foreground': 'oklch(var(--color-destructive-foreground) / <alpha-value>)',
+        'muted-foreground': 'oklch(var(--color-muted-foreground) / <alpha-value>)',
+        'accent-foreground': 'oklch(var(--color-accent-foreground) / <alpha-value>)',
+        'card-foreground': 'oklch(var(--color-card-foreground) / <alpha-value>)',
+        'popover-foreground': 'oklch(var(--color-popover-foreground) / <alpha-value>)',
       },
       fontFamily: {
         sans: ["var(--font-inter)", "ui-sans-serif", "system-ui", "sans-serif"],
@@ -298,6 +298,19 @@ const config: Config = {
         '80': '80',
         '90': '90',
         '100': '100',
+      },
+      
+      // Animation keyframes
+      keyframes: {
+        shimmer: {
+          '0%': { transform: 'translateX(-100%)' },
+          '100%': { transform: 'translateX(100%)' },
+        },
+      },
+      
+      // Animation utilities
+      animation: {
+        shimmer: 'shimmer 1.5s ease-in-out infinite',
       },
     },
   },

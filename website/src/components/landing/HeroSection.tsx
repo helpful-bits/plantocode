@@ -1,99 +1,128 @@
 'use client';
 
-import React from 'react';
+import React, { useRef, useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { useParallax } from 'react-scroll-parallax';
-import { useTheme } from 'next-themes';
 
 export function HeroSection() {
-  const { resolvedTheme } = useTheme();
-  const [mounted, setMounted] = React.useState(false);
-  const titleRef = useParallax<HTMLDivElement>({ speed: -10 });
-  const subtitleRef = useParallax<HTMLDivElement>({ speed: -15 });
-
-  React.useEffect(() => {
-    setMounted(true);
-  }, []);
+  const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
+  const heroRef = useRef<HTMLDivElement>(null);
+  
+  // Parallax for title with depth
+  const titleLayer = useParallax<HTMLDivElement>({
+    translateY: [0, -45],
+    translateX: [0, -10],
+    scale: [1, 0.96],
+    opacity: [1, 0.85],
+    easing: 'easeOutQuint',
+  });
+  
+  // Subtitle with different parallax speed for depth
+  const subtitleRef = useParallax<HTMLDivElement>({
+    translateY: [0, -60],
+    opacity: [1, 0.7],
+    scale: [1, 0.94],
+    easing: 'easeOutQuint',
+  });
+  
+  // Buttons with subtle parallax
+  const buttonsRef = useParallax<HTMLDivElement>({
+    translateY: [0, -20],
+    opacity: [1, 0.9],
+    easing: 'easeOutQuint',
+  });
+  
+  // Simple debounce implementation
+  const debounce = (func: Function, delay: number) => {
+    let timeoutId: NodeJS.Timeout;
+    return (...args: any[]) => {
+      clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => func(...args), delay);
+    };
+  };
+  
+  // Debounced mouse position update
+  const updateMousePosition = useCallback(
+    debounce((x: number, y: number) => {
+      setMousePosition({ x, y });
+    }, 16), // ~60fps
+    []
+  );
+  
+  // Remove mouse tracking to prevent text shifting
+  // The parallax scroll effects are sufficient for depth
   
   return (
-    <section className="relative min-h-screen flex items-center justify-center overflow-hidden">
-      {/* Studio Ghibli background image - changes based on theme */}
-      {mounted && (
-        <Image
-          src={resolvedTheme === 'dark' ? '/images/hero-background-dark.png' : '/images/hero-background.png'}
-          alt={resolvedTheme === 'dark' ? 'Northern lights aurora in deep blue night sky' : 'Studio Ghibli inspired landscape with teal sky and light rays'}
-          fill
-          priority
-          quality={100}
-          className="object-cover object-center z-0"
-        />
-      )}
-      
-      {/* Gradient overlay for better text contrast */}
-      <div className="absolute inset-0 z-1 bg-gradient-to-b from-background/50 via-background/30 to-background/60" />
-      
-      {/* Glass morphism overlay */}
-      <div className="absolute inset-0 z-5 bg-gradient-to-b from-transparent via-background/10 to-transparent backdrop-blur-sm" />
+    <section ref={heroRef} className="relative min-h-screen flex items-center justify-center overflow-hidden">
+      {/* Transparent background to show 3D particles */}
 
       {/* Main content */}
       <div className="relative z-10 text-center px-4 sm:px-6 lg:px-8 max-w-5xl mx-auto">
-        {/* Primary heading */}
-        <div ref={titleRef.ref}>
-          <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold mb-6 leading-tight">
+        {/* Primary heading with parallax */}
+        <h1 className="relative text-4xl sm:text-5xl lg:text-6xl font-bold mb-6 leading-tight">
+          {/* Main layer with depth effect */}
+          <div 
+            ref={titleLayer.ref}
+            className="relative"
+          >
             <span className="inline-block transition-all duration-700 delay-100 opacity-100 translate-y-0">
-              <span className="text-teal-900 dark:text-white font-bold">
+              <span className="text-hero-title">
                 AI-Powered Context Curation
               </span>
             </span>
             <br />
-            <span className="inline-block transition-all duration-700 delay-300 opacity-100 translate-y-0">
-              <span className="text-teal-900/80 dark:text-white/80 font-medium">for</span>{' '}
-              <span className="text-teal-800 dark:text-teal-400 font-extrabold">
+            <span 
+              className="inline-block transition-all duration-700 delay-300 opacity-100 translate-y-0"
+            >
+              <span className="text-subtitle-soft">for</span>{' '}
+              <span className="text-accent-highlight">
                 Large Codebases
               </span>
             </span>
-          </h1>
-        </div>
+          </div>
+        </h1>
 
-        {/* Subtitle */}
-        <div ref={subtitleRef.ref}>
-          <div className="relative mb-8 max-w-3xl mx-auto transition-all duration-700 delay-500 opacity-100 translate-y-0">
-            <p className="relative text-lg sm:text-xl leading-relaxed font-medium text-teal-950 dark:text-gray-100"
-               style={mounted ? {
-                 textShadow: resolvedTheme === 'dark' 
-                   ? `0 0 20px rgba(94, 234, 212, 0.3),
-                      0 0 40px rgba(94, 234, 212, 0.2),
-                      0 2px 8px rgba(0, 0, 0, 0.4)`
-                   : `0 0 30px rgba(255, 255, 135, 0.6),
-                      0 0 50px rgba(154, 255, 154, 0.4),
-                      0 2px 8px rgba(255, 255, 200, 0.7)`
-               } : {}}>
+        {/* Subtitle with parallax */}
+        <div 
+          ref={subtitleRef.ref}
+          className="relative mb-8 max-w-3xl mx-auto"
+        >
+          <div className="transition-all duration-700 delay-500 opacity-100 translate-y-0">
+            <p className="relative text-lg sm:text-xl text-description-muted leading-relaxed">
               Find relevant files instantly and create implementation plans that combine internet knowledge with your codebase. 
               4-stage file discovery, web research integration, and multi-model planning with transparent pricing.
             </p>
           </div>
         </div>
 
-        {/* Action buttons */}
-        <div className="flex flex-col sm:flex-row gap-4 justify-center items-center transition-all duration-700 delay-700 opacity-100 translate-y-0">
-          <Button asChild size="lg">
-            <Link href="/download">
-              Download Vibe Manager Free
-            </Link>
-          </Button>
+        {/* Action buttons with subtle parallax */}
+        <div 
+          ref={buttonsRef.ref}
+          className="flex flex-col sm:flex-row gap-4 justify-center items-center"
+        >
+          <div className="transition-all duration-700 delay-700 opacity-100 translate-y-0">
+            <Button asChild variant="primary" size="xl">
+              <Link href="/download">
+                Download Vibe Manager Free
+              </Link>
+            </Button>
+          </div>
           
-          <Button asChild variant="gradient-outline" size="lg">
-            <Link href="#features">
-              Learn More
-            </Link>
-          </Button>
+          <div className="transition-all duration-700 delay-800 opacity-100 translate-y-0">
+            <Button asChild variant="gradient-outline" size="lg">
+              <Link href="#features">
+                Learn More
+              </Link>
+            </Button>
+          </div>
         </div>
       </div>
 
-      {/* Scroll indicator */}
-      <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 z-10 transition-all duration-700 delay-1000 opacity-100">
+      {/* Scroll indicator with subtle parallax */}
+      <div 
+        className="absolute bottom-8 left-1/2 transform -translate-x-1/2 z-10 transition-all duration-700 delay-1000 opacity-100"
+      >
         <div className="animate-bounce p-2 rounded-full glass-subtle">
           <svg className="w-6 h-6 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
