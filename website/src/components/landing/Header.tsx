@@ -49,20 +49,21 @@ export function Header() {
         <div 
           className={cn(
             'absolute inset-0 transition-all duration-700 ease-out',
-            scrolled ? 'glass backdrop-blur-md' : 'bg-transparent'
+            scrolled ? 'glass' : 'bg-transparent'
           )}
         />
-        <div className="relative container mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="relative container mx-auto px-3 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16 lg:h-20">
             {/* Logo */}
             <motion.div
+              className="flex-shrink-0"
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
             >
               <Link 
                 href="/" 
                 className={cn(
-                  'group flex items-center gap-3 font-bold text-xl lg:text-2xl transition-all duration-500 cursor-pointer',
+                  'group inline-flex items-center gap-2 sm:gap-3 font-bold text-base sm:text-lg md:text-xl lg:text-2xl transition-all duration-500 cursor-pointer',
                   scrolled
                     ? 'text-foreground hover:text-primary'
                     : 'text-foreground hover:text-primary drop-shadow-lg'
@@ -70,16 +71,16 @@ export function Header() {
               >
                 <motion.div 
                   className={cn(
-                    'flex items-center justify-center w-8 h-8 lg:w-10 lg:h-10 rounded-xl transition-all duration-500',
+                    'flex items-center justify-center w-7 h-7 sm:w-8 sm:h-8 lg:w-10 lg:h-10 rounded-xl transition-all duration-500 flex-shrink-0',
                     'bg-gradient-to-br from-primary via-primary/90 to-accent',
                     'group-hover:shadow-lg group-hover:shadow-primary/25'
                   )}
                   whileHover={{ rotate: 12, scale: 1.1 }}
                   transition={{ type: "spring", stiffness: 400, damping: 10 }}
                 >
-                  <Sparkles className="w-4 h-4 lg:w-5 lg:h-5 text-primary-foreground" />
+                  <Sparkles className="w-3.5 h-3.5 sm:w-4 sm:h-4 lg:w-5 lg:h-5 text-primary-foreground" />
                 </motion.div>
-                <span className="bg-gradient-to-r from-current to-primary bg-clip-text">
+                <span className="bg-gradient-to-r from-current to-primary bg-clip-text whitespace-nowrap">
                   Vibe Manager
                 </span>
               </Link>
@@ -126,7 +127,7 @@ export function Header() {
               />
               
               <motion.div 
-                className="flex items-center gap-2"
+                className="hidden md:flex items-center gap-2"
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: 0.7, duration: 0.5 }}
@@ -150,47 +151,50 @@ export function Header() {
               </motion.div>
             </nav>
 
-            {/* Mobile menu button */}
-            <motion.button
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className={cn(
-                'md:hidden relative p-2.5 rounded-xl transition-all duration-500',
-                'focus:outline-none focus:ring-2 focus:ring-primary/50',
-                scrolled
-                  ? 'glass text-foreground'
-                  : 'bg-foreground/10 backdrop-blur-sm text-foreground hover:bg-foreground/20'
-              )}
-              aria-label="Toggle menu"
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.5, duration: 0.5 }}
-            >
-              <AnimatePresence mode="wait">
-                {mobileMenuOpen ? (
-                  <motion.div
-                    key="close"
-                    initial={{ rotate: -90, opacity: 0 }}
-                    animate={{ rotate: 0, opacity: 1 }}
-                    exit={{ rotate: 90, opacity: 0 }}
-                    transition={{ duration: 0.3, type: "spring", stiffness: 200 }}
-                  >
-                    <X className="w-5 h-5" />
-                  </motion.div>
-                ) : (
-                  <motion.div
-                    key="menu"
-                    initial={{ rotate: 90, opacity: 0 }}
-                    animate={{ rotate: 0, opacity: 1 }}
-                    exit={{ rotate: -90, opacity: 0 }}
-                    transition={{ duration: 0.3, type: "spring", stiffness: 200 }}
-                  >
-                    <Menu className="w-5 h-5" />
-                  </motion.div>
+            {/* Mobile actions */}
+            <div className="flex md:hidden items-center gap-2">
+              <ThemeToggle />
+              <motion.button
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                className={cn(
+                  'relative p-2.5 rounded-xl transition-all duration-500',
+                  'focus:outline-none focus:ring-2 focus:ring-primary/50',
+                  scrolled
+                    ? 'glass text-foreground'
+                    : 'bg-background/80 backdrop-blur-sm text-foreground hover:bg-background/90 border border-border/50'
                 )}
-              </AnimatePresence>
-            </motion.button>
+                aria-label="Toggle menu"
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.5, duration: 0.5 }}
+              >
+                <AnimatePresence mode="wait">
+                  {mobileMenuOpen ? (
+                    <motion.div
+                      key="close"
+                      initial={{ rotate: -90, opacity: 0 }}
+                      animate={{ rotate: 0, opacity: 1 }}
+                      exit={{ rotate: 90, opacity: 0 }}
+                      transition={{ duration: 0.3, type: "spring", stiffness: 200 }}
+                    >
+                      <X className="w-5 h-5" />
+                    </motion.div>
+                  ) : (
+                    <motion.div
+                      key="menu"
+                      initial={{ rotate: 90, opacity: 0 }}
+                      animate={{ rotate: 0, opacity: 1 }}
+                      exit={{ rotate: -90, opacity: 0 }}
+                      transition={{ duration: 0.3, type: "spring", stiffness: 200 }}
+                    >
+                      <Menu className="w-5 h-5" />
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </motion.button>
+            </div>
           </div>
         </div>
       </motion.header>
@@ -223,8 +227,7 @@ export function Header() {
                 'fixed top-20 inset-x-4 z-50 md:hidden',
                 'glass',
                 'rounded-2xl',
-                'p-6',
-                scrolled && 'top-[72px]'
+                'p-6'
               )}
             >
               <div className="space-y-2">
