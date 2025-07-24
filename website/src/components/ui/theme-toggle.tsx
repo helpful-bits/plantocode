@@ -15,7 +15,7 @@ import {
 
 /**
  * Theme toggle component with system preference support
- * 
+ *
  * Features:
  * - Light/Dark/System theme options
  * - Smooth transitions respecting reduced motion
@@ -35,10 +35,10 @@ export function ThemeToggle() {
   if (!mounted) {
     return (
       <Button
-        variant="outline"
-        size="icon"
         disabled
         className="w-9 h-9 rounded-lg"
+        size="icon"
+        variant="outline"
       >
         <div className="w-4 h-4 animate-pulse bg-muted rounded" />
         <span className="sr-only">Loading theme toggle</span>
@@ -60,22 +60,22 @@ export function ThemeToggle() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="icon" aria-label="Toggle theme">
+        <Button aria-label="Toggle theme" size="icon" variant="outline">
           {currentIcon()}
           <span className="sr-only">Toggle theme</span>
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-40">
         <DropdownMenuRadioGroup value={theme || 'system'} onValueChange={setTheme}>
-          <DropdownMenuRadioItem value="light" className="flex items-center gap-2 cursor-pointer">
+          <DropdownMenuRadioItem className="flex items-center gap-2 cursor-pointer" value="light">
             <Sun className="w-4 h-4" />
             <span>Light</span>
           </DropdownMenuRadioItem>
-          <DropdownMenuRadioItem value="dark" className="flex items-center gap-2 cursor-pointer">
+          <DropdownMenuRadioItem className="flex items-center gap-2 cursor-pointer" value="dark">
             <Moon className="w-4 h-4" />
             <span>Dark</span>
           </DropdownMenuRadioItem>
-          <DropdownMenuRadioItem value="system" className="flex items-center gap-2 cursor-pointer">
+          <DropdownMenuRadioItem className="flex items-center gap-2 cursor-pointer" value="system">
             <Monitor className="w-4 h-4" />
             <span>System</span>
           </DropdownMenuRadioItem>
