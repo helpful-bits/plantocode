@@ -1,7 +1,7 @@
 'use client'
 
 import { Canvas } from '@react-three/fiber'
-import { ScrollControls } from '@react-three/drei'
+// import { ScrollControls } from '@react-three/drei'
 import * as THREE from 'three'
 import { ParticleScene } from './ParticleScene'
 import { Suspense, useEffect, useState } from 'react'
@@ -110,16 +110,14 @@ export function InteractiveBackground({
             camera.updateProjectionMatrix();
           }}
         >
-          <ScrollControls pages={3} damping={4}>
-            <Suspense fallback={null}>
-              <ParticleScene 
-                key={adaptiveCount}
-                count={Math.round((particleCount || adaptiveCount) * 0.5)} 
-                mouseIntensity={mouseIntensity * 0.3}
-                isReducedMotion={true}
-              />
-            </Suspense>
-          </ScrollControls>
+          <Suspense fallback={null}>
+            <ParticleScene 
+              key={adaptiveCount}
+              count={Math.round((particleCount || adaptiveCount) * 0.5)} 
+              mouseIntensity={mouseIntensity * 0.3}
+              isReducedMotion={true}
+            />
+          </Suspense>
         </Canvas>
       </div>
     );
@@ -160,16 +158,14 @@ export function InteractiveBackground({
           
         }}
       >
-        <ScrollControls pages={3} damping={4}>
-          <Suspense fallback={null}>
-            <ParticleScene 
-              key={adaptiveCount}
-              count={particleCount || adaptiveCount} 
-              mouseIntensity={mouseIntensity}
-              isReducedMotion={false}
-            />
-          </Suspense>
-        </ScrollControls>
+        <Suspense fallback={null}>
+          <ParticleScene 
+            key={adaptiveCount}
+            count={particleCount || adaptiveCount} 
+            mouseIntensity={mouseIntensity}
+            isReducedMotion={false}
+          />
+        </Suspense>
       </Canvas>
       
     </div>

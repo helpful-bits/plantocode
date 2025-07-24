@@ -7,7 +7,7 @@ use serde_json::Value;
 use std::pin::Pin;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use tracing::{info, instrument};
+use tracing::{info, error, instrument};
 
 use super::structs::*;
 use super::streaming::*;
@@ -284,8 +284,20 @@ impl OpenAIClient {
         ),
         AppError,
     > {
+        // Create a dedicated HTTP client for this stream to ensure complete isolation
+        // This prevents connection-level errors from affecting other concurrent streams
+        let stream_client = Client::builder()
+            .timeout(std::time::Duration::from_secs(1740)) // 29 minutes for long-running streams
+            .connect_timeout(std::time::Duration::from_secs(180)) // 3 minutes for initial connection
+            .pool_max_idle_per_host(1) // Limit to 1 connection per host
+            .pool_idle_timeout(Some(std::time::Duration::from_secs(0))) // Disable connection reuse
+            .tcp_keepalive(std::time::Duration::from_secs(60)) // Keep connection alive during streaming
+            .build()
+            .map_err(|e| AppError::Internal(format!("Failed to create isolated HTTP client: {}", e)))?;
+        
+        info!("Created isolated HTTP client for streaming request - Model: {}", request.model);
+        
         // Clone necessary parts for 'static lifetime
-        let client = self.client.clone();
         let api_key = self.api_key.clone();
         let base_url = self.base_url.clone();
         let request_id_counter = self.request_id_counter.clone();
@@ -311,7 +323,7 @@ impl OpenAIClient {
                 prepare_request_body(&background_request, web_mode, Some(true))?;
             let create_url = format!("{}/responses", base_url);
 
-            let create_response = client
+            let create_response = stream_client
                 .post(&create_url)
                 .bearer_auth(&api_key)
                 .header("Content-Type", "application/json")
@@ -351,7 +363,7 @@ impl OpenAIClient {
 
             // Step 2: Create immediate streaming response with progress updates
             let synthetic_stream = create_deep_research_stream(
-                client,
+                stream_client.clone(),
                 api_key,
                 base_url,
                 response_id.clone(),
@@ -387,7 +399,7 @@ impl OpenAIClient {
                 // Use responses API for web mode streaming
                 let (_, request_body) = prepare_request_body(&streaming_request, true, None)?;
 
-                let response = client
+                let response = stream_client
                     .post(&url)
                     .bearer_auth(&api_key)
                     .header("Content-Type", "application/json")
@@ -411,10 +423,31 @@ impl OpenAIClient {
                     )));
                 }
 
-                // Return a stream that can be consumed by actix-web
-                let stream = response.bytes_stream().map(|result| match result {
+                // Return a stream that can be consumed by actix-web with enhanced error context
+                let model_for_error = streaming_request.model.clone();
+                let request_id_for_error = request_id;
+                let stream = response.bytes_stream().map(move |result| match result {
                     Ok(bytes) => Ok(web::Bytes::from(bytes)),
-                    Err(e) => Err(AppError::External(format!("OpenAI network error: {}", e))),
+                    Err(e) => {
+                        // Enhanced error logging with context
+                        error!("OpenAI stream error - Model: {}, RequestID: {}, Error: {}", 
+                               model_for_error, request_id_for_error, e);
+                        
+                        // Categorize the error type
+                        if e.is_timeout() {
+                            Err(AppError::External(format!("OpenAI stream timeout [Model: {}, Request: {}]", 
+                                                         model_for_error, request_id_for_error)))
+                        } else if e.is_connect() {
+                            Err(AppError::External(format!("OpenAI connection failed [Model: {}, Request: {}]", 
+                                                         model_for_error, request_id_for_error)))
+                        } else if e.is_body() {
+                            Err(AppError::External(format!("OpenAI response body error [Model: {}, Request: {}]: {}", 
+                                                         model_for_error, request_id_for_error, e)))
+                        } else {
+                            Err(AppError::External(format!("OpenAI network error [Model: {}, Request: {}]: {}", 
+                                                         model_for_error, request_id_for_error, e)))
+                        }
+                    }
                 });
 
                 let boxed_stream: Pin<
@@ -431,7 +464,7 @@ impl OpenAIClient {
                     .unwrap_or_else(|_| "Failed to serialize request".to_string());
                 info!("Sending streaming request to OpenAI: {}", request_json);
 
-                let response = client
+                let response = stream_client
                     .post(&url)
                     .bearer_auth(&api_key)
                     .header("Content-Type", "application/json")
@@ -455,10 +488,31 @@ impl OpenAIClient {
                     )));
                 }
 
-                // Return a stream that can be consumed by actix-web
-                let stream = response.bytes_stream().map(|result| match result {
+                // Return a stream that can be consumed by actix-web with enhanced error context
+                let model_for_error = streaming_request.model.clone();
+                let request_id_for_error = request_id;
+                let stream = response.bytes_stream().map(move |result| match result {
                     Ok(bytes) => Ok(web::Bytes::from(bytes)),
-                    Err(e) => Err(AppError::External(format!("OpenAI network error: {}", e))),
+                    Err(e) => {
+                        // Enhanced error logging with context
+                        error!("OpenAI stream error - Model: {}, RequestID: {}, Error: {}", 
+                               model_for_error, request_id_for_error, e);
+                        
+                        // Categorize the error type
+                        if e.is_timeout() {
+                            Err(AppError::External(format!("OpenAI stream timeout [Model: {}, Request: {}]", 
+                                                         model_for_error, request_id_for_error)))
+                        } else if e.is_connect() {
+                            Err(AppError::External(format!("OpenAI connection failed [Model: {}, Request: {}]", 
+                                                         model_for_error, request_id_for_error)))
+                        } else if e.is_body() {
+                            Err(AppError::External(format!("OpenAI response body error [Model: {}, Request: {}]: {}", 
+                                                         model_for_error, request_id_for_error, e)))
+                        } else {
+                            Err(AppError::External(format!("OpenAI network error [Model: {}, Request: {}]: {}", 
+                                                         model_for_error, request_id_for_error, e)))
+                        }
+                    }
                 });
 
                 let boxed_stream: Pin<

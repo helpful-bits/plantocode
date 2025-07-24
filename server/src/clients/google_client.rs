@@ -17,7 +17,7 @@ use crate::services::model_mapping_service::ModelWithMapping;
 use tracing::{debug, info, error, instrument};
 
 // Base URL for Google AI API
-const GOOGLE_BASE_URL: &str = "https://generativeai.googleapis.com/v1beta";
+const GOOGLE_BASE_URL: &str = "https://generativelanguage.googleapis.com/v1beta";
 
 // Google Chat Completion Request Structs
 #[skip_serializing_none]
