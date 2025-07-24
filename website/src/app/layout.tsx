@@ -15,7 +15,7 @@ export const metadata: Metadata = {
   description: 'An AI coding assistant that seamlessly integrates internet knowledge with your codebase to create actionable implementation plans.',
   keywords: [
     'AI coding assistant',
-    'codebase analysis', 
+    'codebase analysis',
     'implementation plans',
     'developer tools',
     'code context',
@@ -37,7 +37,7 @@ export const metadata: Metadata = {
     'AI planning',
     'code navigation',
     'project analysis',
-    'development automation'
+    'development automation',
   ],
   authors: [{ name: 'Vibe Manager Team' }],
   creator: 'Vibe Manager',
@@ -114,7 +114,7 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   themeColor: [
     { media: '(prefers-color-scheme: light)', color: 'oklch(0.98 0.01 195)' },
-    { media: '(prefers-color-scheme: dark)', color: 'oklch(0.18 0.02 206)' }
+    { media: '(prefers-color-scheme: dark)', color: 'oklch(0.18 0.02 206)' },
   ],
 };
 
@@ -131,13 +131,13 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" suppressHydrationWarning className={fontClasses.variables}>
-      <head></head>
+    <html suppressHydrationWarning className={fontClasses.variables} lang="en">
+      <head />
       <body className={`${fontClasses.sans} bg-transparent`}>
         <ClientProviders>
           {children}
         </ClientProviders>
-        <GoogleAnalytics gaId={process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID || "G-XXXXXXXXXX"} />
+        <GoogleAnalytics gaId={process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID || 'G-XXXXXXXXXX'} />
         <StructuredData data={websiteJsonLd} />
       </body>
     </html>

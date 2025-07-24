@@ -39,17 +39,17 @@ export function Header() {
 
   return (
     <>
-      <motion.header 
-        initial={{ y: -100, opacity: 0 }}
+      <motion.header
         animate={{ y: 0, opacity: 1 }}
-        transition={{ duration: 0.8, ease: [0.25, 0.1, 0.25, 1] }}
         className="fixed top-0 inset-x-0 z-50"
+        initial={{ y: -100, opacity: 0 }}
+        transition={{ duration: 0.8, ease: [0.25, 0.1, 0.25, 1] }}
       >
         {/* Background layer */}
-        <div 
+        <div
           className={cn(
             'absolute inset-0 transition-all duration-700 ease-out',
-            scrolled ? 'glass' : 'bg-transparent'
+            scrolled ? 'glass' : 'bg-transparent',
           )}
         />
         <div className="relative container mx-auto px-3 sm:px-6 lg:px-8">
@@ -60,23 +60,23 @@ export function Header() {
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
             >
-              <Link 
-                href="/" 
+              <Link
                 className={cn(
                   'group inline-flex items-center gap-2 sm:gap-3 font-bold text-base sm:text-lg md:text-xl lg:text-2xl transition-all duration-500 cursor-pointer',
                   scrolled
                     ? 'text-foreground hover:text-primary'
-                    : 'text-foreground hover:text-primary drop-shadow-lg'
+                    : 'text-foreground hover:text-primary drop-shadow-lg',
                 )}
+                href="/"
               >
-                <motion.div 
+                <motion.div
                   className={cn(
                     'flex items-center justify-center w-7 h-7 sm:w-8 sm:h-8 lg:w-10 lg:h-10 rounded-xl transition-all duration-500 flex-shrink-0',
                     'bg-gradient-to-br from-primary via-primary/90 to-accent',
-                    'group-hover:shadow-lg group-hover:shadow-primary/25'
+                    'group-hover:shadow-lg group-hover:shadow-primary/25',
                   )}
+                  transition={{ type: 'spring', stiffness: 400, damping: 10 }}
                   whileHover={{ rotate: 12, scale: 1.1 }}
-                  transition={{ type: "spring", stiffness: 400, damping: 10 }}
                 >
                   <Sparkles className="w-3.5 h-3.5 sm:w-4 sm:h-4 lg:w-5 lg:h-5 text-primary-foreground" />
                 </motion.div>
@@ -91,45 +91,45 @@ export function Header() {
               {navLinks.map((link, index) => (
                 <motion.div
                   key={link.href}
-                  initial={{ opacity: 0, y: -20 }}
                   animate={{ opacity: 1, y: 0 }}
+                  initial={{ opacity: 0, y: -20 }}
                   transition={{ delay: index * 0.1 + 0.3, duration: 0.5 }}
                 >
                   <Link
-                    href={link.href}
                     className={cn(
                       'relative px-3 lg:px-4 py-2 rounded-xl font-medium text-sm lg:text-base',
                       'group nav-link-hover cursor-pointer',
                       scrolled
                         ? 'text-muted-foreground hover:text-foreground'
-                        : 'text-foreground/90 hover:text-foreground drop-shadow-md'
+                        : 'text-foreground/90 hover:text-foreground drop-shadow-md',
                     )}
+                    href={link.href}
                     style={{
-                      transition: 'all 0.5s ease-out'
+                      transition: 'all 0.5s ease-out',
                     }}
                   >
-                    <motion.span 
+                    <motion.span
                       className="relative z-10"
+                      transition={{ type: 'spring', stiffness: 400, damping: 10 }}
                       whileHover={{ scale: 1.05 }}
-                      transition={{ type: "spring", stiffness: 400, damping: 10 }}
                     >
                       {link.label}
                     </motion.span>
                   </Link>
                 </motion.div>
               ))}
-              
-              <motion.div 
+
+              <motion.div
+                animate={{ opacity: 1, scaleY: 1 }}
                 className="w-px h-6 bg-border/50 mx-2"
                 initial={{ opacity: 0, scaleY: 0 }}
-                animate={{ opacity: 1, scaleY: 1 }}
                 transition={{ delay: 0.6, duration: 0.3 }}
               />
-              
-              <motion.div 
+
+              <motion.div
+                animate={{ opacity: 1, x: 0 }}
                 className="hidden md:flex items-center gap-2"
                 initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: 0.7, duration: 0.5 }}
               >
                 <ThemeToggle />
@@ -137,11 +137,11 @@ export function Header() {
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
                 >
-                  <Button 
-                    asChild 
-                    variant="cta"
-                    size="lg"
+                  <Button
+                    asChild
                     className="ml-2 relative"
+                    size="lg"
+                    variant="cta"
                   >
                     <Link href="/download">
                       Download Free
@@ -155,39 +155,39 @@ export function Header() {
             <div className="flex md:hidden items-center gap-2">
               <ThemeToggle />
               <motion.button
-                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                animate={{ opacity: 1 }}
+                aria-label="Toggle menu"
                 className={cn(
                   'relative p-2.5 rounded-xl transition-all duration-500',
                   'focus:outline-none focus:ring-2 focus:ring-primary/50',
                   scrolled
                     ? 'glass text-foreground'
-                    : 'bg-background/80 backdrop-blur-sm text-foreground hover:bg-background/90 border border-border/50'
+                    : 'bg-background/80 backdrop-blur-sm text-foreground hover:bg-background/90 border border-border/50',
                 )}
-                aria-label="Toggle menu"
+                initial={{ opacity: 0 }}
+                transition={{ delay: 0.5, duration: 0.5 }}
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.5, duration: 0.5 }}
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
               >
                 <AnimatePresence mode="wait">
                   {mobileMenuOpen ? (
                     <motion.div
                       key="close"
-                      initial={{ rotate: -90, opacity: 0 }}
                       animate={{ rotate: 0, opacity: 1 }}
                       exit={{ rotate: 90, opacity: 0 }}
-                      transition={{ duration: 0.3, type: "spring", stiffness: 200 }}
+                      initial={{ rotate: -90, opacity: 0 }}
+                      transition={{ duration: 0.3, type: 'spring', stiffness: 200 }}
                     >
                       <X className="w-5 h-5" />
                     </motion.div>
                   ) : (
                     <motion.div
                       key="menu"
-                      initial={{ rotate: 90, opacity: 0 }}
                       animate={{ rotate: 0, opacity: 1 }}
                       exit={{ rotate: -90, opacity: 0 }}
-                      transition={{ duration: 0.3, type: "spring", stiffness: 200 }}
+                      initial={{ rotate: 90, opacity: 0 }}
+                      transition={{ duration: 0.3, type: 'spring', stiffness: 200 }}
                     >
                       <Menu className="w-5 h-5" />
                     </motion.div>
@@ -205,42 +205,42 @@ export function Header() {
           <>
             {/* Backdrop */}
             <motion.div
-              initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.3, ease: "easeOut" }}
               className="fixed inset-0 z-40 bg-black/60 backdrop-blur-md md:hidden"
+              exit={{ opacity: 0 }}
+              initial={{ opacity: 0 }}
+              transition={{ duration: 0.3, ease: 'easeOut' }}
               onClick={() => setMobileMenuOpen(false)}
             />
-            
+
             {/* Mobile Menu */}
             <motion.nav
-              initial={{ opacity: 0, y: -30, scale: 0.9 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: -30, scale: 0.9 }}
-              transition={{ 
-                duration: 0.4, 
-                ease: [0.25, 0.1, 0.25, 1],
-                opacity: { duration: 0.3 }
-              }}
               className={cn(
                 'fixed top-20 inset-x-4 z-50 md:hidden',
                 'glass',
                 'rounded-2xl',
-                'p-6'
+                'p-6',
               )}
+              exit={{ opacity: 0, y: -30, scale: 0.9 }}
+              initial={{ opacity: 0, y: -30, scale: 0.9 }}
+              transition={{
+                duration: 0.4,
+                ease: [0.25, 0.1, 0.25, 1],
+                opacity: { duration: 0.3 },
+              }}
             >
               <div className="space-y-2">
                 {navLinks.map((link, index) => (
                   <motion.div
                     key={link.href}
-                    initial={{ opacity: 0, x: -30 }}
                     animate={{ opacity: 1, x: 0 }}
-                    transition={{ 
-                      delay: index * 0.1 + 0.1, 
+                    initial={{ opacity: 0, x: -30 }}
+                    transition={{
+                      delay: index * 0.1 + 0.1,
                       duration: 0.4,
-                      type: "spring",
-                      stiffness: 100
+                      type: 'spring',
+                      stiffness: 100,
                     }}
                   >
                     <motion.div
@@ -248,40 +248,40 @@ export function Header() {
                       whileTap={{ scale: 0.98 }}
                     >
                       <Link
-                        href={link.href}
-                        onClick={() => setMobileMenuOpen(false)}
                         className={cn(
                           'block px-4 py-3 rounded-xl font-medium text-base cursor-pointer',
                           'text-foreground hover:text-primary',
                           'nav-link-hover',
-                          'transition-all duration-500 relative overflow-hidden'
+                          'transition-all duration-500 relative overflow-hidden',
                         )}
+                        href={link.href}
+                        onClick={() => setMobileMenuOpen(false)}
                       >
                         <span className="relative z-10">{link.label}</span>
-                        <motion.div 
+                        <motion.div
                           className="absolute inset-0 bg-gradient-to-r from-primary/5 via-accent/5 to-primary/5"
-                          initial={{ x: "-100%" }}
-                          whileHover={{ x: "0%" }}
-                          transition={{ duration: 0.5, ease: "easeOut" }}
+                          initial={{ x: '-100%' }}
+                          transition={{ duration: 0.5, ease: 'easeOut' }}
+                          whileHover={{ x: '0%' }}
                         />
                       </Link>
                     </motion.div>
                   </motion.div>
                 ))}
               </div>
-              
-              <motion.div 
-                className="h-px bg-gradient-to-r from-transparent via-border/50 to-transparent my-6"
-                style={{ backgroundColor: 'transparent' }}
-                initial={{ scaleX: 0 }}
+
+              <motion.div
                 animate={{ scaleX: 1 }}
+                className="h-px bg-gradient-to-r from-transparent via-border/50 to-transparent my-6"
+                initial={{ scaleX: 0 }}
+                style={{ backgroundColor: 'transparent' }}
                 transition={{ delay: 0.5, duration: 0.5 }}
               />
-              
-              <motion.div 
+
+              <motion.div
+                animate={{ opacity: 1, y: 0 }}
                 className="flex items-center justify-between gap-4"
                 initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.6, duration: 0.4 }}
               >
                 <ThemeToggle />
@@ -290,11 +290,11 @@ export function Header() {
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
                 >
-                  <Button 
-                    asChild 
-                    variant="cta"
-                    size="xl"
+                  <Button
+                    asChild
                     className="w-full"
+                    size="xl"
+                    variant="cta"
                     onClick={() => setMobileMenuOpen(false)}
                   >
                     <Link href="/download">

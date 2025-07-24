@@ -17,113 +17,113 @@ export function FAQ({ items }: FAQProps) {
   const [openIndex, setOpenIndex] = useState<number | null>(null);
 
   return (
-    <section id="faq" className="relative py-16 px-4 overflow-hidden">
-      
+    <section className="relative py-16 px-4 overflow-hidden" id="faq">
+
       <div className="container mx-auto max-w-3xl relative z-10">
-        <motion.div 
+        <motion.div
           className="text-center mb-12"
           initial={{ opacity: 0, y: 30 }}
-          whileInView={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.8, ease: 'easeOut' }}
           viewport={{ once: true }}
-          transition={{ duration: 0.8, ease: "easeOut" }}
+          whileInView={{ opacity: 1, y: 0 }}
         >
-          <motion.h2 
+          <motion.h2
             className="text-3xl sm:text-4xl lg:text-5xl mb-4 text-primary-emphasis"
             initial={{ opacity: 0, scale: 0.85 }}
-            whileInView={{ opacity: 1, scale: 1 }}
-            viewport={{ once: true }}
-            transition={{ 
-              duration: 0.7, 
+            transition={{
+              duration: 0.7,
               delay: 0.1,
-              type: "spring",
+              type: 'spring',
               damping: 15,
-              stiffness: 100
+              stiffness: 100,
             }}
+            viewport={{ once: true }}
+            whileInView={{ opacity: 1, scale: 1 }}
           >
             Frequently Asked Questions
           </motion.h2>
-          <motion.p 
+          <motion.p
             className="text-lg sm:text-xl max-w-2xl mx-auto leading-relaxed font-medium text-foreground/80"
             initial={{ opacity: 0, y: 10 }}
-            whileInView={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.2, ease: 'easeOut' }}
             viewport={{ once: true }}
-            transition={{ duration: 0.6, delay: 0.2, ease: "easeOut" }}
+            whileInView={{ opacity: 1, y: 0 }}
           >
             Everything you need to know about Vibe Manager
           </motion.p>
         </motion.div>
-        
-        <motion.div 
+
+        <motion.div
           className="space-y-4"
           initial={{ opacity: 0 }}
-          whileInView={{ opacity: 1 }}
-          viewport={{ once: true }}
           transition={{ duration: 0.5, delay: 0.3 }}
+          viewport={{ once: true }}
+          whileInView={{ opacity: 1 }}
         >
           {items.map((item, index) => (
             <motion.div
               key={index}
               initial={{ opacity: 0, y: 30, scale: 0.95 }}
-              whileInView={{ opacity: 1, y: 0, scale: 1 }}
-              viewport={{ once: true, margin: "-50px" }}
-              transition={{ 
-                duration: 0.6, 
+              transition={{
+                duration: 0.6,
                 delay: index * 0.08,
-                type: "spring",
+                type: 'spring',
                 damping: 20,
-                stiffness: 100
+                stiffness: 100,
               }}
+              viewport={{ once: true, margin: '-50px' }}
               whileHover={{ scale: 1.02 }}
+              whileInView={{ opacity: 1, y: 0, scale: 1 }}
             >
               <GlassCard className="overflow-hidden will-change-transform">
                 <motion.div
                   animate={{
-                    backgroundColor: openIndex === index ? "rgba(var(--primary-rgb), 0.02)" : "transparent"
+                    backgroundColor: openIndex === index ? 'rgba(var(--primary-rgb), 0.02)' : 'transparent',
                   }}
-                  transition={{ duration: 0.4, ease: "easeInOut" }}
+                  transition={{ duration: 0.4, ease: 'easeInOut' }}
                 >
                   <motion.button
                     className="w-full p-6 text-left flex justify-between items-center transition-all duration-300 group relative"
-                    onClick={() => setOpenIndex(openIndex === index ? null : index)}
                     whileTap={{ scale: 0.98 }}
+                    onClick={() => setOpenIndex(openIndex === index ? null : index)}
                   >
-                    <motion.span 
-                      className="font-semibold text-lg text-foreground pr-4 transition-colors duration-300"
+                    <motion.span
                       animate={{
-                        color: openIndex === index ? "hsl(var(--primary))" : "currentColor"
+                        color: openIndex === index ? 'hsl(var(--primary))' : 'currentColor',
                       }}
+                      className="font-semibold text-lg text-foreground pr-4 transition-colors duration-300"
                     >
                       {item.question}
                     </motion.span>
-                    <motion.div 
-                      className="flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center relative"
+                    <motion.div
                       animate={{
                         scale: openIndex === index ? 1.1 : 1,
-                        rotate: openIndex === index ? 180 : 0
+                        rotate: openIndex === index ? 180 : 0,
                       }}
-                      transition={{ 
-                        duration: 0.4, 
-                        type: "spring",
+                      className="flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center relative"
+                      transition={{
+                        duration: 0.4,
+                        type: 'spring',
                         damping: 15,
-                        stiffness: 200
+                        stiffness: 200,
                       }}
                     >
                       <motion.div
-                        className="absolute inset-0 rounded-full"
                         animate={{
-                          background: openIndex === index 
-                            ? "linear-gradient(135deg, hsl(var(--primary) / 0.3), hsl(var(--primary) / 0.4))"
-                            : "linear-gradient(135deg, hsl(var(--primary) / 0.05), hsl(var(--primary) / 0.1))"
+                          background: openIndex === index
+                            ? 'linear-gradient(135deg, hsl(var(--primary) / 0.3), hsl(var(--primary) / 0.4))'
+                            : 'linear-gradient(135deg, hsl(var(--primary) / 0.05), hsl(var(--primary) / 0.1))',
                         }}
+                        className="absolute inset-0 rounded-full"
                         transition={{ duration: 0.3 }}
                       />
                       <motion.div
-                        className="absolute inset-0 rounded-full ring-1"
                         animate={{
-                          borderColor: openIndex === index 
-                            ? "hsl(var(--primary) / 0.4)"
-                            : "hsl(var(--primary) / 0.15)"
+                          borderColor: openIndex === index
+                            ? 'hsl(var(--primary) / 0.4)'
+                            : 'hsl(var(--primary) / 0.15)',
                         }}
+                        className="absolute inset-0 rounded-full ring-1"
                         transition={{ duration: 0.3 }}
                       />
                       <svg
@@ -133,68 +133,68 @@ export function FAQ({ items }: FAQProps) {
                         viewBox="0 0 24 24"
                       >
                         <path
+                          d="M19 9l-7 7-7-7"
                           strokeLinecap="round"
                           strokeLinejoin="round"
                           strokeWidth={2}
-                          d="M19 9l-7 7-7-7"
                         />
                       </svg>
                     </motion.div>
                   </motion.button>
-                  
+
                   <AnimatePresence mode="wait">
                     {openIndex === index && (
                       <motion.div
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ 
-                          height: "auto", 
+                        animate={{
+                          height: 'auto',
                           opacity: 1,
                           transition: {
                             height: {
                               duration: 0.4,
-                              ease: [0.23, 1, 0.32, 1]
+                              ease: [0.23, 1, 0.32, 1],
                             },
                             opacity: {
                               duration: 0.3,
                               delay: 0.1,
-                              ease: "easeOut"
-                            }
-                          }
+                              ease: 'easeOut',
+                            },
+                          },
                         }}
-                        exit={{ 
-                          height: 0, 
+                        className="overflow-hidden"
+                        exit={{
+                          height: 0,
                           opacity: 0,
                           transition: {
                             height: {
                               duration: 0.3,
-                              ease: [0.23, 1, 0.32, 1]
+                              ease: [0.23, 1, 0.32, 1],
                             },
                             opacity: {
                               duration: 0.2,
-                              ease: "easeIn"
-                            }
-                          }
+                              ease: 'easeIn',
+                            },
+                          },
                         }}
-                        className="overflow-hidden"
+                        initial={{ height: 0, opacity: 0 }}
                       >
-                        <motion.div 
-                          className="px-6 pb-6 text-foreground leading-relaxed"
-                          initial={{ y: -10 }}
-                          animate={{ 
+                        <motion.div
+                          animate={{
                             y: 0,
                             transition: {
                               duration: 0.4,
                               delay: 0.1,
-                              ease: [0.23, 1, 0.32, 1]
-                            }
+                              ease: [0.23, 1, 0.32, 1],
+                            },
                           }}
-                          exit={{ 
+                          className="px-6 pb-6 text-foreground leading-relaxed"
+                          exit={{
                             y: -10,
                             transition: {
                               duration: 0.2,
-                              ease: "easeIn"
-                            }
+                              ease: 'easeIn',
+                            },
                           }}
+                          initial={{ y: -10 }}
                         >
                           <div className="border-l-2 border-primary/20 pl-4">
                             {item.answer}

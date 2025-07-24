@@ -4,10 +4,10 @@ import { ThemeProvider as NextThemesProvider } from 'next-themes';
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   return (
-    <NextThemesProvider 
-      attribute="class" 
-      defaultTheme="system" 
-      enableSystem 
+    <NextThemesProvider
+      enableSystem
+      attribute="class"
+      defaultTheme="system"
       disableTransitionOnChange={false}
     >
       {children}
