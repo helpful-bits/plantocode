@@ -1019,19 +1019,40 @@ impl StripeService {
         info!("Created invoice item: {} attached to invoice: {}", invoice_item_id, invoice.id);
         
         // Step 3: Finalize the invoice (this creates the PaymentIntent and attempts payment)
-        let finalize_data = serde_json::json!({
-            "auto_advance": true
-        });
-        
+        // Since auto_advance is true, Stripe should automatically attempt collection
         let finalized_response = self.make_stripe_request_with_idempotency(
             reqwest::Method::POST,
             &format!("invoices/{}/finalize", invoice.id),
-            Some(finalize_data),
+            None, // No body needed for finalization
             Some(&format!("{}_finalize", idempotency_key)),
         ).await?;
         
         invoice = serde_json::from_value(finalized_response)
             .map_err(|e| StripeServiceError::Configuration(format!("Failed to parse finalized invoice response: {}", e)))?;
+        
+        // Step 4: Attempt to pay the invoice if it's still open
+        if invoice.status.as_ref().map(|s| s.as_str()) == Some("open") {
+            info!("Invoice {} is still open, attempting to pay", invoice.id);
+            
+            let pay_response = self.make_stripe_request_with_idempotency(
+                reqwest::Method::POST,
+                &format!("invoices/{}/pay", invoice.id),
+                None, // Let Stripe use the default payment method
+                Some(&format!("{}_pay", idempotency_key)),
+            ).await;
+            
+            match pay_response {
+                Ok(paid_response) => {
+                    invoice = serde_json::from_value(paid_response)
+                        .map_err(|e| StripeServiceError::Configuration(format!("Failed to parse paid invoice response: {}", e)))?;
+                    info!("Successfully paid invoice: {}", invoice.id);
+                },
+                Err(e) => {
+                    warn!("Failed to pay invoice {} automatically: {}", invoice.id, e);
+                    // Don't fail the entire operation, just log the warning
+                }
+            }
+        }
         
         info!("Successfully created and finalized invoice: {} with item: {} for customer: {}", 
               invoice.id, invoice_item_id, customer_id);
