@@ -11,7 +11,7 @@ export function Footer() {
       </div>
 
       {/* Glass background with subtle effect */}
-      <div className="relative glass-subtle border-t border-primary/10">
+      <div className="relative glass border-t border-primary/10">
         <div className="container mx-auto px-4">
           {/* Main footer content */}
           <div className="py-16 grid grid-cols-1 md:grid-cols-12 gap-8 lg:gap-12">
@@ -63,7 +63,7 @@ export function Footer() {
                     <Link href="#features" className="text-muted-foreground hover:text-primary text-sm transition-colors duration-200 relative group inline-flex items-center">
                       <span className="relative">
                         Features
-                        <span className="footer-link-underline" />
+                        <span className="clickable-text-underline" />
                       </span>
                     </Link>
                   </li>
@@ -71,7 +71,7 @@ export function Footer() {
                     <Link href="#how-it-works" className="text-muted-foreground hover:text-primary text-sm transition-colors duration-200 relative group inline-flex items-center">
                       <span className="relative">
                         How It Works
-                        <span className="footer-link-underline" />
+                        <span className="clickable-text-underline" />
                       </span>
                     </Link>
                   </li>
@@ -79,7 +79,7 @@ export function Footer() {
                     <Link href="#pricing" className="text-muted-foreground hover:text-primary text-sm transition-colors duration-200 relative group inline-flex items-center">
                       <span className="relative">
                         Pricing
-                        <span className="footer-link-underline" />
+                        <span className="clickable-text-underline" />
                       </span>
                     </Link>
                   </li>
@@ -87,7 +87,7 @@ export function Footer() {
                     <Link href="/download" className="text-muted-foreground hover:text-primary text-sm transition-colors duration-200 relative group inline-flex items-center">
                       <span className="relative">
                         Download
-                        <span className="footer-link-underline" />
+                        <span className="clickable-text-underline" />
                       </span>
                     </Link>
                   </li>

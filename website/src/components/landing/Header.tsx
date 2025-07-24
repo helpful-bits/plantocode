@@ -43,14 +43,16 @@ export function Header() {
         initial={{ y: -100, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         transition={{ duration: 0.8, ease: [0.25, 0.1, 0.25, 1] }}
-        className={cn(
-          'fixed top-0 inset-x-0 z-50 transition-all duration-700 ease-out',
-          scrolled
-            ? 'header-glass'
-            : 'bg-transparent'
-        )}
+        className="fixed top-0 inset-x-0 z-50"
       >
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+        {/* Background layer */}
+        <div 
+          className={cn(
+            'absolute inset-0 transition-all duration-700 ease-out',
+            scrolled ? 'glass backdrop-blur-md' : 'bg-transparent'
+          )}
+        />
+        <div className="relative container mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16 lg:h-20">
             {/* Logo */}
             <motion.div
@@ -60,10 +62,10 @@ export function Header() {
               <Link 
                 href="/" 
                 className={cn(
-                  'group flex items-center gap-3 font-bold text-xl lg:text-2xl transition-all duration-500',
+                  'group flex items-center gap-3 font-bold text-xl lg:text-2xl transition-all duration-500 cursor-pointer',
                   scrolled
                     ? 'text-foreground hover:text-primary'
-                    : 'text-white hover:text-primary-foreground drop-shadow-lg'
+                    : 'text-foreground hover:text-primary drop-shadow-lg'
                 )}
               >
                 <motion.div 
@@ -96,11 +98,14 @@ export function Header() {
                     href={link.href}
                     className={cn(
                       'relative px-3 lg:px-4 py-2 rounded-xl font-medium text-sm lg:text-base',
-                      'transition-all duration-500 group nav-link-hover',
+                      'group nav-link-hover cursor-pointer',
                       scrolled
                         ? 'text-muted-foreground hover:text-foreground'
-                        : 'text-white/90 hover:text-white drop-shadow-md'
+                        : 'text-foreground/90 hover:text-foreground drop-shadow-md'
                     )}
+                    style={{
+                      transition: 'all 0.5s ease-out'
+                    }}
                   >
                     <motion.span 
                       className="relative z-10"
@@ -133,9 +138,9 @@ export function Header() {
                 >
                   <Button 
                     asChild 
-                    variant="primary"
-                    size="sm"
-                    className="ml-2"
+                    variant="cta"
+                    size="lg"
+                    className="ml-2 relative"
                   >
                     <Link href="/download">
                       Download Free
@@ -152,8 +157,8 @@ export function Header() {
                 'md:hidden relative p-2.5 rounded-xl transition-all duration-500',
                 'focus:outline-none focus:ring-2 focus:ring-primary/50',
                 scrolled
-                  ? 'glass-subtle text-foreground'
-                  : 'bg-white/10 backdrop-blur-sm text-white hover:bg-white/20'
+                  ? 'glass text-foreground'
+                  : 'bg-foreground/10 backdrop-blur-sm text-foreground hover:bg-foreground/20'
               )}
               aria-label="Toggle menu"
               whileHover={{ scale: 1.05 }}
@@ -216,7 +221,7 @@ export function Header() {
               }}
               className={cn(
                 'fixed top-20 inset-x-4 z-50 md:hidden',
-                'glass-elevated',
+                'glass',
                 'rounded-2xl',
                 'p-6',
                 scrolled && 'top-[72px]'
@@ -243,7 +248,7 @@ export function Header() {
                         href={link.href}
                         onClick={() => setMobileMenuOpen(false)}
                         className={cn(
-                          'block px-4 py-3 rounded-xl font-medium text-base',
+                          'block px-4 py-3 rounded-xl font-medium text-base cursor-pointer',
                           'text-foreground hover:text-primary',
                           'nav-link-hover',
                           'transition-all duration-500 relative overflow-hidden'
@@ -264,6 +269,7 @@ export function Header() {
               
               <motion.div 
                 className="h-px bg-gradient-to-r from-transparent via-border/50 to-transparent my-6"
+                style={{ backgroundColor: 'transparent' }}
                 initial={{ scaleX: 0 }}
                 animate={{ scaleX: 1 }}
                 transition={{ delay: 0.5, duration: 0.5 }}
@@ -283,8 +289,8 @@ export function Header() {
                 >
                   <Button 
                     asChild 
-                    variant="primary"
-                    size="lg"
+                    variant="cta"
+                    size="xl"
                     className="w-full"
                     onClick={() => setMobileMenuOpen(false)}
                   >

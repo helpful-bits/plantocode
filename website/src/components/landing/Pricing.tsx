@@ -25,27 +25,9 @@ export function Pricing() {
     }
   };
 
-  const glowVariants = {
-    initial: { opacity: 0, scale: 0.8 },
-    animate: {
-      opacity: [0, 0.5, 0],
-      scale: [0.8, 1.2, 0.8],
-      transition: {
-        duration: 3,
-        repeat: Infinity,
-        ease: "easeInOut"
-      }
-    }
-  };
 
   return (
     <section id="pricing" className="relative py-20 px-4 overflow-hidden perspective-1000">
-      {/* Radial burst background pattern */}
-      <div className="absolute inset-0 z-0 burst-radial-primary burst-animated" />
-      
-      <div className="absolute inset-0 z-1 bg-transparent dark:bg-gradient-to-b dark:from-background/95 dark:via-background/70 dark:to-background/95" />
-      
-      
       <div className="container mx-auto relative z-10">
         <motion.div 
           className="text-center mb-16"

@@ -42,7 +42,8 @@
     "**/*.tsx",
     "**/*.d.ts",
     ".next/types/**/*.ts",
-    "shader.d.ts"
+    "shader.d.ts",
+    "src/components/landing/particlePhysics.ts"
   ],
   "exclude": ["node_modules"]
 }

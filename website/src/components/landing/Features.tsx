@@ -3,7 +3,6 @@
 import React from 'react';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { motion } from 'framer-motion';
-import { useOptimizedIntersection, useBatchedIntersection } from '@/hooks/useOptimizedIntersection';
 
 interface Feature {
   title: string;
@@ -75,34 +74,16 @@ const iconVariants = {
 };
 
 export function Features({ features = defaultFeatures }: FeaturesProps) {
-  // Optimized intersection observer for header
-  const { ref: headerRef, isIntersecting: headerVisible } = useOptimizedIntersection({
-    threshold: 0.2,
-    rootMargin: '50px'
-  });
-  
-  // Batched intersection observer for feature cards
-  const { setRef: setCardRef, isVisible: isCardVisible } = useBatchedIntersection(
-    features.length,
-    {
-      threshold: 0.1,
-      rootMargin: '100px'
-    }
-  );
-  
   return (
     <section id="features" className="relative py-16 px-4 overflow-hidden">
       {/* No background - show particles */}
       
       <div className="container mx-auto relative z-10">
         <motion.div 
-          ref={headerRef}
           className="text-center mb-12"
           initial={{ opacity: 0, y: 15, transform: 'translateZ(0)' }}
-          animate={headerVisible ? 
-            { opacity: 1, y: 0, transform: 'translateZ(0)' } : 
-            { opacity: 0, y: 15, transform: 'translateZ(0)' }
-          }
+          whileInView={{ opacity: 1, y: 0, transform: 'translateZ(0)' }}
+          viewport={{ once: true }}
           transition={{ 
             duration: 0.5, 
             ease: [0.4, 0, 0.2, 1],
@@ -138,8 +119,6 @@ export function Features({ features = defaultFeatures }: FeaturesProps) {
           viewport={{ once: true, margin: "-50px" }}  // Reduced margin for later trigger
         >
           {features.map((feature, index) => {
-            const isHighlighted = index === Math.floor(features.length / 2);
-            
             return (
               <motion.div
                 key={index}
@@ -156,37 +135,26 @@ export function Features({ features = defaultFeatures }: FeaturesProps) {
                 style={{ transform: 'translateZ(0)' }}
               >
                 <GlassCard 
-                  highlighted={isHighlighted} 
                   className="h-full will-change-transform"
                   style={{ transform: 'translateZ(0)' }}
                 >
                   <div className="content-spacing text-safe-padding">
                     {/* Icon container with enhanced animation */}
                     <motion.div 
-                      className={`
-                        mx-auto mb-4 w-16 h-16 rounded-2xl flex items-center justify-center
-                        transition-all duration-300
-                        ${isHighlighted
-                          ? 'bg-gradient-to-br from-primary/20 to-primary/30 ring-2 ring-primary/40' 
-                          : 'bg-gradient-to-br from-primary/10 to-primary/20 ring-1 ring-primary/20'
-                        }
-                      `}
+                      className="mx-auto mb-4 w-16 h-16 rounded-2xl flex items-center justify-center transition-all duration-300 bg-gradient-to-br from-primary/10 to-primary/20 ring-1 ring-primary/20"
                       variants={iconVariants}
                       whileHover={{ 
                         scale: 1.1,  // Simplified hover without rotation
                         transition: { duration: 0.2 }
                       }}
                     >
-                      <div className={`
-                        transition-transform duration-300
-                        ${isHighlighted ? 'text-primary' : 'text-primary/80'}
-                      `}>
+                      <div className="transition-transform duration-300 text-primary/80">
                         {feature.icon}
                       </div>
                     </motion.div>
                     
                     <motion.h3 
-                      className="text-xl font-semibold text-center mb-3 text-primary-emphasis"
+                      className="text-xl font-semibold text-center mb-3 text-foreground"
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
                       transition={{ delay: 0.3 }}
@@ -195,7 +163,7 @@ export function Features({ features = defaultFeatures }: FeaturesProps) {
                     </motion.h3>
                     
                     <motion.p 
-                      className="text-center text-sm leading-relaxed text-muted-foreground"
+                      className="text-center text-sm leading-relaxed text-foreground/80"
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
                       transition={{ delay: 0.4 }}
