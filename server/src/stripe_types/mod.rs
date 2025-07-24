@@ -7,6 +7,7 @@ pub mod customer;
 pub mod enums;
 pub mod event;
 pub mod expandable;
+pub mod invoice;
 pub mod payment_intent;
 pub mod payment_method;
 pub mod price;
@@ -22,6 +23,7 @@ pub use customer::{Customer, CustomerAddress, CustomerInvoiceSettings, TaxId, Ta
 pub use enums::*;
 pub use event::{Event, EventObject};
 pub use expandable::Expandable;
+pub use invoice::Invoice;
 pub use payment_intent::{PaymentIntent, PaymentIntentStatus};
 pub use payment_method::{PaymentMethod, PaymentMethodList};
 pub use price::Price;

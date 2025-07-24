@@ -589,16 +589,23 @@ async fn process_stripe_webhook_event(
                 .map_err(|e| AppError::InvalidArgument(format!("Failed to parse customer: {}", e)))?;
             handle_customer_default_source_updated(&customer, billing_service).await?;
         },
-        // Log invoice events for monitoring without processing
+        // Handle invoice events (now expected for auto top-off)
         EVENT_INVOICE_CREATED | EVENT_INVOICE_FINALIZED | EVENT_INVOICE_PAID => {
-            warn!("Received unexpected invoice event: {} - This shouldn't happen with direct credit purchases. Event data: {:?}", 
-                  event.type_, event.data.get("object").and_then(|o| o.get("id")));
+            let invoice_id = event.data.get("object").and_then(|o| o.get("id")).and_then(|id| id.as_str()).unwrap_or("unknown");
+            let metadata = event.data.get("object").and_then(|o| o.get("metadata"));
+            let is_auto_topoff = metadata.and_then(|m| m.get("type")).and_then(|t| t.as_str()) == Some("auto_topoff");
             
-            // Send alert to investigate why invoices are being created
+            if is_auto_topoff {
+                info!("Processing auto top-off invoice event: {} for invoice: {}", event.type_, invoice_id);
+            } else {
+                info!("Processing regular invoice event: {} for invoice: {}", event.type_, invoice_id);
+            }
+            
+            // Only alert for $0 invoices that aren't expected
             if event.type_ == EVENT_INVOICE_FINALIZED {
                 if let Some(amount_due) = event.data.get("object").and_then(|o| o.get("amount_due")).and_then(|a| a.as_i64()) {
                     if amount_due == 0 {
-                        error!("ALERT: $0 invoice detected! Event ID: {} - This requires investigation", event.id);
+                        error!("ALERT: $0 invoice detected! Event ID: {} - Invoice ID: {}", event.id, invoice_id);
                         
                         // Send admin alert for $0 invoice
                         let alerting_service = crate::utils::admin_alerting::AdminAlertingService::new();
@@ -606,7 +613,7 @@ async fn process_stripe_webhook_event(
                             crate::utils::admin_alerting::AlertSeverity::Critical,
                             crate::utils::admin_alerting::AlertType::PaymentProcessingError,
                             "Unexpected $0 Invoice Detected".to_string(),
-                            format!("A $0 invoice was finalized (Event: {}). This shouldn't happen with direct credit purchases. Please investigate in Stripe Dashboard.", event.id),
+                            format!("A $0 invoice was finalized (Event: {}, Invoice: {}). Please investigate in Stripe Dashboard.", event.id, invoice_id),
                         );
                         alerting_service.send_alert(alert).await;
                     }

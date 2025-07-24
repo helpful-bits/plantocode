@@ -1,6 +1,7 @@
 'use client';
 
-import { forwardRef, HTMLAttributes, useRef, useState, useCallback, MouseEvent, memo, useEffect } from 'react';
+import type { HTMLAttributes, MouseEvent} from 'react';
+import { forwardRef, useRef, useState, useCallback, memo, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 
 export interface GlassCardProps extends HTMLAttributes<HTMLDivElement> {
@@ -12,7 +13,7 @@ const GlassCardComponent = forwardRef<HTMLDivElement, GlassCardProps>(
     const cardRef = useRef<HTMLDivElement>(null);
     const [ripples, setRipples] = useState<Array<{ x: number; y: number; id: number }>>([]);
     const [isMobile, setIsMobile] = useState(false);
-    
+
     // Detect mobile device for optimized interactions
     useEffect(() => {
       const checkMobile = () => {
@@ -22,35 +23,33 @@ const GlassCardComponent = forwardRef<HTMLDivElement, GlassCardProps>(
       window.addEventListener('resize', checkMobile);
       return () => window.removeEventListener('resize', checkMobile);
     }, []);
-    
+
     const glassClass = highlighted ? 'glass-highlighted' : 'glass';
-    
-    
+
     const handleClick = useCallback((e: MouseEvent<HTMLDivElement>) => {
       if (!cardRef.current) return;
-      
+
       const rect = cardRef.current.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
       const id = Date.now();
-      
+
       // Only add ripples on non-mobile devices for performance
       if (!isMobile) {
         setRipples(prev => [...prev, { x, y, id }]);
-        
+
         // Remove ripple after animation with optimized timing
         setTimeout(() => {
           setRipples(prev => prev.filter(ripple => ripple.id !== id));
         }, 800); // Shorter duration for better performance
       }
-      
+
       // Call original onClick if provided
       onClick?.(e);
     }, [onClick, isMobile]);
-    
-    
+
     return (
-      <div 
+      <div
         ref={(node) => {
           // Handle both refs
           if (typeof ref === 'function') ref(node);
@@ -58,16 +57,16 @@ const GlassCardComponent = forwardRef<HTMLDivElement, GlassCardProps>(
           cardRef.current = node;
         }}
         className={cn(
-          "relative rounded-2xl p-6 overflow-hidden transition-all duration-300",
+          'relative rounded-2xl p-6 overflow-hidden transition-all duration-300',
           glassClass,
-          "will-change-transform", // Performance hint
-          className
+          'will-change-transform', // Performance hint
+          className,
         )}
-        onClick={handleClick}
-        style={{ 
+        style={{
           transform: 'translateZ(0)', // GPU acceleration
-          ...props.style 
+          ...props.style,
         }}
+        onClick={handleClick}
         {...props}
       >
         {/* Enhanced ripple effects with GPU acceleration */}
@@ -81,19 +80,18 @@ const GlassCardComponent = forwardRef<HTMLDivElement, GlassCardProps>(
               transform: 'translate(-50%, -50%) translateZ(0)',
             }}
           >
-            <span 
+            <span
               className="block rounded-full bg-white/25 dark:bg-white/15 animate-ripple-expand will-change-transform"
               style={{
                 width: 0,
                 height: 0,
-                transform: 'translateZ(0)'
+                transform: 'translateZ(0)',
               }}
             />
           </span>
         ))}
-        
-        
-        <div 
+
+        <div
           className="relative z-10"
           style={{ transform: 'translateZ(0)' }}
         >
@@ -101,7 +99,7 @@ const GlassCardComponent = forwardRef<HTMLDivElement, GlassCardProps>(
         </div>
       </div>
     );
-  }
+  },
 );
 
 GlassCardComponent.displayName = 'GlassCard';

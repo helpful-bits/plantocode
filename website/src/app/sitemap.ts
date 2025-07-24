@@ -1,9 +1,9 @@
-import { MetadataRoute } from 'next'
+import type { MetadataRoute } from 'next';
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  const baseUrl = 'https://vibemanager.app'
-  const now = new Date()
-  
+  const baseUrl = 'https://vibemanager.app';
+  const now = new Date();
+
   return [
     {
       url: baseUrl,
@@ -47,5 +47,5 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: 'monthly',
       priority: 0.5,
     },
-  ]
+  ];
 }

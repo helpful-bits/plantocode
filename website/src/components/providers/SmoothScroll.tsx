@@ -1,6 +1,6 @@
 'use client';
 
-import { ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { ReactLenis } from 'lenis/react';
 
 interface SmoothScrollProps {
@@ -16,7 +16,7 @@ export function SmoothScroll({ children }: SmoothScrollProps) {
         duration: 1.2,
         wheelMultiplier: 1,
         touchMultiplier: 2,
-        infinite: false
+        infinite: false,
       }}
     >
       {children}

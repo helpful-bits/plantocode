@@ -62,6 +62,11 @@ const nextConfig: NextConfig = {
   // Enable static optimization
   output: 'standalone',
   
+  // ESLint configuration
+  eslint: {
+    dirs: ['src', 'app'],
+  },
+  
   // Headers for performance and Core Web Vitals
   async headers() {
     return [

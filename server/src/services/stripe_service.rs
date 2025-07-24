@@ -964,6 +964,116 @@ impl StripeService {
         Ok(payment_intent)
     }
 
+    /// Create an invoice for a customer with automatic payment collection
+    pub async fn create_invoice_for_auto_topoff(
+        &self,
+        idempotency_key: &str,
+        customer_id: &str,
+        amount_cents: i64,
+        currency: &str,
+        description: &str,
+    ) -> Result<stripe_types::Invoice, StripeServiceError> {
+        info!("Creating invoice for auto top-off - customer: {}, amount: {} {}", customer_id, amount_cents, currency);
+        
+        // Step 1: Create a draft invoice first (exclude pending items to avoid aggregation)
+        let invoice_data = serde_json::json!({
+            "customer": customer_id,
+            "collection_method": "charge_automatically",
+            "auto_advance": true,
+            "pending_invoice_items_behavior": "exclude",
+            "metadata": {
+                "type": "auto_topoff"
+            }
+        });
+        
+        let invoice_response = self.make_stripe_request_with_idempotency(
+            reqwest::Method::POST,
+            "invoices",
+            Some(invoice_data),
+            Some(&format!("{}_invoice", idempotency_key)),
+        ).await?;
+        
+        let mut invoice: stripe_types::Invoice = serde_json::from_value(invoice_response)
+            .map_err(|e| StripeServiceError::Configuration(format!("Failed to parse invoice response: {}", e)))?;
+        
+        info!("Created draft invoice: {}", invoice.id);
+        
+        // Step 2: Create invoice item attached directly to this specific invoice
+        let invoice_item_data = serde_json::json!({
+            "customer": customer_id,
+            "invoice": invoice.id,
+            "amount": amount_cents,
+            "currency": currency.to_lowercase(),
+            "description": description,
+        });
+        
+        let item_response = self.make_stripe_request_with_idempotency(
+            reqwest::Method::POST,
+            "invoiceitems",
+            Some(invoice_item_data),
+            Some(&format!("{}_item", idempotency_key)),
+        ).await?;
+        
+        let invoice_item: serde_json::Value = item_response;
+        let invoice_item_id = invoice_item.get("id").and_then(|v| v.as_str()).unwrap_or("unknown");
+        info!("Created invoice item: {} attached to invoice: {}", invoice_item_id, invoice.id);
+        
+        // Step 3: Finalize the invoice (this creates the PaymentIntent and attempts payment)
+        let finalize_data = serde_json::json!({
+            "auto_advance": true
+        });
+        
+        let finalized_response = self.make_stripe_request_with_idempotency(
+            reqwest::Method::POST,
+            &format!("invoices/{}/finalize", invoice.id),
+            Some(finalize_data),
+            Some(&format!("{}_finalize", idempotency_key)),
+        ).await?;
+        
+        invoice = serde_json::from_value(finalized_response)
+            .map_err(|e| StripeServiceError::Configuration(format!("Failed to parse finalized invoice response: {}", e)))?;
+        
+        info!("Successfully created and finalized invoice: {} with item: {} for customer: {}", 
+              invoice.id, invoice_item_id, customer_id);
+        Ok(invoice)
+    }
+
+    /// Clean up pending invoice items for a customer to prevent aggregation
+    pub async fn cleanup_pending_invoice_items(&self, customer_id: &str) -> Result<(), StripeServiceError> {
+        info!("Cleaning up pending invoice items for customer: {}", customer_id);
+        
+        // List all pending invoice items for the customer
+        let list_response = self.make_stripe_request_with_idempotency(
+            reqwest::Method::GET,
+            &format!("invoiceitems?customer={}&pending=true&limit=100", customer_id),
+            None,
+            None,
+        ).await?;
+        
+        let items_list: serde_json::Value = list_response;
+        let items = items_list.get("data").and_then(|d| d.as_array()).cloned().unwrap_or_default();
+        
+        info!("Found {} pending invoice items for customer: {}", items.len(), customer_id);
+        
+        // Delete each pending invoice item
+        for item in &items {
+            if let Some(item_id) = item.get("id").and_then(|id| id.as_str()) {
+                match self.make_stripe_request_with_idempotency(
+                    reqwest::Method::DELETE,
+                    &format!("invoiceitems/{}", item_id),
+                    None,
+                    None,
+                ).await {
+                    Ok(_) => info!("Deleted pending invoice item: {}", item_id),
+                    Err(e) => warn!("Failed to delete pending invoice item {}: {}", item_id, e),
+                }
+            }
+        }
+        
+        info!("Completed cleanup of pending invoice items for customer: {}", customer_id);
+        Ok(())
+    }
+
 
 
 }

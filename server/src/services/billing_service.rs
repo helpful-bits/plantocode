@@ -1012,30 +1012,14 @@ impl BillingService {
                 AppError::External(format!("Failed to fetch Stripe customer: {}", e))
             })?;
         
-        debug!("Auto top-off execution flow: step 9 - determining payment method");
-        // Extract default payment method ID from customer
-        let payment_method_id = if let Some(invoice_settings) = customer.invoice_settings {
-            if let Some(default_payment_method) = invoice_settings.default_payment_method {
-                info!("Using customer's default payment method: {}", default_payment_method);
-                default_payment_method
-            } else {
-                debug!("No default payment method set, listing available payment methods");
-                let payment_methods = stripe_service.list_payment_methods(&customer_id).await
-                    .map_err(|e| {
-                        warn!("Failed to list payment methods for user {}: {}", user_id, e);
-                        AppError::External(format!("Failed to list payment methods: {}", e))
-                    })?;
-                
-                if payment_methods.is_empty() {
-                    warn!("No payment methods available for user {}", user_id);
-                    return Err(AppError::PaymentMethodRequired("No payment methods available for auto top-off".to_string()));
-                }
-                
-                info!("Using first available payment method: {}", payment_methods[0].id);
-                payment_methods[0].id.clone()
-            }
-        } else {
-            debug!("No invoice settings found, listing available payment methods");
+        debug!("Auto top-off execution flow: step 9 - ensuring customer has default payment method");
+        // Check if customer has a default payment method set
+        let has_default_payment_method = customer.invoice_settings.as_ref()
+            .and_then(|settings| settings.default_payment_method.as_ref())
+            .is_some();
+        
+        if !has_default_payment_method {
+            debug!("No default payment method set, finding and setting one");
             let payment_methods = stripe_service.list_payment_methods(&customer_id).await
                 .map_err(|e| {
                     warn!("Failed to list payment methods for user {}: {}", user_id, e);
@@ -1047,9 +1031,21 @@ impl BillingService {
                 return Err(AppError::PaymentMethodRequired("No payment methods available for auto top-off".to_string()));
             }
             
-            info!("Using first available payment method: {}", payment_methods[0].id);
-            payment_methods[0].id.clone()
-        };
+            // Set the first available payment method as default
+            let payment_method_id = &payment_methods[0].id;
+            info!("Setting default payment method: {}", payment_method_id);
+            
+            let set_default_key = format!("set_default_pm_auto_topoff_{}_{}", customer_id, payment_method_id);
+            stripe_service.set_default_payment_method(&set_default_key, &customer_id, payment_method_id).await
+                .map_err(|e| {
+                    warn!("Failed to set default payment method for user {}: {}", user_id, e);
+                    AppError::External(format!("Failed to set default payment method: {}", e))
+                })?;
+            
+            info!("Successfully set default payment method for auto top-off");
+        } else {
+            info!("Customer already has default payment method set");
+        }
 
         debug!("Auto top-off execution flow: step 10 - preparing payment intent creation");
         // Generate idempotency key
@@ -1057,22 +1053,34 @@ impl BillingService {
         let idempotency_key = format!("auto_topoff_{}_{}_{}", user_id, amount_cents, Utc::now().timestamp_nanos());
         debug!("Auto top-off execution flow: step 10 - payment intent parameters prepared: amount_cents={}, idempotency_key={}", amount_cents, idempotency_key);
         
-        debug!("Auto top-off execution flow: step 11 - creating and confirming payment intent");
-        // Create and confirm payment intent
-        let payment_intent = stripe_service.create_and_confirm_payment_intent(
+        debug!("Auto top-off execution flow: step 10.5 - cleaning up pending invoice items");
+        // Clean up any existing pending invoice items to prevent aggregation
+        if let Err(e) = stripe_service.cleanup_pending_invoice_items(&customer_id).await {
+            warn!("Failed to clean up pending invoice items for customer {}: {}", customer_id, e);
+            // Continue anyway - this is not critical for the top-off to work
+        }
+        
+        debug!("Auto top-off execution flow: step 11 - creating invoice for auto top-off");
+        // Create an invoice for auto top-off (which will automatically charge the customer)
+        let invoice = stripe_service.create_invoice_for_auto_topoff(
             &idempotency_key,
             &customer_id,
-            &payment_method_id,
             amount_cents as i64,
             "usd",
             &format!("Automatic credit top-off for ${}", amount),
         ).await.map_err(|e| {
-            warn!("Auto top-off execution flow: FAILED at step 11 - payment intent creation failed for user {}: {}", user_id, e);
-            AppError::External(format!("Failed to create payment intent for auto top-off: {}", e))
+            warn!("Auto top-off execution flow: FAILED at step 11 - invoice creation failed for user {}: {}", user_id, e);
+            AppError::External(format!("Failed to create invoice for auto top-off: {}", e))
         })?;
-        info!("Auto top-off execution flow: step 11 completed - payment intent created and confirmed successfully: {} - relying on webhooks for credit fulfillment", payment_intent.id);
+        info!("Auto top-off execution flow: step 11 completed - invoice created and finalized successfully: {} - payment intent: {} - relying on webhooks for credit fulfillment", 
+            invoice.id, 
+            match &invoice.payment_intent {
+                Some(crate::stripe_types::Expandable::Id(id)) => id.as_str(),
+                Some(crate::stripe_types::Expandable::Object(pi)) => &pi.id,
+                None => "none"
+            });
 
-        info!("Auto top-off execution flow: COMPLETED SUCCESSFULLY - user {} auto top-off payment intent created with amount {} - webhooks will handle credit fulfillment", user_id, amount);
+        info!("Auto top-off execution flow: COMPLETED SUCCESSFULLY - user {} auto top-off invoice created with amount {} - webhooks will handle credit fulfillment", user_id, amount);
         Ok(())
     }
 
