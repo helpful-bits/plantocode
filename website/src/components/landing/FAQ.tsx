@@ -18,9 +18,6 @@ export function FAQ({ items }: FAQProps) {
 
   return (
     <section id="faq" className="relative py-16 px-4 overflow-hidden">
-      {/* No background - show particles */}
-      {/* Minimal overlay only in dark mode */}
-      <div className="absolute inset-0 z-1 bg-transparent dark:bg-gradient-to-b dark:from-background/95 dark:via-background/70 dark:to-background/95" />
       
       <div className="container mx-auto max-w-3xl relative z-10">
         <motion.div 
@@ -181,7 +178,7 @@ export function FAQ({ items }: FAQProps) {
                         className="overflow-hidden"
                       >
                         <motion.div 
-                          className="px-6 pb-6 text-foreground/90 leading-relaxed"
+                          className="px-6 pb-6 text-foreground leading-relaxed"
                           initial={{ y: -10 }}
                           animate={{ 
                             y: 0,

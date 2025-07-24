@@ -1,6 +1,6 @@
 "use client";
 
-import { Loader2, FileCode, Eye, ClipboardCopy } from "lucide-react";
+import { FileCode, Eye, ClipboardCopy, Loader2 } from "lucide-react";
 import { useCallback, useState, useEffect, useMemo } from "react";
 
 import { JobDetailsModal } from "@/app/components/background-jobs-sidebar/job-details-modal";
@@ -387,7 +387,7 @@ export function ImplementationPlansPanel({
   }, [canCreatePlan, isPreloadingPrompt, taskDescription, currentSession?.taskDescription, includedPaths, sessionId, projectDirectory]);
 
   // State for copy button loading
-  const [isCopyingPrompt, setIsCopyingPrompt] = useState(false);
+  const [isLoadingPrompt, setIsLoadingPrompt] = useState(false);
 
   // Handle copy prompt
   const handleCopyPrompt = useCallback(async () => {
@@ -400,15 +400,10 @@ export function ImplementationPlansPanel({
       return;
     }
 
-    setIsCopyingPrompt(true);
-
     try {
       // Use preloaded content if available
       if (preloadedPromptContent) {
         await navigator.clipboard.writeText(preloadedPromptContent);
-        
-        // Show loading for 1.8 seconds
-        await new Promise(resolve => setTimeout(resolve, 1800));
         
         showNotification({
           title: "Copied to clipboard",
@@ -420,6 +415,7 @@ export function ImplementationPlansPanel({
       }
 
       // Fallback to loading content if not preloaded
+      setIsLoadingPrompt(true);
       const finalTaskDescription = taskDescription || currentSession?.taskDescription || "";
       const finalIncludedPaths = includedPaths || [];
 
@@ -434,9 +430,6 @@ export function ImplementationPlansPanel({
 
       if (result.isSuccess && result.data) {
         await navigator.clipboard.writeText(result.data.combinedPrompt);
-        
-        // Show loading for 1.8 seconds
-        await new Promise(resolve => setTimeout(resolve, 1800));
         
         showNotification({
           title: "Copied to clipboard",
@@ -458,7 +451,7 @@ export function ImplementationPlansPanel({
         type: "error",
       });
     } finally {
-      setIsCopyingPrompt(false);
+      setIsLoadingPrompt(false);
     }
   }, [canCreatePlan, preloadedPromptContent, sessionId, taskDescription, currentSession?.taskDescription, projectDirectory, includedPaths, showNotification]);
 
@@ -519,7 +512,10 @@ export function ImplementationPlansPanel({
   const maxOutputTokens = runtimeConfig?.tasks?.implementationPlan?.maxTokens ?? 0;
 
   return (
-    <div className="space-y-4 p-4">
+    <div 
+      className="space-y-4 p-4"
+      onMouseEnter={handlePreloadPrompt}
+    >
       <header className="flex justify-between items-center mb-4">
         <h2 className="text-lg font-semibold text-foreground">Implementation Plans</h2>
         <div className="flex items-center gap-2">
@@ -573,22 +569,11 @@ export function ImplementationPlansPanel({
                   size="sm"
                   onClick={handleCopyPrompt}
                   onMouseEnter={handlePreloadPrompt}
-                  disabled={isCopyingPrompt}
-                  className="flex items-center justify-center w-full h-9 transition-all duration-300 ease-in-out"
+                  disabled={isLoadingPrompt || isPreloadingPrompt}
+                  className="flex items-center justify-center w-full h-9"
                 >
-                  {isCopyingPrompt ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      <span className="bg-gradient-to-r from-blue-500 via-purple-500 to-cyan-500 bg-clip-text text-transparent animate-pulse">
-                        Copying...
-                      </span>
-                    </>
-                  ) : (
-                    <>
-                      <ClipboardCopy className="h-4 w-4 mr-2" />
-                      Copy
-                    </>
-                  )}
+                  <ClipboardCopy className="h-4 w-4 mr-2" />
+                  Copy
                 </Button>
               </div>
 

@@ -4,11 +4,11 @@ const nextConfig: NextConfig = {
   // Next.js 15 optimizations
   experimental: {
     // Enable React 19 concurrent features (may require canary)
-    // reactCompiler: true,
+    reactCompiler: true,
     // Optimize for better performance
     // optimizeCss: true,
-    // Enable partial prerendering (only available in canary)
-    // ppr: true,
+    // PPR only available in canary versions
+    // ppr: "incremental",
   },
 
   // Turbopack configuration (moved from experimental.turbo)
@@ -28,8 +28,6 @@ const nextConfig: NextConfig = {
   compiler: {
     // Remove console.log in production
     removeConsole: process.env.NODE_ENV === 'production',
-    // Enable React optimizations
-    reactRemoveProperties: process.env.NODE_ENV === 'production',
   },
 
   // Bundle optimization
@@ -64,7 +62,7 @@ const nextConfig: NextConfig = {
   // Enable static optimization
   output: 'standalone',
   
-  // Headers for performance
+  // Headers for performance and Core Web Vitals
   async headers() {
     return [
       {
@@ -86,6 +84,14 @@ const nextConfig: NextConfig = {
             key: 'Referrer-Policy',
             value: 'strict-origin-when-cross-origin',
           },
+          {
+            key: 'X-DNS-Prefetch-Control',
+            value: 'on',
+          },
+          {
+            key: 'Strict-Transport-Security',
+            value: 'max-age=31536000; includeSubDomains; preload',
+          },
         ],
       },
       {
@@ -95,6 +101,10 @@ const nextConfig: NextConfig = {
             key: 'Cache-Control',
             value: 'public, max-age=31536000, immutable',
           },
+          {
+            key: 'Access-Control-Allow-Origin',
+            value: '*',
+          },
         ],
       },
       {
@@ -103,6 +113,28 @@ const nextConfig: NextConfig = {
           {
             key: 'Cache-Control',
             value: 'public, max-age=31536000, immutable',
+          },
+        ],
+      },
+      {
+        source: '/_next/static/(.*)',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=31536000, immutable',
+          },
+        ],
+      },
+      {
+        source: '/videos/(.*)',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=2592000',
+          },
+          {
+            key: 'Accept-Ranges',
+            value: 'bytes',
           },
         ],
       },
@@ -168,7 +200,37 @@ const nextConfig: NextConfig = {
     if (!dev) {
       config.optimization.usedExports = true;
       config.optimization.sideEffects = false;
+      
+      // Additional performance optimizations
+      config.optimization.minimize = true;
+      config.optimization.concatenateModules = true;
+      
+      // Module resolution optimizations
+      config.resolve.alias = {
+        ...config.resolve.alias,
+        'react': 'react',
+        'react-dom': 'react-dom'
+      };
+      
+      // Performance budgets and code splitting
+      config.performance = {
+        maxAssetSize: 512000,
+        maxEntrypointSize: 512000,
+        hints: 'warning'
+      };
     }
+
+    // Optimize font loading
+    config.module.rules.push({
+      test: /\.(woff|woff2|eot|ttf|otf)$/,
+      use: {
+        loader: 'file-loader',
+        options: {
+          publicPath: '/_next/static/fonts/',
+          outputPath: 'static/fonts/'
+        }
+      }
+    });
 
     return config;
   },

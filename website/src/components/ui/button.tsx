@@ -11,22 +11,22 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default:
-          "bg-gradient-to-r from-[oklch(0.48_0.15_195)] via-[oklch(0.58_0.12_195)] to-[oklch(0.68_0.08_195)] hover:from-[oklch(0.45_0.16_195)] hover:via-[oklch(0.55_0.13_195)] hover:to-[oklch(0.65_0.09_195)] text-white border-0 shadow-lg shadow-[oklch(0.48_0.15_195)]/25 hover:shadow-xl hover:shadow-[oklch(0.48_0.15_195)]/40 hover:scale-105 active:scale-95 backdrop-blur-sm",
+          "bg-gradient-to-r from-primary via-primary/80 to-primary/60 hover:from-primary/90 hover:via-primary/70 hover:to-primary/50 text-primary-foreground border-0 shadow-lg shadow-primary/25 hover:shadow-xl hover:shadow-primary/40 hover:scale-105 active:scale-95 backdrop-blur-sm",
         destructive:
-          "bg-gradient-to-r from-[oklch(0.53_0.24_25)] to-[oklch(0.50_0.26_25)] hover:from-[oklch(0.48_0.26_25)] hover:to-[oklch(0.45_0.28_25)] text-white shadow-lg shadow-[oklch(0.53_0.24_25)]/25 hover:shadow-xl hover:shadow-[oklch(0.53_0.24_25)]/40 hover:scale-105 active:scale-95",
+          "bg-gradient-to-r from-destructive to-destructive/90 hover:from-destructive/90 hover:to-destructive/80 text-destructive-foreground shadow-lg shadow-destructive/25 hover:shadow-xl hover:shadow-destructive/40 hover:scale-105 active:scale-95",
         outline:
-          "border-2 border-[oklch(0.48_0.15_195)]/30 dark:border-[oklch(0.68_0.08_195)]/30 bg-background/50 backdrop-blur-md text-[oklch(0.48_0.15_195)] dark:text-[oklch(0.68_0.08_195)] hover:bg-[oklch(0.48_0.15_195)]/10 hover:border-[oklch(0.48_0.15_195)]/50 dark:hover:border-[oklch(0.68_0.08_195)]/50 hover:scale-105 active:scale-95 shadow-sm",
+          "border-2 border-primary/30 bg-background/50 backdrop-blur-md text-primary hover:bg-primary/10 hover:border-primary/50 hover:scale-105 active:scale-95 shadow-sm",
         secondary:
-          "bg-gradient-to-r from-[oklch(0.97_0.025_195)] to-[oklch(0.96_0.045_195)] dark:from-[oklch(0.25_0.03_206)] dark:to-[oklch(0.18_0.02_206)] text-[oklch(0.18_0.02_206)] dark:text-[oklch(0.9_0_0)] border border-[oklch(0.48_0.15_195)]/20 hover:from-[oklch(0.94_0.05_195)] hover:to-[oklch(0.92_0.06_195)] dark:hover:from-[oklch(0.30_0.04_206)] dark:hover:to-[oklch(0.22_0.03_206)] hover:scale-105 active:scale-95 shadow-sm",
+          "bg-gradient-to-r from-secondary to-accent text-secondary-foreground border border-primary/20 hover:from-secondary/90 hover:to-accent/90 hover:scale-105 active:scale-95 shadow-sm",
         ghost:
-          "hover:bg-[oklch(0.96_0.045_195)] dark:hover:bg-[oklch(0.25_0.03_206)] text-[oklch(0.35_0_0)] dark:text-[oklch(0.7_0_0)] hover:text-[oklch(0.18_0.02_206)] dark:hover:text-[oklch(0.9_0_0)] hover:scale-105 active:scale-95",
-        link: "text-[oklch(0.48_0.15_195)] dark:text-[oklch(0.68_0.08_195)] underline-offset-4 hover:underline hover:text-[oklch(0.45_0.16_195)] dark:hover:text-[oklch(0.70_0.09_195)]",
+          "hover:bg-accent hover:text-accent-foreground text-muted-foreground hover:scale-105 active:scale-95",
+        link: "text-primary underline-offset-4 hover:underline hover:text-primary/80",
         "gradient-outline":
-          "relative bg-gradient-to-r from-background to-card dark:from-card dark:to-background text-[oklch(0.48_0.15_195)] dark:text-[oklch(0.68_0.08_195)] font-semibold border-2 border-[oklch(0.48_0.15_195)]/50 dark:border-[oklch(0.68_0.08_195)]/50 shadow-lg shadow-[oklch(0.48_0.15_195)]/10 hover:shadow-xl hover:shadow-[oklch(0.48_0.15_195)]/20 hover:scale-105 hover:border-[oklch(0.48_0.15_195)]/70 dark:hover:border-[oklch(0.68_0.08_195)]/70 active:scale-95 backdrop-blur-sm",
+          "relative bg-gradient-to-r from-background to-card text-primary font-semibold border-2 border-primary/50 shadow-lg shadow-primary/10 hover:shadow-xl hover:shadow-primary/20 hover:scale-105 hover:border-primary/70 active:scale-95 backdrop-blur-sm",
         primary:
-          "bg-gradient-to-r from-[oklch(0.48_0.15_195)] via-[oklch(0.58_0.12_195)] to-[oklch(0.68_0.08_195)] hover:from-[oklch(0.45_0.16_195)] hover:via-[oklch(0.55_0.13_195)] hover:to-[oklch(0.65_0.09_195)] text-white shadow-lg shadow-[oklch(0.48_0.15_195)]/25 hover:shadow-xl hover:shadow-[oklch(0.48_0.15_195)]/40 hover:scale-105 active:scale-95 backdrop-blur-sm",
+          "bg-gradient-to-r from-primary via-primary/80 to-primary/60 hover:from-primary/90 hover:via-primary/70 hover:to-primary/50 text-primary-foreground shadow-lg shadow-primary/25 hover:shadow-xl hover:shadow-primary/40 hover:scale-105 active:scale-95 backdrop-blur-sm",
         cta:
-          "bg-gradient-to-r from-[oklch(0.45_0.16_195)] via-[oklch(0.48_0.15_195)] to-[oklch(0.58_0.12_195)] hover:from-[oklch(0.42_0.17_195)] hover:via-[oklch(0.45_0.16_195)] hover:to-[oklch(0.55_0.13_195)] text-white shadow-lg shadow-[oklch(0.48_0.15_195)]/30 hover:shadow-xl hover:shadow-[oklch(0.48_0.15_195)]/50 hover:scale-105 active:scale-95 backdrop-blur-sm ring-1 ring-white/20",
+          "relative text-white font-bold shadow-lg hover:shadow-xl hover:scale-105 active:scale-95 backdrop-blur-sm ring-2 border transition-all duration-200 cta-button",
       },
       size: {
         default: "h-10 px-4 py-2",

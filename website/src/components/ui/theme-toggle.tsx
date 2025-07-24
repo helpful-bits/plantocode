@@ -59,9 +59,11 @@ export function ThemeToggle() {
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger className="inline-flex items-center justify-center whitespace-nowrap rounded-lg text-sm font-medium ring-offset-background transition-all duration-200 disabled:pointer-events-none disabled:opacity-50 cursor-pointer border-0 bg-white/10 text-current backdrop-blur-sm hover:bg-white/20 w-9 h-9 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50" aria-label="Toggle theme">
-        {currentIcon()}
-        <span className="sr-only">Toggle theme</span>
+      <DropdownMenuTrigger asChild>
+        <Button variant="outline" size="icon" aria-label="Toggle theme">
+          {currentIcon()}
+          <span className="sr-only">Toggle theme</span>
+        </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-40">
         <DropdownMenuRadioGroup value={theme || 'system'} onValueChange={setTheme}>

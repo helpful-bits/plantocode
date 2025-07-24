@@ -288,23 +288,50 @@ impl CreditService {
         // Normalize the final cost
         let final_cost = crate::utils::financial_validation::normalize_cost(&final_cost);
         
-        // Get the pending api_usage record
+        // Get the api_usage record (check all statuses for idempotency)
         let existing_record = sqlx::query!(
             r#"
             SELECT id, user_id, service_name, cost, tokens_input, tokens_output,
-                   cache_write_tokens, cache_read_tokens, metadata, timestamp
+                   cache_write_tokens, cache_read_tokens, metadata, timestamp, status
             FROM api_usage
-            WHERE request_id = $1 AND status = 'pending'
+            WHERE request_id = $1
             FOR UPDATE
             "#,
             request_id
         )
         .fetch_optional(&mut **tx)
         .await
-        .map_err(|e| AppError::Database(format!("Failed to fetch pending API usage: {}", e)))?;
+        .map_err(|e| AppError::Database(format!("Failed to fetch API usage: {}", e)))?;
         
         let existing_record = existing_record
-            .ok_or_else(|| AppError::NotFound(format!("No pending API usage found for request_id: {}", request_id)))?;
+            .ok_or_else(|| AppError::NotFound(format!("No API usage found for request_id: {}", request_id)))?;
+        
+        // If already finalized, return existing record (idempotency)
+        if existing_record.status != "pending" {
+            warn!("Request {} already finalized with status: {}, returning existing record", request_id, existing_record.status);
+            
+            let api_record = ApiUsageRecord {
+                id: Some(existing_record.id),
+                user_id: existing_record.user_id,
+                service_name: existing_record.service_name,
+                tokens_input: existing_record.tokens_input as i64,
+                tokens_output: existing_record.tokens_output as i64,
+                cache_write_tokens: existing_record.cache_write_tokens.unwrap_or(0) as i64,
+                cache_read_tokens: existing_record.cache_read_tokens.unwrap_or(0) as i64,
+                cost: existing_record.cost,
+                request_id: Some(request_id.to_string()),
+                metadata: existing_record.metadata,
+                timestamp: existing_record.timestamp,
+                provider_reported_cost: None,
+            };
+            
+            let user_credit = self.user_credit_repository
+                .get_balance_with_executor(&existing_record.user_id, tx)
+                .await?
+                .ok_or_else(|| AppError::NotFound("User credit record not found".to_string()))?;
+            
+            return Ok((api_record, user_credit));
+        }
         
         // Set user context for RLS policies
         sqlx::query("SELECT set_config('app.current_user_id', $1, true)")
@@ -665,7 +692,7 @@ impl CreditService {
                     'api_usage' as source_type,
                     'usage' as transaction_type
                 FROM api_usage au
-                WHERE au.user_id = $1 AND au.status = 'completed'
+                WHERE au.user_id = $1 AND au.status = 'completed' AND au.cost > 0
                 
                 UNION ALL
                 
@@ -721,7 +748,7 @@ impl CreditService {
                     au.id,
                     COALESCE(au.service_name || ' API Usage', 'API Usage') as description
                 FROM api_usage au
-                WHERE au.user_id = $1 AND au.status = 'completed'
+                WHERE au.user_id = $1 AND au.status = 'completed' AND au.cost > 0
                 
                 UNION ALL
                 
