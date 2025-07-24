@@ -46,6 +46,7 @@ where
     debug_logger: StreamDebugLogger,
     keep_alive_interval: Interval,
     last_activity: std::time::Instant,
+    billing_finalized: bool,
 }
 
 impl<S> ModernStreamHandler<S>
@@ -85,6 +86,7 @@ where
             debug_logger,
             keep_alive_interval,
             last_activity: std::time::Instant::now(),
+            billing_finalized: false,
         }
     }
     
@@ -167,15 +169,67 @@ where
     
     /// Handle stream termination for billable cases (successful completion or user cancellation)
     fn handle_stream_termination(&mut self, was_cancelled: bool) -> Poll<Option<Result<StreamEvent, AppError>>> {
+        // PREVENT DUPLICATE FINALIZATION
+        if self.billing_finalized {
+            warn!("Stream termination called multiple times for request {}, ignoring duplicate call", self.request_id);
+            return Poll::Ready(None);
+        }
+        
         // Note: stream_completed might already be true if set by [DONE] marker
         self.stream_completed = true;
+        self.billing_finalized = true;  // SET FLAG TO PREVENT RACE CONDITIONS
         self.debug_logger.log_stream_end();
 
         let usage = self.final_usage.take().unwrap_or_else(|| {
-            warn!("Stream terminated with no usage data for request {}. Finalizing with zero usage.", self.request_id);
+            warn!("Stream terminated with no usage data for request {}.", self.request_id);
             ProviderUsage::new(0, 0, 0, 0, self.model.id.clone())
         });
 
+        // CHECK FOR ZERO USAGE - MARK AS FAILED INSTEAD OF COMPLETED
+        if usage.prompt_tokens == 0 && usage.completion_tokens == 0 {
+            warn!("Stream {} terminated without processing any tokens, marking as failed", self.request_id);
+            
+            let billing_service = self.billing_service.clone();
+            let request_id = self.request_id.clone();
+            let user_id = self.user_id;
+            let usage_clone = usage.clone();
+            let reason = if was_cancelled {
+                "Stream cancelled before processing any tokens"
+            } else {
+                "Stream completed without processing any tokens"
+            };
+            
+            // Create metadata to indicate failure with proper status
+            let metadata = Some(serde_json::json!({
+                "status": "failed",
+                "error": reason,
+                "streaming": true,
+                "cancelled": was_cancelled
+            }));
+            
+            tokio::spawn(async move {
+                match billing_service.finalize_api_charge_with_metadata(
+                    &request_id,
+                    &user_id,
+                    usage_clone,
+                    metadata
+                ).await {
+                    Ok(_) => {
+                        tracing::debug!("Successfully marked zero-token request {} as failed", request_id);
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to mark zero-token request {} as failed: {:?}", request_id, e);
+                    }
+                }
+            });
+            
+            return Poll::Ready(Some(Ok(StreamEvent::StreamCancelled {
+                request_id: self.request_id.clone(),
+                reason: reason.to_string(),
+            })));
+        }
+
+        // NORMAL FINALIZATION FOR NON-ZERO USAGE
         let final_cost = self.model.calculate_total_cost(&usage).unwrap_or_else(|e| {
             error!("Failed to calculate cost for request {}: {}", self.request_id, e);
             BigDecimal::from(0)

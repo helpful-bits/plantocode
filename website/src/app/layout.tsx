@@ -3,11 +3,8 @@ import './globals.css';
 import { fontClasses } from './fonts';
 import { StructuredData } from '@/components/seo/StructuredData';
 import type { WebSite } from 'schema-dts';
-import { ThemeProvider } from '@/components/providers/ThemeProvider';
+import { ClientProviders } from '@/components/providers/ClientProviders';
 import { GoogleAnalytics } from '@next/third-parties/google';
-import { ParallaxProvider } from '@/components/providers/ParallaxProvider';
-import { ClientWrapper } from '@/components/ClientWrapper';
-import { InteractiveBackground } from '@/components/landing/InteractiveBackground';
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://vibemanager.app'),
@@ -32,7 +29,15 @@ export const metadata: Metadata = {
     'cost tracking',
     'privacy-first',
     'parallel execution',
-    'session persistence'
+    'session persistence',
+    'developer productivity',
+    'code intelligence',
+    'software architecture',
+    'development workflow',
+    'AI planning',
+    'code navigation',
+    'project analysis',
+    'development automation'
   ],
   authors: [{ name: 'Vibe Manager Team' }],
   creator: 'Vibe Manager',
@@ -45,12 +50,12 @@ export const metadata: Metadata = {
     telephone: false,
   },
   alternates: {
-    canonical: '/',
+    canonical: 'https://vibemanager.app/',
   },
   openGraph: {
-    title: 'Vibe Manager | AI-Powered Context Curation',
-    description: 'An AI coding assistant that seamlessly integrates internet knowledge with your codebase to create actionable implementation plans.',
-    url: '/',
+    title: 'Vibe Manager | AI-Powered Context Curation for Large Codebases',
+    description: 'Transform your development workflow with AI-powered file discovery, web research integration, and multi-model implementation planning. Privacy-first architecture with transparent cost tracking.',
+    url: 'https://vibemanager.app/',
     siteName: 'Vibe Manager',
     images: [{
       url: 'https://vibe-manager-media.s3.amazonaws.com/og-image.png',
@@ -64,11 +69,13 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Vibe Manager | AI-Powered Context Curation',
-    description: 'An AI coding assistant that seamlessly integrates internet knowledge with your codebase to create actionable implementation plans.',
+    title: 'Vibe Manager | AI-Powered Context Curation for Large Codebases',
+    description: 'Transform your development workflow with AI-powered file discovery, web research integration, and multi-model implementation planning.',
     images: [{
       url: 'https://vibe-manager-media.s3.amazonaws.com/og-image.png',
       alt: 'Vibe Manager - AI-Powered Context Curation for Large Codebases',
+      width: 1200,
+      height: 630,
     }],
     creator: '@vibemanager',
     site: '@vibemanager',
@@ -126,23 +133,12 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning className={fontClasses.variables}>
       <head></head>
-      <body className={`${fontClasses.sans} bg-background dark:bg-background`}>
-        <ClientWrapper />
-        
-        <ThemeProvider>
-          <ParallaxProvider>
-            <GoogleAnalytics gaId={process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID || "G-XXXXXXXXXX"} />
-            <StructuredData data={websiteJsonLd} />
-            
-            {/* 3D Particle Background */}
-            <InteractiveBackground particleCount={300} />
-            
-            {/* Main content with proper z-index */}
-            <div className="relative z-10">
-              {children}
-            </div>
-          </ParallaxProvider>
-        </ThemeProvider>
+      <body className={`${fontClasses.sans} bg-transparent`}>
+        <ClientProviders>
+          {children}
+        </ClientProviders>
+        <GoogleAnalytics gaId={process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID || "G-XXXXXXXXXX"} />
+        <StructuredData data={websiteJsonLd} />
       </body>
     </html>
   );

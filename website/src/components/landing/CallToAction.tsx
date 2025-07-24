@@ -18,29 +18,31 @@ export function CallToAction({ title, description, buttonText, buttonLink }: Cal
   return (
     <section className="relative py-24 px-4 overflow-hidden">
       {/* Radial burst background pattern */}
-      <div className="absolute inset-0 z-0 burst-radial-subtle burst-animated" />
-      
-      {/* Enhanced background effects */}
-      <div className="absolute inset-0 z-1 bg-transparent dark:bg-gradient-to-b dark:from-background/95 dark:via-background/70 dark:to-background/95" />
-      
+      <div className="absolute inset-0 z-0 burst-radial burst-animated" />
       
       <div className="container mx-auto relative z-10">
         <motion.div 
           className="max-w-4xl mx-auto"
-          initial={{ opacity: 0, scale: 0.85, y: 50 }}
-          whileInView={{ opacity: 1, scale: 1, y: 0 }}
+          initial={{ opacity: 0, scale: 0.95, y: 30, transform: 'translate3d(0, 0, 0)' }}
+          whileInView={{ opacity: 1, scale: 1, y: 0, transform: 'translate3d(0, 0, 0)' }}
           viewport={{ once: true, margin: "-100px" }}
           transition={{ 
-            duration: 0.8, 
-            type: "spring",
-            damping: 20,
-            stiffness: 80
+            duration: 0.6, 
+            ease: [0.4, 0, 0.2, 1]
+          }}
+          style={{ 
+            transform: 'translate3d(0, 0, 0)',
+            willChange: 'transform, opacity'
           }}
         >
           <motion.div
             className="relative"
-            whileHover={{ scale: 1.02 }}
-            transition={{ type: "spring", stiffness: 300, damping: 20 }}
+            whileHover={{ scale: 1.015 }}
+            transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
+            style={{ 
+              transform: 'translate3d(0, 0, 0)',
+              willChange: 'transform'
+            }}
           >
             
             <GlassCard highlighted={true} className="relative">
@@ -81,14 +83,17 @@ export function CallToAction({ title, description, buttonText, buttonLink }: Cal
                 
                 <motion.h2 
                   className="text-3xl sm:text-4xl lg:text-5xl xl:text-6xl mb-6 text-primary-emphasis relative z-10"
-                  initial={{ opacity: 0, y: 30 }}
-                  whileInView={{ opacity: 1, y: 0 }}
+                  initial={{ opacity: 0, y: 20, transform: 'translate3d(0, 0, 0)' }}
+                  whileInView={{ opacity: 1, y: 0, transform: 'translate3d(0, 0, 0)' }}
                   viewport={{ once: true }}
                   transition={{ 
-                    duration: 0.7, 
+                    duration: 0.5, 
                     delay: 0.2,
-                    type: "spring",
-                    damping: 15
+                    ease: [0.4, 0, 0.2, 1]
+                  }}
+                  style={{ 
+                    transform: 'translate3d(0, 0, 0)',
+                    willChange: 'transform, opacity'
                   }}
                 >
                   {title}
@@ -96,19 +101,27 @@ export function CallToAction({ title, description, buttonText, buttonLink }: Cal
                 
                 <motion.p 
                   className="text-lg sm:text-xl lg:text-2xl mb-10 max-w-2xl mx-auto leading-relaxed font-medium text-foreground/80 relative z-10"
-                  initial={{ opacity: 0, y: 20 }}
-                  whileInView={{ opacity: 1, y: 0 }}
+                  initial={{ opacity: 0, y: 15, transform: 'translate3d(0, 0, 0)' }}
+                  whileInView={{ opacity: 1, y: 0, transform: 'translate3d(0, 0, 0)' }}
                   viewport={{ once: true }}
-                  transition={{ duration: 0.6, delay: 0.3 }}
+                  transition={{ duration: 0.5, delay: 0.25, ease: [0.4, 0, 0.2, 1] }}
+                  style={{ 
+                    transform: 'translate3d(0, 0, 0)',
+                    willChange: 'transform, opacity'
+                  }}
                 >
                   {description}
                 </motion.p>
                 
                 <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  whileInView={{ opacity: 1, y: 0 }}
+                  initial={{ opacity: 0, y: 15, transform: 'translate3d(0, 0, 0)' }}
+                  whileInView={{ opacity: 1, y: 0, transform: 'translate3d(0, 0, 0)' }}
                   viewport={{ once: true }}
-                  transition={{ duration: 0.6, delay: 0.4 }}
+                  transition={{ duration: 0.5, delay: 0.35, ease: [0.4, 0, 0.2, 1] }}
+                  style={{ 
+                    transform: 'translate3d(0, 0, 0)',
+                    willChange: 'transform, opacity'
+                  }}
                 >
                   <Button 
                     asChild 
@@ -132,10 +145,14 @@ export function CallToAction({ title, description, buttonText, buttonLink }: Cal
                 {/* Additional visual cues */}
                 <motion.div
                   className="mt-8 flex items-center justify-center gap-8 text-sm text-foreground/60"
-                  initial={{ opacity: 0 }}
-                  whileInView={{ opacity: 1 }}
+                  initial={{ opacity: 0, transform: 'translate3d(0, 0, 0)' }}
+                  whileInView={{ opacity: 1, transform: 'translate3d(0, 0, 0)' }}
                   viewport={{ once: true }}
-                  transition={{ duration: 0.6, delay: 0.6 }}
+                  transition={{ duration: 0.5, delay: 0.45, ease: [0.4, 0, 0.2, 1] }}
+                  style={{ 
+                    transform: 'translate3d(0, 0, 0)',
+                    willChange: 'opacity'
+                  }}
                 >
                   <div className="flex items-center gap-2">
                     <svg className="w-5 h-5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
