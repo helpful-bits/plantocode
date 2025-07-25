@@ -47,7 +47,7 @@ export function InvoicesList({ className }: InvoicesListProps) {
   const [downloadingInvoice, setDownloadingInvoice] = useState<string | null>(null);
   const [downloadedFiles, setDownloadedFiles] = useState<Record<string, string>>({});
 
-  const loadInvoices = useCallback(async (page: number = 1) => {
+  const loadInvoices = async (page: number = 1) => {
     try {
       setIsLoading(true);
       setError(null);
@@ -74,11 +74,26 @@ export function InvoicesList({ className }: InvoicesListProps) {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  };
 
+  // Initial load
   useEffect(() => {
     loadInvoices(1);
-  }, [loadInvoices]);
+  }, []); // Empty dependency array for initial load only
+
+  // Listen for billing data updates
+  useEffect(() => {
+    const handleBillingDataUpdated = () => {
+      // Reload the current page of invoices
+      loadInvoices(currentPage);
+    };
+
+    window.addEventListener('billing-data-updated', handleBillingDataUpdated);
+    
+    return () => {
+      window.removeEventListener('billing-data-updated', handleBillingDataUpdated);
+    };
+  }, [currentPage]); // Only depend on currentPage
 
   const handleRetry = () => {
     loadInvoices(currentPage);

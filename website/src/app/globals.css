@@ -399,20 +399,17 @@
   
   /* Unified Glass System - Modern, consistent glass morphism */
   .glass {
-    /* Light mode - Enhanced multi-layer glass with proper light colors */
+    /* Light mode - Optimized for performance while maintaining visual appeal */
     background: 
       oklch(0.995 0.008 195 / 0.5),
       linear-gradient(135deg, 
         oklch(0.995 0.005 195 / 0.55) 0%, 
-        oklch(0.98 0.015 195 / 0.45) 25%,
         oklch(0.985 0.012 195 / 0.48) 50%,
-        oklch(0.982 0.014 195 / 0.46) 75%,
-        oklch(0.995 0.005 195 / 0.52) 100%),
-      radial-gradient(circle at 30% 20%, oklch(0.48 0.15 195 / 0.06) 0%, transparent 45%),
-      radial-gradient(circle at 70% 80%, oklch(0.58 0.12 185 / 0.04) 0%, transparent 40%);
+        oklch(0.995 0.005 195 / 0.52) 100%);
     
-    backdrop-filter: blur(12px) saturate(115%) brightness(102%);
-    -webkit-backdrop-filter: blur(12px) saturate(115%) brightness(102%);
+    /* Reduced blur for better performance in light mode */
+    backdrop-filter: blur(6px) saturate(105%);
+    -webkit-backdrop-filter: blur(6px) saturate(105%);
     
     border: 1px solid oklch(0.90 0.04 195 / 0.5);
     box-shadow: 
@@ -424,6 +421,7 @@
     position: relative;
     overflow: hidden;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    will-change: transform, backdrop-filter;
   }
   
   
@@ -439,8 +437,8 @@
       radial-gradient(circle at 30% 20%, oklch(0.68 0.085 195 / 0.14) 0%, transparent 45%),
       radial-gradient(circle at 70% 80%, oklch(0.68 0.085 195 / 0.10) 0%, transparent 40%);
     
-    backdrop-filter: blur(58px) saturate(148%) brightness(86%) contrast(0.84);
-    -webkit-backdrop-filter: blur(58px) saturate(148%) brightness(86%) contrast(0.84);
+    backdrop-filter: blur(16px) saturate(120%);
+    -webkit-backdrop-filter: blur(16px) saturate(120%);
     
     border: 1px solid oklch(0.68 0.085 195 / 0.34);
     box-shadow: 
@@ -453,33 +451,34 @@
   }
   
   .glass:hover {
-    backdrop-filter: blur(16px) saturate(125%) brightness(105%) contrast(1.02);
-    -webkit-backdrop-filter: blur(16px) saturate(125%) brightness(105%) contrast(1.02);
-    border: 1px solid oklch(0.48 0.15 195 / 0.18);
+    /* Optimized hover state - no blur change for performance */
+    backdrop-filter: blur(6px) saturate(110%) brightness(101%);
+    -webkit-backdrop-filter: blur(6px) saturate(110%) brightness(101%);
+    border: 1px solid oklch(0.48 0.15 195 / 0.3);
     box-shadow: 
-      inset 0 0 32px oklch(0.995 0.008 195 / 0.5),
-      inset 0 1px 2px oklch(1 0 0 / 0.9),
-      0 12px 40px oklch(0.48 0.15 195 / 0.1),
-      0 6px 20px oklch(0.18 0 0 / 0.05);
+      inset 0 0 24px oklch(0.995 0.008 195 / 0.5),
+      inset 0 1px 2px oklch(1 0 0 / 0.8),
+      0 8px 24px oklch(0.48 0.15 195 / 0.1),
+      0 4px 12px oklch(0.18 0 0 / 0.05);
     transform: translateY(-2px);
   }
   
   .dark .glass:hover {
-    backdrop-filter: blur(30px) saturate(205%) brightness(113%) contrast(1.08);
-    -webkit-backdrop-filter: blur(30px) saturate(205%) brightness(113%) contrast(1.08);
-    border: 1px solid oklch(0.68 0.085 195 / 0.48);
+    backdrop-filter: blur(20px) saturate(130%) brightness(105%);
+    -webkit-backdrop-filter: blur(20px) saturate(130%) brightness(105%);
+    border: 1px solid oklch(0.68 0.085 195 / 0.5);
     box-shadow: 
-      inset 0 0 48px oklch(0.68 0.085 195 / 0.23),
-      inset 0 1px 2px oklch(1 0 0 / 0.2),
-      0 14px 44px oklch(0.68 0.085 195 / 0.28),
-      0 5px 18px oklch(0 0 0 / 0.45);
+      inset 0 0 48px oklch(0.68 0.085 195 / 0.3),
+      inset 0 1px 2px oklch(1 0 0 / 0.25),
+      0 16px 48px oklch(0.68 0.085 195 / 0.35),
+      0 8px 24px oklch(0 0 0 / 0.6);
+    transform: translateY(-2px) scale(1.01);
   }
   
   /* Glass active - compression effect */
   .glass:active {
     transform: translateY(0) scale(0.99);
-    backdrop-filter: blur(18px) saturate(170%) brightness(102%);
-    -webkit-backdrop-filter: blur(18px) saturate(170%) brightness(102%);
+    /* NO backdrop-filter change to prevent expensive recalculation */
   }
   
   /* Glass focus - glowing ring */
@@ -923,21 +922,17 @@
   
   /* Glass Highlighted - Special highlighted cards */
   .glass-highlighted {
-    /* Light mode - Enhanced white card with beautiful teal glow effects */
+    /* Light mode - Optimized for performance with simpler gradients */
     background: 
       linear-gradient(135deg, 
         oklch(0.995 0.008 195) 0%, 
-        oklch(0.985 0.018 195) 25%,
         oklch(0.988 0.015 195) 50%,
-        oklch(0.986 0.017 195) 75%,
         oklch(0.995 0.008 195) 100%),
-      radial-gradient(circle at 25% 25%, oklch(0.68 0.08 195 / 0.08) 0%, transparent 50%),
-      radial-gradient(circle at 75% 75%, oklch(0.58 0.12 185 / 0.06) 0%, transparent 45%),
-      radial-gradient(ellipse at 50% 0%, oklch(0.48 0.15 195 / 0.04) 0%, transparent 70%),
-      radial-gradient(ellipse at 50% 100%, oklch(0.58 0.12 185 / 0.05) 0%, transparent 70%);
+      radial-gradient(circle at 50% 50%, oklch(0.68 0.08 195 / 0.06) 0%, transparent 60%);
     
-    backdrop-filter: blur(16px) saturate(120%) brightness(102%);
-    -webkit-backdrop-filter: blur(16px) saturate(120%) brightness(102%);
+    /* Reduced blur for better performance */
+    backdrop-filter: blur(8px) saturate(110%) brightness(101%);
+    -webkit-backdrop-filter: blur(8px) saturate(110%) brightness(101%);
     
     border: 1px solid oklch(0.48 0.15 195 / 0.18);
     box-shadow: 
@@ -983,17 +978,13 @@
     background: 
       linear-gradient(135deg, 
         oklch(0.99 0.01 195) 0%, 
-        oklch(0.98 0.022 195) 25%,
         oklch(0.983 0.019 195) 50%,
-        oklch(0.981 0.021 195) 75%,
         oklch(0.99 0.01 195) 100%),
-      radial-gradient(circle at 25% 25%, oklch(0.68 0.08 195 / 0.12) 0%, transparent 50%),
-      radial-gradient(circle at 75% 75%, oklch(0.58 0.12 185 / 0.09) 0%, transparent 45%),
-      radial-gradient(ellipse at 50% 0%, oklch(0.48 0.15 195 / 0.06) 0%, transparent 70%),
-      radial-gradient(ellipse at 50% 100%, oklch(0.58 0.12 185 / 0.08) 0%, transparent 70%);
+      radial-gradient(circle at 50% 50%, oklch(0.68 0.08 195 / 0.08) 0%, transparent 60%);
     
-    backdrop-filter: blur(20px) saturate(130%) brightness(105%);
-    -webkit-backdrop-filter: blur(20px) saturate(130%) brightness(105%);
+    /* Keep same blur level for performance */
+    backdrop-filter: blur(8px) saturate(115%) brightness(102%);
+    -webkit-backdrop-filter: blur(8px) saturate(115%) brightness(102%);
     border: 1px solid oklch(0.48 0.15 195 / 0.28);
     box-shadow: 
       inset 0 0 80px oklch(0.68 0.08 195 / 0.12),
@@ -1003,7 +994,7 @@
       0 12px 36px oklch(0.58 0.12 185 / 0.12),
       0 6px 18px oklch(0.18 0 0 / 0.08),
       0 0 100px oklch(0.68 0.08 195 / 0.1);
-    transform: translateY(-3px) scale(1.01);
+    transform: translateY(-3px);
   }
   
   .dark .glass-highlighted:hover {
@@ -1027,7 +1018,7 @@
       0 20px 56px oklch(0.68 0.085 195 / 0.35),
       0 10px 32px oklch(0 0 0 / 0.6),
       0 4px 16px oklch(0 0 0 / 0.5);
-    transform: translateY(-3px) scale(1.01);
+    transform: translateY(-3px);
   }
 
 
@@ -1258,36 +1249,25 @@
   }
 }
 
-/* Ripple animation utilities */
-.animate-ripple {
-  animation: ripple 1s ease-out;
-}
-
-.animate-ripple-expand {
-  animation: ripple-expand 1s ease-out;
-}
+/* Removed ripple animations for performance */
 
 /* New high-performance animation utilities */
 
 .animate-radial-pulse {
   animation: radial-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-  will-change: transform, opacity;
 }
 
 .animate-smooth-glow {
   animation: smooth-glow 3s ease-in-out infinite;
-  will-change: box-shadow;
 }
 
 .animate-gentle-float {
   animation: gentle-float 6s ease-in-out infinite;
-  will-change: transform;
 }
 
 /* Performance-optimized hover effects */
 .hover-lift {
   transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  will-change: transform;
 }
 
 .hover-lift:hover {
@@ -1296,8 +1276,24 @@
 
 .hover-glow {
   transition: box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  will-change: box-shadow;
 }
+
+/* Performance optimizations for sections */
+.faq-item,
+.feature-card,
+.how-it-works-step {
+  contain: layout style paint;
+}
+
+/* Content visibility for below-fold performance */
+section:not(:first-child) {
+  content-visibility: auto;
+  contain-intrinsic-size: 0 500px;
+}
+
+/* Removed unused spring animations */
+
+/* Removed unused CSS animation classes for cleaner codebase */
 
 .hover-glow:hover {
   box-shadow: 
@@ -1499,9 +1495,7 @@ a:not(.no-hover-effect):focus-visible {
 }
 
 /* Performance optimizations for animations */
-.will-change-transform {
-  will-change: transform;
-}
+/* Removed excessive will-change usage to prevent GPU memory issues */
 
 /* Comprehensive GPU acceleration for all animated elements */
 .glass,
@@ -1522,8 +1516,6 @@ a:not(.no-hover-effect):focus-visible {
 .dynamic-bg,
 .gradient-accent-animated,
 .teal-glow-intense,
-.animate-ripple,
-.animate-ripple-expand,
 .group:hover *,
 button:hover,
 a:hover {
@@ -1640,6 +1632,11 @@ html {
 
   .burst-animated {
     animation: burstRotate 20s linear infinite;
+  }
+  
+  /* Viewport-triggered version for performance */
+  .burst-animated-viewport {
+    animation: burstRotate 40s linear infinite;
   }
 }
 
