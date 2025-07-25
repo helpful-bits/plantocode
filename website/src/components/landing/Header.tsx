@@ -221,6 +221,9 @@ export function Header() {
                 'glass',
                 'rounded-2xl',
                 'p-6',
+                // Enhanced background for light mode visibility
+                'bg-background/95 backdrop-blur-xl border border-border/80',
+                'shadow-2xl shadow-black/10',
               )}
               exit={{ opacity: 0, y: -30, scale: 0.9 }}
               initial={{ opacity: 0, y: -30, scale: 0.9 }}
@@ -250,8 +253,9 @@ export function Header() {
                       <Link
                         className={cn(
                           'block px-4 py-3 rounded-xl font-medium text-base cursor-pointer',
-                          'text-foreground hover:text-primary',
-                          'nav-link-hover',
+                          // Consistent with desktop nav colors
+                          'text-muted-foreground hover:text-foreground',
+                          'hover:bg-accent/50 active:bg-accent/70',
                           'transition-all duration-500 relative overflow-hidden',
                         )}
                         href={link.href}
@@ -259,7 +263,7 @@ export function Header() {
                       >
                         <span className="relative z-10">{link.label}</span>
                         <motion.div
-                          className="absolute inset-0 bg-gradient-to-r from-primary/5 via-accent/5 to-primary/5"
+                          className="absolute inset-0 bg-gradient-to-r from-primary/8 via-accent/8 to-primary/8"
                           initial={{ x: '-100%' }}
                           transition={{ duration: 0.5, ease: 'easeOut' }}
                           whileHover={{ x: '0%' }}
@@ -272,9 +276,8 @@ export function Header() {
 
               <motion.div
                 animate={{ scaleX: 1 }}
-                className="h-px bg-gradient-to-r from-transparent via-border/50 to-transparent my-6"
+                className="h-px bg-gradient-to-r from-transparent via-border to-transparent my-6"
                 initial={{ scaleX: 0 }}
-                style={{ backgroundColor: 'transparent' }}
                 transition={{ delay: 0.5, duration: 0.5 }}
               />
 

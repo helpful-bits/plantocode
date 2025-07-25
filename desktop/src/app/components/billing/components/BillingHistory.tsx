@@ -153,6 +153,24 @@ export function BillingHistory({ className }: BillingHistoryProps) {
     getProvidersWithModels().then(setProviders).catch(console.error);
   }, [loadCreditHistory]);
 
+  // Listen for billing data updates
+  useEffect(() => {
+    const handleBillingDataUpdated = () => {
+      // Reload the current page of transaction history
+      loadCreditHistory(currentPage, searchTerm);
+      // If usage tab is active, reload usage data too
+      if (activeTab === "usage" && hasLoadedUsage) {
+        loadUsageData();
+      }
+    };
+
+    window.addEventListener('billing-data-updated', handleBillingDataUpdated);
+    
+    return () => {
+      window.removeEventListener('billing-data-updated', handleBillingDataUpdated);
+    };
+  }, [currentPage, searchTerm, activeTab, hasLoadedUsage, loadCreditHistory, loadUsageData]);
+
 
 
   useEffect(() => {

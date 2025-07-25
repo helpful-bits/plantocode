@@ -3,6 +3,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { motion, useInView } from 'framer-motion';
+import { useAnimationOrchestrator, animationVariants } from '@/hooks/useAnimationOrchestrator';
 
 interface Step {
   title: string;
@@ -29,19 +30,7 @@ function OptimizedVideo({ video, poster }: { video: string; poster: string }) {
   }, [inView]);
 
   return (
-    <motion.div
-      animate={{ opacity: inView ? 1 : 0.8, transform: 'translateZ(0)' }}
-      className="relative w-full"
-      initial={{ opacity: 0, transform: 'translateZ(0)' }}
-      style={{
-        transform: 'translateZ(0)',
-        willChange: inView ? 'auto' : 'opacity, transform',
-      }}
-      transition={{
-        duration: 0.4,
-        ease: [0.4, 0, 0.2, 1],
-      }}
-    >
+    <div className="relative w-full">
       <video
         ref={videoRef}
         controls
@@ -51,11 +40,6 @@ function OptimizedVideo({ video, poster }: { video: string; poster: string }) {
         className="w-full aspect-video relative z-10 rounded-lg"
         poster={poster}
         preload="none"
-        style={{
-          width: '100%',
-          height: 'auto',
-          transform: 'translateZ(0)',
-        }}
         onError={() => setLoadError(true)}
       >
         <source src={video.replace('.mp4', '.webm')} type="video/webm" />
@@ -73,81 +57,32 @@ function OptimizedVideo({ video, poster }: { video: string; poster: string }) {
           </div>
         </div>
       )}
-    </motion.div>
+    </div>
   );
 }
 
 export function HowItWorks({ steps = defaultSteps }: HowItWorksProps) {
-  const containerVariants = {
-    hidden: {
-      opacity: 0,
-      transform: 'translate3d(0, 0, 0)',
-    },
-    visible: {
-      opacity: 1,
-      transform: 'translate3d(0, 0, 0)',
-      transition: {
-        staggerChildren: 0.15,
-        delayChildren: 0.05,
-        ease: [0.4, 0, 0.2, 1],
-        duration: 0.3,
-      },
-    },
-  };
-
-  const itemVariants = {
-    hidden: {
-      opacity: 0,
-      y: 15,
-      scale: 0.99,
-      transform: 'translate3d(0, 0, 0)',
-    },
-    visible: {
-      opacity: 1,
-      y: 0,
-      scale: 1,
-      transform: 'translate3d(0, 0, 0)',
-      transition: {
-        type: 'tween',
-        duration: 0.35,
-        ease: [0.4, 0, 0.2, 1],
-      },
-    },
-  };
+  const sectionRef = useRef<HTMLElement>(null);
+  const { isInView } = useAnimationOrchestrator(sectionRef);
 
   return (
-    <section className="relative py-20 px-4 overflow-hidden" id="how-it-works">
-
+    <section ref={sectionRef} className="relative py-20 px-4 overflow-hidden" id="how-it-works">
       <div className="container mx-auto relative z-10">
         <motion.div
           className="text-center mb-16"
-          initial={{ opacity: 0, y: 20, scale: 0.97, transform: 'translate3d(0, 0, 0)' }}
-          style={{
-            transform: 'translate3d(0, 0, 0)',
-            willChange: 'transform, opacity',
-          }}
-          transition={{
-            duration: 0.4,
-            ease: [0.4, 0, 0.2, 1],
-          }}
-          viewport={{ once: true, margin: '-20px' }}
-          whileInView={{ opacity: 1, y: 0, scale: 1, transform: 'translate3d(0, 0, 0)' }}
+          initial="hidden"
+          animate={isInView ? "visible" : "hidden"}
+          variants={animationVariants.section}
         >
           <motion.h2
             className="text-4xl sm:text-5xl lg:text-6xl mb-6 text-primary-emphasis font-bold"
-            initial={{ opacity: 0, y: 20 }}
-            transition={{ duration: 0.6, delay: 0.1 }}
-            viewport={{ once: true }}
-            whileInView={{ opacity: 1, y: 0 }}
+            variants={animationVariants.item}
           >
             How It Works
           </motion.h2>
           <motion.p
             className="text-lg sm:text-xl max-w-2xl mx-auto leading-relaxed font-medium text-foreground/80"
-            initial={{ opacity: 0 }}
-            transition={{ duration: 0.6, delay: 0.2 }}
-            viewport={{ once: true }}
-            whileInView={{ opacity: 1 }}
+            variants={animationVariants.item}
           >
             From task description to implementation plan in minutes
           </motion.p>
@@ -156,56 +91,42 @@ export function HowItWorks({ steps = defaultSteps }: HowItWorksProps) {
         <motion.div
           className="space-y-16 max-w-5xl mx-auto"
           initial="hidden"
-          variants={containerVariants}
-          viewport={{ once: true, margin: '-100px' }}
-          whileInView="visible"
+          animate={isInView ? "visible" : "hidden"}
+          variants={{
+            visible: {
+              transition: {
+                staggerChildren: 0.15,
+                delayChildren: 0.2,
+              },
+            },
+          }}
         >
           {steps.map((step, index) => (
             <motion.div
               key={index}
-              style={{
-                transform: 'translate3d(0, 0, 0)',
-                willChange: 'transform',
-              }}
-              variants={itemVariants}
-              whileHover={{
-                scale: 1.008,
-                y: -2,
-                transition: {
-                  duration: 0.12,
-                  ease: [0.4, 0, 0.2, 1],
+              variants={{
+                hidden: { opacity: 0, y: 30 },
+                visible: {
+                  opacity: 1,
+                  y: 0,
+                  transition: {
+                    duration: 0.5,
+                    ease: [0.25, 0.46, 0.45, 0.94],
+                  },
                 },
               }}
+              className="how-it-works-step group"
             >
-              <GlassCard className="overflow-hidden">
+              <GlassCard className="overflow-hidden transition-transform duration-200 hover:scale-[1.008]">
                 <div className="p-8 sm:p-10 lg:p-12">
-                  <motion.div
-                    className="mb-8"
-                    initial={{ opacity: 0, x: -20 }}
-                    transition={{ duration: 0.6, delay: index * 0.1 }}
-                    viewport={{ once: true }}
-                    whileInView={{ opacity: 1, x: 0 }}
-                  >
+                  <div className="mb-8">
                     <div className="flex items-center gap-6 mb-6">
-                      <motion.div
-                        className="relative"
-                        style={{
-                          transform: 'translate3d(0, 0, 0)',
-                          willChange: 'transform',
-                        }}
-                        whileHover={{
-                          scale: 1.08,
-                          transition: {
-                            duration: 0.15,
-                            ease: [0.4, 0, 0.2, 1],
-                          },
-                        }}
-                      >
+                      <div className="relative">
                         <div className="absolute inset-0 bg-gradient-to-br from-primary to-primary/60 rounded-full blur-xl opacity-60" />
-                        <div className="relative w-14 h-14 bg-gradient-to-br from-primary/30 to-primary/50 ring-2 ring-primary/40 rounded-full flex items-center justify-center font-bold text-2xl text-primary-foreground shadow-xl">
+                        <div className="relative w-14 h-14 bg-gradient-to-br from-primary/30 to-primary/50 ring-2 ring-primary/40 rounded-full flex items-center justify-center font-bold text-2xl text-primary-foreground shadow-xl transition-transform duration-200 group-hover:scale-110">
                           {index + 1}
                         </div>
-                      </motion.div>
+                      </div>
                       <h3 className="text-2xl sm:text-3xl font-bold text-foreground">
                         {step.title}
                       </h3>
@@ -213,20 +134,14 @@ export function HowItWorks({ steps = defaultSteps }: HowItWorksProps) {
                     <p className="text-lg leading-relaxed text-foreground/80 max-w-3xl pl-20">
                       {step.description}
                     </p>
-                  </motion.div>
+                  </div>
 
-                  <motion.div
-                    className="relative group"
-                    initial={{ opacity: 0, y: 20 }}
-                    transition={{ duration: 0.8, delay: 0.2 + index * 0.1 }}
-                    viewport={{ once: true }}
-                    whileInView={{ opacity: 1, y: 0 }}
-                  >
-                    <div className="absolute -inset-4 bg-gradient-to-r from-primary/20 via-primary/10 to-primary/20 rounded-2xl blur-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-500" style={{ transform: 'translate3d(0, 0, 0)' }} />
+                  <div className="relative group">
+                    <div className="absolute -inset-4 bg-gradient-to-r from-primary/20 via-primary/10 to-primary/20 rounded-2xl blur-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
                     <div className="relative rounded-xl overflow-hidden shadow-2xl ring-1 ring-primary/10 group-hover:ring-primary/20 transition-all duration-500">
                       <OptimizedVideo poster={step.poster} video={step.video} />
                     </div>
-                  </motion.div>
+                  </div>
                 </div>
               </GlassCard>
             </motion.div>

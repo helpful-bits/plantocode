@@ -1,10 +1,12 @@
 'use client';
 
-import React from 'react';
+import React, { useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { motion } from 'framer-motion';
+import { useAnimationOrchestrator } from '@/hooks/useAnimationOrchestrator';
+import { CheckCircle2, Zap } from 'lucide-react';
 
 interface CallToActionProps {
   title: string;
@@ -14,38 +16,31 @@ interface CallToActionProps {
 }
 
 export function CallToAction({ title, description, buttonText, buttonLink }: CallToActionProps) {
+  const sectionRef = useRef<HTMLElement>(null);
+  const { isInView } = useAnimationOrchestrator(sectionRef);
 
   return (
-    <section className="relative py-24 px-4 overflow-hidden">
-      {/* Radial burst background pattern */}
-      <div className="absolute inset-0 z-0 burst-radial burst-animated" />
+    <section ref={sectionRef} className="relative py-24 px-4 overflow-hidden">
+      {/* Radial burst background pattern - only animates when in view */}
+      <div className={`absolute inset-0 z-0 burst-radial ${isInView ? 'burst-animated-viewport' : ''}`} />
 
       <div className="container mx-auto relative z-10">
         <motion.div
           className="max-w-4xl mx-auto"
-          initial={{ opacity: 0, scale: 0.95, y: 30, transform: 'translate3d(0, 0, 0)' }}
-          style={{
-            transform: 'translate3d(0, 0, 0)',
-            willChange: 'transform, opacity',
-          }}
+          initial={{ opacity: 0, scale: 0.95, y: 30 }}
+          animate={isInView ? { opacity: 1, scale: 1, y: 0 } : { opacity: 0, scale: 0.95, y: 30 }}
           transition={{
             duration: 0.6,
             ease: [0.4, 0, 0.2, 1],
           }}
-          viewport={{ once: true, margin: '-100px' }}
-          whileInView={{ opacity: 1, scale: 1, y: 0, transform: 'translate3d(0, 0, 0)' }}
         >
-          <motion.div
-            className="relative"
-            style={{
-              transform: 'translate3d(0, 0, 0)',
-              willChange: 'transform',
-            }}
-            transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
+          <motion.div 
+            className="relative group"
             whileHover={{ scale: 1.015 }}
+            transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
           >
 
-            <GlassCard className="relative" highlighted={true}>
+            <GlassCard className="relative transition-transform duration-200 group-hover:scale-[1.015]" highlighted={true}>
               <div className="text-center p-16 relative">
                 {/* Enhanced burst pattern overlay */}
                 <div className="absolute inset-0 opacity-8">
@@ -81,47 +76,43 @@ export function CallToAction({ title, description, buttonText, buttonLink }: Cal
                   />
                 </div>
 
+                {/* Animated badge */}
+                <motion.div
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 dark:bg-primary/15 text-primary mb-6 text-sm font-medium"
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={isInView ? { opacity: 1, scale: 1 } : { opacity: 0, scale: 0.8 }}
+                  transition={{ duration: 0.5, delay: 0.2 }}
+                >
+                  <Zap className="w-4 h-4" />
+                  <span>Transform Your Development Today</span>
+                </motion.div>
+
                 <motion.h2
                   className="text-3xl sm:text-4xl lg:text-5xl xl:text-6xl mb-6 text-primary-emphasis relative z-10"
-                  initial={{ opacity: 0, y: 20, transform: 'translate3d(0, 0, 0)' }}
-                  style={{
-                    transform: 'translate3d(0, 0, 0)',
-                    willChange: 'transform, opacity',
-                  }}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 20 }}
                   transition={{
                     duration: 0.5,
                     delay: 0.2,
                     ease: [0.4, 0, 0.2, 1],
                   }}
-                  viewport={{ once: true }}
-                  whileInView={{ opacity: 1, y: 0, transform: 'translate3d(0, 0, 0)' }}
                 >
                   {title}
                 </motion.h2>
 
                 <motion.p
                   className="text-lg sm:text-xl lg:text-2xl mb-10 max-w-2xl mx-auto leading-relaxed font-medium text-foreground/80 relative z-10"
-                  initial={{ opacity: 0, y: 15, transform: 'translate3d(0, 0, 0)' }}
-                  style={{
-                    transform: 'translate3d(0, 0, 0)',
-                    willChange: 'transform, opacity',
-                  }}
+                  initial={{ opacity: 0, y: 15 }}
+                  animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 15 }}
                   transition={{ duration: 0.5, delay: 0.25, ease: [0.4, 0, 0.2, 1] }}
-                  viewport={{ once: true }}
-                  whileInView={{ opacity: 1, y: 0, transform: 'translate3d(0, 0, 0)' }}
                 >
                   {description}
                 </motion.p>
 
                 <motion.div
-                  initial={{ opacity: 0, y: 15, transform: 'translate3d(0, 0, 0)' }}
-                  style={{
-                    transform: 'translate3d(0, 0, 0)',
-                    willChange: 'transform, opacity',
-                  }}
+                  initial={{ opacity: 0, y: 15 }}
+                  animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 15 }}
                   transition={{ duration: 0.5, delay: 0.35, ease: [0.4, 0, 0.2, 1] }}
-                  viewport={{ once: true }}
-                  whileInView={{ opacity: 1, y: 0, transform: 'translate3d(0, 0, 0)' }}
                 >
                   <Button
                     asChild
@@ -145,25 +136,20 @@ export function CallToAction({ title, description, buttonText, buttonLink }: Cal
                 {/* Additional visual cues */}
                 <motion.div
                   className="mt-8 flex items-center justify-center gap-8 text-sm text-foreground/60"
-                  initial={{ opacity: 0, transform: 'translate3d(0, 0, 0)' }}
-                  style={{
-                    transform: 'translate3d(0, 0, 0)',
-                    willChange: 'opacity',
-                  }}
+                  initial={{ opacity: 0 }}
+                  animate={isInView ? { opacity: 1 } : { opacity: 0 }}
                   transition={{ duration: 0.5, delay: 0.45, ease: [0.4, 0, 0.2, 1] }}
-                  viewport={{ once: true }}
-                  whileInView={{ opacity: 1, transform: 'translate3d(0, 0, 0)' }}
                 >
                   <div className="flex items-center gap-2">
-                    <svg className="w-5 h-5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path d="M5 13l4 4L19 7" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} />
-                    </svg>
+                    <CheckCircle2 className="w-4 h-4 text-primary/70" />
+                    <span>Free forever</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-primary/70" />
                     <span>No credit card required</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <svg className="w-5 h-5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path d="M13 10V3L4 14h7v7l9-11h-7z" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} />
-                    </svg>
+                    <CheckCircle2 className="w-4 h-4 text-primary/70" />
                     <span>Start working instantly</span>
                   </div>
                 </motion.div>

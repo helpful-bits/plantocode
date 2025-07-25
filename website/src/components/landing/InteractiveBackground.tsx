@@ -5,6 +5,7 @@ import { Canvas } from '@react-three/fiber';
 import * as THREE from 'three';
 import { ParticleScene } from './ParticleScene';
 import { Suspense, useEffect, useState } from 'react';
+import { useTheme } from 'next-themes';
 
 interface InteractiveBackgroundProps {
   particleCount?: number
@@ -12,7 +13,7 @@ interface InteractiveBackgroundProps {
   className?: string
 }
 
-function getAdaptiveParticleCount(): number {
+function getAdaptiveParticleCount(isLightMode: boolean = false): number {
   if (typeof window === 'undefined') return 200;
 
   const width = window.innerWidth;
@@ -27,13 +28,16 @@ function getAdaptiveParticleCount(): number {
   const screenArea = width * height;
   const baseCount = Math.min(screenArea / 6000, 500);
 
-  if (isMobile) return Math.round(Math.min(200, baseCount * 0.7));
-  if (isTablet || cores <= 4 || hasLowMemory || pixelRatio > 2) {
-    return Math.round(Math.min(400, baseCount * 0.8));
-  }
-  if (cores > 8 && width > 1920) return Math.round(Math.min(800, baseCount * 1.2));
+  // Reduce particle count by 30% in light mode for better performance
+  const lightModeMultiplier = isLightMode ? 0.7 : 1.0;
 
-  return Math.round(Math.min(500, baseCount));
+  if (isMobile) return Math.round(Math.min(200, baseCount * 0.7) * lightModeMultiplier);
+  if (isTablet || cores <= 4 || hasLowMemory || pixelRatio > 2) {
+    return Math.round(Math.min(400, baseCount * 0.8) * lightModeMultiplier);
+  }
+  if (cores > 8 && width > 1920) return Math.round(Math.min(800, baseCount * 1.2) * lightModeMultiplier);
+
+  return Math.round(Math.min(500, baseCount) * lightModeMultiplier);
 }
 
 export function InteractiveBackground({
@@ -43,9 +47,11 @@ export function InteractiveBackground({
 }: InteractiveBackgroundProps) {
   const [adaptiveCount, setAdaptiveCount] = useState(300);
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
+  const { resolvedTheme } = useTheme();
+  const isLightMode = resolvedTheme === 'light';
 
   useEffect(() => {
-    setAdaptiveCount(getAdaptiveParticleCount());
+    setAdaptiveCount(getAdaptiveParticleCount(isLightMode));
 
     // Check for reduced motion preference
     const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -60,7 +66,7 @@ export function InteractiveBackground({
     const handleResize = () => {
       clearTimeout(resizeTimeout);
       resizeTimeout = setTimeout(() => {
-        setAdaptiveCount(getAdaptiveParticleCount());
+        setAdaptiveCount(getAdaptiveParticleCount(isLightMode));
         // Trigger a visual effect on resize by adding a class
         document.body.classList.add('resizing');
         setTimeout(() => document.body.classList.remove('resizing'), 500);
@@ -75,7 +81,7 @@ export function InteractiveBackground({
       window.removeEventListener('resize', handleResize);
       mediaQuery.removeEventListener('change', handleChange);
     };
-  }, []);
+  }, [isLightMode]);
 
   // Enhanced reduced motion - slower animation instead of static gradient
   if (prefersReducedMotion) {

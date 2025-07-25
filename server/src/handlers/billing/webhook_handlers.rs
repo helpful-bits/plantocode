@@ -589,8 +589,8 @@ async fn process_stripe_webhook_event(
                 .map_err(|e| AppError::InvalidArgument(format!("Failed to parse customer: {}", e)))?;
             handle_customer_default_source_updated(&customer, billing_service).await?;
         },
-        // Handle invoice events (now expected for auto top-off)
-        EVENT_INVOICE_CREATED | EVENT_INVOICE_FINALIZED | EVENT_INVOICE_PAID => {
+        // Handle invoice created and finalized events
+        EVENT_INVOICE_CREATED | EVENT_INVOICE_FINALIZED => {
             let invoice_id = event.data.get("object").and_then(|o| o.get("id")).and_then(|id| id.as_str()).unwrap_or("unknown");
             let metadata = event.data.get("object").and_then(|o| o.get("metadata"));
             let is_auto_topoff = metadata.and_then(|m| m.get("type")).and_then(|t| t.as_str()) == Some("auto_topoff");
@@ -618,6 +618,72 @@ async fn process_stripe_webhook_event(
                         alerting_service.send_alert(alert).await;
                     }
                 }
+            }
+        },
+        // Handle invoice paid events - process credits for auto top-off
+        EVENT_INVOICE_PAID => {
+            let invoice: Invoice = serde_json::from_value(event.data["object"].clone())
+                .map_err(|e| AppError::InvalidArgument(format!("Failed to parse invoice: {}", e)))?;
+            
+            info!("Processing invoice paid event for invoice: {}", invoice.id);
+            
+            // Check if this is an auto top-off invoice
+            let is_auto_topoff = invoice.metadata.as_ref()
+                .and_then(|m| m.get("type"))
+                .map(|t| t == "auto_topoff")
+                .unwrap_or(false);
+            
+            if is_auto_topoff {
+                info!("Processing auto top-off invoice payment: {}", invoice.id);
+                
+                // Extract customer ID from invoice
+                let customer_id = invoice.customer.as_ref()
+                    .ok_or_else(|| AppError::InvalidArgument("Invoice missing customer ID".to_string()))?;
+                
+                // Find user by Stripe customer ID
+                let user_repository = UserRepository::new(billing_service.get_system_db_pool());
+                let user = user_repository.get_by_stripe_customer_id(customer_id).await?;
+                
+                info!("Found user {} for auto top-off invoice {}", user.id, invoice.id);
+                
+                // Extract payment details from invoice
+                let amount_cents = invoice.amount_paid;
+                let gross_amount = BigDecimal::from(amount_cents) / BigDecimal::from(100);
+                let fee_amount = BigDecimal::from(0); // Invoices don't have separate fee tracking
+                let currency = invoice.currency.clone();
+                
+                // Create credit transaction for auto top-off
+                let credit_service = billing_service.get_credit_service();
+                let audit_context = AuditContext::new(user.id);
+                
+                let metadata = serde_json::json!({
+                    "currency": currency.to_uppercase(),
+                    "invoice_id": invoice.id,
+                    "customer_id": customer_id,
+                    "payment_type": "auto_topoff",
+                    "processed_via": "invoice.paid_webhook",
+                    "amount_paid_cents": amount_cents
+                });
+                
+                let description = format!("Credit purchase via Stripe invoice {}", invoice.id);
+                
+                // Use the helper function instead of calling record_credit_purchase directly
+                record_credit_transaction(
+                    &credit_service,
+                    &user.id,
+                    &gross_amount,
+                    &fee_amount,
+                    &currency.to_uppercase(),
+                    &invoice.id, // Use invoice ID instead of charge ID
+                    metadata,
+                    &audit_context,
+                    &description,
+                ).await?;
+                
+                info!("Successfully processed auto top-off invoice {} for user {} - added ${} credits", 
+                      invoice.id, user.id, gross_amount);
+            } else {
+                info!("Invoice {} is not an auto top-off, skipping credit processing", invoice.id);
             }
         }
         _ => {

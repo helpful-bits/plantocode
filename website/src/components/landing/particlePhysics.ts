@@ -5,13 +5,16 @@ import {
   CASUAL_MOVEMENT_SPEED, SPRINT_BOOST_THRESHOLD, SPRINT_BOOST_STRENGTH,
   EMERGENCY_ESCAPE_THRESHOLD, EMERGENCY_ESCAPE_STRENGTH, MOUSE_INFLUENCE_RADIUS,
   MOUSE_INFLUENCE_STRENGTH, CENTER_EXCLUSION_X, CENTER_EXCLUSION_Y,
-  CENTER_ZONE_X, CENTER_ZONE_Y, CENTER_REPULSION, VELOCITY_DAMPING,
+  MOBILE_EDGE_ATTRACTION, MOBILE_CORNER_PREFERENCE, MOBILE_CENTER_REPULSION,
+  DESKTOP_EDGE_ATTRACTION,
+  CENTER_REPULSION, VELOCITY_DAMPING,
   REDUCED_MOTION_DAMPING,
   RESIZE_VELOCITY_SCALE, CELL_SIZE,
   SCROLL_Y_MULTIPLIER, SCROLL_INFLUENCE_DIVISOR, SCROLL_MOMENTUM_MULTIPLIER,
   VORTEX_STRENGTH_MULTIPLIER, VORTEX_RADIUS_MULTIPLIER, WAVE_SPEED_MULTIPLIER,
   WAVE_AMPLITUDE_MULTIPLIER, WAVE_DISTANCE_SCALE, TURBULENCE_BASE,
-  TURBULENCE_VELOCITY_SCALE, SCROLL_VELOCITY_DAMPING, CHASER_DETECTION_RANGE,
+  TURBULENCE_VELOCITY_SCALE, SCROLL_VELOCITY_DAMPING, SEPARATION_DISTANCE,
+  SEPARATION_STRENGTH, CHASER_DETECTION_RANGE,
   RUNNER_DETECTION_RANGE, NEUTRAL_AVOIDANCE_RANGE, CATCH_DISTANCE,
   CHASER_RATIO, RUNNER_RATIO, EDGE_OFFSET_MAX, EDGE_OFFSET_SMALL_SCREEN,
   EDGE_OFFSET_MEDIUM_SCREEN, SMALL_SCREEN_WIDTH, MEDIUM_SCREEN_WIDTH,
@@ -76,18 +79,30 @@ export function initialiseParticleState(count: number, viewport: { width: number
     } else {
       // On narrower screens, equal chance for all edges
       edgeChoice = Math.floor(Math.random() * 4);
+      // On mobile, particles MUST spawn at extreme edges only
+      if (screenWidth < 768) {
+        // 90% chance for corners, 10% for edge centers
+        if (Math.random() < 0.9) {
+          // Spawn in corners
+          const corner = Math.floor(Math.random() * 4);
+          edgeChoice = corner;
+        } else {
+          edgeChoice = Math.floor(Math.random() * 4);
+        }
+      }
     }
-    const progress = Math.random();
+    // On mobile, distribute particles evenly along edges, not just corners
+    const progress = Math.random(); // Always random distribution
 
     // Assign game behaviors - particles have roles in the catching game
     const roleChance = Math.random();
     let gameRole: number;
     if (roleChance < CHASER_RATIO) {
-      gameRole = 0; // 30% chasers
+      gameRole = 0; // 15% chasers
     } else if (roleChance < CHASER_RATIO + RUNNER_RATIO) {
-      gameRole = 1; // 50% runners
+      gameRole = 1; // 35% runners
     } else {
-      gameRole = 2; // 20% neutral
+      gameRole = 2; // 50% neutral
     }
     const particleSize = NORMAL_SIZE + Math.random() * RUNNER_SIZE; // More consistent starting size
     const huntingEnergy = Math.random(); // Energy for chasing/running
@@ -100,7 +115,7 @@ export function initialiseParticleState(count: number, viewport: { width: number
     nearestAngles[i] = 0; // angle
     nearestDistances[i] = 10; // distance (far)
     hasTargets[i] = 0; // target exists
-    randomSeeds[i] = Math.random() * 1000;
+    randomSeeds[i] = Math.random() * 1000 + i * 0.1; // Unique seed per particle
 
     // Initialize velocities to zero
     velocities[i3] = 0;
@@ -250,23 +265,49 @@ export function handleViewportResize(
       }
     }
 
-    // If viewport got smaller, ensure particles aren't stuck in the middle
-    const centerZoneX = newViewport.width * CENTER_ZONE_X;
-    const centerZoneY = newViewport.height * CENTER_ZONE_Y;
+    // Responsive exclusion zone for resize handling
+    const screenWidth = typeof window !== 'undefined' ? window.innerWidth : 1920;
+    const isMobile = screenWidth < 768;
+    const isTablet = screenWidth < 1024;
+    
+    let exclusionMultiplierX, exclusionMultiplierY;
+    if (isMobile) {
+      exclusionMultiplierX = 1.2; // 60% on mobile - same as simulation
+      exclusionMultiplierY = 1.2; // 60% on mobile
+    } else if (isTablet) {
+      exclusionMultiplierX = 1.7; // 85% on tablet
+      exclusionMultiplierY = 1.7; // 85% on tablet
+    } else {
+      exclusionMultiplierX = CENTER_EXCLUSION_X; // 80% on desktop
+      exclusionMultiplierY = CENTER_EXCLUSION_Y; // 70% on desktop
+    }
+    
+    const centerExclusionX = newViewport.width / 2 * exclusionMultiplierX;
+    const centerExclusionY = newViewport.height / 2 * exclusionMultiplierY;
 
     if (state.positions) {
       const posX = state.positions[i3] ?? 0;
-      const posY = state.positions[i3 + 1] ?? 0;
-      if (Math.abs(posX) < centerZoneX &&
-          Math.abs(posY) < centerZoneY) {
-        // Push particles out of center if they ended up there after resize
-        const angle = Math.atan2(posY, posX);
-        state.positions[i3] = Math.cos(angle) * centerZoneX * 1.1;
-        state.positions[i3 + 1] = Math.sin(angle) * centerZoneY * 1.1;
+      const baseY = state.baseY[i] ?? 0;
+      
+      // Check if particle is within the exclusion zone
+      const centerDistX = Math.abs(posX) / centerExclusionX;
+      const centerDistY = Math.abs(baseY) / centerExclusionY;
+      
+      if (centerDistX < 1.0 && centerDistY < 1.0) {
+        // Push particles to edge of exclusion zone
+        const angle = Math.atan2(baseY || 1, posX || 1);
+        const targetX = Math.cos(angle) * centerExclusionX * 1.1;
+        const targetY = Math.sin(angle) * centerExclusionY * 1.1;
+        
+        // Smooth transition instead of immediate teleport
+        const moveSpeed = 0.1; // 10% per frame
+        state.positions[i3] = posX + (targetX - posX) * moveSpeed;
+        state.baseY[i] = baseY + (targetY - baseY) * moveSpeed;
+        state.positions[i3 + 1] = state.baseY[i] ?? 0; // Update render Y too
 
         // Give them velocity away from center
-        state.velocities[i3] = Math.cos(angle) * RESIZE_VELOCITY_SCALE;
-        state.velocities[i3 + 1] = Math.sin(angle) * RESIZE_VELOCITY_SCALE;
+        state.velocities[i3] = Math.cos(angle) * RESIZE_VELOCITY_SCALE * 2;
+        state.velocities[i3 + 1] = Math.sin(angle) * RESIZE_VELOCITY_SCALE * 2;
       }
     }
 
@@ -292,7 +333,7 @@ export function handleViewportResize(
 const globalSpatialHash = new SpatialHash(CELL_SIZE);
 
 // Respawn particle at a specific edge (0=top, 1=right, 2=bottom, 3=left)
-function respawnParticleAtEdge(index: number, state: ParticleState, viewport: { width: number; height: number }, _screenWidth: number, edge: number, scrollOffsetY: number = 0) {
+function respawnParticleAtEdge(index: number, state: ParticleState, viewport: { width: number; height: number }, _screenWidth: number, edge: number) {
   const i3 = index * 3;
   const width = viewport.width || 10;
   const height = viewport.height || 10;
@@ -311,37 +352,122 @@ function respawnParticleAtEdge(index: number, state: ParticleState, viewport: { 
   // Position based on edge
   const edgeOffset = Math.random() * 0.5; // Small random offset from edge
 
+  // Responsive spawning exclusion based on screen size
+  const screenWidth = typeof window !== 'undefined' ? window.innerWidth : 1920;
+  const isMobile = screenWidth < 768;
+  const isTablet = screenWidth < 1024;
+  
+  let centerExclusionX, centerExclusionY;
+  if (isMobile) {
+    // Mobile: Spawn closer to middle - only exclude center 50%
+    centerExclusionX = width * 0.25; // 50% of screen width
+    centerExclusionY = height * 0.25; // 50% of screen height
+  } else if (isTablet) {
+    // Tablet: Exclude center 60%
+    centerExclusionX = width * 0.3;
+    centerExclusionY = height * 0.3;
+  } else {
+    // Desktop: Exclude center 75% to force edge spawning
+    centerExclusionX = width * 0.375;
+    centerExclusionY = height * 0.375;
+  }
+  
   switch(edge) {
     case 0: // Top
-      state.positions[i3] = (Math.random() - 0.5) * width * 0.9;
-      state.positions[i3 + 1] = -height + edgeOffset;
-      // Give slight downward velocity to integrate with flow
-      state.velocities[i3 + 1] = 0.1 + Math.random() * 0.1;
-      // Add slight horizontal drift
-      state.velocities[i3] = (Math.random() - 0.5) * 0.05;
+      // On mobile, spawn along entire top edge
+      let topX;
+      if (isMobile) {
+        topX = (Math.random() - 0.5) * width * 0.95; // Use almost full width
+      } else {
+        // Desktop: avoid center
+        topX = Math.random() < 0.5 
+          ? -width / 2 + Math.random() * (width / 2 - centerExclusionX)
+          : centerExclusionX + Math.random() * (width / 2 - centerExclusionX);
+      }
+      state.positions[i3] = topX;
+      state.positions[i3 + 1] = -height / 2 + edgeOffset;
+      // On mobile, particles should have minimal initial velocity
+      if (isMobile) {
+        state.velocities[i3 + 1] = 0; // No vertical movement
+        state.velocities[i3] = Math.sign(topX) * 0.02; // Very gentle movement along edge
+      } else {
+        state.velocities[i3 + 1] = 0.02; // Very slight downward on desktop
+        state.velocities[i3] = Math.sign(topX) * 0.05;
+      }
       break;
     case 1: // Right
-      state.positions[i3] = width - edgeOffset;
-      state.positions[i3 + 1] = (Math.random() - 0.5) * height * 0.9;
-      state.velocities[i3] = -0.1;
+      state.positions[i3] = width / 2 - edgeOffset;
+      // On mobile, spawn along entire right edge
+      let rightY;
+      if (isMobile) {
+        rightY = (Math.random() - 0.5) * height * 0.95; // Use almost full height
+      } else {
+        // Desktop: avoid center
+        rightY = Math.random() < 0.5
+          ? -height / 2 + Math.random() * (height / 2 - centerExclusionY)
+          : centerExclusionY + Math.random() * (height / 2 - centerExclusionY);
+      }
+      state.positions[i3 + 1] = rightY;
+      // On mobile, minimal movement
+      if (isMobile) {
+        state.velocities[i3] = 0; // No horizontal movement inward
+        state.velocities[i3 + 1] = Math.sign(rightY) * 0.02; // Very gentle movement along edge
+      } else {
+        state.velocities[i3] = -0.02; // Very slight leftward on desktop
+        state.velocities[i3 + 1] = Math.sign(rightY) * 0.02;
+      }
       break;
     case 2: // Bottom
-      state.positions[i3] = (Math.random() - 0.5) * width * 0.9;
-      state.positions[i3 + 1] = height - edgeOffset;
-      state.velocities[i3 + 1] = -0.1;
+      // On mobile, spawn along entire bottom edge
+      let bottomX;
+      if (isMobile) {
+        bottomX = (Math.random() - 0.5) * width * 0.95; // Use almost full width
+      } else {
+        // Desktop: avoid center
+        bottomX = Math.random() < 0.5
+          ? -width / 2 + Math.random() * (width / 2 - centerExclusionX)
+          : centerExclusionX + Math.random() * (width / 2 - centerExclusionX);
+      }
+      state.positions[i3] = bottomX;
+      state.positions[i3 + 1] = height / 2 - edgeOffset;
+      // On mobile, minimal movement
+      if (isMobile) {
+        state.velocities[i3 + 1] = 0; // No vertical movement inward
+        state.velocities[i3] = Math.sign(bottomX) * 0.02; // Very gentle movement along edge
+      } else {
+        state.velocities[i3 + 1] = -0.02; // Very slight upward on desktop
+        state.velocities[i3] = Math.sign(bottomX) * 0.05;
+      }
       break;
     case 3: // Left
-      state.positions[i3] = -width + edgeOffset;
-      state.positions[i3 + 1] = (Math.random() - 0.5) * height * 0.9;
-      state.velocities[i3] = 0.1;
+      state.positions[i3] = -width / 2 + edgeOffset;
+      // On mobile, spawn along entire left edge
+      let leftY;
+      if (isMobile) {
+        leftY = (Math.random() - 0.5) * height * 0.95; // Use almost full height
+      } else {
+        // Desktop: avoid center
+        leftY = Math.random() < 0.5
+          ? -height / 2 + Math.random() * (height / 2 - centerExclusionY)
+          : centerExclusionY + Math.random() * (height / 2 - centerExclusionY);
+      }
+      state.positions[i3 + 1] = leftY;
+      // On mobile, minimal movement
+      if (isMobile) {
+        state.velocities[i3] = 0; // No horizontal movement inward
+        state.velocities[i3 + 1] = Math.sign(leftY) * 0.02; // Very gentle movement along edge
+      } else {
+        state.velocities[i3] = 0.02; // Very slight rightward on desktop
+        state.velocities[i3 + 1] = Math.sign(leftY) * 0.02;
+      }
       break;
   }
 
-  // Set baseY to match the new position (without scroll offset)
+  // Set baseY to match the new position
   const newY = state.positions[i3 + 1];
   if (newY !== undefined) {
-    // baseY should be the scroll-independent position
-    state.baseY[index] = newY - scrollOffsetY;
+    // baseY is the true position (scroll is handled separately)
+    state.baseY[index] = newY;
   }
 
   // Random Z depth
@@ -375,9 +501,7 @@ function respawnParticle(index: number, state: ParticleState, viewport: { width:
   state.velocities[i3 + 1] = 0;
   state.velocities[i3 + 2] = 0;
 
-  // Get current scroll offset - STRONGER
-  const scrollOffsetY = (typeof window !== 'undefined') ?
-    (window.pageYOffset || document.documentElement.scrollTop || 0) / window.innerHeight * viewport.height * 6 : 0;
+  // Don't apply scroll offset during respawn - it's handled by the physics system
 
   let maxOffset = 1.0; // Tight for large screens
   if (screenWidth < SMALL_SCREEN_WIDTH) {
@@ -391,22 +515,22 @@ function respawnParticle(index: number, state: ParticleState, viewport: { width:
   if (edgeChoice === 0) { // Top edge
     state.positions[i3] = (progress - 0.5) * width * WIDTH_USAGE_RATIO;
     newY = height * 0.5 - edgeOffset;
-    state.positions[i3 + 1] = newY + scrollOffsetY; // Apply scroll offset
+    state.positions[i3 + 1] = newY; // Don't apply scroll offset here
     state.positions[i3 + 2] = (Math.random() - 0.5) * 2;
   } else if (edgeChoice === 1) { // Right edge
     state.positions[i3] = width * 0.5 - edgeOffset;
     newY = (progress - 0.5) * height * HEIGHT_USAGE_RATIO;
-    state.positions[i3 + 1] = newY + scrollOffsetY; // Apply scroll offset
+    state.positions[i3 + 1] = newY; // Don't apply scroll offset here
     state.positions[i3 + 2] = (Math.random() - 0.5) * 2;
   } else if (edgeChoice === 2) { // Bottom edge
     state.positions[i3] = (progress - 0.5) * width * WIDTH_USAGE_RATIO;
     newY = -height * 0.5 + edgeOffset;
-    state.positions[i3 + 1] = newY + scrollOffsetY; // Apply scroll offset
+    state.positions[i3 + 1] = newY; // Don't apply scroll offset here
     state.positions[i3 + 2] = (Math.random() - 0.5) * 2;
   } else { // Left edge
     state.positions[i3] = -width * 0.5 + edgeOffset;
     newY = (progress - 0.5) * height * HEIGHT_USAGE_RATIO;
-    state.positions[i3 + 1] = newY + scrollOffsetY; // Apply scroll offset
+    state.positions[i3 + 1] = newY; // Don't apply scroll offset here
     state.positions[i3 + 2] = (Math.random() - 0.5) * 2;
   }
 
@@ -438,8 +562,12 @@ export function stepParticleState(
   // Add scroll-based size modulation for depth perception
   // const scrollDepthEffect = 1.0 + scroll.y * SCROLL_DEPTH_EFFECT; // Particles appear to get smaller as you scroll
 
-  // Get screen width once for edge calculations
+  // Get screen dimensions once at the start
   const screenWidth = (typeof window !== 'undefined') ? window.innerWidth : 1920;
+  const screenHeight = (typeof window !== 'undefined') ? window.innerHeight : 1080;
+  const isMobile = screenWidth < 768;
+  const isTablet = screenWidth < 1024;
+  const isSmallHeight = screenHeight < 700;
 
   // Get viewport dimensions for boundary checks
   const viewportWidth = viewport.width / 2;
@@ -459,7 +587,8 @@ export function stepParticleState(
     const myRole = state.roles[i] ?? 0;
     const mySize = state.sizes[i] ?? 0.5;
     const myX = state.positions[i3] ?? 0;
-    const myY = (state.baseY[i] ?? 0) + scrollOffsetY; // Use scroll-adjusted Y
+    const myY = (state.baseY[i] ?? 0) + scrollOffsetY; // Use scroll-adjusted Y for game logic
+    const myBaseY = state.baseY[i] ?? 0; // Base Y for boundary calculations
 
     // Find nearest valid target using spatial hash
     const candidates = spatialHash.queryNeighbors(myX, myY);
@@ -514,7 +643,8 @@ export function stepParticleState(
 
     if (myRole < 1.0) {
       // CHASERS - pursuit behavior
-      const baseChaseSpeed = (CHASE_STRENGTH + mySize * 0.01) * huntingIntensity;
+      const chaseMultiplier = isMobile ? 1.5 : 1.2; // Enhanced chase on all devices
+      const baseChaseSpeed = (CHASE_STRENGTH + mySize * 0.01) * huntingIntensity * chaseMultiplier;
 
       if (foundTarget) {
         const pursuitDirectionX = Math.cos(nearestAngle);
@@ -539,7 +669,8 @@ export function stepParticleState(
 
     } else if (myRole < 2.0) {
       // RUNNERS - escape behavior
-      const baseEscapeSpeed = ESCAPE_STRENGTH + (1.0 - mySize) * 0.01;
+      const escapeMultiplier = isMobile ? 1.5 : 1.2; // Enhanced escape on all devices
+      const baseEscapeSpeed = (ESCAPE_STRENGTH + (1.0 - mySize) * 0.01) * escapeMultiplier;
 
       if (foundTarget) {
         const escapeDirectionX = -Math.cos(nearestAngle);
@@ -583,26 +714,54 @@ export function stepParticleState(
       }
     }
 
-    // Apply lateral migration force based on scroll
-    const migrationStrength = 0.01;
-    const edgeDistance = viewport.width / 2 - Math.abs(myX);
-    if (scrollFactors) {
+    // PARTICLE SEPARATION - prevent clumping
+    // Check nearby particles and push away from those too close
+    const separationMultiplier = isMobile ? 1.5 : 1.2; // Enhanced separation on all devices
+    for (const j of candidates) {
+      if (i === j) continue;
+
+      const otherX = state.positions[j * 3] ?? 0;
+      const otherY = (state.baseY[j] ?? 0) + scrollOffsetY;
+
+      const sepDx = myX - otherX;
+      const sepDy = myY - otherY;
+      const sepDistSquared = sepDx * sepDx + sepDy * sepDy;
+      const sepDist = Math.sqrt(sepDistSquared);
+
+      // Apply separation force if too close
+      if (sepDist < SEPARATION_DISTANCE && sepDist > 0.001) {
+        const sepForce = (SEPARATION_DISTANCE - sepDist) / SEPARATION_DISTANCE * SEPARATION_STRENGTH * separationMultiplier;
+        const sepNormX = sepDx / sepDist;
+        const sepNormY = sepDy / sepDist;
+
+        accelX += sepNormX * sepForce;
+        accelY += sepNormY * sepForce;
+      }
+    }
+
+    // Apply lateral migration force based on scroll - DISABLED on mobile
+    if (!isMobile && scrollFactors) {
+      const migrationStrength = 0.01;
+      const edgeDistance = viewport.width / 2 - Math.abs(myX);
       accelX += scrollFactors.migration * edgeDistance * migrationStrength * Math.sign(myX);
     }
 
-    // Apply external forces (mouse)
-    const mouseDistance = Math.sqrt((myX - mouse.x * 2.5) ** 2 + (myY - mouse.y * 2.5) ** 2);
-    if (mouseDistance < MOUSE_INFLUENCE_RADIUS) {
-      const influenceStrength = (MOUSE_INFLUENCE_RADIUS - mouseDistance) / MOUSE_INFLUENCE_RADIUS;
-      const gentleForceX = (myX - mouse.x * 2.5) / mouseDistance;
-      const gentleForceY = (myY - mouse.y * 2.5) / mouseDistance;
-      accelX += gentleForceX * influenceStrength * MOUSE_INFLUENCE_STRENGTH;
-      accelY += gentleForceY * influenceStrength * MOUSE_INFLUENCE_STRENGTH;
+    // Apply external forces (mouse) - DISABLED on mobile
+    if (!isMobile) {
+      const mouseDistance = Math.sqrt((myX - mouse.x * 2.5) ** 2 + (myY - mouse.y * 2.5) ** 2);
+      if (mouseDistance < MOUSE_INFLUENCE_RADIUS) {
+        const influenceStrength = (MOUSE_INFLUENCE_RADIUS - mouseDistance) / MOUSE_INFLUENCE_RADIUS;
+        const gentleForceX = (myX - mouse.x * 2.5) / mouseDistance;
+        const gentleForceY = (myY - mouse.y * 2.5) / mouseDistance;
+        accelX += gentleForceX * influenceStrength * MOUSE_INFLUENCE_STRENGTH;
+        accelY += gentleForceY * influenceStrength * MOUSE_INFLUENCE_STRENGTH;
+      }
     }
 
-    // POWERFUL SCROLL FORCES with natural physics
-    const scrollInfluence = Math.min(scroll.y / SCROLL_INFLUENCE_DIVISOR, 1.0); // Very fast ramp-up
-    const scrollVel = scroll.velocity; // Use actual scroll velocity for momentum
+    // POWERFUL SCROLL FORCES with natural physics - REDUCED on mobile
+    const scrollMultiplier = isMobile ? 0.1 : 1.0; // Much less scroll influence on mobile
+    const scrollInfluence = Math.min(scroll.y / SCROLL_INFLUENCE_DIVISOR, 1.0) * scrollMultiplier;
+    const scrollVel = scroll.velocity * scrollMultiplier; // Reduced scroll velocity impact
 
     // 1. Direct scroll momentum transfer - particles inherit scroll motion
     accelY -= scrollVel * SCROLL_MOMENTUM_MULTIPLIER; // Strong upward push when scrolling down
@@ -629,46 +788,224 @@ export function stepParticleState(
       accelY += Math.sin(wavePhase) * waveAmplitude * 0.5;
     }
 
-    // 4. Turbulence increases with scroll - reduced frequency to prevent vibration
-    const turbulence = scrollInfluence * TURBULENCE_BASE + scrollVel * TURBULENCE_VELOCITY_SCALE;
+    // 4. Enhanced turbulence with more variation - reduced on all devices
+    const turbulenceMultiplier = isMobile ? 0.1 : 0.5; // Less turbulence everywhere
+    const baseTurbulence = TURBULENCE_BASE * (0.5 + Math.random() * 0.5) * turbulenceMultiplier;
+    const turbulence = baseTurbulence + scrollVel * TURBULENCE_VELOCITY_SCALE * turbulenceMultiplier;
     const seed = state.randomSeeds[i] ?? 0;
-    const noiseTime = elapsedTime * 0.1; // Much slower oscillation
-    const noiseX = Math.sin(noiseTime + seed) * 0.5;
-    const noiseY = Math.cos(noiseTime + seed + Math.PI/2) * 0.5;
-    accelX += noiseX * turbulence;
-    accelY += noiseY * turbulence;
+    const noiseTime = elapsedTime * 0.2; // Varied speed
+    // Use multiple octaves for more organic motion
+    const noise1X = Math.sin(noiseTime * 1.0 + seed * 2.0) * 0.6;
+    const noise1Y = Math.cos(noiseTime * 1.0 + seed * 2.0 + Math.PI/2) * 0.6;
+    const noise2X = Math.sin(noiseTime * 2.3 + seed * 3.0) * 0.3;
+    const noise2Y = Math.cos(noiseTime * 2.3 + seed * 3.0 + Math.PI/3) * 0.3;
+    const noise3X = Math.sin(noiseTime * 0.5 + seed * 5.0) * 0.1;
+    const noise3Y = Math.cos(noiseTime * 0.5 + seed * 5.0 + Math.PI/4) * 0.1;
 
-    // 2. Boundary repulsion force (soft walls)
-    const boundaryPadding = BOUNDARY_PADDING;
+    accelX += (noise1X + noise2X + noise3X) * turbulence;
+    accelY += (noise1Y + noise2Y + noise3Y) * turbulence;
+
+    // 2. Boundary repulsion force - MODIFIED for mobile to prevent escape
+    const boundaryPadding = isMobile ? 0.5 : BOUNDARY_PADDING; // Tighter boundary on mobile
     const repulsionStrength = BOUNDARY_REPULSION_STRENGTH;
+    const boundaryZone = isMobile ? boundaryPadding : boundaryPadding * 3; // Tighter zone on mobile
 
-    if (myX > viewportWidth - boundaryPadding) accelX -= (repulsionStrength / (viewportWidth - myX));
-    if (myX < -viewportWidth + boundaryPadding) accelX += (repulsionStrength / (myX + viewportWidth));
-    if (myY > viewportHeight - boundaryPadding) accelY -= (repulsionStrength / (viewportHeight - myY));
-    if (myY < -viewportHeight + boundaryPadding) accelY += (repulsionStrength / (myY + viewportHeight));
+    // Right boundary
+    if (myX > viewportWidth - boundaryZone) {
+      const dist = viewportWidth - myX;
+      const force = repulsionStrength * Math.exp(-dist / boundaryPadding);
+      accelX -= force;
+      // Add some inward velocity if very close to edge - but not on mobile
+      if (!isMobile && dist < boundaryPadding) {
+        state.velocities[i3] = Math.min(state.velocities[i3] ?? 0, -0.05);
+      }
+    }
+    // Left boundary
+    if (myX < -viewportWidth + boundaryZone) {
+      const dist = myX + viewportWidth;
+      const force = repulsionStrength * Math.exp(-dist / boundaryPadding);
+      accelX += force;
+      // Add some inward velocity if very close to edge - but not on mobile
+      if (!isMobile && dist < boundaryPadding) {
+        state.velocities[i3] = Math.max(state.velocities[i3] ?? 0, 0.05);
+      }
+    }
+    // Bottom boundary - use base Y
+    if (myBaseY > viewportHeight - boundaryZone) {
+      const dist = viewportHeight - myBaseY;
+      const force = repulsionStrength * Math.exp(-dist / boundaryPadding);
+      accelY -= force;
+      // Add some inward velocity if very close to edge - but not on mobile
+      if (!isMobile && dist < boundaryPadding) {
+        state.velocities[i3 + 1] = Math.min(state.velocities[i3 + 1] ?? 0, -0.05);
+      }
+    }
+    // Top boundary - use base Y
+    if (myBaseY < -viewportHeight + boundaryZone) {
+      const dist = myBaseY + viewportHeight;
+      const force = repulsionStrength * Math.exp(-dist / boundaryPadding);
+      accelY += force;
+      // Add some inward velocity if very close to edge - but not on mobile
+      if (!isMobile && dist < boundaryPadding) {
+        state.velocities[i3 + 1] = Math.max(state.velocities[i3 + 1] ?? 0, 0.05);
+      }
+    }
 
     // 3. INVISIBLE WALL - Keep particles away from center
-    const centerExclusionZoneX = viewportWidth * CENTER_EXCLUSION_X; // 60% of half-width = 30% total width
-    const centerExclusionZoneY = viewportHeight * CENTER_EXCLUSION_Y; // 50% of half-height = 25% total height
-    const centerRepulsion = CENTER_REPULSION;
+    // Using screen size variables declared at the top
+    
+    // Dynamic exclusion zone based on screen size
+    let exclusionMultiplierX = CENTER_EXCLUSION_X; // Default: 1.6 (80% of screen)
+    let exclusionMultiplierY = CENTER_EXCLUSION_Y; // Default: 1.4 (70% of screen)
+    
+    if (isMobile) {
+      // Mobile: Smaller exclusion zone (60% of screen) to allow particles closer to center
+      exclusionMultiplierX = 1.2; // 60% of total width
+      exclusionMultiplierY = 1.2; // 60% of total height
+    } else if (isTablet) {
+      // Tablet: Moderate exclusion zone (65% x 65%)
+      exclusionMultiplierX = 1.3;
+      exclusionMultiplierY = 1.3;
+    } else if (screenWidth < 1400) {
+      // Small desktop: (60% x 55%)
+      exclusionMultiplierX = CENTER_EXCLUSION_X;
+      exclusionMultiplierY = CENTER_EXCLUSION_Y;
+    }
+    
+    // Further reduce on small height screens
+    if (isSmallHeight) {
+      exclusionMultiplierY *= 0.7;
+    }
+    
+    const centerExclusionZoneX = viewportWidth * exclusionMultiplierX;
+    const centerExclusionZoneY = viewportHeight * exclusionMultiplierY;
+    // Tablet uses intermediate repulsion
+    const centerRepulsion = isMobile ? MOBILE_CENTER_REPULSION : (isTablet ? CENTER_REPULSION * 0.5 : CENTER_REPULSION);
 
-    // If particle is within the center exclusion zone, push it out
-    if (Math.abs(myX) < centerExclusionZoneX && Math.abs(myY) < centerExclusionZoneY) {
-      // Calculate distance from center
-      const distFromCenterX = Math.abs(myX);
-      const distFromCenterY = Math.abs(myY);
+    // Calculate elliptical distance from center
+    const centerDistX = Math.abs(myX) / centerExclusionZoneX;
+    const centerDistY = Math.abs(myBaseY) / centerExclusionZoneY;
+    
+    // Ellipse equation: (x/a)² + (y/b)² = 1
+    const ellipticalDistance = Math.sqrt(centerDistX * centerDistX + centerDistY * centerDistY);
 
-      // Calculate normalized distance to edge of exclusion zone
-      const normalizedDistX = distFromCenterX / centerExclusionZoneX;
-      const normalizedDistY = distFromCenterY / centerExclusionZoneY;
+    // Check if particle is within the elliptical exclusion zone
+    if (ellipticalDistance < 1.0) {
+      // Smooth gradient repulsion based on elliptical distance
+      const smooth = 1.0 - ellipticalDistance;
+      
+      // Smoothstep function for gentle force curve
+      const smoothstep = smooth * smooth * (3.0 - 2.0 * smooth);
+      
+      // Calculate normalized direction from center
+      const dirX = centerDistX > 0 ? myX / Math.abs(myX) : 1;
+      const dirY = centerDistY > 0 ? myBaseY / Math.abs(myBaseY) : 1;
+      
+      // Apply forces radially from ellipse center
+      let forceX = dirX * centerDistX * smoothstep * centerRepulsion;
+      let forceY = dirY * centerDistY * smoothstep * centerRepulsion;
+      
+      // Add velocity damping on tablets to prevent oscillation
+      if (isTablet) {
+        const velX = state.velocities[i3] ?? 0;
+        const velY = state.velocities[i3 + 1] ?? 0;
+        forceX -= velX * 0.3; // Damping
+        forceY -= velY * 0.3; // Damping
+      }
 
-      // Smoother repulsion curve using squared falloff
-      const repulsionX = (1.0 - normalizedDistX) * (1.0 - normalizedDistX);
-      const repulsionY = (1.0 - normalizedDistY) * (1.0 - normalizedDistY);
+      accelX += forceX;
+      accelY += forceY;
 
-      // Apply forces in both directions for smoother flow
-      accelX += Math.sign(myX || 1) * repulsionX * centerRepulsion;
-      accelY += Math.sign(myY || 1) * repulsionY * centerRepulsion * 0.7; // Slightly less Y force for natural flow
+      // Very gentle minimum velocity to ensure particles drift outward
+      if (centerDistX < 0.5) {
+        const minVelX = Math.sign(myX || 1) * 0.015; // Very gentle push
+        if (Math.abs(state.velocities[i3] ?? 0) < Math.abs(minVelX)) {
+          state.velocities[i3] = minVelX;
+        }
+      }
+      if (centerDistY < 0.5) {
+        const minVelY = Math.sign(myBaseY || 1) * 0.015; // Very gentle push
+        if (Math.abs(state.velocities[i3 + 1] ?? 0) < Math.abs(minVelY)) {
+          state.velocities[i3 + 1] = minVelY;
+        }
+      }
+
+      // Emergency push for particles too close to center
+      if (ellipticalDistance < 0.3) {
+        const angle = Math.atan2(myBaseY || 1, myX || 1);
+        const emergencyMultiplier = isMobile ? 5.0 : (isTablet ? 7.0 : 10.0); // Gradual increase
+        const emergencyForce = centerRepulsion * emergencyMultiplier;
+        
+        // Apply very strong force on desktop
+        accelX += Math.cos(angle) * emergencyForce;
+        accelY += Math.sin(angle) * emergencyForce;
+        
+        // Strong outward velocity on desktop
+        const outwardVel = isMobile ? 0.1 : (isTablet ? 0.15 : 0.3);
+        state.velocities[i3] = Math.cos(angle) * outwardVel;
+        state.velocities[i3 + 1] = Math.sin(angle) * outwardVel;
+      }
+    } else if (ellipticalDistance < 1.2) {
+      // Gentle edge gradient for particles near the ellipse boundary
+      const edgeDist = 1.2 - ellipticalDistance;
+      const edgeForce = edgeDist * centerRepulsion * 0.1;
+      
+      // Apply force radially
+      const dirX = myX === 0 ? 0 : myX / Math.abs(myX);
+      const dirY = myBaseY === 0 ? 0 : myBaseY / Math.abs(myBaseY);
+      
+      accelX += dirX * centerDistX * edgeForce;
+      accelY += dirY * centerDistY * edgeForce;
+    }
+
+    // EDGE ATTRACTION - Apply on desktop and tablets (with different strengths)
+    if (!isMobile) { // Desktop and tablet
+      // Calculate distance to nearest edge (correctly)
+      const distToLeftEdge = myX + viewportWidth; // Distance from left edge
+      const distToRightEdge = viewportWidth - myX; // Distance from right edge  
+      const distToTopEdge = myBaseY + viewportHeight; // Distance from top edge
+      const distToBottomEdge = viewportHeight - myBaseY; // Distance from bottom edge
+      
+      // Find closest edge
+      const minHorizontalDist = Math.min(distToLeftEdge, distToRightEdge);
+      const minVerticalDist = Math.min(distToTopEdge, distToBottomEdge);
+      
+      // Attraction strength increases as particle moves away from edge
+      const edgeAttractionStrength = isMobile ? MOBILE_EDGE_ATTRACTION : MOBILE_EDGE_ATTRACTION * 0.5;
+      const optimalEdgeDistance = isMobile ? viewportWidth * 0.02 : viewportWidth * 0.04; // Very tight on mobile
+      
+      // Horizontal edge attraction - keep particles INSIDE viewport
+      const leftEdgeTarget = -viewportWidth + optimalEdgeDistance;
+      const rightEdgeTarget = viewportWidth - optimalEdgeDistance;
+      
+      // Edge attraction - different strength for tablet vs desktop
+      const edgeStrength = isTablet ? DESKTOP_EDGE_ATTRACTION * 0.3 : DESKTOP_EDGE_ATTRACTION;
+      
+      // Horizontal attraction - continuous force
+      const xFromCenter = Math.abs(myX) / viewportWidth;
+      if (xFromCenter < 0.7) {
+        // Strong push from center
+        const pushStrength = 1.0 - xFromCenter;
+        accelX += Math.sign(myX || 1) * edgeStrength * pushStrength;
+      } else {
+        // Near edge - maintain position
+        const edgeTarget = Math.sign(myX) * (viewportWidth * 0.85);
+        const pullStrength = (edgeTarget - myX) * 0.05;
+        accelX += pullStrength;
+      }
+      
+      // Vertical attraction - continuous force
+      const yFromCenter = Math.abs(myBaseY) / viewportHeight;
+      if (yFromCenter < 0.7) {
+        // Strong push from center
+        const pushStrength = 1.0 - yFromCenter;
+        accelY += Math.sign(myBaseY || 1) * edgeStrength * pushStrength;
+      } else {
+        // Near edge - maintain position
+        const edgeTarget = Math.sign(myBaseY) * (viewportHeight * 0.85);
+        const pullStrength = (edgeTarget - myBaseY) * 0.05;
+        accelY += pullStrength;
+      }
     }
 
     // Apply reduced motion damping if needed - less damping during scroll
@@ -685,19 +1022,23 @@ export function stepParticleState(
     state.velocities[i3 + 1] = velY * dampingFactor;
 
     // Update position
-    const posX = (state.positions[i3] ?? 0) + (state.velocities[i3] ?? 0) * clampedDelta;
-    const posY = (state.positions[i3 + 1] ?? 0) + (state.velocities[i3 + 1] ?? 0) * clampedDelta;
-    // const posZ = state.positions[i3 + 2] ?? 0;
+    let posX = (state.positions[i3] ?? 0) + (state.velocities[i3] ?? 0) * clampedDelta;
+    const baseYCurrent = state.baseY[i] ?? 0;
+    let posY = baseYCurrent + (state.velocities[i3 + 1] ?? 0) * clampedDelta;
 
+    // CLAMP positions to viewport to prevent escape - apply to all devices
+    const maxEdgeX = viewportWidth - 0.1;
+    const maxEdgeY = viewportHeight - 0.1;
+    posX = Math.max(-maxEdgeX, Math.min(maxEdgeX, posX));
+    posY = Math.max(-maxEdgeY, Math.min(maxEdgeY, posY));
+
+    // Update positions
     state.positions[i3] = posX;
-    state.positions[i3 + 1] = posY;
+    state.baseY[i] = posY;  // Store the true Y position
+    state.positions[i3 + 1] = posY + scrollOffsetY;  // Apply scroll offset for rendering
 
     // Apply Z-axis parallax for depth effect
     state.positions[i3 + 2] = (state.baseZ[i] ?? 0) + (scrollFactors?.offset ?? 0) * 2.0;
-
-    // Separate logical and render positions
-    state.baseY[i] = posY - scrollOffsetY;  // scroll-independent position
-    state.positions[i3 + 1] = (state.baseY[i] ?? 0) + scrollOffsetY;  // final render position
 
     // Handle eating (only for chasers) - made harder to catch
     if (myRole < 1.0 && foundTarget && nearestTargetIndex >= 0 && nearestDistance < CATCH_DISTANCE) {
@@ -716,13 +1057,13 @@ export function stepParticleState(
     }
 
     // Viewport culling - respawn particles that leave the visible area
-    const viewportPadding = 2.0; // Small padding to ensure smooth transitions
+    const viewportPadding = isMobile ? 2.0 : 5.0; // Tighter culling on mobile but not too tight
     const maxX = viewportWidth + viewportPadding;
     const maxY = viewportHeight + viewportPadding;
 
-    // Check if particle is outside viewport bounds
-    const renderX = state.positions[i3] ?? 0;
-    const renderY = state.positions[i3 + 1] ?? 0;
+    // Check if particle is outside viewport bounds using base positions
+    const baseX = state.positions[i3] ?? 0;
+    const baseY = state.baseY[i] ?? 0;  // Use base Y without scroll offset
 
     // For Y-axis, we need to consider that particles flow with scroll
     // When scrolling down (positive velocity), particles move up relatively to viewport
@@ -730,29 +1071,29 @@ export function stepParticleState(
     let needsRespawn = false;
     let respawnEdge = 0;
 
-    if (renderY > maxY) {
+    if (baseY > maxY) {
       // Particle exited bottom
       needsRespawn = true;
       respawnEdge = scroll.velocity >= 0 ? 0 : 2; // Bias respawn edge based on scroll direction
-    } else if (renderY < -maxY) {
+    } else if (baseY < -maxY) {
       // Particle exited top
       needsRespawn = true;
       respawnEdge = scroll.velocity <= 0 ? 2 : 0; // Bias respawn edge based on scroll direction
-    } else if (renderX > maxX) {
+    } else if (baseX > maxX) {
       // Particle exited right
       needsRespawn = true;
       respawnEdge = 3; // Respawn at left
-    } else if (renderX < -maxX) {
+    } else if (baseX < -maxX) {
       // Particle exited left
       needsRespawn = true;
       respawnEdge = 1; // Respawn at right
     }
 
     if (needsRespawn) {
-      respawnParticleAtEdge(i, state, viewport, screenWidth, respawnEdge, scrollOffsetY);
+      respawnParticleAtEdge(i, state, viewport, screenWidth, respawnEdge);
     } else {
       // Only count particles that are actually visible in the viewport
-      const isVisible = renderX >= -maxX && renderX <= maxX && renderY >= -maxY && renderY <= maxY;
+      const isVisible = baseX >= -maxX && baseX <= maxX && baseY >= -maxY && baseY <= maxY;
       if (isVisible) {
         visibleParticleCount++;
       }
@@ -760,53 +1101,40 @@ export function stepParticleState(
 
   }
 
-  // Maintain particle density - if too many particles left the screen, respawn some
-  const minVisibleRatio = 0.65; // At least 65% of particles should be visible
-  const minVisibleCount = Math.floor(state.count * minVisibleRatio);
+  // REMOVED aggressive particle density maintenance to prevent popping
+  // Only respawn if critically low (less than 30% visible)
+  const criticalRatio = 0.3;
+  const criticalCount = Math.floor(state.count * criticalRatio);
 
   // Failsafe: If NO particles are visible, respawn them all immediately
   if (visibleParticleCount === 0 && state.count > 0) {
     for (let i = 0; i < state.count; i++) {
       const edge = Math.floor(Math.random() * 4);
-      respawnParticleAtEdge(i, state, viewport, screenWidth, edge, scrollOffsetY);
+      respawnParticleAtEdge(i, state, viewport, screenWidth, edge);
     }
     return; // Skip the rest of the logic
   }
 
-  if (visibleParticleCount < minVisibleCount) {
-    // Calculate how many particles to respawn
-    const particlesToRespawn = minVisibleCount - visibleParticleCount;
-
-    // Find particles that are far outside the viewport and respawn them
-    let respawned = 0;
-    for (let i = 0; i < state.count && respawned < particlesToRespawn; i++) {
+  // Only respawn if critically low
+  if (visibleParticleCount < criticalCount) {
+    // Only respawn particles that are VERY far away
+    for (let i = 0; i < state.count; i++) {
       const i3 = i * 3;
-      const renderX = state.positions[i3] ?? 0;
-      const renderY = state.positions[i3 + 1] ?? 0;
+      const particleX = state.positions[i3] ?? 0;
+      const particleY = state.baseY[i] ?? 0;
 
-      // Check if particle is far outside viewport (double the padding)
-      const farPadding = viewportWidth * 2;
-      if (Math.abs(renderX) > viewportWidth + farPadding ||
-          Math.abs(renderY) > viewportHeight + farPadding) {
-        // Respawn at a random edge, favoring top/bottom based on scroll
+      // Only respawn if VERY far outside viewport (3x the viewport size)
+      const veryFarPadding = viewportWidth * 3;
+      if (Math.abs(particleX) > viewportWidth + veryFarPadding ||
+          Math.abs(particleY) > viewportHeight + veryFarPadding) {
+        // Respawn at opposite edge
         let edge: number;
-        if (Math.abs(scroll.velocity) > 0.1) {
-          // Strong scrolling - mostly spawn at top/bottom
-          edge = scroll.velocity > 0 ? 0 : 2;
-          // 20% chance to spawn at sides for variety
-          if (Math.random() < 0.2) {
-            edge = Math.random() < 0.5 ? 1 : 3;
-          }
-        } else {
-          // Slow or no scrolling - distribute more evenly
-          const rand = Math.random();
-          if (rand < 0.4) edge = 0; // Top
-          else if (rand < 0.8) edge = 2; // Bottom
-          else if (rand < 0.9) edge = 1; // Right
-          else edge = 3; // Left
-        }
-        respawnParticleAtEdge(i, state, viewport, screenWidth, edge, scrollOffsetY);
-        respawned++;
+        if (particleX > viewportWidth + veryFarPadding) edge = 3; // Was far right, spawn left
+        else if (particleX < -viewportWidth - veryFarPadding) edge = 1; // Was far left, spawn right
+        else if (particleY > viewportHeight + veryFarPadding) edge = 0; // Was far bottom, spawn top
+        else edge = 2; // Was far top, spawn bottom
+        
+        respawnParticleAtEdge(i, state, viewport, screenWidth, edge);
       }
     }
   }

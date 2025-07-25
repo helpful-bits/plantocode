@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useAnimationOrchestrator, animationVariants } from '@/hooks/useAnimationOrchestrator';
 
 interface FAQItem {
   question: string;
@@ -15,116 +16,106 @@ interface FAQProps {
 
 export function FAQ({ items }: FAQProps) {
   const [openIndex, setOpenIndex] = useState<number | null>(null);
+  const sectionRef = useRef<HTMLElement>(null);
+  const { isInView } = useAnimationOrchestrator(sectionRef);
 
   return (
-    <section className="relative py-16 px-4 overflow-hidden" id="faq">
-
+    <section ref={sectionRef} className="relative py-16 px-4 overflow-hidden" id="faq">
       <div className="container mx-auto max-w-3xl relative z-10">
         <motion.div
           className="text-center mb-12"
-          initial={{ opacity: 0, y: 30 }}
-          transition={{ duration: 0.8, ease: 'easeOut' }}
-          viewport={{ once: true }}
-          whileInView={{ opacity: 1, y: 0 }}
+          initial="hidden"
+          animate={isInView ? "visible" : "hidden"}
+          variants={animationVariants.section}
         >
           <motion.h2
             className="text-3xl sm:text-4xl lg:text-5xl mb-4 text-primary-emphasis"
-            initial={{ opacity: 0, scale: 0.85 }}
-            transition={{
-              duration: 0.7,
-              delay: 0.1,
-              type: 'spring',
-              damping: 15,
-              stiffness: 100,
-            }}
-            viewport={{ once: true }}
-            whileInView={{ opacity: 1, scale: 1 }}
+            variants={animationVariants.item}
           >
             Frequently Asked Questions
           </motion.h2>
           <motion.p
             className="text-lg sm:text-xl max-w-2xl mx-auto leading-relaxed font-medium text-foreground/80"
-            initial={{ opacity: 0, y: 10 }}
-            transition={{ duration: 0.6, delay: 0.2, ease: 'easeOut' }}
-            viewport={{ once: true }}
-            whileInView={{ opacity: 1, y: 0 }}
+            variants={animationVariants.item}
           >
             Everything you need to know about Vibe Manager
           </motion.p>
         </motion.div>
 
         <motion.div
-          className="space-y-4"
-          initial={{ opacity: 0 }}
-          transition={{ duration: 0.5, delay: 0.3 }}
-          viewport={{ once: true }}
-          whileInView={{ opacity: 1 }}
+          className="space-y-4 p-2"
+          initial="hidden"
+          animate={isInView ? "visible" : "hidden"}
+          variants={{
+            visible: {
+              transition: {
+                staggerChildren: 0.06,
+                delayChildren: 0.2,
+              },
+            },
+          }}
         >
           {items.map((item, index) => (
             <motion.div
               key={index}
-              initial={{ opacity: 0, y: 30, scale: 0.95 }}
-              transition={{
-                duration: 0.6,
-                delay: index * 0.08,
-                type: 'spring',
-                damping: 20,
-                stiffness: 100,
+              variants={{
+                hidden: { opacity: 0, y: 20 },
+                visible: {
+                  opacity: 1,
+                  y: 0,
+                  transition: {
+                    duration: 0.4,
+                    ease: [0.25, 0.46, 0.45, 0.94],
+                  },
+                },
               }}
-              viewport={{ once: true, margin: '-50px' }}
+              className="faq-item"
               whileHover={{ scale: 1.02 }}
-              whileInView={{ opacity: 1, y: 0, scale: 1 }}
+              transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
             >
-              <GlassCard className="overflow-hidden will-change-transform">
+              <GlassCard className="overflow-hidden">
                 <motion.div
                   animate={{
                     backgroundColor: openIndex === index ? 'rgba(var(--primary-rgb), 0.02)' : 'transparent',
                   }}
-                  transition={{ duration: 0.4, ease: 'easeInOut' }}
+                  transition={{ duration: 0.3, ease: 'easeInOut' }}
                 >
                   <motion.button
-                    className="w-full p-6 text-left flex justify-between items-center transition-all duration-300 group relative"
-                    whileTap={{ scale: 0.98 }}
+                    className="w-full p-6 text-left flex justify-between items-center transition-colors duration-200 group relative"
                     onClick={() => setOpenIndex(openIndex === index ? null : index)}
+                    whileTap={{ scale: 0.98 }}
                   >
-                    <motion.span
-                      animate={{
-                        color: openIndex === index ? 'hsl(var(--primary))' : 'currentColor',
-                      }}
-                      className="font-semibold text-lg text-foreground pr-4 transition-colors duration-300"
+                    <span
+                      className={`font-semibold text-lg text-foreground pr-4 transition-colors duration-200 ${
+                        openIndex === index ? 'text-primary' : ''
+                      }`}
                     >
                       {item.question}
-                    </motion.span>
+                    </span>
                     <motion.div
+                      className="flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center relative"
                       animate={{
                         scale: openIndex === index ? 1.1 : 1,
-                        rotate: openIndex === index ? 180 : 0,
+                        rotate: openIndex === index ? 180 : 0
                       }}
-                      className="flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center relative"
                       transition={{
                         duration: 0.4,
-                        type: 'spring',
+                        type: "spring",
                         damping: 15,
                         stiffness: 200,
                       }}
                     >
-                      <motion.div
-                        animate={{
-                          background: openIndex === index
-                            ? 'linear-gradient(135deg, hsl(var(--primary) / 0.3), hsl(var(--primary) / 0.4))'
-                            : 'linear-gradient(135deg, hsl(var(--primary) / 0.05), hsl(var(--primary) / 0.1))',
-                        }}
-                        className="absolute inset-0 rounded-full"
-                        transition={{ duration: 0.3 }}
+                      <div
+                        className={`absolute inset-0 rounded-full transition-all duration-300 ${
+                          openIndex === index
+                            ? 'bg-gradient-to-br from-primary/30 to-primary/40'
+                            : 'bg-gradient-to-br from-primary/5 to-primary/10'
+                        }`}
                       />
-                      <motion.div
-                        animate={{
-                          borderColor: openIndex === index
-                            ? 'hsl(var(--primary) / 0.4)'
-                            : 'hsl(var(--primary) / 0.15)',
-                        }}
-                        className="absolute inset-0 rounded-full ring-1"
-                        transition={{ duration: 0.3 }}
+                      <div
+                        className={`absolute inset-0 rounded-full ring-1 transition-colors duration-300 ${
+                          openIndex === index ? 'ring-primary/40' : 'ring-primary/15'
+                        }`}
                       />
                       <svg
                         className="w-5 h-5 relative z-10 text-primary"
@@ -145,61 +136,43 @@ export function FAQ({ items }: FAQProps) {
                   <AnimatePresence mode="wait">
                     {openIndex === index && (
                       <motion.div
+                        initial={{ height: 0, opacity: 0 }}
                         animate={{
                           height: 'auto',
                           opacity: 1,
                           transition: {
                             height: {
-                              duration: 0.4,
-                              ease: [0.23, 1, 0.32, 1],
+                              duration: 0.3,
+                              ease: [0.25, 0.46, 0.45, 0.94],
                             },
                             opacity: {
-                              duration: 0.3,
+                              duration: 0.25,
                               delay: 0.1,
                               ease: 'easeOut',
                             },
                           },
                         }}
-                        className="overflow-hidden"
                         exit={{
                           height: 0,
                           opacity: 0,
                           transition: {
                             height: {
-                              duration: 0.3,
-                              ease: [0.23, 1, 0.32, 1],
+                              duration: 0.25,
+                              ease: [0.25, 0.46, 0.45, 0.94],
                             },
                             opacity: {
-                              duration: 0.2,
+                              duration: 0.15,
                               ease: 'easeIn',
                             },
                           },
                         }}
-                        initial={{ height: 0, opacity: 0 }}
+                        className="overflow-hidden"
                       >
-                        <motion.div
-                          animate={{
-                            y: 0,
-                            transition: {
-                              duration: 0.4,
-                              delay: 0.1,
-                              ease: [0.23, 1, 0.32, 1],
-                            },
-                          }}
-                          className="px-6 pb-6 text-foreground leading-relaxed"
-                          exit={{
-                            y: -10,
-                            transition: {
-                              duration: 0.2,
-                              ease: 'easeIn',
-                            },
-                          }}
-                          initial={{ y: -10 }}
-                        >
+                        <div className="px-6 pb-6 text-foreground leading-relaxed">
                           <div className="border-l-2 border-primary/20 pl-4">
                             {item.answer}
                           </div>
-                        </motion.div>
+                        </div>
                       </motion.div>
                     )}
                   </AnimatePresence>

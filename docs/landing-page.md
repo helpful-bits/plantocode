@@ -1,427 +1,85 @@
 ---
-title: "Vibe Manager | AI-Powered Context Curation"
-description: "An AI coding assistant that seamlessly integrates internet knowledge with your codebase to create actionable implementation plans."
+title: "Vibe Manager | Stop Babysitting Your AI Coder"
+description: "The AI coding assistant that acts as a middle-manager for your LLMs, curating the perfect context so they can't get lost. Built by a developer, for developers, from the trenches."
 imageUrl: "https://vibe-manager-media.s3.amazonaws.com/og-image.png"
-keywords: ["AI coding assistant", "codebase analysis", "implementation plans", "developer tools", "code context", "file discovery"]
+keywords: ["AI coding assistant", "context curation", "vibe coding", "multi-model AI", "codebase analysis", "implementation plans", "developer tools", "local AI", "private AI coding", "Claude Code", "Gemini"]
 ---
 
-# Vibe Manager - AI-Powered Context Curation for Large Codebases
+# Vibe Manager: The Middle Manager Your AI Coding Assistant Desperately Needs
 
-## A Desktop Tool for Finding Relevant Files in Complex Projects
+You know the feeling. You're "vibe coding" with an AI agent, the ideas are flowing, and it's magical... until it's not. The agent gets hopelessly lost in your large codebase, starts ignoring instructions, hallucinates APIs, and writes code that feels like it belongs in a different project entirely.
 
-Vibe Manager is an AI coding assistant that seamlessly integrates current internet knowledge with your codebase to create actionable implementation plans. It uses sophisticated multi-stage workflows to find relevant files, provides architecture-specific integration guidance, and enables multi-model plan generation with intelligent merging.
+That magic moment is gone. Now you're a babysitter.
 
-## The Problem We Solve
+You find yourself writing novels of documentation just to keep the agent on track. You create endless rule lists, turning your creative flow into a tedious game of "Simon Says." This isn't what AI-assisted development was supposed to be.
 
-AI coding assistants often struggle with large codebases because:
+I built Vibe Manager because I hit that wall. Hard. My own project was a mess of bugs and instability because the agents I used couldn't see the big picture. I realized agents don't need more rules; they need a competent middle manager. They need someone to find the *exact* files, understand the *real* context, and give them a crystal-clear, specific task.
 
-- Token limits prevent including all relevant files
-- Manual file selection is time-consuming and error-prone
-- AI costs are unclear until after you've spent the money
-- Generic prompts don't work well for specialized domains
-- Outdated training data misses current APIs and best practices
-- No connection between internet documentation and your actual code
-- Single AI model perspective can miss important implementation details
-- Unclear task descriptions lead to poor AI results
+Vibe Manager is that middle manager. You're the CEO with the vision. Vibe Manager does the logistical heavy lifting. The LLMs are your agents in the field, executing perfectly curated plans.
 
-Vibe Manager addresses these issues through voice dictation, task refinement, automated file discovery, web research integration, multi-model plan generation, transparent pricing, and sophisticated error recovery mechanisms.
+## How It Works: Giving Your AI a Brain (and a Map)
 
-## How It Works
+Vibe Manager doesn't just throw files at an LLM. It's a multi-stage workflow engine that thinks like a senior developer. It's the app I built to fix my own development workflow, and it's how this very app and website were created.
 
-### Task Input and Refinement
+#### Step 1: The Briefing (Task Input & Refinement)
+A great plan starts with a clear goal. We make it effortless to capture yours.
+*   **Voice Dictation:** Just talk. Capture your stream of consciousness, technical thoughts, and complex logic faster than you can type.
+*   **AI-Powered Text Improvement:** Our AI refines your raw thoughts into a polished, clear task description, preserving all your formatting and intent while removing the fluff.
 
-Clear, detailed task descriptions are crucial for successful implementation plans:
+#### Step 2: The Recon Mission (Finding What Matters)
+This is where Vibe Manager earns its keep. Forget vector databases. We rely on something far superior: the raw intelligence of modern LLMs. It's faster, more accurate, and doesn't require you to constantly re-index your project. Our **File Finder Workflow** acts like a senior dev dropped into your project, using a 4-stage process (Regex Filtering → AI Content Assessment → Extended Path Finding → Path Correction) to find only the essential files.
 
-#### Voice Dictation
-- Quickly capture thoughts using voice input
-- Accurate transcription of technical terms
-- Maintains natural flow of ideas
-- Faster than typing for complex explanations
+#### Step 3: Phoning a Friend (Deep Research Workflow)
+Your codebase doesn't exist in a vacuum, but your LLM's knowledge is frozen in time. We fix that. I faced this exact problem needing to integrate FeatureBase for user feedback. I told Vibe Manager: *"Integrate FeatureBase for user feedback, put it in a new tab, and make it work with my existing auth."* It understood my code, figured out the right questions to ask the internet, and came back with a perfect, up-to-date implementation plan. It just works.
 
-#### Text Improvement
-- AI refines task descriptions for clarity
-- Preserves your formatting and structure
-- Removes redundancy while keeping all important details
-- Maintains original language
+#### Step 4: The Board Meeting (Multi-Model Plan Synthesis)
+One model's genius is another's blind spot.
+*   **Multi-Model Generation:** We generate implementation plans from multiple top-tier models (Gemini, Claude, DeepSeek, Grok, etc.) simultaneously.
+*   **Intelligent Merging:** Then, our architect AI merges them, combining the best ideas, filling in the gaps, and creating a single, superior plan. You take this to your agent of choice (we love Claude Code's sub-agents). You're the CEO, setting the vision. We handle the management.
 
-The clearer your task description, the better the AI understands your needs and generates accurate implementation plans.
+## You Are in Control. Always.
 
-### Two Distinct Workflows
+This isn't a black box. Your code and your data are yours. Period.
 
-Vibe Manager provides two separate workflows for different purposes:
+*   **Your Code Stays Local:** The app runs on your desktop. Your code never leaves your machine except when you a-ok it to be sent directly to the LLM providers. It lives in your Git repo, where it belongs.
+*   **Your Data Stays Local:** All sessions, task descriptions, and file selections are stored in a local SQLite database on your computer. We don't use cloud-based vector databases.
+*   **Full Customization:** You are the CEO. You can override *any* system prompt for any task to fit your project's specific needs. You can even customize the text for the "Copy Button" instructions in the implementation plans.
 
-### 1. File Finder Workflow (4 Stages)
-
-Analyzes your local codebase to find relevant files:
+## FAQ: "Alright, but apart from the files, what has Vibe Manager ever done for us?"
 
-#### Stage 1: Regex File Filtering
-- AI creates targeted pattern groups for specific functionality
-- Each group focuses on one aspect (components, APIs, utilities)
-- Uses path patterns, content patterns, and exclusions
-- Groups combine with OR logic for comprehensive coverage
-
-#### Stage 2: AI File Relevance Assessment
-- AI reads actual file contents to verify relevance
-- Prioritizes files requiring direct modification
-- Identifies core files for understanding the task
-- Returns only truly relevant files
+*   **Q:** "So it just finds files?"
+*   **A:** "Well, yes, it finds the *perfect* set of files. But also..."
+*   **Q:** "What else?"
+*   **A:** "It integrates up-to-the-minute web documentation with your codebase. And it generates implementation plans from multiple AI models, then merges them into a single, bulletproof strategy."
+*   **Q:** "Okay, but apart from finding files, doing web research, and creating merged multi-model plans...?"
+*   **A:** "It keeps your code completely private on your local machine. And lets you customize every single prompt. And it has voice dictation so you can talk instead of type. And it runs all its workflows in parallel so you never have to wait."
+*   **Q:** "Alright, I'll grant you that the file finding, web research, multi-model plans, privacy, custom prompts, voice dictation, and parallel workflows are nice. But apart from ALL THAT, what has Vibe Manager ever done for us?"
+*   **A:** "It gave you your weekend back."
 
-#### Stage 3: Extended Path Finding
-- Enhanced path finder for complex implementation tasks
-- Considers dependencies, imports, and interconnected components
-- Includes supporting utilities, types, and configurations
-- Balances thoroughness with relevance
+## Why This Isn't Just Another AI Wrapper
 
-#### Stage 4: Path Correction
-- Validates that all selected file paths exist
-- Attempts to correct any invalid paths
-- Removes any paths that cannot be resolved
-
-### 2. Deep Research Workflow (2 Stages)
-
-Seamlessly integrates internet knowledge with your codebase for actionable implementation:
-
-#### Stage 1: Web Search Prompts Generation
-- Analyzes task to detect NEW feature implementation vs EXISTING code modification
-- For NEW features: Creates integration research prompts with your exact architecture
-- For EXISTING code: Generates verification requests with actual code snippets
-- Maximum 6 targeted prompts for most relevant integrations
-- Includes your framework, language, and existing patterns in searches
-
-#### Stage 2: Web Search Execution
-- For NEW features: Complete integration guides with:
-  - Installation commands for your architecture
-  - Configuration setup and environment variables
-  - Code placement following your patterns
-  - Working examples that fit your codebase
-- For EXISTING code: Verification results showing:
-  - Whether current approach is correct
-  - Better methods for your specific goal
-  - Modern alternatives available
-- Returns real URLs from actual searches
-
-The Deep Research workflow transforms generic AI suggestions into precise, actionable plans by combining current internet knowledge with your actual code structure.
-
-### 3. Implementation Plan Generation
-
-Create comprehensive implementation plans that don't miss important details:
-
-#### Single Model Plans
-- BOLD EXPERT architect analyzes your entire codebase
-- Produces XML-structured plans with specific file operations
-- Includes exploration commands and bash commands
-- No backward compatibility - uses modern approaches only
-
-#### Multi-Model Plans
-- Generate plans from multiple AI models simultaneously
-- Each model brings different perspectives and strengths
-- Compare approaches from o3, o4-mini, DeepSeek, and Gemini
-- Different models may catch different architectural considerations
-
-#### Plan Merging
-- Deep analysis of all source plans to extract EVERY valuable insight
-- Preserves ALL technical details from every plan
-- Identifies gaps individual plans missed and adds them
-- Creates a PERFECT merged plan that's better than any individual plan
-- Optional custom merge instructions guide the synthesis
-
-### Performance Characteristics
-
-- Hierarchical filtering: Inexpensive regex first, then AI analysis
-- Parallel processing: Multiple stages can run simultaneously
-- Configurable job concurrency for optimal performance
-- Caching: File reads and directory structures are cached between stages
-- Real-time streaming: AI responses stream as they're generated
-- Typical runtime: Most workflows complete within seconds to minutes depending on project size
-- Automatic retry mechanism for transient failures
-
-## Parallel Execution - Power User Productivity
-
-### Seamless Multitasking
-Vibe Manager enables true parallel productivity - every feature can run simultaneously:
-
-#### Parallel Workflows
-- Run multiple File Finder workflows for different tasks
-- Execute Deep Research while generating implementation plans
-- Generate plans from multiple AI models simultaneously
-- Process different projects or features in parallel
-
-#### Non-Blocking Operations
-- Start a workflow and immediately begin another
-- UI remains responsive during all operations
-- Background jobs run independently
-- No waiting - always something productive to do
-
-#### Productivity Benefits
-- Power users can manage multiple features simultaneously
-- Teams can work on different aspects concurrently
-- Dramatically reduces overall development time
-- Maximizes value from AI assistant time
-
-## Customizable System Prompts
-
-### Prompt Configuration
-
-Vibe Manager allows customization of AI prompts at three levels:
-
-#### 1. Server Defaults
-- Pre-configured prompts for each workflow stage
-- Configured for different AI models
-- Updated based on performance data
-
-#### 2. Project Overrides
-- Customize prompts for specific projects
-- Add domain-specific instructions
-- Define coding standards and conventions
-
-#### 3. Runtime Composition
-- Dynamic content injection during execution
-- Placeholders for file contents and context
-- Model-specific adjustments
-
-### Available Placeholders
-
-Your prompts can include:
-- {{project_context}}: Project-specific instructions
-- {{file_contents}}: Selected file contents (no truncation)
-- {{directory_tree}}: Complete project structure
-- {{custom_instructions}}: User-defined requirements
-- {{task_type}}: Current workflow stage
-- {{current_date}}: For up-to-date searches
-
-## Transparent Cost Tracking
-
-### AI Usage Costs
-
-Vibe Manager tracks and displays AI costs:
-
-#### Server-Side Cost Calculation
-- Costs calculated using current provider pricing
-- Validated against provider-reported usage
-- Tracks input, output, and cached tokens separately
-
-#### Real-Time Cost Display
-- Estimated costs shown during workflow execution
-- Final costs updated after completion
-- Per-stage breakdown available
-
-#### Cost Protection
-- Validation to prevent calculation errors
-- Configurable spending limits
-- Detailed usage history
-
-#### Supported AI Models
-- **OpenAI**: GPT-4.1, GPT-4.1 Mini, o3, o4-mini
-- **Anthropic**: Claude 4 Sonnet, Claude 4 Opus, Claude 3.7 Sonnet
-- **Google**: Gemini 2.5 Pro, Gemini 2.5 Flash
-- **DeepSeek**: DeepSeek R1
-- **xAI**: Grok models
-- **OpenRouter**: Fallback provider and access to additional models
-- Unified cost tracking across all providers
-- Provider-specific optimizations where available
-- Real-time streaming responses
-
-## Built for Reliability and Performance
-
-### Workflow Reliability
-- Automatic recovery from interruptions
-- Concurrent processing for efficiency
-- Failure handling with retry options
-- Stage-level retry mechanism for failed workflows
-- Sophisticated error recovery strategies
-- Real-time streaming of AI responses
-- Automatic fallback to OpenRouter when primary provider APIs fail
-
-### Privacy-First Architecture
-- Files remain on your local machine
-- Server only processes AI requests
-- No code uploaded to external services
-- Works offline for file browsing and session management
-- Cross-platform: Windows, macOS, Linux
-- Local SQLite database for desktop sessions
-
-### Security Features
-- OAuth 2.0 authentication (Google, GitHub, Microsoft, Apple)
-- JWT token authentication with binding
-- Built-in cost protection mechanisms
-- Secure API communication
-- Encrypted storage for sensitive data
-
-## Context Management - The Key to LLM Success
-
-### Why Context Matters
-- LLMs perform best with precise, relevant context
-- Token limits mean every file must count
-- Irrelevant files waste tokens and confuse AI
-- The right context transforms generic suggestions into working code
-
-### Persistent Context System
-- **Session Persistence**: Complete work contexts saved locally
-- **Quick Reuse**: Instantly reload previous file selections and task descriptions
-- **History Tracking**: Access all past contexts for similar tasks
-- **Incremental Refinement**: Build on previous selections without starting over
-
-### Context Components Saved
-- Selected files and their full contents
-- Task descriptions and refinements
-- Deep Research findings
-- Directory structure snapshots
-- Custom instructions and settings
-- Previous implementation plans
-
-### Efficiency Benefits
-- **Instant Context Loading**: Resume work in seconds, not minutes
-- **Context Reuse**: Apply successful contexts to similar tasks
-- **Iterative Development**: Refine context across multiple sessions
-- **Team Knowledge Sharing**: Export contexts for colleagues
-
-## Developer Experience
-
-### Session Management
-- Save and restore complete work contexts
-- Project-specific configurations
-- Full history of file selections and tasks
-- Export/import for team collaboration
-
-### File Selection Interface
-- Search and filter capabilities
-- Batch selection operations
-- AI-powered file discovery
-- Visual status indicators
-
-### Background Processing
-- Non-blocking interface during workflows
-- Real-time progress tracking
-- Workflow cancellation support
-- Error reporting with details
-- Job queue system with configurable concurrency
-- Live streaming of LLM responses
-
-### Additional Enterprise Features
-- Billing dashboard with comprehensive analytics
-- Usage tracking and reporting
-- Automatic database maintenance and optimization
-- Featurebase integration for feature requests
-- Admin controls for team management
-
-## Key Differentiators
-
-### 1. Three Core Capabilities
-File Finder (4 stages) for code analysis, Deep Research (2 stages) for web integration, and multi-model plan generation with merging.
-
-### 2. Efficient Processing
-Hierarchical filtering reduces costs by using inexpensive operations first.
-
-### 3. Cost Transparency
-Real-time cost tracking with server-validated billing and detailed token usage.
-
-### 4. Customizable Prompts
-Three-level prompt system allows project-specific configurations.
-
-### 5. Local Privacy
-Code stays on your machine - only AI requests go to external services.
-
-### 6. Comprehensive Implementation Plans
-Generate plans from multiple AI models and merge them to ensure nothing is missed. Each model contributes unique insights.
-
-### 7. Context Persistence and Reuse
-Complete work contexts saved locally with full history. Instantly reload previous selections and task descriptions for efficient iterative development.
-
-### 8. True Parallel Execution
-Every feature runs independently and simultaneously. Power users can execute multiple workflows, generate plans from different models, and process various tasks without waiting.
-
-## Target Users
-
-### Senior Developers
-- Working with large, complex codebases
-- Onboarding to unfamiliar projects
-- Need accurate context for AI assistants
-- Power users managing multiple features simultaneously
-
-### Development Teams
-- Using AI coding assistants regularly
-- Facing token limit constraints
-- Want to control AI costs
-- Need consistent file selection
-- Teams working on parallel features
-
-### Organizations
-- Require transparent cost tracking
-- Need customizable workflows
-- Want code to remain local
-- Value reliable tooling
-- Teams needing maximum productivity
-
-## Supported Projects & Requirements
-
-### Programming Languages & File Types
-- All major programming languages supported
-- Web technologies: HTML, CSS, JavaScript frameworks
-- Configuration files: JSON, YAML, XML, TOML, etc.
-- Documentation: Markdown and text files
-- Excludes: Binary files, compiled code, node_modules, .git
-
-### System Requirements
-- Operating Systems: macOS, Windows, Linux
-- Internet: Required for AI operations and authentication
-- Storage: Local SQLite database for sessions
-
-### Privacy & Security
-- All code remains on your machine
-- No file uploads to external servers
-- Server only handles AI API requests
-- Local session storage
-
-### Usage Limitations
-- Rate limit: 100 requests per minute
-- Text files only (binaries excluded)
-- Export via copy/paste to AI assistants
+1.  **Three-Pronged Attack:** Code Analysis (File Finder) + Web Intelligence (Deep Research) + Architectural Synthesis (Multi-Model Merging). It's a complete strategy.
+2.  **Actually Efficient:** We don't brute-force your wallet. Smart, cheap filtering runs before the expensive AI gets involved.
+3.  **No-Nonsense Cost Tracking:** See costs in real-time. No magic numbers.
+4.  **You're in Control:** Customize everything. Your project, your rules.
+5.  **Your Code Stays Yours:** Local-first. Privacy-first. Period.
+6.  **AI Committee, Not a Lone Wolf:** We merge plans from multiple models because a team of experts is better than one.
+7.  **Never Start from Scratch:** Persistent context means you can pick up right where you left off, instantly.
+8.  **Truly Parallel:** Built for the impatient developer. Run everything at once. Never wait.
 
 ## Getting Started
 
-### Installation
-1. Download for your platform
-2. Authenticate with OAuth 2.0 (Google, GitHub, Microsoft, Apple)
-3. Select your project directory
-4. Configure AI provider preferences
-
-### First Workflow
-1. Describe your task using:
-   - Text input
-   - Voice dictation for quick thought capture
-   - AI text improvement to clarify and refine
-2. (Optional) Run Deep Research to gather current implementation patterns
-3. Run File Finder workflow to discover relevant files in your codebase
-4. Monitor costs in real-time
-5. Generate implementation plans:
-   - Single plan from one AI model, OR
-   - Multiple plans from different models (o3, o4-mini, DeepSeek, Gemini)
-   - Merge multiple plans into one comprehensive plan
-6. Review and use the implementation plan
-7. View final cost summary
-
-## Summary
-
-Vibe Manager helps with AI-assisted development by:
-
-- Finding relevant files through File Finder workflow (4 intelligent stages)
-- Integrating current internet knowledge with your codebase through Deep Research
-- Creating implementation plans from single or multiple AI models
-- Merging multiple plans to ensure comprehensive coverage
-- Running all features in parallel for maximum productivity
-- Persisting and reusing context across sessions for efficiency
-- Allowing customized prompts for specific domains
-- Displaying costs during execution with real-time tracking
-- Keeping code on local machine with enterprise-grade security
-- Voice dictation for natural task input
-- AI-powered task refinement for clarity
-- Sophisticated error recovery and retry mechanisms
-- Real-time streaming of AI responses
-- Comprehensive billing and usage analytics
-
----
+1.  **Download and Install:** Get the app for your OS (Windows, macOS, Linux).
+2.  **Authenticate:** Log in with Google, GitHub, Microsoft, or Apple.
+3.  **Select Your Project:** Point it to your local Git repository.
+4.  **Describe Your Task:** Use your voice or keyboard. Let the AI refine it.
+5.  **Curate Context:** Run the File Finder and/or Deep Research workflows.
+6.  **Generate & Merge Plans:** Create plans from your favorite models and merge them.
+7.  **Execute:** Copy the final plan into your AI agent of choice and watch it build correctly the first time.
 
 ## Pricing
+
+Pricing should be simple. No subscriptions, no tiers, no nonsense. You get free credits to start. If you like it, you buy more. That's it.
 
 ### Free Credits
 - New users receive free credits (30-day expiration)
@@ -445,16 +103,6 @@ Vibe Manager helps with AI-assisted development by:
 - Contact for details
 
 No subscriptions. No hidden fees. Pay only for AI usage.
-
-## Why Vibe Manager?
-
-Vibe Manager is the result of extensive development to solve real problems developers face when working with AI coding assistants on large codebases. Every feature has been battle-tested and refined based on actual usage:
-
-- **Proven Technology**: All features are fully implemented and production-ready
-- **Real Cost Savings**: Hierarchical filtering and smart caching reduce AI costs by up to 70%
-- **Time Efficiency**: Parallel execution and context persistence save hours of manual work
-- **Enterprise Ready**: Security features, admin controls, and usage analytics for teams
-- **Continuous Improvement**: Regular updates based on user feedback through Featurebase integration
 
 ---
 

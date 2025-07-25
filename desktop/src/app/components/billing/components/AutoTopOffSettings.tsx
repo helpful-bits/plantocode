@@ -91,6 +91,22 @@ export function AutoTopOffSettings({ className }: AutoTopOffSettingsProps) {
           ? `Auto top-off enabled: ${formatUsdCurrency(parseFloat(updatedSettings.amount || "0"))} when balance falls below ${formatUsdCurrency(parseFloat(updatedSettings.threshold || "0"))}`
           : "Auto top-off has been disabled",
       });
+      
+      // Trigger billing data refresh to update current balance
+      window.dispatchEvent(new CustomEvent('billing-data-updated'));
+      
+      // If auto top-off was enabled, it may trigger immediately
+      // Refresh again after a delay to catch the updated balance
+      if (enabled) {
+        setTimeout(() => {
+          window.dispatchEvent(new CustomEvent('billing-data-updated'));
+        }, 3000); // 3 second delay
+        
+        // And once more after 6 seconds to be sure
+        setTimeout(() => {
+          window.dispatchEvent(new CustomEvent('billing-data-updated'));
+        }, 6000);
+      }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Failed to update auto top-off settings";
       setError(errorMessage);
@@ -198,6 +214,9 @@ export function AutoTopOffSettings({ className }: AutoTopOffSettingsProps) {
                         title: "Settings Updated",
                         message: "Auto top-off has been disabled",
                       });
+                      
+                      // Trigger billing data refresh to update current balance
+                      window.dispatchEvent(new CustomEvent('billing-data-updated'));
                     } catch (err) {
                       const errorMessage = err instanceof Error ? err.message : "Failed to update auto top-off settings";
                       setError(errorMessage);
