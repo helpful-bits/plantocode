@@ -410,12 +410,16 @@ impl JobProcessor for RegexFileFilterProcessor {
             .and_then(|u| u.cost)
             .unwrap_or(0.0);
 
+        // Check if no files were found and terminate workflow early
+        if filtered_files.is_empty() {
+            let error_msg = "No files found matching the task description. The task description may be too vague or doesn't match any files in the codebase. Please provide more specific information about what you're looking for, such as:\n\n• Specific file names, directories, or patterns\n• Technology stack or programming languages involved\n• Functionality or features you want to modify\n• Error messages or specific code snippets you're working with";
+            
+            info!("Terminating workflow early: {}", error_msg);
+            return Ok(JobProcessResult::failure(job.id.clone(), error_msg.to_string()));
+        }
+
         // Return success result with filtered files as JSON, including token usage
-        let summary = if filtered_files.len() > 0 {
-            format!("Found {} files", filtered_files.len())
-        } else {
-            "No matching files found".to_string()
-        };
+        let summary = format!("Found {} files", filtered_files.len());
 
         let result = JobProcessResult::success(
             job.id.clone(),

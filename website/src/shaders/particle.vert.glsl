@@ -21,8 +21,8 @@ varying float vNearestAngle;
 void main() {
   vec3 pos = position;
   
-  // Apply scroll offset directly in GPU
-  pos.y += uScrollOffsetY;
+  // Scroll offset is already applied in the physics, don't apply it again
+  // pos.y += uScrollOffsetY;
   
   // Removed GPU turbulence - it was causing vibration
   
@@ -54,11 +54,10 @@ void main() {
   vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
   gl_Position = projectionMatrix * mvPosition;
   
-  // Dynamic point size with velocity and scroll-based enhancement
+  // Dynamic point size with velocity enhancement only - NO scroll size changes
   float velocityGlow = 1.0 + length(aVelocity) * 0.5;
-  float scrollSizeEffect = 1.0 - uScrollY * 0.3; // Particles shrink as you scroll
   float gameSizeMultiplier = 0.8 + currentSize * 1.2;
-  gl_PointSize = 70.0 * gameSizeMultiplier * velocityGlow * scrollSizeEffect / length(mvPosition.xyz) * (0.6 + aRandom * 0.4);
+  gl_PointSize = 70.0 * gameSizeMultiplier * velocityGlow / length(mvPosition.xyz) * (0.6 + aRandom * 0.4);
   
   // Teal color variations with velocity glow
   float colorIntensity = 1.0 + length(aVelocity) * 0.3;
@@ -76,19 +75,22 @@ void main() {
       vColor = vec3(0.4, 0.7, 0.6) * colorIntensity;
     }
   } else {
-    // Light mode - darker teal variations
+    // Light mode - optimized for additive blending
+    // Using lower values that will add up nicely on white background
     if (aGameRole < 1.0) {
-      // Chasers: Deep teal
-      vColor = vec3(0.1, 0.5, 0.45) * colorIntensity;
+      // Chasers: Vibrant teal (lower values for additive)
+      vColor = vec3(0.05, 0.25, 0.23) * colorIntensity;
     } else if (aGameRole < 2.0) {
-      // Runners: Medium dark teal
-      vColor = vec3(0.15, 0.4, 0.38) * colorIntensity;
+      // Runners: Medium teal (lower values for additive)
+      vColor = vec3(0.075, 0.2, 0.19) * colorIntensity;
     } else {
-      // Neutral: Soft teal
-      vColor = vec3(0.2, 0.45, 0.42) * colorIntensity;
+      // Neutral: Soft teal (lower values for additive)
+      vColor = vec3(0.1, 0.225, 0.21) * colorIntensity;
     }
   }
   
-  float alphaBoost = uIsDark > 0.5 ? 1.0 : 1.8;
+  // Optimized alpha for performance
+  // Light mode now uses lower alpha since we're using additive blending
+  float alphaBoost = uIsDark > 0.5 ? 1.0 : 0.6;
   vAlpha = (0.5 + aRandom * 0.4) * (0.7 + currentSize * 0.6) * alphaBoost;
 }

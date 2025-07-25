@@ -104,7 +104,9 @@ export function ParticleScene({ count = 800, isReducedMotion = false }: Particle
       fragmentShader,
       transparent: true,
       depthWrite: false,
-      blending: isDark ? THREE.AdditiveBlending : THREE.NormalBlending,
+      // Use additive blending for both modes - much more performant
+      // We'll adjust colors/opacity in the shader to maintain visual appeal
+      blending: THREE.AdditiveBlending,
     });
   }, [isDark]);
 
