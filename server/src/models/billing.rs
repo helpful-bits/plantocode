@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use crate::stripe_types;
+use crate::error::AppError;
 
 // Invoice-related models
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -189,4 +190,33 @@ pub struct UnifiedCreditHistoryResponse {
     pub entries: Vec<UnifiedCreditHistoryEntry>,
     pub total_count: i64,
     pub has_more: bool,
+}
+
+// Fee tier models
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FeeTier {
+    pub min: bigdecimal::BigDecimal,
+    pub max: Option<bigdecimal::BigDecimal>,
+    pub fee_rate: bigdecimal::BigDecimal,
+    pub label: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FeeTierConfig {
+    pub tiers: Vec<FeeTier>,
+}
+
+impl FeeTierConfig {
+    pub fn get_tier_for_amount(&self, amount: &bigdecimal::BigDecimal) -> Result<&FeeTier, AppError> {
+        // Find the tier where amount >= min and (max is None or amount < max)
+        self.tiers.iter()
+            .find(|tier| {
+                amount >= &tier.min && tier.max.as_ref().map_or(true, |max| amount < max)
+            })
+            .ok_or_else(|| AppError::Configuration(
+                format!("No fee tier found for amount: {}", amount)
+            ))
+    }
 }

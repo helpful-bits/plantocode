@@ -5,11 +5,13 @@ import type {
   UnifiedCreditHistoryResponse,
   UnifiedCreditHistoryEntry,
   PaymentMethodsResponse,
-  BillingPortalResponse
+  BillingPortalResponse,
+  FeeTier,
+  FeeTierConfig
 } from '@/types/tauri-commands';
 
 // Credit types
-export type { CreditTransactionEntry, UnifiedCreditHistoryResponse, UnifiedCreditHistoryEntry };
+export type { CreditTransactionEntry, UnifiedCreditHistoryResponse, UnifiedCreditHistoryEntry, FeeTier, FeeTierConfig };
 
 // Credit actions
 export async function getCreditDetails(): Promise<CreditDetailsResponse> {
@@ -68,8 +70,8 @@ export interface AutoTopOffSettings {
 
 export interface UpdateAutoTopOffRequest {
   enabled: boolean;
-  threshold?: number;
-  amount?: number;
+  threshold?: string | undefined;
+  amount?: string | undefined;
 }
 
 export async function getAutoTopOffSettings(): Promise<AutoTopOffSettings> {
@@ -139,6 +141,10 @@ export async function revealFileInExplorer(filePath: string): Promise<void> {
   return await invoke<void>('reveal_file_in_explorer_command', { filePath });
 }
 
+// Fee tier actions
+export async function getCreditPurchaseFeeTiers(): Promise<FeeTierConfig> {
+  return await invoke<FeeTierConfig>('get_credit_purchase_fee_tiers_command');
+}
 
 // Payment method actions
 export async function getPaymentMethods(): Promise<PaymentMethodsResponse> {

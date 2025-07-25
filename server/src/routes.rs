@@ -46,6 +46,7 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig, strict_rate_limiter: RateL
                     .route("/details", web::get().to(handlers::billing::credit_handlers::get_credit_details))
                     .route("/unified-history", web::get().to(handlers::billing::credit_handlers::get_unified_credit_history))
                     .route("/admin/adjust", web::post().to(handlers::billing::credit_handlers::admin_adjust_credits))
+                    .service(handlers::billing::credit_handlers::get_credit_purchase_fee_tiers_handler)
             )
             // Usage debug routes (/api/billing/usage/*)
             .service(

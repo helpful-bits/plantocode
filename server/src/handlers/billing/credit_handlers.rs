@@ -11,7 +11,7 @@ use crate::db::repositories::credit_transaction_repository::CreditTransactionRep
 use crate::db::repositories::UserCredit;
 use crate::models::AuthenticatedUser;
 use crate::models::auth_jwt_claims::Claims;
-use crate::models::billing::{CreditTransactionEntry, CreditHistoryResponse, UnifiedCreditHistoryResponse};
+use crate::models::billing::{CreditTransactionEntry, CreditHistoryResponse, UnifiedCreditHistoryResponse, FeeTierConfig};
 use log::{info};
 
 // ========================================
@@ -177,6 +177,16 @@ pub async fn admin_adjust_credits(
         "newBalance": updated_balance.balance.to_string(),
         "currency": updated_balance.currency
     })))
+}
+
+/// Get credit purchase fee tiers configuration
+/// This endpoint is unauthenticated as the fee structure is public information
+#[get("/purchase-fee-tiers")]
+pub async fn get_credit_purchase_fee_tiers_handler(
+    billing_service: web::Data<Arc<BillingService>>,
+) -> Result<HttpResponse, AppError> {
+    let fee_tiers = billing_service.get_credit_purchase_fee_tiers().await?;
+    Ok(HttpResponse::Ok().json(fee_tiers))
 }
 
 

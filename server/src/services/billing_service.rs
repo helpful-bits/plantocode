@@ -309,6 +309,11 @@ impl BillingService {
         }
     }
 
+    /// Get credit purchase fee tiers from database configuration
+    pub async fn get_credit_purchase_fee_tiers(&self) -> Result<crate::models::billing::FeeTierConfig, AppError> {
+        self.settings_repository.get_credit_purchase_fee_tiers().await
+    }
+
     /// Get detailed payment methods with default flag
     pub async fn get_detailed_payment_methods(
         &self,
@@ -387,8 +392,15 @@ impl BillingService {
             ));
         }
 
-        // Calculate fee and net amounts
-        let (fee_amount, net_amount) = Self::_calculate_fee_and_net(&amount_decimal);
+        // Get fee tiers from database
+        let fee_tiers = self.settings_repository.get_credit_purchase_fee_tiers().await?;
+        
+        // Get the appropriate tier for this amount
+        let tier = fee_tiers.get_tier_for_amount(&amount_decimal)?;
+        
+        // Calculate fee and net amounts using the tier's fee rate
+        let fee_amount = &amount_decimal * &tier.fee_rate;
+        let net_amount = &amount_decimal - &fee_amount;
         
         // Create price_data object instead of creating Product/Price
         let product_name = format!("${} Credit Top-up", amount_decimal);
@@ -471,21 +483,6 @@ impl BillingService {
         Ok(usage_records)
     }
 
-    /// Calculate fee and net amount based on tiered pricing
-    fn _calculate_fee_and_net(gross_amount: &BigDecimal) -> (BigDecimal, BigDecimal) {
-        let fee_percentage = if gross_amount < &BigDecimal::from(30) {
-            BigDecimal::from_str("0.20").unwrap() // 20% fee
-        } else if gross_amount < &BigDecimal::from(300) {
-            BigDecimal::from_str("0.10").unwrap() // 10% fee
-        } else {
-            BigDecimal::from_str("0.05").unwrap() // 5% fee
-        };
-        
-        let fee_amount = gross_amount * fee_percentage;
-        let net_amount = gross_amount - &fee_amount;
-        
-        (fee_amount, net_amount)
-    }
 
     /// Create a setup checkout session for payment method addition
     pub async fn create_setup_checkout_session(

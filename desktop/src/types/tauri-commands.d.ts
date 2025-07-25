@@ -616,11 +616,16 @@ export type TauriInvoke = {
   "get_spending_forecast_command": (args?: { monthsAhead?: number }) => Promise<SpendingForecastResponse>;
   "get_payment_methods_command": () => Promise<PaymentMethodsResponse>;
   
+  // Auto top-off commands
+  "get_auto_top_off_settings_command": () => Promise<AutoTopOffSettings>;
+  "update_auto_top_off_settings_command": (args: { request: UpdateAutoTopOffRequest }) => Promise<AutoTopOffSettings>;
+  
   // Credit system commands
   "get_credit_history_command": (args: { limit?: number; offset?: number; search?: string }) => Promise<UnifiedCreditHistoryResponse>;
   "get_credit_balance_command": () => Promise<CreditBalanceResponse>;
   "get_credit_details_command": () => Promise<CreditDetailsResponse>;
   "get_credit_stats_command": () => Promise<CreditStats>;
+  "get_credit_purchase_fee_tiers_command": () => Promise<FeeTierConfig>;
   
   
   "confirm_payment_status_command": (args: { paymentIntentId: string }) => Promise<any>;
@@ -787,6 +792,29 @@ export interface CreditStats {
   netBalance: number;
   transactionCount: number;
   currency: string;
+}
+
+export interface FeeTier {
+  min: number;
+  max?: number | null;
+  feeRate: number;
+  label: string;
+}
+
+export interface FeeTierConfig {
+  tiers: FeeTier[];
+}
+
+export interface AutoTopOffSettings {
+  enabled: boolean;
+  threshold?: string;
+  amount?: string;
+}
+
+export interface UpdateAutoTopOffRequest {
+  enabled: boolean;
+  threshold?: string | undefined;
+  amount?: string | undefined;
 }
 
 

@@ -116,3 +116,36 @@ ON CONFLICT (config_key) DO UPDATE SET
   config_value = EXCLUDED.config_value,
   description = EXCLUDED.description,
   updated_at = CURRENT_TIMESTAMP;
+
+-- Insert credit purchase fee tiers configuration
+INSERT INTO application_configurations (config_key, config_value, description)
+VALUES (
+  'credit_purchase_fee_tiers',
+  '{
+    "tiers": [
+      {
+        "min": 3,
+        "max": 12,
+        "fee_rate": 0.20,
+        "label": "STARTER"
+      },
+      {
+        "min": 13,
+        "max": 99,
+        "fee_rate": 0.10,
+        "label": "SAVER"
+      },
+      {
+        "min": 100,
+        "max": null,
+        "fee_rate": 0.05,
+        "label": "BULK"
+      }
+    ]
+  }'::jsonb,
+  'Fee tiers for credit purchases based on amount ranges'
+)
+ON CONFLICT (config_key) DO UPDATE SET
+  config_value = EXCLUDED.config_value,
+  description = EXCLUDED.description,
+  updated_at = CURRENT_TIMESTAMP;

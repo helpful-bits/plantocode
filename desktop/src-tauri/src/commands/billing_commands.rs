@@ -3,9 +3,47 @@ use crate::error::AppError;
 use crate::models::ListInvoicesResponse;
 use chrono::{Duration, Utc};
 use log::{debug, error, info, warn};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use std::sync::Arc;
 use tauri::State;
+
+// Helper functions for deserializing BigDecimal values from server to f64
+fn deserialize_bigdecimal_to_f64<'de, D>(deserializer: D) -> Result<f64, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = serde_json::Value::deserialize(deserializer)?;
+    match value {
+        serde_json::Value::Number(n) => {
+            n.as_f64()
+                .ok_or_else(|| serde::de::Error::custom("Invalid number"))
+        }
+        serde_json::Value::String(s) => {
+            s.parse::<f64>()
+                .map_err(|_| serde::de::Error::custom("Invalid number string"))
+        }
+        _ => Err(serde::de::Error::custom("Expected number or string")),
+    }
+}
+
+fn deserialize_option_bigdecimal_to_f64<'de, D>(deserializer: D) -> Result<Option<f64>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = Option::<serde_json::Value>::deserialize(deserializer)?;
+    match value {
+        Some(serde_json::Value::Number(n)) => {
+            Ok(Some(n.as_f64()
+                .ok_or_else(|| serde::de::Error::custom("Invalid number"))?))
+        }
+        Some(serde_json::Value::String(s)) => {
+            Ok(Some(s.parse::<f64>()
+                .map_err(|_| serde::de::Error::custom("Invalid number string"))?))
+        }
+        Some(serde_json::Value::Null) | None => Ok(None),
+        _ => Err(serde::de::Error::custom("Expected number, string, or null")),
+    }
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -434,6 +472,24 @@ pub struct CreditStats {
     pub currency: String,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FeeTier {
+    #[serde(deserialize_with = "deserialize_bigdecimal_to_f64")]
+    pub min: f64,
+    #[serde(deserialize_with = "deserialize_option_bigdecimal_to_f64")]
+    pub max: Option<f64>,
+    #[serde(rename = "feeRate", deserialize_with = "deserialize_bigdecimal_to_f64")]
+    pub fee_rate: f64,
+    pub label: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FeeTierConfig {
+    pub tiers: Vec<FeeTier>,
+}
+
 /// Get consolidated billing dashboard data
 #[tauri::command]
 pub async fn get_billing_dashboard_data_command(
@@ -567,6 +623,19 @@ pub async fn get_credit_details_command(
 
     info!("Successfully retrieved credit details");
     Ok(credit_details)
+}
+
+/// Get credit purchase fee tiers configuration
+#[tauri::command]
+pub async fn get_credit_purchase_fee_tiers_command(
+    billing_client: State<'_, Arc<BillingClient>>,
+) -> Result<FeeTierConfig, AppError> {
+    debug!("Getting credit purchase fee tiers via Tauri command");
+
+    let fee_tiers = billing_client.get_credit_purchase_fee_tiers().await?;
+
+    info!("Successfully retrieved credit purchase fee tiers");
+    Ok(fee_tiers)
 }
 
 // ========================================
@@ -906,8 +975,8 @@ pub struct AutoTopOffSettings {
 #[serde(rename_all = "camelCase")]
 pub struct UpdateAutoTopOffRequest {
     pub enabled: bool,
-    pub threshold: Option<f64>,
-    pub amount: Option<f64>,
+    pub threshold: Option<String>,
+    pub amount: Option<String>,
 }
 
 /// Get auto top-off settings for the user
@@ -944,16 +1013,20 @@ pub async fn update_auto_top_off_settings_command(
             ));
         }
 
-        if let Some(threshold) = request.threshold {
-            if threshold <= 0.0 || threshold > 1000.0 {
+        if let Some(threshold_str) = &request.threshold {
+            let threshold_val = threshold_str.parse::<f64>()
+                .map_err(|_| AppError::ValidationError("Invalid threshold format".to_string()))?;
+            if threshold_val <= 0.0 || threshold_val > 1000.0 {
                 return Err(AppError::ValidationError(
                     "Auto top-off threshold must be between $0.01 and $1000.00".to_string(),
                 ));
             }
         }
 
-        if let Some(amount) = request.amount {
-            if amount <= 0.0 || amount > 1000.0 {
+        if let Some(amount_str) = &request.amount {
+            let amount_val = amount_str.parse::<f64>()
+                .map_err(|_| AppError::ValidationError("Invalid amount format".to_string()))?;
+            if amount_val <= 0.0 || amount_val > 1000.0 {
                 return Err(AppError::ValidationError(
                     "Auto top-off amount must be between $0.01 and $1000.00".to_string(),
                 ));
