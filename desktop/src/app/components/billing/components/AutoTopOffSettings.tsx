@@ -7,8 +7,8 @@ import { Button } from "@/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/ui/card";
 import { Label } from "@/ui/label";
 import { Alert, AlertDescription } from "@/ui/alert";
-import { Loader2, DollarSign, Zap } from "lucide-react";
-import { getAutoTopOffSettings, updateAutoTopOffSettings, type AutoTopOffSettings as Settings, type UpdateAutoTopOffRequest } from "@/actions/billing";
+import { Loader2, DollarSign, Zap, Info } from "lucide-react";
+import { getAutoTopOffSettings, updateAutoTopOffSettings, getCreditPurchaseFeeTiers, type AutoTopOffSettings as Settings, type UpdateAutoTopOffRequest, type FeeTierConfig, type FeeTier } from "@/actions/billing";
 import { formatUsdCurrency } from "@/utils/currency-utils";
 import { useNotification } from "@/contexts/notification-context";
 
@@ -26,12 +26,15 @@ export function AutoTopOffSettings({ className }: AutoTopOffSettingsProps) {
   const [enabled, setEnabled] = useState(false);
   const [threshold, setThreshold] = useState<string>("");
   const [amount, setAmount] = useState<string>("");
+  const [feeTiers, setFeeTiers] = useState<FeeTierConfig | null>(null);
+  const [suggestedAmount, setSuggestedAmount] = useState<number | null>(null);
   
   const { showNotification } = useNotification();
 
-  // Load current settings
+  // Load current settings and fee tiers
   useEffect(() => {
     loadSettings();
+    loadFeeTiers();
   }, []);
 
   const loadSettings = async () => {
@@ -52,6 +55,42 @@ export function AutoTopOffSettings({ className }: AutoTopOffSettingsProps) {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const loadFeeTiers = async () => {
+    try {
+      const tiers = await getCreditPurchaseFeeTiers();
+      setFeeTiers(tiers);
+    } catch (err) {
+      console.error("Failed to load fee tiers:", err);
+    }
+  };
+
+  const getCurrentFeeTier = (amountValue: number): FeeTier | null => {
+    if (!feeTiers) return null;
+    return feeTiers.tiers.find(tier => {
+      const isAboveMin = amountValue >= tier.min;
+      const isBelowMax = tier.max === undefined || tier.max === null || amountValue < tier.max;
+      return isAboveMin && isBelowMax;
+    }) || null;
+  };
+
+  const calculateOptimalAmount = (currentAmount: number): number | null => {
+    if (!feeTiers) return null;
+    
+    const currentTier = getCurrentFeeTier(currentAmount);
+    if (!currentTier) return null;
+    
+    // Find the STARTER tier (20% fee)
+    const starterTier = feeTiers.tiers.find(tier => tier.label === "STARTER");
+    if (!starterTier || currentTier !== starterTier) return null;
+    
+    // Find the SAVER tier (10% fee)
+    const saverTier = feeTiers.tiers.find(tier => tier.label === "SAVER");
+    if (!saverTier) return null;
+    
+    // Return the minimum amount for SAVER tier
+    return saverTier.min;
   };
 
   const handleSave = async () => {
@@ -77,8 +116,8 @@ export function AutoTopOffSettings({ className }: AutoTopOffSettingsProps) {
 
       const updateRequest: UpdateAutoTopOffRequest = {
         enabled,
-        threshold: enabled && threshold ? parseFloat(threshold) : undefined,
-        amount: enabled && amount ? parseFloat(amount) : undefined,
+        threshold: enabled && threshold ? threshold : undefined,
+        amount: enabled && amount ? amount : undefined,
       };
 
       const updatedSettings = await updateAutoTopOffSettings(updateRequest);
@@ -279,7 +318,16 @@ export function AutoTopOffSettings({ className }: AutoTopOffSettingsProps) {
                       max="1000"
                       step="0.01"
                       value={amount}
-                      onChange={(e) => setAmount(e.target.value)}
+                      onChange={(e) => {
+                        setAmount(e.target.value);
+                        const numAmount = parseFloat(e.target.value);
+                        if (!isNaN(numAmount) && numAmount > 0) {
+                          const optimal = calculateOptimalAmount(numAmount);
+                          setSuggestedAmount(optimal);
+                        } else {
+                          setSuggestedAmount(null);
+                        }
+                      }}
                       className="pl-10"
                       disabled={isSaving}
                     />
@@ -287,16 +335,71 @@ export function AutoTopOffSettings({ className }: AutoTopOffSettingsProps) {
                   <p className="text-xs text-muted-foreground">
                     Amount to add to your account automatically
                   </p>
+                  {amount && feeTiers && (() => {
+                    const amountNum = parseFloat(amount);
+                    if (isNaN(amountNum) || amountNum <= 0) return null;
+                    
+                    const currentTier = getCurrentFeeTier(amountNum);
+                    if (!currentTier) return null;
+                    
+                    const tierColor = currentTier.label === "STARTER" ? "text-orange-600" : 
+                                     currentTier.label === "SAVER" ? "text-blue-600" : 
+                                     currentTier.label === "SMART" ? "text-green-600" : 
+                                     "text-purple-600";
+                    
+                    return (
+                      <p className={`text-xs font-medium ${tierColor} mt-1`}>
+                        {currentTier.label} tier - {(currentTier.feeRate * 100).toFixed(0)}% fee
+                      </p>
+                    );
+                  })()}
                 </div>
               </div>
 
+              {suggestedAmount && (
+                <Alert className="border-info/20 bg-info/10">
+                  <Info className="h-4 w-4 text-info" />
+                  <AlertDescription className="flex items-center justify-between">
+                    <div>
+                      <p className="font-medium text-sm">Save on fees with a higher amount</p>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Top off with {formatUsdCurrency(suggestedAmount)} to get a 10% fee instead of 20%.
+                        You'll save {formatUsdCurrency((parseFloat(amount) * 0.2) - (suggestedAmount * 0.1))} in fees per top-off.
+                      </p>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setAmount(suggestedAmount.toFixed(2));
+                        setSuggestedAmount(null);
+                      }}
+                      className="ml-4 shrink-0"
+                    >
+                      Apply
+                    </Button>
+                  </AlertDescription>
+                </Alert>
+              )}
+
               {enabled && threshold && amount && (
-                <div className="p-3 bg-info/10 rounded-md border border-info/20">
+                <div className="p-3 bg-info/10 rounded-md border border-info/20 space-y-2">
                   <p className="text-sm text-info-foreground">
                     <strong>Summary:</strong> When your credit balance falls below{" "}
                     <strong>{formatUsdCurrency(parseFloat(threshold) || 0)}</strong>, we'll automatically add{" "}
                     <strong>{formatUsdCurrency(parseFloat(amount) || 0)}</strong> to your account using your default payment method.
                   </p>
+                  {feeTiers && (() => {
+                    const currentTier = getCurrentFeeTier(parseFloat(amount));
+                    if (currentTier) {
+                      return (
+                        <p className="text-xs text-muted-foreground">
+                          Fee tier: <span className="font-medium">{currentTier.label}</span> ({(currentTier.feeRate * 100).toFixed(0)}% fee)
+                        </p>
+                      );
+                    }
+                    return null;
+                  })()}
                 </div>
               )}
             </div>

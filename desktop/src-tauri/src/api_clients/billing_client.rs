@@ -1,8 +1,8 @@
 use crate::auth::token_manager::TokenManager;
 use crate::commands::billing_commands::{
     BillingDashboardData, BillingPortalResponse, CreditBalanceResponse, CreditHistoryResponse,
-    CreditStats, CustomerBillingInfo, DetailedUsageRecord, DetailedUsageResponse, PaymentMethod,
-    PaymentMethodCard, PaymentMethodsResponse, UnifiedCreditHistoryResponse,
+    CreditStats, CustomerBillingInfo, DetailedUsageRecord, DetailedUsageResponse, FeeTierConfig,
+    PaymentMethod, PaymentMethodCard, PaymentMethodsResponse, UnifiedCreditHistoryResponse,
 };
 use crate::error::AppError;
 use crate::models::ListInvoicesResponse;
@@ -601,8 +601,8 @@ impl BillingClient {
 
         let request_body = serde_json::json!({
             "enabled": request.enabled,
-            "threshold": request.threshold.map(|v| v.to_string()),
-            "amount": request.amount.map(|v| v.to_string())
+            "threshold": request.threshold,
+            "amount": request.amount
         });
 
         let settings = self
@@ -692,5 +692,17 @@ impl BillingClient {
 
         info!("Successfully retrieved unified credit history");
         Ok(unified_history_response)
+    }
+
+    /// Get credit purchase fee tiers configuration
+    pub async fn get_credit_purchase_fee_tiers(&self) -> Result<FeeTierConfig, AppError> {
+        debug!("Getting credit purchase fee tiers via BillingClient");
+
+        let fee_tiers = self
+            .make_authenticated_request("GET", "/api/billing/credits/purchase-fee-tiers", None)
+            .await?;
+
+        info!("Successfully retrieved credit purchase fee tiers");
+        Ok(fee_tiers)
     }
 }

@@ -6,6 +6,7 @@ use serde::{Serialize, Deserialize};
 use tracing::{info, instrument};
 use bigdecimal::BigDecimal;
 use std::str::FromStr;
+use crate::models::billing::FeeTierConfig;
 
 /// Database-driven AI model settings (pure task-driven configuration)
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -209,6 +210,43 @@ impl SettingsRepository {
 
         info!("Updated free credits amount in database: ${}", amount);
         Ok(())
+    }
+
+    /// Get credit purchase fee tiers from database configuration
+    pub async fn get_credit_purchase_fee_tiers(&self) -> Result<FeeTierConfig, AppError> {
+        // Internal structs for database deserialization (snake_case)
+        #[derive(Debug, Deserialize)]
+        struct DbFeeTier {
+            min: BigDecimal,
+            max: Option<BigDecimal>,
+            fee_rate: BigDecimal,
+            label: String,
+        }
+        
+        #[derive(Debug, Deserialize)]
+        struct DbFeeTierConfig {
+            tiers: Vec<DbFeeTier>,
+        }
+        
+        let config_value = self.get_config_value("credit_purchase_fee_tiers").await?
+            .ok_or_else(|| AppError::Configuration("credit_purchase_fee_tiers configuration not found".to_string()))?;
+        
+        // First deserialize from database (snake_case)
+        let db_config: DbFeeTierConfig = serde_json::from_value(config_value)
+            .map_err(|e| AppError::Configuration(format!("Failed to parse credit_purchase_fee_tiers: {}", e)))?;
+        
+        // Convert to API model
+        let fee_tiers = FeeTierConfig {
+            tiers: db_config.tiers.into_iter().map(|db_tier| crate::models::billing::FeeTier {
+                min: db_tier.min,
+                max: db_tier.max,
+                fee_rate: db_tier.fee_rate,
+                label: db_tier.label,
+            }).collect(),
+        };
+        
+        info!("Retrieved credit purchase fee tiers from database");
+        Ok(fee_tiers)
     }
 
 }

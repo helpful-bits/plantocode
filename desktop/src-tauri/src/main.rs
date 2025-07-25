@@ -181,6 +181,7 @@ fn main() {
             commands::billing_commands::get_credit_balance_command,
             commands::billing_commands::get_credit_details_command,
             commands::billing_commands::get_credit_stats_command,
+            commands::billing_commands::get_credit_purchase_fee_tiers_command,
             // Stripe Checkout commands
             commands::billing_commands::create_credit_purchase_checkout_session_command,
             commands::billing_commands::create_setup_checkout_session_command,

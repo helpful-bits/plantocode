@@ -7,6 +7,7 @@ import ProjectNotFound from "@/app/components/project-not-found";
 import { useProject } from "@/contexts/project-context";
 import { getHomeDirectoryAction } from "@/actions";
 import { useNotification } from "@/contexts/notification-context";
+import { validateDirectoryAction } from "@/actions/file-system/validation.actions";
 
 interface RequireProjectDirectoryProps {
   children: ReactNode;
@@ -37,12 +38,23 @@ export function RequireProjectDirectory({
 
       // Handle selection
       if (selectedPath && typeof selectedPath === 'string') {
-        await setProjectDirectory(selectedPath);
-        showNotification({
-          title: "Project Directory Set",
-          message: "Project directory has been selected successfully.",
-          type: "success",
-        });
+        // Validate directory before setting (same as ProjectDirectorySelector)
+        const validationResult = await validateDirectoryAction(selectedPath);
+        
+        if (validationResult.isSuccess && validationResult.data) {
+          await setProjectDirectory(validationResult.data);
+          showNotification({
+            title: "Project Directory Set",
+            message: "Project directory has been selected successfully.",
+            type: "success",
+          });
+        } else {
+          showNotification({
+            title: "Invalid Directory",
+            message: validationResult.message || "Please select a valid git repository.",
+            type: "error",
+          });
+        }
       }
     } catch (error) {
       console.error("[RequireProjectDirectory] Error opening directory dialog:", error);
