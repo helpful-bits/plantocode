@@ -481,7 +481,7 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
         <VideoRecordingDialog
           isOpen={showVideoDialog}
           onClose={() => setShowVideoDialog(false)}
-          onStartRecording={(prompt, recordAudio) => {
+          onStartRecording={(prompt, recordAudio, audioDeviceId, frameRate) => {
             // Set the video analysis prompt
             setVideoAnalysisPrompt(prompt);
             
@@ -489,7 +489,7 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
             setShowVideoDialog(false);
             
             // Start recording and handle the result
-            startRecording(recordAudio).then((recordingResult) => {
+            startRecording({ recordAudio, audioDeviceId, frameRate }).then((recordingResult) => {
               if (!recordingResult) {
                 console.error('Recording failed or was cancelled');
                 return;
@@ -498,7 +498,8 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
               // Emit the recording-finished event that the task state hook is listening for
               emit('recording-finished', {
                 path: recordingResult.path,
-                durationMs: recordingResult.durationMs
+                durationMs: recordingResult.durationMs,
+                frameRate: recordingResult.frameRate
               }).catch(console.error);
               
               // Note: The actual video analysis will be triggered from the task-section.tsx

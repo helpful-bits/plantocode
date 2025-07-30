@@ -1572,44 +1572,56 @@ pub async fn video_analysis_handler(
         &model
     };
     
-    // Choose upload method based on file size
-    let response = if file_size < INLINE_SIZE_LIMIT {
-        // Small file: use inline upload with 30 FPS
-        tracing::info!("Using inline upload for video ({} MB) with 30 FPS", file_size / (1024 * 1024));
-        
-        // Read video file bytes
-        let video_bytes = std::fs::read(&video_path)
-            .map_err(|e| AppError::Internal(format!("Failed to read video file: {}", e)))?;
-        
-        // Use inline upload method with 30 FPS
-        google_client.generate_multimodal_content_inline(
-            clean_model_id,
-            &video_bytes,
-            mime_type,
-            30, // 30 FPS for high-framerate analysis
-            &prompt,
-            system_prompt,
-            temperature,
-            api_key
-        ).await?
-    } else {
-        // Large file: use File API upload (default 1 FPS)
-        tracing::info!("Using File API upload for video ({} MB) with default FPS", file_size / (1024 * 1024));
-        
-        // Upload video file to Google
-        let (file_uri, _) = google_client.upload_file(video_path, mime_type, api_key).await?;
-        
-        // Generate content with multimodal API
-        google_client.generate_multimodal_content(
-            clean_model_id,
-            &file_uri,
-            mime_type,
-            &prompt,
-            system_prompt,
-            temperature,
-            api_key
-        ).await?
-    };
+    // Process the video and ensure cleanup happens regardless of success/failure
+    let process_result = async {
+        // Choose upload method based on file size
+        if file_size < INLINE_SIZE_LIMIT {
+            // Small file: use inline upload with 24 FPS
+            tracing::info!("Using inline upload for video ({} MB) with 24 FPS", file_size / (1024 * 1024));
+            
+            // Read video file bytes
+            let video_bytes = std::fs::read(&video_path)
+                .map_err(|e| AppError::Internal(format!("Failed to read video file: {}", e)))?;
+            
+            // Use inline upload method with 24 FPS
+            google_client.generate_multimodal_content_inline(
+                clean_model_id,
+                &video_bytes,
+                mime_type,
+                24, // 24 FPS (maximum allowed by Google API)
+                &prompt,
+                system_prompt,
+                temperature,
+                api_key
+            ).await
+        } else {
+            // Large file: use File API upload (default 1 FPS)
+            tracing::info!("Using File API upload for video ({} MB) with default FPS", file_size / (1024 * 1024));
+            
+            // Upload video file to Google
+            let (file_uri, _) = google_client.upload_file(video_path, mime_type, api_key).await?;
+            
+            // Generate content with multimodal API
+            google_client.generate_multimodal_content(
+                clean_model_id,
+                &file_uri,
+                mime_type,
+                &prompt,
+                system_prompt,
+                temperature,
+                api_key
+            ).await
+        }
+    }.await;
+    
+    // Delete the temporary video file now that processing is complete (or failed)
+    // Using drop() triggers NamedTempFile's destructor which deletes the file
+    let video_path_for_log = video_file.path().to_path_buf();
+    drop(video_file);
+    tracing::debug!("Deleted temporary video file: {:?}", video_path_for_log);
+    
+    // Check if processing succeeded
+    let response = process_result?;
     
     // Extract usage metadata
     let usage = if let Some(usage_metadata) = &response.usage_metadata {

@@ -14,7 +14,7 @@ export function useScreenRecorder() {
   const screenStreamRef = useRef<MediaStream | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<BlobPart[]>([]);
-  const resolveRef = useRef<((result: { path: string; durationMs: number } | null) => void) | null>(null);
+  const resolveRef = useRef<((result: { path: string; durationMs: number; frameRate: number } | null) => void) | null>(null);
   const startTimeRef = useRef<number>(0);
 
   const mergeAudioStreams = (screenStream: MediaStream, micStream: MediaStream): MediaStream => {
@@ -52,7 +52,8 @@ export function useScreenRecorder() {
     micStreamRef.current?.getTracks().forEach((track) => track.stop());
   }, []);
 
-  const startRecording = useCallback(async (recordAudio: boolean = true): Promise<{ path: string; durationMs: number } | null> => {
+  const startRecording = useCallback(async (options: { recordAudio?: boolean; audioDeviceId?: string; frameRate?: number } = {}): Promise<{ path: string; durationMs: number; frameRate: number } | null> => {
+    const { recordAudio = true, audioDeviceId = 'default', frameRate = 5 } = options;
     if (isRecording) {
       console.warn('Recording already in progress');
       return null;
@@ -64,7 +65,7 @@ export function useScreenRecorder() {
     try {
       const displayMediaOptions = {
         video: {
-          frameRate: { ideal: 30, max: 30 },
+          frameRate: { ideal: frameRate, max: frameRate },
         },
         audio: recordAudio,
       };
@@ -75,10 +76,11 @@ export function useScreenRecorder() {
       
       if (recordAudio) {
         try {
-          micStreamRef.current = await navigator.mediaDevices.getUserMedia({ 
-            audio: true, 
+          const micOptions: MediaStreamConstraints = { 
+            audio: audioDeviceId !== 'default' ? { deviceId: { exact: audioDeviceId } } : true, 
             video: false 
-          });
+          };
+          micStreamRef.current = await navigator.mediaDevices.getUserMedia(micOptions);
           
           const mergedAudioStream = mergeAudioStreams(screenStream, micStreamRef.current);
           finalStream = new MediaStream([
@@ -101,8 +103,8 @@ export function useScreenRecorder() {
       
       const RECORDER_OPTIONS = {
         mimeType,
-        videoBitsPerSecond: 2_500_000,
-        audioBitsPerSecond: 128_000
+        videoBitsPerSecond: 1_500_000, // 1.5 Mbps - good quality for screen recording
+        audioBitsPerSecond: 64_000     // 64 kbps - sufficient for voice narration
       };
       
       const recorder = new MediaRecorder(finalStream, RECORDER_OPTIONS);
@@ -153,7 +155,7 @@ export function useScreenRecorder() {
           chunksRef.current = [];
           
           if (resolveRef.current) {
-            resolveRef.current({ path: filePath, durationMs });
+            resolveRef.current({ path: filePath, durationMs, frameRate });
             resolveRef.current = null;
           }
         } catch (error) {

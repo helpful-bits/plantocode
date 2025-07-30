@@ -94,8 +94,9 @@ impl JobProcessor for VideoAnalysisProcessor {
 
         // Extract cost from response
         let actual_cost = cost_response
-            .get("cost")
-            .and_then(|v| v.as_f64())
+            .get("estimatedCost")
+            .and_then(|v| v.as_str())
+            .and_then(|s| s.parse::<f64>().ok())
             .unwrap_or(0.0);
 
         // Return success with JSON response, token usage, and cost

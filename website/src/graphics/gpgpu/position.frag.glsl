@@ -11,12 +11,11 @@ uniform float uDeltaTime;
 uniform vec2 uViewportBounds;
 uniform float uTime;
 uniform int uLeaderCount;
-uniform float uScrollVelocity;
 
 layout(location = 0) out vec4 fragColor;
 
 #define FIXED_TIMESTEP 0.016666667 // 1/60s
-#define OFF_SCREEN_MARGIN 128.0
+#define OFF_SCREEN_MARGIN 50.0 // Reduced for quicker wrapping
 
 void main() {
     ivec2 texSize = textureSize(texturePosition, 0);
@@ -30,17 +29,36 @@ void main() {
     float currentLifetime = position.w;
     vec3 vel = velocity.xyz;
     
+    float isLeader = attributes.w;
     float randomSeed = attributes.y;
     float initialLifetime = 8.0 + randomSeed * 4.0;
     
-    float newLifetime = currentLifetime - FIXED_TIMESTEP * 0.1;
+    // Decay lifetime faster when moving fast (during scroll)
+    float speed = length(vel.xy);
+    float lifetimeDecay = 0.1 + smoothstep(50.0, 150.0, speed) * 0.2; // Faster decay when scrolling
+    float newLifetime = currentLifetime - FIXED_TIMESTEP * lifetimeDecay;
     
     vec3 newPos = pos + vel * FIXED_TIMESTEP;
     
-    bool isOffScreen = abs(newPos.x) > uViewportBounds.x + OFF_SCREEN_MARGIN || 
-                       abs(newPos.y) > uViewportBounds.y + OFF_SCREEN_MARGIN;
+    // Handle screen wrapping for smooth scroll behavior
+    bool needsReset = false;
     
-    if (newLifetime <= 0.0 || isOffScreen) {
+    // Vertical wrapping - important for scroll response
+    if (newPos.y > uViewportBounds.y + OFF_SCREEN_MARGIN) {
+        newPos.y = -uViewportBounds.y - OFF_SCREEN_MARGIN + 10.0; // Wrap to bottom
+    } else if (newPos.y < -uViewportBounds.y - OFF_SCREEN_MARGIN) {
+        newPos.y = uViewportBounds.y + OFF_SCREEN_MARGIN - 10.0; // Wrap to top
+    }
+    
+    // Horizontal wrapping
+    if (newPos.x > uViewportBounds.x + OFF_SCREEN_MARGIN) {
+        newPos.x = -uViewportBounds.x - OFF_SCREEN_MARGIN + 10.0; // Wrap to left
+    } else if (newPos.x < -uViewportBounds.x - OFF_SCREEN_MARGIN) {
+        newPos.x = uViewportBounds.x + OFF_SCREEN_MARGIN - 10.0; // Wrap to right
+    }
+    
+    // Only reset for lifetime expiration, not position
+    if (isLeader < 0.5 && newLifetime <= 0.0) {
         float angle = fract(randomSeed * 6.28318) * 6.28318;
         float distance = min(uViewportBounds.x, uViewportBounds.y) * (0.8 + randomSeed * 0.15);
         newPos.xy = vec2(cos(angle), sin(angle)) * distance;

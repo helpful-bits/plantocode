@@ -6,8 +6,7 @@
 
 uniform float uTime;
 uniform float uIsDark;
-uniform vec3 uLeaderColorDark;
-uniform vec3 uLeaderColorLight;
+uniform vec3 uLeaderColor;
 
 in float vAlpha;
 in vec3 vColor;
@@ -17,9 +16,17 @@ in float vIsLeader;
 
 layout(location = 0) out vec4 fragColor;
 
-float sdChevron(vec2 p, float w, float t) {
-  p.x = abs(p.x);
-  return max(abs(p.y + w * p.x) - w * t, -abs(p.y) + t * 0.2);
+// Simple triangle/chevron shape
+float sdTriangle(vec2 p) {
+  // Create a simple triangle pointing right
+  float k = 0.5;
+  p.x = abs(p.x) - 0.3;
+  p.y = p.y + 0.5;
+  if (p.x + k * p.y > 0.0) {
+    vec2 q = vec2(p.x - k * p.y, -k * p.x - p.y) / sqrt(1.0 + k * k);
+    p = vec2(clamp(q.x, -0.3, 0.3), q.y);
+  }
+  return -length(p) * sign(p.y);
 }
 
 void main() {
@@ -41,18 +48,18 @@ void main() {
       coord.x * s + coord.y * c
     );
     
-    // Calculate SDF chevron
-    float d = sdChevron(rotatedCoord, 0.6, 0.1);
+    // Simple approach: just render a circle for now to debug
+    float dist = length(coord);
+    float circle = 1.0 - smoothstep(0.3, 0.4, dist);
     
-    // Create the chevron shape using smoothstep
-    float chevron = 1.0 - smoothstep(0.0, 0.02, d);
+    // Add a simple directional indicator
+    float arrow = step(0.0, rotatedCoord.x) * (1.0 - smoothstep(0.1, 0.2, abs(rotatedCoord.y)));
     
-    // Apply circular mask
-    float alpha = chevron * (1.0 - smoothstep(0.45, 0.5, length(coord)));
+    float alpha = max(circle * 0.8, arrow * circle);
     
-    // Leader color selection based on theme
-    vec3 leaderColor = uIsDark > 0.5 ? uLeaderColorDark : uLeaderColorLight;
-    fragColor = vec4(leaderColor, alpha);
+    // Use unified leader color
+    vec3 finalColor = uLeaderColor;
+    fragColor = vec4(finalColor, alpha);
   } else {
     // Followers: existing glow effect
     float glow = pow(1.0 - smoothstep(0.0, 0.5, length(gl_PointCoord - vec2(0.5))), 2.0);
