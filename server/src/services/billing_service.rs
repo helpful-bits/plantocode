@@ -379,21 +379,34 @@ impl BillingService {
         let amount_decimal = BigDecimal::parse_bytes(amount.as_bytes(), 10)
             .ok_or_else(|| AppError::InvalidArgument("Invalid amount format".to_string()))?;
         
-        // Validate amount
+        // Validate amount is positive and not too large
         if amount_decimal <= BigDecimal::from(0) || amount_decimal > BigDecimal::from(10000) {
             return Err(AppError::InvalidArgument("Amount must be between $0.01 and $10,000.00".to_string()));
         }
         
-        // Check for Stripe's minimum chargeable amount ($0.50)
-        let min_amount = BigDecimal::from_str("0.50").unwrap();
-        if amount_decimal < min_amount {
+        // Get fee tiers from database to validate against minimum tier
+        let fee_tiers = self.settings_repository.get_credit_purchase_fee_tiers().await?;
+        
+        // Find the minimum amount across all tiers
+        let min_tier_amount = fee_tiers.tiers.iter()
+            .map(|tier| &tier.min)
+            .min()
+            .ok_or_else(|| AppError::Configuration("No fee tiers configured".to_string()))?;
+        
+        // Validate against the minimum tier amount
+        if &amount_decimal < min_tier_amount {
             return Err(AppError::InvalidArgument(
-                format!("Amount must be at least $0.50 (Stripe's minimum chargeable amount). Amounts below $0.50 will result in a $0 invoice and the balance will be added to the customer's invoice balance for future charges.")
+                format!("Amount must be at least ${} (minimum purchase amount)", min_tier_amount)
             ));
         }
-
-        // Get fee tiers from database
-        let fee_tiers = self.settings_repository.get_credit_purchase_fee_tiers().await?;
+        
+        // Also check for Stripe's minimum chargeable amount ($0.50) as a safety check
+        let stripe_min = BigDecimal::from_str("0.50").unwrap();
+        if amount_decimal < stripe_min {
+            return Err(AppError::InvalidArgument(
+                format!("Amount must be at least $0.50 (Stripe's minimum chargeable amount)")
+            ));
+        }
         
         // Get the appropriate tier for this amount
         let tier = fee_tiers.get_tier_for_amount(&amount_decimal)?;

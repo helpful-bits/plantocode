@@ -41,6 +41,7 @@ pub enum AppError {
     DataIntegrity(String),
     SpendingLimitExceeded(String),
     CheckoutError(String),
+    VideoAnalysisError(String),
 }
 
 #[derive(Serialize, Deserialize)]
@@ -90,6 +91,7 @@ impl fmt::Display for AppError {
             AppError::DataIntegrity(e) => write!(f, "Data integrity error: {}", e),
             AppError::SpendingLimitExceeded(e) => write!(f, "Spending limit exceeded: {}", e),
             AppError::CheckoutError(e) => write!(f, "Checkout error: {}", e),
+            AppError::VideoAnalysisError(e) => write!(f, "Video analysis error: {}", e),
         }
     }
 }
@@ -134,6 +136,7 @@ impl ResponseError for AppError {
             AppError::DataIntegrity(_) => (StatusCode::INTERNAL_SERVER_ERROR, "data_integrity_error"),
             AppError::SpendingLimitExceeded(_) => (StatusCode::PAYMENT_REQUIRED, "spending_limit_exceeded"),
             AppError::CheckoutError(_) => (StatusCode::PAYMENT_REQUIRED, "checkout_error"),
+            AppError::VideoAnalysisError(_) => (StatusCode::BAD_REQUEST, "video_analysis_error"),
         };
 
         let error_response = ErrorResponse {
@@ -183,6 +186,7 @@ impl ResponseError for AppError {
             AppError::DataIntegrity(_) => StatusCode::INTERNAL_SERVER_ERROR,
             AppError::SpendingLimitExceeded(_) => StatusCode::PAYMENT_REQUIRED,
             AppError::CheckoutError(_) => StatusCode::PAYMENT_REQUIRED,
+            AppError::VideoAnalysisError(_) => StatusCode::BAD_REQUEST,
         }
     }
 }

@@ -56,6 +56,12 @@ pub async fn list_project_files_command(
         // Convert relative path to full path for metadata reading
         let full_path = project_path.join(&relative_path);
 
+        // Check if file actually exists on filesystem
+        if !full_path.exists() {
+            // Skip files that don't exist (deleted but still in git index)
+            continue;
+        }
+
         // Get file name
         let name = relative_path
             .file_name()
@@ -201,6 +207,32 @@ pub async fn write_file_content_command(
     fs_utils::write_string_to_file(&path, &content)
         .await
         .map_err(|e| AppError::FileSystemError(format!("Failed to write file: {}", e)))?;
+
+    Ok(())
+}
+
+#[command]
+pub async fn write_binary_file_command(
+    path: String,
+    content: Vec<u8>,
+    project_directory: Option<String>,
+    app_handle: AppHandle,
+) -> AppResult<()> {
+    info!("Writing binary file: {} ({} bytes)", path, content.len());
+    
+    // If project_directory is provided, ensure the file path is within it
+    if let Some(proj_dir) = project_directory {
+        let target_path = std::path::Path::new(&path);
+        let project_path = std::path::Path::new(&proj_dir);
+
+        // Validate path security
+        crate::utils::fs_utils::ensure_path_within_project(project_path, target_path)
+            .map_err(|e| AppError::SecurityError(format!("Invalid path: {}", e)))?;
+    }
+
+    fs_utils::write_bytes_to_file(&path, &content)
+        .await
+        .map_err(|e| AppError::FileSystemError(format!("Failed to write binary file: {}", e)))?;
 
     Ok(())
 }

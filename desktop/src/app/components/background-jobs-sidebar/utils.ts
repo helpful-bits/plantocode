@@ -309,6 +309,38 @@ export function getEstimatedRemainingTime(metadataInput: JobMetadata | string | 
 }
 
 /**
+ * Get a custom display name for a job based on its type and metadata
+ * Returns a more descriptive name for certain job types
+ */
+export function getJobDisplayName(job: { taskType: string; metadata?: JobMetadata | string | null }): string | null {
+  const parsedMetadata = getParsedMetadata(job.metadata);
+  
+  switch (job.taskType) {
+    case "video_analysis": {
+      // Extract video path from metadata
+      const videoPath = parsedMetadata?.taskData?.videoPath || 
+                       parsedMetadata?.jobPayloadForWorker?.VideoAnalysis?.video_path ||
+                       parsedMetadata?.jobPayloadForWorker?.videoAnalysis?.video_path;
+      
+      if (videoPath && typeof videoPath === 'string') {
+        // Extract filename from path
+        const pathParts = videoPath.split(/[/\\]/);
+        const fileName = pathParts[pathParts.length - 1] || 'video';
+        
+        // Truncate long filenames
+        const truncatedName = truncateText(fileName, 30);
+        return `Analyzing Video: ${truncatedName}`;
+      }
+      
+      return "Video Analysis";
+    }
+    
+    default:
+      return null; // Return null for other task types to use default formatting
+  }
+}
+
+/**
  * Extract original text from text improvement task metadata
  * Used for displaying transcribed text in text improvement job cards
  */

@@ -484,6 +484,9 @@ fn inject_job_id_into_payload(payload: &mut JobPayload, job_id: &str) {
 
         // Implementation plan merge payload
         JobPayload::ImplementationPlanMerge(_) => {}
+        
+        // Video analysis payload
+        JobPayload::VideoAnalysis(_) => {}
     }
 }
 

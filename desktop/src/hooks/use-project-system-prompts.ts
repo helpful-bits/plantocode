@@ -25,6 +25,7 @@ interface UseProjectSystemPromptReturn {
   update: (newPrompt: string) => Promise<void>;
   reset: () => Promise<void>;
   validate: (prompt: string) => { isValid: boolean; errors: string[] };
+  loadCustomPrompt: () => Promise<string | null>;
 }
 
 export function useProjectSystemPrompt({
@@ -114,6 +115,22 @@ export function useProjectSystemPrompt({
     };
   }, []);
 
+  const loadCustomPrompt = useCallback(async (): Promise<string | null> => {
+    if (!projectDirectory || !taskType) return null;
+
+    try {
+      const customPromptObj = await invoke<ProjectSystemPrompt | null>('get_project_system_prompt_command', {
+        projectDirectory,
+        taskType
+      });
+
+      return customPromptObj?.systemPrompt || null;
+    } catch (err) {
+      console.error('Failed to load custom prompt:', err);
+      return null;
+    }
+  }, [projectDirectory, taskType]);
+
   useEffect(() => {
     if (autoLoad && projectDirectory && taskType) {
       loadPrompt();
@@ -127,6 +144,7 @@ export function useProjectSystemPrompt({
     isCustom,
     update,
     reset,
-    validate
+    validate,
+    loadCustomPrompt
   };
 }

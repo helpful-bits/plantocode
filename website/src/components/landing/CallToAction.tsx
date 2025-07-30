@@ -1,11 +1,10 @@
 'use client';
 
-import React, { useRef } from 'react';
+import React from 'react';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { motion } from 'framer-motion';
-import { useAnimationOrchestrator } from '@/hooks/useAnimationOrchestrator';
 import { CheckCircle2, Zap } from 'lucide-react';
 
 interface CallToActionProps {
@@ -16,31 +15,41 @@ interface CallToActionProps {
 }
 
 export function CallToAction({ title, description, buttonText, buttonLink }: CallToActionProps) {
-  const sectionRef = useRef<HTMLElement>(null);
-  const { isInView } = useAnimationOrchestrator(sectionRef);
-
   return (
-    <section ref={sectionRef} className="relative py-24 px-4 overflow-hidden">
-      {/* Radial burst background pattern - only animates when in view */}
-      <div className={`absolute inset-0 z-0 burst-radial ${isInView ? 'burst-animated-viewport' : ''}`} />
+    <section className="relative py-24 px-4 overflow-hidden">
+      <motion.div
+        className="absolute inset-0 z-0 burst-radial"
+        initial={{ opacity: 0 }}
+        transition={{ duration: 0.6 }}
+        viewport={{ once: true, amount: 0.3 }}
+        whileInView={{ opacity: 1 }}
+      />
 
       <div className="container mx-auto relative z-10">
         <motion.div
           className="max-w-4xl mx-auto"
-          initial={{ opacity: 0, scale: 0.95, y: 30 }}
-          animate={isInView ? { opacity: 1, scale: 1, y: 0 } : { opacity: 0, scale: 0.95, y: 30 }}
-          transition={{
-            duration: 0.6,
-            ease: [0.4, 0, 0.2, 1],
+          initial="hidden"
+          viewport={{ once: true, amount: 0.3 }}
+          whileInView="visible"
+          variants={{
+            hidden: { opacity: 0, scale: 0.95, y: 30 },
+            visible: {
+              opacity: 1,
+              scale: 1,
+              y: 0,
+              transition: {
+                duration: 0.6,
+                ease: [0.4, 0, 0.2, 1],
+              },
+            },
           }}
         >
-          <motion.div 
+          <motion.div
             className="relative group"
-            whileHover={{ scale: 1.015 }}
             transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
           >
 
-            <GlassCard className="relative transition-transform duration-200 group-hover:scale-[1.015]" highlighted={true}>
+            <GlassCard className="relative" highlighted={true}>
               <div className="text-center p-16 relative">
                 {/* Enhanced burst pattern overlay */}
                 <div className="absolute inset-0 opacity-8">
@@ -76,12 +85,16 @@ export function CallToAction({ title, description, buttonText, buttonLink }: Cal
                   />
                 </div>
 
-                {/* Animated badge */}
                 <motion.div
                   className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 dark:bg-primary/15 text-primary mb-6 text-sm font-medium"
-                  initial={{ opacity: 0, scale: 0.8 }}
-                  animate={isInView ? { opacity: 1, scale: 1 } : { opacity: 0, scale: 0.8 }}
-                  transition={{ duration: 0.5, delay: 0.2 }}
+                  variants={{
+                    hidden: { opacity: 0, scale: 0.8 },
+                    visible: {
+                      opacity: 1,
+                      scale: 1,
+                      transition: { duration: 0.5, delay: 0.2 },
+                    },
+                  }}
                 >
                   <Zap className="w-4 h-4" />
                   <span>Transform Your Development Today</span>
@@ -89,12 +102,17 @@ export function CallToAction({ title, description, buttonText, buttonLink }: Cal
 
                 <motion.h2
                   className="text-3xl sm:text-4xl lg:text-5xl xl:text-6xl mb-6 text-primary-emphasis relative z-10"
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 20 }}
-                  transition={{
-                    duration: 0.5,
-                    delay: 0.2,
-                    ease: [0.4, 0, 0.2, 1],
+                  variants={{
+                    hidden: { opacity: 0, y: 20 },
+                    visible: {
+                      opacity: 1,
+                      y: 0,
+                      transition: {
+                        duration: 0.5,
+                        delay: 0.2,
+                        ease: [0.4, 0, 0.2, 1],
+                      },
+                    },
                   }}
                 >
                   {title}
@@ -102,17 +120,28 @@ export function CallToAction({ title, description, buttonText, buttonLink }: Cal
 
                 <motion.p
                   className="text-lg sm:text-xl lg:text-2xl mb-10 max-w-2xl mx-auto leading-relaxed font-medium text-foreground/80 relative z-10"
-                  initial={{ opacity: 0, y: 15 }}
-                  animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 15 }}
-                  transition={{ duration: 0.5, delay: 0.25, ease: [0.4, 0, 0.2, 1] }}
+                  variants={{
+                    hidden: { opacity: 0, y: 15 },
+                    visible: {
+                      opacity: 1,
+                      y: 0,
+                      transition: { duration: 0.5, delay: 0.25, ease: [0.4, 0, 0.2, 1] },
+                    },
+                  }}
                 >
                   {description}
                 </motion.p>
 
                 <motion.div
-                  initial={{ opacity: 0, y: 15 }}
-                  animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 15 }}
-                  transition={{ duration: 0.5, delay: 0.35, ease: [0.4, 0, 0.2, 1] }}
+                  variants={{
+                    hidden: { opacity: 0, y: 15 },
+                    visible: {
+                      opacity: 1,
+                      y: 0,
+                      transition: { duration: 0.5, delay: 0.35, ease: [0.4, 0, 0.2, 1] },
+                    },
+                  }}
+                  whileTap={{ scale: 0.95 }}
                 >
                   <Button
                     asChild
@@ -133,12 +162,15 @@ export function CallToAction({ title, description, buttonText, buttonLink }: Cal
                   </Button>
                 </motion.div>
 
-                {/* Additional visual cues */}
                 <motion.div
                   className="mt-8 flex items-center justify-center gap-8 text-sm text-foreground/60"
-                  initial={{ opacity: 0 }}
-                  animate={isInView ? { opacity: 1 } : { opacity: 0 }}
-                  transition={{ duration: 0.5, delay: 0.45, ease: [0.4, 0, 0.2, 1] }}
+                  variants={{
+                    hidden: { opacity: 0 },
+                    visible: {
+                      opacity: 1,
+                      transition: { duration: 0.5, delay: 0.45, ease: [0.4, 0, 0.2, 1] },
+                    },
+                  }}
                 >
                   <div className="flex items-center gap-2">
                     <CheckCircle2 className="w-4 h-4 text-primary/70" />

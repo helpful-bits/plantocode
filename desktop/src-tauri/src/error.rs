@@ -180,6 +180,9 @@ pub enum AppError {
 
     #[error("Task finalization failed: {0}")]
     TaskFinalizationFailed(String),
+
+    #[error("Video analysis error: {0}")]
+    VideoAnalysisError(String),
 }
 
 impl From<std::io::Error> for AppError {
@@ -302,6 +305,7 @@ impl From<AppError> for SerializableError {
             AppError::LockPoisoned(_) => "LOCK_POISONED",
             AppError::TaskInitiationFailed(_) => "TASK_INITIATION_FAILED",
             AppError::TaskFinalizationFailed(_) => "TASK_FINALIZATION_FAILED",
+            AppError::VideoAnalysisError(_) => "VIDEO_ANALYSIS_ERROR",
         }
         .to_string();
 

@@ -21,6 +21,7 @@ pub mod implementation_plan_commands;
 pub mod prompt_commands;
 pub mod setup_commands;
 pub mod text_commands;
+pub mod video_analysis_commands;
 pub mod web_search_commands;
 pub mod workflow_commands;
 
@@ -161,5 +162,8 @@ pub use error_recovery_commands::{
     attempt_config_recovery, detect_config_issues, emergency_config_reset,
     get_config_health_status, rebuild_config_cache, validate_current_config,
 };
+
+// Re-exports from video analysis commands module
+pub use video_analysis_commands::start_video_analysis_job;
 
 // All command functions will return AppResult<T> directly

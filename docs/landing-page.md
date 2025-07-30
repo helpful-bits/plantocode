@@ -1,11 +1,11 @@
 ---
 title: "Vibe Manager | Stop Babysitting Your AI Coder"
-description: "The AI coding assistant that acts as a middle-manager for your LLMs, curating the perfect context so they can't get lost. Built by a developer, for developers, from the trenches."
+description: "A rather civilized solution for AI agents experiencing mild navigational difficulties in your codebase. We provide gentle context curation to help them find their way. Built by a developer, for developers, from the trenches."
 imageUrl: "https://vibe-manager-media.s3.amazonaws.com/og-image.png"
 keywords: ["AI coding assistant", "context curation", "vibe coding", "multi-model AI", "codebase analysis", "implementation plans", "developer tools", "local AI", "private AI coding", "Claude Code", "Gemini"]
 ---
 
-# Vibe Manager: The Middle Manager Your AI Coding Assistant Desperately Needs
+# Vibe Manager: The Polite Context Guidance Centre for Somewhat Bewildered AI Agents
 
 You know the feeling. You're "vibe coding" with an AI agent—the ideas are flowing, and it's magical... until it's not. The agent gets hopelessly lost in your large codebase, starts ignoring instructions, hallucinates APIs, and writes code that feels like it belongs in a different project entirely.
 
@@ -13,9 +13,9 @@ That magic moment is gone. Now you're a babysitter.
 
 You find yourself writing novels of documentation just to keep the agent on track. You create endless rule lists, turning your creative flow into a tedious game of "Simon Says." This isn't what AI-assisted development was supposed to be.
 
-I built Vibe Manager because I hit that wall. Hard. My own project, this very app, was a mess of bugs and instability because the agents I used couldn't see the big picture. I realized agents don't need more rules; they need a competent middle manager. They need a higher entity to find the *exact* files, understand the *real* context, and give them a crystal-clear, specific task.
+I built Vibe Manager because I hit that wall. Hard. My own project, this very app, was a mess of bugs and instability because the agents I used couldn't see the big picture. I realized agents don't need more rules; they need gentle guidance—a polite context service, if you will. They need assistance finding the *exact* files, understanding the *real* context, and receiving crystal-clear, specific tasks.
 
-Vibe Manager is that middle manager. You're the CEO with the vision. Vibe Manager does the logistical heavy lifting. The LLMs are your agents in the field, executing perfectly curated plans.
+Vibe Manager is that polite guidance centre. You're the visionary with the grand plan. Vibe Manager provides the discreet contextual support. The LLMs are your somewhat bewildered but talented agents, executing perfectly curated plans once properly oriented.
 
 ## How It Works: Giving Your AI a Brain (and a Map)
 

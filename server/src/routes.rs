@@ -94,6 +94,7 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig, strict_rate_limiter: RateL
             .route("/chat/completions", web::post().to(handlers::proxy_handlers::llm_chat_completion_handler))
             .route("/cancel", web::post().to(handlers::cancellation_handlers::cancel_request_handler))
             .route("/status/{request_id}", web::get().to(handlers::cancellation_handlers::get_request_status_handler))
+            .route("/video/analyze", web::post().to(handlers::proxy_handlers::video_analysis_handler))
     );
 
     // Audio transcription routes (/api/audio/*) - mimics OpenAI API structure

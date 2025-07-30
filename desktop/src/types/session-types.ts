@@ -65,4 +65,5 @@ export type Session = {
   searchSelectedFilesOnly: boolean; // Whether to search only in selected files
   modelUsed?: string; // The model used for this session
   filterMode?: 'all' | 'selected'; // Filter mode for the file browser
+  videoAnalysisPrompt?: string; // Persisted video analysis prompt for the session
 };

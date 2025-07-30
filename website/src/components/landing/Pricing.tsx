@@ -49,7 +49,7 @@ export function Pricing() {
             viewport={{ once: true }}
             whileInView={{ opacity: 1, scale: 1, y: 0 }}
           >
-            Simple Pricing
+            No-Nonsense Pricing
           </motion.h2>
           <motion.p
             className="text-lg sm:text-xl max-w-3xl mx-auto leading-relaxed font-medium text-description-muted"
@@ -58,7 +58,7 @@ export function Pricing() {
             viewport={{ once: true }}
             whileInView={{ opacity: 1, y: 0 }}
           >
-            Pay-as-you-go. No subscriptions. Transparent costs.
+            Let's be frank: with heavy use, this can cost $300+ a month. But this investment pays for itself in productivity and peace of mind. Every operation reports its exact cost in real-time, so you are always in control.
           </motion.p>
         </motion.div>
 
@@ -70,9 +70,8 @@ export function Pricing() {
           whileInView="visible"
         >
           <motion.div
-            className="relative will-change-transform"
+            className="relative"
             transition={{ duration: 0.2, ease: 'easeOut' }}
-            whileHover={{ scale: 1.02 }}
           >
             <GlassCard className="relative overflow-hidden" highlighted={true}>
 
@@ -84,10 +83,10 @@ export function Pricing() {
                   whileInView={{ opacity: 1, y: 0 }}
                 >
                   <h3 className="text-3xl font-semibold mb-6 text-primary-emphasis">
-                    Start Free, Pay for Usage
+                    Pay For What You Use
                   </h3>
                   <p className="text-lg mb-8 text-muted-foreground">
-                    All costs displayed upfront. Only charged for AI processing.
+                    Start with free credits on us. After that, it's pure pay-as-you-go. No subscriptions. No hidden fees.
                   </p>
                 </motion.div>
 
@@ -96,7 +95,6 @@ export function Pricing() {
                   initial={{ opacity: 0, y: 20, scale: 0.95 }}
                   transition={{ duration: 0.6, delay: 0.5 }}
                   viewport={{ once: true }}
-                  whileHover={{ scale: 1.02 }}
                   whileInView={{ opacity: 1, y: 0, scale: 1 }}
                 >
                   <motion.div
@@ -104,7 +102,6 @@ export function Pricing() {
                     initial={{ opacity: 0, scale: 0 }}
                     transition={{ duration: 0.4, delay: 0.7 }}
                     viewport={{ once: true }}
-                    whileHover={{ scale: 1.05 }}
                     whileInView={{ opacity: 1, scale: 1 }}
                   >
                     <div className="inline-flex items-center justify-center px-3 py-1.5 bg-gradient-to-r from-emerald-500 to-teal-600 text-white text-xs font-bold rounded-full shadow-lg ring-2 ring-white/30 backdrop-blur-sm">
@@ -113,13 +110,13 @@ export function Pricing() {
                   </motion.div>
 
                   <h4 className="text-4xl font-bold mb-3 text-primary text-shadow-subtle">
-                    $1.50
+                    Free Welcome Credits
                   </h4>
                   <p className="text-lg font-medium text-accent-highlight">
-                    Free Credit Included
+                    To Try All Features & Models
                   </p>
                   <p className="text-sm text-muted-foreground mt-2">
-                    No payment info needed. Full access to all features.
+                    New users get free credits (3-day expiration). Auto top-off is available.
                   </p>
                 </motion.div>
 
@@ -127,16 +124,15 @@ export function Pricing() {
                   initial={{ opacity: 0, y: 20 }}
                   transition={{ duration: 0.6, delay: 0.6 }}
                   viewport={{ once: true }}
-                  whileHover={{ scale: 1.05 }}
                   whileInView={{ opacity: 1, y: 0 }}
-                  whileTap={{ scale: 0.95 }}
                 >
                   <Button
                     className="w-full sm:w-auto"
                     size="xl"
                     variant="cta"
+                    whileTap={{ scale: 0.95 }}
                   >
-                    Get Started
+                    Download & Start Free
                   </Button>
                 </motion.div>
               </div>

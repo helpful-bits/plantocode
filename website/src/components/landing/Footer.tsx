@@ -23,14 +23,14 @@ export function Footer() {
                 </h3>
               </Link>
               <p className="text-muted-foreground mb-6 max-w-md text-sm leading-relaxed">
-                AI-powered context curation for large codebases. Find relevant files instantly and create implementation plans that combine internet knowledge with your architecture.
+                The AI coding assistant that acts as a middle-manager for your LLMs. We curate the perfect context from your codebase and the web, so your agents can build correctly the first time.
               </p>
 
               {/* Social Links */}
               <div className="flex items-center gap-3">
                 <a
                   aria-label="GitHub"
-                  className="group relative w-10 h-10 rounded-lg glass border border-primary/20 flex items-center justify-center hover:border-primary/40 transition-all duration-300"
+                  className="group relative w-10 h-10 rounded-lg glass border border-primary/20 flex items-center justify-center hover:border-primary/40"
                   href="https://github.com/vibemanager"
                 >
                   <div className="absolute inset-0 rounded-lg bg-gradient-to-br from-primary/0 to-primary/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
@@ -39,13 +39,13 @@ export function Footer() {
                   </svg>
                 </a>
                 <a
-                  aria-label="Twitter"
-                  className="group relative w-10 h-10 rounded-lg glass border border-primary/20 flex items-center justify-center hover:border-primary/40 transition-all duration-300"
-                  href="https://twitter.com/vibemanager"
+                  aria-label="X"
+                  className="group relative w-10 h-10 rounded-lg glass border border-primary/20 flex items-center justify-center hover:border-primary/40"
+                  href="https://x.com/vibemanager"
                 >
                   <div className="absolute inset-0 rounded-lg bg-gradient-to-br from-primary/0 to-primary/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                   <svg className="w-5 h-5 text-muted-foreground group-hover:text-primary transition-colors relative z-10" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M8.29 20.251c7.547 0 11.675-6.253 11.675-11.675 0-.178 0-.355-.012-.53A8.348 8.348 0 0022 5.92a8.19 8.19 0 01-2.357.646 4.118 4.118 0 001.804-2.27 8.224 8.224 0 01-2.605.996 4.107 4.107 0 00-6.993 3.743 11.65 11.65 0 01-8.457-4.287 4.106 4.106 0 001.27 5.477A4.072 4.072 0 012.8 9.713v.052a4.105 4.105 0 003.292 4.022 4.095 4.095 0 01-1.853.07 4.108 4.108 0 003.834 2.85A8.233 8.233 0 012 18.407a11.616 11.616 0 006.29 1.84" />
+                    <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
                   </svg>
                 </a>
               </div>
@@ -60,35 +60,23 @@ export function Footer() {
                 </h4>
                 <ul className="space-y-3">
                   <li>
-                    <Link className="text-muted-foreground hover:text-primary text-sm transition-colors duration-200 relative group inline-flex items-center" href="#features">
-                      <span className="relative">
-                        Features
-                        <span className="clickable-text-underline" />
-                      </span>
+                    <Link className="text-muted-foreground hover:text-primary text-sm transition-colors duration-200 clickable-text-underline" href="#features">
+                      Features
                     </Link>
                   </li>
                   <li>
-                    <Link className="text-muted-foreground hover:text-primary text-sm transition-colors duration-200 relative group inline-flex items-center" href="#how-it-works">
-                      <span className="relative">
-                        How It Works
-                        <span className="clickable-text-underline" />
-                      </span>
+                    <Link className="text-muted-foreground hover:text-primary text-sm transition-colors duration-200 clickable-text-underline" href="#how-it-works">
+                      How It Works
                     </Link>
                   </li>
                   <li>
-                    <Link className="text-muted-foreground hover:text-primary text-sm transition-colors duration-200 relative group inline-flex items-center" href="#pricing">
-                      <span className="relative">
-                        Pricing
-                        <span className="clickable-text-underline" />
-                      </span>
+                    <Link className="text-muted-foreground hover:text-primary text-sm transition-colors duration-200 clickable-text-underline" href="#pricing">
+                      Pricing
                     </Link>
                   </li>
                   <li>
-                    <Link className="text-muted-foreground hover:text-primary text-sm transition-colors duration-200 relative group inline-flex items-center" href="/download">
-                      <span className="relative">
-                        Download
-                        <span className="clickable-text-underline" />
-                      </span>
+                    <Link className="text-muted-foreground hover:text-primary text-sm transition-colors duration-200 clickable-text-underline" href="/download">
+                      Download
                     </Link>
                   </li>
                 </ul>
@@ -101,35 +89,23 @@ export function Footer() {
                 </h4>
                 <ul className="space-y-3">
                   <li>
-                    <Link className="text-muted-foreground hover:text-primary text-sm transition-colors duration-200 relative group inline-flex items-center" href="/docs">
-                      <span className="relative">
-                        Documentation
-                        <span className="absolute -bottom-0.5 left-0 w-0 h-px bg-primary group-hover:w-full transition-all duration-300" />
-                      </span>
+                    <Link className="text-muted-foreground hover:text-primary text-sm transition-colors duration-200 clickable-text-underline" href="/docs">
+                      Documentation
                     </Link>
                   </li>
                   <li>
-                    <Link className="text-muted-foreground hover:text-primary text-sm transition-colors duration-200 relative group inline-flex items-center" href="/api">
-                      <span className="relative">
-                        API Reference
-                        <span className="absolute -bottom-0.5 left-0 w-0 h-px bg-primary group-hover:w-full transition-all duration-300" />
-                      </span>
+                    <Link className="text-muted-foreground hover:text-primary text-sm transition-colors duration-200 clickable-text-underline" href="/api">
+                      API Reference
                     </Link>
                   </li>
                   <li>
-                    <Link className="text-muted-foreground hover:text-primary text-sm transition-colors duration-200 relative group inline-flex items-center" href="/changelog">
-                      <span className="relative">
-                        Changelog
-                        <span className="absolute -bottom-0.5 left-0 w-0 h-px bg-primary group-hover:w-full transition-all duration-300" />
-                      </span>
+                    <Link className="text-muted-foreground hover:text-primary text-sm transition-colors duration-200 clickable-text-underline" href="/changelog">
+                      Changelog
                     </Link>
                   </li>
                   <li>
-                    <Link className="text-muted-foreground hover:text-primary text-sm transition-colors duration-200 relative group inline-flex items-center" href="/support">
-                      <span className="relative">
-                        Support
-                        <span className="absolute -bottom-0.5 left-0 w-0 h-px bg-primary group-hover:w-full transition-all duration-300" />
-                      </span>
+                    <Link className="text-muted-foreground hover:text-primary text-sm transition-colors duration-200 clickable-text-underline" href="/support">
+                      Support
                     </Link>
                   </li>
                 </ul>
@@ -142,35 +118,23 @@ export function Footer() {
                 </h4>
                 <ul className="space-y-3">
                   <li>
-                    <Link className="text-muted-foreground hover:text-primary text-sm transition-colors duration-200 relative group inline-flex items-center" href="/about">
-                      <span className="relative">
-                        About
-                        <span className="absolute -bottom-0.5 left-0 w-0 h-px bg-primary group-hover:w-full transition-all duration-300" />
-                      </span>
+                    <Link className="text-muted-foreground hover:text-primary text-sm transition-colors duration-200 clickable-text-underline" href="/about">
+                      About
                     </Link>
                   </li>
                   <li>
-                    <Link className="text-muted-foreground hover:text-primary text-sm transition-colors duration-200 relative group inline-flex items-center" href="/blog">
-                      <span className="relative">
-                        Blog
-                        <span className="absolute -bottom-0.5 left-0 w-0 h-px bg-primary group-hover:w-full transition-all duration-300" />
-                      </span>
+                    <Link className="text-muted-foreground hover:text-primary text-sm transition-colors duration-200 clickable-text-underline" href="/blog">
+                      Blog
                     </Link>
                   </li>
                   <li>
-                    <Link className="text-muted-foreground hover:text-primary text-sm transition-colors duration-200 relative group inline-flex items-center" href="/careers">
-                      <span className="relative">
-                        Careers
-                        <span className="absolute -bottom-0.5 left-0 w-0 h-px bg-primary group-hover:w-full transition-all duration-300" />
-                      </span>
+                    <Link className="text-muted-foreground hover:text-primary text-sm transition-colors duration-200 clickable-text-underline" href="/careers">
+                      Careers
                     </Link>
                   </li>
                   <li>
-                    <Link className="text-muted-foreground hover:text-primary text-sm transition-colors duration-200 relative group inline-flex items-center" href="/contact">
-                      <span className="relative">
-                        Contact
-                        <span className="absolute -bottom-0.5 left-0 w-0 h-px bg-primary group-hover:w-full transition-all duration-300" />
-                      </span>
+                    <Link className="text-muted-foreground hover:text-primary text-sm transition-colors duration-200 clickable-text-underline" href="/contact">
+                      Contact
                     </Link>
                   </li>
                 </ul>
@@ -185,17 +149,11 @@ export function Footer() {
                 © 2024 Vibe Manager. All rights reserved.
               </p>
               <div className="flex items-center gap-6">
-                <Link className="text-muted-foreground hover:text-primary text-xs transition-colors duration-200 relative group" href="/privacy">
-                  <span className="relative">
-                    Privacy Policy
-                    <span className="absolute -bottom-0.5 left-0 w-0 h-px bg-primary group-hover:w-full transition-all duration-300" />
-                  </span>
+                <Link className="text-muted-foreground hover:text-primary text-xs transition-colors duration-200 clickable-text-underline" href="/privacy">
+                  Privacy Policy
                 </Link>
-                <Link className="text-muted-foreground hover:text-primary text-xs transition-colors duration-200 relative group" href="/terms">
-                  <span className="relative">
-                    Terms of Service
-                    <span className="absolute -bottom-0.5 left-0 w-0 h-px bg-primary group-hover:w-full transition-all duration-300" />
-                  </span>
+                <Link className="text-muted-foreground hover:text-primary text-xs transition-colors duration-200 clickable-text-underline" href="/terms">
+                  Terms of Service
                 </Link>
               </div>
             </div>

@@ -256,15 +256,8 @@
     /* Keep the styled backgrounds, just simplify blur */
   }
   
-  .glass-highlighted {
-    backdrop-filter: blur(8px) !important;
-    -webkit-backdrop-filter: blur(8px) !important;
-    /* Keep the styled backgrounds */
-  }
-  
   .glass-subtle,
-  .glass-elevated,
-  .header-glass {
+  .glass-elevated {
     backdrop-filter: blur(8px) !important;
     -webkit-backdrop-filter: blur(8px) !important;
   }
@@ -400,85 +393,44 @@
   /* Unified Glass System - Modern, consistent glass morphism */
   .glass {
     /* Light mode - Optimized for performance while maintaining visual appeal */
-    background: 
-      oklch(0.995 0.008 195 / 0.5),
-      linear-gradient(135deg, 
-        oklch(0.995 0.005 195 / 0.55) 0%, 
-        oklch(0.985 0.012 195 / 0.48) 50%,
-        oklch(0.995 0.005 195 / 0.52) 100%);
+    background: oklch(0.995 0.008 195 / 0.7);
     
-    /* Reduced blur for better performance in light mode */
-    backdrop-filter: blur(6px) saturate(105%);
-    -webkit-backdrop-filter: blur(6px) saturate(105%);
+    /* Simplified blur for better performance */
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
     
     border: 1px solid oklch(0.90 0.04 195 / 0.5);
-    box-shadow: 
-      inset 0 0 24px oklch(0.995 0.008 195 / 0.4),
-      inset 0 1px 0 oklch(1 0 0 / 0.8),
-      0 8px 32px oklch(0.48 0.15 195 / 0.06),
-      0 4px 16px oklch(0.18 0 0 / 0.03);
+    box-shadow: 0 8px 32px oklch(0.48 0.15 195 / 0.06);
     
     position: relative;
     overflow: hidden;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    will-change: transform, backdrop-filter;
   }
   
   
   .dark .glass {
-    background: 
-      oklch(0.20 0.022 206 / 0.62),
-      linear-gradient(135deg, 
-        oklch(0.22 0.022 206 / 0.67) 0%, 
-        oklch(0.215 0.032 195 / 0.64) 25%,
-        oklch(0.218 0.028 195 / 0.65) 50%,
-        oklch(0.216 0.030 195 / 0.64) 75%,
-        oklch(0.22 0.022 206 / 0.66) 100%),
-      radial-gradient(circle at 30% 20%, oklch(0.68 0.085 195 / 0.14) 0%, transparent 45%),
-      radial-gradient(circle at 70% 80%, oklch(0.68 0.085 195 / 0.10) 0%, transparent 40%);
+    background: oklch(0.20 0.022 206 / 0.8);
     
-    backdrop-filter: blur(16px) saturate(120%);
-    -webkit-backdrop-filter: blur(16px) saturate(120%);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
     
     border: 1px solid oklch(0.68 0.085 195 / 0.34);
-    box-shadow: 
-      inset 0 0 38px oklch(0.68 0.085 195 / 0.15),
-      inset 0 2px 4px oklch(1 0 0 / 0.17),
-      inset 0 -1px 2px oklch(0.68 0.085 195 / 0.13),
-      0 16px 48px oklch(0.68 0.085 195 / 0.20),
-      0 8px 24px oklch(0 0 0 / 0.35),
-      0 2px 8px oklch(0 0 0 / 0.28);
+    box-shadow: 0 16px 48px oklch(0.68 0.085 195 / 0.20);
   }
   
   .glass:hover {
     /* Optimized hover state - no blur change for performance */
-    backdrop-filter: blur(6px) saturate(110%) brightness(101%);
-    -webkit-backdrop-filter: blur(6px) saturate(110%) brightness(101%);
     border: 1px solid oklch(0.48 0.15 195 / 0.3);
-    box-shadow: 
-      inset 0 0 24px oklch(0.995 0.008 195 / 0.5),
-      inset 0 1px 2px oklch(1 0 0 / 0.8),
-      0 8px 24px oklch(0.48 0.15 195 / 0.1),
-      0 4px 12px oklch(0.18 0 0 / 0.05);
-    transform: translateY(-2px);
+    box-shadow: 0 8px 24px oklch(0.48 0.15 195 / 0.1);
   }
   
   .dark .glass:hover {
-    backdrop-filter: blur(20px) saturate(130%) brightness(105%);
-    -webkit-backdrop-filter: blur(20px) saturate(130%) brightness(105%);
     border: 1px solid oklch(0.68 0.085 195 / 0.5);
-    box-shadow: 
-      inset 0 0 48px oklch(0.68 0.085 195 / 0.3),
-      inset 0 1px 2px oklch(1 0 0 / 0.25),
-      0 16px 48px oklch(0.68 0.085 195 / 0.35),
-      0 8px 24px oklch(0 0 0 / 0.6);
-    transform: translateY(-2px) scale(1.01);
+    box-shadow: 0 16px 48px oklch(0.68 0.085 195 / 0.35);
   }
   
   /* Glass active - compression effect */
   .glass:active {
-    transform: translateY(0) scale(0.99);
-    /* NO backdrop-filter change to prevent expensive recalculation */
+    /* NO transform or backdrop-filter change to prevent expensive recalculation */
   }
   
   /* Glass focus - glowing ring */
@@ -593,7 +545,6 @@
       color-mix(in oklch, var(--color-adaptive-accent) 75%, var(--teal-bright) 25%) 75%,
       var(--teal-bright) 100%);
     background-size: 200% 200%;
-    animation: gradientFlow 12s ease-in-out infinite;
   }
 
   /* Gradient accent animated utility - Enhanced OKLCH */
@@ -605,7 +556,6 @@
       color-mix(in oklch, var(--color-adaptive-accent) 70%, var(--teal-medium) 30%) 75%,
       var(--color-adaptive-accent) 100%);
     background-size: 200% 200%;
-    animation: gradientFlow 15s ease-in-out infinite;
   }
   
   /* Enhanced adaptive glow effects */
@@ -664,57 +614,6 @@
       0 8px 24px oklch(0.16 0.022 206 / 0.04);
   }
 
-  /* Realistic Header Glass - Enhanced frosted effect */
-  .header-glass {
-    background: 
-      /* Directional frost gradient */
-      linear-gradient(
-        to bottom,
-        oklch(1 0 0 / 0.85),
-        oklch(1 0 0 / 0.75) 50%,
-        oklch(1 0 0 / 0.7) 100%
-      ),
-      /* Light scatter effect */
-      radial-gradient(ellipse at 50% 0%, oklch(1 0 0 / 0.2), transparent 80%);
-    
-    backdrop-filter: blur(28px) saturate(180%) brightness(105%);
-    -webkit-backdrop-filter: blur(28px) saturate(180%) brightness(105%);
-    
-    border-bottom: 1px solid oklch(1 0 0 / 0.25);
-    box-shadow: 
-      /* Inner light edge */
-      inset 0 1px 0 oklch(1 0 0 / 0.5),
-      inset 0 -1px 0 oklch(0.48 0.15 195 / 0.1),
-      /* Outer depth shadow */
-      0 0 0 1px oklch(0 0 0 / 0.02),
-      0 8px 32px oklch(0.48 0.15 195 / 0.08),
-      0 16px 48px oklch(0 0 0 / 0.03);
-    
-    position: relative;
-  }
-  
-  
-  .dark .header-glass {
-    background: 
-      linear-gradient(
-        to bottom,
-        oklch(0.16 0.022 206 / 0.9),
-        oklch(0.16 0.022 206 / 0.85) 50%,
-        oklch(0.16 0.022 206 / 0.8) 100%
-      ),
-      radial-gradient(ellipse at 50% 0%, oklch(0.68 0.085 195 / 0.15), transparent 80%);
-    
-    backdrop-filter: blur(32px) saturate(200%) brightness(110%);
-    -webkit-backdrop-filter: blur(32px) saturate(200%) brightness(110%);
-    
-    border-bottom: 1px solid oklch(0.68 0.085 195 / 0.35);
-    box-shadow: 
-      inset 0 1px 0 oklch(1 0 0 / 0.1),
-      inset 0 -1px 0 oklch(0.68 0.085 195 / 0.2),
-      0 0 0 1px oklch(0 0 0 / 0.1),
-      0 8px 32px oklch(0.68 0.085 195 / 0.15),
-      0 16px 48px oklch(0 0 0 / 0.2);
-  }
 
   .nav-link-hover {
     position: relative;
@@ -771,13 +670,13 @@
     color: color-mix(in oklch, var(--color-adaptive-primary) 70%, oklch(0.9 0.08 195) 30%);
     outline: 2px solid var(--color-adaptive-primary);
     outline-offset: 2px;
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: outline 0.2s cubic-bezier(0.4, 0, 0.2, 1), outline-offset 0.2s cubic-bezier(0.4, 0, 0.2, 1), color 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   }
   
   .interactive-active:active {
     color: color-mix(in oklch, var(--color-adaptive-primary) 85%, oklch(0.3 0.2 195) 15%);
     transform: translateY(1px);
-    transition: all 0.1s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: color 0.1s cubic-bezier(0.4, 0, 0.2, 1), transform 0.1s cubic-bezier(0.4, 0, 0.2, 1);
   }
   
   .interactive-bg-hover:hover {
@@ -920,214 +819,12 @@
 
   /* NEW: Unified Glass Hierarchy - Intelligently adapts to both themes */
   
-  /* Glass Highlighted - Special highlighted cards */
-  .glass-highlighted {
-    /* Light mode - Optimized for performance with simpler gradients */
-    background: 
-      linear-gradient(135deg, 
-        oklch(0.995 0.008 195) 0%, 
-        oklch(0.988 0.015 195) 50%,
-        oklch(0.995 0.008 195) 100%),
-      radial-gradient(circle at 50% 50%, oklch(0.68 0.08 195 / 0.06) 0%, transparent 60%);
-    
-    /* Reduced blur for better performance */
-    backdrop-filter: blur(8px) saturate(110%) brightness(101%);
-    -webkit-backdrop-filter: blur(8px) saturate(110%) brightness(101%);
-    
-    border: 1px solid oklch(0.48 0.15 195 / 0.18);
-    box-shadow: 
-      inset 0 0 60px oklch(0.68 0.08 195 / 0.08),
-      inset 0 2px 4px oklch(1 0 0 / 0.95),
-      inset 0 -2px 4px oklch(0.48 0.15 195 / 0.12),
-      0 20px 60px oklch(0.48 0.15 195 / 0.15),
-      0 10px 30px oklch(0.58 0.12 185 / 0.08),
-      0 4px 12px oklch(0.18 0 0 / 0.05),
-      0 0 80px oklch(0.68 0.08 195 / 0.06);
-    
-    position: relative;
-    overflow: hidden;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  }
-  
-  .dark .glass-highlighted {
-    /* Dark mode - Rich navy with enhanced teal glow */
-    background: 
-      linear-gradient(135deg, 
-        oklch(0.22 0.022 206) 0%, 
-        oklch(0.215 0.032 195) 25%,
-        oklch(0.218 0.028 195) 50%,
-        oklch(0.216 0.030 195) 75%,
-        oklch(0.22 0.022 206) 100%),
-      radial-gradient(circle at 30% 20%, oklch(0.68 0.085 195 / 0.15) 0%, transparent 45%),
-      radial-gradient(circle at 70% 80%, oklch(0.68 0.085 195 / 0.12) 0%, transparent 40%);
-    
-    backdrop-filter: blur(24px) saturate(150%) brightness(105%);
-    -webkit-backdrop-filter: blur(24px) saturate(150%) brightness(105%);
-    
-    border: 1px solid oklch(0.68 0.085 195 / 0.48);
-    box-shadow: 
-      inset 0 0 55px oklch(0.68 0.085 195 / 0.22),
-      inset 0 2px 4px oklch(1 0 0 / 0.25),
-      inset 0 -1px 2px oklch(0.68 0.085 195 / 0.18),
-      0 16px 48px oklch(0.68 0.085 195 / 0.28),
-      0 8px 24px oklch(0 0 0 / 0.5),
-      0 2px 8px oklch(0 0 0 / 0.4);
-  }
-  
-  .glass-highlighted:hover {
-    background: 
-      linear-gradient(135deg, 
-        oklch(0.99 0.01 195) 0%, 
-        oklch(0.983 0.019 195) 50%,
-        oklch(0.99 0.01 195) 100%),
-      radial-gradient(circle at 50% 50%, oklch(0.68 0.08 195 / 0.08) 0%, transparent 60%);
-    
-    /* Keep same blur level for performance */
-    backdrop-filter: blur(8px) saturate(115%) brightness(102%);
-    -webkit-backdrop-filter: blur(8px) saturate(115%) brightness(102%);
-    border: 1px solid oklch(0.48 0.15 195 / 0.28);
-    box-shadow: 
-      inset 0 0 80px oklch(0.68 0.08 195 / 0.12),
-      inset 0 2px 4px oklch(1 0 0 / 1),
-      inset 0 -2px 4px oklch(0.48 0.15 195 / 0.18),
-      0 24px 72px oklch(0.48 0.15 195 / 0.2),
-      0 12px 36px oklch(0.58 0.12 185 / 0.12),
-      0 6px 18px oklch(0.18 0 0 / 0.08),
-      0 0 100px oklch(0.68 0.08 195 / 0.1);
-    transform: translateY(-3px);
-  }
-  
-  .dark .glass-highlighted:hover {
-    background: 
-      linear-gradient(135deg, 
-        oklch(0.225 0.025 206) 0%, 
-        oklch(0.22 0.035 195) 25%,
-        oklch(0.223 0.031 195) 50%,
-        oklch(0.221 0.033 195) 75%,
-        oklch(0.225 0.025 206) 100%),
-      radial-gradient(circle at 30% 20%, oklch(0.68 0.085 195 / 0.18) 0%, transparent 45%),
-      radial-gradient(circle at 70% 80%, oklch(0.68 0.085 195 / 0.15) 0%, transparent 40%);
-    
-    backdrop-filter: blur(28px) saturate(165%) brightness(108%);
-    -webkit-backdrop-filter: blur(28px) saturate(165%) brightness(108%);
-    border: 1px solid oklch(0.68 0.085 195 / 0.58);
-    box-shadow: 
-      inset 0 0 62px oklch(0.68 0.085 195 / 0.28),
-      inset 0 2px 4px oklch(1 0 0 / 0.3),
-      inset 0 -1px 2px oklch(0.68 0.085 195 / 0.22),
-      0 20px 56px oklch(0.68 0.085 195 / 0.35),
-      0 10px 32px oklch(0 0 0 / 0.6),
-      0 4px 16px oklch(0 0 0 / 0.5);
-    transform: translateY(-3px);
-  }
 
 
 
 }
 
 /* Keyframe Animations */
-@keyframes fade-in-up {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes scale-in {
-  from {
-    opacity: 0;
-    transform: scale(0.9);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
-@keyframes gradientFlow {
-  0%, 100% { 
-    background-position: 0% 50%;
-  }
-  25% { 
-    background-position: 100% 50%;
-  }
-  50% { 
-    background-position: 100% 100%;
-  }
-  75% { 
-    background-position: 0% 100%;
-  }
-}
-
-@keyframes slide-in-left {
-  from {
-    opacity: 0;
-    transform: translateX(-20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
-@keyframes slide-in-right {
-  from {
-    opacity: 0;
-    transform: translateX(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
-@keyframes bounce-in {
-  from {
-    opacity: 0;
-    transform: scale(0.3);
-  }
-  50% {
-    opacity: 1;
-    transform: scale(1.05);
-  }
-  70% {
-    transform: scale(0.9);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
-@keyframes pulse {
-  0%, 100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.5;
-  }
-}
-
-@keyframes pulse-teal {
-  0%, 100% {
-    box-shadow: 
-      0 0 30px rgba(0, 128, 128, 0.5),
-      0 0 60px rgba(0, 128, 128, 0.35),
-      0 0 120px rgba(0, 128, 128, 0.2),
-      inset 0 0 30px rgba(0, 128, 128, 0.1);
-  }
-  50% {
-    box-shadow: 
-      0 0 40px rgba(0, 128, 128, 0.6),
-      0 0 80px rgba(0, 128, 128, 0.45),
-      0 0 160px rgba(0, 128, 128, 0.3),
-      inset 0 0 40px rgba(0, 128, 128, 0.15);
-  }
-}
 
 @keyframes pulse-adaptive {
   0%, 100% {
@@ -1160,26 +857,6 @@
       0 0 30px oklch(0.48 0.15 195 / 0.15);
   }
 }
-
-
-@keyframes glow {
-  from {
-    box-shadow: 0 0 10px rgba(0, 128, 128, 0.3);
-  }
-  to {
-    box-shadow: 0 0 20px rgba(0, 128, 128, 0.5), 0 0 30px rgba(0, 128, 128, 0.3);
-  }
-}
-
-@keyframes spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
-}
-
 
 
 @keyframes radial-pulse {
@@ -1217,37 +894,8 @@
   }
 }
 
-@keyframes gradientShift {
-  0%, 100% {
-    background-position: 0% 50%;
-  }
-  50% {
-    background-position: 100% 50%;
-  }
-}
 
 
-@keyframes ripple {
-  from {
-    opacity: 1;
-  }
-  to {
-    opacity: 0;
-  }
-}
-
-@keyframes ripple-expand {
-  0% {
-    width: 0;
-    height: 0;
-    opacity: 0.5;
-  }
-  100% {
-    width: 400px;
-    height: 400px;
-    opacity: 0;
-  }
-}
 
 /* Removed ripple animations for performance */
 
@@ -1368,7 +1016,6 @@ section:not(:first-child) {
   
   /* Remove blur for performance but keep styled backgrounds */
   .glass,
-  .glass-highlighted,
   .glass-subtle,
   .glass-elevated,
   .glass-intense {
@@ -1416,7 +1063,7 @@ section:not(:first-child) {
 /* Interactive text states */
 .interactive-text {
   position: relative;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: color 0.2s cubic-bezier(0.4, 0, 0.2, 1), text-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   cursor: pointer;
 }
 
@@ -1466,15 +1113,17 @@ a:not(.no-hover-effect):focus-visible {
   position: absolute;
   bottom: -2px;
   left: 0;
-  width: 0;
+  width: 100%;
+  transform: scaleX(0);
+  transform-origin: left;
   height: 2px;
   background: var(--color-primary);
-  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .clickable-text-underline:hover::after,
 .clickable-text-underline:focus-visible::after {
-  width: 100%;
+  transform: scaleX(1);
 }
 
 .clickable-text-underline:hover {
@@ -1497,93 +1146,16 @@ a:not(.no-hover-effect):focus-visible {
 /* Performance optimizations for animations */
 /* Removed excessive will-change usage to prevent GPU memory issues */
 
-/* Comprehensive GPU acceleration for all animated elements */
-.glass,
-.glass-subtle,
-.glass-elevated,
-.glass-intense,
-.glass-enhanced,
-.glass-highlighted,
-[class*="motion-"],
-[class*="animate-"],
-.animate-pulse,
-.animate-bounce,
-.animate-spin,
-[data-state="open"],
-[data-state="closed"],
-.nav-link-hover,
-.button-glow,
-.dynamic-bg,
-.gradient-accent-animated,
-.teal-glow-intense,
-.group:hover *,
-button:hover,
-a:hover {
-  transform: translate3d(0, 0, 0);
-  backface-visibility: hidden;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-/* Specific will-change properties for different animation types */
-[class*="animate-"],
-.animate-pulse,
-.animate-bounce,
-.animate-spin,
-[class*="motion-"] {
-  will-change: transform;
-}
-
-.teal-glow-intense,
-.button-glow {
-  will-change: box-shadow;
-}
-
-[class*="opacity-"] {
-  will-change: opacity;
-}
-
-/* Hover effects GPU acceleration */
-.group:hover,
-button:hover,
-a:hover,
-[class*="hover:"] {
-  will-change: transform, opacity;
-}
+/* Note: will-change should only be applied when animation is actively happening,
+   not permanently on hover states as it keeps elements on GPU layers unnecessarily.
+   Framer Motion handles this optimization automatically. */
 
 /* Replace width transitions with transform for GPU optimization */
-
-/* Enhanced GPU acceleration utilities */
-.gpu-layer {
-  transform: translate3d(0, 0, 0);
-  backface-visibility: hidden;
-  perspective: 1000px;
-}
-
-.gpu-hover {
-  transition: transform 0.15s cubic-bezier(0.4, 0, 0.2, 1);
-  will-change: transform;
-}
-
-.gpu-hover:hover {
-  transform: translate3d(0, -2px, 0);
-}
-
-.gpu-active:active {
-  transform: translate3d(0, 0, 0) scale(0.98);
-  transition: transform 0.1s cubic-bezier(0.4, 0, 0.2, 1);
-}
 
 /* Video and media optimizations */
 video {
   transform: translate3d(0, 0, 0);
   backface-visibility: hidden;
-}
-
-/* Framer Motion optimizations */
-[data-framer-name] {
-  transform: translate3d(0, 0, 0);
-  will-change: transform;
 }
 
 /* Optimize scroll performance */
@@ -1611,40 +1183,5 @@ html {
 }
 
 @layer utilities {
-  .burst-radial {
-    background: radial-gradient(
-      circle at center,
-      oklch(var(--color-primary) / 0.1) 0%,
-      transparent 50%
-    );
-    pointer-events: none;
-    background-size: cover;
-    opacity: 0.55;
-  }
-
-  .dark .burst-radial {
-    background: radial-gradient(
-      circle at center,
-      oklch(var(--color-primary) / 0.15) 0%,
-      transparent 50%
-    );
-  }
-
-  .burst-animated {
-    animation: burstRotate 20s linear infinite;
-  }
-  
-  /* Viewport-triggered version for performance */
-  .burst-animated-viewport {
-    animation: burstRotate 40s linear infinite;
-  }
 }
 
-@keyframes burstRotate {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
-}

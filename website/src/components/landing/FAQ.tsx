@@ -1,9 +1,9 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
+import React, { useState } from 'react';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useAnimationOrchestrator, animationVariants } from '@/hooks/useAnimationOrchestrator';
+import { variants } from '@/lib/animations';
 
 interface FAQItem {
   question: string;
@@ -16,27 +16,26 @@ interface FAQProps {
 
 export function FAQ({ items }: FAQProps) {
   const [openIndex, setOpenIndex] = useState<number | null>(null);
-  const sectionRef = useRef<HTMLElement>(null);
-  const { isInView } = useAnimationOrchestrator(sectionRef);
 
   return (
-    <section ref={sectionRef} className="relative py-16 px-4 overflow-hidden" id="faq">
+    <section className="relative py-16 px-4 overflow-hidden" id="faq">
       <div className="container mx-auto max-w-3xl relative z-10">
         <motion.div
           className="text-center mb-12"
           initial="hidden"
-          animate={isInView ? "visible" : "hidden"}
-          variants={animationVariants.section}
+          whileInView="visible"
+          variants={variants.section}
+          viewport={{ once: true, amount: 0.5 }}
         >
           <motion.h2
             className="text-3xl sm:text-4xl lg:text-5xl mb-4 text-primary-emphasis"
-            variants={animationVariants.item}
+            variants={variants.item}
           >
             Frequently Asked Questions
           </motion.h2>
           <motion.p
             className="text-lg sm:text-xl max-w-2xl mx-auto leading-relaxed font-medium text-foreground/80"
-            variants={animationVariants.item}
+            variants={variants.item}
           >
             Everything you need to know about Vibe Manager
           </motion.p>
@@ -45,33 +44,17 @@ export function FAQ({ items }: FAQProps) {
         <motion.div
           className="space-y-4 p-2"
           initial="hidden"
-          animate={isInView ? "visible" : "hidden"}
-          variants={{
-            visible: {
-              transition: {
-                staggerChildren: 0.06,
-                delayChildren: 0.2,
-              },
-            },
-          }}
+          whileInView="visible"
+          variants={variants.section}
+          viewport={{ once: true, amount: 0.1 }}
         >
           {items.map((item, index) => (
             <motion.div
               key={index}
-              variants={{
-                hidden: { opacity: 0, y: 20 },
-                visible: {
-                  opacity: 1,
-                  y: 0,
-                  transition: {
-                    duration: 0.4,
-                    ease: [0.25, 0.46, 0.45, 0.94],
-                  },
-                },
-              }}
               className="faq-item"
-              whileHover={{ scale: 1.02 }}
               transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
+              variants={variants.item}
+              whileHover={{ scale: 1.02 }}
             >
               <GlassCard className="overflow-hidden">
                 <motion.div
@@ -81,39 +64,39 @@ export function FAQ({ items }: FAQProps) {
                   transition={{ duration: 0.3, ease: 'easeInOut' }}
                 >
                   <motion.button
-                    className="w-full p-6 text-left flex justify-between items-center transition-colors duration-200 group relative"
-                    onClick={() => setOpenIndex(openIndex === index ? null : index)}
+                    className="w-full p-6 text-left flex justify-between items-center group relative"
                     whileTap={{ scale: 0.98 }}
+                    onClick={() => setOpenIndex(openIndex === index ? null : index)}
                   >
                     <span
-                      className={`font-semibold text-lg text-foreground pr-4 transition-colors duration-200 ${
+                      className={`font-semibold text-lg text-foreground pr-4 ${
                         openIndex === index ? 'text-primary' : ''
                       }`}
                     >
                       {item.question}
                     </span>
                     <motion.div
-                      className="flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center relative"
                       animate={{
                         scale: openIndex === index ? 1.1 : 1,
-                        rotate: openIndex === index ? 180 : 0
+                        rotate: openIndex === index ? 180 : 0,
                       }}
+                      className="flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center relative"
                       transition={{
                         duration: 0.4,
-                        type: "spring",
+                        type: 'spring',
                         damping: 15,
                         stiffness: 200,
                       }}
                     >
                       <div
-                        className={`absolute inset-0 rounded-full transition-all duration-300 ${
+                        className={`absolute inset-0 rounded-full ${
                           openIndex === index
                             ? 'bg-gradient-to-br from-primary/30 to-primary/40'
                             : 'bg-gradient-to-br from-primary/5 to-primary/10'
                         }`}
                       />
                       <div
-                        className={`absolute inset-0 rounded-full ring-1 transition-colors duration-300 ${
+                        className={`absolute inset-0 rounded-full ring-1 ${
                           openIndex === index ? 'ring-primary/40' : 'ring-primary/15'
                         }`}
                       />
@@ -136,7 +119,6 @@ export function FAQ({ items }: FAQProps) {
                   <AnimatePresence mode="wait">
                     {openIndex === index && (
                       <motion.div
-                        initial={{ height: 0, opacity: 0 }}
                         animate={{
                           height: 'auto',
                           opacity: 1,
@@ -152,6 +134,7 @@ export function FAQ({ items }: FAQProps) {
                             },
                           },
                         }}
+                        className="overflow-hidden"
                         exit={{
                           height: 0,
                           opacity: 0,
@@ -166,7 +149,7 @@ export function FAQ({ items }: FAQProps) {
                             },
                           },
                         }}
-                        className="overflow-hidden"
+                        initial={{ height: 0, opacity: 0 }}
                       >
                         <div className="px-6 pb-6 text-foreground leading-relaxed">
                           <div className="border-l-2 border-primary/20 pl-4">

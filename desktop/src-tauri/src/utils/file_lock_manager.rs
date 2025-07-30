@@ -6,8 +6,35 @@ use tokio::sync::Mutex;
 use uuid::Uuid;
 
 use super::file_lock_types::{FileLockGuard, FileLockId, FileLockInfo, LockMode};
-use super::path_utils::normalize_path;
 use crate::error::{AppError, AppResult};
+
+/// Normalize a path for locking purposes
+/// Unlike regular normalize_path, this handles non-existent files by normalizing the parent directory
+async fn normalize_path_for_lock(path: &Path) -> AppResult<PathBuf> {
+    // First try to canonicalize the path directly (for existing files)
+    if let Ok(canonical) = tokio::fs::canonicalize(path).await {
+        return Ok(canonical);
+    }
+
+    // If the file doesn't exist, canonicalize the parent directory and append the filename
+    if let Some(parent) = path.parent() {
+        if let Ok(canonical_parent) = tokio::fs::canonicalize(parent).await {
+            if let Some(file_name) = path.file_name() {
+                return Ok(canonical_parent.join(file_name));
+            }
+        }
+    }
+
+    // If we can't canonicalize, at least make it absolute
+    if path.is_absolute() {
+        Ok(path.to_path_buf())
+    } else {
+        // Get current directory and join with the path
+        let current_dir = std::env::current_dir()
+            .map_err(|e| AppError::FileSystemError(format!("Failed to get current directory: {}", e)))?;
+        Ok(current_dir.join(path))
+    }
+}
 
 /// A simple file lock manager for coordinating write operations only
 /// This is a minimal mutex-style system focused on preventing concurrent writes
@@ -34,7 +61,7 @@ impl FileLockManager {
             ));
         }
 
-        let path_normalized = normalize_path(path)?;
+        let path_normalized = normalize_path_for_lock(path).await?;
 
         // Simple mutex-style lock - wait until we can acquire
         loop {
@@ -74,7 +101,7 @@ impl FileLockManager {
         lock_id: &FileLockId,
         path: &Path,
     ) -> AppResult<()> {
-        let path_normalized = normalize_path(path)?;
+        let path_normalized = normalize_path_for_lock(path).await?;
 
         let mut locks = self.active_locks.lock().await;
 

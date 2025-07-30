@@ -42,7 +42,8 @@ CREATE TABLE IF NOT EXISTS sessions (
   model_used TEXT DEFAULT NULL,
   search_selected_files_only INTEGER DEFAULT 0 CHECK(search_selected_files_only IN (0, 1)),
   included_files TEXT,
-  force_excluded_files TEXT
+  force_excluded_files TEXT,
+  video_analysis_prompt TEXT DEFAULT NULL
 );
 
 -- Create indexes for sessions table

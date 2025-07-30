@@ -19,7 +19,6 @@ use crate::jobs::types::{
 };
 use crate::models::{JobStatus, OpenRouterContent, OpenRouterRequestMessage, TaskType};
 use crate::utils::job_metadata_builder::JobMetadataBuilder;
-use crate::utils::xml_utils::extract_xml_from_markdown;
 use crate::utils::{get_timestamp, path_utils};
 
 pub struct ImplementationPlanProcessor;
@@ -233,25 +232,16 @@ impl JobProcessor for ImplementationPlanProcessor {
             ));
         }
 
-        // Extract clean XML content from the response
-        let clean_xml_content = extract_xml_from_markdown(&response_content);
+        // Use the raw LLM response directly
+        
+        // Create a simple structured plan for UI compatibility
+        let structured_plan = StructuredImplementationPlan {
+            agent_instructions: None,
+            steps: vec![],
+        };
+        let human_readable_summary = "Implementation plan generated".to_string();
 
-        // Parse the implementation plan into structured format
-        let (structured_plan, human_readable_summary) =
-            match parsing_utils::parse_implementation_plan(&clean_xml_content) {
-                Ok(result) => result,
-                Err(e) => {
-                    error!(
-                        "Failed to parse implementation plan for job {}: {}",
-                        job.id, e
-                    );
-                    let error_msg = format!("Failed to parse implementation plan: {}", e);
-
-                    return Ok(JobProcessResult::failure(job.id.clone(), error_msg));
-                }
-            };
-
-        // The clean XML content will be stored directly in job.response
+        // The raw response content will be stored directly in job.response
         // The structured plan data is stored in metadata (additional_params)
 
         // Extract the generated title from job metadata, if it exists
@@ -307,9 +297,9 @@ impl JobProcessor for ImplementationPlanProcessor {
             obj.remove("streamStartTime");
         }
 
-        // Create updated job with clean XML content for finalization
+        // Create updated job with raw response content for finalization
         let mut finalized_job = job.clone();
-        finalized_job.response = Some(clean_xml_content.clone());
+        finalized_job.response = Some(response_content.clone());
 
         // Extract system prompt template, usage and cost
         let system_prompt_template = llm_result.system_prompt_template.clone();
@@ -320,13 +310,13 @@ impl JobProcessor for ImplementationPlanProcessor {
             .and_then(|u| u.cost)
             .unwrap_or(0.0);
 
-        // Return success result with the actual clean XML content as Text data since it's XML
+        // Return success result with the raw response content as Text data
         let success_message = format!(
             "Implementation plan '{}' generated successfully",
             generated_title
         );
         Ok(
-            JobProcessResult::success(job.id.clone(), JobResultData::Text(clean_xml_content))
+            JobProcessResult::success(job.id.clone(), JobResultData::Text(response_content))
                 .with_tokens(
                     usage_for_result.as_ref().map(|u| u.prompt_tokens as u32),
                     usage_for_result

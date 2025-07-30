@@ -3,5 +3,8 @@
 
 /// Main build function that initializes the Tauri build process.
 fn main() {
+    #[cfg(target_os = "macos")]
+    println!("cargo:rustc-link-lib=framework=ScreenCaptureKit");
+    
     tauri_build::build();
 }

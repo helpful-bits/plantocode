@@ -6,6 +6,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::db_utils::background_job_repository::BackgroundJobRepository;
+use crate::db_utils::temp_file_repository;
 use crate::error::{AppError, AppResult};
 use crate::jobs::types::CleanupResult;
 use crate::jobs::workflow_types::WorkflowStage;
@@ -401,6 +402,12 @@ impl WorkflowCleanupHandler {
                 Err(e) => log::error!("Failed to remove temp file {}: {}", temp_file_path, e),
             }
         }
+        
+        let pool = self.repo.get_pool();
+        if let Err(e) = temp_file_repository::delete_for_job(&pool, job_id).await {
+            log::error!("Failed to delete temp files for job {}: {}", job_id, e);
+        }
+        
         Ok(())
     }
 
@@ -520,6 +527,19 @@ impl CleanupScheduler {
         // In a real implementation, this would start a timer
         // For now, we'll just perform one cleanup cycle
         self.perform_cleanup_cycle(app_handle).await?;
+        
+        // Schedule periodic cleanup every 6 hours for temp files
+        let repo = self.cleanup_handler.repo.clone();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(Duration::from_secs(6 * 3600));
+            loop {
+                interval.tick().await;
+                let pool = repo.get_pool();
+                if let Err(e) = temp_file_repository::delete_expired_files(&pool, 86400).await {
+                    log::error!("Failed to delete expired temp files in periodic task: {}", e);
+                }
+            }
+        });
 
         Ok(())
     }
@@ -547,6 +567,12 @@ impl CleanupScheduler {
                 summary.orphaned_jobs_cleaned = orphaned_jobs.len();
             }
         }
+        
+        // Clean up expired temp files (24 hours old)
+        let pool = self.cleanup_handler.repo.get_pool();
+        if let Err(e) = temp_file_repository::delete_expired_files(&pool, 86400).await {
+            log::error!("Failed to delete expired temp files: {}", e);
+        }
 
         log::info!("Cleanup cycle completed: {:?}", summary);
         Ok(summary)
@@ -570,7 +596,7 @@ mod tests {
     async fn test_cleanup_handler_creation() {
         use sqlx::SqlitePool;
         let pool = Arc::new(SqlitePool::connect(":memory:").await.unwrap());
-        let repo = Arc::new(BackgroundJobRepository::new(pool));
+        let repo = Arc::new(BackgroundJobRepository::new(pool.clone()));
         let handler = WorkflowCleanupHandler::new(repo);
 
         // Basic creation test
@@ -589,7 +615,7 @@ mod tests {
     async fn test_workflow_temp_dir_path() {
         use sqlx::SqlitePool;
         let pool = Arc::new(SqlitePool::connect(":memory:").await.unwrap());
-        let repo = Arc::new(BackgroundJobRepository::new(pool));
+        let repo = Arc::new(BackgroundJobRepository::new(pool.clone()));
         let handler = WorkflowCleanupHandler::new(repo);
 
         let temp_dir = handler.get_workflow_temp_dir("workflow_123");

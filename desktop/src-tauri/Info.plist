@@ -4,5 +4,7 @@
 <dict>
     <key>NSMicrophoneUsageDescription</key>
     <string>This app needs access to the microphone for voice recording and transcription features.</string>
+    <key>NSScreenCaptureUsageDescription</key>
+    <string>This app needs access to your screen to record videos for analysis.</string>
 </dict>
 </plist>

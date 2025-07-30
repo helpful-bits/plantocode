@@ -19,6 +19,21 @@ use crate::models::{
     OpenRouterContent, OpenRouterRequest, OpenRouterRequestMessage, OpenRouterResponse,
     OpenRouterStreamChunk, ServerOpenRouterResponse,
 };
+
+#[derive(Debug, serde::Deserialize)]
+pub struct VideoAnalysisResponse {
+    pub analysis: String,
+    pub usage: VideoAnalysisUsage,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VideoAnalysisUsage {
+    pub prompt_tokens: i32,
+    pub completion_tokens: i32,
+    pub total_tokens: i32,
+    pub cached_tokens: Option<i32>,
+}
 use crate::utils::stream_debug_logger::StreamDebugLogger;
 use reqwest_eventsource::{Event, EventSource};
 
@@ -312,6 +327,34 @@ impl ServerProxyClient {
             )),
             _ => Err(AppError::ValidationError(format!(
                 "Unsupported audio file extension for transcription: .{}",
+                extension
+            ))),
+        }
+    }
+
+    /// Get video MIME type from filename
+    fn get_video_mime_type_from_filename(filename: &str) -> AppResult<&'static str> {
+        let extension = std::path::Path::new(filename)
+            .extension()
+            .and_then(std::ffi::OsStr::to_str)
+            .unwrap_or("")
+            .to_lowercase();
+
+        match extension.as_str() {
+            "mp4" => Ok("video/mp4"),
+            "mov" => Ok("video/quicktime"),
+            "mpeg" | "mpg" => Ok("video/mpeg"),
+            "avi" => Ok("video/x-msvideo"),
+            "wmv" => Ok("video/x-ms-wmv"),
+            "mpegps" => Ok("video/mpeg"),
+            "flv" => Ok("video/x-flv"),
+            "webm" => Ok("video/webm"),
+            "mkv" => Ok("video/x-matroska"),
+            "" => Err(AppError::ValidationError(
+                "Video file has no extension".to_string(),
+            )),
+            _ => Err(AppError::ValidationError(format!(
+                "Unsupported video file extension: .{}",
                 extension
             ))),
         }
@@ -1153,6 +1196,89 @@ impl ServerProxyClient {
         }
 
         Ok(())
+    }
+
+    /// Analyze video content using LLM
+    pub async fn analyze_video(
+        &self,
+        video_data: Vec<u8>,
+        filename: &str,
+        prompt: &str,
+        model: &str,
+        temperature: f32,
+        system_prompt: Option<String>,
+        duration_ms: i64,
+        request_id: Option<String>,
+    ) -> AppResult<VideoAnalysisResponse> {
+        info!("Sending video analysis request through server proxy");
+        debug!("Video file: {}, size: {} bytes", filename, video_data.len());
+
+        // Get auth token
+        let auth_token = self.get_auth_token().await?;
+
+        // Get video MIME type from filename
+        let video_mime_type = Self::get_video_mime_type_from_filename(filename)?;
+
+        // Use the video analysis endpoint
+        let analysis_url = format!("{}/api/llm/video/analyze", self.server_url);
+
+        // Create multipart form
+        let mut form = multipart::Form::new()
+            .text("prompt", prompt.to_string())
+            .text("model", model.to_string())
+            .text("temperature", temperature.to_string())
+            .text("duration_ms", duration_ms.to_string());
+
+        // Add system prompt if provided
+        if let Some(system_prompt) = system_prompt {
+            form = form.text("system_prompt", system_prompt);
+        }
+
+        // Add request_id if provided
+        if let Some(request_id) = request_id {
+            form = form.text("request_id", request_id);
+        }
+
+        // Add video file
+        form = form.part(
+            "video",
+            multipart::Part::bytes(video_data)
+                .file_name(filename.to_string())
+                .mime_str(video_mime_type)
+                .map_err(|e| AppError::InternalError(format!("Invalid mime type: {}", e)))?,
+        );
+
+        let response = self
+            .http_client
+            .post(&analysis_url)
+            .header("Authorization", format!("Bearer {}", auth_token))
+            .header("HTTP-Referer", APP_HTTP_REFERER)
+            .header("X-Title", APP_X_TITLE)
+            .multipart(form)
+            .send()
+            .await
+            .map_err(|e| AppError::HttpError(e.to_string()))?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Failed to get error text".to_string());
+            error!(
+                "Server proxy video analysis API error: {} - {}",
+                status, error_text
+            );
+            return Err(self.handle_auth_error(status.as_u16(), &error_text).await);
+        }
+
+        // Parse the response
+        let analysis_response: VideoAnalysisResponse = response.json().await.map_err(|e| {
+            AppError::ServerProxyError(format!("Failed to parse video analysis response: {}", e))
+        })?;
+
+        info!("Video analysis through server proxy successful");
+        Ok(analysis_response)
     }
 }
 

@@ -48,7 +48,7 @@ export function Header() {
         {/* Background layer */}
         <div
           className={cn(
-            'absolute inset-0 transition-all duration-700 ease-out',
+            'absolute inset-0',
             scrolled ? 'glass' : 'bg-transparent',
           )}
         />
@@ -62,7 +62,7 @@ export function Header() {
             >
               <Link
                 className={cn(
-                  'group inline-flex items-center gap-2 sm:gap-3 font-bold text-base sm:text-lg md:text-xl lg:text-2xl transition-all duration-500 cursor-pointer',
+                  'group inline-flex items-center gap-2 sm:gap-3 font-bold text-base sm:text-lg md:text-xl lg:text-2xl cursor-pointer',
                   scrolled
                     ? 'text-foreground hover:text-primary'
                     : 'text-foreground hover:text-primary drop-shadow-lg',
@@ -71,7 +71,7 @@ export function Header() {
               >
                 <motion.div
                   className={cn(
-                    'flex items-center justify-center w-7 h-7 sm:w-8 sm:h-8 lg:w-10 lg:h-10 rounded-xl transition-all duration-500 flex-shrink-0',
+                    'flex items-center justify-center w-7 h-7 sm:w-8 sm:h-8 lg:w-10 lg:h-10 rounded-xl flex-shrink-0',
                     'bg-gradient-to-br from-primary via-primary/90 to-accent',
                     'group-hover:shadow-lg group-hover:shadow-primary/25',
                   )}
@@ -98,15 +98,12 @@ export function Header() {
                   <Link
                     className={cn(
                       'relative px-3 lg:px-4 py-2 rounded-xl font-medium text-sm lg:text-base',
-                      'group nav-link-hover cursor-pointer',
+                      'group nav-link-hover cursor-pointer clickable-text-underline',
                       scrolled
                         ? 'text-muted-foreground hover:text-foreground'
                         : 'text-foreground/90 hover:text-foreground drop-shadow-md',
                     )}
                     href={link.href}
-                    style={{
-                      transition: 'all 0.5s ease-out',
-                    }}
                   >
                     <motion.span
                       className="relative z-10"
@@ -133,21 +130,18 @@ export function Header() {
                 transition={{ delay: 0.7, duration: 0.5 }}
               >
                 <ThemeToggle />
-                <motion.div
+                <Button
+                  asChild
+                  className="ml-2 relative"
+                  size="lg"
+                  variant="cta"
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
                 >
-                  <Button
-                    asChild
-                    className="ml-2 relative"
-                    size="lg"
-                    variant="cta"
-                  >
-                    <Link href="/download">
-                      Download Free
-                    </Link>
-                  </Button>
-                </motion.div>
+                  <Link href="/download">
+                    Download Free
+                  </Link>
+                </Button>
               </motion.div>
             </nav>
 
@@ -158,7 +152,7 @@ export function Header() {
                 animate={{ opacity: 1 }}
                 aria-label="Toggle menu"
                 className={cn(
-                  'relative p-2.5 rounded-xl transition-all duration-500',
+                  'relative p-2.5 rounded-xl',
                   'focus:outline-none focus:ring-2 focus:ring-primary/50',
                   scrolled
                     ? 'glass text-foreground'
@@ -252,11 +246,11 @@ export function Header() {
                     >
                       <Link
                         className={cn(
-                          'block px-4 py-3 rounded-xl font-medium text-base cursor-pointer',
+                          'block px-4 py-3 rounded-xl font-medium text-base cursor-pointer clickable-text-underline',
                           // Consistent with desktop nav colors
                           'text-muted-foreground hover:text-foreground',
                           'hover:bg-accent/50 active:bg-accent/70',
-                          'transition-all duration-500 relative overflow-hidden',
+                          'relative overflow-hidden',
                         )}
                         href={link.href}
                         onClick={() => setMobileMenuOpen(false)}

@@ -124,6 +124,7 @@ fn validate_task_type_configurations(runtime_config: &RuntimeAIConfig) -> Result
         TaskType::ExtendedPathFinder,
         TaskType::WebSearchPromptsGeneration,
         TaskType::WebSearchExecution,
+        TaskType::VideoAnalysis,
         TaskType::Streaming,
         TaskType::Unknown,
     ];

@@ -17,6 +17,10 @@ const defaultValue: TaskContextValue = {
     canUndo: false,
     canRedo: false,
     webSearchResults: null,
+    // Video analysis state defaults
+    isAnalyzingVideo: false,
+    videoAnalysisJobId: null,
+    videoAnalysisPrompt: '',
   },
   actions: {
     // These default implementations will be replaced by actual implementations
@@ -28,6 +32,10 @@ const defaultValue: TaskContextValue = {
     undo: () => {},
     redo: () => {},
     applyWebSearchResults: () => {},
+    // Video analysis actions
+    setVideoAnalysisPrompt: () => {},
+    handleAnalyzeVideo: async () => Promise.resolve(),
+    resetVideoState: () => {},
   },
 };
 

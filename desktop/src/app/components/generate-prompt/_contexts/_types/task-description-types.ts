@@ -16,6 +16,11 @@ export interface TaskContextState {
   canUndo: boolean;
   canRedo: boolean;
   webSearchResults: string[] | null;
+  
+  // Video analysis state
+  isAnalyzingVideo: boolean;
+  videoAnalysisJobId: string | null;
+  videoAnalysisPrompt: string;
 }
 
 export interface TaskContextActions {
@@ -28,6 +33,11 @@ export interface TaskContextActions {
   undo: () => void;
   redo: () => void;
   applyWebSearchResults: (results?: string[]) => void;
+  
+  // Video analysis actions
+  setVideoAnalysisPrompt: (prompt: string) => void;
+  handleAnalyzeVideo: (args: { path: string; durationMs: number }) => Promise<void>;
+  resetVideoState: () => void;
 }
 
 export interface TaskContextValue {

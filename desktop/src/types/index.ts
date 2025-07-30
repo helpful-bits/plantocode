@@ -24,6 +24,9 @@ export type * from "./stream-event-types";
 // Export consolidated task type definitions and validation utilities
 export * from "./task-type-defs";
 
+// Export video analysis types
+export * from "./video-analysis-types";
+
 // Export system prompt types (excluding TaskType to avoid conflict)
 export type {
   DefaultSystemPrompt,

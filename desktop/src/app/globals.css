@@ -45,6 +45,12 @@
   --color-success-background: oklch(0.95 0.04 145);
   --color-success-border: oklch(0.8 0.08 145);
   
+  /* Tier colors - optimized for light mode */
+  --color-tier-starter: oklch(0.62 0.2 45);
+  --color-tier-saver: oklch(0.58 0.18 240);
+  --color-tier-smart: oklch(0.52 0.18 145);
+  --color-tier-bulk: oklch(0.58 0.18 290);
+  
   /* UI elements on white */
   --color-border: oklch(0.92 0 0);
   --color-border-modal: oklch(0.88 0 0);
@@ -264,6 +270,23 @@
   /* Subtle loading animations */
   .pulse-subtle {
     @apply animate-pulse opacity-70;
+  }
+
+  /* Tier label colors with theme support */
+  .text-tier-starter {
+    color: var(--color-tier-starter);
+  }
+  
+  .text-tier-saver {
+    color: var(--color-tier-saver);
+  }
+  
+  .text-tier-smart {
+    color: var(--color-tier-smart);
+  }
+  
+  .text-tier-bulk {
+    color: var(--color-tier-bulk);
   }
 
   /* Navigation bar enhancements with backdrop */
@@ -519,6 +542,12 @@
     --color-success-foreground: oklch(0.88 0.01 145);
     --color-success-background: oklch(0.16 0.04 145);
     --color-success-border: oklch(0.3 0.06 145);
+    
+    /* Tier colors - optimized for dark mode with good contrast */
+    --color-tier-starter: oklch(0.72 0.15 45);
+    --color-tier-saver: oklch(0.68 0.12 240);
+    --color-tier-smart: oklch(0.65 0.12 145);
+    --color-tier-bulk: oklch(0.68 0.12 290);
     
     /* UI elements with navy tones */
     --color-border: oklch(0.34 0.02 206);

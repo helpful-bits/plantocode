@@ -30,6 +30,7 @@ import {
   formatTokenCount,
   getParsedMetadata,
   getTextImprovementOriginalText,
+  getJobDisplayName,
 } from "./utils";
 import { formatUsdCurrencyPrecise } from "@/utils/currency-utils";
 import { useLiveDuration } from "@/hooks/use-live-duration";
@@ -216,7 +217,7 @@ export const JobCard = React.memo(
             <span className="w-4 h-4 inline-flex items-center justify-center flex-shrink-0">
               {renderStatusIcon(job.status as JobStatus)}
             </span>
-            <span className="truncate text-foreground">{getStatusDisplay()}</span>
+            <span className="truncate text-foreground">{getJobDisplayName(job) || getStatusDisplay()}</span>
             {job.taskType && (
               <Badge
                 variant="outline"
@@ -476,6 +477,29 @@ export const JobCard = React.memo(
                           );
                         }
                         
+                        // Handle video analysis tasks
+                        if (job.taskType === "video_analysis") {
+                          const videoPath = parsedMeta?.taskData?.videoPath || 
+                                          parsedMeta?.jobPayloadForWorker?.VideoAnalysis?.video_path ||
+                                          parsedMeta?.jobPayloadForWorker?.videoAnalysis?.video_path;
+                          
+                          if (videoPath && typeof videoPath === 'string') {
+                            const pathParts = videoPath.split(/[/\\]/);
+                            const fileName = pathParts[pathParts.length - 1] || 'video';
+                            return (
+                              <span className="font-medium text-foreground">
+                                Video analyzed: {fileName}
+                              </span>
+                            );
+                          }
+                          
+                          return (
+                            <span className="font-medium text-foreground">
+                              Video analysis completed
+                            </span>
+                          );
+                        }
+                        
                         // Handle text improvement tasks
                         if (job.taskType === "text_improvement") {
                           const originalText = getTextImprovementOriginalText(parsedMeta);
@@ -638,9 +662,30 @@ export const JobCard = React.memo(
                         ];
                         
                         const shouldShowAddFiles = onApplyFiles && (
-                          // File finding tasks - show button for completed jobs (response data will be fetched on click)
+                          // File finding tasks - show button only if files were found
                           (fileFindingTasks.includes(job.taskType) && 
-                            job.status === "completed"
+                            job.status === "completed" && 
+                            job.response && (() => {
+                              try {
+                                let responseObj: any;
+                                if (typeof job.response === 'string') {
+                                  responseObj = JSON.parse(job.response);
+                                } else {
+                                  responseObj = job.response;
+                                }
+                                
+                                // Check if files array exists and has files
+                                const fileCount = responseObj.files?.length || 0;
+                                return fileCount > 0;
+                              } catch (e) {
+                                return false;
+                              }
+                            })()
+                          ) ||
+                          // Video analysis with completed results
+                          (job.taskType === "video_analysis" && 
+                            job.status === "completed" && 
+                            job.response
                           ) ||
                           // Web search with results
                           (job.taskType === "web_search_execution" && 
@@ -678,10 +723,18 @@ export const JobCard = React.memo(
                                     console.error('Failed to apply files from job:', error);
                                   }
                                 }}
-                                aria-label={job.taskType === "web_search_execution" ? "Apply research findings" : "Add files to selection"}
+                                aria-label={
+                                  job.taskType === "web_search_execution" ? "Apply research findings" : 
+                                  job.taskType === "video_analysis" ? "Apply video analysis findings" :
+                                  "Add files to selection"
+                                }
                                 className="text-[10px] h-6 px-2 py-0.5 font-medium border-primary/40 hover:border-primary hover:bg-primary/10"
                               >
-                                {job.taskType === "web_search_execution" ? "Use Research" : "Use Files"}
+                                {
+                                  job.taskType === "web_search_execution" ? "Use Research" : 
+                                  job.taskType === "video_analysis" ? "Use findings" :
+                                  "Use Files"
+                                }
                               </Button>
                             )}
                             {job.actualCost !== null && job.actualCost !== undefined && job.actualCost > 0 && (

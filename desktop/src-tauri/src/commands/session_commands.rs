@@ -43,6 +43,7 @@ pub async fn create_session_command(
         updated_at: now,
         included_files: session_data.included_files,
         force_excluded_files: session_data.force_excluded_files,
+        video_analysis_prompt: session_data.video_analysis_prompt,
     };
 
     log::debug!("Constructed session object: {:?}", session);
@@ -340,6 +341,15 @@ pub async fn update_session_fields_command(
                 updated_session.force_excluded_files = force_excluded_files;
             } else if fields["forceExcludedFiles"].is_null() {
                 updated_session.force_excluded_files = vec![];
+            }
+        }
+
+        // Handle video_analysis_prompt
+        if fields.contains_key("videoAnalysisPrompt") {
+            if let Some(video_prompt) = fields["videoAnalysisPrompt"].as_str() {
+                updated_session.video_analysis_prompt = Some(video_prompt.to_string());
+            } else if fields["videoAnalysisPrompt"].is_null() {
+                updated_session.video_analysis_prompt = None;
             }
         }
 
