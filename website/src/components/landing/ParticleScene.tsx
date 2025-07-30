@@ -20,8 +20,8 @@ interface ParticleSceneProps {
     seek: number
     alignment: number
     separation: number
-    edgeAttraction: number
     centerRepulsion: number
+    cohesion: number
   }
   physicsConstants?: {
     MAX_SPEED: number
@@ -29,7 +29,6 @@ interface ParticleSceneProps {
     SEEK_MAX_FORCE: number
     SEPARATION_RADIUS: number
     SEPARATION_FORCE: number
-    PATROL_SPEED: number
     SCROLL_IMPULSE_STRENGTH: number
   }
 }
@@ -46,8 +45,8 @@ export function ParticleScene({ leaderCount, followerCount, forceWeights, physic
     seek: 0.6,
     alignment: 0.3,
     separation: 1.2,
-    edgeAttraction: 1.2,
-    centerRepulsion: 2.0
+    centerRepulsion: 2.0,
+    cohesion: 0.4
   };
   
   // Use default physics constants if not provided
@@ -57,7 +56,6 @@ export function ParticleScene({ leaderCount, followerCount, forceWeights, physic
     SEEK_MAX_FORCE: 0.8,
     SEPARATION_RADIUS: 50.0,
     SEPARATION_FORCE: 0.8,
-    PATROL_SPEED: 40.0,
     SCROLL_IMPULSE_STRENGTH: 50.0
   };
 
@@ -68,9 +66,9 @@ export function ParticleScene({ leaderCount, followerCount, forceWeights, physic
     };
   });
 
-  const { resolvedTheme } = useTheme();
+  const { resolvedTheme, theme } = useTheme();
   const isDark = resolvedTheme === 'dark';
-  const { config } = useParticleConfig();
+  const { } = useParticleConfig();
 
   const textureSize = Math.ceil(Math.sqrt(totalCount));
 
@@ -125,7 +123,6 @@ export function ParticleScene({ leaderCount, followerCount, forceWeights, physic
         resolution: { value: new THREE.Vector2(textureSize, textureSize) },
         uDeltaTime: { value: 0 },
         uViewportBounds: { value: new THREE.Vector2(viewport.width / 2, viewport.height / 2) },
-        uScrollVelocity: { value: 0 },
         uTime: { value: 0 },
         uLeaderCount: { value: leaderCount },
       },
@@ -147,11 +144,10 @@ export function ParticleScene({ leaderCount, followerCount, forceWeights, physic
         viewport: new THREE.Vector2(viewport.width, viewport.height),
         leaderCount: leaderCount,
         weights: {
-          cohesion: 0,
+          cohesion: weights.cohesion,
           alignment: weights.alignment,
           separation: weights.separation,
           seek: weights.seek,
-          edgeAttraction: weights.edgeAttraction,
           centerRepulsion: weights.centerRepulsion,
         },
         physics: {
@@ -160,7 +156,6 @@ export function ParticleScene({ leaderCount, followerCount, forceWeights, physic
           seekMaxForce: physics.SEEK_MAX_FORCE,
           separationRadius: physics.SEPARATION_RADIUS,
           separationForce: physics.SEPARATION_FORCE,
-          patrolSpeed: physics.PATROL_SPEED,
           scrollImpulseStrength: physics.SCROLL_IMPULSE_STRENGTH,
         },
         safeZone: SafeZone,
@@ -182,19 +177,14 @@ export function ParticleScene({ leaderCount, followerCount, forceWeights, physic
       uniforms: {
         uTime: { value: 0 },
         uIsDark: { value: isDark ? 1.0 : 0.0 },
-        uScrollY: { value: 0 },
-        uScrollOffsetY: { value: 0 },
         uViewport: { value: new THREE.Vector2(viewport.width, viewport.height) },
         texturePosition: { value: null },
         textureVelocity: { value: null },
         textureAttributes: { value: null },
         uTextureSize: { value: new THREE.Vector2(textureSize, textureSize) },
-        uLeaderColorDark: { value: new THREE.Color() },
-        uLeaderColorLight: { value: new THREE.Color() },
-        uFollowerBaseColorDark: { value: new THREE.Color() },
-        uFollowerHighlightColorDark: { value: new THREE.Color() },
-        uFollowerBaseColorLight: { value: new THREE.Color() },
-        uFollowerHighlightColorLight: { value: new THREE.Color() },
+        uLeaderColor: { value: new THREE.Color() },
+        uFollowerBaseColor: { value: new THREE.Color() },
+        uFollowerHighlightColor: { value: new THREE.Color() },
       },
       vertexShader,
       fragmentShader,
@@ -211,6 +201,22 @@ export function ParticleScene({ leaderCount, followerCount, forceWeights, physic
   const fullscreenQuad = useMemo(() => {
     return new THREE.Mesh(new THREE.PlaneGeometry(2, 2));
   }, []);
+
+  // Update particle colors from CSS variables
+  useLayoutEffect(() => {
+    const style = getComputedStyle(document.documentElement);
+    if (particleMaterial) {
+      // Get the computed color values with proper trimming
+      const leaderColor = style.getPropertyValue('--particle-leader-color').trim();
+      const followerBaseColor = style.getPropertyValue('--particle-follower-base-color').trim();
+      const followerHighlightColor = style.getPropertyValue('--particle-follower-highlight-color').trim();
+      
+      // Set colors - Three.js setStyle supports oklch
+      particleMaterial.uniforms.uLeaderColor!.value.setStyle(leaderColor);
+      particleMaterial.uniforms.uFollowerBaseColor!.value.setStyle(followerBaseColor);
+      particleMaterial.uniforms.uFollowerHighlightColor!.value.setStyle(followerHighlightColor);
+    }
+  }, [theme, particleMaterial]);
 
   const geometry = useMemo(() => {
     const geo = new THREE.BufferGeometry();
@@ -316,7 +322,7 @@ export function ParticleScene({ leaderCount, followerCount, forceWeights, physic
     velocityComputeMaterial.uniforms.uTime!.value = state.clock.elapsedTime;
     velocityComputeMaterial.uniforms.uDeltaTime!.value = delta;
     velocityComputeMaterial.uniforms.uMouse!.value.set(mouse.x, mouse.y);
-    velocityComputeMaterial.uniforms.uScrollVelocity!.value = scrollData.current.delta;
+    velocityComputeMaterial.uniforms.uScrollVelocity!.value = scrollData.current.delta; // Full scroll influence
     // Calculate actual viewport size at particle depth (z = -5)
     // Camera is at z = 5, particles at z = -5, so distance = 10
     const distance = 10; // Camera to particle distance
@@ -340,7 +346,6 @@ export function ParticleScene({ leaderCount, followerCount, forceWeights, physic
     positionComputeMaterial.uniforms.uDeltaTime!.value = delta;
     positionComputeMaterial.uniforms.uTime!.value = state.clock.elapsedTime;
     positionComputeMaterial.uniforms.uViewportBounds!.value.set(visibleWidth / 2, visibleHeight / 2);
-    positionComputeMaterial.uniforms.uScrollVelocity!.value = scrollData.current.delta;
 
     fullscreenQuad.material = positionComputeMaterial;
     gl.setRenderTarget(pos.current.write);
@@ -351,20 +356,11 @@ export function ParticleScene({ leaderCount, followerCount, forceWeights, physic
 
     particleMaterial.uniforms.uTime!.value = state.clock.elapsedTime;
     particleMaterial.uniforms.uIsDark!.value = isDark ? 1.0 : 0.0;
-    particleMaterial.uniforms.uScrollY!.value = scrollData.current.offset;
-    particleMaterial.uniforms.uScrollOffsetY!.value = scrollData.current.offset * 2.0;
     particleMaterial.uniforms.uViewport!.value.set(visibleWidth, visibleHeight);
     particleMaterial.uniforms.texturePosition!.value = pos.current.read.texture;
     particleMaterial.uniforms.textureVelocity!.value = vel.current.read.texture;
     particleMaterial.uniforms.textureAttributes!.value = metadataTexture.current;
     
-    // Update color uniforms from configuration
-    particleMaterial.uniforms.uLeaderColorDark!.value.setRGB(...config.colors.leader.dark);
-    particleMaterial.uniforms.uLeaderColorLight!.value.setRGB(...config.colors.leader.light);
-    particleMaterial.uniforms.uFollowerBaseColorDark!.value.setRGB(...config.colors.follower.dark.base);
-    particleMaterial.uniforms.uFollowerHighlightColorDark!.value.setRGB(...config.colors.follower.dark.highlight);
-    particleMaterial.uniforms.uFollowerBaseColorLight!.value.setRGB(...config.colors.follower.light.base);
-    particleMaterial.uniforms.uFollowerHighlightColorLight!.value.setRGB(...config.colors.follower.light.highlight);
   });
 
   React.useEffect(() => {

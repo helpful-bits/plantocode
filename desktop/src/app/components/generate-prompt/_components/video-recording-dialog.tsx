@@ -4,13 +4,16 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Textarea } from '@/ui/textarea';
 import { Label } from '@/ui/label';
 import { Checkbox } from '@/ui/checkbox';
+import { Slider } from '@/ui/slider';
+import { AudioDeviceSelect } from '@/ui';
 import { useTaskContext } from '../_contexts/task-context';
 import { useSessionActionsContext } from '@/contexts/session';
+import { useVideoRecordingSettings } from '@/hooks/useVideoRecordingSettings';
 
 interface VideoRecordingDialogProps {
   isOpen: boolean;
   onClose: () => void;
-  onStartRecording: (prompt: string, recordAudio: boolean) => void;
+  onStartRecording: (prompt: string, recordAudio: boolean, audioDeviceId: string, frameRate: number) => void;
 }
 
 export const VideoRecordingDialog: React.FC<VideoRecordingDialogProps> = ({
@@ -20,6 +23,15 @@ export const VideoRecordingDialog: React.FC<VideoRecordingDialogProps> = ({
 }) => {
   const { state: taskState, actions: taskActions } = useTaskContext();
   const sessionActions = useSessionActionsContext();
+  const { 
+    selectedAudioInputId, 
+    setSelectedAudioInputId, 
+    selectedFrameRate, 
+    setSelectedFrameRate, 
+    minFps,
+    maxFps
+  } = useVideoRecordingSettings();
+  
   const [localPrompt, setLocalPrompt] = useState('');
   const [recordAudio, setRecordAudio] = useState(true);
   
@@ -38,7 +50,7 @@ export const VideoRecordingDialog: React.FC<VideoRecordingDialogProps> = ({
     sessionActions.setSessionModified(true);
     
     // Start recording with the prompt
-    onStartRecording(promptToUse, recordAudio);
+    onStartRecording(promptToUse, recordAudio, selectedAudioInputId, selectedFrameRate);
     setRecordAudio(true); // Reset to default
     onClose();
   };
@@ -84,6 +96,42 @@ export const VideoRecordingDialog: React.FC<VideoRecordingDialogProps> = ({
             >
               Include dictation
             </Label>
+          </div>
+          
+          {recordAudio && (
+            <div className="space-y-2">
+              <Label htmlFor="audio-device">Audio Device</Label>
+              <div className="flex items-center">
+                <AudioDeviceSelect
+                  value={selectedAudioInputId}
+                  onValueChange={setSelectedAudioInputId}
+                  disabled={!recordAudio}
+                  className="flex-1"
+                />
+              </div>
+            </div>
+          )}
+          
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="frame-rate">Frame Rate (FPS)</Label>
+              <span className="text-sm font-mono text-muted-foreground">{selectedFrameRate} FPS</span>
+            </div>
+            <Slider
+              id="frame-rate"
+              value={[selectedFrameRate]}
+              min={minFps}
+              max={maxFps}
+              step={1}
+              onValueChange={(value) => setSelectedFrameRate(value[0])}
+              className="w-full"
+              aria-label="Frame rate"
+            />
+            <div className="flex justify-between text-xs text-muted-foreground">
+              <span>{minFps} FPS</span>
+              <span className="text-center">Higher frame rates may increase analysis costs</span>
+              <span>{maxFps} FPS</span>
+            </div>
           </div>
           
           <div className="flex justify-end gap-3">
