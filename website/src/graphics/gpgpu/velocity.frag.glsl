@@ -21,6 +21,7 @@ uniform float uSeekForceWeight;
 uniform float uSeparationForceWeight;
 uniform float uEdgeAttractionWeight;
 uniform float uCenterRepulsionWeight;
+uniform float uCohesionForceWeight;
 
 // Physics constants as uniforms
 uniform float uMaxSpeed;
@@ -34,12 +35,12 @@ uniform vec2 uSafeZone;
 
 layout(location = 0) out vec4 fragColor;
 
-// Fixed constants
-#define ARRIVE_RADIUS 100.0
-#define ARRIVE_SLOW_RADIUS 200.0
+// Fixed constants - reduced radii for more autonomous movement
+#define ARRIVE_RADIUS 50.0       // Reduced from 100
+#define ARRIVE_SLOW_RADIUS 80.0  // Reduced from 200
 #define FIXED_TIMESTEP 0.016666667 // 1/60s
-#define NEIGHBOR_RADIUS 100.0
-#define ALIGNMENT_RADIUS 150.0
+#define NEIGHBOR_RADIUS 40.0     // Much smaller - only very close neighbors
+#define ALIGNMENT_RADIUS 60.0    // Reduced from 150
 
 #define PI 3.14159265359
 
@@ -123,13 +124,16 @@ vec2 arrive(vec2 currentPos, vec2 targetPos, vec2 currentVel, float arriveRadius
     return vec2(0.0);
 }
 
-// Calculate separation and alignment forces by checking nearby particles
-void calculateFlockingForces(vec2 pos, vec2 vel, out vec2 separationForce, out vec2 alignmentVel) {
+// Calculate separation, alignment, and cohesion forces by checking nearby particles
+void calculateFlockingForces(vec2 pos, vec2 vel, out vec2 separationForce, out vec2 alignmentVel, out vec2 cohesionForce) {
     separationForce = vec2(0.0);
     alignmentVel = vec2(0.0);
+    cohesionForce = vec2(0.0);
     
     int separationCount = 0;
     int alignmentCount = 0;
+    vec2 cohesionSum = vec2(0.0);
+    int cohesionCount = 0;
     
     // Sample nearby particles in a grid pattern
     ivec2 texSize = textureSize(texturePosition, 0);
@@ -156,11 +160,14 @@ void calculateFlockingForces(vec2 pos, vec2 vel, out vec2 separationForce, out v
             
             float dist = distance(pos, neighborPos.xy);
             
-            // Separation
+            // Separation with smooth falloff
             if (dist > 0.0 && dist < uSeparationRadius) {
                 vec2 diff = pos - neighborPos.xy;
-                diff = normalize(diff) / dist; // Weight by inverse distance
-                separationForce += diff;
+                // Smooth falloff instead of harsh inverse distance
+                float strength = 1.0 - smoothstep(0.0, uSeparationRadius, dist);
+                // Prevent extreme forces when very close
+                strength = min(strength, 3.0);
+                separationForce += normalize(diff) * strength;
                 separationCount++;
             }
             
@@ -168,6 +175,12 @@ void calculateFlockingForces(vec2 pos, vec2 vel, out vec2 separationForce, out v
             if (dist < ALIGNMENT_RADIUS) {
                 alignmentVel += neighborVel.xy;
                 alignmentCount++;
+            }
+            
+            // Cohesion - average position of neighbors
+            if (dist < NEIGHBOR_RADIUS) {
+                cohesionSum += neighborPos.xy;
+                cohesionCount++;
             }
         }
     }
@@ -179,6 +192,11 @@ void calculateFlockingForces(vec2 pos, vec2 vel, out vec2 separationForce, out v
     
     if (alignmentCount > 0) {
         alignmentVel = alignmentVel / float(alignmentCount);
+    }
+    
+    if (cohesionCount > 0) {
+        vec2 centerOfMass = cohesionSum / float(cohesionCount);
+        cohesionForce = centerOfMass - pos;
     }
 }
 
@@ -193,8 +211,8 @@ vec2 edgeAttraction(vec2 pos, vec2 viewport) {
     float distFromCenter = length(normPos);
     
     // We want particles to stay in a band near the edges
-    float idealRadius = 0.85; // Target distance from center
-    float bandWidth = 0.15;   // Width of the acceptable band
+    float idealRadius = 0.90; // Target distance from center
+    float bandWidth = 0.40;   // Much wider acceptable band for freedom
     
     vec2 force = vec2(0.0);
     
@@ -225,25 +243,34 @@ vec2 edgeAttraction(vec2 pos, vec2 viewport) {
     return force;
 }
 
-// Center repulsion steering behavior
+// Center repulsion steering behavior - smooth and natural
 vec2 centerRepulsion(vec2 pos, vec2 viewport) {
     vec2 halfViewport = viewport * 0.5;
     vec2 noFlyZoneSize = halfViewport * uSafeZone;
     
+    // Calculate distance from center
+    float distFromCenter = length(pos);
+    float zoneRadius = length(noFlyZoneSize);
+    
     vec2 force = vec2(0.0);
-    if (abs(pos.x) < noFlyZoneSize.x && abs(pos.y) < noFlyZoneSize.y) {
-        // Particle is inside no-fly zone. Push it away from center.
-        if (length(pos) < 0.001) {
-            // At exact center, push in a random direction
-            force = vec2(1.0, 0.0) * uMaxSpeed;
+    
+    // Apply force only when close to or inside the zone
+    if (distFromCenter < zoneRadius * 1.05) { // Very close to actual boundary
+        if (distFromCenter < 0.001) {
+            // At exact center, gentle push in a random direction
+            force = vec2(1.0, 0.0) * 5.0;
         } else {
-            // Create force pointing away from center (outward radial direction)
+            // Smooth force that increases as we approach center
             vec2 awayFromCenter = normalize(pos);
-            // Stronger force when deeper inside the zone
-            float depth = 1.0 - (length(pos) / length(noFlyZoneSize));
-            force = awayFromCenter * uMaxSpeed * (0.5 + depth * 0.5);
+            
+            // Use smoothstep for very gradual, fluid-like transition
+            float influence = 1.0 - smoothstep(zoneRadius * 0.7, zoneRadius * 1.05, distFromCenter);
+            
+            // Very gentle steering force for natural movement
+            force = awayFromCenter * influence * 15.0; // Gentle guidance
         }
     }
+    
     return force;
 }
 
@@ -266,75 +293,26 @@ void main() {
     float isLeader = texture(textureAttributes, uv).w;
     
     if (isLeader > 0.5) {
-        // Leader patrol logic - Bézier curve path inset 6vh from viewport edges
-        // Use modulo to keep particleId reasonable for phase offset
+        // Leader patrol logic - organic wander behavior with edge attraction
         float leaderIndex = mod(particleId, float(uLeaderCount));
-        float patrolTime = uTime * 0.3 + leaderIndex * 2.0; // Phase offset for distribution
-        float t = fract(patrolTime * 0.2); // Complete circuit every 5 seconds
         
-        // Calculate viewport dimensions with 6vh inset
-        vec2 halfViewport = uViewport * 0.5;
-        float insetPixels = max(uViewport.y * 0.06, 20.0); // 6vh converted to pixels with minimum
-        vec2 insetHalfViewport = halfViewport - vec2(insetPixels);
+        // Wander force using noise - creates organic, non-linear movement
+        vec2 wanderForce = vec2(
+            snoise(vec2(pos.x * uNoiseScale * 0.5, pos.y * uNoiseScale * 0.5 + uTime * 0.2 + leaderIndex * 10.0)),
+            snoise(vec2(pos.x * uNoiseScale * 0.5 + 100.0, pos.y * uNoiseScale * 0.5 + uTime * 0.2 + leaderIndex * 10.0))
+        ) * uNoiseStrength * 2.0;
         
-        // Ensure we have valid viewport
-        if (halfViewport.x < 10.0 || halfViewport.y < 10.0) {
-            fragColor = vec4(10.0, 0.0, 0.0, 0.0); // Default velocity
-            return;
-        }
+        // Edge attraction force to keep leaders patrolling the perimeter
+        vec2 edgeForce = edgeAttraction(pos.xy, uViewport);
         
-        // Define Bézier control points for a smooth rounded rectangle path
-        // We'll use 4 cubic Bézier curves, one for each side
-        vec2 p0, p1, p2, p3; // Control points for current segment
-        float localT = fract(t * 4.0); // Progress within current segment
-        int segment = int(t * 4.0);
+        // Center repulsion to keep leaders out of the middle
+        vec2 centerForce = centerRepulsion(pos.xy, uViewport);
         
-        float cornerRadius = insetPixels * 1.5; // Smooth corners
+        // Combine forces with appropriate weights
+        vec2 acceleration = wanderForce * 0.5 + edgeForce * 1.5 + centerForce * 2.0;
         
-        if (segment == 0) {
-            // Top edge, moving right
-            p0 = vec2(-insetHalfViewport.x + cornerRadius, insetHalfViewport.y);
-            p1 = vec2(-insetHalfViewport.x + cornerRadius * 2.5, insetHalfViewport.y);
-            p2 = vec2(insetHalfViewport.x - cornerRadius * 2.5, insetHalfViewport.y);
-            p3 = vec2(insetHalfViewport.x - cornerRadius, insetHalfViewport.y);
-        } else if (segment == 1) {
-            // Right edge, moving down  
-            p0 = vec2(insetHalfViewport.x, insetHalfViewport.y - cornerRadius);
-            p1 = vec2(insetHalfViewport.x, insetHalfViewport.y - cornerRadius * 2.5);
-            p2 = vec2(insetHalfViewport.x, -insetHalfViewport.y + cornerRadius * 2.5);
-            p3 = vec2(insetHalfViewport.x, -insetHalfViewport.y + cornerRadius);
-        } else if (segment == 2) {
-            // Bottom edge, moving left
-            p0 = vec2(insetHalfViewport.x - cornerRadius, -insetHalfViewport.y);
-            p1 = vec2(insetHalfViewport.x - cornerRadius * 2.5, -insetHalfViewport.y);
-            p2 = vec2(-insetHalfViewport.x + cornerRadius * 2.5, -insetHalfViewport.y);
-            p3 = vec2(-insetHalfViewport.x + cornerRadius, -insetHalfViewport.y);
-        } else {
-            // Left edge, moving up
-            p0 = vec2(-insetHalfViewport.x, -insetHalfViewport.y + cornerRadius);
-            p1 = vec2(-insetHalfViewport.x, -insetHalfViewport.y + cornerRadius * 2.5);
-            p2 = vec2(-insetHalfViewport.x, insetHalfViewport.y - cornerRadius * 2.5);
-            p3 = vec2(-insetHalfViewport.x, insetHalfViewport.y - cornerRadius);
-        }
-        
-        // Evaluate cubic Bézier curve position
-        float t1 = 1.0 - localT;
-        vec2 targetPos = p0 * t1 * t1 * t1 + 
-                        3.0 * p1 * t1 * t1 * localT + 
-                        3.0 * p2 * t1 * localT * localT + 
-                        p3 * localT * localT * localT;
-        
-        // Calculate the derivative of the cubic Bézier curve to get the tangent vector
-        vec2 desiredVel = 3.0 * (1.0 - localT) * (1.0 - localT) * (p1 - p0) + 
-                         6.0 * (1.0 - localT) * localT * (p2 - p1) + 
-                         3.0 * localT * localT * (p3 - p2);
-        
-        // Set the new velocity by normalizing desiredVel and scaling by patrol speed
-        vec2 newVel = normalize(desiredVel) * uPatrolSpeed;
-        
-        // Add a small corrective force to pull the particle back to the path if it drifts
-        vec2 correction = (targetPos - pos.xy) * 0.5;
-        newVel += correction;
+        // Update velocity with acceleration
+        vec2 newVel = vel.xy + acceleration * FIXED_TIMESTEP;
         
         // Apply drag
         newVel *= uDragCoefficient;
@@ -353,11 +331,12 @@ void main() {
         vec2 nearestLeaderVel = vec2(0.0);
         
         for (int i = 0; i < uLeaderCount; i++) {
-            // Calculate UV for this leader
+            // Calculate UV for this leader using actual texture size
             float leaderIndex = float(i);
-            float leaderX = mod(leaderIndex, resolution.x) + 0.5;
-            float leaderY = floor(leaderIndex / resolution.x) + 0.5;
-            vec2 leaderUV = vec2(leaderX, leaderY) / resolution;
+            float texWidth = float(texSize.x);
+            float leaderX = mod(leaderIndex, texWidth) + 0.5;
+            float leaderY = floor(leaderIndex / texWidth) + 0.5;
+            vec2 leaderUV = vec2(leaderX, leaderY) / vec2(texSize);
             
             vec4 leaderPosData = texture(texturePosition, leaderUV);
             vec4 leaderVelData = texture(textureVelocity, leaderUV);
@@ -375,36 +354,63 @@ void main() {
         }
         
         // Calculate flocking forces from nearby followers
-        vec2 separationForce, localAlignmentVel;
-        calculateFlockingForces(pos.xy, vel.xy, separationForce, localAlignmentVel);
+        vec2 separationForce, localAlignmentVel, cohesionForce;
+        calculateFlockingForces(pos.xy, vel.xy, separationForce, localAlignmentVel, cohesionForce);
         
         // Calculate steering forces based on nearest leader
-        vec2 seekForce = seek(pos.xy, nearestLeaderPos, vel.xy);
+        // Followers should orbit around leaders, not seek their exact position
+        vec2 toLeader = nearestLeaderPos - pos.xy;
+        float leaderDist = length(toLeader);
+        vec2 seekForce = vec2(0.0);
+        
+        if (leaderDist > 80.0) {  // Reduced from 150
+            // Too far - move closer
+            seekForce = seek(pos.xy, nearestLeaderPos, vel.xy) * 0.5; // Gentler approach
+        } else if (leaderDist < 40.0) {  // Reduced from 80
+            // Too close - move away
+            seekForce = -normalize(toLeader) * uSeekMaxForce * 0.3; // Gentle push
+        }
+        
         vec2 arriveForce = arrive(pos.xy, nearestLeaderPos, vel.xy, ARRIVE_RADIUS);
         
         // Alignment combines local flock alignment with leader velocity
         vec2 alignmentForce = mix(localAlignmentVel - vel.xy, nearestLeaderVel - vel.xy, 0.7);
         
-        vec2 edgeForce = edgeAttraction(pos.xy, uViewport);
         vec2 centerRepelForce = centerRepulsion(pos.xy, uViewport);
+        
+        // Subtle edge preference for followers (much weaker than leaders)
+        vec2 edgeForce = edgeAttraction(pos.xy, uViewport) * 0.3;
         
         // Add wander force using simplex noise
         vec2 wander = vec2(
-            snoise(vec2(pos.x * uNoiseScale, pos.y * uNoiseScale + uTime * 0.3)),
-            snoise(vec2(pos.x * uNoiseScale + 100.0, pos.y * uNoiseScale + uTime * 0.3))
+            snoise(vec2(pos.x * uNoiseScale, pos.y * uNoiseScale + uTime * 0.1)),
+            snoise(vec2(pos.x * uNoiseScale + 100.0, pos.y * uNoiseScale + uTime * 0.1))
         ) * uNoiseStrength;
         
-        // Combine forces with appropriate weights
+        // Combine forces with appropriate weights - balanced to avoid conflicts
         acceleration = seekForce * uSeekForceWeight + 
                       separationForce * uSeparationForceWeight + 
-                      alignmentForce * uAlignmentForceWeight +
-                      edgeForce * uEdgeAttractionWeight +
-                      centerRepelForce * uCenterRepulsionWeight +
-                      wander;
+                      alignmentForce * uAlignmentForceWeight * 0.5 + // Softer alignment
+                      cohesionForce * uCohesionForceWeight + 
+                      centerRepelForce * uCenterRepulsionWeight * 0.8 + // Slightly reduced
+                      edgeForce * 0.2 + // Very subtle edge preference
+                      wander * 0.3; // Slightly more random movement
         
-        // Add vertical impulse based on scroll velocity
-        if (abs(uScrollVelocity) > 0.01) {
-            acceleration.y += uScrollVelocity * uScrollImpulseStrength;
+        // Add responsive, natural scroll response
+        if (abs(uScrollVelocity) > 0.005) { // More sensitive to gentle scrolls
+            // Create a wave-like response to scrolling
+            float scrollResponse = uScrollVelocity * uScrollImpulseStrength * 1.2; // Increased strength
+            
+            // Add some randomness based on particle position for natural variation
+            float positionVariance = sin(pos.x * 0.01 + pos.y * 0.01) * 0.5 + 0.5;
+            
+            // Less dampening - particles throughout the screen respond
+            float distFromCenter = length(pos.xy) / length(uViewport * 0.5);
+            float responsiveness = 1.0 - smoothstep(0.8, 1.2, distFromCenter) * 0.3; // Only 30% reduction at edges
+            
+            // Add both vertical and slight horizontal movement for fluid effect
+            acceleration.y += scrollResponse * (0.7 + positionVariance * 0.3) * responsiveness;
+            acceleration.x += scrollResponse * sin(pos.y * 0.01) * 0.2; // Subtle horizontal drift
         }
         
         // Update velocity with acceleration using fixed timestep

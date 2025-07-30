@@ -3,10 +3,8 @@ precision highp float;
 uniform float uTime;
 uniform float uIsDark;
 uniform vec2 uViewport;
-uniform vec3 uFollowerBaseColorDark;
-uniform vec3 uFollowerHighlightColorDark;
-uniform vec3 uFollowerBaseColorLight;
-uniform vec3 uFollowerHighlightColorLight;
+uniform vec3 uFollowerBaseColor;
+uniform vec3 uFollowerHighlightColor;
 
 // GPGPU texture uniforms
 uniform sampler2D texturePosition;
@@ -76,23 +74,22 @@ void main() {
   float gameSizeMultiplier = 0.8 + currentSize * 1.2;
   float cameraDistance = length(mvPosition.xyz);
   
-  // Leaders are same size as followers
-  
-  gl_PointSize = 70.0 * gameSizeMultiplier * velocityGlow / cameraDistance * (0.6 + aRandom * 0.4);
-  
-  // Set vColor using uniform-based selection
-  vec3 baseColor, highlightColor;
-  
-  // Use uniform colors for followers
-  if (uIsDark > 0.5) {
-    baseColor = uFollowerBaseColorDark;
-    highlightColor = uFollowerHighlightColorDark;
+  // Set point size - leaders get stable size, followers get dynamic size
+  // Account for perspective: at z=-5 with camera at z=5, distance is ~10
+  if (vIsLeader > 0.5) {
+    gl_PointSize = 60.0; // Fixed size for leaders
   } else {
-    baseColor = uFollowerBaseColorLight;
-    highlightColor = uFollowerHighlightColorLight;
+    // Followers - visible but not huge
+    gl_PointSize = 20.0 * gameSizeMultiplier * (0.6 + aRandom * 0.4);
   }
   
-  vColor = mix(baseColor, highlightColor, velocityMagnitude);
+  // Set vColor using unified uniforms
+  vec3 baseColor = uFollowerBaseColor;
+  vec3 highlightColor = uFollowerHighlightColor;
+  
+  // Smooth velocity-based color mixing to prevent flickering
+  float smoothVelocity = smoothstep(0.0, 50.0, velocityMagnitude);
+  vColor = mix(baseColor, highlightColor, smoothVelocity * 0.5); // Reduced influence
   
   // Simplified alpha calculation
   vAlpha = (0.5 + aRandom * 0.4) * (0.7 + currentSize * 0.6);

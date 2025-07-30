@@ -45,13 +45,15 @@ export function createInitialParticleTextures(
   const velocityTexture = new THREE.DataTexture(velocityData, textureSize, textureSize, THREE.RGBAFormat, THREE.FloatType);
   const metadataTexture = new THREE.DataTexture(metadataData, textureSize, textureSize, THREE.RGBAFormat, THREE.FloatType);
   
+  // Store leader positions for follower spawning
+  const leaderPositions: Array<{x: number, y: number}> = [];
 
   // Initialize particles
   for (let i = 0; i < safeCount; i++) {
     const i4 = i * 4; // Each particle uses 4 floats (RGBA)
     const isLeader = i < leaderCount;
 
-    let posX, posY, posZ, baseY;
+    let posX, posY, posZ;
     const initialLifetime = 8.0 + Math.random() * 4.0; // Match shader lifetime
 
     if (isLeader) {
@@ -113,15 +115,29 @@ export function createInitialParticleTextures(
              p3.y * localT * localT * localT;
       
       posZ = -5; // Keep all particles at same z-depth
-      baseY = posY;
+      
+      // Store leader position for follower spawning
+      leaderPositions.push({ x: posX, y: posY });
     } else {
-      // Followers - distribute near edges to match edge attraction (90% from center)
-      const angle = Math.random() * Math.PI * 2;
-      const radius = (0.8 + Math.random() * 0.15) * Math.min(width, height) * 0.5;
-      posX = Math.cos(angle) * radius;
-      posY = Math.sin(angle) * radius;
+      // Followers - spawn near a random leader
+      if (leaderPositions.length > 0) {
+        // Pick a random leader to follow
+        const leaderIndex = Math.floor(Math.random() * leaderPositions.length);
+        const leaderPos = leaderPositions[leaderIndex];
+        
+        // Spawn at a small random offset from the leader
+        const offsetRadius = 50 + Math.random() * 100; // 50-150 pixel offset
+        const offsetAngle = Math.random() * Math.PI * 2;
+        posX = leaderPos!.x + Math.cos(offsetAngle) * offsetRadius;
+        posY = leaderPos!.y + Math.sin(offsetAngle) * offsetRadius;
+      } else {
+        // Fallback if no leaders yet (shouldn't happen)
+        const angle = Math.random() * Math.PI * 2;
+        const radius = (0.8 + Math.random() * 0.15) * Math.min(width, height) * 0.5;
+        posX = Math.cos(angle) * radius;
+        posY = Math.sin(angle) * radius;
+      }
       posZ = -5; // Keep all particles at same z-depth
-      baseY = posY;
     }
 
     // Pack position texture: x, y, z, currentLifetime
@@ -136,10 +152,10 @@ export function createInitialParticleTextures(
     velocityData[i4 + 2] = 0.0;
     velocityData[i4 + 3] = 0.0;
 
-    // Pack metadata texture: animationOffset, randomSeed, baseY, isLeader flag
+    // Pack metadata texture: animationOffset, randomSeed, particleSize, isLeader flag
     metadataData[i4] = Math.random() * 100; // animationOffset
     metadataData[i4 + 1] = Math.random(); // randomSeed
-    metadataData[i4 + 2] = baseY!; // baseY
+    metadataData[i4 + 2] = 0.5 + Math.random() * 0.5; // particleSize (0.5-1.0)
     metadataData[i4 + 3] = isLeader ? 1.0 : 0.0; // isLeader flag
   }
 
@@ -184,14 +200,13 @@ export function buildVelocityUniforms({
     uSeekForceWeight: { value: weights.seek },
     uAlignmentForceWeight: { value: weights.alignment },
     uSeparationForceWeight: { value: weights.separation },
-    uEdgeAttractionWeight: { value: weights.edgeAttraction },
     uCenterRepulsionWeight: { value: weights.centerRepulsion },
+    uCohesionForceWeight: { value: weights.cohesion },
     uMaxSpeed: { value: physics.maxSpeed },
     uDragCoefficient: { value: physics.dragCoefficient },
     uSeekMaxForce: { value: physics.seekMaxForce },
     uSeparationRadius: { value: physics.separationRadius },
     uSeparationForce: { value: physics.separationForce },
-    uPatrolSpeed: { value: physics.patrolSpeed },
     uScrollImpulseStrength: { value: physics.scrollImpulseStrength },
     uSafeZone: { value: new THREE.Vector2(safeZone.width, safeZone.height) },
     uNoiseScale: { value: 0.002 },

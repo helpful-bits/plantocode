@@ -42,6 +42,7 @@ function OptimizedVideo({ video, poster }: { video: string; poster: string }) {
         loop
         muted
         playsInline
+        controls={false}
         className="w-full aspect-video relative z-10 rounded-lg"
         poster={poster}
         preload="none"

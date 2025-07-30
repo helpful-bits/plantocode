@@ -64,5 +64,8 @@ export { StatusMessages } from "./status-messages";
 // Settings components
 export { ModelSelector } from "../app/components/settings/model-selector";
 
+// Audio components
+export { AudioDeviceSelect } from "./audio-device-select";
+
 // Terminal components
 export { TerminalView } from "./TerminalView";

@@ -393,7 +393,7 @@ export function useVoiceTranscription({
           // Transcribe the complete audio
           const result = await transcribeAudioChunk(
             audioBlob,
-            recordingDuration * 1000,
+            Math.round(recordingDuration * 1000),
             mimeType,
             languageCode,
             transcriptionSettings?.prompt,

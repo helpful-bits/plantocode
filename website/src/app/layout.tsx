@@ -7,6 +7,7 @@ import { ClientProviders } from '@/components/providers/ClientProviders';
 import { GoogleAnalytics } from '@next/third-parties/google';
 import { InteractiveBackground } from '@/components/landing/InteractiveBackground';
 import { Suspense } from 'react';
+import { ErrorBoundary } from '@/components/system/ErrorBoundary';
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://vibemanager.app'),
@@ -112,7 +113,9 @@ export default function RootLayout({
       <head />
       <body className={`${fontClasses.sans} bg-transparent`}>
         <Suspense fallback={null}>
-          <InteractiveBackground />
+          <ErrorBoundary fallback={null}>
+            <InteractiveBackground />
+          </ErrorBoundary>
         </Suspense>
         <ClientProviders>
           {children}

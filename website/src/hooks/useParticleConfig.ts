@@ -2,13 +2,6 @@ import { useState, useEffect, useCallback } from 'react';
 import { ForceWeights, PhysicsConstants, AgentCounts, Breakpoints } from '@/lib/particle-config';
 
 interface ParticleConfig {
-  colors: {
-    leader: { dark: number[]; light: number[] };
-    follower: {
-      dark: { base: number[]; highlight: number[] };
-      light: { base: number[]; highlight: number[] };
-    };
-  };
   forceWeights: typeof ForceWeights;
   physicsConstants: typeof PhysicsConstants;
   agentCounts: typeof AgentCounts;
@@ -16,22 +9,6 @@ interface ParticleConfig {
 }
 
 const defaultConfig: ParticleConfig = {
-  colors: {
-    leader: {
-      dark: [0.4, 0.9, 0.9],
-      light: [0.2, 0.6, 0.7]
-    },
-    follower: {
-      dark: {
-        base: [0.1, 0.4, 0.5],
-        highlight: [0.3, 1.0, 1.0]
-      },
-      light: {
-        base: [0.02, 0.1, 0.15],
-        highlight: [0.1, 0.4, 0.4]
-      }
-    }
-  },
   forceWeights: ForceWeights,
   physicsConstants: PhysicsConstants,
   agentCounts: AgentCounts,
@@ -100,22 +77,6 @@ export function useParticleConfig() {
 // Deep merge helper
 function mergeConfig(base: ParticleConfig, updates: any): ParticleConfig {
   return {
-    colors: {
-      leader: {
-        dark: updates.colors?.leader?.dark || base.colors.leader.dark,
-        light: updates.colors?.leader?.light || base.colors.leader.light,
-      },
-      follower: {
-        dark: {
-          base: updates.colors?.follower?.dark?.base || base.colors.follower.dark.base,
-          highlight: updates.colors?.follower?.dark?.highlight || base.colors.follower.dark.highlight,
-        },
-        light: {
-          base: updates.colors?.follower?.light?.base || base.colors.follower.light.base,
-          highlight: updates.colors?.follower?.light?.highlight || base.colors.follower.light.highlight,
-        },
-      },
-    },
     forceWeights: { ...base.forceWeights, ...updates.forceWeights },
     physicsConstants: { ...base.physicsConstants, ...updates.physicsConstants },
     agentCounts: {

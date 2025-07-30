@@ -60,7 +60,7 @@ export function InteractiveBackground({
   if (!mounted || prefersReducedMotion) {
     return (
       <div className={`fixed inset-0 -z-10 pointer-events-none ${className}`}>
-        <div className="w-full h-full bg-background" />
+        <div className="w-full h-full" style={{ backgroundColor: 'var(--color-background)' }} />
       </div>
     );
   }
@@ -68,6 +68,7 @@ export function InteractiveBackground({
   return (
     <div id="particle-container" className={`fixed inset-0 -z-10 pointer-events-none ${className}`}>
       <Canvas
+          style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh' }}
           camera={{
             position: [0, 0, 5],
             fov: 75,

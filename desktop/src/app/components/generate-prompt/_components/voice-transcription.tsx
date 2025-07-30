@@ -1,6 +1,6 @@
 "use client";
 
-import { Mic, MicOff, Settings, Clock } from "lucide-react";
+import { Mic, MicOff, Clock } from "lucide-react";
 import { useCallback, useState, useEffect } from "react";
 import {
   Button,
@@ -9,6 +9,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  AudioDeviceSelect,
 } from "@/ui";
 
 import { useVoiceTranscription } from "@/hooks/use-voice-recording";
@@ -41,7 +42,6 @@ const VoiceTranscription = function VoiceTranscription({
     
     // Audio
     audioLevel,
-    availableAudioInputs,
     selectedAudioInputId,
     
     // Actions
@@ -208,29 +208,11 @@ const VoiceTranscription = function VoiceTranscription({
             </SelectContent>
           </Select>
 
-          <Select
+          <AudioDeviceSelect
             value={selectedAudioInputId}
             onValueChange={selectAudioInput}
-            disabled={
-              isRecording ||
-              isProcessing ||
-              !canRecord ||
-              availableAudioInputs.length === 0
-            }
-          >
-            <SelectTrigger className="h-6 text-sm border-0 bg-muted/50 hover:bg-muted focus:ring-1 focus:ring-ring transition-colors cursor-pointer">
-              <Settings className="h-4 w-4 mr-2 flex-shrink-0" />
-              <SelectValue placeholder="Mic" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="default">Default</SelectItem>
-              {availableAudioInputs.map((device, index) => (
-                <SelectItem key={device.deviceId} value={device.deviceId || `device-${index}`}>
-                  {device.label || `Mic ${index + 1}`}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            disabled={isRecording || isProcessing || !canRecord}
+          />
         </div>
       )}
 

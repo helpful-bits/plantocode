@@ -11,22 +11,21 @@ export const AgentCounts = {
 
 export const PhysicsConstants = {
   MAX_SPEED: 80.0,
-  DRAG_COEFFICIENT: 0.95,
-  SEEK_MAX_FORCE: 0.8,
-  SEPARATION_RADIUS: 50.0,
-  SEPARATION_FORCE: 0.8,
+  DRAG_COEFFICIENT: 0.88, // More drag for fluid-like movement
+  SEEK_MAX_FORCE: 0.5, // Reduced for smoother movement
+  SEPARATION_RADIUS: 30.0, // Reduced for tighter personal space
+  SEPARATION_FORCE: 0.6,   // Gentler separation
   ALIGNMENT_FORCE: 0.3,
   ARRIVE_RADIUS: 100.0,
-  PATROL_SPEED: 40.0,
-  SCROLL_IMPULSE_STRENGTH: 10.0
+  SCROLL_IMPULSE_STRENGTH: 12.0 // Increased for more responsive scrolling
 };
 
 export const ForceWeights = {
-  seek: 0.6,  // Reduced from 1.0
-  alignment: 0.3,  // Reduced from 0.5
-  separation: 1.2,  // Reduced from 1.5
-  edgeAttraction: 1.2,  // Increased to keep particles near edges
-  centerRepulsion: 3.5
+  seek: 0.6,       // Reduced - gentler following
+  alignment: 0.3,   // Reduced - less rigid alignment
+  separation: 1.0,  // Reduced - softer personal space
+  centerRepulsion: 1.5, // Much reduced - gentle push
+  cohesion: 0.2     // Reduced - looser flocking
 };
 
 export const NoFlyZone = {
@@ -34,4 +33,4 @@ export const NoFlyZone = {
   height: 0.3
 };
 
-export const SafeZone = { width: 0.55, height: 0.45 };
+export const SafeZone = { width: 0.7, height: 0.7 }; // Large center repulsion zone

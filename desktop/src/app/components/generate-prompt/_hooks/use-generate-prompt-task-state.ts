@@ -10,7 +10,6 @@ import {
   useSessionActionsContext 
 } from "@/contexts/session";
 import { startVideoAnalysisJob } from "@/actions/video-analysis/start-video-analysis.action";
-import { deleteFile } from "@/utils/tauri-fs";
 import { useBackgroundJobs } from "@/contexts/background-jobs";
 import { useNotification } from "@/contexts/notification-context";
 import type { VideoAnalysisJobResult } from "@/types/video-analysis-types";
@@ -70,7 +69,7 @@ export function useGeneratePromptTaskState({
     'Please analyze this video and provide a detailed summary of what you observe, including key events, actions, and any notable details.'
   );
   
-  // Store video path temporarily for cleanup after job completion
+  // Store video path for reference (video files are preserved for user access)
   const videoPathRef = useRef<string | null>(null);
   
   // Update video analysis prompt when session changes
@@ -97,7 +96,7 @@ export function useGeneratePromptTaskState({
       return;
     }
     
-    // Store the video path for cleanup later
+    // Store the video path for reference
     videoPathRef.current = args.path;
     setIsAnalyzingVideo(true);
     
@@ -191,10 +190,7 @@ export function useGeneratePromptTaskState({
           const formattedAnalysis = `\n\n<video_analysis_summary>\n${response.analysis}\n</video_analysis_summary>\n`;
           taskDescriptionRef.current?.appendText(formattedAnalysis);
           
-          // Clean up the temporary video file
-          if (videoPathRef.current) {
-            await deleteFile(videoPathRef.current);
-          }
+          // Keep video file for user reference - do not delete
           
           // Reset state and show success notification
           resetVideoState();
@@ -215,14 +211,7 @@ export function useGeneratePromptTaskState({
         // Handle failure
         console.error('Video analysis failed:', job.errorMessage);
         
-        // Clean up the temporary video file even on failure
-        if (videoPathRef.current) {
-          try {
-            await deleteFile(videoPathRef.current);
-          } catch (error) {
-            console.error('Failed to delete video file:', error);
-          }
-        }
+        // Keep video file for user reference even on failure - do not delete
         
         // Reset video state
         resetVideoState();
