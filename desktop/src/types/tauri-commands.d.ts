@@ -144,6 +144,12 @@ export interface WriteFileContentCommandArgs {
   projectDirectory?: string | null;
 }
 
+export interface WriteBinaryFileCommandArgs {
+  path: string;
+  content: number[];
+  projectDirectory?: string | null;
+}
+
 export interface CreateUniqueFilepathCommandArgs {
   requestId: string;
   sessionName: string;
@@ -497,6 +503,16 @@ export interface StartWebEnhancedTaskRefinementWorkflowCommandArgs {
   projectDirectory: string;
 }
 
+// Video recording and analysis commands
+export interface StartVideoAnalysisJobCommandArgs {
+  videoPath: string;
+  prompt: string;
+  model: string;
+  temperature: number;
+  systemPrompt?: string;
+  durationMs: number;
+}
+
 
 // Common result types
 export interface JobResult {
@@ -556,6 +572,7 @@ export type TauriInvoke = {
   "create_directory_command": (args: CreateDirectoryCommandArgs) => Promise<void>;
   "read_file_content_command": (args: ReadFileContentCommandArgs) => Promise<string>;
   "write_file_content_command": (args: WriteFileContentCommandArgs) => Promise<void>;
+  "write_binary_file_command": (args: WriteBinaryFileCommandArgs) => Promise<void>;
   "create_unique_filepath_command": (args: CreateUniqueFilepathCommandArgs) => Promise<string>;
   "delete_file_command": (args: DeleteFileCommandArgs) => Promise<void>;
   "move_file_command": (args: MoveFileCommandArgs) => Promise<void>;
@@ -663,6 +680,9 @@ export type TauriInvoke = {
   "start_web_enhanced_task_refinement_workflow": (args: StartWebEnhancedTaskRefinementWorkflowCommandArgs) => Promise<import("@/types/workflow-types").WorkflowCommandResponse>;
   "get_workflow_state": (args: { workflowId: string }) => Promise<any>;
   "get_workflow_results": (args: { workflowId: string }) => Promise<any>;
+  
+  // Video recording and analysis commands
+  "start_video_analysis_job": (args: StartVideoAnalysisJobCommandArgs) => Promise<import("@/types/video-analysis-types").VideoAnalysisJobResponse>;
 };
 
 // Billing-related types

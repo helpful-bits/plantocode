@@ -196,6 +196,46 @@ export const BackgroundJobsSidebar = () => {
       return;
     }
     
+    // Handle video analysis jobs specially
+    if (jobWithResponse.taskType === 'video_analysis' && jobWithResponse.status === 'completed' && jobWithResponse.response) {
+      // Get current task description
+      const currentTaskDescription = currentSession?.taskDescription || '';
+      
+      // Parse the response to extract just the analysis content
+      let analysisContent = '';
+      try {
+        const responseData = typeof jobWithResponse.response === 'string' 
+          ? JSON.parse(jobWithResponse.response) 
+          : jobWithResponse.response;
+        
+        // Extract just the analysis field
+        analysisContent = responseData.analysis || jobWithResponse.response;
+      } catch (e) {
+        // If parsing fails, use the raw response
+        analysisContent = jobWithResponse.response;
+      }
+      
+      // Create the finding text with the video analysis results
+      const finding = `\n\n<research_finding>\n${analysisContent}\n</research_finding>`;
+      
+      // Append finding to current task description
+      const updatedTaskDescription = currentTaskDescription + finding;
+      
+      // Update session with the new task description
+      updateCurrentSessionFields({
+        taskDescription: updatedTaskDescription
+      });
+      
+      // Show success notification
+      showNotification({
+        title: "Video analysis applied",
+        message: "The video analysis findings have been added to your task description",
+        type: "success"
+      });
+      
+      return;
+    }
+    
     let paths: string[] = [];
     
     // Use standardized response format from backend

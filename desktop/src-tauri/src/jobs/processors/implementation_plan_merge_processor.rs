@@ -12,12 +12,10 @@ use crate::jobs::processors::utils::prompt_utils;
 use crate::jobs::processors::{LlmPromptContext, LlmTaskConfigBuilder, LlmTaskRunner};
 use crate::jobs::types::{
     ImplementationPlanMergePayload, Job, JobPayload, JobProcessResult, JobResultData,
+    StructuredImplementationPlan, StructuredImplementationPlanStep,
 };
 use crate::models::{JobStatus, TaskType};
-use crate::utils::{
-    extract_file_paths_from_implementation_plan, get_timestamp,
-    xml_utils::extract_xml_from_markdown,
-};
+use crate::utils::get_timestamp;
 
 pub struct ImplementationPlanMergeProcessor;
 
@@ -71,9 +69,8 @@ impl JobProcessor for ImplementationPlanMergeProcessor {
             match repo.get_job_by_id(job_id).await? {
                 Some(source_job) => {
                     if let Some(response) = source_job.response {
-                        // Extract clean XML from the response
-                        let clean_xml = extract_xml_from_markdown(&response);
-                        source_plans.push((index + 1, clean_xml));
+                        // Use the raw response directly
+                        source_plans.push((index + 1, response));
 
                         // Try to extract relevant files from the source job's metadata
                         if let Some(metadata_str) = &source_job.metadata {
@@ -121,11 +118,8 @@ impl JobProcessor for ImplementationPlanMergeProcessor {
             ));
         }
 
-        // Extract file paths from raw implementation plan XML
-        for (_index, plan_xml) in &source_plans {
-            let extracted_paths = extract_file_paths_from_implementation_plan(plan_xml);
-            all_relevant_files.extend(extracted_paths);
-        }
+        // Skip file path extraction since we're not parsing XML anymore
+        // The LLM will work with the raw text directly
 
         // Load file contents for context (similar to implementation plan processor)
         let mut file_contents_map = std::collections::HashMap::new();
@@ -250,23 +244,14 @@ impl JobProcessor for ImplementationPlanMergeProcessor {
             ));
         }
 
-        // Extract clean XML content from the response
-        let clean_xml_content = extract_xml_from_markdown(&response_content);
-
-        // Parse the merged implementation plan into structured format
-        let (structured_plan, human_readable_summary) =
-            match parsing_utils::parse_implementation_plan(&clean_xml_content) {
-                Ok(result) => result,
-                Err(e) => {
-                    error!(
-                        "Failed to parse merged implementation plan for job {}: {}",
-                        job.id, e
-                    );
-                    let error_msg = format!("Failed to parse merged implementation plan: {}", e);
-
-                    return Ok(JobProcessResult::failure(job.id.clone(), error_msg));
-                }
-            };
+        // Use the raw LLM response directly
+        
+        // Create a simple structured plan for UI compatibility
+        let structured_plan = StructuredImplementationPlan {
+            agent_instructions: None,
+            steps: vec![],
+        };
+        let human_readable_summary = "Merged implementation plan".to_string();
 
         // Extract metadata about the merge operation
         let merge_metadata = json!({
@@ -302,13 +287,13 @@ impl JobProcessor for ImplementationPlanMergeProcessor {
             .and_then(|u| u.cost)
             .unwrap_or(0.0);
 
-        // Return success result with the clean XML content as Text data
+        // Return success result with the raw response content as Text data
         let success_message = format!(
             "Merged {} implementation plans successfully",
             payload.source_job_ids.len()
         );
         let mut result =
-            JobProcessResult::success(job.id.clone(), JobResultData::Text(clean_xml_content))
+            JobProcessResult::success(job.id.clone(), JobResultData::Text(response_content))
                 .with_tokens(
                     usage_for_result.as_ref().map(|u| u.prompt_tokens as u32),
                     usage_for_result

@@ -1,0 +1,37 @@
+{
+  "forceWeights": {
+    "seek": 1.0,
+    "alignment": 0.5,
+    "separation": 1.5,
+    "edgeAttraction": 0.3
+  },
+  "physicsConstants": {
+    "MAX_SPEED": 240.0,
+    "DRAG_COEFFICIENT": 0.92,
+    "SEEK_MAX_FORCE": 2.0,
+    "SEPARATION_RADIUS": 50.0,
+    "SEPARATION_FORCE": 1.5,
+    "ALIGNMENT_FORCE": 0.5,
+    "ARRIVE_RADIUS": 100.0,
+    "PATROL_SPEED": 80.0,
+    "SCROLL_IMPULSE_STRENGTH": 150.0
+  },
+  "agentCounts": {
+    "desktop": {
+      "leaders": 5,
+      "followers": 350
+    },
+    "tablet": {
+      "leaders": 3,
+      "followers": 240
+    },
+    "mobile": {
+      "leaders": 2,
+      "followers": 160
+    }
+  },
+  "breakpoints": {
+    "desktop": 1024,
+    "tablet": 600
+  }
+}

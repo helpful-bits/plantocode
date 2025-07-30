@@ -32,6 +32,7 @@ use self::processors::{
     RegexFileFilterProcessor,
     TaskRefinementProcessor,
     TextImprovementProcessor,
+    VideoAnalysisProcessor,
     WebSearchExecutorProcessor,
     WebSearchPromptsGeneratorProcessor,
 };
@@ -77,6 +78,7 @@ pub async fn register_job_processors(app_handle: &AppHandle) -> AppResult<()> {
     let web_search_prompts_generator = Arc::new(WebSearchPromptsGeneratorProcessor::new());
     let web_search_executor = Arc::new(WebSearchExecutorProcessor::new());
     let implementation_plan_merge_processor = Arc::new(ImplementationPlanMergeProcessor::new());
+    let video_analysis_processor = Arc::new(VideoAnalysisProcessor);
 
     // Register processors
     registry.register(implementation_plan_processor).await;
@@ -92,6 +94,7 @@ pub async fn register_job_processors(app_handle: &AppHandle) -> AppResult<()> {
     registry.register(web_search_prompts_generator).await;
     registry.register(web_search_executor).await;
     registry.register(implementation_plan_merge_processor).await;
+    registry.register(video_analysis_processor).await;
 
     debug!("Job processors registered");
     Ok(())

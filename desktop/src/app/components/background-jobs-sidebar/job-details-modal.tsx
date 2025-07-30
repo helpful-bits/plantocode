@@ -1,7 +1,7 @@
 import { Loader2 } from "lucide-react";
 import { type BackgroundJob } from "@/types/session-types";
 import { Button } from "@/ui/button";
-import { Card } from "@/ui/card";
+import { Card, CardContent } from "@/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -78,6 +78,12 @@ const JobDetailsCostUsageSection = lazy(() =>
 const JobDetailsSystemPromptSection = lazy(() => 
   import("./_components/job-details/JobDetailsSystemPromptSection").then(module => ({ 
     default: module.JobDetailsSystemPromptSection 
+  }))
+);
+
+const JobDetailsVideoSection = lazy(() => 
+  import("./_components/job-details/JobDetailsVideoSection").then(module => ({ 
+    default: module.JobDetailsVideoSection 
   }))
 );
 
@@ -236,6 +242,22 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
       const response = typeof job.response === 'string' ? JSON.parse(job.response) : job.response;
       
       switch (job.taskType) {
+        case 'video_analysis':
+          // Handle video analysis responses - they come as plain strings
+          if (typeof job.response === 'string') {
+            return (
+              <Card className="border-0 shadow-none bg-muted/30">
+                <CardContent className="p-4">
+                  <h4 className="text-sm font-medium mb-2">Video Analysis Result</h4>
+                  <pre className="whitespace-pre-wrap text-sm text-foreground/90 font-normal">
+                    {job.response}
+                  </pre>
+                </CardContent>
+              </Card>
+            );
+          }
+          break;
+          
         case 'regex_file_filter':
         case 'file_relevance_assessment':
         case 'extended_path_finder':
@@ -468,6 +490,10 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
 
             <Suspense fallback={<SectionLoader />}>
               <JobDetailsSystemPromptSection />
+            </Suspense>
+
+            <Suspense fallback={<SectionLoader />}>
+              <JobDetailsVideoSection />
             </Suspense>
 
             <Suspense fallback={<SectionLoader />}>

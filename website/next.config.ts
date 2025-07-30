@@ -157,22 +157,11 @@ const nextConfig: NextConfig = {
 
   // Webpack optimizations
   webpack: (config, { dev, isServer }) => {
-    // Shader loaders
+    // Shader files loader
     config.module.rules.push({
       test: /\.(glsl|vert|frag)$/,
-      use: ['raw-loader', 'glslify-loader'],
+      type: 'asset/source',
     });
-
-    // Bundle analyzer (development only)
-    if (dev && !isServer) {
-      config.plugins.push(
-        new (require('webpack-bundle-analyzer').BundleAnalyzerPlugin)({
-          analyzerMode: 'disabled',
-          generateStatsFile: true,
-          statsOptions: { source: false },
-        })
-      );
-    }
 
     // Optimize chunk splitting
     if (!dev && !isServer) {
@@ -225,17 +214,6 @@ const nextConfig: NextConfig = {
       };
     }
 
-    // Optimize font loading
-    config.module.rules.push({
-      test: /\.(woff|woff2|eot|ttf|otf)$/,
-      use: {
-        loader: 'file-loader',
-        options: {
-          publicPath: '/_next/static/fonts/',
-          outputPath: 'static/fonts/'
-        }
-      }
-    });
 
     return config;
   },

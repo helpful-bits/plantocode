@@ -220,6 +220,7 @@ export function ImplementationPlansPanel({
   
   // Handle preload plan content on hover
   const handlePreloadPlanContent = useCallback(async (plan: BackgroundJob) => {
+    // Check if already loading or content exists
     if (isPreloadingPlan[plan.id] || preloadedPlanContent[plan.id]) {
       return;
     }
@@ -569,7 +570,7 @@ export function ImplementationPlansPanel({
                   size="sm"
                   onClick={handleCopyPrompt}
                   onMouseEnter={handlePreloadPrompt}
-                  disabled={isLoadingPrompt || isPreloadingPrompt}
+                  disabled={isLoadingPrompt}
                   className="flex items-center justify-center w-full h-9"
                 >
                   <ClipboardCopy className="h-4 w-4 mr-2" />

@@ -5,40 +5,17 @@ import { StructuredData } from '@/components/seo/StructuredData';
 import type { WebSite } from 'schema-dts';
 import { ClientProviders } from '@/components/providers/ClientProviders';
 import { GoogleAnalytics } from '@next/third-parties/google';
+import { InteractiveBackground } from '@/components/landing/InteractiveBackground';
+import { Suspense } from 'react';
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://vibemanager.app'),
   title: {
     template: '%s | Vibe Manager',
-    default: 'Vibe Manager | AI-Powered Context Curation',
+    default: 'Vibe Manager | Stop Babysitting Your AI Coder',
   },
-  description: 'An AI coding assistant that seamlessly integrates internet knowledge with your codebase to create actionable implementation plans.',
-  keywords: [
-    'AI coding assistant',
-    'codebase analysis',
-    'implementation plans',
-    'developer tools',
-    'code context',
-    'file discovery',
-    'AI-powered development',
-    'context curation',
-    'large codebases',
-    'file finder',
-    'web research integration',
-    'multi-model AI',
-    'cost tracking',
-    'privacy-first',
-    'parallel execution',
-    'session persistence',
-    'developer productivity',
-    'code intelligence',
-    'software architecture',
-    'development workflow',
-    'AI planning',
-    'code navigation',
-    'project analysis',
-    'development automation',
-  ],
+  description: "The AI coding assistant that acts as a middle-manager for your LLMs, curating the perfect context so they can't get lost. Built by a developer, for developers, from the trenches.",
+  keywords: ['AI coding assistant', 'context curation', 'vibe coding', 'multi-model AI', 'codebase analysis', 'implementation plans', 'developer tools', 'local AI', 'private AI coding', 'Claude Code', 'Gemini', 'large codebase', 'developer productivity'],
   authors: [{ name: 'Vibe Manager Team' }],
   creator: 'Vibe Manager',
   publisher: 'Vibe Manager',
@@ -53,8 +30,8 @@ export const metadata: Metadata = {
     canonical: 'https://vibemanager.app/',
   },
   openGraph: {
-    title: 'Vibe Manager | AI-Powered Context Curation for Large Codebases',
-    description: 'Transform your development workflow with AI-powered file discovery, web research integration, and multi-model implementation planning. Privacy-first architecture with transparent cost tracking.',
+    title: 'Vibe Manager | The Polite Context Guidance Centre for Somewhat Bewildered AI Agents',
+    description: 'Tired of babysitting your AI agent? Vibe Manager is the competent middle manager that curates perfect context from your codebase and the web, so your agents can build correctly the first time.',
     url: 'https://vibemanager.app/',
     siteName: 'Vibe Manager',
     images: [{
@@ -69,8 +46,8 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Vibe Manager | AI-Powered Context Curation for Large Codebases',
-    description: 'Transform your development workflow with AI-powered file discovery, web research integration, and multi-model implementation planning.',
+    title: 'Vibe Manager | The Polite Context Guidance Centre for Somewhat Bewildered AI Agents',
+    description: 'Tired of babysitting your AI agent? Vibe Manager is the competent middle manager that curates perfect context from your codebase and the web, so your agents can build correctly the first time.',
     images: [{
       url: 'https://vibe-manager-media.s3.amazonaws.com/og-image.png',
       alt: 'Vibe Manager - AI-Powered Context Curation for Large Codebases',
@@ -122,7 +99,7 @@ const websiteJsonLd: WebSite = {
   '@type': 'WebSite',
   name: 'Vibe Manager',
   url: 'https://vibemanager.app',
-  description: 'An AI coding assistant that seamlessly integrates internet knowledge with your codebase to create actionable implementation plans.',
+  description: "The AI coding assistant that acts as a middle-manager for your LLMs, curating the perfect context so they can't get lost. Built by a developer, for developers, from the trenches.",
 };
 
 export default function RootLayout({
@@ -134,6 +111,9 @@ export default function RootLayout({
     <html suppressHydrationWarning className={fontClasses.variables} lang="en">
       <head />
       <body className={`${fontClasses.sans} bg-transparent`}>
+        <Suspense fallback={null}>
+          <InteractiveBackground />
+        </Suspense>
         <ClientProviders>
           {children}
         </ClientProviders>

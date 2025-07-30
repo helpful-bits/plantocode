@@ -102,7 +102,10 @@ const ImplementationPlanCard = React.memo<ImplementationPlanCardProps>(({
   const hasContent = JOB_STATUSES.COMPLETED.includes(plan.status) || isStreaming || hasResponseContent;
 
   return (
-    <Card className="relative mb-4 overflow-hidden">
+    <Card 
+      className="relative mb-4 overflow-hidden"
+      onMouseEnter={onPreloadPlanContent}
+    >
       {/* Status indicator strip on the left side */}
       <div
         className={`absolute left-0 top-0 bottom-0 w-1 ${
@@ -206,7 +209,6 @@ const ImplementationPlanCard = React.memo<ImplementationPlanCardProps>(({
                   size="sm"
                   className="text-xs h-7 px-2 py-1"
                   onClick={() => onCopyButtonClick?.(button, plan)}
-                  onMouseEnter={onPreloadPlanContent}
                   title={`Copy: ${button.label}`}
                 >
                   <Copy className="mr-1 h-3 w-3" />

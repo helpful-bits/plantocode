@@ -265,6 +265,10 @@ export function GeneratePromptFeatureProvider({
         canUndo: taskState.canUndo,
         canRedo: taskState.canRedo,
         webSearchResults: taskState.webSearchResults,
+        // Video analysis state
+        isAnalyzingVideo: taskState.isAnalyzingVideo,
+        videoAnalysisJobId: taskState.videoAnalysisJobId,
+        videoAnalysisPrompt: taskState.videoAnalysisPrompt,
       },
       actions: {
         // Task description actions
@@ -276,6 +280,10 @@ export function GeneratePromptFeatureProvider({
         undo: taskState.undo,
         redo: taskState.redo,
         applyWebSearchResults: taskState.applyWebSearchResults,
+        // Video analysis actions
+        setVideoAnalysisPrompt: taskState.setVideoAnalysisPrompt,
+        handleAnalyzeVideo: taskState.handleAnalyzeVideo,
+        resetVideoState: taskState.resetVideoState,
       },
     }),
     [

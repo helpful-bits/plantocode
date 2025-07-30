@@ -12,8 +12,6 @@ import {
 } from "@/contexts/session";
 import { Button } from "@/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/ui/tooltip";
-import { Checkbox } from "@/ui/checkbox";
-import { Label } from "@/ui/label";
 
 interface TaskSectionProps {
   disabled?: boolean;
@@ -25,8 +23,6 @@ const TaskSection = React.memo(function TaskSection({
   // State for controlling tooltip visibility
   const [showHelpTooltip, setShowHelpTooltip] = useState(false);
   const [showRefineHelpTooltip, setShowRefineHelpTooltip] = useState(false);
-  const [showJustPromptsTooltip, setShowJustPromptsTooltip] = useState(false);
-  const [justPrompts, setJustPrompts] = useState(false);
   
   // Get task description from SessionContext
   const sessionState = useSessionStateContext();
@@ -90,7 +86,7 @@ const TaskSection = React.memo(function TaskSection({
         {/* Group 1: Deep Research button with its question mark */}
         <div className="flex items-center gap-1 flex-1">
           <Button
-            onClick={() => handleWebSearch(justPrompts)}
+            onClick={() => handleWebSearch(false)}
             isLoading={isDoingWebSearch}
             disabled={disabled || isRefiningTask || isDoingWebSearch || !sessionState.currentSession?.taskDescription?.trim()}
             variant="secondary"
@@ -143,44 +139,6 @@ const TaskSection = React.memo(function TaskSection({
           </Button>
         )}
 
-        {/* Group 2: Just Prompts checkbox with its question mark */}
-        <div className="flex items-center gap-1 flex-shrink-0">
-          <Checkbox
-            id="just-prompts-checkbox"
-            checked={justPrompts}
-            onCheckedChange={setJustPrompts}
-            disabled={disabled || isDoingWebSearch || isRefiningTask}
-          />
-          <Label
-            htmlFor="just-prompts-checkbox"
-            className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer text-foreground whitespace-nowrap"
-          >
-            Just Prompts <span className="text-xs opacity-70">(Cheaper)</span>
-          </Label>
-          <Tooltip open={showJustPromptsTooltip} onOpenChange={setShowJustPromptsTooltip}>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="px-2"
-                type="button"
-                onClick={() => setShowJustPromptsTooltip(!showJustPromptsTooltip)}
-              >
-                <HelpCircle className="h-5 w-5" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              <div className="max-w-xs space-y-2">
-                <p>
-                  Generates only the search prompts without executing the web searches. Perfect for when you want to review or customize the prompts before running them.
-                </p>
-                <p className="text-xs font-medium border-t border-primary-foreground/20 pt-2">
-                  Much cheaper - only uses one AI call instead of multiple searches
-                </p>
-              </div>
-            </TooltipContent>
-          </Tooltip>
-        </div>
       </div>
 
       {/* AI Refine Task button - only shown when tokens exceed 100,000 */}
@@ -232,6 +190,7 @@ const TaskSection = React.memo(function TaskSection({
           </Tooltip>
         </div>
       )}
+
 
     </div>
   );

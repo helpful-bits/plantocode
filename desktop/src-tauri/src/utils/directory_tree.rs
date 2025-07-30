@@ -85,6 +85,13 @@ pub async fn generate_directory_tree(
         // Convert relative paths from git to absolute paths
         for relative_path in files.0 {
             let absolute_path = project_dir_path.join(&relative_path);
+            
+            // Check if file actually exists on filesystem
+            if !absolute_path.exists() {
+                // Skip files that don't exist (deleted but still in git index)
+                continue;
+            }
+            
             all_paths.push(absolute_path);
         }
     } else {

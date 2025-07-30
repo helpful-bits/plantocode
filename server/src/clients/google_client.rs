@@ -5,6 +5,7 @@ use reqwest::{Client, header::HeaderMap};
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
 use serde_json::{json, Value};
+use std::path::Path;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -13,8 +14,10 @@ use std::hash::{Hash, Hasher};
 use tokio::sync::Mutex;
 use crate::config::settings::AppSettings;
 use crate::clients::usage_extractor::{UsageExtractor, ProviderUsage};
+use crate::models::UsageMetadata;
 use crate::services::model_mapping_service::ModelWithMapping;
 use tracing::{debug, info, error, instrument};
+use base64::{engine::general_purpose, Engine as _};
 
 // Base URL for Google AI API
 const GOOGLE_BASE_URL: &str = "https://generativelanguage.googleapis.com/v1beta";
@@ -22,7 +25,7 @@ const GOOGLE_BASE_URL: &str = "https://generativelanguage.googleapis.com/v1beta"
 // Google Chat Completion Request Structs
 #[skip_serializing_none]
 #[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "snake_case")]
 pub struct GoogleChatRequest {
     pub contents: Vec<GoogleContent>,
     pub system_instruction: Option<GoogleSystemInstruction>,
@@ -33,34 +36,55 @@ pub struct GoogleChatRequest {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "snake_case")]
 pub struct GoogleSystemInstruction {
     pub parts: Vec<GooglePart>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "snake_case")]
 pub struct GoogleContent {
     pub role: String,
     pub parts: Vec<GooglePart>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(untagged)]
-pub enum GooglePart {
-    Text { text: String },
-    InlineData { 
-        inline_data: GoogleInlineData 
-    },
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct GoogleVideoMetadata {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fps: Option<u32>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct GooglePart {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub inline_data: Option<GoogleBlob>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file_data: Option<GoogleFileData>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub video_metadata: Option<GoogleVideoMetadata>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct GoogleInlineData {
+#[serde(rename_all = "snake_case")]
+pub struct GoogleBlob {
     pub mime_type: String,
     pub data: String,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "snake_case")]
+pub struct GoogleFileData {
+    pub mime_type: String,
+    pub file_uri: String,
+}
+
 #[skip_serializing_none]
 #[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "snake_case")]
 pub struct GoogleGenerationConfig {
     pub temperature: Option<f32>,
     pub top_p: Option<f32>,
@@ -73,7 +97,7 @@ pub struct GoogleGenerationConfig {
 
 #[skip_serializing_none]
 #[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "snake_case")]
 pub struct GoogleThinkingConfig {
     pub thinking_budget: Option<i32>,
 }
@@ -118,6 +142,14 @@ pub struct GoogleSafetyRating {
     pub probability: String,
 }
 
+#[derive(Debug, Deserialize, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ModalityTokenCount {
+    pub modality: String,
+    #[serde(rename = "tokenCount")]
+    pub token_count: i32,
+}
+
 #[skip_serializing_none]
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
 #[serde(default)]
@@ -129,6 +161,8 @@ pub struct GoogleUsageMetadata {
     pub total_token_count: i32,
     #[serde(rename = "cachedContentTokenCount")]
     pub cached_content_token_count: Option<i32>,
+    #[serde(default, rename = "promptTokensDetails")]
+    pub prompt_tokens_details: Option<Vec<ModalityTokenCount>>,
     #[serde(flatten)]
     pub other: Option<serde_json::Value>,
 }
@@ -361,8 +395,7 @@ impl GoogleClient {
                 let api_key = &api_keys[key_index];
                 let url = format!("{}/models/{}:streamGenerateContent?alt=sse", base_url, clean_model_id);
                 
-                let mut request = request.clone();
-                request.stream = Some(true);
+                let request = request.clone();
                 
                 let response_result = client
                     .post(&url)
@@ -593,7 +626,7 @@ impl GoogleClient {
     fn parse_message_content(&self, content: &Value) -> Result<Vec<GooglePart>, AppError> {
         match content {
             Value::String(text) => {
-                Ok(vec![GooglePart::Text { text: text.clone() }])
+                Ok(vec![GooglePart { text: Some(text.clone()), ..Default::default() }])
             },
             Value::Array(parts_array) => {
                 let mut google_parts = Vec::new();
@@ -602,8 +635,9 @@ impl GoogleClient {
                         match part_type {
                             "text" => {
                                 if let Some(text) = part.get("text").and_then(|t| t.as_str()) {
-                                    google_parts.push(GooglePart::Text {
-                                        text: text.to_string(),
+                                    google_parts.push(GooglePart {
+                                        text: Some(text.to_string()),
+                                        ..Default::default()
                                     });
                                 }
                             },
@@ -627,11 +661,12 @@ impl GoogleClient {
                                                 "image/jpeg" // Default fallback
                                             };
 
-                                            google_parts.push(GooglePart::InlineData {
-                                                inline_data: GoogleInlineData {
+                                            google_parts.push(GooglePart {
+                                                inline_data: Some(GoogleBlob {
                                                     mime_type: mime_type.to_string(),
                                                     data: data.to_string(),
-                                                },
+                                                }),
+                                                ..Default::default()
                                             });
                                         }
                                     }
@@ -687,9 +722,342 @@ impl GoogleClient {
             model_id.to_string()
         );
         
+        // Extract prompt_tokens_details for modality breakdown
+        if let Some(prompt_details) = usage_metadata.get("promptTokensDetails").and_then(|v| v.as_array()) {
+            let mut video_tokens: Option<i32> = None;
+            let mut text_tokens_input: Option<i32> = None;
+            
+            for detail in prompt_details {
+                if let (Some(modality), Some(token_count)) = (
+                    detail.get("modality").and_then(|m| m.as_str()),
+                    detail.get("tokenCount").and_then(|t| t.as_i64())
+                ) {
+                    match modality {
+                        "VIDEO" => video_tokens = Some(token_count as i32),
+                        "TEXT" => text_tokens_input = Some(token_count as i32),
+                        _ => {} // Ignore other modalities for now
+                    }
+                }
+            }
+            
+            // Create metadata with modality information
+            let mut metadata = UsageMetadata::default();
+            metadata.video_tokens = video_tokens;
+            metadata.text_tokens_input = text_tokens_input;
+            usage.metadata = Some(metadata);
+        }
+        
         usage.validate().ok()?;
         
         Some(usage)
+    }
+
+    /// Upload a file to Google's File API using resumable upload
+    pub async fn upload_file(&self, video_path: &Path, mime_type: &str, api_key: &str) -> Result<(String, String), AppError> {
+        use tokio::fs;
+        
+        // Read file bytes
+        let file_data = fs::read(video_path)
+            .await
+            .map_err(|e| AppError::Internal(format!("Failed to read file: {}", e)))?;
+        
+        let display_name = video_path.file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("video.mp4");
+        
+        // Step 1: Create resumable upload session
+        let upload_url = format!("https://generativelanguage.googleapis.com/upload/v1beta/files?key={}", api_key);
+        
+        let init_body = json!({
+            "file": {
+                "display_name": display_name
+            }
+        });
+        
+        let init_response = self.client
+            .post(&upload_url)
+            .header("X-Goog-Upload-Protocol", "resumable")
+            .header("X-Goog-Upload-Command", "start")
+            .header("X-Goog-Upload-Header-Content-Length", file_data.len().to_string())
+            .header("X-Goog-Upload-Header-Content-Type", mime_type)
+            .header("Content-Type", "application/json")
+            .json(&init_body)
+            .send()
+            .await
+            .map_err(|e| AppError::External(format!("Failed to initiate upload: {}", e)))?;
+        
+        let init_status = init_response.status();
+        if !init_status.is_success() {
+            let error_text = init_response.text().await
+                .unwrap_or_else(|_| "Failed to get error response".to_string());
+            return Err(AppError::External(format!(
+                "Upload initiation failed with status {}: {}", 
+                init_status, 
+                error_text
+            )));
+        }
+        
+        // Get upload URL from response header
+        let upload_session_url = init_response
+            .headers()
+            .get("X-Goog-Upload-URL")
+            .ok_or_else(|| AppError::External("Missing X-Goog-Upload-URL header".to_string()))?
+            .to_str()
+            .map_err(|e| AppError::External(format!("Invalid upload URL header: {}", e)))?;
+        
+        // Step 2: Upload file data
+        let upload_response = self.client
+            .post(upload_session_url)
+            .header("Content-Length", file_data.len().to_string())
+            .header("X-Goog-Upload-Offset", "0")
+            .header("X-Goog-Upload-Command", "upload, finalize")
+            .body(file_data)
+            .send()
+            .await
+            .map_err(|e| AppError::External(format!("Failed to upload file data: {}", e)))?;
+        
+        let upload_status = upload_response.status();
+        if !upload_status.is_success() {
+            let error_text = upload_response.text().await
+                .unwrap_or_else(|_| "Failed to get error response".to_string());
+            return Err(AppError::External(format!(
+                "File upload failed with status {}: {}", 
+                upload_status, 
+                error_text
+            )));
+        }
+        
+        // Parse response to get file URI
+        let upload_result: serde_json::Value = upload_response.json().await
+            .map_err(|e| AppError::External(format!("Failed to parse upload response: {}", e)))?;
+        
+        let file_uri = upload_result["file"]["uri"]
+            .as_str()
+            .ok_or_else(|| AppError::External("Missing file.uri in upload response".to_string()))?;
+        
+        info!("Successfully uploaded file to Google: {}", file_uri);
+        
+        // Wait for file to become active
+        self.wait_for_file_active(&file_uri, api_key).await?;
+        
+        Ok((file_uri.to_string(), mime_type.to_string()))
+    }
+    
+    /// Wait for uploaded file to become active (Google needs time to process it)
+    async fn wait_for_file_active(&self, file_uri: &str, api_key: &str) -> Result<(), AppError> {
+        use tokio::time::{sleep, Duration};
+        
+        let max_attempts = 30; // Max 30 seconds wait
+        let mut attempts = 0;
+        
+        while attempts < max_attempts {
+            // Check file status
+            let status_url = format!("{}?key={}", file_uri, api_key);
+            
+            let response = self.client
+                .get(&status_url)
+                .send()
+                .await
+                .map_err(|e| AppError::External(format!("Failed to check file status: {}", e)))?;
+                
+            if !response.status().is_success() {
+                let error_text = response.text().await
+                    .unwrap_or_else(|_| "Failed to get error response".to_string());
+                return Err(AppError::External(format!(
+                    "Failed to check file status: {}", 
+                    error_text
+                )));
+            }
+            
+            let file_info: serde_json::Value = response.json().await
+                .map_err(|e| AppError::External(format!("Failed to parse file status response: {}", e)))?;
+                
+            // Check if file is active
+            if let Some(state) = file_info.get("state").and_then(|s| s.as_str()) {
+                info!("File state: {}", state);
+                if state == "ACTIVE" {
+                    info!("File is now active and ready to use");
+                    return Ok(());
+                } else if state == "FAILED" {
+                    return Err(AppError::External("File processing failed".to_string()));
+                }
+            }
+            
+            attempts += 1;
+            if attempts < max_attempts {
+                debug!("Waiting for file to become active... (attempt {}/{})", attempts, max_attempts);
+                sleep(Duration::from_secs(1)).await;
+            }
+        }
+        
+        Err(AppError::External("File processing timed out - file did not become active within 30 seconds".to_string()))
+    }
+
+    /// Generate content from multimodal inputs (video + text)
+    pub async fn generate_multimodal_content(
+        &self,
+        model: &str,
+        file_uri: &str,
+        mime_type: &str,
+        prompt: &str,
+        system_prompt: Option<String>,
+        temperature: f32,
+        api_key: &str
+    ) -> Result<GoogleChatResponse, AppError> {
+        // NOTE on Video Frame Rate and Processing:
+        // The Gemini API processes videos by sampling them at a fixed rate (approximately 1 frame per second),
+        // regardless of the source video's original frame rate. The token cost is based on video duration, not frame count.
+        // While some Google SDK examples show setting `fps` via `video_metadata`, this applies to the `inline_data`
+        // upload method for small files (<20MB). Our implementation uses the File API for resumable uploads of
+        // potentially large files, which does not support this parameter. Therefore, we cannot control the FPS sent to Gemini.
+        // Create system instruction if provided
+        let system_instruction = system_prompt.map(|prompt| GoogleSystemInstruction {
+            parts: vec![GooglePart { text: Some(prompt), ..Default::default() }],
+        });
+        
+        // Create contents with file data and text prompt
+        let contents = vec![
+            GoogleContent {
+                role: "user".to_string(),
+                parts: vec![
+                    GooglePart {
+                        file_data: Some(GoogleFileData {
+                            mime_type: mime_type.to_string(),
+                            file_uri: file_uri.to_string(),
+                        }),
+                        ..Default::default()
+                    },
+                    GooglePart {
+                        text: Some(prompt.to_string()),
+                        ..Default::default()
+                    },
+                ],
+            },
+        ];
+        
+        // Create generation config
+        let generation_config = Some(GoogleGenerationConfig {
+            temperature: Some(temperature),
+            top_p: None,
+            top_k: None,
+            max_output_tokens: None,
+            candidate_count: None,
+            stop_sequences: None,
+            thinking_config: None,
+        });
+        
+        // Create request
+        let request = GoogleChatRequest {
+            contents,
+            system_instruction,
+            generation_config,
+            safety_settings: None,
+            stream: None,
+        };
+        
+        // Use the shared helper to execute the request
+        self.execute_generate_content(model, request, api_key).await
+    }
+
+    /// Helper function to execute generate content request
+    async fn execute_generate_content(
+        &self,
+        model: &str,
+        request_payload: GoogleChatRequest,
+        api_key: &str
+    ) -> Result<GoogleChatResponse, AppError> {
+        let url = format!("{}/models/{}:generateContent", self.base_url, model);
+        
+        let response = self.client
+            .post(&url)
+            .header("x-goog-api-key", api_key)
+            .header("Content-Type", "application/json")
+            .json(&request_payload)
+            .send()
+            .await
+            .map_err(|e| AppError::External(format!("Google request failed: {}", e)))?;
+        
+        let status = response.status();
+        
+        if !status.is_success() {
+            let error_text = response.text().await
+                .unwrap_or_else(|_| "Failed to get error response".to_string());
+            return Err(AppError::External(format!(
+                "Google request failed with status {}: {}",
+                status, error_text
+            )));
+        }
+        
+        let response_text = response.text().await
+            .map_err(|e| AppError::Internal(format!("Failed to get response text: {}", e)))?;
+        
+        let result = serde_json::from_str::<GoogleChatResponse>(&response_text)
+            .map_err(|e| {
+                error!("Google deserialization failed: {} | Response: {}", e, response_text);
+                AppError::Internal(format!("Google deserialization failed: {}", e))
+            })?;
+        
+        Ok(result)
+    }
+
+    /// Generate multimodal content with inline video upload (for small videos < 20MB)
+    pub async fn generate_multimodal_content_inline(
+        &self,
+        model: &str,
+        video_data: &[u8],
+        mime_type: &str,
+        fps: u32,
+        prompt_text: &str,
+        system_prompt: Option<String>,
+        temperature: f32,
+        api_key: &str
+    ) -> Result<GoogleChatResponse, AppError> {
+        let encoded_video = general_purpose::STANDARD.encode(video_data);
+
+        let video_part = GooglePart {
+            inline_data: Some(GoogleBlob {
+                mime_type: mime_type.to_string(),
+                data: encoded_video,
+            }),
+            video_metadata: Some(GoogleVideoMetadata {
+                fps: Some(fps),
+            }),
+            ..Default::default()
+        };
+
+        let text_part = GooglePart {
+            text: Some(prompt_text.to_string()),
+            ..Default::default()
+        };
+
+        // Create system instruction if provided
+        let system_instruction = system_prompt.map(|prompt| GoogleSystemInstruction {
+            parts: vec![GooglePart { text: Some(prompt), ..Default::default() }],
+        });
+
+        // Create generation config
+        let generation_config = Some(GoogleGenerationConfig {
+            temperature: Some(temperature),
+            top_p: None,
+            top_k: None,
+            max_output_tokens: None,
+            candidate_count: None,
+            stop_sequences: None,
+            thinking_config: None,
+        });
+
+        let request_payload = GoogleChatRequest {
+            contents: vec![GoogleContent {
+                role: "user".to_string(),
+                parts: vec![video_part, text_part],
+            }],
+            system_instruction,
+            generation_config,
+            safety_settings: None,
+            stream: None,
+        };
+
+        self.execute_generate_content(model, request_payload, api_key).await
     }
 }
 

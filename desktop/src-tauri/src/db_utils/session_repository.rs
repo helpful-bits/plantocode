@@ -54,6 +54,9 @@ impl SessionRepository {
             })
             .unwrap_or_else(Vec::new);
 
+        // Read video_analysis_prompt - handle missing column gracefully
+        let video_analysis_prompt: Option<String> = row.try_get("video_analysis_prompt").ok().flatten();
+
         Ok(Session {
             id,
             name,
@@ -67,6 +70,7 @@ impl SessionRepository {
             updated_at,
             included_files,
             force_excluded_files,
+            video_analysis_prompt,
         })
     }
 
@@ -140,8 +144,8 @@ impl SessionRepository {
                 id, name, project_directory, project_hash, 
                 task_description, search_term, search_selected_files_only, model_used,
                 included_files, force_excluded_files,
-                created_at, updated_at
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+                created_at, updated_at, video_analysis_prompt
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
             "#,
         )
         .bind(&session.id)
@@ -160,6 +164,7 @@ impl SessionRepository {
         .bind(session.force_excluded_files.join("\n"))
         .bind(session.created_at)
         .bind(session.updated_at)
+        .bind(&session.video_analysis_prompt)
         .execute(&mut *tx)
         .await;
 
@@ -209,8 +214,9 @@ impl SessionRepository {
                 model_used = $7,
                 included_files = $8,
                 force_excluded_files = $9,
-                updated_at = $10
-            WHERE id = $11
+                updated_at = $10,
+                video_analysis_prompt = $11
+            WHERE id = $12
             "#,
         )
         .bind(&session.name)
@@ -227,6 +233,7 @@ impl SessionRepository {
         .bind(session.included_files.join("\n"))
         .bind(session.force_excluded_files.join("\n"))
         .bind(session.updated_at)
+        .bind(&session.video_analysis_prompt)
         .bind(&session.id)
         .execute(&mut *tx)
         .await;

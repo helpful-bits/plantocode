@@ -22,6 +22,7 @@ export const taskSettingsKeyToTaskType: Record<keyof TaskSettings, TaskType> = {
   unknown: "unknown",
   webSearchPromptsGeneration: "web_search_prompts_generation",
   webSearchExecution: "web_search_execution",
+  videoAnalysis: "video_analysis",
 };
 
 export const TRANSCRIPTION_LANGUAGES = [

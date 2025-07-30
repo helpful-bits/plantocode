@@ -12,11 +12,14 @@ import {
 import type { ChangeEvent } from "react";
 
 import { useTextareaResize } from "@/hooks/use-textarea-resize";
+import { useScreenRecorder } from "@/hooks/useScreenRecorder";
 import { Button } from "@/ui/button";
 import { Textarea } from "@/ui/textarea";
 import { cn } from "@/utils/utils";
 import VoiceTranscription from "./voice-transcription";
-import { listen } from "@tauri-apps/api/event";
+import { listen, emit } from "@tauri-apps/api/event";
+import { VideoRecordingDialog } from "./video-recording-dialog";
+import { useTaskContext } from "../_contexts/task-context";
 
 export interface TaskDescriptionHandle {
   insertTextAtCursorPosition: (text: string) => void;
@@ -25,6 +28,7 @@ export interface TaskDescriptionHandle {
   replaceText: (oldText: string, newText: string) => void;
   flushPendingChanges: () => string; // Immediately flush any pending debounced changes and return current value
   setValue: (value: string) => void;
+  getValue: () => string; // Get current value
   // Add properties that use-task-description-state.ts expects
   value: string;
   selectionStart: number;
@@ -62,6 +66,10 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
       }: TaskDescriptionProps,
       ref: React.ForwardedRef<TaskDescriptionHandle>
     ) {
+      // Get task context for video analysis state
+      const { state: taskState, actions: taskActions } = useTaskContext();
+      const { isAnalyzingVideo } = taskState;
+      const { setVideoAnalysisPrompt } = taskActions;
       // Keep ref parameter
       // Local state for responsive input handling
       const [internalValue, setInternalValue] = useState(value);
@@ -69,6 +77,9 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
       
       // Create an internal ref for the textarea element
       const internalTextareaRef = useRef<HTMLTextAreaElement>(null);
+      
+      const { startRecording, isRecording, stopRecording } = useScreenRecorder();
+      const [showVideoDialog, setShowVideoDialog] = useState(false);
       
       // Sync internal value with prop value when it changes externally
       useEffect(() => {
@@ -178,6 +189,7 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
           debouncedOnChange(value);
           onInteraction();
         },
+        getValue: () => internalValue,
       }), [insertTextAtCursor, internalValue, debouncedOnChange, onInteraction, onChange]);
 
 
@@ -281,7 +293,8 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
       const effectiveIsEmpty = !internalValue?.trim();
 
       return (
-        <div className="flex flex-col gap-1.5">
+        <>
+          <div className="flex flex-col gap-1.5">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <label
@@ -323,16 +336,74 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
               </div>
             </div>
             
-            <VoiceTranscription
-              onTranscribed={(text) => {
-                if (ref && typeof ref === 'object' && ref.current) {
-                  ref.current.appendText(text);
-                }
-              }}
-              onInteraction={onInteraction}
-              textareaRef={ref as React.RefObject<TaskDescriptionHandle | null>}
-              disabled={disabled}
-            />
+            <div className="flex items-center gap-2">
+              <VoiceTranscription
+                onTranscribed={(text) => {
+                  if (ref && typeof ref === 'object' && ref.current) {
+                    ref.current.appendText(text);
+                  }
+                }}
+                onInteraction={onInteraction}
+                textareaRef={ref as React.RefObject<TaskDescriptionHandle | null>}
+                disabled={disabled}
+              />
+              
+              {isRecording ? (
+                <div className="flex items-center gap-2 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-700 rounded-lg px-3 py-1">
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
+                    <span className="text-xs font-medium text-red-700 dark:text-red-300">Recording</span>
+                  </div>
+                  <Button
+                    onClick={stopRecording}
+                    variant="destructive"
+                    size="sm"
+                    className="h-6 px-2 text-xs"
+                    title="Stop recording"
+                  >
+                    Stop
+                  </Button>
+                </div>
+              ) : (
+                <Button
+                  onClick={() => {
+                    if (!isAnalyzingVideo) {
+                      setShowVideoDialog(true);
+                    }
+                  }}
+                  disabled={disabled || isAnalyzingVideo}
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6 hover:bg-primary/10 text-primary"
+                  title={isAnalyzingVideo ? "Video analysis in progress..." : "Record screen area"}
+                >
+                  {isAnalyzingVideo ? (
+                    <svg
+                      className="h-4 w-4 animate-spin"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      ></circle>
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                      ></path>
+                    </svg>
+                  ) : (
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    </svg>
+                  )}
+                </Button>
+              )}
+            </div>
           </div>
 
           <div className="relative">
@@ -394,8 +465,48 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
                 Please enter a task description to proceed
               </div>
             )}
+            
+            {isAnalyzingVideo && (
+              <div className="flex items-center gap-2 mt-2 text-sm text-muted-foreground">
+                <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <span>Analyzing video...</span>
+              </div>
+            )}
           </div>
         </div>
+        
+        <VideoRecordingDialog
+          isOpen={showVideoDialog}
+          onClose={() => setShowVideoDialog(false)}
+          onStartRecording={(prompt, recordAudio) => {
+            // Set the video analysis prompt
+            setVideoAnalysisPrompt(prompt);
+            
+            // Close the dialog
+            setShowVideoDialog(false);
+            
+            // Start recording and handle the result
+            startRecording(recordAudio).then((recordingResult) => {
+              if (!recordingResult) {
+                console.error('Recording failed or was cancelled');
+                return;
+              }
+              
+              // Emit the recording-finished event that the task state hook is listening for
+              emit('recording-finished', {
+                path: recordingResult.path,
+                durationMs: recordingResult.durationMs
+              }).catch(console.error);
+              
+              // Note: The actual video analysis will be triggered from the task-section.tsx
+              // when the user clicks the "Analyze Video" button
+            });
+          }}
+        />
+        </>
       );
     }
   );

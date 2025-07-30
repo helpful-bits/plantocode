@@ -1659,11 +1659,6 @@ impl BackgroundJobRepository {
             .try_get::<'_, Option<bool>, _>("is_finalized")
             .unwrap_or(None);
 
-        // Log cost retrieval for debugging if present
-        if let Some(cost) = actual_cost {
-            debug!("Retrieved job {} from database with cost: ${:.6}", id, cost);
-        }
-
         Ok(BackgroundJob {
             id,
             session_id,

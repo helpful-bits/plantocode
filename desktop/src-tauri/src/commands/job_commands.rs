@@ -1,8 +1,8 @@
 use crate::error::{AppError, AppResult};
 use crate::models::{BackgroundJob, TaskType};
-use log::{info, warn};
+use log::{info, warn, error};
 use serde::{Deserialize, Serialize};
-use serde_json::json;
+use serde_json::{json, Value};
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager, command};
 
@@ -52,6 +52,12 @@ pub async fn delete_background_job_command(job_id: String, app_handle: AppHandle
         .inner()
         .clone();
 
+    let pool = app_handle.state::<sqlx::SqlitePool>().inner();
+    if let Err(e) = crate::db_utils::temp_file_repository::delete_for_job(pool, &job_id).await {
+        error!("Failed to delete temp files for job {}: {}", job_id, e);
+    }
+
+    // Proceed with deleting the job from the database
     repo.delete_job(&job_id)
         .await
         .map_err(|e| AppError::DatabaseError(format!("Failed to delete job: {}", e)))?;
@@ -142,3 +148,4 @@ fn strip_implementation_plan_content(jobs: &mut Vec<BackgroundJob>) {
         }
     }
 }
+

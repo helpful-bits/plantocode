@@ -28,7 +28,8 @@ export function AuthFlowManager({ children }: AuthFlowManagerProps) {
   try {
     const { 
       user, 
-      loading
+      loading,
+      isTokenExpired
     } = useAuth();
     
     const {
@@ -162,9 +163,10 @@ export function AuthFlowManager({ children }: AuthFlowManagerProps) {
       const configResolved = !configLoading;
       const hasValidUser = !!user;
       const noConfigError = !configError;
+      const tokenValid = !isTokenExpired;
 
       // Only mark initialization as complete when ALL conditions are satisfied
-      if (onboardingDone && authResolved && configResolved && hasValidUser && noConfigError) {
+      if (onboardingDone && authResolved && configResolved && hasValidUser && noConfigError && tokenValid) {
         // All critical async operations before rendering main app are done
         setAppInitializing(false);
       } else {
@@ -178,6 +180,7 @@ export function AuthFlowManager({ children }: AuthFlowManagerProps) {
       configLoading,
       user,
       configError,
+      isTokenExpired,
       setAppInitializing
     ]);
 
@@ -225,8 +228,8 @@ export function AuthFlowManager({ children }: AuthFlowManagerProps) {
 
     // System prompts error handling removed
 
-    // Show login page if not authenticated
-    if (!user) {
+    // Show login page if not authenticated or token is expired
+    if (!user || isTokenExpired) {
       return <LoginPage />;
     }
 

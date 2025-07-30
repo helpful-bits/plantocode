@@ -79,6 +79,12 @@ VALUES (
         "max_tokens": 10000,
         "temperature": 0.3
       },
+      "video_analysis": {
+        "model": "google/gemini-2.5-pro",
+        "allowed_models": ["google/gemini-2.5-pro", "google/gemini-2.5-flash"],
+        "max_tokens": 16384,
+        "temperature": 0.4
+      },
       "generic_llm_stream": {
         "model": "anthropic/claude-sonnet-4-20250514",
         "allowed_models": ["anthropic/claude-sonnet-4-20250514", "google/gemini-2.5-flash", "openai/o4-mini"],
@@ -130,13 +136,13 @@ VALUES (
         "label": "STARTER"
       },
       {
-        "min": 13,
+        "min": 12,
         "max": 99,
         "fee_rate": 0.10,
         "label": "SAVER"
       },
       {
-        "min": 100,
+        "min": 99,
         "max": null,
         "fee_rate": 0.05,
         "label": "BULK"

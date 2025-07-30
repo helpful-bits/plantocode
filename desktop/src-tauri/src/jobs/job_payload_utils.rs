@@ -41,7 +41,7 @@ pub fn deserialize_value_to_job_payload(
         ExtendedPathFinderPayload, FileFinderWorkflowPayload, FileRelevanceAssessmentPayload,
         GenericLlmStreamPayload, ImplementationPlanMergePayload, ImplementationPlanPayload,
         JobPayload, OpenRouterLlmPayload, PathCorrectionPayload, RegexFileFilterPayload,
-        TaskRefinementPayload, TextImprovementPayload, WebSearchExecutionPayload,
+        TaskRefinementPayload, TextImprovementPayload, VideoAnalysisPayload, WebSearchExecutionPayload,
         WebSearchPromptsGenerationPayload, WebSearchWorkflowPayload,
     };
     use crate::models::TaskType;
@@ -183,6 +183,16 @@ pub fn deserialize_value_to_job_payload(
                     ))
                 })?;
             Ok(JobPayload::ImplementationPlanMerge(payload))
+        }
+        TaskType::VideoAnalysis => {
+            let payload: VideoAnalysisPayload = serde_json::from_value(json_value.clone())
+                .map_err(|e| {
+                    AppError::JobError(format!(
+                        "Failed to deserialize VideoAnalysisPayload: {}",
+                        e
+                    ))
+                })?;
+            Ok(JobPayload::VideoAnalysis(payload))
         }
         // Streaming and Unknown are not retryable job types
         TaskType::Streaming | TaskType::Unknown => Err(AppError::JobError(format!(

@@ -52,6 +52,7 @@ pub struct Session {
     pub updated_at: i64,
     pub included_files: Vec<String>,
     pub force_excluded_files: Vec<String>,
+    pub video_analysis_prompt: Option<String>,
 }
 
 // Request struct for creating a session - only requires essential fields
@@ -69,6 +70,7 @@ pub struct CreateSessionRequest {
     pub created_at: Option<i64>,
     pub included_files: Vec<String>,
     pub force_excluded_files: Vec<String>,
+    pub video_analysis_prompt: Option<String>,
 }
 
 // Job status enum that matches the SQL schema CHECK constraint
@@ -199,6 +201,7 @@ pub enum TaskType {
     WebSearchExecution,
     WebSearchWorkflow,
     Streaming,
+    VideoAnalysis,
     Unknown,
 }
 
@@ -220,6 +223,7 @@ impl ToString for TaskType {
             TaskType::WebSearchExecution => "web_search_execution".to_string(),
             TaskType::WebSearchWorkflow => "web_search_workflow".to_string(),
             TaskType::Streaming => "streaming".to_string(),
+            TaskType::VideoAnalysis => "video_analysis".to_string(),
             TaskType::Unknown => "unknown".to_string(),
         }
     }
@@ -245,6 +249,7 @@ impl std::str::FromStr for TaskType {
             "web_search_execution" => Ok(TaskType::WebSearchExecution),
             "web_search_workflow" => Ok(TaskType::WebSearchWorkflow),
             "streaming" => Ok(TaskType::Streaming),
+            "video_analysis" => Ok(TaskType::VideoAnalysis),
             "unknown" => Ok(TaskType::Unknown),
             _ => Err(format!("Invalid task type: {}", s)),
         }
@@ -267,7 +272,8 @@ impl TaskType {
             | TaskType::GenericLlmStream
             | TaskType::RegexFileFilter
             | TaskType::WebSearchPromptsGeneration
-            | TaskType::WebSearchExecution => true,
+            | TaskType::WebSearchExecution
+            | TaskType::VideoAnalysis => true,
             // Workflows don't require LLM - they are orchestrated, not processed
             TaskType::FileFinderWorkflow | TaskType::WebSearchWorkflow => false,
             // Streaming and Unknown default to true for safety
@@ -883,3 +889,4 @@ pub struct FileSelectionHistoryEntryWithTimestamp {
     pub force_excluded_files: Vec<String>,
     pub created_at: i64,
 }
+
