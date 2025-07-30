@@ -1,22 +1,23 @@
 'use client';
 
 import type { HTMLAttributes } from 'react';
-import { forwardRef, memo } from 'react';
+import { forwardRef } from 'react';
+import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 
 export interface GlassCardProps extends HTMLAttributes<HTMLDivElement> {
   highlighted?: boolean;
 }
 
-const GlassCardComponent = forwardRef<HTMLDivElement, GlassCardProps>(
-  ({ className, highlighted = false, children, ...props }, ref) => {
+const GlassCardComponent = forwardRef<HTMLDivElement, GlassCardProps & { whileHover?: any; transition?: any }>(
+  ({ className, highlighted = false, children, whileHover, transition, ...props }, ref) => {
     const glassClass = highlighted ? 'glass-highlighted' : 'glass';
 
     return (
       <div
         ref={ref}
         className={cn(
-          'relative rounded-2xl p-6 overflow-hidden transition-all duration-300',
+          'relative rounded-2xl p-6 overflow-hidden',
           glassClass,
           className,
         )}
@@ -32,7 +33,6 @@ const GlassCardComponent = forwardRef<HTMLDivElement, GlassCardProps>(
 
 GlassCardComponent.displayName = 'GlassCard';
 
-// Memoize the component to prevent unnecessary re-renders
-export const GlassCard = memo(GlassCardComponent);
+export const GlassCard = motion(GlassCardComponent);
 
 export default GlassCard;

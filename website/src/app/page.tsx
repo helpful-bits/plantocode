@@ -6,15 +6,12 @@ import dynamic from 'next/dynamic';
 import { StructuredData } from '@/components/seo/StructuredData';
 import { Header } from '@/components/landing/Header';
 import { HeroSection } from '@/components/landing/HeroSection';
-import { InteractiveBackground } from '@/components/landing/InteractiveBackground';
 import {
   Search,
   Globe,
   BrainCircuit,
-  Mic,
   Save,
   Zap,
-  DollarSign,
   Shield,
 } from 'lucide-react';
 import type { SoftwareApplication } from 'schema-dts';
@@ -44,8 +41,8 @@ const Footer = dynamic(() => import('@/components/landing/Footer').then(mod => (
 });
 
 export const metadata: Metadata = {
-  title: 'Vibe Manager | AI-Powered Context Curation for Large Codebases',
-  description: 'Transform your development workflow with AI-powered file discovery, web research integration, and multi-model implementation planning. Privacy-first architecture with transparent cost tracking.',
+  title: 'Vibe Manager | Stop Babysitting Your AI Coder',
+  description: "The AI coding assistant that acts as a middle-manager for your LLMs, curating the perfect context so they can't get lost. Built by a developer, for developers, from the trenches.",
   keywords: [
     'AI coding assistant',
     'codebase analysis',
@@ -68,7 +65,7 @@ export default function Home() {
     name: 'Vibe Manager',
     applicationCategory: 'DeveloperApplication',
     operatingSystem: 'macOS, Windows, Linux',
-    description: 'Transform your development workflow with AI-powered file discovery, web research integration, and multi-model implementation planning. Privacy-first architecture with transparent cost tracking.',
+    description: "The AI coding assistant that acts as a middle-manager for your LLMs, curating the perfect context so they can't get lost. Built by a developer, for developers, from the trenches.",
     offers: {
       '@type': 'Offer',
       price: '0',
@@ -93,14 +90,14 @@ export default function Home() {
     dateModified: '2025-07-23',
     screenshot: 'https://vibe-manager-media.s3.amazonaws.com/og-image.png',
     featureList: [
-      '4-Stage Smart File Discovery with AI filtering',
-      'Deep Web Research Integration',
-      'Multi-Model AI Planning (OpenAI, Anthropic, Google, DeepSeek)',
-      'Voice Dictation with Task Refinement',
-      'Session Context Persistence',
-      'True Parallel Workflow Execution',
-      'Real-time Transparent Cost Tracking',
-      'Privacy-First Architecture - Code Stays Local',
+      '4-Stage File Finder Workflow (No Vector DBs)',
+      'Deep Research Workflow with Official Documentation',
+      'Council of LLMs: Multi-Model & Multi-Run Plan Generation',
+      'Intelligent Plan Merging & Synthesis',
+      'Voice Dictation & AI-Powered Text Improvement',
+      '100% Local-First: Code & Data Stay On Your Machine',
+      'Fully Customizable System Prompts & Instructions',
+      'True Parallel Workflows: Never Get Blocked',
     ],
     softwareRequirements: 'Node.js 18+, 4GB RAM minimum',
     aggregateRating: {
@@ -114,100 +111,80 @@ export default function Home() {
 
   const features = [
     {
-      title: 'Never Lose Track of Relevant Files Again',
-      description: 'Our 4-stage AI workflow eliminates the guesswork in large codebases. From regex patterns to AI relevance assessment, we find every file that matters to your implementation - saving hours of manual searching',
-      icon: <Search className="w-8 h-8" />,
-    },
-    {
-      title: 'Bridge the Gap Between Ideas and Implementation',
-      description: 'Stop context-switching between Google and your code. Our Deep Research Integration pulls current web knowledge directly into your implementation plans, ensuring you never miss critical architectural patterns or best practices',
-      icon: <Globe className="w-8 h-8" />,
-    },
-    {
-      title: 'Get the Best from Every AI Model',
-      description: "Why settle for one perspective? Generate and merge implementation plans from o3, Claude 4, Gemini 2.5, and DeepSeek simultaneously. Each model's unique strengths combine for bulletproof planning",
+      title: 'The Council of LLMs',
+      description: 'Generate plans from multiple models (Gemini, Claude, etc.) and even multiple runs of the same model. Our merge AI synthesizes their unique insights into one superior strategy.',
       icon: <BrainCircuit className="w-8 h-8" />,
     },
     {
-      title: 'Turn Thoughts into Actionable Tasks Instantly',
-      description: 'Voice-capture complex requirements while walking or thinking, then let AI refine them into crystal-clear implementation tasks. No more losing great ideas to poor documentation',
-      icon: <Mic className="w-8 h-8" />,
+      title: 'Deep Research Workflow',
+      description: "Bridge the gap between your code and the web. We consult current, official documentation to get up-to-date answers for your implementation problems, ensuring you're not using outdated patterns.",
+      icon: <Globe className="w-8 h-8" />,
     },
     {
-      title: 'Pick Up Exactly Where You Left Off',
-      description: 'Context switching kills productivity. Save complete work sessions with file selections, task descriptions, and progress. Resume any project instantly with zero mental overhead',
-      icon: <Save className="w-8 h-8" />,
+      title: 'Intelligent File Finder',
+      description: "Forget stale vector databases. Our 4-stage workflow uses LLM intelligence to pinpoint the exact files needed for a task, just like a senior developer would. It's faster and more accurate.",
+      icon: <Search className="w-8 h-8" />,
     },
     {
-      title: 'Multiply Your Development Velocity',
-      description: 'Why wait? Run file discovery while generating plans while researching patterns - all simultaneously. True parallel execution means every minute counts toward progress',
+      title: 'Your Code Stays Yours. Period.',
+      description: 'Privacy-first is our promise. Your code, session data, and tasks stay on your local machine, in your Git repo and a local SQLite DB. Nothing goes to the cloud without your approval.',
+      icon: <Shield className="w-8 h-8" />,
+    },
+    {
+      title: 'Truly Parallel Workflows',
+      description: "Why wait? While one implementation plan generates, switch sessions and kick off a file discovery workflow for another task. You're never blocked.",
       icon: <Zap className="w-8 h-8" />,
     },
     {
-      title: 'No Billing Surprises, Ever',
-      description: "See exact costs before and during execution. Server-validated billing with real-time tracking means you're always in control of your AI spend - no hidden fees or surprise charges",
-      icon: <DollarSign className="w-8 h-8" />,
-    },
-    {
-      title: 'Your Code Never Leaves Your Machine',
-      description: 'Built for enterprise security: your codebase stays local, only selected files go to AI services, and file browsing works completely offline. Privacy-first architecture you can trust',
-      icon: <Shield className="w-8 h-8" />,
+      title: 'You Are The CEO',
+      description: "You have the final say. Override any system prompt. Customize the 'Copy Button' instructions. Tailor the tool to your exact project needs and workflow.",
+      icon: <Save className="w-8 h-8" />,
     },
   ];
 
   const steps = [
     {
-      title: '1. Capture & Clarify Your Vision',
-      description: 'Start with voice dictation for rapid idea capture or detailed text input. Our AI Task Refinement analyzes your requirements and transforms them into clear, actionable specifications while preserving your original intent and technical preferences.',
+      title: '1. The Briefing: Task Input & Refinement',
+      description: 'Start with voice dictation or text. Our AI refines your vague ideas into precise specifications, using your codebase to clarify ambiguities and identify components before any work begins.',
       video: 'https://vibe-manager-media.s3.amazonaws.com/step-1-describe.mp4',
       poster: 'https://vibe-manager-media.s3.amazonaws.com/step-1-poster.jpg',
     },
     {
-      title: '2. Discover Files & Research Context',
-      description: 'Launch our intelligent 4-stage File Finder: regex pattern matching, AI relevance scoring, dependency path exploration, and smart path correction. Simultaneously run Deep Research to pull current best practices and architectural patterns from the web that match your codebase.',
+      title: '2. The Recon Mission: Finding What Matters',
+      description: 'Our 4-stage File Finder acts like a senior dev, using Regex, AI content assessment, and path finding to pinpoint only the essential files. No stale vector databases, just pure LLM intelligence.',
       video: 'https://vibe-manager-media.s3.amazonaws.com/step-2-find.mp4',
       poster: 'https://vibe-manager-media.s3.amazonaws.com/step-2-poster.jpg',
     },
     {
-      title: '3. Generate & Merge Implementation Plans',
-      description: 'Choose single or multiple AI models (o3, Claude 4 Opus, Gemini 2.5 Pro, DeepSeek R1) to generate comprehensive implementation plans. Our merge algorithm combines the unique strengths of each model into a single, battle-tested roadmap with step-by-step instructions.',
+      title: '3. Phoning a Friend: Deep Research',
+      description: "Your LLM's knowledge is frozen in time. We fix that by consulting official documentation to get up-to-date answers for your specific implementation problems, integrated with your code's context.",
       video: 'https://vibe-manager-media.s3.amazonaws.com/step-3-generate.mp4',
       poster: 'https://vibe-manager-media.s3.amazonaws.com/step-3-poster.jpg',
+    },
+    {
+      title: '4. The Board Meeting: Council of LLMs',
+      description: 'Generate plans from multiple models. Our architect AI performs deep synthesis, detecting blind spots and creating emergent solutions. Review with floating notes and edit plans directly before execution.',
+      video: 'https://vibe-manager-media.s3.amazonaws.com/step-4-merge.mp4',
+      poster: 'https://vibe-manager-media.s3.amazonaws.com/step-4-poster.jpg',
     },
   ];
 
   const faqItems = [
     {
-      question: 'How does Vibe Manager differ from GitHub Copilot and other AI coding tools?',
-      answer: 'While Copilot excels at line-by-line code completion, Vibe Manager specializes in the planning phase. We help you find all relevant files in massive codebases, integrate current web research with your architecture, and generate comprehensive implementation roadmaps. Think of us as your AI planning partner before you start coding, while Copilot helps during the actual coding process.',
+      question: 'So it just finds the right files?',
+      answer: 'Well, yes, it finds the *right* set of files. But also...',
     },
     {
-      question: 'What programming languages and frameworks are supported?',
-      answer: "Vibe Manager is language-agnostic and works with any text-based codebase. Our AI models understand code structure across JavaScript/TypeScript, Python, Java, Go/Rust, C#/.NET, PHP, Ruby, and more. We're equally effective with frameworks like React, Angular, Vue, Django, Rails, Spring Boot, and modern architectures like microservices or monorepos.",
+      question: 'What else?',
+      answer: 'It integrates up-to-the-minute web documentation with your codebase. And it generates implementation plans from a council of AI models, then merges them into a single, bulletproof strategy.',
     },
     {
-      question: 'How secure is my code? What data leaves my machine?',
-      answer: "Security is our foundation. Your entire codebase stays on your machine - we never upload or store it. Only the specific files you explicitly select for analysis are sent to AI providers, and you see exactly what's being sent before it happens. File browsing, session management, and context persistence all work completely offline.",
+      question: 'Okay, but apart from finding files, doing web research, and creating merged multi-model plans...?',
+      answer: 'It keeps your code completely private on your local machine. And lets you customize every single system prompt and copy-paste instruction. And it has voice dictation. And it runs all its workflows in parallel so you can work on multiple tasks at once.',
     },
     {
-      question: 'Which AI models do you support and how do I choose?',
-      answer: 'We support the leading AI models: OpenAI (o3, GPT-4.1, o4-mini), Anthropic (Claude 4 Opus, Claude 4 Sonnet), Google (Gemini 2.5 Pro, Gemini 2.5 Flash), and DeepSeek (R1). Each has unique strengths - o3 for complex reasoning, Claude for code analysis, Gemini for broad knowledge integration. Our multi-model merge feature lets you combine their perspectives for the most comprehensive plans.',
-    },
-    {
-      question: 'How does pricing work? Are there any hidden fees or subscriptions?',
-      answer: "Zero subscriptions, zero hidden fees. New users get free credits (30-day expiration) to try all features. After that, it's pure pay-as-you-go with transparent processing fees: Under $30 usage (20% fee), $30-$300 (10% fee), Over $300 (5% fee). You see exact costs before executing any operation, and all billing is server-validated in real-time.",
-    },
-    {
-      question: 'Can I work on multiple projects simultaneously?',
-      answer: 'Absolutely! Vibe Manager is built for parallel productivity. Run file discovery on one project while generating implementation plans for another, or execute deep research while working on task refinement. Every feature operates independently with separate sessions, contexts, and progress tracking. Perfect for consultants and developers juggling multiple codebases.',
-    },
-    {
-      question: 'What are the system requirements and how difficult is setup?',
-      answer: "Minimal requirements: Node.js 18+, 4GB RAM, and any modern OS (macOS, Windows, Linux). Setup takes under 2 minutes - download, install, and you're ready. No complex configuration, no server setup, no API key management headaches. Everything works locally with optional cloud AI integration when you need it.",
-    },
-    {
-      question: 'How effective is the file discovery in really large codebases?',
-      answer: "Our 4-stage discovery process is specifically designed for enterprise-scale codebases. We've tested on repositories with 100,000+ files where traditional search fails. The hierarchical approach (regex → AI relevance → dependency mapping → path correction) finds files that developers miss, even in complex monorepos with deep nesting and non-standard structures.",
+      question: "Alright, I'll grant you that the file finding, web research, multi-model plans, privacy, custom prompts, voice dictation, and parallel workflows are nice. But apart from ALL THAT, what has Vibe Manager ever done for us?",
+      answer: 'It gave you your weekend back.',
     },
   ];
 
@@ -229,23 +206,33 @@ export default function Home() {
       <StructuredData data={faqPageJsonLd} />
       {/* Background gradient */}
       <div className="fixed inset-0 -z-20" style={{ background: 'var(--background-gradient)' }} />
-      {/* Particle background with proper z-index */}
-      <InteractiveBackground />
       {/* Page content */}
       <div className="relative z-0 bg-transparent">
         <Header />
         <main className="relative">
-          <HeroSection />
-          <Features features={features} />
-          <HowItWorks steps={steps} />
-          <Pricing />
-          <FAQ items={faqItems} />
-          <CallToAction
-            buttonLink="/download"
-            buttonText="Download Vibe Manager Free"
-            description="Join developers using Vibe Manager to build better software faster with AI-powered context curation."
-            title="Ready to Transform Your Development Workflow?"
-          />
+          <section>
+            <HeroSection />
+          </section>
+          <section>
+            <Features features={features} />
+          </section>
+          <section>
+            <HowItWorks steps={steps} />
+          </section>
+          <section>
+            <Pricing />
+          </section>
+          <section>
+            <FAQ items={faqItems} />
+          </section>
+          <section>
+            <CallToAction
+              buttonLink="/download"
+              buttonText="Download Vibe Manager Free"
+              description="Download the app, point it to your project, and get your first AI-curated implementation plan in minutes. It's time to get back to building."
+              title="Ready to Stop Babysitting Your AI?"
+            />
+          </section>
         </main>
         <Footer />
       </div>

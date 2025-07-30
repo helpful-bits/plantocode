@@ -17,7 +17,7 @@ interface SystemPromptEditorProps {
 }
 
 export function SystemPromptEditor({ projectDirectory, taskType, onSave }: SystemPromptEditorProps) {
-  const { prompt, loading, error, isCustom, update, reset, validate } = useProjectSystemPrompt({
+  const { prompt, loading, error, isCustom, update, reset, validate, loadCustomPrompt } = useProjectSystemPrompt({
     projectDirectory: projectDirectory || '',
     taskType: taskType as TaskTypeSupportingSystemPrompts,
     autoLoad: !!projectDirectory && supportsSystemPrompts(taskType)
@@ -150,9 +150,19 @@ export function SystemPromptEditor({ projectDirectory, taskType, onSave }: Syste
                   setValidationError(null);
 
                   try {
-                    const promptToSave = defaultPrompt?.systemPrompt || '';
-                    await update(promptToSave);
-                    setEditedPrompt('');
+                    // First check if a custom prompt already exists
+                    const existingCustomPrompt = await loadCustomPrompt();
+                    
+                    if (existingCustomPrompt) {
+                      // Use the existing custom prompt
+                      await update(existingCustomPrompt);
+                      setEditedPrompt(existingCustomPrompt);
+                    } else {
+                      // No custom prompt exists, use default as starting point
+                      const promptToSave = defaultPrompt?.systemPrompt || '';
+                      await update(promptToSave);
+                      setEditedPrompt('');
+                    }
                   } catch (err) {
                     setValidationError(err instanceof Error ? err.message : 'Failed to activate custom prompt');
                   } finally {

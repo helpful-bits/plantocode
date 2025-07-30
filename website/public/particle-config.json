@@ -1,0 +1,54 @@
+{
+  "colors": {
+    "leader": {
+      "dark": [0.4, 0.9, 0.9],
+      "light": [0.2, 0.6, 0.7]
+    },
+    "follower": {
+      "dark": {
+        "base": [0.1, 0.4, 0.5],
+        "highlight": [0.3, 1.0, 1.0]
+      },
+      "light": {
+        "base": [0.02, 0.1, 0.15],
+        "highlight": [0.1, 0.4, 0.4]
+      }
+    }
+  },
+  "forceWeights": {
+    "seek": 0.6,
+    "alignment": 0.3,
+    "separation": 1.2,
+    "edgeAttraction": 1.2,
+    "centerRepulsion": 2.0
+  },
+  "physicsConstants": {
+    "MAX_SPEED": 80.0,
+    "DRAG_COEFFICIENT": 0.95,
+    "SEEK_MAX_FORCE": 0.8,
+    "SEPARATION_RADIUS": 50.0,
+    "SEPARATION_FORCE": 0.8,
+    "ALIGNMENT_FORCE": 0.3,
+    "ARRIVE_RADIUS": 100.0,
+    "PATROL_SPEED": 40.0,
+    "SCROLL_IMPULSE_STRENGTH": 10.0
+  },
+  "agentCounts": {
+    "desktop": {
+      "leaders": 5,
+      "followers": 350
+    },
+    "tablet": {
+      "leaders": 3,
+      "followers": 240
+    },
+    "mobile": {
+      "leaders": 2,
+      "followers": 160
+    }
+  },
+  "breakpoints": {
+    "desktop": 1024,
+    "tablet": 600
+  }
+}

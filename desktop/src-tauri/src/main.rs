@@ -29,10 +29,11 @@ use dotenv::dotenv;
 use log::{debug, error, info, warn};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::{atomic::AtomicBool, Arc, Mutex};
 use std::time::Duration;
 use tauri::Manager;
 use tokio::sync::OnceCell;
+
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RuntimeConfig {
@@ -204,12 +205,14 @@ fn main() {
             commands::job_commands::cancel_session_jobs_command,
             commands::job_commands::delete_background_job_command,
             commands::job_commands::get_background_job_by_id_command,
+            commands::video_analysis_commands::start_video_analysis_job,
             // File system commands
             commands::file_system_commands::get_home_directory_command,
             commands::file_system_commands::list_project_files_command,
             commands::file_system_commands::create_directory_command,
             commands::file_system_commands::read_file_content_command,
             commands::file_system_commands::write_file_content_command,
+            commands::file_system_commands::write_binary_file_command,
             commands::file_system_commands::create_unique_filepath_command,
             commands::file_system_commands::delete_file_command,
             commands::file_system_commands::move_file_command,

@@ -129,6 +129,17 @@ pub struct WebSearchWorkflowPayload {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct VideoAnalysisPayload {
+    pub video_path: String,
+    pub prompt: String,
+    pub model: String,
+    pub temperature: f32,
+    pub system_prompt: Option<String>,
+    pub duration_ms: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct FileRelevanceAssessmentProcessingDetails {
     pub approach: String,
     pub total_files: usize,
@@ -216,6 +227,7 @@ pub enum JobPayload {
     // Workflow payloads
     FileFinderWorkflow(FileFinderWorkflowPayload),
     WebSearchWorkflow(WebSearchWorkflowPayload),
+    VideoAnalysis(VideoAnalysisPayload),
 }
 
 // Structured types for Implementation Plan parsing

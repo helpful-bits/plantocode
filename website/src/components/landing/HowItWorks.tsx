@@ -3,7 +3,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { motion, useInView } from 'framer-motion';
-import { useAnimationOrchestrator, animationVariants } from '@/hooks/useAnimationOrchestrator';
+import { variants } from '@/lib/animations';
 
 interface Step {
   title: string;
@@ -21,11 +21,17 @@ const defaultSteps: Step[] = [];
 function OptimizedVideo({ video, poster }: { video: string; poster: string }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [loadError, setLoadError] = useState(false);
-  const inView = useInView(videoRef, { once: true, margin: '100px' });
+  const inView = useInView(videoRef, { margin: '100px' });
 
   useEffect(() => {
-    if (inView && videoRef.current) {
-      videoRef.current.load();
+    if (videoRef.current) {
+      if (inView) {
+        videoRef.current.play().catch(() => {
+          // Autoplay was prevented.
+        });
+      } else {
+        videoRef.current.pause();
+      }
     }
   }, [inView]);
 
@@ -33,7 +39,6 @@ function OptimizedVideo({ video, poster }: { video: string; poster: string }) {
     <div className="relative w-full">
       <video
         ref={videoRef}
-        controls
         loop
         muted
         playsInline
@@ -42,7 +47,6 @@ function OptimizedVideo({ video, poster }: { video: string; poster: string }) {
         preload="none"
         onError={() => setLoadError(true)}
       >
-        <source src={video.replace('.mp4', '.webm')} type="video/webm" />
         <source src={video} type="video/mp4" />
         Your browser does not support the video tag.
       </video>
@@ -62,27 +66,25 @@ function OptimizedVideo({ video, poster }: { video: string; poster: string }) {
 }
 
 export function HowItWorks({ steps = defaultSteps }: HowItWorksProps) {
-  const sectionRef = useRef<HTMLElement>(null);
-  const { isInView } = useAnimationOrchestrator(sectionRef);
-
   return (
-    <section ref={sectionRef} className="relative py-20 px-4 overflow-hidden" id="how-it-works">
+    <section className="relative py-20 px-4 overflow-hidden" id="how-it-works">
       <div className="container mx-auto relative z-10">
         <motion.div
           className="text-center mb-16"
           initial="hidden"
-          animate={isInView ? "visible" : "hidden"}
-          variants={animationVariants.section}
+          whileInView="visible"
+          variants={variants.section}
+          viewport={{ once: true, amount: 0.5 }}
         >
           <motion.h2
             className="text-4xl sm:text-5xl lg:text-6xl mb-6 text-primary-emphasis font-bold"
-            variants={animationVariants.item}
+            variants={variants.item}
           >
             How It Works
           </motion.h2>
           <motion.p
             className="text-lg sm:text-xl max-w-2xl mx-auto leading-relaxed font-medium text-foreground/80"
-            variants={animationVariants.item}
+            variants={variants.item}
           >
             From task description to implementation plan in minutes
           </motion.p>
@@ -91,39 +93,23 @@ export function HowItWorks({ steps = defaultSteps }: HowItWorksProps) {
         <motion.div
           className="space-y-16 max-w-5xl mx-auto"
           initial="hidden"
-          animate={isInView ? "visible" : "hidden"}
-          variants={{
-            visible: {
-              transition: {
-                staggerChildren: 0.15,
-                delayChildren: 0.2,
-              },
-            },
-          }}
+          whileInView="visible"
+          variants={variants.section}
+          viewport={{ once: true, amount: 0.1 }}
         >
           {steps.map((step, index) => (
             <motion.div
               key={index}
-              variants={{
-                hidden: { opacity: 0, y: 30 },
-                visible: {
-                  opacity: 1,
-                  y: 0,
-                  transition: {
-                    duration: 0.5,
-                    ease: [0.25, 0.46, 0.45, 0.94],
-                  },
-                },
-              }}
               className="how-it-works-step group"
+              variants={variants.item}
             >
-              <GlassCard className="overflow-hidden transition-transform duration-200 hover:scale-[1.008]">
+              <GlassCard className="overflow-hidden">
                 <div className="p-8 sm:p-10 lg:p-12">
                   <div className="mb-8">
                     <div className="flex items-center gap-6 mb-6">
                       <div className="relative">
                         <div className="absolute inset-0 bg-gradient-to-br from-primary to-primary/60 rounded-full blur-xl opacity-60" />
-                        <div className="relative w-14 h-14 bg-gradient-to-br from-primary/30 to-primary/50 ring-2 ring-primary/40 rounded-full flex items-center justify-center font-bold text-2xl text-primary-foreground shadow-xl transition-transform duration-200 group-hover:scale-110">
+                        <div className="relative w-14 h-14 bg-gradient-to-br from-primary/30 to-primary/50 ring-2 ring-primary/40 rounded-full flex items-center justify-center font-bold text-2xl text-primary-foreground shadow-xl">
                           {index + 1}
                         </div>
                       </div>
@@ -138,7 +124,7 @@ export function HowItWorks({ steps = defaultSteps }: HowItWorksProps) {
 
                   <div className="relative group">
                     <div className="absolute -inset-4 bg-gradient-to-r from-primary/20 via-primary/10 to-primary/20 rounded-2xl blur-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-                    <div className="relative rounded-xl overflow-hidden shadow-2xl ring-1 ring-primary/10 group-hover:ring-primary/20 transition-all duration-500">
+                    <div className="relative rounded-xl overflow-hidden shadow-2xl ring-1 ring-primary/10 group-hover:ring-primary/20">
                       <OptimizedVideo poster={step.poster} video={step.video} />
                     </div>
                   </div>

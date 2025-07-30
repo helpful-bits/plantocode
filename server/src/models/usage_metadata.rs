@@ -19,7 +19,11 @@ pub struct UsageMetadata {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub image_tokens: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub video_tokens: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub text_tokens: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub text_tokens_input: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub text_tokens_output: Option<i64>,
     
@@ -84,8 +88,14 @@ impl UsageMetadata {
         if other.image_tokens.is_some() {
             self.image_tokens = other.image_tokens;
         }
+        if other.video_tokens.is_some() {
+            self.video_tokens = other.video_tokens;
+        }
         if other.text_tokens.is_some() {
             self.text_tokens = other.text_tokens;
+        }
+        if other.text_tokens_input.is_some() {
+            self.text_tokens_input = other.text_tokens_input;
         }
         if other.text_tokens_output.is_some() {
             self.text_tokens_output = other.text_tokens_output;

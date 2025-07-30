@@ -92,6 +92,11 @@ pub async fn initialize_database(app_handle: &AppHandle) -> Result<(), AppError>
             .map_err(|e| AppError::DatabaseError(format!("Failed to apply migrations: {}", e)))?;
 
         info!("Database migrations applied successfully");
+        
+        // Initialize temp_files table
+        if let Err(e) = crate::db_utils::temp_file_repository::init_table(&db).await {
+            error!("Failed to initialize temp_files table: {}", e);
+        }
     } else {
         // Check if existing database is healthy, attempt recovery if needed
         match check_database_health(&db).await {

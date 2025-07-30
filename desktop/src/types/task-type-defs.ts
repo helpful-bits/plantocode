@@ -25,6 +25,7 @@ export type TaskType =
   | "extended_path_finder"
   | "web_search_prompts_generation"
   | "web_search_execution"
+  | "video_analysis"
   | "unknown";
 
 // Task types that support system prompts (LLM tasks only)
@@ -40,7 +41,8 @@ export type TaskTypeSupportingSystemPrompts =
   | "extended_path_finder"
   | "file_relevance_assessment"
   | "web_search_prompts_generation"
-  | "web_search_execution";
+  | "web_search_execution"
+  | "video_analysis";
 
 // Runtime array of all task types (synced with Rust TaskType enum)
 export const ALL_TASK_TYPES: readonly TaskType[] = [
@@ -60,6 +62,7 @@ export const ALL_TASK_TYPES: readonly TaskType[] = [
   "extended_path_finder",
   "web_search_prompts_generation",
   "web_search_execution",
+  "video_analysis",
   "unknown",
 ] as const;
 
@@ -77,6 +80,7 @@ export const SYSTEM_PROMPT_TASK_TYPES: readonly TaskTypeSupportingSystemPrompts[
   "file_relevance_assessment",
   "web_search_prompts_generation",
   "web_search_execution",
+  "video_analysis",
 ] as const;
 
 // Validation functions
@@ -221,6 +225,14 @@ export const TaskTypeDetails: Record<TaskType, {
     category: 'Workflow Stage',
     defaultProvider: 'google',
     description: 'Execute web searches using generated prompts and synthesize results'
+  },
+  video_analysis: {
+    requiresLlm: true,
+    displayName: "Video Analysis",
+    description: "Analyzes a screen recording to generate insights or transcriptions.",
+    category: "analysis",
+    apiType: "llm" as const,
+    defaultProvider: "google" as const,
   },
   
   // Fallback

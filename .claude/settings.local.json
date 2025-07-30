@@ -148,7 +148,9 @@
       "Bash(dig:*)",
       "Bash(timeout 30 cargo check --lib)",
       "Bash(./test_parsing)",
-      "Bash(npm install:*)"
+      "Bash(npm install:*)",
+      "Bash(/opt/homebrew/bin/npm run typecheck)",
+      "Bash(npm uninstall:*)"
     ],
     "deny": []
   },

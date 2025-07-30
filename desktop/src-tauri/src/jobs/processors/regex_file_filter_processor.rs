@@ -367,7 +367,16 @@ impl JobProcessor for RegexFileFilterProcessor {
                 let all_files: Vec<String> = git_files
                     .0
                     .iter()
-                    .map(|path| path.to_string_lossy().to_string())
+                    .filter_map(|path| {
+                        let full_path = normalized_project_dir.join(path);
+                        // Check if file actually exists on filesystem
+                        if full_path.exists() {
+                            Some(path.to_string_lossy().to_string())
+                        } else {
+                            // Skip files that don't exist (deleted but still in git index)
+                            None
+                        }
+                    })
                     .collect();
 
                 // Convert normalized directory to string for pattern matching

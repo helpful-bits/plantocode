@@ -133,7 +133,7 @@ impl AppSettings {
         
         // Client request timeout
         let client_request_timeout_secs = env::var("SERVER_CLIENT_REQUEST_TIMEOUT_SECS")
-            .unwrap_or_else(|_| "300".to_string())
+            .unwrap_or_else(|_| "1800".to_string())
             .parse::<u64>()
             .map_err(|_| AppError::Configuration("SERVER_CLIENT_REQUEST_TIMEOUT_SECS must be a valid number".to_string()))?;
         

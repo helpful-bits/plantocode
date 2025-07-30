@@ -3,6 +3,7 @@ pub mod connection_manager;
 pub mod job_metadata_updates;
 pub mod session_repository;
 pub mod settings_repository;
+pub mod temp_file_repository;
 
 // Re-export modules
 pub use background_job_repository::BackgroundJobRepository;

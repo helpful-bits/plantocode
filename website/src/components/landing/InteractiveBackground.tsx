@@ -4,90 +4,70 @@ import { Canvas } from '@react-three/fiber';
 // import { ScrollControls } from '@react-three/drei'
 import * as THREE from 'three';
 import { ParticleScene } from './ParticleScene';
-import { Suspense, useEffect, useState } from 'react';
-import { useTheme } from 'next-themes';
+import { useEffect, useState } from 'react';
+import { useParticleConfig } from '@/hooks/useParticleConfig';
+
+// Load test utility in development
+if (process.env.NODE_ENV === 'development') {
+  import('@/utils/particle-config-test');
+}
 
 interface InteractiveBackgroundProps {
-  particleCount?: number
-  mouseIntensity?: number
   className?: string
 }
 
-function getAdaptiveParticleCount(isLightMode: boolean = false): number {
-  if (typeof window === 'undefined') return 200;
-
-  const width = window.innerWidth;
-  const height = window.innerHeight;
-  const isMobile = width < 768 || 'ontouchstart' in window;
-  const isTablet = width < 1024;
-  const cores = navigator.hardwareConcurrency || 4;
-  const hasLowMemory = (navigator as any).deviceMemory <= 4;
-  const pixelRatio = window.devicePixelRatio || 1;
-
-  // More conservative for CPU simulation
-  const screenArea = width * height;
-  const baseCount = Math.min(screenArea / 6000, 500);
-
-  // Reduce particle count by 30% in light mode for better performance
-  const lightModeMultiplier = isLightMode ? 0.7 : 1.0;
-
-  if (isMobile) return Math.round(Math.min(200, baseCount * 0.7) * lightModeMultiplier);
-  if (isTablet || cores <= 4 || hasLowMemory || pixelRatio > 2) {
-    return Math.round(Math.min(400, baseCount * 0.8) * lightModeMultiplier);
-  }
-  if (cores > 8 && width > 1920) return Math.round(Math.min(800, baseCount * 1.2) * lightModeMultiplier);
-
-  return Math.round(Math.min(500, baseCount) * lightModeMultiplier);
-}
-
 export function InteractiveBackground({
-  particleCount,
-  mouseIntensity = 0.2,
   className = '',
 }: InteractiveBackgroundProps) {
-  const [adaptiveCount, setAdaptiveCount] = useState(300);
+  const { config, getResponsiveAgentCounts } = useParticleConfig();
+  const [agentCounts, setAgentCounts] = useState({ leaders: 2, followers: 160 });
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
-  const { resolvedTheme } = useTheme();
-  const isLightMode = resolvedTheme === 'light';
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    setAdaptiveCount(getAdaptiveParticleCount(isLightMode));
+    setMounted(true);
+    setAgentCounts(getResponsiveAgentCounts());
 
     // Check for reduced motion preference
     const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
     setPrefersReducedMotion(mediaQuery.matches);
 
+    const canvas = document.createElement('canvas');
+    const gl = canvas.getContext('webgl2');
+    if (!gl || !gl.getExtension('EXT_color_buffer_half_float')) {
+      setPrefersReducedMotion(true);
+    }
+
     const handleChange = (e: MediaQueryListEvent) => {
       setPrefersReducedMotion(e.matches);
     };
 
-    // Add resize event listener with debouncing
-    let resizeTimeout: NodeJS.Timeout;
+    // Add resize listener for responsive particle counts
     const handleResize = () => {
-      clearTimeout(resizeTimeout);
-      resizeTimeout = setTimeout(() => {
-        setAdaptiveCount(getAdaptiveParticleCount(isLightMode));
-        // Trigger a visual effect on resize by adding a class
-        document.body.classList.add('resizing');
-        setTimeout(() => document.body.classList.remove('resizing'), 500);
-      }, 300);
+      setAgentCounts(getResponsiveAgentCounts());
     };
 
-    window.addEventListener('resize', handleResize);
     mediaQuery.addEventListener('change', handleChange);
+    window.addEventListener('resize', handleResize);
 
     return () => {
-      clearTimeout(resizeTimeout);
-      window.removeEventListener('resize', handleResize);
       mediaQuery.removeEventListener('change', handleChange);
+      window.removeEventListener('resize', handleResize);
     };
-  }, [isLightMode]);
+  }, [getResponsiveAgentCounts]);
 
-  // Enhanced reduced motion - slower animation instead of static gradient
-  if (prefersReducedMotion) {
+  // Always render fallback on server and before mount
+  if (!mounted || prefersReducedMotion) {
     return (
       <div className={`fixed inset-0 -z-10 pointer-events-none ${className}`}>
-        <Canvas
+        <div className="w-full h-full bg-background" />
+      </div>
+    );
+  }
+
+  return (
+    <div id="particle-container" className={`fixed inset-0 -z-10 pointer-events-none ${className}`}>
+      <Canvas
           camera={{
             position: [0, 0, 5],
             fov: 75,
@@ -103,6 +83,7 @@ export function InteractiveBackground({
             stencil: false,
             depth: false,
             logarithmicDepthBuffer: false,
+            // Request WebGL2 for better float texture support
           }}
           performance={{
             min: 0.5,
@@ -111,69 +92,22 @@ export function InteractiveBackground({
           }}
           resize={{ debounce: 0 }}
           onCreated={({ gl, camera }) => {
+            // Optimize WebGL context
             gl.outputColorSpace = THREE.SRGBColorSpace;
-            gl.setClearColor(0x000000, 0);
+            gl.setClearColor(0x000000, 0); // Ensure transparent background
+
+            // Optimize camera settings
             camera.updateProjectionMatrix();
           }}
         >
-          <Suspense fallback={null}>
-            <ParticleScene
-              key={adaptiveCount}
-              count={Math.round((particleCount || adaptiveCount) * 0.5)}
-              isReducedMotion={true}
-              mouseIntensity={mouseIntensity * 0.3}
-            />
-          </Suspense>
-        </Canvas>
-      </div>
-    );
-  }
-
-  return (
-    <div className={`fixed inset-0 -z-10 pointer-events-none ${className}`}>
-      <Canvas
-        camera={{
-          position: [0, 0, 5],
-          fov: 75,
-          near: 0.1,
-          far: 100,
-        }}
-        dpr={typeof window === 'undefined' ? 1 : Math.min(window.devicePixelRatio, 2)}
-        gl={{
-          antialias: false,
-          alpha: true,
-          powerPreference: 'high-performance',
-          preserveDrawingBuffer: false,
-          stencil: false,
-          depth: false,
-          logarithmicDepthBuffer: false,
-        }}
-        performance={{
-          min: 0.5,
-          max: 1,
-          debounce: 200,
-        }}
-        resize={{ debounce: 0 }}
-        onCreated={({ gl, camera }) => {
-          // Optimize WebGL context
-          gl.outputColorSpace = THREE.SRGBColorSpace;
-          gl.setClearColor(0x000000, 0); // Ensure transparent background
-
-          // Optimize camera settings
-          camera.updateProjectionMatrix();
-
-        }}
-      >
-        <Suspense fallback={null}>
           <ParticleScene
-            key={adaptiveCount}
-            count={particleCount || adaptiveCount}
-            isReducedMotion={false}
-            mouseIntensity={mouseIntensity}
+            key={agentCounts.leaders + agentCounts.followers}
+            leaderCount={agentCounts.leaders}
+            followerCount={agentCounts.followers}
+            forceWeights={config.forceWeights}
+            physicsConstants={config.physicsConstants}
           />
-        </Suspense>
-      </Canvas>
-
+        </Canvas>
     </div>
   );
 }

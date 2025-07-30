@@ -23,4 +23,5 @@ export interface TaskSettings {
   extendedPathFinder: TaskModelSettings;
   webSearchPromptsGeneration?: TaskModelSettings;
   webSearchExecution?: TaskModelSettings;
+  videoAnalysis: TaskModelSettings;
 }

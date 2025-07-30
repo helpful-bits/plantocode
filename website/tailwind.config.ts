@@ -300,23 +300,10 @@ const config: Config = {
         '100': '100',
       },
       
-      // Animation keyframes
-      keyframes: {
-        shimmer: {
-          '0%': { transform: 'translateX(-100%)' },
-          '100%': { transform: 'translateX(100%)' },
-        },
-      },
-      
-      // Animation utilities
-      animation: {
-        shimmer: 'shimmer 1.5s ease-in-out infinite',
-      },
     },
   },
   plugins: [
     require("@tailwindcss/typography"),
-    require("tailwindcss-animate"),
   ],
 };
 
