@@ -1,5 +1,6 @@
-import { useState, useCallback, useRef } from 'react';
+import { createContext, useContext, useState, useCallback, useRef, useEffect, ReactNode } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { emit } from '@tauri-apps/api/event';
 
 const MIME_CANDIDATES = [
   'video/webm;codecs=vp9,opus',
@@ -7,15 +8,28 @@ const MIME_CANDIDATES = [
   'video/mp4;codecs=avc1.42E01E,mp4a.40.2'
 ];
 
-export function useScreenRecorder() {
+interface ScreenRecordingContextValue {
+  isRecording: boolean;
+  startTime: number | null;
+  startRecording: (options?: { recordAudio?: boolean; audioDeviceId?: string; frameRate?: number }) => Promise<void>;
+  stopRecording: () => void;
+}
+
+const ScreenRecordingContext = createContext<ScreenRecordingContextValue | undefined>(undefined);
+
+interface ScreenRecordingProviderProps {
+  children: ReactNode;
+}
+
+export function ScreenRecordingProvider({ children }: ScreenRecordingProviderProps) {
   const [isRecording, setIsRecording] = useState(false);
+  const [startTime, setStartTime] = useState<number | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const micStreamRef = useRef<MediaStream | null>(null);
   const screenStreamRef = useRef<MediaStream | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<BlobPart[]>([]);
-  const resolveRef = useRef<((result: { path: string; durationMs: number; frameRate: number } | null) => void) | null>(null);
-  const startTimeRef = useRef<number>(0);
+  const frameRateRef = useRef<number>(5);
 
   const mergeAudioStreams = (screenStream: MediaStream, micStream: MediaStream): MediaStream => {
     const audioContext = new AudioContext();
@@ -41,25 +55,27 @@ export function useScreenRecorder() {
     const stream = streamRef.current;
     
     if (recorder && recorder.state !== 'inactive') {
-      recorder.stop(); // This will trigger onstop event
+      recorder.stop();
     }
     
     if (stream) {
-      stream.getTracks().forEach(track => track.stop()); // Close OS picker UI
+      stream.getTracks().forEach(track => track.stop());
     }
     
     screenStreamRef.current?.getTracks().forEach((track) => track.stop());
     micStreamRef.current?.getTracks().forEach((track) => track.stop());
   }, []);
 
-  const startRecording = useCallback(async (options: { recordAudio?: boolean; audioDeviceId?: string; frameRate?: number } = {}): Promise<{ path: string; durationMs: number; frameRate: number } | null> => {
+  const startRecording = useCallback(async (options: { recordAudio?: boolean; audioDeviceId?: string; frameRate?: number } = {}) => {
     const { recordAudio = true, audioDeviceId = 'default', frameRate = 5 } = options;
     if (isRecording) {
       console.warn('Recording already in progress');
-      return null;
+      return;
     }
 
-    startTimeRef.current = Date.now();
+    const recordingStartTime = Date.now();
+    setStartTime(recordingStartTime);
+    frameRateRef.current = frameRate;
     chunksRef.current = [];
     
     try {
@@ -98,32 +114,28 @@ export function useScreenRecorder() {
       streamRef.current = finalStream;
       setIsRecording(true);
       
-      // Determine the best supported MIME type
       const mimeType = MIME_CANDIDATES.find(MediaRecorder.isTypeSupported) || 'video/webm';
       
       const RECORDER_OPTIONS = {
         mimeType,
-        videoBitsPerSecond: 1_500_000, // 1.5 Mbps - good quality for screen recording
-        audioBitsPerSecond: 64_000     // 64 kbps - sufficient for voice narration
+        videoBitsPerSecond: 1_500_000,
+        audioBitsPerSecond: 64_000
       };
       
       const recorder = new MediaRecorder(finalStream, RECORDER_OPTIONS);
       recorderRef.current = recorder;
       
-      // Event: Collect data chunks as they become available
       recorder.ondataavailable = (event) => {
         if (event.data && event.data.size > 0) {
           chunksRef.current.push(event.data);
         }
       };
       
-      // Event: Recording stopped - finalize the file
       recorder.onstop = async () => {
-        const durationMs = Date.now() - startTimeRef.current;
+        const durationMs = Date.now() - recordingStartTime;
         const recorderMimeType = recorder.mimeType || mimeType;
         const blob = new Blob(chunksRef.current, { type: recorderMimeType });
         
-        // Determine file extension based on MIME type
         let extension = 'webm';
         if (recorderMimeType.includes('mp4')) {
           extension = 'mp4';
@@ -146,35 +158,31 @@ export function useScreenRecorder() {
             projectDirectory: null
           });
           
-          // Clean up
           setIsRecording(false);
+          setStartTime(null);
           streamRef.current = null;
           screenStreamRef.current = null;
           micStreamRef.current = null;
           recorderRef.current = null;
           chunksRef.current = [];
           
-          if (resolveRef.current) {
-            resolveRef.current({ path: filePath, durationMs, frameRate });
-            resolveRef.current = null;
-          }
+          await emit('recording-finished', { 
+            path: filePath, 
+            durationMs, 
+            frameRate: frameRateRef.current 
+          });
         } catch (error) {
           console.error('Error saving recording:', error);
           setIsRecording(false);
+          setStartTime(null);
           streamRef.current = null;
           screenStreamRef.current = null;
           micStreamRef.current = null;
           recorderRef.current = null;
           chunksRef.current = [];
-          
-          if (resolveRef.current) {
-            resolveRef.current(null);
-            resolveRef.current = null;
-          }
         }
       };
       
-      // Event: User clicked "Stop sharing" in browser UI
       const videoTrack = screenStream.getVideoTracks()[0];
       if (videoTrack) {
         videoTrack.addEventListener('ended', () => {
@@ -182,26 +190,46 @@ export function useScreenRecorder() {
         });
       }
       
-      return new Promise((resolve) => {
-        resolveRef.current = resolve;
-        recorder.start(1000); // Collect data every second for better memory management
-      });
+      recorder.start(1000);
       
     } catch (error) {
       console.error('Error starting recording:', error);
       setIsRecording(false);
+      setStartTime(null);
       streamRef.current = null;
       screenStreamRef.current = null;
       micStreamRef.current = null;
       recorderRef.current = null;
       chunksRef.current = [];
-      return null;
     }
   }, [isRecording, stopRecording]);
 
-  return {
+  useEffect(() => {
+    return () => {
+      if (isRecording) {
+        stopRecording();
+      }
+    };
+  }, []);
+
+  const value: ScreenRecordingContextValue = {
     isRecording,
+    startTime,
     startRecording,
     stopRecording
   };
+
+  return (
+    <ScreenRecordingContext.Provider value={value}>
+      {children}
+    </ScreenRecordingContext.Provider>
+  );
+}
+
+export function useScreenRecording() {
+  const context = useContext(ScreenRecordingContext);
+  if (!context) {
+    throw new Error('useScreenRecording must be used within a ScreenRecordingProvider');
+  }
+  return context;
 }

@@ -26,7 +26,7 @@ export function Pricing() {
   };
 
   return (
-    <section className="relative py-20 px-4 overflow-hidden perspective-1000" id="pricing">
+    <section className="relative py-12 sm:py-16 md:py-20 lg:py-24 px-4 overflow-hidden perspective-1000" id="pricing">
       <div className="container mx-auto relative z-10">
         <motion.div
           className="text-center mb-16"

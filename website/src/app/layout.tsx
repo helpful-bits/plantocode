@@ -111,7 +111,7 @@ export default function RootLayout({
   return (
     <html suppressHydrationWarning className={fontClasses.variables} lang="en">
       <head />
-      <body className={`${fontClasses.sans} bg-transparent`}>
+      <body className={`${fontClasses.sans} bg-transparent overflow-x-hidden`}>
         <Suspense fallback={null}>
           <ErrorBoundary fallback={null}>
             <InteractiveBackground />

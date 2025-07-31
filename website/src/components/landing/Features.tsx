@@ -19,7 +19,7 @@ const defaultFeatures: Feature[] = [];
 
 export function Features({ features = defaultFeatures }: FeaturesProps) {
   return (
-    <section className="relative py-16 px-4 overflow-hidden" id="features">
+    <section className="relative pt-16 pb-12 sm:py-16 md:py-20 lg:py-24 px-4 overflow-hidden" id="features">
       <div className="container mx-auto relative z-10">
         <motion.div
           className="text-center mb-12"

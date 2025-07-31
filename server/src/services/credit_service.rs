@@ -699,7 +699,7 @@ impl CreditService {
                 -- Credit purchases (only purchase transactions)
                 SELECT 
                     ct.id::text as entry_id,
-                    COALESCE(ct.gross_amount, ct.net_amount) as price,  -- Use gross for purchases (includes fees)
+                    ct.net_amount as price,  -- Use net amount to show actual credits received
                     ct.created_at as date,
                     'Credit Purchase' as model,
                     NULL::bigint as input_tokens,

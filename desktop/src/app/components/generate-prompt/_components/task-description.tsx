@@ -12,7 +12,7 @@ import {
 import type { ChangeEvent } from "react";
 
 import { useTextareaResize } from "@/hooks/use-textarea-resize";
-import { useScreenRecorder } from "@/hooks/useScreenRecorder";
+import { useScreenRecording } from "@/contexts/screen-recording";
 import { Button } from "@/ui/button";
 import { Textarea } from "@/ui/textarea";
 import { cn } from "@/utils/utils";
@@ -78,7 +78,7 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
       // Create an internal ref for the textarea element
       const internalTextareaRef = useRef<HTMLTextAreaElement>(null);
       
-      const { startRecording, isRecording, stopRecording } = useScreenRecorder();
+      const { startRecording, isRecording } = useScreenRecording();
       const [showVideoDialog, setShowVideoDialog] = useState(false);
       
       // Sync internal value with prop value when it changes externally
@@ -289,6 +289,30 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
         };
       }, [ref]);
 
+      // Add event listener for recording-finished event
+      useEffect(() => {
+        const handleRecordingFinished = async () => {
+          const unlisten = await listen<{ path: string; durationMs: number; frameRate: number }>('recording-finished', (event) => {
+            // Emit the event for the task state hook to handle
+            emit('recording-finished', event.payload).catch(console.error);
+          });
+          
+          return unlisten;
+        };
+        
+        let unlisten: (() => void) | undefined;
+        
+        handleRecordingFinished().then((unlistenFn) => {
+          unlisten = unlistenFn;
+        });
+        
+        return () => {
+          if (unlisten) {
+            unlisten();
+          }
+        };
+      }, []);
+
       // Simple empty check
       const effectiveIsEmpty = !internalValue?.trim();
 
@@ -348,23 +372,7 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
                 disabled={disabled}
               />
               
-              {isRecording ? (
-                <div className="flex items-center gap-2 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-700 rounded-lg px-3 py-1">
-                  <div className="flex items-center gap-1.5">
-                    <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
-                    <span className="text-xs font-medium text-red-700 dark:text-red-300">Recording</span>
-                  </div>
-                  <Button
-                    onClick={stopRecording}
-                    variant="destructive"
-                    size="sm"
-                    className="h-6 px-2 text-xs"
-                    title="Stop recording"
-                  >
-                    Stop
-                  </Button>
-                </div>
-              ) : (
+              {!isRecording ? (
                 <Button
                   onClick={() => {
                     if (!isAnalyzingVideo) {
@@ -402,7 +410,7 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
                     </svg>
                   )}
                 </Button>
-              )}
+              ) : null}
             </div>
           </div>
 
@@ -488,23 +496,11 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
             // Close the dialog
             setShowVideoDialog(false);
             
-            // Start recording and handle the result
-            startRecording({ recordAudio, audioDeviceId, frameRate }).then((recordingResult) => {
-              if (!recordingResult) {
-                console.error('Recording failed or was cancelled');
-                return;
-              }
-              
-              // Emit the recording-finished event that the task state hook is listening for
-              emit('recording-finished', {
-                path: recordingResult.path,
-                durationMs: recordingResult.durationMs,
-                frameRate: recordingResult.frameRate
-              }).catch(console.error);
-              
-              // Note: The actual video analysis will be triggered from the task-section.tsx
-              // when the user clicks the "Analyze Video" button
-            });
+            // Start recording
+            startRecording({ recordAudio, audioDeviceId, frameRate });
+            
+            // Note: The actual video analysis will be triggered from the task-section.tsx
+            // when the user clicks the "Analyze Video" button
           }}
         />
         </>

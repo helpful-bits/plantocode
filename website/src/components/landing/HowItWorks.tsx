@@ -68,7 +68,7 @@ function OptimizedVideo({ video, poster }: { video: string; poster: string }) {
 
 export function HowItWorks({ steps = defaultSteps }: HowItWorksProps) {
   return (
-    <section className="relative py-20 px-4 overflow-hidden" id="how-it-works">
+    <section className="relative py-12 sm:py-16 md:py-20 lg:py-24 px-4 overflow-hidden" id="how-it-works">
       <div className="container mx-auto relative z-10">
         <motion.div
           className="text-center mb-16"

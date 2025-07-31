@@ -5,6 +5,7 @@ import { TextImprovementPopover } from "@/contexts/text-improvement";
 
 import { BackgroundJobsSidebar } from "../client-components";
 import { Navigation } from "./navigation";
+import { GlobalRecordingIndicator } from "./global/GlobalRecordingIndicator";
 
 import type { ReactNode } from "react";
 
@@ -47,6 +48,9 @@ export function AppShell({ children }: { children: ReactNode }) {
       
       {/* Text improvement popover for global text selection improvements */}
       <TextImprovementPopover />
+      
+      {/* Global recording indicator */}
+      <GlobalRecordingIndicator />
     </>
   );
 }

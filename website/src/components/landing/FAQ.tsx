@@ -18,7 +18,7 @@ export function FAQ({ items }: FAQProps) {
   const [openIndex, setOpenIndex] = useState<number | null>(null);
 
   return (
-    <section className="relative py-16 px-4 overflow-hidden" id="faq">
+    <section className="relative py-12 sm:py-16 md:py-20 lg:py-24 px-4 overflow-hidden" id="faq">
       <div className="container mx-auto max-w-3xl relative z-10">
         <motion.div
           className="text-center mb-12"
@@ -58,8 +58,9 @@ export function FAQ({ items }: FAQProps) {
             >
               <GlassCard className="overflow-hidden">
                 <motion.div
+                  initial={{ backgroundColor: 'rgba(0, 0, 0, 0)' }}
                   animate={{
-                    backgroundColor: openIndex === index ? 'rgba(var(--primary-rgb), 0.02)' : 'transparent',
+                    backgroundColor: openIndex === index ? 'rgba(var(--primary-rgb), 0.02)' : 'rgba(0, 0, 0, 0)',
                   }}
                   transition={{ duration: 0.3, ease: 'easeInOut' }}
                 >

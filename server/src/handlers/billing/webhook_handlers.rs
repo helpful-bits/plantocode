@@ -12,6 +12,7 @@ use uuid::Uuid;
 use log::{error, info, warn};
 use chrono::Utc;
 use bigdecimal::{BigDecimal, ToPrimitive, FromPrimitive};
+use std::str::FromStr;
 use crate::stripe_types::*;
 use crate::stripe_types::enums::*;
 use serde::{Deserialize, Serialize};
@@ -54,11 +55,26 @@ async fn process_payment_completion(
                 }
             };
             
-            // Common charge processing
-            let (gross_amount, fee_amount, currency) = fetch_charge_amounts(billing_service, &charge_id).await?;
+            // Extract amounts from metadata instead of fetching from Stripe
+            let metadata = &payment_intent.metadata.as_ref()
+                .ok_or_else(|| AppError::InvalidArgument("Missing metadata in payment intent".to_string()))?;
+                
+            let gross_amount_str = metadata.get("gross_amount")
+                .ok_or_else(|| AppError::InvalidArgument("Missing gross_amount in metadata".to_string()))?;
+            let platform_fee_str = metadata.get("platform_fee")
+                .ok_or_else(|| AppError::InvalidArgument("Missing platform_fee in metadata".to_string()))?;
+            
+            let gross_amount = std::str::FromStr::from_str(gross_amount_str)
+                .map_err(|_| AppError::InvalidArgument("Invalid gross_amount format".to_string()))?;
+            let platform_fee = std::str::FromStr::from_str(platform_fee_str)
+                .map_err(|_| AppError::InvalidArgument("Invalid platform_fee format".to_string()))?;
+            
+            let currency = metadata.get("currency")
+                .map(|c| c.to_string())
+                .unwrap_or_else(|| "USD".to_string());
             
             // Create metadata for credit purchase
-            let metadata = serde_json::to_value(&payment_intent.metadata)
+            let metadata_json = serde_json::to_value(&payment_intent.metadata)
                 .map_err(|e| AppError::InvalidArgument(format!("Failed to serialize metadata: {}", e)))?;
             
             // Record credit purchase
@@ -69,17 +85,17 @@ async fn process_payment_completion(
                 &credit_service,
                 &user_id,
                 &gross_amount,
-                &fee_amount,
+                &platform_fee,
                 &currency,
                 &charge_id,
-                metadata,
+                metadata_json,
                 &audit_context,
                 &format!("credit purchase for payment intent {}", payment_intent.id),
             ).await?;
             
             // Send email notification for credit purchases
             if let Some(email_service) = email_service {
-                send_credit_purchase_email(email_service, billing_service, &user_id, &gross_amount, &fee_amount).await;
+                send_credit_purchase_email(email_service, billing_service, &user_id, &gross_amount, &platform_fee).await;
             }
         },
         
