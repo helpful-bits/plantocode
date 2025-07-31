@@ -101,14 +101,12 @@ export const VideoRecordingDialog: React.FC<VideoRecordingDialogProps> = ({
           {recordAudio && (
             <div className="space-y-2">
               <Label htmlFor="audio-device">Audio Device</Label>
-              <div className="flex items-center">
-                <AudioDeviceSelect
-                  value={selectedAudioInputId}
-                  onValueChange={setSelectedAudioInputId}
-                  disabled={!recordAudio}
-                  className="flex-1"
-                />
-              </div>
+              <AudioDeviceSelect
+                value={selectedAudioInputId}
+                onValueChange={setSelectedAudioInputId}
+                disabled={!recordAudio}
+                variant="default"
+              />
             </div>
           )}
           
