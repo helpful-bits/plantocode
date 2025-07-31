@@ -33,6 +33,6 @@ const GlassCardComponent = forwardRef<HTMLDivElement, GlassCardProps & { whileHo
 
 GlassCardComponent.displayName = 'GlassCard';
 
-export const GlassCard = motion(GlassCardComponent);
+export const GlassCard = motion.create(GlassCardComponent);
 
 export default GlassCard;

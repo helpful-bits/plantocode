@@ -13,8 +13,11 @@ import {
   Save,
   Zap,
   Shield,
+  Video,
+  History,
 } from 'lucide-react';
 import type { SoftwareApplication } from 'schema-dts';
+import { SectionDividerOrbs, SectionDividerMesh } from '@/components/ui/SectionDivider';
 
 const Features = dynamic(() => import('@/components/landing/Features').then(mod => ({ default: mod.Features })), {
   loading: () => <div className="h-[50vh]" />,
@@ -30,6 +33,10 @@ const Pricing = dynamic(() => import('@/components/landing/Pricing').then(mod =>
 
 const FAQ = dynamic(() => import('@/components/landing/FAQ').then(mod => ({ default: mod.FAQ })), {
   loading: () => <div className="h-[50vh]" />,
+});
+
+const Community = dynamic(() => import('@/components/landing/Community').then(mod => ({ default: mod.Community })), {
+  loading: () => <div className="h-[40vh]" />,
 });
 
 const CallToAction = dynamic(() => import('@/components/landing/CallToAction').then(mod => ({ default: mod.CallToAction })), {
@@ -91,10 +98,12 @@ export default function Home() {
     screenshot: 'https://vibe-manager-media.s3.amazonaws.com/og-image.png',
     featureList: [
       '4-Stage File Finder Workflow (No Vector DBs)',
-      'Deep Research Workflow with Official Documentation',
+      'Deep Research Workflow for Current Documentation',
       'Council of LLMs: Multi-Model & Multi-Run Plan Generation',
       'Intelligent Plan Merging & Synthesis',
-      'Voice Dictation & AI-Powered Text Improvement',
+      'Voice Dictation with GPT-4 Transcription',
+      'Screen Recording with AI Analysis',
+      'Persistent Sessions with Complete History Tracking',
       '100% Local-First: Code & Data Stay On Your Machine',
       'Fully Customizable System Prompts & Instructions',
       'True Parallel Workflows: Never Get Blocked',
@@ -111,33 +120,43 @@ export default function Home() {
 
   const features = [
     {
-      title: 'The Council of LLMs',
-      description: 'Generate plans from multiple models (Gemini, Claude, etc.) and even multiple runs of the same model. Our merge AI synthesizes their unique insights into one superior strategy.',
-      icon: <BrainCircuit className="w-8 h-8" />,
-    },
-    {
-      title: 'Deep Research Workflow',
-      description: "Bridge the gap between your code and the web. We consult current, official documentation to get up-to-date answers for your implementation problems, ensuring you're not using outdated patterns.",
-      icon: <Globe className="w-8 h-8" />,
-    },
-    {
-      title: 'Intelligent File Finder',
-      description: "Forget stale vector databases. Our 4-stage workflow uses LLM intelligence to pinpoint the exact files needed for a task, just like a senior developer would. It's faster and more accurate.",
+      title: 'File Finder',
+      description: "Decomposes your task into logical areas, creates targeted search patterns, then AI assesses actual file content for relevance. Can expand to find critical dependencies when needed. Real-time intelligence finding what matters.",
       icon: <Search className="w-8 h-8" />,
     },
     {
-      title: 'Your Code Stays Yours. Period.',
-      description: 'Privacy-first is our promise. Your code, session data, and tasks stay on your local machine, in your Git repo and a local SQLite DB. Nothing goes to the cloud without your approval.',
+      title: 'Voice Dictation & Screen Recording',
+      description: 'Just talk - GPT-4 transcribes it. Can\'t explain it? Record your screen. Gemini extracts every technical detail from your recording and adds it to your task description.',
+      icon: <Video className="w-8 h-8" />,
+    },
+    {
+      title: 'The Council of LLMs',
+      description: 'Generate plans from Gemini 2.5, Claude 4, GPT-4.1, o3/o4, Grok 4, DeepSeek R1, and Kimi K2 - even multiple runs of the same model. The list evolves quickly as more capable models appear. Our merge AI synthesizes their unique insights into one superior strategy.',
+      icon: <BrainCircuit className="w-8 h-8" />,
+    },
+    {
+      title: 'Never Start from Scratch',
+      description: 'Persistent sessions with complete history. Your task descriptions, file selections, search terms - everything is preserved. Close the app, come back next week, pick up exactly where you left off.',
+      icon: <History className="w-8 h-8" />,
+    },
+    {
+      title: 'Deep Research Workflow',
+      description: "Your codebase doesn't exist in a vacuum. We search for current documentation to fill knowledge gaps, getting up-to-date answers for your specific implementation problems.",
+      icon: <Globe className="w-8 h-8" />,
+    },
+    {
+      title: 'Your Data Stays Yours',
+      description: 'True local-first. All your code, sessions, and history live in SQLite on your machine. We\'re just a secure proxy to AI providers - handling auth and billing while your code flows directly through. You control what gets sent and when.',
       icon: <Shield className="w-8 h-8" />,
     },
     {
       title: 'Truly Parallel Workflows',
-      description: "Why wait? While one implementation plan generates, switch sessions and kick off a file discovery workflow for another task. You're never blocked.",
+      description: "Why wait? While one implementation plan generates, switch sessions and kick off a file discovery workflow for another task. Each session maintains its own complete state.",
       icon: <Zap className="w-8 h-8" />,
     },
     {
       title: 'You Are The CEO',
-      description: "You have the final say. Override any system prompt. Customize the 'Copy Button' instructions. Tailor the tool to your exact project needs and workflow.",
+      description: "Override any system prompt. Customize the 'Copy Button' instructions. Your customizations are saved per project. Full control over every aspect of the tool.",
       icon: <Save className="w-8 h-8" />,
     },
   ];
@@ -145,19 +164,19 @@ export default function Home() {
   const steps = [
     {
       title: '1. The Briefing: Task Input & Refinement',
-      description: 'Start with voice dictation or text. Our AI refines your vague ideas into precise specifications, using your codebase to clarify ambiguities and identify components before any work begins.',
+      description: 'Just talk. Explain your complex logic or brainstorm out loud - GPT-4 transcribes it perfectly. Can\'t explain in words? Record your screen while demonstrating the issue. Our AI refines everything into precise specifications.',
       video: 'https://vibe-manager-media.s3.amazonaws.com/step-1-describe.mp4',
       poster: 'https://vibe-manager-media.s3.amazonaws.com/step-1-poster.jpg',
     },
     {
       title: '2. The Recon Mission: Finding What Matters',
-      description: 'Our 4-stage File Finder acts like a senior dev, using Regex, AI content assessment, and path finding to pinpoint only the essential files. No stale vector databases, just pure LLM intelligence.',
+      description: 'Our File Finder decomposes your task into logical areas, creates targeted search patterns, then AI assesses actual file content for relevance. Can expand to find critical dependencies when needed. Real-time intelligence finding what matters.',
       video: 'https://vibe-manager-media.s3.amazonaws.com/step-2-find.mp4',
       poster: 'https://vibe-manager-media.s3.amazonaws.com/step-2-poster.jpg',
     },
     {
       title: '3. Phoning a Friend: Deep Research',
-      description: "Your LLM's knowledge is frozen in time. We fix that by consulting official documentation to get up-to-date answers for your specific implementation problems, integrated with your code's context.",
+      description: "Your LLM's knowledge is frozen in time. We fix that by searching for current documentation to fill knowledge gaps. Get up-to-date answers for your specific implementation problems, integrated with your code's context.",
       video: 'https://vibe-manager-media.s3.amazonaws.com/step-3-generate.mp4',
       poster: 'https://vibe-manager-media.s3.amazonaws.com/step-3-poster.jpg',
     },
@@ -180,10 +199,10 @@ export default function Home() {
     },
     {
       question: 'Okay, but apart from finding files, doing web research, and creating merged multi-model plans...?',
-      answer: 'It keeps your code completely private on your local machine. And lets you customize every single system prompt and copy-paste instruction. And it has voice dictation. And it runs all its workflows in parallel so you can work on multiple tasks at once.',
+      answer: 'It keeps your code completely private on your local machine. And lets you customize every single system prompt and copy-paste instruction. And it has voice dictation and screen recording with AI analysis. And it runs all its workflows in parallel so you can work on multiple tasks at once. And it remembers everything - your sessions, your file selections, your task history - so you never lose context.',
     },
     {
-      question: "Alright, I'll grant you that the file finding, web research, multi-model plans, privacy, custom prompts, voice dictation, and parallel workflows are nice. But apart from ALL THAT, what has Vibe Manager ever done for us?",
+      question: "Alright, I'll grant you that the file finding, web research, multi-model plans, privacy, custom prompts, voice dictation, screen recording, parallel workflows, and persistent sessions are nice. But apart from ALL THAT, what has Vibe Manager ever done for us?",
       answer: 'It gave you your weekend back.',
     },
   ];
@@ -209,23 +228,35 @@ export default function Home() {
       {/* Page content */}
       <div className="relative z-0 bg-transparent">
         <Header />
-        <main className="relative">
-          <section>
+        
+        <main className="flex-grow">
+          <section className="mb-0">
             <HeroSection />
           </section>
-          <section>
-            <Features features={features} />
-          </section>
-          <section>
-            <HowItWorks steps={steps} />
-          </section>
-          <section>
+          <SectionDividerMesh />
+
+          <Features features={features} />
+          <SectionDividerOrbs />
+
+          <HowItWorks steps={steps} />
+          <SectionDividerMesh />
+
+          <section className="pb-8">
             <Pricing />
           </section>
-          <section>
+          <SectionDividerOrbs />
+
+          <section className="pt-8">
             <FAQ items={faqItems} />
           </section>
-          <section>
+          <SectionDividerMesh />
+
+          <section className="pb-8">
+            <Community />
+          </section>
+          <SectionDividerOrbs />
+
+          <section className="pt-8">
             <CallToAction
               buttonLink="/download"
               buttonText="Download Vibe Manager Free"
@@ -234,6 +265,8 @@ export default function Home() {
             />
           </section>
         </main>
+        
+        {/* Footer - Separated from CTA with divider */}
         <Footer />
       </div>
     </>

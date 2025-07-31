@@ -79,36 +79,38 @@ export const VideoRecordingDialog: React.FC<VideoRecordingDialogProps> = ({
               placeholder="e.g., Analyze the user interface and suggest improvements..."
               value={localPrompt}
               onChange={handlePromptChange}
-              className="min-h-[100px] resize-none"
+              className="min-h-[150px] resize-none"
               autoFocus
             />
           </div>
           
-          <div className="flex items-center space-x-2">
-            <Checkbox
-              id="record-audio"
-              checked={recordAudio}
-              onCheckedChange={(checked) => setRecordAudio(checked as boolean)}
-            />
-            <Label
-              htmlFor="record-audio"
-              className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 text-foreground"
-            >
-              Include dictation
-            </Label>
-          </div>
-          
-          {recordAudio && (
-            <div className="space-y-2">
-              <Label htmlFor="audio-device">Audio Device</Label>
-              <AudioDeviceSelect
-                value={selectedAudioInputId}
-                onValueChange={setSelectedAudioInputId}
-                disabled={!recordAudio}
-                variant="default"
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="record-audio"
+                checked={recordAudio}
+                onCheckedChange={(checked) => setRecordAudio(checked as boolean)}
               />
+              <Label
+                htmlFor="record-audio"
+                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 text-foreground"
+              >
+                Include dictation
+              </Label>
             </div>
-          )}
+            
+            {recordAudio && (
+              <div className="flex items-center space-x-2">
+                <Label htmlFor="audio-device" className="text-sm">Audio Device</Label>
+                <AudioDeviceSelect
+                  value={selectedAudioInputId}
+                  onValueChange={setSelectedAudioInputId}
+                  disabled={!recordAudio}
+                  variant="default"
+                />
+              </div>
+            )}
+          </div>
           
           <div className="space-y-2">
             <div className="flex items-center justify-between">

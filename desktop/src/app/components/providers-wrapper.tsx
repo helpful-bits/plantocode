@@ -28,6 +28,7 @@ import { NotificationProvider } from "@/contexts";
 import { TextImprovementProvider } from "@/contexts/text-improvement";
 import { BillingProvider } from "@/contexts/billing-context";
 import { TooltipProvider } from "@/ui/tooltip";
+import { ScreenRecordingProvider } from "@/contexts/screen-recording";
 
 export interface ProvidersWrapperProps {
   children: React.ReactNode;
@@ -77,17 +78,19 @@ export function ProvidersWrapper({
         <TooltipProvider delayDuration={200}>
           <NotificationProvider>
             <DatabaseProvider>
-              <ProjectProvider>
-                <SessionProvider>
-                  <BackgroundJobsProvider>
-                    <BillingProvider>
-                      <TextImprovementProvider>
-                        {children}
-                      </TextImprovementProvider>
-                    </BillingProvider>
-                  </BackgroundJobsProvider>
-                </SessionProvider>
-              </ProjectProvider>
+              <ScreenRecordingProvider>
+                <ProjectProvider>
+                  <SessionProvider>
+                    <BackgroundJobsProvider>
+                      <BillingProvider>
+                        <TextImprovementProvider>
+                          {children}
+                        </TextImprovementProvider>
+                      </BillingProvider>
+                    </BackgroundJobsProvider>
+                  </SessionProvider>
+                </ProjectProvider>
+              </ScreenRecordingProvider>
             </DatabaseProvider>
           </NotificationProvider>
         </TooltipProvider>

@@ -432,6 +432,8 @@ impl BillingService {
         metadata.insert("type".to_string(), "credit_purchase".to_string());
         metadata.insert("user_id".to_string(), user_id.to_string());
         metadata.insert("gross_amount".to_string(), amount_decimal.to_string());
+        metadata.insert("platform_fee".to_string(), fee_amount.to_string());
+        metadata.insert("net_amount".to_string(), net_amount.to_string());
         metadata.insert("currency".to_string(), "USD".to_string());
 
         // Use hardcoded URLs that match the frontend expectations
@@ -467,8 +469,30 @@ impl BillingService {
     ) -> Result<CheckoutSession, AppError> {
         let stripe_service = self.get_stripe_service()?;
         
-        let session = stripe_service.get_checkout_session(session_id).await
+        let mut session = stripe_service.get_checkout_session(session_id).await
             .map_err(|e| AppError::External(format!("Failed to retrieve checkout session: {}", e)))?;
+        
+        // Check if the payment is complete but webhook hasn't been processed yet
+        if session.status.as_deref() == Some("complete") && session.payment_status.as_deref() == Some("paid") {
+            if let Some(pi_id) = &session.payment_intent {
+                let payment_intent_id = pi_id.to_string();
+                let payment_intent = stripe_service.get_payment_intent(&payment_intent_id).await?;
+                
+                // Extract charge ID based on Expandable enum
+                let charge_id = match &payment_intent.latest_charge {
+                    Some(crate::stripe_types::Expandable::Id(id)) => id.clone(),
+                    Some(crate::stripe_types::Expandable::Object(charge)) => charge.id.clone(),
+                    None => return Ok(session), // No charge yet
+                };
+                
+                let credit_repo = CreditTransactionRepository::new(self.db_pools.system_pool.clone());
+                let transactions = credit_repo.get_transactions_by_stripe_charge(&charge_id).await?;
+                if transactions.is_empty() {
+                    // Webhook hasn't been processed yet. Tell the client to keep polling.
+                    session.payment_status = Some("processing".to_string());
+                }
+            }
+        }
 
         Ok(session)
     }
