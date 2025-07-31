@@ -3,6 +3,7 @@
 import { Settings } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./select";
 import { useAudioInputDevices } from "@/hooks/use-voice-recording";
+import { cn } from "@/utils/utils";
 
 interface AudioDeviceSelectProps {
   value: string;
@@ -10,6 +11,7 @@ interface AudioDeviceSelectProps {
   disabled?: boolean;
   className?: string;
   showIcon?: boolean;
+  variant?: 'compact' | 'default';
 }
 
 export function AudioDeviceSelect({
@@ -18,8 +20,19 @@ export function AudioDeviceSelect({
   disabled = false,
   className = "",
   showIcon = true,
+  variant = 'compact',
 }: AudioDeviceSelectProps) {
   const { availableAudioInputs } = useAudioInputDevices();
+
+  const triggerClassName = variant === 'compact' 
+    ? cn(
+        "h-6 text-sm text-foreground border-0 bg-muted/50 hover:bg-muted focus:ring-1 focus:ring-ring transition-colors cursor-pointer",
+        className
+      )
+    : cn(
+        "h-10 px-3 text-sm text-foreground border border-input bg-background hover:bg-accent hover:text-accent-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 w-fit",
+        className
+      );
 
   return (
     <Select
@@ -27,7 +40,7 @@ export function AudioDeviceSelect({
       onValueChange={onValueChange}
       disabled={disabled || availableAudioInputs.length === 0}
     >
-      <SelectTrigger className={`h-6 text-sm border-0 bg-muted/50 hover:bg-muted focus:ring-1 focus:ring-ring transition-colors cursor-pointer ${className}`}>
+      <SelectTrigger className={triggerClassName}>
         {showIcon && <Settings className="h-4 w-4 mr-2 flex-shrink-0" />}
         <SelectValue placeholder="Mic" />
       </SelectTrigger>
