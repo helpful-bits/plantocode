@@ -16,7 +16,7 @@ interface CallToActionProps {
 
 export function CallToAction({ title, description, buttonText, buttonLink }: CallToActionProps) {
   return (
-    <section className="relative py-24 px-4 overflow-hidden">
+    <section className="relative py-16 sm:py-20 md:py-24 lg:py-32 px-4 overflow-hidden">
       <motion.div
         className="absolute inset-0 z-0 burst-radial"
         initial={{ opacity: 0 }}

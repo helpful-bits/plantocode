@@ -8,8 +8,8 @@ import { motion } from 'framer-motion';
 export function HeroSection() {
 
   return (
-    <section className="relative min-h-screen flex items-center justify-center overflow-hidden bg-transparent">
-      <div className="relative text-center px-4 sm:px-6 lg:px-8 max-w-5xl mx-auto">
+    <section className="relative h-auto sm:min-h-screen flex items-start sm:items-center justify-center overflow-hidden bg-transparent py-16 sm:py-12 md:py-16 lg:py-0">
+      <div className="relative text-center px-4 sm:px-6 lg:px-8 max-w-5xl mx-auto my-8">
         {/* Primary heading */}
         <motion.h1
           className="relative text-4xl sm:text-5xl lg:text-6xl font-bold mb-6 leading-tight"
@@ -23,16 +23,30 @@ export function HeroSection() {
           </span>
         </motion.h1>
 
-        {/* Subtitle */}
+        {/* Subtitle - Enhanced with the story */}
         <motion.div
-          className="relative mb-8 max-w-3xl mx-auto"
+          className="relative mb-8 max-w-3xl mx-auto space-y-4"
           initial={{ opacity: 0, y: 30 }}
           transition={{ duration: 0.7, delay: 0.6 }}
           viewport={{ once: true }}
           whileInView={{ opacity: 1, y: 0 }}
         >
           <p className="relative text-lg sm:text-xl text-description-muted leading-relaxed">
-            You know the feeling. You're "vibe coding" with an AI agent—it's magical until it's not. The agent gets lost, ignores instructions, and you become a babysitter. Vibe Manager curates perfect context so your AI agents can finally do their job.
+            You know the feeling. You're "vibe coding" with an AI agent - the ideas are flowing, it's magical... until it's not. 
+            The agent gets hopelessly lost in your codebase, starts ignoring instructions, hallucinates APIs, and writes code 
+            that feels like it belongs in a different project entirely.
+          </p>
+          <p className="relative text-lg sm:text-xl text-foreground font-medium">
+            That magic moment is gone. Now you're a babysitter writing novels of documentation just to keep the agent on track.
+          </p>
+          <p className="relative text-lg sm:text-xl text-description-muted leading-relaxed">
+            Here's the thing: your code IS the documentation. It evolves fast. Every refactor, every new feature - your codebase 
+            tells its own story. But AI has limited context. It wastes time searching through irrelevant files, missing the 
+            crucial ones, or worse - trying to understand everything at once.
+          </p>
+          <p className="relative text-lg sm:text-xl text-description-muted leading-relaxed">
+            Vibe Manager was born from hitting that wall. Hard. Agents don't need more rules - they need the right files, 
+            real context, and clear tasks. Simple as that.
           </p>
         </motion.div>
 
@@ -48,7 +62,7 @@ export function HeroSection() {
           >
             <Button asChild className="relative overflow-hidden" size="xl" variant="cta">
               <Link href="/download">
-                Download Vibe Manager Free
+                Get Your Weekend Back
               </Link>
             </Button>
           </motion.div>
@@ -62,12 +76,31 @@ export function HeroSection() {
             whileTap={{ scale: 0.95 }}
           >
             <Button asChild size="lg" variant="gradient-outline">
-              <Link href="#features">
-                Learn More
+              <Link href="#how-it-works">
+                See How It Works
               </Link>
             </Button>
           </motion.div>
         </div>
+
+        {/* Trust indicators */}
+        <motion.div
+          className="mt-8 sm:mt-12 flex flex-wrap gap-x-8 gap-y-4 justify-center text-sm text-muted-foreground"
+          initial={{ opacity: 0 }}
+          transition={{ duration: 0.7, delay: 1.1 }}
+          viewport={{ once: true }}
+          whileInView={{ opacity: 1 }}
+        >
+          <span className="flex items-center gap-2">
+            <span className="text-primary">✓</span> Built by a developer, for developers
+          </span>
+          <span className="flex items-center gap-2">
+            <span className="text-primary">✓</span> 100% local-first
+          </span>
+          <span className="flex items-center gap-2">
+            <span className="text-primary">✓</span> No subscriptions
+          </span>
+        </motion.div>
       </div>
 
     </section>

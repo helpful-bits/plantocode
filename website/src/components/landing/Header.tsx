@@ -211,13 +211,15 @@ export function Header() {
             <motion.nav
               animate={{ opacity: 1, y: 0, scale: 1 }}
               className={cn(
-                'fixed top-20 inset-x-4 z-50 md:hidden',
+                'fixed top-20 left-4 right-4 z-50 md:hidden',
+                'max-w-[calc(100vw-2rem)]',
                 'glass',
                 'rounded-2xl',
-                'p-6',
+                'p-4 sm:p-6',
                 // Enhanced background for light mode visibility
                 'bg-background/95 backdrop-blur-xl border border-border/80',
                 'shadow-2xl shadow-black/10',
+                'overflow-hidden',
               )}
               exit={{ opacity: 0, y: -30, scale: 0.9 }}
               initial={{ opacity: 0, y: -30, scale: 0.9 }}
