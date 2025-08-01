@@ -137,7 +137,7 @@ export function useSessionActions({
 
   // Update specific fields in the current session
   const updateCurrentSessionFields = useCallback(
-    async (fields: Partial<Session>) => {
+    (fields: Partial<Session>) => {
       // Using Session type for the function parameter ensures proper typing
       if (!currentSessionRef.current) {
         return;
@@ -181,15 +181,11 @@ export function useSessionActions({
         const updatedSession = { ...currentSessionRef.current, ...updatedFields };
         setSessionModified(true);
         setCurrentSession(updatedSession);
-        
-        // Save immediately
-        await saveCurrentSession();
       }
     },
     [
       setCurrentSession, // Stable setter from SessionStateContext
       setSessionModified, // Stable setter from SessionStateContext
-      saveCurrentSession, // Memoized function dependency
     ]
   );
 
@@ -512,7 +508,7 @@ export function useSessionActions({
         (path) => !paths.includes(path)
       );
       
-      await updateCurrentSessionFields({
+      updateCurrentSessionFields({
         includedFiles: newIncludedFiles,
         forceExcludedFiles: newExcludedFiles,
       });
