@@ -13,7 +13,6 @@ import {
 
 import { type TaskDescriptionHandle } from "../_components/task-description";
 import { useGenerateFormState } from "../_hooks/use-generate-form-state";
-import { useGeneratePromptTaskState } from "../_hooks/use-generate-prompt-task-state";
 import { useGeneratePromptPlanState } from "../_hooks/use-generate-prompt-plan-state";
 import { generateDirectoryTreeAction } from "@/actions/file-system/directory-tree.actions";
 import { estimatePromptTokensAction } from "@/actions/ai/prompt.actions";
@@ -22,7 +21,6 @@ import { type PromptTokenEstimateResponse as TokenEstimate } from "@/types/tauri
 // Import the granular context providers
 import { type CorePromptContextValue } from "./_types/generate-prompt-core-types";
 import { type PlanContextValue } from "./_types/implementation-plan-types";
-import { type TaskContextValue } from "./_types/task-description-types";
 import { CorePromptContextProvider } from "./core-prompt-context";
 import { PlanContextProvider } from "./plan-context";
 import { TaskContextProvider } from "./task-context";
@@ -64,14 +62,12 @@ export function GeneratePromptFeatureProvider({
 
 
   // Use self-contained hooks that access session context directly
-  const taskState = useGeneratePromptTaskState({ taskDescriptionRef });
   const planState = useGeneratePromptPlanState();
 
   // Complete state reset function
   const resetAllState = useCallback(() => {
     formState.resetFormState();
     sessionActions.setSessionModified(false);
-    taskState.resetTaskState();
     // Reset session fields
     sessionActions.updateCurrentSessionFields({
       taskDescription: "",
@@ -83,8 +79,7 @@ export function GeneratePromptFeatureProvider({
   }, [
     formState.resetFormState, 
     sessionActions.setSessionModified, 
-    sessionActions.updateCurrentSessionFields,
-    taskState.resetTaskState
+    sessionActions.updateCurrentSessionFields
   ]);
 
   // Handler for generating codebase directory tree
@@ -246,53 +241,6 @@ export function GeneratePromptFeatureProvider({
     ]
   );
 
-  // Add flush pending task changes action
-  const flushPendingTaskChanges = useCallback(() => {
-    if (taskDescriptionRef.current?.flushPendingChanges) {
-      return taskDescriptionRef.current.flushPendingChanges();
-    }
-    return null;
-  }, []);
-
-  const taskContextValue = useMemo<TaskContextValue>(
-    () => ({
-      state: {
-        // Task UI state
-        taskDescriptionRef: taskState.taskDescriptionRef,
-        isRefiningTask: taskState.isRefiningTask,
-        isDoingWebSearch: taskState.isDoingWebSearch,
-        tokenEstimate: tokenEstimate,
-        canUndo: taskState.canUndo,
-        canRedo: taskState.canRedo,
-        webSearchResults: taskState.webSearchResults,
-        // Video analysis state
-        isAnalyzingVideo: taskState.isAnalyzingVideo,
-        videoAnalysisJobId: taskState.videoAnalysisJobId,
-        videoAnalysisPrompt: taskState.videoAnalysisPrompt,
-      },
-      actions: {
-        // Task description actions
-        handleRefineTask: taskState.handleRefineTask,
-        handleWebSearch: taskState.handleWebSearch,
-        cancelWebSearch: taskState.cancelWebSearch,
-        flushPendingTaskChanges,
-        reset: taskState.resetTaskState,
-        undo: taskState.undo,
-        redo: taskState.redo,
-        applyWebSearchResults: taskState.applyWebSearchResults,
-        // Video analysis actions
-        setVideoAnalysisPrompt: taskState.setVideoAnalysisPrompt,
-        handleAnalyzeVideo: taskState.handleAnalyzeVideo,
-        resetVideoState: taskState.resetVideoState,
-      },
-    }),
-    [
-      // The taskState object is already memoized from the hook
-      taskState,
-      tokenEstimate,
-      flushPendingTaskChanges,
-    ]
-  );
 
 
 
@@ -317,7 +265,7 @@ export function GeneratePromptFeatureProvider({
   // Provide all context values using the new granular providers
   return (
     <CorePromptContextProvider value={coreContextValue}>
-      <TaskContextProvider value={taskContextValue}>
+      <TaskContextProvider taskDescriptionRef={taskDescriptionRef} tokenEstimate={tokenEstimate}>
         <PlanContextProvider value={planContextValue}>
           <TooltipProvider>
             {children}

@@ -590,7 +590,17 @@ pub async fn create_custom_unique_filepath(
             get_project_output_files_directory(project_dir).await?
         }
     } else {
-        get_app_output_files_directory(app_handle).await?
+        // When project_dir is None, check if target_dir_name is provided
+        if let Some(target_dir) = target_dir_name {
+            let mut dir = get_app_data_root_dir(app_handle).await?;
+            dir.push(target_dir);
+            if !fs_utils::path_exists(&dir).await? {
+                fs_utils::create_directory(&dir).await?;
+            }
+            dir
+        } else {
+            get_app_output_files_directory(app_handle).await?
+        }
     };
 
     // Use the shared helper to ensure uniqueness

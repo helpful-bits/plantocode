@@ -36,8 +36,9 @@ export interface TaskContextActions {
   
   // Video analysis actions
   setVideoAnalysisPrompt: (prompt: string) => void;
-  handleAnalyzeVideo: (args: { path: string; durationMs: number }) => Promise<void>;
+  startVideoAnalysisRecording: (args: { prompt: string; recordAudio: boolean; audioDeviceId: string; frameRate: number }) => Promise<void>;
   resetVideoState: () => void;
+  cancelVideoAnalysis: () => Promise<void>;
 }
 
 export interface TaskContextValue {

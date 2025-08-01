@@ -10,24 +10,12 @@ const compat = new FlatCompat({
 });
 
 const eslintConfig = [
-  // Ignore patterns
-  {
-    ignores: [
-      '.next/**',
-      'out/**',
-      'node_modules/**',
-      '.git/**',
-      'public/**',
-      '*.config.js',
-      '*.config.ts',
-      '*.config.mjs',
-    ],
-  },
+  // First, extend Next.js configs
+  ...compat.config({
+    extends: ['next/core-web-vitals', 'next/typescript'],
+  }),
   
-  // Next.js recommended configurations
-  ...compat.extends('next/core-web-vitals', 'next/typescript'),
-  
-  // Custom rules and overrides
+  // Then apply custom rules
   {
     files: ['**/*.{js,jsx,ts,tsx}'],
     languageOptions: {
@@ -96,6 +84,20 @@ const eslintConfig = [
     rules: {
       '@typescript-eslint/no-unused-vars': 'off',
     },
+  },
+  
+  // Ignore patterns at the end
+  {
+    ignores: [
+      '.next/**',
+      'out/**',
+      'node_modules/**',
+      '.git/**',
+      'public/**',
+      '*.config.js',
+      '*.config.ts',
+      '*.config.mjs',
+    ],
   },
 ];
 

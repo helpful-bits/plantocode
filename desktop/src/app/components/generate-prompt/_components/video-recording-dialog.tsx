@@ -7,22 +7,20 @@ import { Checkbox } from '@/ui/checkbox';
 import { Slider } from '@/ui/slider';
 import { AudioDeviceSelect } from '@/ui';
 import { useTaskContext } from '../_contexts/task-context';
-import { useSessionActionsContext } from '@/contexts/session';
 import { useVideoRecordingSettings } from '@/hooks/useVideoRecordingSettings';
 
 interface VideoRecordingDialogProps {
   isOpen: boolean;
   onClose: () => void;
-  onStartRecording: (prompt: string, recordAudio: boolean, audioDeviceId: string, frameRate: number) => void;
+  onConfirm: (options: { prompt: string; recordAudio: boolean; audioDeviceId: string; frameRate: number }) => void;
 }
 
 export const VideoRecordingDialog: React.FC<VideoRecordingDialogProps> = ({
   isOpen,
   onClose,
-  onStartRecording,
+  onConfirm,
 }) => {
   const { state: taskState, actions: taskActions } = useTaskContext();
-  const sessionActions = useSessionActionsContext();
   const { 
     selectedAudioInputId, 
     setSelectedAudioInputId, 
@@ -43,14 +41,12 @@ export const VideoRecordingDialog: React.FC<VideoRecordingDialogProps> = ({
   }, [isOpen, taskState.videoAnalysisPrompt]);
   
   const handleStart = () => {
-    // Save the prompt to both task context and session
+    // Save the prompt to task context only
     const promptToUse = localPrompt.trim();
     taskActions.setVideoAnalysisPrompt(promptToUse);
-    sessionActions.updateCurrentSessionFields({ videoAnalysisPrompt: promptToUse });
-    sessionActions.setSessionModified(true);
     
-    // Start recording with the prompt
-    onStartRecording(promptToUse, recordAudio, selectedAudioInputId, selectedFrameRate);
+    // Call onConfirm with an object
+    onConfirm({ prompt: promptToUse, recordAudio, audioDeviceId: selectedAudioInputId, frameRate: selectedFrameRate });
     setRecordAudio(true); // Reset to default
     onClose();
   };
