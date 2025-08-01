@@ -161,8 +161,8 @@ export function ScreenRecordingProvider({ children }: ScreenRecordingProviderPro
           const mimeType = MIME_CANDIDATES.find(MediaRecorder.isTypeSupported) || 'video/webm';
           const recorderOptions = {
             mimeType,
-            videoBitsPerSecond: 1_500_000,  // 1.5 Mbps for screen recording
-            audioBitsPerSecond: 128_000     // 128 kbps for better audio quality
+            videoBitsPerSecond: 5_000_000,  // 5 Mbps for high quality screen recording
+            audioBitsPerSecond: 64_000      // 64 kbps for reduced audio quality
           };
           
           const recorder = new MediaRecorder(finalStream, recorderOptions);

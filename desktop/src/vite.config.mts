@@ -65,12 +65,9 @@ export default defineConfig({
     minify: !import.meta?.env?.TAURI_ENV_DEBUG ? "esbuild" : false,
     // Produce sourcemaps for debug builds
     sourcemap: !!import.meta?.env?.TAURI_ENV_DEBUG,
-    // Configure multiple entry points
+    // Configure entry point
     rollupOptions: {
-      input: {
-        main: path.resolve(__dirname, '../index.html'),
-        overlay: path.resolve(__dirname, '../overlay.html'),
-      },
+      input: path.resolve(__dirname, '../index.html'),
     },
   },
 });

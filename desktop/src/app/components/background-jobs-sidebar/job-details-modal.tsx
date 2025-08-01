@@ -1,7 +1,7 @@
 import { Loader2 } from "lucide-react";
 import { type BackgroundJob } from "@/types/session-types";
 import { Button } from "@/ui/button";
-import { Card, CardContent } from "@/ui/card";
+import { Card } from "@/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -243,20 +243,8 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
       
       switch (job.taskType) {
         case 'video_analysis':
-          // Handle video analysis responses - they come as plain strings
-          if (typeof job.response === 'string') {
-            return (
-              <Card className="border-0 shadow-none bg-muted/30">
-                <CardContent className="p-4">
-                  <h4 className="text-sm font-medium mb-2">Video Analysis Result</h4>
-                  <pre className="whitespace-pre-wrap text-sm text-foreground/90 font-normal">
-                    {job.response}
-                  </pre>
-                </CardContent>
-              </Card>
-            );
-          }
-          break;
+          // Let the default response section handle video analysis with copy button
+          return null;
           
         case 'regex_file_filter':
         case 'file_relevance_assessment':
@@ -390,7 +378,18 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
       promptContent = String(parsedMetadata.fullPromptContent);
     }
 
-    const responseContent = normalizeJobResponse(displayJob.response).content;
+    // Extract the appropriate content based on task type
+    let responseContent = normalizeJobResponse(displayJob.response).content;
+    
+    // For video analysis, extract just the analysis text
+    if (displayJob.taskType === 'video_analysis' && typeof displayJob.response === 'string') {
+      try {
+        const videoResponse = JSON.parse(displayJob.response);
+        responseContent = videoResponse.analysis || responseContent;
+      } catch (e) {
+        // Keep the original content if parsing fails
+      }
+    }
 
     return {
       job: displayJob,

@@ -216,7 +216,7 @@ export const BackgroundJobsSidebar = () => {
       }
       
       // Create the finding text with the video analysis results
-      const finding = `\n\n<research_finding>\n${analysisContent}\n</research_finding>`;
+      const finding = `\n\n<video_analysis_summary>\n${analysisContent}\n</video_analysis_summary>`;
       
       // Append finding to current task description
       const updatedTaskDescription = currentTaskDescription + finding;
