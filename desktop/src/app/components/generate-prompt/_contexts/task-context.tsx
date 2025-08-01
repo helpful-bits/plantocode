@@ -105,7 +105,7 @@ function useProvideTaskContext(taskDescriptionRef: React.RefObject<TaskDescripti
   const [videoAnalysisJobId, setVideoAnalysisJobId] = useState<string | null>(null);
   // Initialize prompt from session or use default
   const [videoAnalysisPrompt, setVideoAnalysisPrompt] = useState<string>(
-    sessionState.currentSession?.videoAnalysisPrompt || 
+    sessionState.currentSession?.videoAnalysisPrompt ?? 
     'Please analyze this video and provide a detailed summary of what you observe, including key events, actions, and any notable details.'
   );
   
@@ -123,7 +123,7 @@ function useProvideTaskContext(taskDescriptionRef: React.RefObject<TaskDescripti
   const updateVideoAnalysisPrompt = useCallback((prompt: string) => {
     setVideoAnalysisPrompt(prompt);
     sessionActions.updateCurrentSessionFields({ videoAnalysisPrompt: prompt });
-    sessionActions.setSessionModified(true);
+    void sessionActions.flushSaves();
   }, [sessionActions]);
   
   // Handle video analysis recording start

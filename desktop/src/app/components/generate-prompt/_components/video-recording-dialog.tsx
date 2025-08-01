@@ -40,6 +40,15 @@ export const VideoRecordingDialog: React.FC<VideoRecordingDialogProps> = ({
     }
   }, [isOpen, taskState.videoAnalysisPrompt]);
   
+  // Save prompt when closing the dialog
+  const handleClose = () => {
+    // Save the prompt if it has changed
+    if (localPrompt.trim() !== taskState.videoAnalysisPrompt) {
+      taskActions.setVideoAnalysisPrompt(localPrompt.trim());
+    }
+    onClose();
+  };
+  
   const handleStart = () => {
     // Get task description and user prompt
     const taskDescription = taskState.taskDescriptionRef.current?.getValue() || '';
@@ -55,15 +64,10 @@ export const VideoRecordingDialog: React.FC<VideoRecordingDialogProps> = ({
       combinedPrompt += `<video_attention_prompt>\n${userPrompt}\n</video_attention_prompt>`;
     }
     
-    // Save the user prompt to context
-    if (userPrompt) {
-      taskActions.setVideoAnalysisPrompt(userPrompt);
-    }
-    
     // Call onConfirm with the combined prompt
     onConfirm({ prompt: combinedPrompt, recordAudio, audioDeviceId: selectedAudioInputId, frameRate: selectedFrameRate });
     setRecordAudio(true); // Reset to default
-    onClose();
+    handleClose();
   };
   
   const handlePromptChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -72,7 +76,7 @@ export const VideoRecordingDialog: React.FC<VideoRecordingDialogProps> = ({
   };
   
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog open={isOpen} onOpenChange={(open) => !open && handleClose()}>
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
           <DialogTitle>Record Screen for Analysis</DialogTitle>
@@ -90,6 +94,11 @@ export const VideoRecordingDialog: React.FC<VideoRecordingDialogProps> = ({
               placeholder="e.g., Analyze the user interface and suggest improvements..."
               value={localPrompt}
               onChange={handlePromptChange}
+              onBlur={() => {
+                if (localPrompt.trim() !== taskState.videoAnalysisPrompt) {
+                  taskActions.setVideoAnalysisPrompt(localPrompt.trim());
+                }
+              }}
               className="min-h-[150px] resize-none"
               autoFocus
             />
@@ -146,7 +155,7 @@ export const VideoRecordingDialog: React.FC<VideoRecordingDialogProps> = ({
           </div>
           
           <div className="flex justify-end gap-3">
-            <Button variant="outline" onClick={onClose}>
+            <Button variant="outline" onClick={handleClose}>
               Cancel
             </Button>
             <Button 

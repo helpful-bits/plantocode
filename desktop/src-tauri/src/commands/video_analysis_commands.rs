@@ -69,7 +69,7 @@ pub async fn start_video_analysis_job(
         "openrouter",
         TaskType::VideoAnalysis,
         "VIDEO_ANALYSIS",
-        &format!("Analyze video: {}", video_path),
+        &prompt, // Store the actual prompt in the background job table
         Some((resolved_model, resolved_temperature, resolved_max_tokens)),
         JobPayload::VideoAnalysis(payload),
         10, // priority
