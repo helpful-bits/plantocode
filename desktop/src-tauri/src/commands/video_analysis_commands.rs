@@ -17,7 +17,6 @@ pub async fn start_video_analysis_job(
     video_path: String,
     prompt: String,
     duration_ms: i64,
-    language: Option<String>,
 ) -> Result<JobCommandResponse, String> {
     info!("Starting video analysis job for file: {}", video_path);
     
@@ -68,7 +67,6 @@ pub async fn start_video_analysis_job(
         TaskType::VideoAnalysis,
         combined_prompt.clone(),
     )
-    .language(language.clone())
     .build();
     
     // Create prompt processor and compose prompt

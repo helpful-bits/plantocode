@@ -21,6 +21,7 @@ pub mod implementation_plan_commands;
 pub mod prompt_commands;
 pub mod setup_commands;
 pub mod text_commands;
+pub mod screen_recording_commands;
 pub mod video_analysis_commands;
 pub mod web_search_commands;
 pub mod workflow_commands;

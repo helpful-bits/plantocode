@@ -17,7 +17,7 @@ import { Button } from "@/ui/button";
 import { Textarea } from "@/ui/textarea";
 import { cn } from "@/utils/utils";
 import VoiceTranscription from "./voice-transcription";
-import { listen, emit } from "@tauri-apps/api/event";
+import { listen } from "@tauri-apps/api/event";
 import { VideoRecordingDialog } from "./video-recording-dialog";
 import { useTaskContext } from "../_contexts/task-context";
 
@@ -69,7 +69,6 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
       // Get task context for video analysis state
       const { state: taskState, actions: taskActions } = useTaskContext();
       const { isAnalyzingVideo } = taskState;
-      const { setVideoAnalysisPrompt } = taskActions;
       // Keep ref parameter
       // Local state for responsive input handling
       const [internalValue, setInternalValue] = useState(value);
@@ -78,7 +77,7 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
       // Create an internal ref for the textarea element
       const internalTextareaRef = useRef<HTMLTextAreaElement>(null);
       
-      const { startRecording, isRecording } = useScreenRecording();
+      const { isRecording, stopRecording } = useScreenRecording();
       const [showVideoDialog, setShowVideoDialog] = useState(false);
       
       // Sync internal value with prop value when it changes externally
@@ -289,30 +288,6 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
         };
       }, [ref]);
 
-      // Add event listener for recording-finished event
-      useEffect(() => {
-        const handleRecordingFinished = async () => {
-          const unlisten = await listen<{ path: string; durationMs: number; frameRate: number }>('recording-finished', (event) => {
-            // Emit the event for the task state hook to handle
-            emit('recording-finished', event.payload).catch(console.error);
-          });
-          
-          return unlisten;
-        };
-        
-        let unlisten: (() => void) | undefined;
-        
-        handleRecordingFinished().then((unlistenFn) => {
-          unlisten = unlistenFn;
-        });
-        
-        return () => {
-          if (unlisten) {
-            unlisten();
-          }
-        };
-      }, []);
-
       // Simple empty check
       const effectiveIsEmpty = !internalValue?.trim();
 
@@ -410,7 +385,20 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
                     </svg>
                   )}
                 </Button>
-              ) : null}
+              ) : (
+                <Button
+                  onClick={stopRecording}
+                  disabled={disabled}
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6 hover:bg-destructive/10 text-destructive animate-pulse"
+                  title="Stop recording"
+                >
+                  <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
+                    <rect x="6" y="6" width="12" height="12" rx="2" />
+                  </svg>
+                </Button>
+              )}
             </div>
           </div>
 
@@ -481,6 +469,14 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                 </svg>
                 <span>Analyzing video...</span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => taskActions.cancelVideoAnalysis()}
+                  className="h-6 px-2 text-xs"
+                >
+                  Cancel
+                </Button>
               </div>
             )}
           </div>
@@ -489,18 +485,8 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
         <VideoRecordingDialog
           isOpen={showVideoDialog}
           onClose={() => setShowVideoDialog(false)}
-          onStartRecording={(prompt, recordAudio, audioDeviceId, frameRate) => {
-            // Set the video analysis prompt
-            setVideoAnalysisPrompt(prompt);
-            
-            // Close the dialog
-            setShowVideoDialog(false);
-            
-            // Start recording
-            startRecording({ recordAudio, audioDeviceId, frameRate });
-            
-            // Note: The actual video analysis will be triggered from the task-section.tsx
-            // when the user clicks the "Analyze Video" button
+          onConfirm={({ prompt, ...recordingOptions }) => {
+            taskActions.startVideoAnalysisRecording({ prompt, ...recordingOptions });
           }}
         />
         </>

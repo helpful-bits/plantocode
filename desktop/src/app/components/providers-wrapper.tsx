@@ -76,9 +76,9 @@ export function ProvidersWrapper({
         }
       >
         <TooltipProvider delayDuration={200}>
-          <NotificationProvider>
-            <DatabaseProvider>
-              <ScreenRecordingProvider>
+          <ScreenRecordingProvider>
+            <NotificationProvider>
+              <DatabaseProvider>
                 <ProjectProvider>
                   <SessionProvider>
                     <BackgroundJobsProvider>
@@ -90,9 +90,9 @@ export function ProvidersWrapper({
                     </BackgroundJobsProvider>
                   </SessionProvider>
                 </ProjectProvider>
-              </ScreenRecordingProvider>
-            </DatabaseProvider>
-          </NotificationProvider>
+              </DatabaseProvider>
+            </NotificationProvider>
+          </ScreenRecordingProvider>
         </TooltipProvider>
       </ErrorBoundary>
     </ClientOnly>

@@ -505,11 +505,10 @@ export interface StartWebEnhancedTaskRefinementWorkflowCommandArgs {
 
 // Video recording and analysis commands
 export interface StartVideoAnalysisJobCommandArgs {
+  sessionId: string;
+  projectDirectory: string;
   videoPath: string;
   prompt: string;
-  model: string;
-  temperature: number;
-  systemPrompt?: string;
   durationMs: number;
 }
 
@@ -683,6 +682,7 @@ export type TauriInvoke = {
   
   // Video recording and analysis commands
   "start_video_analysis_job": (args: StartVideoAnalysisJobCommandArgs) => Promise<import("@/types/video-analysis-types").VideoAnalysisJobResponse>;
+  "stop_screen_recording": () => Promise<void>;
 };
 
 // Billing-related types
