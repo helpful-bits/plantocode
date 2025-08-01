@@ -326,7 +326,7 @@ export function ScreenRecordingProvider({ children }: ScreenRecordingProviderPro
 
   // Memoized context value
   const value = useMemo<ScreenRecordingContextValue>(() => ({
-    isRecording: state.status === 'recording',
+    isRecording: state.status === 'capturing' || state.status === 'recording',
     startTime: state.startTime,
     startRecording,
     stopRecording

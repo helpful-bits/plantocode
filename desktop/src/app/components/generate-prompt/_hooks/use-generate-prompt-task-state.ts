@@ -61,7 +61,8 @@ export function useGeneratePromptTaskState({
     onInteraction: handleInteraction,
   });
   
-  // Video analysis state
+  // Video recording and analysis state
+  const [isRecordingVideo, setIsRecordingVideo] = useState(false);
   const [isAnalyzingVideo, setIsAnalyzingVideo] = useState(false);
   const [videoAnalysisJobId, setVideoAnalysisJobId] = useState<string | null>(null);
   // Initialize prompt from session or use default
@@ -112,7 +113,9 @@ export function useGeneratePromptTaskState({
         prompt: args.prompt
       });
       
-      setIsAnalyzingVideo(true);
+      setIsRecordingVideo(true);
+      setIsAnalyzingVideo(false); // Not analyzing yet, just recording
+      analysisMetadataRef.current = true; // Mark that we have analysis metadata
     } catch (error) {
       console.error('Failed to start video analysis recording:', error);
       
@@ -152,6 +155,7 @@ export function useGeneratePromptTaskState({
     
     const setupListener = async () => {
       const unlistenFn = await listen<{ message: string }>('recording-start-failed', (event) => {
+        setIsRecordingVideo(false);
         setIsAnalyzingVideo(false);
         showNotification({
           title: "Recording Failed",
@@ -172,30 +176,73 @@ export function useGeneratePromptTaskState({
     };
   }, [showNotification]);
   
+  // Listen for recording-finished event to transition from recording to analyzing
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    
+    const setupListener = async () => {
+      const unlistenFn = await listen('recording-finished', () => {
+        setIsRecordingVideo(false);
+        // Only set analyzing if we have analysis metadata (not just a plain recording)
+        if (analysisMetadataRef.current) {
+          setIsAnalyzingVideo(true);
+        }
+      });
+      
+      unlisten = unlistenFn;
+    };
+    
+    setupListener();
+    
+    return () => {
+      if (unlisten) {
+        unlisten();
+      }
+    };
+  }, []);
+  
+  // Store analysis metadata ref for checking in recording-finished listener
+  const analysisMetadataRef = useRef<boolean>(false);
+  
   // Reset video state
   const resetVideoState = useCallback(() => {
     videoPathRef.current = null;
     setVideoAnalysisJobId(null);
+    setIsRecordingVideo(false);
     setIsAnalyzingVideo(false);
+    analysisMetadataRef.current = false;
     // Don't clear the prompt when resetting video state - keep it for future recordings
   }, []);
   
-  // Cancel video analysis
+  // Cancel video analysis or recording
   const cancelVideoAnalysis = useCallback(async () => {
-    if (!videoAnalysisJobId) return;
-    
-    try {
-      await cancelBackgroundJobAction(videoAnalysisJobId);
+    // If currently recording, stop the recording
+    if (screenRecording.isRecording) {
+      screenRecording.stopRecording();
       resetVideoState();
       showNotification({
-        title: "Video Analysis Cancelled",
-        message: "The video analysis was cancelled",
+        title: "Recording Cancelled",
+        message: "Screen recording was cancelled",
         type: "info",
       });
-    } catch (error) {
-      console.error('Failed to cancel video analysis:', error);
+      return;
     }
-  }, [videoAnalysisJobId, resetVideoState, showNotification]);
+    
+    // If analysis job exists, cancel it
+    if (videoAnalysisJobId) {
+      try {
+        await cancelBackgroundJobAction(videoAnalysisJobId);
+        resetVideoState();
+        showNotification({
+          title: "Video Analysis Cancelled",
+          message: "The video analysis was cancelled",
+          type: "info",
+        });
+      } catch (error) {
+        console.error('Failed to cancel video analysis:', error);
+      }
+    }
+  }, [videoAnalysisJobId, screenRecording, resetVideoState, showNotification]);
 
   // Use background job hook for monitoring
   const { job: videoAnalysisJob } = useBackgroundJob(videoAnalysisJobId);
@@ -270,6 +317,7 @@ export function useGeneratePromptTaskState({
       applyWebSearchResults,
 
       // Video Analysis State
+      isRecordingVideo,
       isAnalyzingVideo,
       videoAnalysisJobId,
       videoAnalysisPrompt,
@@ -294,6 +342,7 @@ export function useGeneratePromptTaskState({
       redo, // memoized with useCallback
       webSearchResults,
       applyWebSearchResults, // memoized with useCallback
+      isRecordingVideo,
       isAnalyzingVideo,
       videoAnalysisJobId,
       videoAnalysisPrompt,
