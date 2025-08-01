@@ -18,6 +18,7 @@ interface ScreenRecordingContextValue {
   startTime: number | null;
   startRecording: (options?: { recordAudio?: boolean; audioDeviceId?: string; frameRate?: number }, analysisMetadata?: AnalysisMetadata | null) => Promise<void>;
   stopRecording: () => void;
+  cancelRecording: () => void;
 }
 
 const ScreenRecordingContext = createContext<ScreenRecordingContextValue | undefined>(undefined);
@@ -81,6 +82,7 @@ export function ScreenRecordingProvider({ children }: ScreenRecordingProviderPro
   });
   const analysisMetadataRef = useRef<AnalysisMetadata | null>(null);
   const startTimeRef = useRef<number | null>(null);
+  const wasCancelledRef = useRef<boolean>(false);
 
   // Centralized cleanup function
   const cleanup = useCallback(() => {
@@ -97,6 +99,7 @@ export function ScreenRecordingProvider({ children }: ScreenRecordingProviderPro
     chunksRef.current = [];
     analysisMetadataRef.current = null;
     startTimeRef.current = null;
+    wasCancelledRef.current = false;
     
     // Reset state
     dispatch({ type: 'RESET' });
@@ -172,63 +175,68 @@ export function ScreenRecordingProvider({ children }: ScreenRecordingProviderPro
           };
           
           recorder.onstop = async () => {
-            const startTime = startTimeRef.current;
-            if (!startTime) {
-              cleanup();
-              return;
-            }
-            
-            const durationMs = Date.now() - startTime;
-            const recorderMimeType = recorder.mimeType || mimeType;
-            const blob = new Blob(chunksRef.current, { type: recorderMimeType });
-            
-            let extension = 'webm';
-            if (recorderMimeType.includes('mp4')) {
-              extension = 'mp4';
-            }
-            
-            try {
-              const filePath = await invoke<string>('create_unique_filepath_command', {
-                requestId: `screen-recording-${Date.now()}`,
-                sessionName: 'screen-recordings',
-                extension,
-                targetDirName: 'videos',
-                projectDirectory: analysisMetadataRef.current?.projectDirectory ?? null
-              });
-              
-              const arrayBuffer = await blob.arrayBuffer();
-              const uint8Array = new Uint8Array(arrayBuffer);
-              
-              await invoke('write_binary_file_command', {
-                path: filePath,
-                content: Array.from(uint8Array),
-                projectDirectory: analysisMetadataRef.current?.projectDirectory ?? null
-              });
-              
-              await emit('recording-finished', { 
-                path: filePath, 
-                durationMs, 
-                frameRate: options.frameRate 
-              });
-              
-              // Start video analysis job if metadata is provided
-              if (analysisMetadataRef.current) {
-                try {
-                  const result = await startVideoAnalysisJob({
-                    ...analysisMetadataRef.current,
-                    videoPath: filePath,
-                    durationMs
-                  });
-                  await emit('video-analysis-started', { jobId: result.jobId });
-                } catch (error) {
-                  console.error('Failed to start video analysis job:', error);
-                } finally {
-                  analysisMetadataRef.current = null;
-                }
+            if (!wasCancelledRef.current) {
+              const startTime = startTimeRef.current;
+              if (!startTime) {
+                cleanup();
+                return;
               }
-            } catch (error) {
-              console.error('Error saving recording:', error);
-            } finally {
+              
+              const durationMs = Date.now() - startTime;
+              const recorderMimeType = recorder.mimeType || mimeType;
+              const blob = new Blob(chunksRef.current, { type: recorderMimeType });
+              
+              let extension = 'webm';
+              if (recorderMimeType.includes('mp4')) {
+                extension = 'mp4';
+              }
+              
+              try {
+                const filePath = await invoke<string>('create_unique_filepath_command', {
+                  requestId: `screen-recording-${Date.now()}`,
+                  sessionName: 'screen-recordings',
+                  extension,
+                  targetDirName: 'videos',
+                  projectDirectory: null
+                });
+                
+                const arrayBuffer = await blob.arrayBuffer();
+                const uint8Array = new Uint8Array(arrayBuffer);
+                
+                await invoke('write_binary_file_command', {
+                  path: filePath,
+                  content: Array.from(uint8Array),
+                  projectDirectory: null
+                });
+                
+                await emit('recording-finished', { 
+                  path: filePath, 
+                  durationMs, 
+                  frameRate: options.frameRate 
+                });
+                
+                // Start video analysis job if metadata is provided
+                if (analysisMetadataRef.current) {
+                  try {
+                    const result = await startVideoAnalysisJob({
+                      ...analysisMetadataRef.current,
+                      videoPath: filePath,
+                      durationMs
+                    });
+                    await emit('video-analysis-started', { jobId: result.jobId });
+                  } catch (error) {
+                    console.error('Failed to start video analysis job:', error);
+                  } finally {
+                    analysisMetadataRef.current = null;
+                  }
+                }
+              } catch (error) {
+                console.error('Error saving recording:', error);
+              } finally {
+                cleanup();
+              }
+            } else {
+              await emit('recording-cancelled', {});
               cleanup();
             }
           };
@@ -249,7 +257,6 @@ export function ScreenRecordingProvider({ children }: ScreenRecordingProviderPro
           recorder.start(1000);
           
           dispatch({ type: 'START_RECORDING', payload: { startTime } });
-          dispatch({ type: 'CAPTURE_SUCCESS' });
         } catch (error) {
           console.error('Error starting recording:', error);
           await emit('recording-start-failed', { message: (error as Error).message });
@@ -290,14 +297,14 @@ export function ScreenRecordingProvider({ children }: ScreenRecordingProviderPro
     };
   }, [state.status]);
 
-  // Cleanup on unmount
+  // Cleanup on unmount only
   useEffect(() => {
     return () => {
       if (state.status !== 'idle') {
         cleanup();
       }
     };
-  }, [state.status, cleanup]);
+  }, []);
 
   // Public API functions
   const startRecording = useCallback(async (options: { recordAudio?: boolean; audioDeviceId?: string; frameRate?: number } = {}, analysisMetadata?: AnalysisMetadata | null) => {
@@ -305,6 +312,8 @@ export function ScreenRecordingProvider({ children }: ScreenRecordingProviderPro
       console.warn('Recording already in progress or in an invalid state');
       return;
     }
+
+    wasCancelledRef.current = false;
 
     // Store options and metadata for use in the effect
     recordingOptionsRef.current = {
@@ -324,13 +333,19 @@ export function ScreenRecordingProvider({ children }: ScreenRecordingProviderPro
     }
   }, [state.status]);
 
+  const cancelRecording = useCallback(() => {
+    wasCancelledRef.current = true;
+    stopRecording();
+  }, [stopRecording]);
+
   // Memoized context value
   const value = useMemo<ScreenRecordingContextValue>(() => ({
     isRecording: state.status === 'capturing' || state.status === 'recording',
     startTime: state.startTime,
     startRecording,
-    stopRecording
-  }), [state.status, state.startTime, startRecording, stopRecording]);
+    stopRecording,
+    cancelRecording
+  }), [state.status, state.startTime, startRecording, stopRecording, cancelRecording]);
 
   return (
     <ScreenRecordingContext.Provider value={value}>

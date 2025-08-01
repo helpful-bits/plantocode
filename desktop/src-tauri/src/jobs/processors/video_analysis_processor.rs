@@ -1,6 +1,7 @@
 use crate::error::{AppError, AppResult};
 use crate::jobs::processor_trait::JobProcessor;
 use crate::jobs::types::{Job, JobPayload, JobProcessResult, VideoAnalysisPayload, JobResultData};
+use crate::jobs::job_processor_utils;
 use crate::models::{BackgroundJob, TaskType};
 use async_trait::async_trait;
 use std::sync::Arc;
@@ -28,6 +29,10 @@ impl JobProcessor for VideoAnalysisProcessor {
     ) -> AppResult<JobProcessResult> {
         info!("Processing video analysis job: {}", job.id);
 
+        // Setup repositories and mark job as running
+        let (repo, _session_repo, _settings_repo, db_job) =
+            job_processor_utils::setup_job_processing(&job.id, &app_handle).await?;
+
         // Extract VideoAnalysisPayload from job.payload
         let payload = match &job.payload {
             JobPayload::VideoAnalysis(payload) => payload,
@@ -43,10 +48,21 @@ impl JobProcessor for VideoAnalysisProcessor {
             .clone();
 
         // Read video file as bytes
-        let video_data = fs::read(&payload.video_path).await
-            .map_err(|e| AppError::FileSystemError(format!("Failed to read video file '{}': {}", payload.video_path, e)))?;
+        let video_data = match fs::read(&payload.video_path).await {
+            Ok(data) => data,
+            Err(e) => {
+                let error_msg = format!("Failed to read video file '{}': {}", payload.video_path, e);
+                error!("{}", error_msg);
+                return Ok(JobProcessResult::failure(job.id.clone(), error_msg));
+            }
+        };
 
         info!("Read video file: {} bytes", video_data.len());
+
+        // Check if job was canceled before making the API call
+        if job_processor_utils::check_job_canceled(&repo, &job.id).await? {
+            return Ok(JobProcessResult::failure(job.id.clone(), "Job was cancelled".to_string()));
+        }
 
         // Extract filename from path
         let filename = std::path::Path::new(&payload.video_path)
@@ -55,7 +71,7 @@ impl JobProcessor for VideoAnalysisProcessor {
             .unwrap_or("video.mp4");
 
         // Call server proxy to analyze video
-        let analysis_response = server_proxy_client
+        let analysis_response = match server_proxy_client
             .analyze_video(
                 video_data,
                 filename,
@@ -66,7 +82,15 @@ impl JobProcessor for VideoAnalysisProcessor {
                 payload.duration_ms,
                 Some(job.id.to_string()),
             )
-            .await?;
+            .await
+        {
+            Ok(response) => response,
+            Err(e) => {
+                let error_msg = format!("Video analysis failed: {}", e);
+                error!("{}", error_msg);
+                return Ok(JobProcessResult::failure(job.id.clone(), error_msg));
+            }
+        };
 
         info!("Video analysis completed successfully");
 
@@ -81,7 +105,7 @@ impl JobProcessor for VideoAnalysisProcessor {
         });
 
         // Calculate cost using server proxy
-        let cost_response = server_proxy_client
+        let cost_response = match server_proxy_client
             .estimate_cost(
                 &payload.model,
                 analysis_response.usage.prompt_tokens as i64,
@@ -90,7 +114,15 @@ impl JobProcessor for VideoAnalysisProcessor {
                 analysis_response.usage.cached_tokens.map(|t| t as i64), // cache_read_tokens
                 Some(payload.duration_ms),
             )
-            .await?;
+            .await
+        {
+            Ok(response) => response,
+            Err(e) => {
+                error!("Failed to calculate cost: {}", e);
+                // Continue with 0 cost if calculation fails
+                serde_json::json!({"estimatedCost": "0.0"})
+            }
+        };
 
         // Extract cost from response
         let actual_cost = cost_response

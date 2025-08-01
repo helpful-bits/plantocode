@@ -7,7 +7,7 @@ import { Checkbox } from '@/ui/checkbox';
 import { Slider } from '@/ui/slider';
 import { AudioDeviceSelect } from '@/ui';
 import { useTaskContext } from '../_contexts/task-context';
-import { useVideoRecordingSettings } from '@/hooks/useVideoRecordingSettings';
+import { useMediaDeviceSettings } from '@/hooks/useMediaDeviceSettings';
 
 interface VideoRecordingDialogProps {
   isOpen: boolean;
@@ -23,12 +23,12 @@ export const VideoRecordingDialog: React.FC<VideoRecordingDialogProps> = ({
   const { state: taskState, actions: taskActions } = useTaskContext();
   const { 
     selectedAudioInputId, 
-    setSelectedAudioInputId, 
+    selectAudioInput, 
     selectedFrameRate, 
     setSelectedFrameRate, 
     minFps,
     maxFps
-  } = useVideoRecordingSettings();
+  } = useMediaDeviceSettings();
   
   const [localPrompt, setLocalPrompt] = useState('');
   const [recordAudio, setRecordAudio] = useState(true);
@@ -41,12 +41,27 @@ export const VideoRecordingDialog: React.FC<VideoRecordingDialogProps> = ({
   }, [isOpen, taskState.videoAnalysisPrompt]);
   
   const handleStart = () => {
-    // Save the prompt to task context only
-    const promptToUse = localPrompt.trim();
-    taskActions.setVideoAnalysisPrompt(promptToUse);
+    // Get task description and user prompt
+    const taskDescription = taskState.taskDescriptionRef.current?.getValue() || '';
+    const userPrompt = localPrompt.trim();
     
-    // Call onConfirm with an object
-    onConfirm({ prompt: promptToUse, recordAudio, audioDeviceId: selectedAudioInputId, frameRate: selectedFrameRate });
+    // Combine using XML tags
+    let combinedPrompt = '';
+    if (taskDescription) {
+      combinedPrompt += `<description>\n${taskDescription}\n</description>`;
+    }
+    if (userPrompt) {
+      if (combinedPrompt) combinedPrompt += '\n\n';
+      combinedPrompt += `<video_attention_prompt>\n${userPrompt}\n</video_attention_prompt>`;
+    }
+    
+    // Save the user prompt to context
+    if (userPrompt) {
+      taskActions.setVideoAnalysisPrompt(userPrompt);
+    }
+    
+    // Call onConfirm with the combined prompt
+    onConfirm({ prompt: combinedPrompt, recordAudio, audioDeviceId: selectedAudioInputId, frameRate: selectedFrameRate });
     setRecordAudio(true); // Reset to default
     onClose();
   };
@@ -100,7 +115,7 @@ export const VideoRecordingDialog: React.FC<VideoRecordingDialogProps> = ({
                 <Label htmlFor="audio-device" className="text-sm">Audio Device</Label>
                 <AudioDeviceSelect
                   value={selectedAudioInputId}
-                  onValueChange={setSelectedAudioInputId}
+                  onValueChange={selectAudioInput}
                   disabled={!recordAudio}
                   variant="default"
                 />
