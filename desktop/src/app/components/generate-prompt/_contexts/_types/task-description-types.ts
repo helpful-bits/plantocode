@@ -18,6 +18,7 @@ export interface TaskContextState {
   webSearchResults: string[] | null;
   
   // Video analysis state
+  isRecordingVideo: boolean;
   isAnalyzingVideo: boolean;
   videoAnalysisJobId: string | null;
   videoAnalysisPrompt: string;
