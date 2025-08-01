@@ -3,11 +3,9 @@ use crate::models::{JobCommandResponse, TaskType};
 use crate::utils::{config_resolver, job_creation_utils};
 use crate::utils::hash_utils::generate_project_hash;
 use crate::utils::unified_prompt_system::{UnifiedPromptContextBuilder, UnifiedPromptProcessor};
-use crate::db_utils::session_repository::SessionRepository;
 use tauri::{command, AppHandle, Manager};
 use log::{debug, info, error};
 use serde_json;
-use std::sync::Arc;
 
 #[command]
 pub async fn start_video_analysis_job(
@@ -41,31 +39,11 @@ pub async fn start_video_analysis_job(
     // Generate project hash
     let project_hash = generate_project_hash(&project_directory);
     
-    // Get session repository from app state
-    let session_repo = app_handle
-        .state::<Arc<SessionRepository>>()
-        .inner()
-        .clone();
-    
-    // Fetch the session to get task description
-    let session = session_repo
-        .get_session_by_id(&session_id)
-        .await
-        .map_err(|e| format!("Failed to get session: {}", e))?
-        .ok_or_else(|| format!("Session not found: {}", session_id))?;
-    
-    // Combine video analysis prompt with task description using XML tags
-    let combined_prompt = format!(
-        "<task_description>\n{}\n</task_description>\n\n<video_analysis_prompt>\n{}\n</video_analysis_prompt>",
-        session.task_description.as_deref().unwrap_or("No task description provided"),
-        prompt
-    );
-    
     // Create unified prompt context with the combined prompt
     let context = UnifiedPromptContextBuilder::new(
         project_directory.clone(),
         TaskType::VideoAnalysis,
-        combined_prompt.clone(),
+        prompt.clone(),
     )
     .build();
     
@@ -78,7 +56,7 @@ pub async fn start_video_analysis_job(
     
     let payload = VideoAnalysisPayload {
         video_path: video_path.clone(),
-        prompt: combined_prompt.clone(), // Use the combined prompt with XML tags
+        prompt: prompt.clone(),
         model: resolved_model.clone(),
         temperature: resolved_temperature,
         system_prompt: Some(composed_prompt.system_prompt),

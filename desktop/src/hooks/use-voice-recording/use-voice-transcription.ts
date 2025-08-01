@@ -7,7 +7,8 @@ import {
   useRef,
 } from "react";
 
-import { useAudioInputDevices, VoiceMediaHandler } from "@/hooks/use-voice-recording";
+import { useMediaDeviceSettings } from "@/hooks/useMediaDeviceSettings";
+import { VoiceMediaHandler } from "@/hooks/use-voice-recording";
 import { useAudioLevelMonitor, type AudioLevelData } from "@/hooks/use-voice-recording/use-audio-level-monitor";
 import { transcribeAudioChunk } from "@/actions/voice-transcription/transcribe";
 import { useNotification } from "@/contexts/notification-context";
@@ -84,7 +85,7 @@ export function useVoiceTranscription({
     selectedAudioInputId,
     selectAudioInput,
     requestPermissionAndRefreshDevices,
-  } = useAudioInputDevices();
+  } = useMediaDeviceSettings();
 
   // Computed states
   const isRecording = status === 'RECORDING';

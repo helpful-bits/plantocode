@@ -2,7 +2,7 @@
 
 import { Settings } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./select";
-import { useAudioInputDevices } from "@/hooks/use-voice-recording";
+import { useMediaDeviceSettings } from "@/hooks/useMediaDeviceSettings";
 import { cn } from "@/utils/utils";
 
 interface AudioDeviceSelectProps {
@@ -22,7 +22,7 @@ export function AudioDeviceSelect({
   showIcon = true,
   variant = 'compact',
 }: AudioDeviceSelectProps) {
-  const { availableAudioInputs } = useAudioInputDevices();
+  const { availableAudioInputs } = useMediaDeviceSettings();
 
   const triggerClassName = variant === 'compact' 
     ? cn(

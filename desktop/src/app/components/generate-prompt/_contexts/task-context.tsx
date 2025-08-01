@@ -27,7 +27,6 @@ const defaultValue: TaskContextValue = {
     canRedo: false,
     webSearchResults: null,
     // Video analysis state defaults
-    isRecordingVideo: false,
     isAnalyzingVideo: false,
     videoAnalysisJobId: null,
     videoAnalysisPrompt: '',
@@ -74,6 +73,7 @@ function useProvideTaskContext(taskDescriptionRef: React.RefObject<TaskDescripti
   
   // Get additional required contexts
   const screenRecording = useScreenRecording();
+  const { isRecording, cancelRecording } = screenRecording;
   const { showNotification } = useNotification();
   
   // Handle user interaction that modifies session
@@ -101,7 +101,6 @@ function useProvideTaskContext(taskDescriptionRef: React.RefObject<TaskDescripti
   });
   
   // Video recording and analysis state
-  const [isRecordingVideo, setIsRecordingVideo] = useState(false);
   const [isAnalyzingVideo, setIsAnalyzingVideo] = useState(false);
   const [videoAnalysisJobId, setVideoAnalysisJobId] = useState<string | null>(null);
   // Initialize prompt from session or use default
@@ -152,7 +151,6 @@ function useProvideTaskContext(taskDescriptionRef: React.RefObject<TaskDescripti
         prompt: args.prompt
       });
       
-      setIsRecordingVideo(true);
       setIsAnalyzingVideo(false); // Not analyzing yet, just recording
     } catch (error) {
       console.error('Failed to start video analysis recording:', error);
@@ -193,7 +191,6 @@ function useProvideTaskContext(taskDescriptionRef: React.RefObject<TaskDescripti
     
     const setupListener = async () => {
       const unlistenFn = await listen<{ message: string }>('recording-start-failed', (event) => {
-        setIsRecordingVideo(false);
         setIsAnalyzingVideo(false);
         showNotification({
           title: "Recording Failed",
@@ -214,15 +211,21 @@ function useProvideTaskContext(taskDescriptionRef: React.RefObject<TaskDescripti
     };
   }, [showNotification]);
   
-  // Listen for recording-finished event to transition from recording to analyzing
+  // Reset video state
+  const resetVideoState = useCallback(() => {
+    videoPathRef.current = null;
+    setVideoAnalysisJobId(null);
+    setIsAnalyzingVideo(false);
+    // Don't clear the prompt when resetting video state - keep it for future recordings
+  }, []);
+  
+  // Listen for recording-cancelled event
   useEffect(() => {
     let unlisten: (() => void) | undefined;
     
     const setupListener = async () => {
-      const unlistenFn = await listen('recording-finished', () => {
-        setIsRecordingVideo(false);
-        // We're now analyzing since we started with analysis intent
-        setIsAnalyzingVideo(true);
+      const unlistenFn = await listen('recording-cancelled', () => {
+        resetVideoState();
       });
       
       unlisten = unlistenFn;
@@ -235,22 +238,13 @@ function useProvideTaskContext(taskDescriptionRef: React.RefObject<TaskDescripti
         unlisten();
       }
     };
-  }, []);
-  
-  // Reset video state
-  const resetVideoState = useCallback(() => {
-    videoPathRef.current = null;
-    setVideoAnalysisJobId(null);
-    setIsRecordingVideo(false);
-    setIsAnalyzingVideo(false);
-    // Don't clear the prompt when resetting video state - keep it for future recordings
-  }, []);
+  }, [resetVideoState]);
   
   // Cancel video analysis or recording
   const cancelVideoAnalysis = useCallback(async () => {
-    // If currently recording, stop the recording
-    if (screenRecording.isRecording) {
-      screenRecording.stopRecording();
+    // If currently recording, cancel the recording
+    if (isRecording) {
+      cancelRecording();
       resetVideoState();
       showNotification({
         title: "Recording Cancelled",
@@ -274,7 +268,7 @@ function useProvideTaskContext(taskDescriptionRef: React.RefObject<TaskDescripti
         console.error('Failed to cancel video analysis:', error);
       }
     }
-  }, [videoAnalysisJobId, screenRecording, resetVideoState, showNotification]);
+  }, [videoAnalysisJobId, isRecording, screenRecording, resetVideoState, showNotification]);
 
   // Use background job hook for monitoring
   const { job: videoAnalysisJob } = useBackgroundJob(videoAnalysisJobId);
@@ -349,7 +343,6 @@ function useProvideTaskContext(taskDescriptionRef: React.RefObject<TaskDescripti
         canRedo,
         webSearchResults,
         // Video analysis state
-        isRecordingVideo,
         isAnalyzingVideo,
         videoAnalysisJobId,
         videoAnalysisPrompt,

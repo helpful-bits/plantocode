@@ -21,5 +21,5 @@ export * from "./use-voice-recording";
 // Application state hooks
 export * from "./use-reset-app";
 
-// Video recording hooks
-export * from "./useVideoRecordingSettings";
+// Media device settings hooks
+export * from "./useMediaDeviceSettings";
