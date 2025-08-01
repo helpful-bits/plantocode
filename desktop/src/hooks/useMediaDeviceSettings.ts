@@ -2,9 +2,11 @@
 
 import { useState, useEffect, useCallback } from "react";
 
+export const FPS_OPTIONS = [5, 10, 15, 20, 25, 30];
+
 const STORAGE_KEY = 'vibe-manager-audio-device';
 
-export function useAudioInputDevices() {
+export function useMediaDeviceSettings() {
   const [availableAudioInputs, setAvailableAudioInputs] = useState<
     MediaDeviceInfo[]
   >([]);
@@ -21,6 +23,19 @@ export function useAudioInputDevices() {
     }
     return "default";
   });
+
+  const [selectedFrameRate, setSelectedFrameRate] = useState<number>(5);
+
+  // Load frame rate from localStorage on mount
+  useEffect(() => {
+    const savedFrameRate = localStorage.getItem('video-recording-frame-rate');
+    if (savedFrameRate) {
+      const parsedFrameRate = parseInt(savedFrameRate, 10);
+      if (!isNaN(parsedFrameRate)) {
+        setSelectedFrameRate(parsedFrameRate);
+      }
+    }
+  }, []);
 
   // Enumerate available audio input devices
   useEffect(() => {
@@ -57,6 +72,12 @@ export function useAudioInputDevices() {
       }
     }
   }, []);
+
+  // Save to localStorage whenever frame rate changes
+  const updateSelectedFrameRate = (fps: number) => {
+    setSelectedFrameRate(fps);
+    localStorage.setItem('video-recording-frame-rate', fps.toString());
+  };
 
   // Re-enumerate devices to ensure labels are populated after permissions
   const refreshDeviceList = useCallback(async () => {
@@ -181,5 +202,10 @@ export function useAudioInputDevices() {
     selectAudioInput,
     refreshDeviceList,
     requestPermissionAndRefreshDevices,
+    selectedFrameRate,
+    setSelectedFrameRate: updateSelectedFrameRate,
+    FPS_OPTIONS,
+    minFps: Math.min(...FPS_OPTIONS),
+    maxFps: Math.max(...FPS_OPTIONS),
   };
 }

@@ -2,6 +2,7 @@
 
 import { DatabaseErrorHandler } from "@/ui";
 import { TextImprovementPopover } from "@/contexts/text-improvement";
+import { ScreenRecordingProvider } from "@/contexts/screen-recording";
 
 import { BackgroundJobsSidebar } from "../client-components";
 import { Navigation } from "./navigation";
@@ -18,7 +19,7 @@ import type { ReactNode } from "react";
 export function AppShell({ children }: { children: ReactNode }) {
   // AuthFlowManager controls when this component renders, so we can proceed directly with the full UI
   return (
-    <>
+    <ScreenRecordingProvider>
       {/* Background jobs sidebar - positioned outside flex layout */}
       <BackgroundJobsSidebar />
 
@@ -51,6 +52,6 @@ export function AppShell({ children }: { children: ReactNode }) {
       
       {/* Global recording indicator */}
       <GlobalRecordingIndicator />
-    </>
+    </ScreenRecordingProvider>
   );
 }
