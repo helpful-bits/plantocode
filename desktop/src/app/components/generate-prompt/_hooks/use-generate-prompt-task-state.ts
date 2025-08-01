@@ -9,8 +9,9 @@ import {
   useSessionStateContext, 
   useSessionActionsContext 
 } from "@/contexts/session";
-import { startVideoAnalysisJob } from "@/actions/video-analysis/start-video-analysis.action";
-import { useBackgroundJobs } from "@/contexts/background-jobs";
+import { useScreenRecording } from "@/contexts/screen-recording";
+import { useBackgroundJob } from "@/contexts/_hooks/use-background-job";
+import { cancelBackgroundJobAction } from "@/actions/background-jobs/jobs.actions";
 import { useNotification } from "@/contexts/notification-context";
 import type { VideoAnalysisJobResult } from "@/types/video-analysis-types";
 
@@ -30,8 +31,8 @@ export function useGeneratePromptTaskState({
   const sessionState = useSessionStateContext();
   const sessionActions = useSessionActionsContext();
   
-  // Get background jobs and notification context
-  const { jobs } = useBackgroundJobs();
+  // Get additional required contexts
+  const screenRecording = useScreenRecording();
   const { showNotification } = useNotification();
   
   // Handle user interaction that modifies session
@@ -86,8 +87,8 @@ export function useGeneratePromptTaskState({
     sessionActions.setSessionModified(true);
   }, [sessionActions]);
   
-  // Handle video analysis
-  const handleAnalyzeVideo = useCallback(async (args: { path: string; durationMs: number }) => {
+  // Handle video analysis recording start
+  const startVideoAnalysisRecording = useCallback(async (args: { prompt: string; recordAudio: boolean; audioDeviceId: string; frameRate: number }) => {
     if (!sessionState.currentSession) return;
     
     // Prevent duplicate analysis if one is already in progress
@@ -96,74 +97,80 @@ export function useGeneratePromptTaskState({
       return;
     }
     
-    // Store the video path for reference
-    videoPathRef.current = args.path;
-    setIsAnalyzingVideo(true);
-    
     try {
-      // Use default prompt if videoAnalysisPrompt is empty
-      const promptToUse = videoAnalysisPrompt.trim() || 'Please analyze this video and provide a detailed summary of what you observe, including key events, actions, and any notable details.';
+      const sessionId = sessionState.currentSession.id;
+      const projectDirectory = sessionState.currentSession.projectDirectory;
       
-      const response = await startVideoAnalysisJob({
-        sessionId: sessionState.currentSession.id,
-        projectDirectory: sessionState.currentSession.projectDirectory,
-        videoPath: args.path,
-        prompt: promptToUse,
-        durationMs: args.durationMs,
+      // Call screenRecording.startRecording with analysis metadata
+      await screenRecording.startRecording({
+        recordAudio: args.recordAudio,
+        audioDeviceId: args.audioDeviceId,
+        frameRate: args.frameRate
+      }, {
+        sessionId,
+        projectDirectory,
+        prompt: args.prompt
       });
       
-      setVideoAnalysisJobId(response.jobId);
-      // Keep isAnalyzingVideo as true - it will be reset when the job completes or in resetVideoState
-      
-      // Show notification that analysis has started
-      showNotification({
-        title: "Video Analysis Started",
-        message: "Processing your video recording...",
-        type: "info",
-      });
+      setIsAnalyzingVideo(true);
     } catch (error) {
-      console.error('Failed to start video analysis:', error);
-      setIsAnalyzingVideo(false);
-      videoPathRef.current = null; // Clear the ref on error
+      console.error('Failed to start video analysis recording:', error);
       
       // Show error notification
       showNotification({
-        title: "Video Analysis Failed",
-        message: "Failed to start video analysis. Please try again.",
+        title: "Recording Failed",
+        message: "Failed to start screen recording. Please try again.",
         type: "error",
       });
     }
-  }, [sessionState.currentSession, videoAnalysisPrompt, showNotification, isAnalyzingVideo]);
+  }, [sessionState.currentSession, screenRecording, showNotification, isAnalyzingVideo]);
   
-  // Listen for recording completion
+  // Listen for video-analysis-started event
   useEffect(() => {
     let unlisten: (() => void) | undefined;
-    let isActive = true;
     
     const setupListener = async () => {
-      if (!isActive) return;
-      
-      const unlistenFn = await listen<{ path: string; durationMs: number }>('recording-finished', async (event) => {
-        await handleAnalyzeVideo(event.payload);
+      const unlistenFn = await listen<{ jobId: string }>('video-analysis-started', (event) => {
+        setVideoAnalysisJobId(event.payload.jobId);
       });
       
-      if (isActive) {
-        unlisten = unlistenFn;
-      } else {
-        // Component unmounted before listener was set up, clean up immediately
-        unlistenFn();
-      }
+      unlisten = unlistenFn;
     };
     
     setupListener();
     
     return () => {
-      isActive = false;
       if (unlisten) {
         unlisten();
       }
     };
-  }, [handleAnalyzeVideo]);
+  }, []);
+  
+  // Listen for recording-start-failed event
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    
+    const setupListener = async () => {
+      const unlistenFn = await listen<{ message: string }>('recording-start-failed', (event) => {
+        setIsAnalyzingVideo(false);
+        showNotification({
+          title: "Recording Failed",
+          message: event.payload.message || "Failed to start screen recording",
+          type: "error",
+        });
+      });
+      
+      unlisten = unlistenFn;
+    };
+    
+    setupListener();
+    
+    return () => {
+      if (unlisten) {
+        unlisten();
+      }
+    };
+  }, [showNotification]);
   
   // Reset video state
   const resetVideoState = useCallback(() => {
@@ -172,59 +179,67 @@ export function useGeneratePromptTaskState({
     setIsAnalyzingVideo(false);
     // Don't clear the prompt when resetting video state - keep it for future recordings
   }, []);
+  
+  // Cancel video analysis
+  const cancelVideoAnalysis = useCallback(async () => {
+    if (!videoAnalysisJobId) return;
+    
+    try {
+      await cancelBackgroundJobAction(videoAnalysisJobId);
+      resetVideoState();
+      showNotification({
+        title: "Video Analysis Cancelled",
+        message: "The video analysis was cancelled",
+        type: "info",
+      });
+    } catch (error) {
+      console.error('Failed to cancel video analysis:', error);
+    }
+  }, [videoAnalysisJobId, resetVideoState, showNotification]);
 
-  // Monitor video analysis job using jobs array
+  // Use background job hook for monitoring
+  const { job: videoAnalysisJob } = useBackgroundJob(videoAnalysisJobId);
+  
+  // Monitor video analysis job status
   useEffect(() => {
-    if (!videoAnalysisJobId || !jobs || !videoPathRef.current) return;
+    if (!videoAnalysisJob) return;
     
-    const job = jobs.find(j => j.id === videoAnalysisJobId);
-    if (!job) return;
-    
-    const handleJobCompletion = async () => {
-      if (job.status === 'completed' && job.response) {
-        try {
-          // Parse the response
-          const response = JSON.parse(job.response) as VideoAnalysisJobResult;
-          
-          // Format and append to task description
-          const formattedAnalysis = `\n\n<video_analysis_summary>\n${response.analysis}\n</video_analysis_summary>\n`;
-          taskDescriptionRef.current?.appendText(formattedAnalysis);
-          
-          // Keep video file for user reference - do not delete
-          
-          // Reset state and show success notification
-          resetVideoState();
-          showNotification({
-            title: "Video Analysis Complete",
-            message: "The analysis has been added to your task description",
-            type: "success",
-          });
-        } catch (error) {
-          console.error('Failed to process video analysis result:', error);
-          showNotification({
-            title: "Video Analysis Error",
-            message: "Failed to process the video analysis results",
-            type: "error",
-          });
-        }
-      } else if (job.status === 'failed') {
-        // Handle failure
-        console.error('Video analysis failed:', job.errorMessage);
+    if (videoAnalysisJob.status === 'completed' && videoAnalysisJob.response) {
+      try {
+        // Parse the response
+        const response = JSON.parse(videoAnalysisJob.response) as VideoAnalysisJobResult;
         
-        // Keep video file for user reference even on failure - do not delete
+        // Format and append to task description
+        const formattedAnalysis = `\n\n<video_analysis_summary>\n${response.analysis}\n</video_analysis_summary>\n`;
+        taskDescriptionRef.current?.appendText(formattedAnalysis);
         
-        // Reset video state
+        // Reset state and show success notification
         resetVideoState();
         showNotification({
-          title: "Video Analysis Failed",
-          message: job.errorMessage || "An error occurred during analysis",
+          title: "Video Analysis Complete",
+          message: "The analysis has been added to your task description",
+          type: "success",
+        });
+      } catch (error) {
+        console.error('Failed to process video analysis result:', error);
+        showNotification({
+          title: "Video Analysis Error",
+          message: "Failed to process the video analysis results",
           type: "error",
         });
       }
-    };
-
-    handleJobCompletion();
-  }, [jobs, videoAnalysisJobId, taskDescriptionRef, resetVideoState, showNotification]);
+    } else if (videoAnalysisJob.status === 'failed') {
+      console.error('Video analysis failed:', videoAnalysisJob.errorMessage);
+      
+      // Reset video state
+      resetVideoState();
+      showNotification({
+        title: "Video Analysis Failed",
+        message: videoAnalysisJob.errorMessage || "An error occurred during analysis",
+        type: "error",
+      });
+    }
+  }, [videoAnalysisJob, taskDescriptionRef, resetVideoState, showNotification]);
 
 
 
@@ -259,8 +274,9 @@ export function useGeneratePromptTaskState({
       videoAnalysisJobId,
       videoAnalysisPrompt,
       setVideoAnalysisPrompt: updateVideoAnalysisPrompt,
-      handleAnalyzeVideo,
+      startVideoAnalysisRecording,
       resetVideoState,
+      cancelVideoAnalysis,
 
       // Combined Actions
       resetTaskState,
@@ -282,8 +298,9 @@ export function useGeneratePromptTaskState({
       videoAnalysisJobId,
       videoAnalysisPrompt,
       updateVideoAnalysisPrompt, // memoized with useCallback
-      handleAnalyzeVideo, // memoized with useCallback
+      startVideoAnalysisRecording, // memoized with useCallback
       resetVideoState, // memoized with useCallback
+      cancelVideoAnalysis, // memoized with useCallback
       resetTaskState, // memoized with useCallback above
     ]
   );

@@ -206,6 +206,7 @@ fn main() {
             commands::job_commands::delete_background_job_command,
             commands::job_commands::get_background_job_by_id_command,
             commands::video_analysis_commands::start_video_analysis_job,
+            commands::screen_recording_commands::stop_screen_recording,
             // File system commands
             commands::file_system_commands::get_home_directory_command,
             commands::file_system_commands::list_project_files_command,
