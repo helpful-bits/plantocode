@@ -1,0 +1,132 @@
+---
+# PostgreSQL Installation, Hardening, and Backup
+# This is the single source of truth for PostgreSQL setup.
+
+- name: PostgreSQL Setup, Hardening & Backup
+  hosts: all
+  become: yes
+  vars:
+    postgresql_version: 17
+    postgresql_memory_percentage: 0.25 # 25% of RAM for shared_buffers
+    backup_dir: /var/backups/postgresql
+    backup_retention_days: 7
+
+  tasks:
+    - name: Ensure dependencies are present
+      apt:
+        name: 
+          - python3-psycopg2
+          - fail2ban
+        state: present
+
+    # ========================================
+    # INSTALLATION
+    # ========================================
+    - name: Install PostgreSQL
+      block:
+        - name: Add PostgreSQL APT key
+          apt_key:
+            url: https://www.postgresql.org/media/keys/ACCC4CF8.asc
+            state: present
+        - name: Add PostgreSQL repository
+          apt_repository:
+            repo: "deb https://apt.postgresql.org/pub/repos/apt {{ ansible_distribution_release }}-pgdg main"
+            state: present
+        - name: Install PostgreSQL packages
+          apt:
+            name:
+              - postgresql-{{ postgresql_version }}
+              - postgresql-client-{{ postgresql_version }}
+              - postgresql-contrib
+            state: present
+            update_cache: yes
+
+    # ========================================
+    # CONFIGURATION & HARDENING
+    # ========================================
+    - name: Configure and Harden PostgreSQL
+      block:
+        - name: Calculate memory settings
+          set_fact:
+            shared_buffers: "{{ (ansible_memtotal_mb * postgresql_memory_percentage / 1024) | round | int }}GB"
+            effective_cache_size: "{{ (ansible_memtotal_mb * 0.75 / 1024) | round | int }}GB"
+        - name: Tune postgresql.conf
+          lineinfile:
+            path: "/etc/postgresql/{{ postgresql_version }}/main/postgresql.conf"
+            regexp: "^#?{{ item.key }} ="
+            line: "{{ item.key }} = {{ item.value }}"
+          loop:
+            - { key: "listen_addresses", value: "'localhost'" }
+            - { key: "shared_buffers", value: "{{ shared_buffers }}" }
+            - { key: "effective_cache_size", value: "{{ effective_cache_size }}" }
+            - { key: "log_connections", value: "on" }
+            - { key: "log_disconnections", value: "on" }
+            - { key: "log_duration", value: "on" }
+          notify: restart postgresql
+        - name: Secure pg_hba.conf
+          copy:
+            dest: "/etc/postgresql/{{ postgresql_version }}/main/pg_hba.conf"
+            content: |
+              # TYPE  DATABASE        USER            ADDRESS                 METHOD
+              local   all             postgres                                peer
+              local   all             all                                     peer
+              host    all             all             127.0.0.1/32            scram-sha-256
+              host    all             all             ::1/128                 scram-sha-256
+          notify: restart postgresql
+        - name: Configure fail2ban for PostgreSQL
+          copy:
+            dest: /etc/fail2ban/jail.d/postgresql.conf
+            content: |
+              [postgres]
+              enabled = true
+              port = 5432
+              filter = postgres
+              logpath = /var/log/postgresql/postgresql-{{ postgresql_version }}-main.log
+              maxretry = 5
+          notify: restart fail2ban
+        - name: Ensure PostgreSQL is running and enabled
+          systemd:
+            name: "postgresql@{{ postgresql_version }}-main"
+            state: started
+            enabled: yes
+
+    # ========================================
+    # BACKUP CONFIGURATION
+    # ========================================
+    - name: Configure PostgreSQL Backups
+      block:
+        - name: Create backup directory
+          file:
+            path: "{{ backup_dir }}"
+            state: directory
+            owner: postgres
+            group: postgres
+            mode: '0750'
+        - name: Create backup script
+          copy:
+            dest: /usr/local/bin/pg_backup.sh
+            mode: '0755'
+            content: |
+              #!/bin/bash
+              BACKUP_DIR="{{ backup_dir }}"
+              TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+              sudo -u postgres pg_dumpall | gzip > "$BACKUP_DIR/all_databases_$TIMESTAMP.sql.gz"
+              find "$BACKUP_DIR" -name "*.sql.gz" -mtime +{{ backup_retention_days }} -delete
+              echo "Backup completed: all_databases_$TIMESTAMP.sql.gz"
+        - name: Setup daily backup cron job
+          cron:
+            name: "PostgreSQL daily backup"
+            minute: "0"
+            hour: "3"
+            job: "/usr/local/bin/pg_backup.sh > /dev/null 2>&1"
+            user: root
+
+  handlers:
+    - name: restart postgresql
+      systemd:
+        name: "postgresql@{{ postgresql_version }}-main"
+        state: restarted
+    - name: restart fail2ban
+      systemd:
+        name: fail2ban
+        state: restarted

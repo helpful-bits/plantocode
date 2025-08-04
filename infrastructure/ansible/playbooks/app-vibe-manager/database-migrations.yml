@@ -1,0 +1,157 @@
+---
+# Database Migrations for Vibe Manager Application
+# This playbook manages database schema and data migrations
+# It should be run after base PostgreSQL is installed but before app deployment
+
+- name: Vibe Manager Database Migrations
+  hosts: all
+  become: yes
+  vars:
+    app_name: vibe-manager
+    app_dir: "/opt/{{ app_name }}"
+    migrations_dir: "{{ app_dir }}/migrations"
+    db_name: appdb
+    db_user: appuser
+    
+  tasks:
+    # ========================================
+    # PREPARE MIGRATIONS
+    # ========================================
+    - name: Create migrations directory
+      file:
+        path: "{{ migrations_dir }}"
+        state: directory
+        owner: "{{ app_name }}"
+        group: "{{ app_name }}"
+        mode: '0755'
+        
+    - name: Copy migration files
+      copy:
+        src: "{{ item }}"
+        dest: "{{ migrations_dir }}/{{ item | basename }}"
+        owner: "{{ app_name }}"
+        group: "{{ app_name }}"
+        mode: '0644'
+      with_fileglob:
+        - "../../../../server/migrations/*.sql"
+      tags: [migrations]
+      
+    # ========================================
+    # RUN MIGRATIONS
+    # ========================================
+    - name: Run migrations in order
+      block:
+        - name: Run consolidated schema
+          become_user: postgres
+          shell: psql -d {{ db_name }} -f {{ migrations_dir }}/consolidated_schema.sql
+          register: schema_result
+          changed_when: "'CREATE' in schema_result.stdout"
+          
+        - name: Display schema migration result
+          debug:
+            msg: "Schema migration completed: {{ schema_result.rowcount | default(0) }} objects created/modified"
+            
+        - name: Run data migrations in sequence
+          become_user: postgres
+          shell: psql -d {{ db_name }} -f {{ migrations_dir }}/{{ item }}
+          loop:
+            - data_providers.sql
+            - data_models.sql
+            - data_model_mappings.sql
+            - data_system_prompts.sql
+            - data_app_configs.sql
+            - data_estimation_coefficients.sql
+          register: data_results
+          changed_when: "'INSERT' in data_results.stdout | default('')"
+          
+        - name: Run constraint fixes if needed
+          become_user: postgres
+          shell: psql -d {{ db_name }} -f {{ migrations_dir }}/{{ item }}
+          loop:
+            - fix_nullable_constraints.sql
+            - fix_remaining_type_issues.sql
+            - fix_timestamp_with_view.sql
+          register: fix_results
+          ignore_errors: yes
+          changed_when: "'ALTER' in fix_results.stdout"
+      tags: [migrate]
+      
+    # ========================================
+    # MIGRATION STATUS
+    # ========================================
+    - name: Check migration status
+      tags: [status]
+      block:
+        - name: List all tables
+          become_user: postgres
+          postgresql_query:
+            db: "{{ db_name }}"
+            query: |
+              SELECT table_name 
+              FROM information_schema.tables 
+              WHERE table_schema = 'public' 
+              ORDER BY table_name
+          register: tables_list
+          
+        - name: Display database status
+          debug:
+            msg:
+              - "Database: {{ db_name }}"
+              - "Tables created: {{ tables_list.rowcount }}"
+              - "Tables: {{ tables_list.query_result | map(attribute='table_name') | list | join(', ') }}"
+              
+        - name: Check key configurations
+          become_user: postgres
+          postgresql_query:
+            db: "{{ db_name }}"
+            query: "SELECT COUNT(*) as count FROM {{ item }}"
+          loop:
+            - providers
+            - models
+            - model_mappings
+            - default_system_prompts
+            - application_configurations
+          register: config_counts
+          
+        - name: Display configuration counts
+          debug:
+            msg: "{{ item.item }}: {{ item.query_result[0].count }} records"
+          loop: "{{ config_counts.results }}"
+          
+    # ========================================
+    # MIGRATION ROLLBACK
+    # ========================================
+    - name: Rollback migrations (DANGEROUS!)
+      tags: [rollback, never]
+      block:
+        - name: Confirm rollback
+          pause:
+            prompt: "This will DROP ALL TABLES! Type 'yes' to confirm"
+          register: rollback_confirm
+          
+        - name: Drop all tables
+          become_user: postgres
+          postgresql_query:
+            db: "{{ db_name }}"
+            query: |
+              DO $$ 
+              DECLARE 
+                r RECORD;
+              BEGIN
+                FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
+                  EXECUTE 'DROP TABLE IF EXISTS ' || quote_ident(r.tablename) || ' CASCADE';
+                END LOOP;
+              END $$;
+          when: rollback_confirm.user_input == "yes"
+          
+        - name: Rollback complete
+          debug:
+            msg: "All tables dropped. Run with --tags migrate to recreate."
+          when: rollback_confirm.user_input == "yes"
+
+  handlers:
+    - name: restart app
+      systemd:
+        name: "{{ app_name }}"
+        state: restarted
+      when: "'{{ app_name }}.service' in ansible_facts.services"

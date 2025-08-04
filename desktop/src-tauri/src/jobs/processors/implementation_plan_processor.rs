@@ -61,7 +61,7 @@ impl JobProcessor for ImplementationPlanProcessor {
             job_processor_utils::get_llm_task_config(&db_job, &app_handle, &session).await?;
         let (model_used, temperature, max_output_tokens) = model_settings;
         let llm_client =
-            crate::jobs::processors::utils::llm_api_utils::get_api_client(&app_handle)?;
+            crate::jobs::processors::utils::llm_api_utils::get_api_client(&app_handle).await?;
         let job_id = job.id.clone();
 
         job_processor_utils::log_job_start(&job_id, "implementation plan");

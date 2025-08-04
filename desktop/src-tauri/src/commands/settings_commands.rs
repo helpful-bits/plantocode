@@ -12,7 +12,8 @@ use serde_json::{Map, json};
 use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::Arc;
-use tauri::{AppHandle, Manager};
+use crate::auth::TokenManager;
+use tauri::{AppHandle, Manager, State};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ConfigurationHealthReport {
@@ -30,6 +31,12 @@ pub enum ProjectConfigStatus {
     Complete,
     IncompleteButMerged,
     Invalid,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
+pub struct ServerRegionInfo {
+    pub label: String,
+    pub url: String,
 }
 
 #[tauri::command]
@@ -415,6 +422,108 @@ pub async fn get_project_task_model_settings_command(
 }
 
 #[tauri::command]
+pub async fn get_available_regions_command() -> AppResult<Vec<ServerRegionInfo>> {
+    let client = reqwest::Client::new();
+
+    // Attempt to fetch from local/dev server URL first if available
+    if let Ok(dev_server_url) = std::env::var("MAIN_SERVER_BASE_URL") {
+        if !dev_server_url.is_empty() {
+            let regions_url = format!("{}/config/regions", dev_server_url.trim_end_matches('/'));
+            if let Ok(response) = client.get(&regions_url).send().await {
+                if response.status().is_success() {
+                    if let Ok(regions) = response.json::<Vec<ServerRegionInfo>>().await {
+                        log::info!("Fetched server regions from dev server: {}", dev_server_url);
+                        return Ok(regions);
+                    }
+                }
+            }
+        }
+    }
+    
+    // Try US region first
+    let us_url = "https://api.us.vibemanager.app/config/regions";
+    if let Ok(response) = client.get(us_url).send().await {
+        if response.status().is_success() {
+            if let Ok(regions) = response.json::<Vec<ServerRegionInfo>>().await {
+                return Ok(regions);
+            }
+        }
+    }
+    
+    // Fallback to EU region
+    let eu_url = "https://api.eu.vibemanager.app/config/regions";
+    if let Ok(response) = client.get(eu_url).send().await {
+        if response.status().is_success() {
+            if let Ok(regions) = response.json::<Vec<ServerRegionInfo>>().await {
+                return Ok(regions);
+            }
+        }
+    }
+    
+    // Return default regions if both fail
+    Ok(vec![
+        ServerRegionInfo {
+            label: "US (Default)".to_string(),
+            url: "https://api.us.vibemanager.app".to_string(),
+        },
+        ServerRegionInfo {
+            label: "EU".to_string(),
+            url: "https://api.eu.vibemanager.app".to_string(),
+        },
+    ])
+}
+
+#[tauri::command]
+pub async fn get_selected_server_url_command(
+    settings_repo: State<'_, Arc<SettingsRepository>>,
+) -> AppResult<Option<String>> {
+    settings_repo.get_value("selected_server_url").await
+}
+
+#[tauri::command]
+pub async fn set_selected_server_url_command(
+    app_handle: AppHandle,
+    settings_repo: State<'_, Arc<SettingsRepository>>,
+    url: String,
+) -> AppResult<()> {
+    // Save the URL to settings
+    settings_repo.set_value("selected_server_url", &url).await?;
+    
+    // Reinitialize API clients with new URL
+    reinitialize_api_clients(&app_handle, &url).await?;
+    
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn change_server_url_and_reset_command(
+    app_handle: AppHandle,
+    settings_repo: State<'_, Arc<SettingsRepository>>,
+    token_manager: State<'_, Arc<TokenManager>>,
+    config_cache: State<'_, ConfigCache>,
+    new_url: String,
+) -> AppResult<()> {
+    // Clear tokens
+    token_manager.set(None).await?;
+    
+    // Clear cache
+    if let Ok(mut cache_guard) = config_cache.lock() {
+        cache_guard.clear();
+    }
+    
+    // Save the new URL and reinitialize API clients
+    settings_repo.set_value("selected_server_url", &new_url).await?;
+    reinitialize_api_clients(&app_handle, &new_url).await?;
+    
+    Ok(())
+}
+
+/// Reinitialize API clients with a new server URL
+async fn reinitialize_api_clients(app_handle: &AppHandle, server_url: &str) -> AppResult<()> {
+    crate::app_setup::services::reinitialize_api_clients(app_handle, server_url.to_string()).await
+}
+
+#[tauri::command]
 pub async fn set_project_task_setting_command(
     app_handle: AppHandle,
     project_directory: String,
@@ -529,7 +638,7 @@ pub async fn get_server_default_system_prompts_command(app_handle: AppHandle) ->
     // This connects to the server PostgreSQL database to fetch default_system_prompts
     // organized by task_type for easy lookup
 
-    let server_client = app_handle.state::<Arc<ServerProxyClient>>().inner().clone();
+    let server_client = crate::api_clients::client_factory::get_server_proxy_client(&app_handle).await?;
 
     // Make HTTP request to server to get default system prompts
     match server_client.get_default_system_prompts().await {
