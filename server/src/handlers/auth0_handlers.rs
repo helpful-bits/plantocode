@@ -1,7 +1,6 @@
 use actix_web::{web, HttpResponse, Result, HttpRequest};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use tera::Tera;
 use crate::auth_stores::{PollingStore, Auth0StateStore, Auth0PendingCodeInfo, Auth0StateStoreValue};
 use crate::services::auth::oauth::Auth0OAuthService;
 use crate::error::AppError;
@@ -97,7 +96,7 @@ pub async fn handle_auth0_callback(
     query: web::Query<Auth0CallbackQuery>,
     polling_store: web::Data<PollingStore>,
     auth0_state_store: web::Data<Auth0StateStore>,
-    tera: web::Data<Tera>,
+    app_state: web::Data<AppState>,
 ) -> Result<HttpResponse, AppError> {
     let state_value = match auth0_state_store.remove(&query.state) {
         Some((_, value)) => value,
@@ -116,18 +115,13 @@ pub async fn handle_auth0_callback(
         },
     );
     
-    let context = tera::Context::new();
-    let rendered = tera.render("auth0_callback.html", &context)
-        .map_err(|e| {
-            error!("Template rendering error: {}", e);
-            AppError::Internal(format!("Template rendering error: {}", e))
-        })?;
+    let redirect_url = format!("{}/auth/callback", &app_state.settings.website_base_url);
     
     info!("Auth0 callback processed for polling ID: {}", state_value.polling_id);
     
-    Ok(HttpResponse::Ok()
-        .content_type("text/html; charset=utf-8")
-        .body(rendered))
+    Ok(HttpResponse::Found()
+        .append_header(("Location", redirect_url))
+        .finish())
 }
 
 pub async fn poll_auth_status(

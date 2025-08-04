@@ -1,0 +1,85 @@
+---
+# Vibe Manager Application Deployment
+# This playbook handles all application-specific setup and deployment
+# Prerequisites: Run site-base.yml first to set up infrastructure
+
+- name: Vibe Manager Application Deployment
+  hosts: all
+  become: yes
+  
+  tasks:
+    - name: Check prerequisites
+      block:
+        - name: Check if PostgreSQL is running
+          systemd:
+            name: postgresql@17-main
+          register: pg_status
+          failed_when: false
+          
+        - name: Check if Redis is running
+          systemd:
+            name: redis
+          register: redis_status
+          failed_when: false
+          
+        - name: Fail if prerequisites not met
+          fail:
+            msg: |
+              Prerequisites not met! Please run base infrastructure setup first:
+              ansible-playbook -i inventory/hosts.yml site-base.yml
+          when: >
+            (pg_status.status.ActiveState | default('inactive') != 'active') or
+            (redis_status.status.ActiveState | default('inactive') != 'active')
+            
+        - name: Prerequisites OK
+          debug:
+            msg: "✓ All prerequisites met. Proceeding with application deployment."
+
+# ========================================
+# APPLICATION DEPLOYMENT
+# ========================================
+
+# Complete application setup (database, migrations, secrets, deployment)
+- import_playbook: playbooks/app-vibe-manager/app-setup.yml
+  tags: [app, setup]
+
+# Individual application components (for maintenance)
+- import_playbook: playbooks/app-vibe-manager/database-migrations.yml
+  tags: [migrations]
+
+
+- import_playbook: playbooks/app-vibe-manager/rust-deploy.yml
+  tags: [deploy]
+
+# ========================================
+# APPLICATION MANAGEMENT
+# ========================================
+- name: Application Management Commands
+  hosts: all
+  become: yes
+  vars:
+    app_name: vibe-manager
+    
+  tasks:
+    - name: Show available commands
+      tags: [help]
+      debug:
+        msg:
+          - "=== VIBE MANAGER MANAGEMENT COMMANDS ==="
+          - ""
+          - "Full setup:"
+          - "  ansible-playbook -i inventory/hosts.yml site-app.yml"
+          - ""
+          - "Individual operations:"
+          - "  ansible-playbook -i inventory/hosts.yml site-app.yml --tags migrations"
+          - "  ansible-playbook -i inventory/hosts.yml site-app.yml --tags deploy"
+          - ""
+          - "Service management:"
+          - "  ansible-playbook -i inventory/hosts.yml site-app.yml --tags restart"
+          - "  ansible-playbook -i inventory/hosts.yml site-app.yml --tags stop"
+          - "  ansible-playbook -i inventory/hosts.yml site-app.yml --tags start"
+          - "  ansible-playbook -i inventory/hosts.yml site-app.yml --tags logs"
+          - ""
+          - "Status and health:"
+          - "  ansible-playbook -i inventory/hosts.yml site-app.yml --tags status"
+          - "  ansible-playbook -i inventory/hosts.yml site-app.yml --tags health"

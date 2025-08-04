@@ -1,16 +1,35 @@
 "use client";
 
-import { useState } from "react";
-import { User, LogOut, Trash2, Mail, Phone, MapPin, Shield, CreditCard, Settings } from "lucide-react";
+import { useState, useEffect } from "react";
+import { User, LogOut, Trash2, Mail, Phone, MapPin, Shield, CreditCard, Settings, Globe } from "lucide-react";
 import { open } from "@tauri-apps/plugin-shell";
+import { invoke } from "@tauri-apps/api/core";
 
 import { useAuth } from "@/contexts/auth-context";
 import { Card, CardContent, CardHeader } from "@/ui/card";
 import { Button } from "@/ui/button";
 import { Badge } from "@/ui/badge";
+import { 
+  Select, 
+  SelectContent, 
+  SelectItem, 
+  SelectTrigger, 
+  SelectValue 
+} from "@/ui/select";
+import { 
+  AlertDialog, 
+  AlertDialogAction, 
+  AlertDialogCancel, 
+  AlertDialogContent, 
+  AlertDialogDescription, 
+  AlertDialogFooter, 
+  AlertDialogHeader, 
+  AlertDialogTitle 
+} from "@/ui/alert-dialog";
 import { useNotification } from "@/contexts/notification-context";
 import { openBillingPortal } from "@/actions/billing";
 import { useBillingData } from "@/hooks/use-billing-data";
+import type { ServerRegionInfo } from "@/types/tauri-commands";
 
 import { BillingDashboard } from "@/app/components/billing/BillingDashboard";
 export default function AccountPage() {
@@ -18,6 +37,14 @@ export default function AccountPage() {
   const { showNotification } = useNotification();
   const { customerBillingInfo: billingInfo, isLoading: billingLoading } = useBillingData();
   const [isOpeningPortal, setIsOpeningPortal] = useState(false);
+  
+  // Region management state
+  const [availableRegions, setAvailableRegions] = useState<ServerRegionInfo[]>([]);
+  const [currentRegion, setCurrentRegion] = useState<string | null>(null);
+  const [pendingRegion, setPendingRegion] = useState<string | null>(null);
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [isLoadingRegions, setIsLoadingRegions] = useState(true);
+  const [isChangingRegion, setIsChangingRegion] = useState(false);
 
   const handleSignOut = async () => {
     try {
@@ -53,6 +80,77 @@ export default function AccountPage() {
       setIsOpeningPortal(false);
     }
   };
+
+  // Region management handlers
+  const handleRegionChange = (newRegionUrl: string) => {
+    setPendingRegion(newRegionUrl);
+    setShowConfirmDialog(true);
+  };
+
+  const handleConfirmRegionChange = async () => {
+    if (!pendingRegion) return;
+    
+    try {
+      setIsChangingRegion(true);
+      await invoke("change_server_url_and_reset_command", { newUrl: pendingRegion });
+      
+      showNotification({
+        title: "Region Changed",
+        message: "Server region has been changed successfully. You will be signed out.",
+        type: "success",
+      });
+      
+      // The command should handle logout, but we'll try to sign out gracefully
+      try {
+        await signOut();
+      } catch {
+        // Ignore signout errors as the reset command should handle this
+      }
+    } catch (err) {
+      console.error("Region change error:", err);
+      showNotification({
+        title: "Region Change Failed",
+        message: "Failed to change server region. Please try again.",
+        type: "error",
+      });
+    } finally {
+      setIsChangingRegion(false);
+      setShowConfirmDialog(false);
+      setPendingRegion(null);
+    }
+  };
+
+  const handleCancelRegionChange = () => {
+    setShowConfirmDialog(false);
+    setPendingRegion(null);
+  };
+
+  // Fetch regions on component mount
+  useEffect(() => {
+    const fetchRegions = async () => {
+      try {
+        setIsLoadingRegions(true);
+        const [regions, currentUrl] = await Promise.all([
+          invoke("get_available_regions_command", {}),
+          invoke("get_selected_server_url_command", {})
+        ]);
+        
+        setAvailableRegions(regions);
+        setCurrentRegion(currentUrl);
+      } catch (err) {
+        console.error("Failed to fetch regions:", err);
+        showNotification({
+          title: "Region Loading Failed",
+          message: "Failed to load available regions.",
+          type: "error",
+        });
+      } finally {
+        setIsLoadingRegions(false);
+      }
+    };
+
+    fetchRegions();
+  }, [showNotification]);
 
   if (!user) {
     return (
@@ -102,6 +200,58 @@ export default function AccountPage() {
                   </div>
                 </div>
               </div>
+            </div>
+
+            {/* Server Region Section */}
+            <div className="space-y-4 pt-4 border-t border-border/50">
+              <h3 className="text-xl font-bold flex items-center gap-3">
+                <div className="h-10 w-10 bg-primary/10 rounded-full flex items-center justify-center">
+                  <Globe className="h-5 w-5 text-primary" />
+                </div>
+                Server Region
+              </h3>
+              
+              {isLoadingRegions ? (
+                <div className="animate-pulse space-y-3">
+                  <div className="h-4 bg-muted rounded w-1/3"></div>
+                  <div className="h-10 bg-muted rounded w-full"></div>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-3">
+                    <Globe className="h-4 w-4 text-muted-foreground" />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium">Current Region</p>
+                      <p className="text-xs text-muted-foreground">
+                        Choose the server region closest to you for optimal performance
+                      </p>
+                    </div>
+                  </div>
+                  
+                  <Select 
+                    value={currentRegion || ""} 
+                    onValueChange={handleRegionChange}
+                    disabled={isChangingRegion}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Select a region..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableRegions.map((region) => (
+                        <SelectItem key={region.url} value={region.url}>
+                          {region.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  
+                  {availableRegions.length === 0 && !isLoadingRegions && (
+                    <p className="text-sm text-muted-foreground">
+                      No regions available. Please check your connection and try again.
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Billing Information Section */}
@@ -292,6 +442,41 @@ export default function AccountPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Region Change Confirmation Dialog */}
+      <AlertDialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirm Region Change</AlertDialogTitle>
+            <AlertDialogDescription>
+              Changing your server region will sign you out of your account and reset your local session data. 
+              You will need to sign in again after the change is complete.
+              {pendingRegion && availableRegions.length > 0 && (
+                <>
+                  <br /><br />
+                  <strong>
+                    New region: {availableRegions.find(r => r.url === pendingRegion)?.label || 'Unknown'}
+                  </strong>
+                </>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel 
+              onClick={handleCancelRegionChange}
+              disabled={isChangingRegion}
+            >
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleConfirmRegionChange}
+              disabled={isChangingRegion}
+            >
+              {isChangingRegion ? "Changing Region..." : "Change Region"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

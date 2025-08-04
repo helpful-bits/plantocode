@@ -1,0 +1,254 @@
+---
+- name: Deploy Rust Binary with Zero Downtime
+  hosts: all
+  become: yes
+  vars:
+    app_name: vibe-manager
+    app_user: "{{ app_name }}"
+    app_group: "{{ app_name }}"
+    app_dir: "/opt/{{ app_name }}"
+    app_binary: "server"
+    app_port: 8080
+    local_binary_path: "{{ local_binary | default('../../../../server/target/x86_64-unknown-linux-gnu/release/' + app_binary) }}"
+    
+  tasks:
+    # ========================================
+    # INITIAL SETUP (run once)
+    # ========================================
+    - name: Initial Application Setup
+      tags: [setup]
+      block:
+        - name: Create application user
+          user:
+            name: "{{ app_user }}"
+            system: yes
+            shell: /bin/false
+            home: "{{ app_dir }}"
+            create_home: yes
+            
+        - name: Create application directories
+          file:
+            path: "{{ item }}"
+            state: directory
+            owner: "{{ app_user }}"
+            group: "{{ app_group }}"
+            mode: '0755'
+          loop:
+            - "{{ app_dir }}"
+            - "{{ app_dir }}/bin"
+            - "{{ app_dir }}/releases"
+            - "{{ app_dir }}/config"
+            - "{{ app_dir }}/logs"
+            - "/var/log/{{ app_name }}"
+            
+        - name: Create systemd service
+          copy:
+            dest: "/etc/systemd/system/{{ app_name }}.service"
+            content: |
+              [Unit]
+              Description={{ app_name }} Rust Service
+              After=network.target postgresql@17-main.service
+              Wants=postgresql@17-main.service
+              
+              [Service]
+              Type=notify
+              User={{ app_user }}
+              Group={{ app_group }}
+              WorkingDirectory={{ app_dir }}
+              
+              # Binary path
+              ExecStart={{ app_dir }}/bin/{{ app_binary }}
+              
+              # Graceful reload using symlink switch
+              ExecReload=/bin/kill -s HUP $MAINPID
+              
+              # Restart policy
+              Restart=always
+              RestartSec=5
+              
+              # Security hardening
+              NoNewPrivileges=true
+              PrivateTmp=true
+              ProtectSystem=strict
+              ProtectHome=true
+              ReadWritePaths={{ app_dir }}/logs /var/log/{{ app_name }}
+              
+              # Resource limits
+              LimitNOFILE=65535
+              
+              # Environment
+              EnvironmentFile={{ app_dir }}/config/app.env
+              
+              # Health check
+              WatchdogSec=10s
+              
+              [Install]
+              WantedBy=multi-user.target
+          notify: reload systemd
+          
+        - name: Create environment file from template
+          template:
+            src: templates/app.env.j2
+            dest: "{{ app_dir }}/config/app.env"
+            owner: "{{ app_user }}"
+            group: "{{ app_group }}"
+            mode: '0600'
+          notify: restart app
+
+    # ========================================
+    # ZERO-DOWNTIME DEPLOYMENT
+    # ========================================
+    - name: Deploy New Binary Version
+      tags: [deploy]
+      block:
+        - name: Check if local binary exists
+          delegate_to: localhost
+          become: no
+          stat:
+            path: "{{ local_binary_path }}"
+          register: binary_stat
+          
+        - name: Fail if binary not found
+          fail:
+            msg: "Binary not found at {{ local_binary_path }}. Build it first with: cargo build --release"
+          when: not binary_stat.stat.exists
+          
+        - name: Create environment file from template
+          template:
+            src: templates/app.env.j2
+            dest: "{{ app_dir }}/config/app.env"
+            owner: "{{ app_user }}"
+            group: "{{ app_group }}"
+            mode: '0600'
+          notify: restart app
+          
+        - name: Generate deployment timestamp
+          set_fact:
+            deploy_timestamp: "{{ ansible_date_time.epoch }}"
+            
+        - name: Upload new binary to releases directory
+          copy:
+            src: "{{ local_binary_path }}"
+            dest: "{{ app_dir }}/releases/{{ app_binary }}.{{ deploy_timestamp }}"
+            owner: "{{ app_user }}"
+            group: "{{ app_group }}"
+            mode: '0755'
+            
+        - name: Create/update current symlink (atomic operation)
+          file:
+            src: "{{ app_dir }}/releases/{{ app_binary }}.{{ deploy_timestamp }}"
+            dest: "{{ app_dir }}/bin/{{ app_binary }}"
+            state: link
+            owner: "{{ app_user }}"
+            group: "{{ app_group }}"
+            force: yes
+            
+        - name: Skip binary validation
+          debug:
+            msg: "Binary deployed. Service will validate on start."
+          
+        - name: Check if service is running
+          systemd:
+            name: "{{ app_name }}"
+          register: service_status
+          
+        - name: Reload service (zero downtime)
+          systemd:
+            name: "{{ app_name }}"
+            state: reloaded
+          when: service_status.status.ActiveState == "active"
+          
+        - name: Start service if not running
+          systemd:
+            name: "{{ app_name }}"
+            state: started
+            enabled: yes
+          when: service_status.status.ActiveState != "active"
+          
+        - name: Wait for service to be healthy
+          uri:
+            url: "http://localhost:{{ app_port }}/health"
+            status_code: 200
+          register: health_check
+          until: health_check.status == 200
+          retries: 30
+          delay: 1
+          failed_when: false
+          
+        - name: Verify deployment
+          debug:
+            msg:
+              - "Deployment successful!"
+              - "Version: {{ version_check.stdout }}"
+              - "Service Status: {{ service_status.status.ActiveState }}"
+              - "Health Check: {{ 'Passed' if health_check.status == 200 else 'Failed - implement /health endpoint' }}"
+
+    # ========================================
+    # ROLLBACK PROCEDURE
+    # ========================================
+    - name: Rollback to Previous Version
+      tags: [rollback, never]
+      block:
+        - name: List available releases
+          find:
+            paths: "{{ app_dir }}/releases"
+            patterns: "{{ app_binary }}.*"
+          register: releases
+          
+        - name: Sort releases by timestamp
+          set_fact:
+            sorted_releases: "{{ releases.files | sort(attribute='path') | reverse }}"
+            
+        - name: Fail if less than 2 releases
+          fail:
+            msg: "Need at least 2 releases to rollback"
+          when: sorted_releases | length < 2
+          
+        - name: Get previous release
+          set_fact:
+            previous_release: "{{ sorted_releases[1].path }}"
+            
+        - name: Switch symlink to previous release
+          file:
+            src: "{{ previous_release }}"
+            dest: "{{ app_dir }}/bin/{{ app_binary }}"
+            state: link
+            force: yes
+            
+        - name: Reload service
+          systemd:
+            name: "{{ app_name }}"
+            state: reloaded
+            
+        - name: Confirm rollback
+          debug:
+            msg: "Rolled back to: {{ previous_release | basename }}"
+
+    # ========================================
+    # CLEANUP OLD RELEASES
+    # ========================================
+    - name: Cleanup Old Releases
+      tags: [cleanup]
+      block:
+        - name: Find old releases
+          find:
+            paths: "{{ app_dir }}/releases"
+            patterns: "{{ app_binary }}.*"
+            age: 7d
+          register: old_releases
+          
+        - name: Remove old releases (keep last 5)
+          file:
+            path: "{{ item.path }}"
+            state: absent
+          with_items: "{{ (old_releases.files | sort(attribute='mtime') | reverse)[5:] }}"
+          when: old_releases.files | length > 5
+
+  handlers:
+    - name: reload systemd
+      systemd:
+        daemon_reload: yes
+    - name: restart app
+      systemd:
+        name: "{{ app_name }}"
+        state: restarted

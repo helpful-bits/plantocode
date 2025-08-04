@@ -1,0 +1,4 @@
+---
+# SSL/TLS Configuration for api.eu.vibemanager.app
+ssl_domain: api.eu.vibemanager.app
+ssl_email: admin@vibemanager.app

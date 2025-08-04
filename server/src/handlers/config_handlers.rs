@@ -187,6 +187,7 @@ pub async fn load_desktop_runtime_ai_config(
 /// **PERFORMANCE OPTIMIZED**: Uses cached config from AppState instead of database queries
 #[instrument(skip(app_state))]
 pub async fn get_desktop_runtime_ai_config(
+    _user: web::ReqData<AuthenticatedUser>,
     app_state: web::Data<AppState>,
 ) -> Result<HttpResponse, AppError> {
     info!("Returning cached desktop runtime AI configuration");

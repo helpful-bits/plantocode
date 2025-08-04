@@ -1,0 +1,13 @@
+# Git version control
+.git
+.gitignore
+
+# Docker files
+Dockerfile
+.dockerignore
+
+# Rust build artifacts
+target/
+
+# Local environment variables
+.env

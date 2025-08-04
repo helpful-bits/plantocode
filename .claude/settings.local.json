@@ -1,4 +1,5 @@
 {
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
   "permissions": {
     "allow": [
       "Bash(cat:*)",
@@ -150,7 +151,25 @@
       "Bash(./test_parsing)",
       "Bash(npm install:*)",
       "Bash(/opt/homebrew/bin/npm run typecheck)",
-      "Bash(npm uninstall:*)"
+      "Bash(npm uninstall:*)",
+      "Bash(docker build:*)",
+      "Bash(/opt/homebrew/Cellar/postgresql@16/16.9/bin/psql:*)",
+      "Bash(for file in data_providers.sql data_models.sql data_model_mappings.sql data_system_prompts.sql data_app_configs.sql data_estimation_coefficients.sql)",
+      "Bash(do echo \"Loading $file...\")",
+      "Bash(brew install:*)",
+      "Bash(ssh-keygen:*)",
+      "Bash(./setup_hetzner_server.sh)",
+      "Bash(ssh:*)",
+      "Bash(./post_install_hetzner.sh:*)",
+      "Bash(./infrastructure/scripts/check_server_status.sh:*)",
+      "Bash(ansible-playbook:*)",
+      "Bash(ansible:*)",
+      "Bash(cross build:*)",
+      "Bash(rustup toolchain add:*)",
+      "Bash(tar:*)",
+      "Bash(scp:*)",
+      "Bash(ansible-playbook:*)",
+      "Bash(ansible:*)"
     ],
     "deny": []
   },
