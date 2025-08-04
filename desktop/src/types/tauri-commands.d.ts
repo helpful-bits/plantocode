@@ -392,6 +392,26 @@ export interface FetchDefaultSystemPromptFromServerCommandArgs {
 export interface InitializeSystemPromptsFromServerCommandArgs {
 }
 
+// Server region management interfaces
+export interface ServerRegionInfo {
+  label: string;
+  url: string;
+}
+
+export interface GetAvailableRegionsCommandArgs {
+}
+
+export interface GetSelectedServerUrlCommandArgs {
+}
+
+export interface SetSelectedServerUrlCommandArgs {
+  url: string;
+}
+
+export interface ChangeServerUrlAndResetCommandArgs {
+  newUrl: string;
+}
+
 // Commands from config_commands / key-value store
 export interface GetKeyValueCommandArgs {
   key: string;
@@ -623,6 +643,12 @@ export type TauriInvoke = {
   "fetch_default_system_prompts_from_server": (args: FetchDefaultSystemPromptsFromServerCommandArgs) => Promise<import("@/types/system-prompts").DefaultSystemPrompt[]>;
   "fetch_default_system_prompt_from_server": (args: FetchDefaultSystemPromptFromServerCommandArgs) => Promise<import("@/types/system-prompts").DefaultSystemPrompt | null>;
   "initialize_system_prompts_from_server": (args: InitializeSystemPromptsFromServerCommandArgs) => Promise<void>;
+  
+  // Server region management commands
+  "get_available_regions_command": (args: GetAvailableRegionsCommandArgs) => Promise<ServerRegionInfo[]>;
+  "get_selected_server_url_command": (args: GetSelectedServerUrlCommandArgs) => Promise<string | null>;
+  "set_selected_server_url_command": (args: SetSelectedServerUrlCommandArgs) => Promise<void>;
+  "change_server_url_and_reset_command": (args: ChangeServerUrlAndResetCommandArgs) => Promise<void>;
   
   // Billing commands
   "get_billing_dashboard_data_command": () => Promise<BillingDashboardData>;

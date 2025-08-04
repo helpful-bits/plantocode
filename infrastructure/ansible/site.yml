@@ -1,0 +1,31 @@
+---
+# Master Ansible Playbook for Vibe Manager Infrastructure
+# ========================================
+# MODULAR INFRASTRUCTURE MANAGEMENT
+# ========================================
+# This server setup is split into two distinct layers:
+#
+# 1. BASE INFRASTRUCTURE (site-base.yml)
+#    - Generic server setup (SSH, firewall, PostgreSQL, Redis)
+#    - Application-agnostic, reusable for any server
+#    - Run: ansible-playbook -i inventory/hosts.yml site-base.yml
+#
+# 2. APPLICATION DEPLOYMENT (site-app.yml)
+#    - Vibe Manager specific setup and deployment
+#    - Database migrations, app configuration, service management
+#    - Run: ansible-playbook -i inventory/hosts.yml site-app.yml
+#
+# For complete setup, run this master playbook:
+#   ansible-playbook -i inventory/hosts.yml site.yml
+#
+# For specific components:
+#   ansible-playbook -i inventory/hosts.yml site.yml --tags base
+#   ansible-playbook -i inventory/hosts.yml site.yml --tags app
+
+# Base infrastructure setup
+- import_playbook: site-base.yml
+  tags: [base, infrastructure]
+
+# Application-specific deployment
+- import_playbook: site-app.yml
+  tags: [app, application]

@@ -9,6 +9,7 @@ pub mod user_repository;
 pub mod settings_repository;
 pub mod model_repository;
 pub mod provider_repository;
+pub mod server_region_repository;
 pub mod webhook_idempotency_repository;
 pub mod revoked_token_repository;
 
@@ -22,6 +23,7 @@ pub use user_repository::UserRepository;
 pub use settings_repository::{SettingsRepository, DatabaseAIModelSettings, TaskConfig};
 pub use model_repository::{ModelRepository, ModelWithProvider, Model};
 pub use provider_repository::{ProviderRepository, Provider, ProviderWithModelCount};
+pub use server_region_repository::ServerRegionRepository;
 pub use system_prompts_repository::{SystemPromptsRepository, DefaultSystemPrompt};
 pub use webhook_idempotency_repository::{WebhookIdempotencyRepository, WebhookIdempotencyRecord, WebhookProcessingStats};
 pub use revoked_token_repository::{RevokedTokenRepository, RevokedToken};

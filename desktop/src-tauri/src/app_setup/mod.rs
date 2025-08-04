@@ -9,7 +9,7 @@ pub mod job_system;
 pub mod services;
 
 // Re-export important functions for easy access
-pub use services::initialize_system_prompts;
+pub use services::{initialize_system_prompts, reinitialize_api_clients};
 
 /// Run asynchronous initialization steps for the application
 ///
@@ -33,10 +33,22 @@ pub async fn run_async_initialization(app_handle: &AppHandle) -> Result<(), AppE
 
     // Configuration will be loaded from server after Auth0 authentication
 
-    // Initialize API clients
-    if let Err(e) = services::initialize_api_clients(app_handle).await {
-        error!("API client initialization failed: {}", e);
+    // Initialize TokenManager and check for selected server URL
+    if let Err(e) = services::initialize_token_manager(app_handle).await {
+        error!("TokenManager initialization failed: {}", e);
         return Err(e);
+    }
+
+    // Check if there's a selected server URL from settings and reinitialize API clients if found
+    let settings_repo = app_handle.state::<std::sync::Arc<crate::db_utils::SettingsRepository>>();
+    if let Ok(Some(server_url)) = settings_repo.get_value("selected_server_url").await {
+        info!("Found selected server URL: {}, reinitializing API clients", server_url);
+        if let Err(e) = services::reinitialize_api_clients(app_handle, server_url).await {
+            warn!("Failed to reinitialize API clients with selected server URL: {}", e);
+            // Don't fail startup for this, user can select server again
+        }
+    } else {
+        info!("No selected server URL found, API clients will be initialized when user selects a server region");
     }
 
     // Initialize system prompts

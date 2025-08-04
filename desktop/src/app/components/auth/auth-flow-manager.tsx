@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { invoke } from '@tauri-apps/api/core';
 
 import LoginPage from "@/app/components/auth/login-page";
+import ServerSelectionPage from "@/app/components/auth/server-selection-page";
 import { useRuntimeConfigLoader } from "@/auth/use-runtime-config-loader";
 import { useAuth } from "@/contexts/auth-context";
 import { useUILayout } from "@/contexts/ui-layout-context";
@@ -11,6 +12,7 @@ import { OnboardingFlow } from "@/app/components/onboarding";
 import { extractErrorInfo, createUserFriendlyErrorMessage, logError } from "@/utils/error-handling";
 import { useNotification } from "@/contexts/notification-context";
 import { useAuthTokenRefresher } from "@/hooks/use-auth-token-refresher";
+import type { ServerRegionInfo } from "@/types/tauri-commands";
 
 interface AuthFlowManagerProps {
   children: ReactNode;
@@ -18,6 +20,8 @@ interface AuthFlowManagerProps {
 
 export function AuthFlowManager({ children }: AuthFlowManagerProps) {
   const [isOnboardingNeeded, setIsOnboardingNeeded] = useState<boolean | null>(null);
+  const [availableRegions, setAvailableRegions] = useState<ServerRegionInfo[] | null>(null);
+  const [selectedUrl, setSelectedUrl] = useState<string | null | undefined>(undefined);
   const { showNotification } = useNotification();
   
   // Safe version - early return if not ready
@@ -45,6 +49,50 @@ export function AuthFlowManager({ children }: AuthFlowManagerProps) {
 
     // Use the token refresher hook to keep the JWT fresh
     useAuthTokenRefresher(user);
+
+    // Check for selected server URL and get available regions
+    useEffect(() => {
+      const checkServerSelection = async () => {
+        try {
+          // First check if a server URL is already selected
+          const currentUrl = await invoke<string | null>('get_selected_server_url_command', {});
+          
+          if (currentUrl) {
+            setSelectedUrl(currentUrl);
+          } else {
+            // No URL selected, get available regions
+            setSelectedUrl(null);
+            try {
+              const regions = await invoke<ServerRegionInfo[]>('get_available_regions_command', {});
+              setAvailableRegions(regions);
+            } catch (regionError) {
+              const errorInfo = extractErrorInfo(regionError);
+              const userMessage = createUserFriendlyErrorMessage(errorInfo, "available server regions");
+              
+              await logError(regionError, "AuthFlowManager.checkServerSelection.getRegions");
+              showNotification({
+                title: "Server Region Error",
+                message: userMessage,
+                type: "error"
+              });
+            }
+          }
+        } catch (e) {
+          const errorInfo = extractErrorInfo(e);
+          const userMessage = createUserFriendlyErrorMessage(errorInfo, "server selection");
+          
+          await logError(e, "AuthFlowManager.checkServerSelection");
+          setSelectedUrl(null); // Default to no selection if check fails
+          showNotification({
+            title: "Server Check Failed",
+            message: userMessage,
+            type: "warning"
+          });
+        }
+      };
+      
+      void checkServerSelection();
+    }, [showNotification]);
 
     // Check onboarding status on mount
     useEffect(() => {
@@ -116,6 +164,27 @@ export function AuthFlowManager({ children }: AuthFlowManagerProps) {
       }
     };
 
+    const handleServerSelection = async (url: string) => {
+      try {
+        await invoke('set_selected_server_url_command', { url });
+        setSelectedUrl(url);
+        showNotification({
+          title: "Server Selected",
+          message: "Server region has been updated successfully",
+          type: "success"
+        });
+      } catch (e) {
+        const errorInfo = extractErrorInfo(e);
+        const userMessage = createUserFriendlyErrorMessage(errorInfo, "server selection");
+        
+        await logError(e, "AuthFlowManager.handleServerSelection");
+        showNotification({
+          title: "Server Selection Failed",
+          message: userMessage,
+          type: "error"
+        });
+      }
+    };
 
     // Load runtime configuration after successful login
     useEffect(() => {
@@ -164,9 +233,10 @@ export function AuthFlowManager({ children }: AuthFlowManagerProps) {
       const hasValidUser = !!user;
       const noConfigError = !configError;
       const tokenValid = !isTokenExpired;
+      const serverSelected = selectedUrl !== null && selectedUrl !== undefined;
 
       // Only mark initialization as complete when ALL conditions are satisfied
-      if (onboardingDone && authResolved && configResolved && hasValidUser && noConfigError && tokenValid) {
+      if (onboardingDone && authResolved && configResolved && hasValidUser && noConfigError && tokenValid && serverSelected) {
         // All critical async operations before rendering main app are done
         setAppInitializing(false);
       } else {
@@ -181,17 +251,23 @@ export function AuthFlowManager({ children }: AuthFlowManagerProps) {
       user,
       configError,
       isTokenExpired,
+      selectedUrl,
       setAppInitializing
     ]);
 
-    // Show loading screen while checking onboarding status
-    if (isOnboardingNeeded === null) {
+    // Show loading screen while checking onboarding status or server selection
+    if (isOnboardingNeeded === null || selectedUrl === undefined) {
       return <LoadingScreen loadingType="initializing" />;
     }
 
     // Show onboarding flow if needed
     if (isOnboardingNeeded) {
       return <OnboardingFlow onOnboardingComplete={handleOnboardingComplete} />;
+    }
+
+    // Show server selection page if no URL is selected and regions are available
+    if (selectedUrl === null && availableRegions) {
+      return <ServerSelectionPage regions={availableRegions} onSelect={handleServerSelection} />;
     }
 
     // Show loading screen while authenticating
@@ -228,8 +304,8 @@ export function AuthFlowManager({ children }: AuthFlowManagerProps) {
 
     // System prompts error handling removed
 
-    // Show login page if not authenticated or token is expired
-    if (!user || isTokenExpired) {
+    // Show login page if URL is selected but not authenticated or token is expired
+    if ((!user || isTokenExpired) && selectedUrl) {
       return <LoginPage />;
     }
 

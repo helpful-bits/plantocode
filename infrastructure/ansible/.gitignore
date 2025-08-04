@@ -1,0 +1,27 @@
+# Local overrides and temporary files
+
+# Temporary files
+*.retry
+*.pyc
+__pycache__/
+
+# Local environment overrides
+inventory/local
+host_vars/local/
+
+# Backup files
+*.bak
+*.backup
+*~
+
+# IDE files
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Ansible Vault password file
+.vault_pass
+

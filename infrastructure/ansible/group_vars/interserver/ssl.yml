@@ -1,0 +1,5 @@
+---
+# SSL/TLS Configuration for InterServer US region
+# Update this with your US-specific domain
+ssl_domain: api.us.vibemanager.app  # Example: US-specific subdomain
+ssl_email: admin@vibemanager.app

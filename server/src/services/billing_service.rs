@@ -436,10 +436,8 @@ impl BillingService {
         metadata.insert("net_amount".to_string(), net_amount.to_string());
         metadata.insert("currency".to_string(), "USD".to_string());
 
-        // Use hardcoded URLs that match the frontend expectations
-        // Include session ID placeholder in success URL for payment verification
-        let success_url = "http://localhost:1420/account?billing_success=true&session_id={CHECKOUT_SESSION_ID}";
-        let cancel_url = "http://localhost:1420/billing/cancel";
+        let success_url = format!("{}/billing/success?session_id={{CHECKOUT_SESSION_ID}}", &self.app_settings.website_base_url);
+        let cancel_url = format!("{}/billing/cancel", &self.app_settings.website_base_url);
 
         let idempotency_key = uuid::Uuid::new_v4().to_string();
         let session = stripe_service.create_checkout_session(
@@ -448,8 +446,8 @@ impl BillingService {
             user_id,
             CHECKOUT_SESSION_MODE_PAYMENT,
             None, // No line_items when using price_data
-            success_url,
-            cancel_url,
+            &success_url,
+            &cancel_url,
             metadata,
             None, // billing_address_collection not required for credit purchases
             None, // automatic_tax not required for credit purchases
@@ -534,9 +532,8 @@ impl BillingService {
         metadata.insert("type".to_string(), "setup_payment_method".to_string());
         metadata.insert("user_id".to_string(), user_id.to_string());
 
-        // Use hardcoded URLs for setup payment method
-        let success_url = "http://localhost:1420/billing/payment-method/success";
-        let cancel_url = "http://localhost:1420/billing/payment-method/cancel";
+        let success_url = format!("{}/billing/payment-method/success", &self.app_settings.website_base_url);
+        let cancel_url = format!("{}/billing/payment-method/cancel", &self.app_settings.website_base_url);
 
         let idempotency_key = uuid::Uuid::new_v4().to_string();
         let session = stripe_service.create_checkout_session(
@@ -545,8 +542,8 @@ impl BillingService {
             user_id,
             CHECKOUT_SESSION_MODE_SETUP,
             None, // No line items for setup mode
-            success_url,
-            cancel_url,
+            &success_url,
+            &cancel_url,
             metadata,
             None, // billing_address_collection not applicable for setup mode
             None, // automatic_tax not applicable for setup mode

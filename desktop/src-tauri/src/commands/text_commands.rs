@@ -176,7 +176,7 @@ pub async fn generate_simple_text_command(
     });
 
     // Get API client
-    let api_client = crate::api_clients::client_factory::get_api_client(&app_handle)?;
+    let api_client = crate::api_clients::client_factory::get_api_client(&app_handle).await?;
 
     // Prepare request options
     let options = crate::api_clients::client_trait::ApiClientOptions {

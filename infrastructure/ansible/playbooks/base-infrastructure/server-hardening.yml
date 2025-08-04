@@ -1,0 +1,195 @@
+---
+# Server Hardening Playbook
+# Basic security hardening for Ubuntu servers
+# Extracted from the original site.yml
+
+- name: Safe Server Hardening
+  hosts: all
+  become: yes
+  vars:
+    ssh_port: 22
+    
+  tasks:
+    # CRITICAL: Test connection first
+    - name: Test initial connection
+      ping:
+      register: initial_connection
+      
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+        
+    - name: Upgrade all packages
+      apt:
+        upgrade: full
+        autoremove: yes
+        autoclean: yes
+      environment:
+        DEBIAN_FRONTEND: noninteractive
+        
+    - name: Install essential packages
+      apt:
+        name:
+          - htop
+          - vim
+          - curl
+          - wget
+          - git
+          - ufw
+          - fail2ban
+          - python3-pip
+          - unattended-upgrades
+          - net-tools
+        state: present
+      environment:
+        DEBIAN_FRONTEND: noninteractive
+
+    # SSH HARDENING - CRITICAL SECTION
+    - name: SSH Hardening (BEFORE firewall!)
+      block:
+        - name: Backup current SSH config
+          copy:
+            src: /etc/ssh/sshd_config
+            dest: "/etc/ssh/sshd_config.backup.{{ ansible_date_time.epoch }}"
+            remote_src: yes
+            
+        - name: Create hardened SSH config
+          copy:
+            dest: /etc/ssh/sshd_config.d/99-hardening.conf
+            content: |
+              # Security hardening
+              PermitRootLogin prohibit-password
+              PasswordAuthentication no
+              PubkeyAuthentication yes
+              ChallengeResponseAuthentication no
+              UsePAM yes
+              X11Forwarding no
+              PrintMotd no
+              AcceptEnv LANG LC_*
+              
+              # Modern algorithms
+              KexAlgorithms curve25519-sha256,curve25519-sha256@libssh.org,diffie-hellman-group-exchange-sha256
+              Ciphers chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com
+              MACs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com
+              
+              # Connection limits
+              MaxAuthTries 3
+              MaxSessions 2
+              ClientAliveInterval 300
+              ClientAliveCountMax 2
+              
+        - name: Test SSH configuration
+          command: sshd -t
+          changed_when: false
+          
+        - name: Restart SSH service (CRITICAL - before firewall!)
+          systemd:
+            name: ssh
+            state: restarted
+            
+        - name: Wait for SSH to stabilize
+          wait_for_connection:
+            delay: 5
+            timeout: 60
+
+    # Create emergency scripts BEFORE firewall
+    - name: Create emergency firewall disable script
+      copy:
+        dest: /root/disable_firewall.sh
+        mode: '0755'
+        content: |
+          #!/bin/bash
+          # Emergency script to disable firewall
+          echo "=== EMERGENCY FIREWALL DISABLE ==="
+          echo "Disabling firewall..."
+          ufw --force disable
+          echo "Firewall disabled."
+          echo ""
+          echo "To re-enable properly:"
+          echo "  ufw allow 22/tcp"
+          echo "  ufw allow 80/tcp"
+          echo "  ufw allow 443/tcp"
+          echo "  ufw --force enable"
+
+    # FIREWALL CONFIGURATION - After SSH is secured
+    - name: Configure firewall (AFTER SSH restart!)
+      block:
+        - name: Reset UFW to defaults
+          ufw:
+            state: reset
+            
+        - name: Configure UFW defaults
+          ufw:
+            direction: "{{ item.direction }}"
+            policy: "{{ item.policy }}"
+          loop:
+            - { direction: 'incoming', policy: 'deny' }
+            - { direction: 'outgoing', policy: 'allow' }
+            
+        - name: Configure UFW rules
+          ufw:
+            rule: allow
+            port: "{{ item.port }}"
+            proto: tcp
+            comment: "{{ item.comment }}"
+          loop:
+            - { port: '22', comment: 'SSH' }
+            - { port: '80', comment: 'HTTP' }
+            - { port: '443', comment: 'HTTPS' }
+            
+        - name: Enable UFW
+          ufw:
+            state: enabled
+            
+        - name: Test connection after firewall
+          ping:
+
+    # Additional security configuration
+    - name: Configure fail2ban
+      systemd:
+        name: fail2ban
+        state: started
+        enabled: yes
+        
+    - name: Configure unattended upgrades
+      debconf:
+        name: unattended-upgrades
+        question: unattended-upgrades/enable_auto_updates
+        vtype: boolean
+        value: true
+        
+    # Create recovery documentation
+    - name: Create Emergency Recovery Documentation
+      copy:
+        dest: /root/RECOVERY_PROCEDURES.txt
+        content: |
+          EMERGENCY RECOVERY PROCEDURES
+          ============================
+          
+          If locked out via SSH:
+          ----------------------
+          1. Access server via Hetzner KVM Console
+          2. Login as root
+          3. Run: /root/disable_firewall.sh
+          4. Fix SSH configuration:
+             - Check /etc/ssh/sshd_config.d/99-hardening.conf
+             - Temporarily enable password auth if needed:
+               sed -i 's/PasswordAuthentication no/PasswordAuthentication yes/' /etc/ssh/sshd_config.d/99-hardening.conf
+               systemctl restart ssh
+          
+          Firewall Issues:
+          ---------------
+          1. Check current rules:
+             ufw status numbered
+          
+          2. Add missing rule:
+             ufw allow 22/tcp comment "SSH"
+          
+          3. Reload firewall:
+             ufw reload
+          
+          Important Files:
+          ---------------
+          - /root/disable_firewall.sh - Emergency firewall disable
+          - /etc/ssh/sshd_config.d/99-hardening.conf - SSH config

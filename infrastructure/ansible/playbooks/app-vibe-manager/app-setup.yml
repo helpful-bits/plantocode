@@ -1,0 +1,196 @@
+---
+# Complete Application Setup for Vibe Manager
+# This is the master playbook for all app-specific operations
+# Prerequisites: Base infrastructure must be installed (PostgreSQL, Redis, etc.)
+
+- name: Vibe Manager Application Setup
+  hosts: all
+  become: yes
+  vars:
+    app_name: vibe-manager
+    app_dir: "/opt/{{ app_name }}"
+    
+  tasks:
+    - name: Display setup plan
+      debug:
+        msg:
+          - "=== VIBE MANAGER APPLICATION SETUP ==="
+          - "This playbook will:"
+          - "1. Create application database and user"
+          - "2. Run database migrations"
+          - "3. Configure application secrets"
+          - "4. Deploy the application binary"
+          - "5. Start the application service"
+          
+# ========================================
+# STEP 1: DATABASE SETUP
+# ========================================
+- name: Application Database Setup
+  hosts: all
+  become: yes
+  become_user: postgres
+  vars:
+    app_role: vibe_manager_app
+    
+  tasks:
+    - name: Create application database
+      community.postgresql.postgresql_db:
+        name: "{{ db_name }}"
+        encoding: UTF-8
+        lc_collate: en_US.UTF-8
+        lc_ctype: en_US.UTF-8
+        template: template0
+        state: present
+        
+    - name: Create application user
+      community.postgresql.postgresql_user:
+        name: "{{ db_user }}"
+        password: "{{ db_password }}"
+        state: present
+      no_log: true
+      
+    - name: Create application role with no login
+      community.postgresql.postgresql_query:
+        db: "{{ db_name }}"
+        query: "CREATE ROLE {{ app_role }} NOLOGIN"
+      ignore_errors: yes # Role may already exist
+
+    - name: Grant database connection to role
+      community.postgresql.postgresql_privs:
+        db: "{{ db_name }}"
+        priv: CONNECT
+        type: database
+        roles: "{{ app_role }}"
+        state: present
+
+    - name: Grant schema usage to role
+      community.postgresql.postgresql_privs:
+        db: "{{ db_name }}"
+        priv: USAGE
+        type: schema
+        objs: public
+        roles: "{{ app_role }}"
+        state: present
+
+    - name: Grant table and sequence permissions to role
+      community.postgresql.postgresql_privs:
+        db: "{{ db_name }}"
+        priv: ALL
+        type: sequence,table
+        schema: public
+        roles: "{{ app_role }}"
+        state: present
+
+    - name: Set default privileges for future objects for the role
+      community.postgresql.postgresql_default_privs:
+        db: "{{ db_name }}"
+        role: "{{ app_role }}"
+        privs: ALL
+        schema: public
+        securable: tables
+        state: present
+        
+    - name: Grant application role to application user
+      community.postgresql.postgresql_membership:
+        group: "{{ app_role }}"
+        target_role: "{{ db_user }}"
+        state: present
+
+# ========================================
+# STEP 2: RUN MIGRATIONS
+# ========================================
+- import_playbook: database-migrations.yml
+  tags: [migrations]
+
+# ========================================
+# STEP 3: CONFIGURE SECRETS
+# ========================================
+# Note: Secrets management removed - manage manually or through external tools
+
+# ========================================
+# STEP 4: DEPLOY APPLICATION
+# ========================================
+- import_playbook: rust-deploy.yml
+  tags: [deploy]
+
+# ========================================
+# STEP 5: POST-DEPLOYMENT CHECKS
+# ========================================
+- name: Application Health Check
+  hosts: all
+  become: yes
+  vars:
+    app_name: vibe-manager
+    
+  tasks:
+    - name: Wait for service to be ready
+      wait_for:
+        port: 8080
+        host: 127.0.0.1
+        delay: 5
+        timeout: 30
+      tags: [health]
+      
+    - name: Check service status
+      systemd:
+        name: "{{ app_name }}"
+      register: service_status
+      tags: [status]
+      
+    - name: Check application health endpoint
+      uri:
+        url: "http://127.0.0.1:8080/health"
+        method: GET
+        status_code: 200
+      register: health_check
+      ignore_errors: yes
+      tags: [health]
+      
+    - name: Display application status
+      debug:
+        msg:
+          - "=== APPLICATION STATUS ==="
+          - "Service: {{ service_status.status.ActiveState }}"
+          - "Health endpoint: {{ 'OK' if health_check is succeeded else 'FAILED' }}"
+          - "Database: Configured with vaulted credentials"
+          - ""
+          - "Access the application at: http://{{ ansible_host }}:8080"
+      tags: [status]
+
+# ========================================
+# MAINTENANCE TASKS
+# ========================================
+- name: Application Maintenance Tasks
+  hosts: all
+  become: yes
+  vars:
+    app_name: vibe-manager
+    
+  tasks:
+    - name: Application logs
+      tags: [logs, never]
+      shell: journalctl -u {{ app_name }} -n 100 --no-pager
+      register: app_logs
+      
+    - name: Display logs
+      tags: [logs, never]
+      debug:
+        msg: "{{ app_logs.stdout_lines }}"
+        
+    - name: Restart application
+      tags: [restart, never]
+      systemd:
+        name: "{{ app_name }}"
+        state: restarted
+        
+    - name: Stop application
+      tags: [stop, never]
+      systemd:
+        name: "{{ app_name }}"
+        state: stopped
+        
+    - name: Start application
+      tags: [start, never]
+      systemd:
+        name: "{{ app_name }}"
+        state: started

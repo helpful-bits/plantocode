@@ -60,12 +60,12 @@ pub async fn execute_llm_chat_completion(
     messages: Vec<OpenRouterRequestMessage>,
     api_options: ApiClientOptions,
 ) -> AppResult<OpenRouterResponse> {
-    let llm_client = get_api_client(app_handle)?;
+    let llm_client = get_api_client(app_handle).await?;
     llm_client.chat_completion(messages, api_options).await
 }
 
 /// Get API client from app state
 /// Convenience wrapper for client_factory::get_api_client
-pub fn get_api_client(app_handle: &AppHandle) -> AppResult<Arc<dyn ApiClient>> {
-    client_factory::get_api_client(app_handle)
+pub async fn get_api_client(app_handle: &AppHandle) -> AppResult<Arc<dyn ApiClient>> {
+    client_factory::get_api_client(app_handle).await
 }

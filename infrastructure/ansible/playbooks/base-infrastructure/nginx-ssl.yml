@@ -1,0 +1,256 @@
+---
+# Nginx with SSL/TLS Setup
+# Installs Nginx and configures SSL using Let's Encrypt
+
+- name: Nginx and SSL Configuration
+  hosts: all
+  become: yes
+  vars:
+    domain_name: "{{ ssl_domain | default('example.com') }}"
+    email_address: "{{ ssl_email | default('admin@example.com') }}"
+    app_port: 8080
+    nginx_ssl_protocols: "TLSv1.2 TLSv1.3"
+    nginx_ssl_ciphers: "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384"
+    # Proxy timeouts (match application's long-running request support)
+    proxy_connect_timeout: "{{ nginx_proxy_connect_timeout | default('180s') }}"
+    proxy_send_timeout: "{{ nginx_proxy_send_timeout | default('1800s') }}"
+    proxy_read_timeout: "{{ nginx_proxy_read_timeout | default('1800s') }}"
+    
+  tasks:
+    # ========================================
+    # NGINX INSTALLATION
+    # ========================================
+    - name: Install Nginx and Certbot
+      apt:
+        name:
+          - nginx
+          - certbot
+          - python3-certbot-nginx
+        state: present
+        update_cache: yes
+        
+    - name: Create Nginx directories
+      file:
+        path: "{{ item }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+      loop:
+        - /etc/nginx/sites-available
+        - /etc/nginx/sites-enabled
+        - /var/www/html
+        
+    # ========================================
+    # INITIAL HTTP CONFIGURATION
+    # ========================================
+    - name: Create initial HTTP configuration
+      copy:
+        dest: /etc/nginx/sites-available/vibe-manager
+        content: |
+          server {
+              listen 80;
+              listen [::]:80;
+              server_name {{ domain_name }};
+              
+              # Allow certbot challenges
+              location /.well-known/acme-challenge/ {
+                  root /var/www/html;
+              }
+              
+              # Redirect all other traffic to HTTPS
+              location / {
+                  return 301 https://$server_name$request_uri;
+              }
+          }
+      notify: reload nginx
+      
+    - name: Enable site configuration
+      file:
+        src: /etc/nginx/sites-available/vibe-manager
+        dest: /etc/nginx/sites-enabled/vibe-manager
+        state: link
+      notify: reload nginx
+      
+    - name: Remove default site
+      file:
+        path: /etc/nginx/sites-enabled/default
+        state: absent
+      notify: reload nginx
+      
+    - name: Test Nginx configuration
+      command: nginx -t
+      changed_when: false
+      
+    - name: Start and enable Nginx
+      systemd:
+        name: nginx
+        state: started
+        enabled: yes
+        
+    # ========================================
+    # SSL CERTIFICATE
+    # ========================================
+    - name: Check if SSL certificate exists
+      stat:
+        path: "/etc/letsencrypt/live/{{ domain_name }}/fullchain.pem"
+      register: ssl_cert
+      
+    - name: Obtain SSL certificate
+      command: >
+        certbot certonly --nginx
+        --non-interactive
+        --agree-tos
+        --email {{ email_address }}
+        --domains {{ domain_name }}
+      when: not ssl_cert.stat.exists
+      
+    # ========================================
+    # HTTPS CONFIGURATION
+    # ========================================
+    - name: Create HTTPS configuration with proxy
+      copy:
+        dest: /etc/nginx/sites-available/vibe-manager-ssl
+        content: |
+          # Upstream application
+          upstream vibe_manager {
+              server 127.0.0.1:{{ app_port }} fail_timeout=0;
+          }
+          
+          # HTTP to HTTPS redirect
+          server {
+              listen 80;
+              listen [::]:80;
+              server_name {{ domain_name }};
+              
+              location /.well-known/acme-challenge/ {
+                  root /var/www/html;
+              }
+              
+              location / {
+                  return 301 https://$server_name$request_uri;
+              }
+          }
+          
+          # HTTPS server
+          server {
+              listen 443 ssl http2;
+              listen [::]:443 ssl http2;
+              server_name {{ domain_name }};
+              
+              # SSL Configuration
+              ssl_certificate /etc/letsencrypt/live/{{ domain_name }}/fullchain.pem;
+              ssl_certificate_key /etc/letsencrypt/live/{{ domain_name }}/privkey.pem;
+              ssl_trusted_certificate /etc/letsencrypt/live/{{ domain_name }}/chain.pem;
+              
+              # SSL Security Settings
+              ssl_protocols {{ nginx_ssl_protocols }};
+              ssl_ciphers {{ nginx_ssl_ciphers }};
+              ssl_prefer_server_ciphers off;
+              
+              # SSL Session Settings
+              ssl_session_timeout 1d;
+              ssl_session_cache shared:SSL:50m;
+              ssl_session_tickets off;
+              
+              # OCSP Stapling
+              ssl_stapling on;
+              ssl_stapling_verify on;
+              resolver 8.8.8.8 8.8.4.4 valid=300s;
+              resolver_timeout 5s;
+              
+              # Security Headers
+              add_header X-Frame-Options "SAMEORIGIN" always;
+              add_header X-Content-Type-Options "nosniff" always;
+              add_header X-XSS-Protection "1; mode=block" always;
+              add_header Referrer-Policy "no-referrer-when-downgrade" always;
+              add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+              
+              # Proxy Settings
+              location / {
+                  proxy_pass http://vibe_manager;
+                  proxy_http_version 1.1;
+                  
+                  # Headers
+                  proxy_set_header Host $http_host;
+                  proxy_set_header X-Real-IP $remote_addr;
+                  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                  proxy_set_header X-Forwarded-Proto $scheme;
+                  proxy_set_header X-Forwarded-Host $server_name;
+                  
+                  # WebSocket support
+                  proxy_set_header Upgrade $http_upgrade;
+                  proxy_set_header Connection "upgrade";
+                  
+                  # Timeouts
+                  proxy_connect_timeout {{ proxy_connect_timeout }};
+                  proxy_send_timeout {{ proxy_send_timeout }};
+                  proxy_read_timeout {{ proxy_read_timeout }};
+                  
+                  # Buffering
+                  proxy_buffering off;
+                  proxy_request_buffering off;
+                  
+                  # Max body size (adjust for file uploads)
+                  client_max_body_size 100M;
+              }
+              
+              # Health check endpoint (no logs)
+              location /health {
+                  proxy_pass http://vibe_manager/health;
+                  access_log off;
+              }
+          }
+      when: ssl_cert.stat.exists
+      notify: reload nginx
+      
+    - name: Enable HTTPS site
+      file:
+        src: /etc/nginx/sites-available/vibe-manager-ssl
+        dest: /etc/nginx/sites-enabled/vibe-manager-ssl
+        state: link
+      when: ssl_cert.stat.exists
+      notify: reload nginx
+      
+    - name: Remove HTTP-only site when SSL is active
+      file:
+        path: /etc/nginx/sites-enabled/vibe-manager
+        state: absent
+      when: ssl_cert.stat.exists
+      notify: reload nginx
+      
+    # ========================================
+    # FIREWALL RULES
+    # ========================================
+    - name: Allow HTTPS through firewall
+      ufw:
+        rule: allow
+        port: "443"
+        proto: tcp
+        comment: "HTTPS"
+        
+    # ========================================
+    # AUTOMATIC RENEWAL
+    # ========================================
+    - name: Setup automatic certificate renewal
+      cron:
+        name: "Let's Encrypt renewal"
+        hour: "2"
+        minute: "30"
+        job: "/usr/bin/certbot renew --quiet --nginx"
+        
+    - name: Test certificate renewal
+      command: certbot renew --dry-run
+      changed_when: false
+      when: ssl_cert.stat.exists
+      
+  handlers:
+    - name: reload nginx
+      systemd:
+        name: nginx
+        state: reloaded
+        
+    - name: restart nginx
+      systemd:
+        name: nginx
+        state: restarted

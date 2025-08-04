@@ -7,6 +7,8 @@ use std::str::FromStr;
 use log::debug;
 use serde_json::json;
 use serde::Serialize;
+use tokio::sync::OnceCell;
+use std::sync::Arc;
 
 
 #[derive(Debug)]
@@ -282,6 +284,20 @@ impl ApiUsageRepository {
 
     /// Gets detailed usage data with pre-calculated summary totals
     pub async fn get_detailed_usage_with_summary(
+        &self,
+        user_id: &Uuid,
+        start_date: DateTime<Utc>,
+        end_date: DateTime<Utc>,
+    ) -> Result<DetailedUsageResponse, AppError> {
+        // Use the new efficient processing service instead of complex SQL
+        use crate::services::usage_processing_service::UsageProcessingService;
+        
+        let processing_service = UsageProcessingService::new(Arc::new(self.db_pool.clone())).await?;
+        processing_service.get_detailed_usage(user_id, start_date, end_date).await
+    }
+    
+    /// Legacy method - Gets detailed usage data with pre-calculated summary totals using SQL
+    pub async fn get_detailed_usage_with_summary_legacy(
         &self,
         user_id: &Uuid,
         start_date: DateTime<Utc>,

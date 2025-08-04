@@ -11,7 +11,8 @@ use sqlx::SqlitePool;
 use std::sync::Arc;
 use tauri::{AppHandle, Manager};
 
-pub async fn initialize_api_clients(app_handle: &AppHandle) -> AppResult<()> {
+/// Initialize TokenManager only (deferred client initialization)
+pub async fn initialize_token_manager(app_handle: &AppHandle) -> AppResult<()> {
     // Initialize TokenManager with persistent storage support
     let token_manager = Arc::new(TokenManager::new());
     info!("TokenManager instance created.");
@@ -41,53 +42,8 @@ pub async fn initialize_api_clients(app_handle: &AppHandle) -> AppResult<()> {
         }
     }
 
-    // Manage TokenManager early so other parts can access it if needed,
-    // even if full client setup below fails.
+    // Manage TokenManager early so other parts can access it if needed
     app_handle.manage(token_manager.clone());
-
-    // Initialize Server Proxy API client
-    // Use MAIN_SERVER_BASE_URL environment variable for consistency
-    let server_url = std::env::var("MAIN_SERVER_BASE_URL")
-        .or_else(|_| std::env::var("SERVER_URL"))
-        .unwrap_or_else(|_| SERVER_API_URL.to_string());
-
-    // Create the API client - it will create its own HTTP client internally
-    let server_proxy_client = ServerProxyClient::new(
-        app_handle.clone(),
-        server_url,
-        token_manager.clone(), // Pass the initialized token_manager
-    );
-
-    info!("ServerProxyClient initialized with server URL and client binding");
-
-    // Store in app state
-    // Create a single Arc instance of the client
-    let server_proxy_client_arc = Arc::new(server_proxy_client);
-
-    // Cast the same Arc to use with different interfaces
-    let api_client_arc: Arc<dyn ApiClient> = server_proxy_client_arc.clone();
-    let transcription_client_arc: Arc<dyn TranscriptionClient> = server_proxy_client_arc.clone();
-
-    // Initialize BillingClient
-    let billing_client = BillingClient::new(token_manager.clone());
-    let billing_client_arc = Arc::new(billing_client);
-
-    info!("BillingClient initialized");
-
-    // Manage state with Tauri
-    app_handle.manage(api_client_arc);
-    app_handle.manage(transcription_client_arc);
-    app_handle.manage(server_proxy_client_arc.clone());
-    app_handle.manage(billing_client_arc);
-
-    // Note: BackgroundJobRepository will pick up the ServerProxyClient from app state
-    // when create_repositories is called in db_utils/mod.rs. Since we initialize
-    // API clients after the database, the repository won't have the proxy client
-    // initially. This is handled by the repository checking for proxy client
-    // availability when needed for final cost polling.
-    info!("ServerProxyClient available in app state for BackgroundJobRepository to use");
-
-    info!("API clients initialized and registered in app state.");
 
     // Initialize auto-sync cache service now that TokenManager is available
     let app_handle_auto_sync = app_handle.clone();
@@ -111,8 +67,88 @@ pub async fn initialize_api_clients(app_handle: &AppHandle) -> AppResult<()> {
         }
     });
 
-    info!("Cache services initialized after TokenManager registration");
+    info!("TokenManager and cache services initialized");
+    Ok(())
+}
 
+/// Reinitialize API clients with a specific server URL
+pub async fn reinitialize_api_clients(app_handle: &AppHandle, server_url: String) -> AppResult<()> {
+    info!("Reinitializing API clients with server URL: {}", server_url);
+
+    // Get TokenManager from app state
+    let token_manager = app_handle.state::<Arc<TokenManager>>()
+        .inner()
+        .clone();
+
+    // Create the API client - it will create its own HTTP client internally
+    let server_proxy_client = ServerProxyClient::new(
+        app_handle.clone(),
+        server_url,
+        token_manager.clone(), // Pass the initialized token_manager
+    );
+
+    info!("ServerProxyClient initialized with server URL and client binding");
+
+    // Create a single Arc instance of the client
+    let server_proxy_client_arc = Arc::new(server_proxy_client);
+
+    // Cast the same Arc to use with different interfaces
+    let api_client_arc: Arc<dyn ApiClient> = server_proxy_client_arc.clone();
+    let transcription_client_arc: Arc<dyn TranscriptionClient> = server_proxy_client_arc.clone();
+
+    // Initialize BillingClient
+    let billing_client = BillingClient::new(token_manager.clone());
+    let billing_client_arc = Arc::new(billing_client);
+
+    info!("BillingClient initialized");
+
+    // Acquire write locks and populate RwLock containers
+    {
+        let server_proxy_lock = app_handle.state::<Arc<tokio::sync::RwLock<Option<Arc<ServerProxyClient>>>>>()
+            .inner()
+            .clone();
+        let mut server_proxy_guard = server_proxy_lock.write().await;
+        *server_proxy_guard = Some(server_proxy_client_arc.clone());
+    }
+    
+    {
+        let billing_lock = app_handle.state::<Arc<tokio::sync::RwLock<Option<Arc<BillingClient>>>>>()
+            .inner()
+            .clone();
+        let mut billing_guard = billing_lock.write().await;
+        *billing_guard = Some(billing_client_arc.clone());
+    }
+    
+    {
+        let api_client_lock = app_handle.state::<Arc<tokio::sync::RwLock<Option<Arc<dyn ApiClient>>>>>()
+            .inner()
+            .clone();
+        let mut api_client_guard = api_client_lock.write().await;
+        *api_client_guard = Some(api_client_arc.clone());
+    }
+    
+    {
+        let transcription_lock = app_handle.state::<Arc<tokio::sync::RwLock<Option<Arc<dyn TranscriptionClient>>>>>()
+            .inner()
+            .clone();
+        let mut transcription_guard = transcription_lock.write().await;
+        *transcription_guard = Some(transcription_client_arc.clone());
+    }
+
+    // Also manage the Arc instances directly for compatibility with existing commands
+    app_handle.manage(api_client_arc);
+    app_handle.manage(transcription_client_arc);
+    app_handle.manage(server_proxy_client_arc.clone());
+    app_handle.manage(billing_client_arc);
+
+    // Note: BackgroundJobRepository will pick up the ServerProxyClient from app state
+    // when create_repositories is called in db_utils/mod.rs. Since we initialize
+    // API clients after the database, the repository won't have the proxy client
+    // initially. This is handled by the repository checking for proxy client
+    // availability when needed for final cost polling.
+    info!("ServerProxyClient available in app state for BackgroundJobRepository to use");
+
+    info!("API clients reinitialized and registered in app state.");
     Ok(())
 }
 

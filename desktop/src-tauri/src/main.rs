@@ -32,7 +32,7 @@ use std::collections::HashMap;
 use std::sync::{atomic::AtomicBool, Arc, Mutex};
 use std::time::Duration;
 use tauri::Manager;
-use tokio::sync::OnceCell;
+use tokio::sync::{OnceCell, RwLock};
 
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -95,7 +95,12 @@ fn main() {
     tauri::Builder::default()
         .manage(AppState::default())
         .manage(ConfigCache::new(Mutex::new(HashMap::new())))
-        // TokenManager will be created in initialize_api_clients with the AppHandle
+        // Initialize RwLock containers for deferred API client initialization
+        .manage(Arc::new(RwLock::new(Option::<Arc<crate::api_clients::server_proxy_client::ServerProxyClient>>::None)))
+        .manage(Arc::new(RwLock::new(Option::<Arc<crate::api_clients::billing_client::BillingClient>>::None)))
+        .manage(Arc::new(RwLock::new(Option::<Arc<dyn crate::api_clients::client_trait::ApiClient>>::None)))
+        .manage(Arc::new(RwLock::new(Option::<Arc<dyn crate::api_clients::client_trait::TranscriptionClient>>::None)))
+        // TokenManager will be created in reinitialize_api_clients with the AppHandle
         .plugin(tauri_plugin_single_instance::init(|_app, _argv, _cwd| {
             info!("Another instance tried to launch. Focusing existing window.");
         }))
@@ -289,6 +294,10 @@ fn main() {
             commands::settings_commands::get_project_task_model_settings_command,
             commands::settings_commands::set_project_task_setting_command,
             commands::settings_commands::reset_project_task_setting_command,
+            commands::settings_commands::get_available_regions_command,
+            commands::settings_commands::get_selected_server_url_command,
+            commands::settings_commands::set_selected_server_url_command,
+            commands::settings_commands::change_server_url_and_reset_command,
             // Session commands
             commands::session_commands::create_session_command,
             commands::session_commands::get_session_command,

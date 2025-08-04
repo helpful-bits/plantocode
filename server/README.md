@@ -115,3 +115,32 @@ To run the tests:
 ```bash
 cargo test
 ```
+
+## Docker
+
+This application can be built and run using Docker. The provided `Dockerfile` uses a multi-stage build to create a minimal, secure, and optimized image.
+
+### Building the Image
+
+Navigate to the `server` directory and run the following command to build the image:
+
+```bash
+docker build -t vibe-manager-server .
+```
+
+### Running the Container
+
+To run the container, you must provide the necessary environment variables, such as `DATABASE_URL` and `REDIS_URL`. The easiest way is to use an `.env` file.
+
+```bash
+docker run --rm -it \
+  -p 8080:8080 \
+  --env-file ./.env \
+  --name vibe-manager-server \
+  vibe-manager-server
+```
+
+**Notes:**
+- The `--env-file ./.env` flag assumes you have a `.env` file in the `server/` directory based on the `.env.example` file.
+- The container exposes port `8080`, which is mapped to port `8080` on the host.
+- The application will attempt to connect to the database and Redis instances specified in your environment variables. Ensure the container can reach them (e.g., by using `host.docker.internal` on Docker Desktop or appropriate container networking).

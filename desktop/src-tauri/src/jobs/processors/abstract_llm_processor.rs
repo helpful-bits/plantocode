@@ -225,7 +225,7 @@ impl LlmTaskRunner {
             .await;
 
         // Get API client
-        let llm_client = llm_api_utils::get_api_client(&self.app_handle)?;
+        let llm_client = llm_api_utils::get_api_client(&self.app_handle).await?;
 
         // Create messages for structured streaming (preferred approach)
         let messages = llm_api_utils::create_openrouter_messages(&system_prompt, &user_prompt);

@@ -8,5 +8,6 @@ pub mod reconciliation_service;
 pub mod cost_resolver;
 pub mod model_mapping_service;
 pub mod request_tracker;
+pub mod usage_processing_service;
 
 // Re-export commonly used types

@@ -1,0 +1,82 @@
+---
+# Base Infrastructure Setup for All Servers
+# This playbook sets up the foundational infrastructure
+# It is application-agnostic and can be reused for any server
+
+- name: Base Infrastructure Setup
+  hosts: all
+  become: yes
+    
+  tasks:
+    - name: Infrastructure Setup Overview
+      debug:
+        msg:
+          - "=== BASE INFRASTRUCTURE SETUP ==="
+          - "Server: {{ ansible_host }}"
+          - "Location: {{ server_location | default('Unknown') }}"
+          - "This will install and configure:"
+          - "- SSH hardening"
+          - "- Firewall (UFW)"
+          - "- PostgreSQL {{ postgresql_version | default(17) }}"
+          - "- Redis"
+          - "- Fail2ban"
+          - "- Automatic security updates"
+
+# ========================================
+# CORE INFRASTRUCTURE PLAYBOOKS
+# ========================================
+
+# Initial server hardening (SSH, firewall, basic security)
+- import_playbook: playbooks/base-infrastructure/server-hardening.yml
+  tags: [hardening, initial]
+
+# PostgreSQL installation and base configuration
+- import_playbook: playbooks/base-infrastructure/postgresql-setup.yml
+  tags: [postgresql, database]
+
+# Redis installation and configuration
+- import_playbook: playbooks/base-infrastructure/redis-setup.yml
+  tags: [redis, cache]
+
+# Automatic security updates
+- import_playbook: playbooks/base-infrastructure/security-updates.yml
+  tags: [security, updates]
+
+# Nginx with SSL/TLS support (optional)
+- import_playbook: playbooks/base-infrastructure/nginx-ssl.yml
+  tags: [nginx, ssl, never]
+
+# ========================================
+# INFRASTRUCTURE STATUS CHECK
+# ========================================
+- name: Infrastructure Status Summary
+  hosts: all
+  become: yes
+  tags: [status, always]
+  
+  tasks:
+    - name: Check installed services
+      systemd:
+        name: "{{ item }}"
+      register: services_status
+      loop:
+        - ssh
+        - ufw
+        - postgresql@17-main
+        - redis
+        - fail2ban
+      failed_when: false
+      
+    - name: Display infrastructure status
+      debug:
+        msg:
+          - "=== INFRASTRUCTURE STATUS ==="
+          - "SSH: {{ (services_status.results | selectattr('item', 'equalto', 'ssh') | list | first).status.ActiveState | default('not installed') }}"
+          - "Firewall: {{ (services_status.results | selectattr('item', 'equalto', 'ufw') | list | first).status.ActiveState | default('not installed') }}"
+          - "PostgreSQL: {{ (services_status.results | selectattr('item', 'equalto', 'postgresql@17-main') | list | first).status.ActiveState | default('not installed') }}"
+          - "Redis: {{ (services_status.results | selectattr('item', 'equalto', 'redis') | list | first).status.ActiveState | default('not installed') }}"
+          - "Fail2ban: {{ (services_status.results | selectattr('item', 'equalto', 'fail2ban') | list | first).status.ActiveState | default('not installed') }}"
+          - ""
+          - "Run specific tags to install missing components:"
+          - "  ansible-playbook -i inventory/hosts.yml site-base.yml --tags postgresql"
+          - "  ansible-playbook -i inventory/hosts.yml site-base.yml --tags redis"

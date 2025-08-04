@@ -46,7 +46,7 @@ CREATE TABLE IF NOT EXISTS api_usage (
     tokens_input BIGINT NOT NULL DEFAULT 0,
     tokens_output BIGINT NOT NULL DEFAULT 0,
     cost DECIMAL(12, 6) NOT NULL,
-    timestamp TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    timestamp TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     request_id TEXT,
     metadata JSONB,
     -- Cached token columns for tracking cache usage
@@ -108,10 +108,10 @@ CREATE TABLE IF NOT EXISTS providers (
     description TEXT,
     website_url VARCHAR(500),
     api_base_url VARCHAR(500),
-    capabilities JSONB DEFAULT '{}',   -- Provider-level capabilities
-    status VARCHAR(20) DEFAULT 'active', -- active, deprecated, beta
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
+    capabilities JSONB NOT NULL DEFAULT '{}',   -- Provider-level capabilities
+    status VARCHAR(20) NOT NULL DEFAULT 'active', -- active, deprecated, beta
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- Add indexes for providers
@@ -130,12 +130,12 @@ CREATE TABLE IF NOT EXISTS models (
     context_window INTEGER NOT NULL DEFAULT 4096,
     pricing_info JSONB NOT NULL DEFAULT '{}'::jsonb,
     provider_id INTEGER REFERENCES providers(id),
-    model_type VARCHAR(50) DEFAULT 'text',
-    capabilities JSONB DEFAULT '{}',
-    status VARCHAR(20) DEFAULT 'active',
+    model_type VARCHAR(50) NOT NULL DEFAULT 'text',
+    capabilities JSONB NOT NULL DEFAULT '{}',
+    status VARCHAR(20) NOT NULL DEFAULT 'active',
     description TEXT,
     api_model_id VARCHAR(255),
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Add comment for pricing_info column
@@ -1294,7 +1294,7 @@ CREATE TABLE IF NOT EXISTS billing_adjustment_alerts (
     alert_type TEXT NOT NULL,
     alert_reason TEXT,
     handled BOOLEAN DEFAULT FALSE,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     handled_at TIMESTAMPTZ,
     handled_by TEXT,
     notes TEXT
@@ -1303,6 +1303,26 @@ CREATE TABLE IF NOT EXISTS billing_adjustment_alerts (
 CREATE INDEX idx_billing_alerts_unhandled ON billing_adjustment_alerts(created_at DESC) 
 WHERE handled = FALSE;
 CREATE INDEX idx_billing_alerts_user ON billing_adjustment_alerts(user_id, created_at DESC);
+
+-- Table for managing server regions
+CREATE TABLE IF NOT EXISTS server_regions (
+    id SERIAL PRIMARY KEY,
+    label VARCHAR(255) NOT NULL,
+    url VARCHAR(255) NOT NULL UNIQUE,
+    is_default BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Insert default regions
+INSERT INTO server_regions (label, url, is_default) VALUES 
+    ('United States', 'https://api.us.vibemanager.app', TRUE),
+    ('European Union', 'https://api.eu.vibemanager.app', FALSE)
+ON CONFLICT (url) DO NOTHING;
+
+-- Create indexes for server regions
+CREATE INDEX idx_server_regions_is_default ON server_regions(is_default);
+CREATE INDEX idx_server_regions_url ON server_regions(url);
 
 -- Pending usage timeout handling
 ALTER TABLE api_usage 

@@ -1,0 +1,20 @@
+---
+# Common configuration for all servers
+app_name: vibe-manager
+app_user: vibe-manager
+app_dir: /opt/vibe-manager
+
+# PostgreSQL defaults
+postgresql_version: 17
+postgresql_port: 5432
+
+# Common firewall ports
+common_firewall_ports: [22, 80, 443]
+
+# Timezone configuration (can be overridden per group/host)
+server_timezone: UTC
+
+# Nginx proxy timeouts for long-running LLM operations
+nginx_proxy_connect_timeout: 180s   # 3 minutes for initial connection
+nginx_proxy_send_timeout: 1800s     # 30 minutes for sending requests
+nginx_proxy_read_timeout: 1800s     # 30 minutes for reading responses

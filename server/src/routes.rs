@@ -65,6 +65,7 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig, strict_rate_limiter: RateL
             .route("/all-configurations", web::get().to(handlers::config_handlers::get_all_application_configurations_handler))
             .route("/billing", web::get().to(handlers::config_handlers::get_billing_config))
             .route("/billing", web::put().to(handlers::config_handlers::update_billing_config))
+            .route("/desktop-runtime-config", web::get().to(handlers::config_handlers::get_desktop_runtime_ai_config))
     );
     
     // Provider routes (/api/providers/*)
@@ -147,10 +148,7 @@ pub fn configure_public_api_routes(cfg: &mut web::ServiceConfig) {
             .route("/poll-status", web::get().to(handlers::auth0_handlers::poll_auth_status))
             .route("/finalize-login", web::post().to(handlers::auth0_handlers::finalize_auth0_login))
     );
-    cfg.service(
-        web::scope("/config") // Base path: /config
-            .route("/desktop-runtime-config", web::get().to(handlers::config_handlers::get_desktop_runtime_ai_config))
-    );
+    cfg.route("/config/regions", web::get().to(handlers::region_handlers::get_regions_handler));
     cfg.service(
         web::scope("/system-prompts") // Base path: /system-prompts
             .route("/defaults", web::get().to(handlers::system_prompts_handlers::get_default_system_prompts))

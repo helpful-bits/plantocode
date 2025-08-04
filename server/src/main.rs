@@ -511,13 +511,17 @@ async fn main() -> std::io::Result<()> {
                     .wrap(public_ip_rate_limiter.clone())
                     .route(web::get().to(handlers::health::health_check))
             )
-            // Test route directly on main app (not in /api scope)
-            .route("/direct-test", web::get().to(|| async { actix_web::HttpResponse::Ok().body("Direct route works!") }))
-            // Public auth routes with IP-based rate limiting (no /api prefix)
             .service(
                 web::scope("/auth")
                     .wrap(public_ip_rate_limiter.clone())
                     .configure(|cfg| configure_public_auth_routes(cfg, account_creation_rate_limiter.clone()))
+            )
+            // Public config and auth0 routes with IP-based rate limiting (no /api prefix, no authentication)
+            // IMPORTANT: Must be registered BEFORE the authenticated /api scope to properly handle /api/regions
+            .service(
+                web::scope("")
+                    .wrap(public_ip_rate_limiter.clone())
+                    .configure(configure_public_api_routes)
             )
             // Protected API routes with strict rate limiting (IP + User) and authentication (under /api)
             .service(
@@ -531,13 +535,6 @@ async fn main() -> std::io::Result<()> {
                 web::scope("/webhooks")
                     .wrap(public_ip_rate_limiter.clone())
                     .configure(configure_webhook_routes)
-            )
-            // Public config and auth0 routes with IP-based rate limiting (no /api prefix, no authentication)
-            // MOVED TO END to prevent intercepting other routes
-            .service(
-                web::scope("")
-                    .wrap(public_ip_rate_limiter.clone())
-                    .configure(configure_public_api_routes)
             )
     })
     .keep_alive(std::time::Duration::from_secs(300)) // 5 minutes keep-alive

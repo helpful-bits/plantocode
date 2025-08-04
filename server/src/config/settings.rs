@@ -16,6 +16,7 @@ pub struct AppSettings {
     pub stripe: StripeConfig,
     pub auth_stores: AuthStoreConfig,
     pub redis: RedisConfig,
+    pub website_base_url: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -250,6 +251,9 @@ impl AppSettings {
             .parse::<u64>()
             .map_err(|_| AppError::Configuration("AUTH_STORE_CLEANUP_INTERVAL_SECS must be a valid number".to_string()))?;
         
+        let website_base_url = env::var("WEBSITE_BASE_URL")
+            .map_err(|_| AppError::Configuration("WEBSITE_BASE_URL must be set".to_string()))?;
+        
         Ok(Self {
             app: AppConfig {
                 name: app_name,
@@ -315,6 +319,7 @@ impl AppSettings {
             redis: RedisConfig {
                 url: redis_url,
             },
+            website_base_url,
         })
     }
 }
