@@ -181,12 +181,13 @@ jobs:
         run_install: false
       
     - name: Install dependencies
-      working-directory: desktop
-      run: pnpm install --frozen-lockfile
+      run: |
+        cd desktop
+        pnpm install --frozen-lockfile
       
     - name: Run npm audit (Node.js vulnerability scanning)
-      working-directory: desktop
       run: |
+        cd desktop
         echo "Running npm audit for Node.js dependency vulnerabilities..."
         
         # Run audit and capture output
@@ -248,12 +249,13 @@ jobs:
         run_install: false
       
     - name: Install dependencies
-      working-directory: desktop
-      run: pnpm install --frozen-lockfile
+      run: |
+        cd desktop
+        pnpm install --frozen-lockfile
       
     - name: Run ESLint security rules
-      working-directory: desktop
       run: |
+        cd desktop
         echo "Running ESLint with security-focused rules..."
         
         # Run security linting
@@ -326,15 +328,16 @@ jobs:
         override: true
         
     - name: Install dependencies
-      working-directory: desktop
-      run: pnpm install --frozen-lockfile
+      run: |
+        cd desktop
+        pnpm install --frozen-lockfile
       
     - name: Install Tauri CLI
       run: cargo install tauri-cli --version "^2.0" --locked
       
     - name: Audit Tauri configuration
-      working-directory: desktop
       run: |
+        cd desktop
         echo "Auditing Tauri configuration for security issues..."
         
         # Check for common security misconfigurations
@@ -386,8 +389,8 @@ jobs:
         fi
         
     - name: Check for sensitive files in bundle
-      working-directory: desktop
       run: |
+        cd desktop
         echo "Checking for sensitive files that might be included in bundle..."
         
         # List of sensitive patterns to check for
@@ -410,8 +413,8 @@ jobs:
         fi
         
     - name: Validate Tauri capabilities
-      working-directory: desktop
       run: |
+        cd desktop
         echo "Validating Tauri capabilities configuration..."
         
         echo "## 🛡️ Tauri Capabilities Validation" >> $GITHUB_STEP_SUMMARY
@@ -441,8 +444,8 @@ jobs:
         fi
         
     - name: Check Rust dependencies security
-      working-directory: desktop/src-tauri
       run: |
+        cd desktop/src-tauri
         echo "Running cargo audit on Tauri Rust dependencies..."
         
         # Install cargo-audit if not present
