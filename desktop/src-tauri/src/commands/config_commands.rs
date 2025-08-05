@@ -125,7 +125,8 @@ pub async fn get_server_url(app_handle: AppHandle) -> AppResult<String> {
     info!("Retrieving server URL configuration");
 
     let app_state = app_handle.state::<crate::AppState>();
-    let server_url = app_state.settings.server_url.clone();
+    let server_url = app_state.get_server_url()
+        .ok_or_else(|| AppError::ConfigError("No server URL configured. Please select a server region first.".to_string()))?;
 
     info!("Server URL configuration retrieved: {}", server_url);
     Ok(server_url)

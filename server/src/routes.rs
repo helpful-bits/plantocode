@@ -109,6 +109,13 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig, strict_rate_limiter: RateL
         web::scope("/featurebase")
             .route("/sso-token", web::get().to(handlers::featurebase_handlers::get_sso_token))
     );
+
+    // System prompts routes (/api/system-prompts/*)
+    cfg.service(
+        web::scope("/system-prompts")
+            .route("/defaults", web::get().to(handlers::system_prompts_handlers::get_default_system_prompts))
+            .route("/defaults/{task_type}", web::get().to(handlers::system_prompts_handlers::get_default_system_prompt_by_task_type))
+    );
 }
 
 /// Configures public authentication routes (not part of /api).
@@ -140,45 +147,11 @@ async fn auth0_logged_out_handler() -> actix_web::Result<actix_web::HttpResponse
         "#))
 }
 
-/// Configures publicly accessible API routes that DO NOT require JWT authentication.
-/// Mounted directly on the app (no /api prefix).
-pub fn configure_public_api_routes(cfg: &mut web::ServiceConfig) {
-    cfg.service(
-        web::scope("/auth0") // Base path: /auth0
-            .route("/poll-status", web::get().to(handlers::auth0_handlers::poll_auth_status))
-            .route("/finalize-login", web::post().to(handlers::auth0_handlers::finalize_auth0_login))
-    );
-    cfg.route("/config/regions", web::get().to(handlers::region_handlers::get_regions_handler));
-    cfg.service(
-        web::scope("/system-prompts") // Base path: /system-prompts
-            .route("/defaults", web::get().to(handlers::system_prompts_handlers::get_default_system_prompts))
-            .route("/defaults/{task_type}", web::get().to(handlers::system_prompts_handlers::get_default_system_prompt_by_task_type))
-    );
-}
+// Note: The public API routes (auth0 polling/finalization and config/regions) are now
+// registered directly in main.rs to avoid using an empty scope
 
 /// Configures webhook routes that DO NOT require JWT authentication.
 /// Mounted under the "/webhooks" scope in main.rs.
 pub fn configure_webhook_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(handlers::billing::webhook_handlers::stripe_webhook);
-}
-
-// Make sure all modules are properly compiled
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use actix_web::test;
-    
-    #[actix_web::test]
-    async fn test_routes_compile() {
-        // Test that all route configurations compile without errors
-        let rate_limiter = RateLimitMiddleware::new(100, std::time::Duration::from_secs(60));
-        
-        let _app = test::init_service(
-            actix_web::App::new()
-                .configure(|cfg| configure_routes(cfg, rate_limiter.clone()))
-                .configure(|cfg| configure_public_auth_routes(cfg, rate_limiter.clone()))
-                .configure(configure_public_api_routes)
-                .configure(configure_webhook_routes)
-        );
-    }
 }

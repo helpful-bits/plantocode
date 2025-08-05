@@ -58,7 +58,7 @@ export function Pricing() {
             viewport={{ once: true }}
             whileInView={{ opacity: 1, y: 0 }}
           >
-            Let's be frank: with heavy use, this can cost $300+ a month. But this investment pays for itself in productivity and peace of mind. Every operation reports its exact cost in real-time, so you are always in control.
+            Let's be frank: with heavy use, LLM API tokens can cost $100+ a month. But this investment pays for itself in productivity and peace of mind. Every operation reports its exact token cost in real-time, so you are always in control.
           </motion.p>
         </motion.div>
 
@@ -104,7 +104,7 @@ export function Pricing() {
                     viewport={{ once: true }}
                     whileInView={{ opacity: 1, scale: 1 }}
                   >
-                    <div className="inline-flex items-center justify-center px-3 py-1.5 bg-gradient-to-r from-emerald-500 to-teal-600 text-primary-foreground text-xs font-bold rounded-full shadow-lg ring-2 ring-primary-foreground/30 backdrop-blur-sm">
+                    <div className="inline-flex items-center justify-center px-3 py-1.5 bg-gradient-to-r from-emerald-500 to-teal-600 text-white text-xs font-bold rounded-full shadow-lg ring-2 ring-white/30 backdrop-blur-sm">
                       <span className="tracking-wider">FREE</span>
                     </div>
                   </motion.div>

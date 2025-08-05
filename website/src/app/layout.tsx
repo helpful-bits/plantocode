@@ -120,7 +120,9 @@ export default function RootLayout({
         <ClientProviders>
           {children}
         </ClientProviders>
-        <GoogleAnalytics gaId={process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID || 'G-XXXXXXXXXX'} />
+        {process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID && (
+          <GoogleAnalytics gaId={process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID} />
+        )}
         <StructuredData data={websiteJsonLd} />
       </body>
     </html>

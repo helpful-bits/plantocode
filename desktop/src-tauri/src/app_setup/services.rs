@@ -83,7 +83,7 @@ pub async fn reinitialize_api_clients(app_handle: &AppHandle, server_url: String
     // Create the API client - it will create its own HTTP client internally
     let server_proxy_client = ServerProxyClient::new(
         app_handle.clone(),
-        server_url,
+        server_url.clone(),
         token_manager.clone(), // Pass the initialized token_manager
     );
 
@@ -97,7 +97,7 @@ pub async fn reinitialize_api_clients(app_handle: &AppHandle, server_url: String
     let transcription_client_arc: Arc<dyn TranscriptionClient> = server_proxy_client_arc.clone();
 
     // Initialize BillingClient
-    let billing_client = BillingClient::new(token_manager.clone());
+    let billing_client = BillingClient::new(server_url.clone(), token_manager.clone());
     let billing_client_arc = Arc::new(billing_client);
 
     info!("BillingClient initialized");

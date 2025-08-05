@@ -134,12 +134,16 @@ impl ServerProxyClient {
     async fn try_fetch_default_system_prompts_from_server(
         &self,
     ) -> AppResult<Vec<crate::models::DefaultSystemPrompt>> {
-        // Create the prompts endpoint URL - this is a public endpoint, no auth required
-        let prompts_url = format!("{}/system-prompts/defaults", self.server_url);
+        // Get authentication token
+        let auth_token = self.get_auth_token().await?;
+
+        // Create the prompts endpoint URL - now using authenticated endpoint
+        let prompts_url = format!("{}/api/system-prompts/defaults", self.server_url);
 
         let response = self
             .http_client
             .get(&prompts_url)
+            .header("Authorization", format!("Bearer {}", auth_token))
             .header("HTTP-Referer", APP_HTTP_REFERER)
             .header("X-Title", APP_X_TITLE)
             .send()
@@ -158,7 +162,7 @@ impl ServerProxyClient {
                 "Server default system prompts API error: {} - {}",
                 status, error_text
             );
-            return Err(map_server_proxy_error(status.as_u16(), &error_text));
+            return Err(self.handle_auth_error(status.as_u16(), &error_text).await);
         }
 
         // Parse the response directly into DefaultSystemPrompt structs
@@ -192,12 +196,16 @@ impl ServerProxyClient {
         &self,
         task_type: &str,
     ) -> AppResult<Option<crate::models::DefaultSystemPrompt>> {
-        // Create the specific prompt endpoint URL - this is a public endpoint, no auth required
-        let prompt_url = format!("{}/system-prompts/defaults/{}", self.server_url, task_type);
+        // Get authentication token
+        let auth_token = self.get_auth_token().await?;
+
+        // Create the specific prompt endpoint URL - now using authenticated endpoint
+        let prompt_url = format!("{}/api/system-prompts/defaults/{}", self.server_url, task_type);
 
         let response = self
             .http_client
             .get(&prompt_url)
+            .header("Authorization", format!("Bearer {}", auth_token))
             .header("HTTP-Referer", APP_HTTP_REFERER)
             .header("X-Title", APP_X_TITLE)
             .send()
@@ -224,7 +232,7 @@ impl ServerProxyClient {
                 "Server default system prompt API error: {} - {}",
                 status, error_text
             );
-            return Err(map_server_proxy_error(status.as_u16(), &error_text));
+            return Err(self.handle_auth_error(status.as_u16(), &error_text).await);
         }
 
         // Parse the response directly into DefaultSystemPrompt

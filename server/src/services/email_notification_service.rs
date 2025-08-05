@@ -59,6 +59,9 @@ impl EmailNotificationService {
     ) -> Result<(), AppError> {
         let subject = "Credits Successfully Added to Your Account".to_string();
         
+        // Format the amount to 2 decimal places
+        let formatted_amount = format!("{:.2}", amount);
+        
         let html_content = format!(
             r#"
             <html>
@@ -71,7 +74,7 @@ impl EmailNotificationService {
             </body>
             </html>
             "#,
-            amount, currency
+            formatted_amount, currency
         );
 
         self.send_via_mailgun_direct(&subject, &html_content, user_email).await

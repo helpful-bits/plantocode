@@ -125,13 +125,13 @@ impl WebhookIdempotencyRepository {
             )
             SELECT 
                 id, webhook_event_id, webhook_type, event_type,
-                status, processing_result, processed_at,
-                locked_at, locked_by, lock_expires_at,
-                retry_count, max_retries, next_retry_at,
-                error_message, error_details, last_error_at,
-                webhook_payload, metadata,
+                status, processing_result as "processing_result?", processed_at as "processed_at?",
+                locked_at as "locked_at?", locked_by as "locked_by?", lock_expires_at as "lock_expires_at?",
+                retry_count, max_retries, next_retry_at as "next_retry_at?",
+                error_message as "error_message?", error_details as "error_details?", last_error_at as "last_error_at?",
+                webhook_payload as "webhook_payload?", metadata as "metadata?",
                 first_seen_at, created_at, updated_at,
-                processing_duration_ms, payload_size_bytes
+                processing_duration_ms as "processing_duration_ms?", payload_size_bytes as "payload_size_bytes?"
             FROM webhook_lock
             "#,
             record_id,
@@ -307,13 +307,13 @@ impl WebhookIdempotencyRepository {
             r#"
             SELECT 
                 id, webhook_event_id, webhook_type, event_type,
-                status, processing_result, processed_at,
-                locked_at, locked_by, lock_expires_at,
-                retry_count, max_retries, next_retry_at,
-                error_message, error_details, last_error_at,
-                webhook_payload, metadata,
+                status, processing_result as "processing_result?", processed_at as "processed_at?",
+                locked_at as "locked_at?", locked_by as "locked_by?", lock_expires_at as "lock_expires_at?",
+                retry_count, max_retries, next_retry_at as "next_retry_at?",
+                error_message as "error_message?", error_details as "error_details?", last_error_at as "last_error_at?",
+                webhook_payload as "webhook_payload?", metadata as "metadata?",
                 first_seen_at, created_at, updated_at,
-                processing_duration_ms, payload_size_bytes
+                processing_duration_ms as "processing_duration_ms?", payload_size_bytes as "payload_size_bytes?"
             FROM webhook_idempotency 
             WHERE webhook_event_id = $1
             "#,
@@ -333,13 +333,13 @@ impl WebhookIdempotencyRepository {
             r#"
             SELECT 
                 id, webhook_event_id, webhook_type, event_type,
-                status, processing_result, processed_at,
-                locked_at, locked_by, lock_expires_at,
-                retry_count, max_retries, next_retry_at,
-                error_message, error_details, last_error_at,
-                webhook_payload, metadata,
+                status, processing_result as "processing_result?", processed_at as "processed_at?",
+                locked_at as "locked_at?", locked_by as "locked_by?", lock_expires_at as "lock_expires_at?",
+                retry_count, max_retries, next_retry_at as "next_retry_at?",
+                error_message as "error_message?", error_details as "error_details?", last_error_at as "last_error_at?",
+                webhook_payload as "webhook_payload?", metadata as "metadata?",
                 first_seen_at, created_at, updated_at,
-                processing_duration_ms, payload_size_bytes
+                processing_duration_ms as "processing_duration_ms?", payload_size_bytes as "payload_size_bytes?"
             FROM webhook_idempotency 
             WHERE status = 'pending' 
               AND retry_count < max_retries 

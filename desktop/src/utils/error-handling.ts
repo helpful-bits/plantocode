@@ -1096,7 +1096,16 @@ export async function logError(
     return;
   }
 
-  const serverUrl = import.meta.env.VITE_MAIN_SERVER_BASE_URL;
+  // Try to get server URL from Tauri backend
+  let serverUrl: string | null = null;
+  try {
+    const { invoke } = await import('@tauri-apps/api/core');
+    serverUrl = await invoke<string>('get_server_url');
+  } catch (e) {
+    // If we can't get server URL, just return
+    return;
+  }
+
   if (!serverUrl) {
     return;
   }

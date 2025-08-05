@@ -273,7 +273,7 @@ pub async fn get_server_default_task_model_settings_command(
 pub async fn fetch_default_system_prompts_from_server(
     app_handle: AppHandle,
 ) -> AppResult<Vec<DefaultSystemPrompt>> {
-    let server_client = app_handle.state::<Arc<ServerProxyClient>>().inner().clone();
+    let server_client = crate::api_clients::client_factory::get_server_proxy_client(&app_handle).await?;
     server_client.get_default_system_prompts().await
 }
 
@@ -282,14 +282,14 @@ pub async fn fetch_default_system_prompt_from_server(
     app_handle: AppHandle,
     task_type: String,
 ) -> AppResult<Option<serde_json::Value>> {
-    let server_client = app_handle.state::<Arc<ServerProxyClient>>().inner().clone();
+    let server_client = crate::api_clients::client_factory::get_server_proxy_client(&app_handle).await?;
     let result = server_client.get_default_system_prompt(&task_type).await?;
     Ok(result.map(|prompt| serde_json::to_value(prompt).unwrap_or_default()))
 }
 
 #[tauri::command]
 pub async fn initialize_system_prompts_from_server(app_handle: AppHandle) -> AppResult<()> {
-    let server_client = app_handle.state::<Arc<ServerProxyClient>>().inner().clone();
+    let server_client = crate::api_clients::client_factory::get_server_proxy_client(&app_handle).await?;
     let settings_repo = app_handle
         .state::<Arc<SettingsRepository>>()
         .inner()
@@ -422,17 +422,19 @@ pub async fn get_project_task_model_settings_command(
 }
 
 #[tauri::command]
-pub async fn get_available_regions_command() -> AppResult<Vec<ServerRegionInfo>> {
+pub async fn get_available_regions_command(
+    app_state: State<'_, crate::AppState>,
+) -> AppResult<Vec<ServerRegionInfo>> {
     let client = reqwest::Client::new();
 
-    // Attempt to fetch from local/dev server URL first if available
-    if let Ok(dev_server_url) = std::env::var("MAIN_SERVER_BASE_URL") {
-        if !dev_server_url.is_empty() {
-            let regions_url = format!("{}/config/regions", dev_server_url.trim_end_matches('/'));
+    // Attempt to fetch from current server URL first if available
+    if let Some(current_server_url) = app_state.get_server_url() {
+        if !current_server_url.is_empty() {
+            let regions_url = format!("{}/config/regions", current_server_url.trim_end_matches('/'));
             if let Ok(response) = client.get(&regions_url).send().await {
                 if response.status().is_success() {
                     if let Ok(regions) = response.json::<Vec<ServerRegionInfo>>().await {
-                        log::info!("Fetched server regions from dev server: {}", dev_server_url);
+                        log::info!("Fetched server regions from current server: {}", current_server_url);
                         return Ok(regions);
                     }
                 }
@@ -484,10 +486,14 @@ pub async fn get_selected_server_url_command(
 pub async fn set_selected_server_url_command(
     app_handle: AppHandle,
     settings_repo: State<'_, Arc<SettingsRepository>>,
+    app_state: State<'_, crate::AppState>,
     url: String,
 ) -> AppResult<()> {
     // Save the URL to settings
     settings_repo.set_value("selected_server_url", &url).await?;
+    
+    // Update AppState with the new URL
+    app_state.set_server_url(url.clone());
     
     // Reinitialize API clients with new URL
     reinitialize_api_clients(&app_handle, &url).await?;
@@ -499,6 +505,7 @@ pub async fn set_selected_server_url_command(
 pub async fn change_server_url_and_reset_command(
     app_handle: AppHandle,
     settings_repo: State<'_, Arc<SettingsRepository>>,
+    app_state: State<'_, crate::AppState>,
     token_manager: State<'_, Arc<TokenManager>>,
     config_cache: State<'_, ConfigCache>,
     new_url: String,
@@ -513,6 +520,10 @@ pub async fn change_server_url_and_reset_command(
     
     // Save the new URL and reinitialize API clients
     settings_repo.set_value("selected_server_url", &new_url).await?;
+    
+    // Update AppState with the new URL
+    app_state.set_server_url(new_url.clone());
+    
     reinitialize_api_clients(&app_handle, &new_url).await?;
     
     Ok(())

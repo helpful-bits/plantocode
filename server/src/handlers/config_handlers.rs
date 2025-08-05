@@ -190,13 +190,8 @@ pub async fn get_desktop_runtime_ai_config(
     _user: web::ReqData<AuthenticatedUser>,
     app_state: web::Data<AppState>,
 ) -> Result<HttpResponse, AppError> {
-    info!("Returning cached desktop runtime AI configuration");
-    
     // Use cached configuration from AppState instead of database queries
     let response = app_state.runtime_ai_config.as_ref().clone();
-    
-    info!("Returned cached desktop runtime AI configuration with {} providers", response.providers.len());
-    
     Ok(HttpResponse::Ok().json(response))
 }
 

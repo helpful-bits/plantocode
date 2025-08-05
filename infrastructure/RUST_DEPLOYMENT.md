@@ -62,6 +62,8 @@ ansible-playbook -i inventory/hosts.yml site-app.yml --tags deploy
 ansible-playbook -i inventory/hosts.yml playbooks/app-vibe-manager/rust-deploy.yml --tags rollback
 ```
 
+**Warning:** This is a potentially dangerous operation. The 'rollback' tag is intentionally marked with 'never' in the playbook to prevent accidental execution. You must explicitly use '--tags rollback' to run it.
+
 ## Environment Variables
 
 Environment variables are managed using Ansible Vault and deployed as `/opt/vibe-manager/config/app.env` on the server:
@@ -101,8 +103,8 @@ ansible -i inventory/hosts.yml hetzner -m command -a "ls -la /opt/vibe-manager/r
 # Check permissions
 ansible -i inventory/hosts.yml hetzner -m command -a "ls -la /opt/vibe-manager/bin/" --become
 
-# Check service logs
-ansible -i inventory/hosts.yml hetzner -m command -a "journalctl -u vibe-manager -n 100" --become
+# Check service logs using the playbook
+ansible-playbook -i inventory/hosts.yml site-app.yml --tags logs
 ```
 
 ### Cross-Compilation Issues

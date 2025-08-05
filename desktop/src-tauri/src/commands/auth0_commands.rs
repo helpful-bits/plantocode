@@ -54,12 +54,14 @@ pub async fn start_auth0_login_flow(
         .map_err(|_| AppError::ConfigError("AUTH0_NATIVE_CLIENT_ID not set".to_string()))?;
     let auth0_api_audience = std::env::var("AUTH0_API_AUDIENCE")
         .map_err(|_| AppError::ConfigError("AUTH0_API_AUDIENCE not set".to_string()))?;
-    let server_auth0_callback_url = std::env::var("SERVER_AUTH0_CALLBACK_URL")
-        .map_err(|_| AppError::ConfigError("SERVER_AUTH0_CALLBACK_URL not set".to_string()))?;
-    let server_auth0_initiate_login_url = std::env::var("SERVER_AUTH0_INITIATE_LOGIN_URL")
-        .map_err(|_| {
-            AppError::ConfigError("SERVER_AUTH0_INITIATE_LOGIN_URL not set".to_string())
-        })?;
+    
+    // Get server URL from app state
+    let server_url = app_state.get_server_url()
+        .ok_or_else(|| AppError::ConfigError("No server URL configured. Please select a server region first.".to_string()))?;
+    
+    // Construct Auth0 URLs dynamically
+    let server_auth0_callback_url = format!("{}/auth/auth0/callback", server_url.trim_end_matches('/'));
+    let server_auth0_initiate_login_url = format!("{}/auth/auth0/initiate-login", server_url.trim_end_matches('/'));
 
     // Construct URL to server's initiate-login endpoint
     let mut initiate_url = Url::parse(&server_auth0_initiate_login_url)
@@ -104,8 +106,9 @@ pub async fn check_auth_status_and_exchange_token(
         .ok_or_else(|| AppError::ValidationError("Polling ID not found or expired".to_string()))?;
 
     // Poll the server for status
-    let server_auth0_poll_status_url = std::env::var("SERVER_AUTH0_POLL_STATUS_URL")
-        .map_err(|_| AppError::ConfigError("SERVER_AUTH0_POLL_STATUS_URL not set".to_string()))?;
+    let server_url = app_state.get_server_url()
+        .ok_or_else(|| AppError::ConfigError("No server URL configured. Please select a server region first.".to_string()))?;
+    let server_auth0_poll_status_url = format!("{}/auth0/poll-status", server_url.trim_end_matches('/'));
 
     let poll_url = format!("{}?pid={}", server_auth0_poll_status_url, polling_id);
     let client = &app_state.client;
@@ -192,9 +195,10 @@ pub async fn check_auth_status_and_exchange_token(
     let auth0_native_client_id = std::env::var("AUTH0_NATIVE_CLIENT_ID").map_err(|_| {
         AppError::ConfigError("AUTH0_NATIVE_CLIENT_ID environment variable not set".to_string())
     })?;
-    let server_auth0_callback_url = std::env::var("SERVER_AUTH0_CALLBACK_URL").map_err(|_| {
-        AppError::ConfigError("SERVER_AUTH0_CALLBACK_URL environment variable not set".to_string())
-    })?;
+    // Get server URL from app state
+    let server_url = app_state.get_server_url()
+        .ok_or_else(|| AppError::ConfigError("No server URL configured. Please select a server region first.".to_string()))?;
+    let server_auth0_callback_url = format!("{}/auth/auth0/callback", server_url.trim_end_matches('/'));
 
     let auth_url = AuthUrl::new(format!("https://{}/authorize", auth0_domain))
         .map_err(|e| AppError::ConfigError(format!("Invalid auth URL: {}", e)))?;
@@ -226,10 +230,7 @@ pub async fn check_auth_status_and_exchange_token(
         .map(|rt| rt.secret().to_string());
 
     // Send tokens to server for finalization
-    let server_auth0_finalize_login_url = std::env::var("SERVER_AUTH0_FINALIZE_LOGIN_URL")
-        .map_err(|_| {
-            AppError::ConfigError("SERVER_AUTH0_FINALIZE_LOGIN_URL not set".to_string())
-        })?;
+    let server_auth0_finalize_login_url = format!("{}/auth0/finalize-login", server_url.trim_end_matches('/'));
 
     let finalize_response = client
         .post(&server_auth0_finalize_login_url)
@@ -295,10 +296,10 @@ pub async fn refresh_app_jwt_auth0(
         .await
         .ok_or_else(|| AppError::ValidationError("No app JWT found".to_string()))?;
 
-    let server_auth0_refresh_app_token_url = std::env::var("SERVER_AUTH0_REFRESH_APP_TOKEN_URL")
-        .map_err(|_| {
-            AppError::ConfigError("SERVER_AUTH0_REFRESH_APP_TOKEN_URL not set".to_string())
-        })?;
+    // Get server URL from app state
+    let server_url = app_state.get_server_url()
+        .ok_or_else(|| AppError::ConfigError("No server URL configured. Please select a server region first.".to_string()))?;
+    let server_auth0_refresh_app_token_url = format!("{}/api/auth0/refresh-app-token", server_url.trim_end_matches('/'));
 
     let client = &app_state.client;
 
@@ -352,8 +353,9 @@ pub async fn logout_auth0(
 
     // Call server logout endpoint if we have a token
     if let Some(token) = &current_token {
-        let server_logout_url = std::env::var("SERVER_LOGOUT_URL")
-            .unwrap_or_else(|_| "http://localhost:8080/api/auth/logout".to_string());
+        let server_url = app_state.get_server_url()
+            .ok_or_else(|| AppError::ConfigError("No server URL configured. Please select a server region first.".to_string()))?;
+        let server_logout_url = format!("{}/api/auth/logout", server_url.trim_end_matches('/'));
 
         let client = &app_state.client;
         let logout_response = client
@@ -387,8 +389,10 @@ pub async fn logout_auth0(
         .map_err(|_| AppError::ConfigError("AUTH0_DOMAIN not set".to_string()))?;
     let auth0_native_client_id = std::env::var("AUTH0_NATIVE_CLIENT_ID")
         .map_err(|_| AppError::ConfigError("AUTH0_NATIVE_CLIENT_ID not set".to_string()))?;
-    let server_auth0_logged_out_url = std::env::var("SERVER_AUTH0_LOGGED_OUT_URL")
-        .map_err(|_| AppError::ConfigError("SERVER_AUTH0_LOGGED_OUT_URL not set".to_string()))?;
+    // Get server URL from app state
+    let server_url = app_state.get_server_url()
+        .ok_or_else(|| AppError::ConfigError("No server URL configured. Please select a server region first.".to_string()))?;
+    let server_auth0_logged_out_url = format!("{}/auth/auth0/logged-out", server_url.trim_end_matches('/'));
 
     // Construct a logout URL that redirects to the configured logged out page
     let logout_url = format!(

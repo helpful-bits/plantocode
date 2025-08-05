@@ -125,10 +125,8 @@ pub fn get_all_cached_config_values(
 /// Refreshes the configuration cache on demand
 #[instrument(skip(app_handle))]
 pub async fn refresh_config_cache(app_handle: &AppHandle) -> Result<(), AppError> {
-    // Get ServerProxyClient from app state
-    let server_proxy_client = app_handle
-        .try_state::<Arc<ServerProxyClient>>()
-        .ok_or_else(|| AppError::ConfigError("ServerProxyClient not initialized".to_string()))?;
+    // Get ServerProxyClient from app state using the proper getter that handles initialization
+    let server_proxy_client = crate::api_clients::client_factory::get_server_proxy_client(app_handle).await?;
 
     fetch_and_cache_server_configurations(app_handle, server_proxy_client.as_ref()).await
 }
@@ -181,10 +179,8 @@ pub async fn force_cache_refresh_on_mismatch(app_handle: &AppHandle) -> Result<(
 /// Gets hash of current server configuration for change detection
 #[instrument(skip(app_handle))]
 pub async fn get_server_config_hash(app_handle: &AppHandle) -> Result<u64, AppError> {
-    // Get ServerProxyClient from app state
-    let server_proxy_client = app_handle
-        .try_state::<Arc<ServerProxyClient>>()
-        .ok_or_else(|| AppError::ConfigError("ServerProxyClient not initialized".to_string()))?;
+    // Get ServerProxyClient from app state using the proper getter that handles initialization
+    let server_proxy_client = crate::api_clients::client_factory::get_server_proxy_client(app_handle).await?;
 
     let config_value = server_proxy_client.get_runtime_ai_config().await?;
     let mut configurations = HashMap::new();

@@ -200,7 +200,7 @@ export function Header() {
             {/* Backdrop */}
             <motion.div
               animate={{ opacity: 1 }}
-              className="fixed inset-0 z-40 bg-black/60 backdrop-blur-md md:hidden"
+              className="fixed inset-0 z-40 bg-background/60 backdrop-blur-md md:hidden"
               exit={{ opacity: 0 }}
               initial={{ opacity: 0 }}
               transition={{ duration: 0.3, ease: 'easeOut' }}

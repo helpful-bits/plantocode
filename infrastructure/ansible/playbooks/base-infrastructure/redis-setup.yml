@@ -83,7 +83,7 @@
               replica-read-only yes
               
               # Security
-              # requirepass {{ redis_password | default('') }}
+              requirepass {{ redis_password }}
               
               # Memory Management
               maxmemory {{ redis_maxmemory }}
@@ -195,13 +195,6 @@
     - name: Secure Redis Installation
       tags: [security]
       block:
-        - name: Set Redis password from vault
-          lineinfile:
-            path: /etc/redis/redis.conf
-            regexp: '^#? ?requirepass'
-            line: 'requirepass {{ redis_password }}'
-          notify: restart redis
-          
         - name: Ensure Redis binds only to localhost
           lineinfile:
             path: /etc/redis/redis.conf

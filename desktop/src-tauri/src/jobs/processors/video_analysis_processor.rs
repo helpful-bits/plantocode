@@ -41,11 +41,9 @@ impl JobProcessor for VideoAnalysisProcessor {
 
         debug!("Video analysis payload: {:?}", payload);
 
-        // Get ServerProxyClient from app state
-        let server_proxy_client = app_handle
-            .state::<Arc<crate::api_clients::server_proxy_client::ServerProxyClient>>()
-            .inner()
-            .clone();
+        // Get ServerProxyClient from app state using the proper getter that handles initialization
+        let server_proxy_client = crate::api_clients::client_factory::get_server_proxy_client(&app_handle).await
+            .map_err(|e| format!("Failed to get server proxy client: {}", e))?;
 
         // Read video file as bytes
         let video_data = match fs::read(&payload.video_path).await {

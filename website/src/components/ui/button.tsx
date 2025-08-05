@@ -15,9 +15,9 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default:
-          'bg-[oklch(0.48_0.15_195)] hover:bg-[oklch(0.42_0.17_195)] !text-white hover:!text-white shadow-lg shadow-[oklch(0.48_0.15_195_/_0.25)] hover:shadow-xl hover:shadow-[oklch(0.48_0.15_195_/_0.35)] dark:bg-[oklch(0.58_0.12_195)] dark:hover:bg-[oklch(0.55_0.13_195)] dark:!text-white dark:hover:!text-white dark:shadow-[oklch(0.58_0.12_195_/_0.3)]',
+          'bg-[oklch(0.48_0.15_195)] hover:bg-[oklch(0.42_0.17_195)] text-white shadow-lg shadow-[oklch(0.48_0.15_195_/_0.25)] hover:shadow-xl hover:shadow-[oklch(0.48_0.15_195_/_0.35)] dark:bg-[oklch(0.58_0.12_195)] dark:hover:bg-[oklch(0.55_0.13_195)] dark:text-white dark:shadow-[oklch(0.58_0.12_195_/_0.3)]',
         destructive:
-          'bg-[oklch(0.53_0.24_25)] hover:bg-[oklch(0.48_0.25_25)] text-white shadow-lg shadow-[oklch(0.53_0.24_25_/_0.25)] hover:shadow-xl hover:shadow-[oklch(0.53_0.24_25_/_0.35)] dark:bg-[oklch(0.55_0.22_25)] dark:hover:bg-[oklch(0.52_0.23_25)]',
+          'bg-[oklch(0.53_0.24_25)] hover:bg-[oklch(0.48_0.25_25)] text-white shadow-lg shadow-[oklch(0.53_0.24_25_/_0.25)] hover:shadow-xl hover:shadow-[oklch(0.53_0.24_25_/_0.35)] dark:bg-[oklch(0.55_0.22_25)] dark:hover:bg-[oklch(0.52_0.23_25)] dark:text-white',
         outline:
           'border border-[oklch(0.90_0.04_195)] bg-transparent hover:bg-[oklch(0.97_0.025_195)] hover:border-[oklch(0.48_0.15_195)] text-foreground shadow-sm dark:border-[oklch(0.30_0.045_206)] dark:hover:bg-[oklch(0.22_0.035_206)] dark:hover:border-[oklch(0.58_0.12_195)]',
         secondary:
@@ -26,11 +26,11 @@ const buttonVariants = cva(
           'hover:bg-[oklch(0.96_0.045_195)] text-muted-foreground dark:hover:bg-[oklch(0.28_0.032_195)]',
         link: 'text-[oklch(0.48_0.15_195)] underline-offset-4 hover:underline dark:text-[oklch(0.68_0.085_195)]',
         'gradient-outline':
-          'bg-transparent text-[oklch(0.48_0.15_195)] font-semibold border border-[oklch(0.48_0.15_195_/_0.5)] shadow-lg shadow-[oklch(0.48_0.15_195_/_0.1)] hover:bg-[oklch(0.48_0.15_195_/_0.08)] hover:shadow-xl hover:shadow-[oklch(0.48_0.15_195_/_0.2)] hover:border-[oklch(0.48_0.15_195)] dark:text-[oklch(0.68_0.085_195)] dark:border-[oklch(0.68_0.085_195_/_0.5)] dark:hover:bg-[oklch(0.68_0.085_195_/_0.12)] dark:hover:border-[oklch(0.58_0.12_195)]',
+          'bg-transparent text-[oklch(0.48_0.15_195)] font-semibold border border-[oklch(0.48_0.15_195_/_0.5)] shadow-lg shadow-[oklch(0.48_0.15_195_/_0.1)] hover:bg-[oklch(0.48_0.15_195_/_0.08)] hover:shadow-xl hover:shadow-[oklch(0.48_0.15_195_/_0.2)] hover:border-[oklch(0.48_0.15_195)] dark:text-[oklch(0.75_0.12_195)] dark:border-[oklch(0.75_0.12_195_/_0.7)] dark:hover:bg-[oklch(0.75_0.12_195_/_0.15)] dark:hover:border-[oklch(0.75_0.12_195)]',
         primary:
-          'bg-[oklch(0.48_0.15_195)] hover:bg-[oklch(0.42_0.17_195)] !text-white hover:!text-white shadow-lg shadow-[oklch(0.48_0.15_195_/_0.25)] hover:shadow-xl hover:shadow-[oklch(0.48_0.15_195_/_0.35)] dark:bg-[oklch(0.58_0.12_195)] dark:hover:bg-[oklch(0.55_0.13_195)] dark:!text-white dark:hover:!text-white dark:shadow-[oklch(0.58_0.12_195_/_0.3)]',
+          'bg-[oklch(0.48_0.15_195)] hover:bg-[oklch(0.42_0.17_195)] text-white shadow-lg shadow-[oklch(0.48_0.15_195_/_0.25)] hover:shadow-xl hover:shadow-[oklch(0.48_0.15_195_/_0.35)] dark:bg-[oklch(0.58_0.12_195)] dark:hover:bg-[oklch(0.55_0.13_195)] dark:text-white dark:shadow-[oklch(0.58_0.12_195_/_0.3)]',
         cta:
-          'bg-gradient-to-r from-[oklch(0.48_0.15_195)] via-[oklch(0.50_0.14_190)] to-[oklch(0.52_0.13_185)] hover:from-[oklch(0.42_0.17_195)] hover:via-[oklch(0.44_0.16_190)] hover:to-[oklch(0.46_0.15_185)] !text-white hover:!text-white font-bold shadow-lg shadow-[oklch(0.48_0.15_195_/_0.3)] hover:shadow-xl hover:shadow-[oklch(0.48_0.15_195_/_0.4)] dark:from-[oklch(0.58_0.12_195)] dark:via-[oklch(0.60_0.11_190)] dark:to-[oklch(0.62_0.10_185)] dark:hover:from-[oklch(0.55_0.13_195)] dark:hover:via-[oklch(0.57_0.12_190)] dark:hover:to-[oklch(0.59_0.11_185)] dark:!text-white dark:hover:!text-white',
+          'bg-gradient-to-r from-[oklch(0.48_0.15_195)] via-[oklch(0.50_0.14_190)] to-[oklch(0.52_0.13_185)] hover:from-[oklch(0.42_0.17_195)] hover:via-[oklch(0.44_0.16_190)] hover:to-[oklch(0.46_0.15_185)] text-white font-bold shadow-lg shadow-[oklch(0.48_0.15_195_/_0.3)] hover:shadow-xl hover:shadow-[oklch(0.48_0.15_195_/_0.4)] dark:from-[oklch(0.58_0.12_195)] dark:via-[oklch(0.60_0.11_190)] dark:to-[oklch(0.62_0.10_185)] dark:hover:from-[oklch(0.55_0.13_195)] dark:hover:via-[oklch(0.57_0.12_190)] dark:hover:to-[oklch(0.59_0.11_185)] dark:text-white',
       },
       size: {
         default: 'h-10 px-4 py-2',

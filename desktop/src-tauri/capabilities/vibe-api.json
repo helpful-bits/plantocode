@@ -1,0 +1,15 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "vibe-api",
+  "description": "Capability for Vibe Manager API access",
+  "windows": ["main"],
+  "permissions": [
+    {
+      "identifier": "http:default",
+      "allow": [
+        { "url": "https://api.eu.vibemanager.app/*" },
+        { "url": "https://api.us.vibemanager.app/*" }
+      ]
+    }
+  ]
+}

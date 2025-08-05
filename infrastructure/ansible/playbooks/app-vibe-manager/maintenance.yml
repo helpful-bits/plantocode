@@ -1,0 +1,57 @@
+---
+- name: Application Management
+  hosts: all
+  become: yes
+  vars:
+    app_name: vibe-manager
+  tasks:
+    - name: Check service status
+      tags: [status]
+      systemd:
+        name: "{{ app_name }}"
+      register: service_status
+
+    - name: Check application health endpoint
+      tags: [status, health]
+      uri:
+        url: "http://127.0.0.1:8080/health"
+        method: GET
+        status_code: 200
+      register: health_check
+      ignore_errors: yes
+
+    - name: Display application status
+      tags: [status]
+      debug:
+        msg:
+          - "=== APPLICATION STATUS ==="
+          - "Service: {{ service_status.status.ActiveState }}"
+          - "Health endpoint: {{ 'OK' if health_check is succeeded else 'FAILED' }}"
+
+    - name: View application logs
+      tags: [logs]
+      shell: journalctl -u {{ app_name }} -n 100 --no-pager
+      register: app_logs
+
+    - name: Display logs
+      tags: [logs]
+      debug:
+        msg: "{{ app_logs.stdout_lines }}"
+
+    - name: Restart application
+      tags: [restart]
+      systemd:
+        name: "{{ app_name }}"
+        state: restarted
+
+    - name: Stop application
+      tags: [stop]
+      systemd:
+        name: "{{ app_name }}"
+        state: stopped
+
+    - name: Start application
+      tags: [start]
+      systemd:
+        name: "{{ app_name }}"
+        state: started

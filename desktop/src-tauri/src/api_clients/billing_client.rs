@@ -74,15 +74,17 @@ use std::sync::Arc;
 /// Dedicated client for handling billing-related API calls
 pub struct BillingClient {
     http_client: Client,
+    server_url: String,
     token_manager: Arc<TokenManager>,
 }
 
 impl BillingClient {
     /// Create a new BillingClient instance
-    pub fn new(token_manager: Arc<TokenManager>) -> Self {
+    pub fn new(server_url: String, token_manager: Arc<TokenManager>) -> Self {
         let http_client = crate::api_clients::client_factory::create_http_client();
         Self {
             http_client,
+            server_url,
             token_manager,
         }
     }
@@ -99,9 +101,7 @@ impl BillingClient {
         endpoint: &str,
         body: Option<serde_json::Value>,
     ) -> Result<T, AppError> {
-        let server_url = std::env::var("MAIN_SERVER_BASE_URL").map_err(|_| {
-            AppError::ConfigError("MAIN_SERVER_BASE_URL environment variable not set".to_string())
-        })?;
+        let server_url = &self.server_url;
 
         let token =
             self.token_manager.get().await.ok_or_else(|| {
