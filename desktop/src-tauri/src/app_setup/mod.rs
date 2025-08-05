@@ -42,7 +42,12 @@ pub async fn run_async_initialization(app_handle: &AppHandle) -> Result<(), AppE
     // Check if there's a selected server URL from settings and reinitialize API clients if found
     let settings_repo = app_handle.state::<std::sync::Arc<crate::db_utils::SettingsRepository>>();
     if let Ok(Some(server_url)) = settings_repo.get_value("selected_server_url").await {
-        info!("Found selected server URL: {}, reinitializing API clients", server_url);
+        info!("Found selected server URL: {}, setting in AppState and reinitializing API clients", server_url);
+        
+        // Update AppState with the server URL
+        let app_state = app_handle.state::<crate::AppState>();
+        app_state.set_server_url(server_url.clone());
+        
         if let Err(e) = services::reinitialize_api_clients(app_handle, server_url).await {
             warn!("Failed to reinitialize API clients with selected server URL: {}", e);
             // Don't fail startup for this, user can select server again

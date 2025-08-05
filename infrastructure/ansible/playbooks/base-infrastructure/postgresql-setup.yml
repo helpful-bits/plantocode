@@ -94,6 +94,7 @@
     # BACKUP CONFIGURATION
     # ========================================
     - name: Configure PostgreSQL Backups
+      tags: [backup]
       block:
         - name: Create backup directory
           file:
@@ -104,7 +105,7 @@
             mode: '0750'
         - name: Create backup script
           copy:
-            dest: /usr/local/bin/pg_backup.sh
+            dest: /usr/local/bin/backup_postgresql.sh
             mode: '0755'
             content: |
               #!/bin/bash
@@ -118,7 +119,7 @@
             name: "PostgreSQL daily backup"
             minute: "0"
             hour: "3"
-            job: "/usr/local/bin/pg_backup.sh > /dev/null 2>&1"
+            job: "/usr/local/bin/backup_postgresql.sh > /dev/null 2>&1"
             user: root
 
   handlers:

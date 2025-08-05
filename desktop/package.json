@@ -1,7 +1,7 @@
 {
   "name": "vibe-manager-desktop",
   "private": true,
-  "version": "0.1.0",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite --config src/vite.config.mts",
@@ -11,6 +11,9 @@
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
+    "tauri:build:universal": "tauri build --bundles app,dmg --target universal-apple-darwin",
+    "tauri:build:arm64": "tauri build --bundles app,dmg --target aarch64-apple-darwin",
+    "tauri:build:x64": "tauri build --bundles app,dmg --target x86_64-apple-darwin",
     "install:all": "pnpm install && pnpm -C ../core install",
     "typecheck": "tsc --noEmit -p ./src/tsconfig.json",
     "lint": "eslint . --ext .js,.jsx,.ts,.tsx --report-unused-disable-directives --max-warnings 0",

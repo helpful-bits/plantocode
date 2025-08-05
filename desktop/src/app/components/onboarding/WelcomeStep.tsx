@@ -2,7 +2,7 @@
 
 import { Card } from '@/ui/card';
 import { Button } from '@/ui/button';
-import { H1, P, Small } from '@/ui/typography';
+import { H1, P } from '@/ui/typography';
 
 interface WelcomeStepProps {
   onNext: () => void;
@@ -10,34 +10,29 @@ interface WelcomeStepProps {
 
 export function WelcomeStep({ onNext }: WelcomeStepProps) {
   return (
-    <div className="flex items-center justify-center min-h-screen bg-muted">
-      <Card className="w-full max-w-md p-8 text-center bg-card/90 backdrop-blur-sm shadow-soft border-border/20 rounded-xl">
+    <div className="flex items-center justify-center min-h-screen bg-muted px-4">
+      <Card className="w-full max-w-md p-8 text-center bg-card/95 backdrop-blur-sm shadow-lg border-border/30 rounded-xl">
         <div className="space-y-6">
-          <div className="space-y-2">
-            <H1 className="text-center text-foreground">Welcome to Vibe Manager</H1>
-            <P className="text-muted-foreground text-center">
-              Let's get you set up with secure, seamless access to your AI-powered development tools.
+          <div className="space-y-3">
+            <div className="w-16 h-16 mx-auto bg-primary/10 rounded-full flex items-center justify-center mb-4">
+              <div className="w-8 h-8 bg-primary rounded-lg"></div>
+            </div>
+            <H1 className="text-center text-foreground text-2xl font-semibold">
+              Welcome to Vibe Manager
+            </H1>
+            <P className="text-muted-foreground text-center text-sm leading-relaxed">
+              Let's get you set up with secure credential storage for your AI development workflow.
             </P>
           </div>
           
-          <div className="space-y-4">
-            <div className="flex items-center space-x-3">
-              <div className="w-2 h-2 bg-primary rounded-full"></div>
-              <Small className="text-foreground">Secure credential storage</Small>
-            </div>
-            <div className="flex items-center space-x-3">
-              <div className="w-2 h-2 bg-primary rounded-full"></div>
-              <Small className="text-foreground">One-time setup</Small>
-            </div>
-            <div className="flex items-center space-x-3">
-              <div className="w-2 h-2 bg-primary rounded-full"></div>
-              <Small className="text-foreground">Seamless experience</Small>
-            </div>
+          <div className="space-y-2">
+            <Button onClick={onNext} className="w-full h-11">
+              Get Started
+            </Button>
+            <P className="text-xs text-muted-foreground">
+              Takes less than a minute
+            </P>
           </div>
-          
-          <Button onClick={onNext} className="w-full">
-            Get Started
-          </Button>
         </div>
       </Card>
     </div>

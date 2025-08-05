@@ -28,7 +28,6 @@
 - name: Application Database Setup
   hosts: all
   become: yes
-  become_user: postgres
   vars:
     app_role: vibe_manager_app
     
@@ -41,18 +40,21 @@
         lc_ctype: en_US.UTF-8
         template: template0
         state: present
+      become_user: postgres
         
     - name: Create application user
       community.postgresql.postgresql_user:
         name: "{{ db_user }}"
         password: "{{ db_password }}"
         state: present
+      become_user: postgres
       no_log: true
       
     - name: Create application role with no login
       community.postgresql.postgresql_query:
         db: "{{ db_name }}"
         query: "CREATE ROLE {{ app_role }} NOLOGIN"
+      become_user: postgres
       ignore_errors: yes # Role may already exist
 
     - name: Grant database connection to role
@@ -62,6 +64,7 @@
         type: database
         roles: "{{ app_role }}"
         state: present
+      become_user: postgres
 
     - name: Grant schema usage to role
       community.postgresql.postgresql_privs:
@@ -71,30 +74,47 @@
         objs: public
         roles: "{{ app_role }}"
         state: present
+      become_user: postgres
 
-    - name: Grant table and sequence permissions to role
+    - name: Grant all privileges on all tables to role
       community.postgresql.postgresql_privs:
         db: "{{ db_name }}"
         priv: ALL
-        type: sequence,table
+        type: table
+        objs: ALL_IN_SCHEMA
         schema: public
         roles: "{{ app_role }}"
         state: present
+      become_user: postgres
+      
+    - name: Grant all privileges on all sequences to role
+      community.postgresql.postgresql_privs:
+        db: "{{ db_name }}"
+        priv: ALL
+        type: sequence
+        objs: ALL_IN_SCHEMA
+        schema: public
+        roles: "{{ app_role }}"
+        state: present
+      become_user: postgres
 
     - name: Set default privileges for future objects for the role
-      community.postgresql.postgresql_default_privs:
+      community.postgresql.postgresql_privs:
         db: "{{ db_name }}"
         role: "{{ app_role }}"
+        type: default_privs
         privs: ALL
+        objs: TABLES
         schema: public
-        securable: tables
         state: present
+      become_user: postgres
         
     - name: Grant application role to application user
       community.postgresql.postgresql_membership:
         group: "{{ app_role }}"
         target_role: "{{ db_user }}"
         state: present
+      become_user: postgres
 
 # ========================================
 # STEP 2: RUN MIGRATIONS
@@ -112,85 +132,3 @@
 # ========================================
 - import_playbook: rust-deploy.yml
   tags: [deploy]
-
-# ========================================
-# STEP 5: POST-DEPLOYMENT CHECKS
-# ========================================
-- name: Application Health Check
-  hosts: all
-  become: yes
-  vars:
-    app_name: vibe-manager
-    
-  tasks:
-    - name: Wait for service to be ready
-      wait_for:
-        port: 8080
-        host: 127.0.0.1
-        delay: 5
-        timeout: 30
-      tags: [health]
-      
-    - name: Check service status
-      systemd:
-        name: "{{ app_name }}"
-      register: service_status
-      tags: [status]
-      
-    - name: Check application health endpoint
-      uri:
-        url: "http://127.0.0.1:8080/health"
-        method: GET
-        status_code: 200
-      register: health_check
-      ignore_errors: yes
-      tags: [health]
-      
-    - name: Display application status
-      debug:
-        msg:
-          - "=== APPLICATION STATUS ==="
-          - "Service: {{ service_status.status.ActiveState }}"
-          - "Health endpoint: {{ 'OK' if health_check is succeeded else 'FAILED' }}"
-          - "Database: Configured with vaulted credentials"
-          - ""
-          - "Access the application at: http://{{ ansible_host }}:8080"
-      tags: [status]
-
-# ========================================
-# MAINTENANCE TASKS
-# ========================================
-- name: Application Maintenance Tasks
-  hosts: all
-  become: yes
-  vars:
-    app_name: vibe-manager
-    
-  tasks:
-    - name: Application logs
-      tags: [logs, never]
-      shell: journalctl -u {{ app_name }} -n 100 --no-pager
-      register: app_logs
-      
-    - name: Display logs
-      tags: [logs, never]
-      debug:
-        msg: "{{ app_logs.stdout_lines }}"
-        
-    - name: Restart application
-      tags: [restart, never]
-      systemd:
-        name: "{{ app_name }}"
-        state: restarted
-        
-    - name: Stop application
-      tags: [stop, never]
-      systemd:
-        name: "{{ app_name }}"
-        state: stopped
-        
-    - name: Start application
-      tags: [start, never]
-      systemd:
-        name: "{{ app_name }}"
-        state: started

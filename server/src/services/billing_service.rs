@@ -1250,6 +1250,10 @@ impl BillingService {
         // Convert Stripe invoices to our Invoice model
         let mut invoices = Vec::new();
         for invoice_json in data_array {
+            // Extract fee information from payment intent metadata if available
+            let (gross_amount, platform_fee, net_amount, payment_type) = 
+                self.extract_fee_info_from_invoice(&invoice_json, &stripe_service).await;
+            
             let invoice = crate::models::Invoice {
                 id: invoice_json.get("id")
                     .and_then(|v| v.as_str())
@@ -1277,6 +1281,11 @@ impl BillingService {
                 invoice_pdf_url: invoice_json.get("invoice_pdf")
                     .and_then(|v| v.as_str())
                     .map(|s| s.to_string()),
+                // Add fee breakdown information
+                gross_amount,
+                platform_fee,
+                net_amount,
+                payment_type,
             };
             invoices.push(invoice);
         }
@@ -1288,6 +1297,53 @@ impl BillingService {
             invoices,
             has_more,
         })
+    }
+
+    /// Extract fee information from invoice data by checking payment intent metadata
+    async fn extract_fee_info_from_invoice(
+        &self,
+        invoice_json: &serde_json::Value,
+        stripe_service: &crate::services::stripe_service::StripeService,
+    ) -> (Option<String>, Option<String>, Option<String>, Option<String>) {
+        // Try to get payment intent ID from the invoice
+        let payment_intent_id = invoice_json
+            .get("payment_intent")
+            .and_then(|pi| pi.as_str());
+        
+        if let Some(pi_id) = payment_intent_id {
+            // Fetch payment intent to get metadata
+            if let Ok(payment_intent) = stripe_service.get_payment_intent(pi_id).await {
+                if let Some(metadata) = &payment_intent.metadata {
+                    let gross_amount = metadata.get("gross_amount").map(|s| format!("{:.2}", s.parse::<f64>().unwrap_or(0.0)));
+                    let platform_fee = metadata.get("platform_fee").map(|s| format!("{:.2}", s.parse::<f64>().unwrap_or(0.0)));
+                    let net_amount = metadata.get("net_amount").map(|s| format!("{:.2}", s.parse::<f64>().unwrap_or(0.0)));
+                    let payment_type = metadata.get("type").map(|s| s.clone());
+                    
+                    return (gross_amount, platform_fee, net_amount, payment_type);
+                }
+            }
+        }
+        
+        // Fallback: check if it's an auto top-off from invoice metadata
+        if let Some(invoice_metadata) = invoice_json.get("metadata") {
+            if let Some(invoice_type) = invoice_metadata.get("type").and_then(|t| t.as_str()) {
+                if invoice_type == "auto_topoff" {
+                    // For auto top-offs, calculate from invoice amount (no separate fees)
+                    if let Some(amount_paid) = invoice_json.get("amount_paid").and_then(|a| a.as_i64()) {
+                        let amount_dollars = format!("{:.2}", amount_paid as f64 / 100.0);
+                        return (
+                            Some(amount_dollars.clone()),
+                            Some("0.00".to_string()), // Auto top-offs don't have platform fees
+                            Some(amount_dollars),
+                            Some("auto_topoff".to_string()),
+                        );
+                    }
+                }
+            }
+        }
+        
+        // Default: no fee information available
+        (None, None, None, None)
     }
 
     /// Calculate cost for streaming tokens using server-side model pricing

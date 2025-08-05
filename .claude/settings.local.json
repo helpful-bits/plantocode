@@ -169,7 +169,9 @@
       "Bash(tar:*)",
       "Bash(scp:*)",
       "Bash(ansible-playbook:*)",
-      "Bash(ansible:*)"
+      "Bash(ansible:*)",
+      "WebFetch(domain:api.eu.vibemanager.app)",
+      "Bash(DATABASE_URL=\"postgresql://localhost:5432/vibe_manager\" cargo sqlx prepare)"
     ],
     "deny": []
   },

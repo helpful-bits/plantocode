@@ -506,7 +506,7 @@ async fn process_stripe_webhook_event(
                         user_id,
                     };
                     
-                    match process_payment_completion(context, billing_service, Some(&email_service)).await {
+                    match process_payment_completion(context, billing_service, None).await {
                         Ok(_) => {
                             info!("Successfully processed credit purchase for payment intent {} - user_id: {}, amount: {}", 
                                   payment_intent_id, user_id_str, amount);
@@ -570,7 +570,7 @@ async fn process_stripe_webhook_event(
                                 user_id,
                             };
                             
-                            match process_payment_completion(context, billing_service, Some(&email_service)).await {
+                            match process_payment_completion(context, billing_service, None).await {
                                 Ok(_) => {
                                     info!("Successfully processed unknown payment type as credit purchase for payment intent {}", payment_intent_id);
                                 },
