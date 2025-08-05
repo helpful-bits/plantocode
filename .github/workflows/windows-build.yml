@@ -54,19 +54,21 @@ jobs:
           ${{ runner.os }}-cargo-
           
     - name: Install frontend dependencies
-      working-directory: desktop
-      run: pnpm install --frozen-lockfile
+      run: |
+        cd desktop
+        pnpm install --frozen-lockfile
       
     - name: Build frontend
-      working-directory: desktop
-      run: pnpm run build
+      run: |
+        cd desktop
+        pnpm run build
       
     - name: Install Tauri CLI
       run: cargo install tauri-cli --version "^2.0" --locked
       
     - name: Build Tauri app for Microsoft Store
-      working-directory: desktop
       run: |
+        cd desktop
         # Build for Microsoft Store (MSI format with offline WebView2)
         cargo tauri build --target x86_64-pc-windows-msvc --config src-tauri/tauri.microsoftstore.conf.json
       env:
@@ -74,11 +76,10 @@ jobs:
         TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         
     - name: Find and display build artifacts
-      working-directory: desktop
       shell: powershell
       run: |
         Write-Host "=== Build Artifacts ==="
-        $bundleDir = "src-tauri\target\x86_64-pc-windows-msvc\release\bundle"
+        $bundleDir = "desktop\src-tauri\target\x86_64-pc-windows-msvc\release\bundle"
         
         if (Test-Path $bundleDir) {
           Get-ChildItem -Recurse $bundleDir | Where-Object { $_.Extension -in @('.msi', '.exe') } | ForEach-Object {
@@ -89,7 +90,7 @@ jobs:
         } else {
           Write-Host "Bundle directory not found at: $bundleDir"
           Write-Host "Available directories:"
-          Get-ChildItem -Recurse src-tauri\target -Directory | Select-Object FullName
+          Get-ChildItem -Recurse desktop\src-tauri\target -Directory | Select-Object FullName
         }
         
     - name: Upload Windows artifacts
