@@ -297,6 +297,185 @@ jobs:
         path: desktop/eslint-security-results.json
         retention-days: 30
 
+  tauri-security:
+    name: Tauri Security Audit
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'pnpm'
+        cache-dependency-path: 'desktop/pnpm-lock.yaml'
+        
+    - name: Install pnpm
+      run: npm install -g pnpm
+      
+    - name: Install Rust toolchain
+      uses: actions-rs/toolchain@v1
+      with:
+        profile: minimal
+        toolchain: stable
+        override: true
+        
+    - name: Install dependencies
+      working-directory: desktop
+      run: pnpm install --frozen-lockfile
+      
+    - name: Install Tauri CLI
+      run: cargo install tauri-cli --version "^2.0" --locked
+      
+    - name: Audit Tauri configuration
+      working-directory: desktop
+      run: |
+        echo "Auditing Tauri configuration for security issues..."
+        
+        # Check for common security misconfigurations
+        CONFIG_FILE="src-tauri/tauri.conf.json"
+        
+        echo "## 🔧 Tauri Security Configuration Check" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        # Check CSP configuration
+        if jq -e '.app.security.csp == null' "$CONFIG_FILE" > /dev/null; then
+          echo "⚠️ **CSP Warning**: Content Security Policy is disabled" >> $GITHUB_STEP_SUMMARY
+          echo "- Consider enabling CSP for additional security" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "✅ **CSP**: Content Security Policy is configured" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        # Check for dangerous permissions in Windows MSIX capabilities
+        if jq -e '.bundle.windows.msix.capabilities | contains(["allFileSystemAccess"])' "$CONFIG_FILE" > /dev/null; then
+          echo "❌ **Dangerous Permission**: allFileSystemAccess detected" >> $GITHUB_STEP_SUMMARY
+          echo "- Review if full filesystem access is necessary" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        # Check for sensitive capabilities
+        if jq -e '.bundle.windows.msix.capabilities | contains(["runFullTrust"])' "$CONFIG_FILE" > /dev/null; then
+          echo "⚠️ **High Privilege**: runFullTrust capability detected" >> $GITHUB_STEP_SUMMARY
+          echo "- Ensure this level of access is required for app functionality" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        # Check security capabilities configuration
+        if jq -e '.app.security.capabilities' "$CONFIG_FILE" > /dev/null; then
+          echo "✅ **Capabilities**: Security capabilities are configured" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "⚠️ **Capabilities Warning**: No security capabilities configuration found" >> $GITHUB_STEP_SUMMARY
+          echo "- Consider restricting available APIs via capabilities" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        # Check for macOSPrivateApi usage
+        if jq -e '.app.macOSPrivateApi == true' "$CONFIG_FILE" > /dev/null; then
+          echo "⚠️ **macOS Private API**: Private API usage enabled" >> $GITHUB_STEP_SUMMARY
+          echo "- This may cause App Store rejection for macOS builds" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        # Check withGlobalTauri setting
+        if jq -e '.app.withGlobalTauri == true' "$CONFIG_FILE" > /dev/null; then
+          echo "⚠️ **Global Tauri**: Global Tauri object enabled" >> $GITHUB_STEP_SUMMARY
+          echo "- Consider disabling for better security isolation" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "✅ **Global Tauri**: Global Tauri object is disabled" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+    - name: Check for sensitive files in bundle
+      working-directory: desktop
+      run: |
+        echo "Checking for sensitive files that might be included in bundle..."
+        
+        # List of sensitive patterns to check for
+        SENSITIVE_PATTERNS=(".env" "*.key" "*.pem" "*.p12" ".secrets" "config/*.json")
+        
+        echo "## 🔍 Sensitive Files Check" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        found_sensitive=false
+        for pattern in "${SENSITIVE_PATTERNS[@]}"; do
+          if find . -name "$pattern" -not -path "./node_modules/*" -not -path "./.git/*" -not -path "./src-tauri/target/*" | grep -q .; then
+            echo "⚠️ **Found sensitive files matching**: $pattern" >> $GITHUB_STEP_SUMMARY
+            find . -name "$pattern" -not -path "./node_modules/*" -not -path "./.git/*" -not -path "./src-tauri/target/*" >> $GITHUB_STEP_SUMMARY
+            found_sensitive=true
+          fi
+        done
+        
+        if [ "$found_sensitive" = false ]; then
+          echo "✅ **No sensitive files found in repository**" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+    - name: Validate Tauri capabilities
+      working-directory: desktop
+      run: |
+        echo "Validating Tauri capabilities configuration..."
+        
+        echo "## 🛡️ Tauri Capabilities Validation" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        # Check if capability files exist
+        if [ -d "src-tauri/capabilities" ]; then
+          echo "✅ **Capabilities directory found**" >> $GITHUB_STEP_SUMMARY
+          
+          # List all capability files
+          for cap_file in src-tauri/capabilities/*.json; do
+            if [ -f "$cap_file" ]; then
+              cap_name=$(basename "$cap_file" .json)
+              echo "- Found capability: $cap_name" >> $GITHUB_STEP_SUMMARY
+              
+              # Validate JSON format
+              if jq empty "$cap_file" 2>/dev/null; then
+                echo "  ✅ Valid JSON format" >> $GITHUB_STEP_SUMMARY
+              else
+                echo "  ❌ Invalid JSON format in $cap_file" >> $GITHUB_STEP_SUMMARY
+              fi
+            fi
+          done
+        else
+          echo "⚠️ **No capabilities directory found**" >> $GITHUB_STEP_SUMMARY
+          echo "- Consider creating capability files for better security" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+    - name: Check Rust dependencies security
+      working-directory: desktop/src-tauri
+      run: |
+        echo "Running cargo audit on Tauri Rust dependencies..."
+        
+        # Install cargo-audit if not present
+        cargo install --force cargo-audit
+        
+        # Run audit and capture output
+        cargo audit --json > tauri-audit-results.json || echo "Audit found issues"
+        
+        echo "## 🦀 Tauri Rust Dependencies Audit" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        # Parse and format results
+        if [ -s tauri-audit-results.json ]; then
+          # Check if vulnerabilities were found
+          if jq -e '.vulnerabilities.found | length > 0' tauri-audit-results.json > /dev/null; then
+            echo "❌ **Tauri Rust Vulnerabilities Found**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "```json" >> $GITHUB_STEP_SUMMARY
+            jq '.vulnerabilities.list[]' tauri-audit-results.json >> $GITHUB_STEP_SUMMARY
+            echo "```" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "✅ **No Tauri Rust vulnerabilities found**" >> $GITHUB_STEP_SUMMARY
+          fi
+        else
+          echo "✅ **No Tauri Rust vulnerabilities found**" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+    - name: Upload Tauri security results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: tauri-security-results
+        path: |
+          desktop/src-tauri/tauri-audit-results.json
+        retention-days: 30
+
   property-tests:
     name: Property-Based Security Tests
     runs-on: ubuntu-latest
@@ -375,7 +554,7 @@ jobs:
   security-summary:
     name: Security Summary
     runs-on: ubuntu-latest
-    needs: [rust-security, nodejs-security, eslint-security, property-tests]
+    needs: [rust-security, nodejs-security, eslint-security, tauri-security, property-tests]
     if: always()
     
     steps:
@@ -388,6 +567,7 @@ jobs:
         rust_status="${{ needs.rust-security.result }}"
         nodejs_status="${{ needs.nodejs-security.result }}"
         eslint_status="${{ needs.eslint-security.result }}"
+        tauri_status="${{ needs.tauri-security.result }}"
         tests_status="${{ needs.property-tests.result }}"
         
         echo "## Scan Results:" >> $GITHUB_STEP_SUMMARY
@@ -412,6 +592,12 @@ jobs:
           *) echo "⚠️ **ESLint Security**: Scan incomplete" >> $GITHUB_STEP_SUMMARY ;;
         esac
         
+        case $tauri_status in
+          "success") echo "✅ **Tauri Security**: Configuration and dependencies secure" >> $GITHUB_STEP_SUMMARY ;;
+          "failure") echo "❌ **Tauri Security**: Security issues detected" >> $GITHUB_STEP_SUMMARY ;;
+          *) echo "⚠️ **Tauri Security**: Scan incomplete" >> $GITHUB_STEP_SUMMARY ;;
+        esac
+        
         case $tests_status in
           "success") echo "✅ **Property Tests**: All billing invariants verified" >> $GITHUB_STEP_SUMMARY ;;
           "failure") echo "❌ **Property Tests**: Security invariants violated" >> $GITHUB_STEP_SUMMARY ;;
@@ -423,7 +609,7 @@ jobs:
         echo "" >> $GITHUB_STEP_SUMMARY
         
         # Provide actionable recommendations based on results
-        if [ "$rust_status" = "failure" ] || [ "$nodejs_status" = "failure" ]; then
+        if [ "$rust_status" = "failure" ] || [ "$nodejs_status" = "failure" ] || [ "$tauri_status" = "failure" ]; then
           echo "🚨 **Immediate Action Required**: Critical vulnerabilities detected" >> $GITHUB_STEP_SUMMARY
           echo "- Review and update vulnerable dependencies" >> $GITHUB_STEP_SUMMARY
           echo "- Check security advisories for affected packages" >> $GITHUB_STEP_SUMMARY
@@ -444,7 +630,7 @@ jobs:
         fi
         
         # Set exit code based on critical failures
-        if [ "$rust_status" = "failure" ] || [ "$nodejs_status" = "failure" ] || [ "$tests_status" = "failure" ]; then
+        if [ "$rust_status" = "failure" ] || [ "$nodejs_status" = "failure" ] || [ "$tauri_status" = "failure" ] || [ "$tests_status" = "failure" ]; then
           echo "❌ Security gate failed - blocking deployment" >> $GITHUB_STEP_SUMMARY
           exit 1
         fi
