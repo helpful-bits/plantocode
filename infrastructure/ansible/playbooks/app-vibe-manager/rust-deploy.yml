@@ -51,7 +51,7 @@
               Wants=postgresql@17-main.service
               
               [Service]
-              Type=notify
+              Type=simple
               User={{ app_user }}
               Group={{ app_group }}
               WorkingDirectory={{ app_dir }}
@@ -79,8 +79,8 @@
               # Environment
               EnvironmentFile={{ app_dir }}/config/app.env
               
-              # Health check
-              WatchdogSec=10s
+              # Health check disabled - using Type=simple
+              # WatchdogSec=10s
               
               [Install]
               WantedBy=multi-user.target

@@ -43,8 +43,8 @@ use crate::services::billing_service::BillingService;
 use crate::services::credit_service::CreditService;
 use crate::services::reconciliation_service::ReconciliationService;
 use crate::services::request_tracker::RequestTracker;
-use crate::routes::{configure_routes, configure_public_api_routes, configure_public_auth_routes, configure_webhook_routes};
-use crate::handlers::config_handlers;
+use crate::routes::{configure_routes, configure_public_auth_routes, configure_webhook_routes};
+use crate::handlers::{config_handlers, auth0_handlers, region_handlers};
 
 /// Validates AI model configurations at startup to catch misconfigurations early
 async fn validate_ai_model_configurations(
@@ -256,20 +256,6 @@ async fn main() -> std::io::Result<()> {
     let server_addr = format!("{}:{}", host, port);
     let listener = TcpListener::bind(server_addr.clone())?;
     
-    // Initialize Tera template engine for HTML templates
-    let tera_path = format!("{}/src/web_auth_assets/**/*.html", env!("CARGO_MANIFEST_DIR"));
-    log::info!("Loading Tera templates from: {}", tera_path);
-    let tera = match tera::Tera::new(&tera_path) {
-        Ok(t) => {
-            log::info!("Tera template engine initialized successfully");
-            t
-        },
-        Err(e) => {
-            log::error!("Failed to initialize Tera template engine: {}", e);
-            log::error!("Cannot start server without working template engine");
-            std::process::exit(1);
-        }
-    };
     
     // Initialize auth stores
     let polling_store = PollingStore::default();
@@ -394,7 +380,6 @@ async fn main() -> std::io::Result<()> {
         let app_settings = app_settings.clone();
         let rate_limit_storage = rate_limit_storage.clone();
         let auth0_oauth_service = web::Data::new(auth0_oauth_service.clone());
-        let tera = web::Data::new(tera.clone());
         let polling_store = web::Data::new(polling_store.clone());
         let auth0_state_store = web::Data::new(auth0_state_store.clone());
         let http_client = web::Data::new(http_client.clone());
@@ -493,7 +478,6 @@ async fn main() -> std::io::Result<()> {
             .app_data(web::Data::new(billing_service.clone()))
             .app_data(web::Data::new(request_tracker.clone()))
             .app_data(app_state.clone())
-            .app_data(tera.clone())
             .app_data(polling_store.clone())
             .app_data(auth0_state_store.clone())
             .app_data(http_client.clone())
@@ -516,12 +500,18 @@ async fn main() -> std::io::Result<()> {
                     .wrap(public_ip_rate_limiter.clone())
                     .configure(|cfg| configure_public_auth_routes(cfg, account_creation_rate_limiter.clone()))
             )
-            // Public config and auth0 routes with IP-based rate limiting (no /api prefix, no authentication)
-            // IMPORTANT: Must be registered BEFORE the authenticated /api scope to properly handle /api/regions
+            // Public auth0 endpoints for desktop client authentication flow (no authentication required)
             .service(
-                web::scope("")
+                web::scope("/auth0")
                     .wrap(public_ip_rate_limiter.clone())
-                    .configure(configure_public_api_routes)
+                    .route("/poll-status", web::get().to(handlers::auth0_handlers::poll_auth_status))
+                    .route("/finalize-login", web::post().to(handlers::auth0_handlers::finalize_auth0_login))
+            )
+            // Public config endpoints (no authentication required)
+            .service(
+                web::scope("/config")
+                    .wrap(public_ip_rate_limiter.clone())
+                    .route("/regions", web::get().to(handlers::region_handlers::get_regions_handler))
             )
             // Protected API routes with strict rate limiting (IP + User) and authentication (under /api)
             .service(

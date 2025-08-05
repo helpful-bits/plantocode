@@ -18,7 +18,7 @@
           
         - name: Check if Redis is running
           systemd:
-            name: redis
+            name: redis-server
           register: redis_status
           failed_when: false
           
@@ -54,32 +54,5 @@
 # ========================================
 # APPLICATION MANAGEMENT
 # ========================================
-- name: Application Management Commands
-  hosts: all
-  become: yes
-  vars:
-    app_name: vibe-manager
-    
-  tasks:
-    - name: Show available commands
-      tags: [help]
-      debug:
-        msg:
-          - "=== VIBE MANAGER MANAGEMENT COMMANDS ==="
-          - ""
-          - "Full setup:"
-          - "  ansible-playbook -i inventory/hosts.yml site-app.yml"
-          - ""
-          - "Individual operations:"
-          - "  ansible-playbook -i inventory/hosts.yml site-app.yml --tags migrations"
-          - "  ansible-playbook -i inventory/hosts.yml site-app.yml --tags deploy"
-          - ""
-          - "Service management:"
-          - "  ansible-playbook -i inventory/hosts.yml site-app.yml --tags restart"
-          - "  ansible-playbook -i inventory/hosts.yml site-app.yml --tags stop"
-          - "  ansible-playbook -i inventory/hosts.yml site-app.yml --tags start"
-          - "  ansible-playbook -i inventory/hosts.yml site-app.yml --tags logs"
-          - ""
-          - "Status and health:"
-          - "  ansible-playbook -i inventory/hosts.yml site-app.yml --tags status"
-          - "  ansible-playbook -i inventory/hosts.yml site-app.yml --tags health"
+- import_playbook: playbooks/app-vibe-manager/maintenance.yml
+  tags: [status, health, logs, restart, start, stop]

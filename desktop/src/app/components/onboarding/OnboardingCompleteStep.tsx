@@ -15,23 +15,13 @@ export function OnboardingCompleteStep({ onFinish }: OnboardingCompleteStepProps
         <div className="space-y-6">
           <div className="space-y-2">
             <CheckCircle className="w-16 h-16 mx-auto text-success" />
-            <h1 className="text-3xl font-bold">Setup Complete!</h1>
+            <h1 className="text-3xl font-bold">You're All Set!</h1>
             <p className="text-muted-foreground">
-              Your secure storage has been configured successfully. Vibe Manager is ready to use.
+              Vibe Manager is ready to supercharge your AI development workflow.
             </p>
           </div>
           
-          <div className="space-y-4">
-            <div className="bg-success/10 border border-success/20 rounded-lg p-4">
-              <p className="text-sm text-success">
-                ✓ Keychain access configured<br />
-                ✓ Secure credential storage enabled<br />
-                ✓ Ready for seamless authentication
-              </p>
-            </div>
-          </div>
-          
-          <Button onClick={onFinish} className="w-full">
+          <Button onClick={onFinish} className="w-full h-11">
             Continue to Login
           </Button>
         </div>

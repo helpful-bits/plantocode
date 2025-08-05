@@ -108,10 +108,11 @@
           loop:
             - providers
             - models
-            - model_mappings
+            - model_provider_mappings
             - default_system_prompts
             - application_configurations
           register: config_counts
+          failed_when: false
           
         - name: Display configuration counts
           debug:

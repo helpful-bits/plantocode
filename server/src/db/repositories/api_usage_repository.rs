@@ -295,45 +295,6 @@ impl ApiUsageRepository {
         let processing_service = UsageProcessingService::new(Arc::new(self.db_pool.clone())).await?;
         processing_service.get_detailed_usage(user_id, start_date, end_date).await
     }
-    
-    /// Legacy method - Gets detailed usage data with pre-calculated summary totals using SQL
-    pub async fn get_detailed_usage_with_summary_legacy(
-        &self,
-        user_id: &Uuid,
-        start_date: DateTime<Utc>,
-        end_date: DateTime<Utc>,
-    ) -> Result<DetailedUsageResponse, AppError> {
-        let mut tx = self.db_pool.begin().await.map_err(AppError::from)?;
-        let detailed_usage = self.get_detailed_usage(user_id, start_date, end_date, &mut tx).await?;
-        
-        // Calculate totals from the detailed usage data
-        let summary = detailed_usage.iter().fold(
-            UsageSummary {
-                total_cost: 0.0,
-                total_requests: 0,
-                total_input_tokens: 0,
-                total_output_tokens: 0,
-                total_cached_tokens: 0,
-                total_duration_ms: 0,
-            },
-            |mut acc, usage| {
-                acc.total_cost += usage.total_cost;
-                acc.total_requests += usage.total_requests;
-                acc.total_input_tokens += usage.total_input_tokens;
-                acc.total_output_tokens += usage.total_output_tokens;
-                acc.total_cached_tokens += usage.total_cached_tokens;
-                acc.total_duration_ms += usage.total_duration_ms;
-                acc
-            }
-        );
-
-        tx.commit().await.map_err(AppError::from)?;
-        
-        Ok(DetailedUsageResponse {
-            detailed_usage,
-            summary,
-        })
-    }
 
     /// Gets detailed usage data with model and provider information
     pub async fn get_detailed_usage(

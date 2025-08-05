@@ -176,3 +176,4 @@ temp/
 /desktop/src-tauri/.cargo/
 /desktop/pnpm-workspace.yaml
 /gen/
+/secrets

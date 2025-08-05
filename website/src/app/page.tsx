@@ -131,7 +131,7 @@ export default function Home() {
     },
     {
       title: 'The Council of LLMs',
-      description: 'Generate plans from Gemini 2.5, Claude 4, GPT-4.1, o3/o4, Grok 4, DeepSeek R1, and Kimi K2 - even multiple runs of the same model. The list evolves quickly as more capable models appear. Our merge AI synthesizes their unique insights into one superior strategy.',
+      description: 'Generate plans from Gemini 2.5, Claude 4, GPT-4.1, o3/o4, Grok 4, DeepSeek R1, and Kimi K2 - even multiple runs of the same model. The list evolves quickly as more capable models appear. The merge AI synthesizes their unique insights into one superior strategy.',
       icon: <BrainCircuit className="w-8 h-8" />,
     },
     {
@@ -141,12 +141,12 @@ export default function Home() {
     },
     {
       title: 'Deep Research Workflow',
-      description: "Your codebase doesn't exist in a vacuum. We search for current documentation to fill knowledge gaps, getting up-to-date answers for your specific implementation problems.",
+      description: "Your codebase doesn't exist in a vacuum. The Deep Research workflow searches for current documentation to fill knowledge gaps, getting up-to-date answers for your specific implementation problems.",
       icon: <Globe className="w-8 h-8" />,
     },
     {
       title: 'Your Data Stays Yours',
-      description: 'True local-first. All your code, sessions, and history live in SQLite on your machine. We\'re just a secure proxy to AI providers - handling auth and billing while your code flows directly through. You control what gets sent and when.',
+      description: 'True local-first. All your code, sessions, and history live in SQLite on your machine. Vibe Manager is just a secure proxy to AI providers - handling auth and billing while your code flows directly through. You control what gets sent and when.',
       icon: <Shield className="w-8 h-8" />,
     },
     {
@@ -164,25 +164,25 @@ export default function Home() {
   const steps = [
     {
       title: '1. The Briefing: Task Input & Refinement',
-      description: 'Just talk. Explain your complex logic or brainstorm out loud - GPT-4 transcribes it perfectly. Can\'t explain in words? Record your screen while demonstrating the issue. Our AI refines everything into precise specifications.',
+      description: 'Just talk. Explain your complex logic or brainstorm out loud - GPT-4 transcribes it perfectly. Can\'t explain in words? Record your screen while demonstrating the issue. The AI refines everything into precise specifications.',
       video: 'https://vibe-manager-media.s3.amazonaws.com/step-1-describe.mp4',
       poster: 'https://vibe-manager-media.s3.amazonaws.com/step-1-poster.jpg',
     },
     {
       title: '2. The Recon Mission: Finding What Matters',
-      description: 'Our File Finder decomposes your task into logical areas, creates targeted search patterns, then AI assesses actual file content for relevance. Can expand to find critical dependencies when needed. Real-time intelligence finding what matters.',
+      description: 'The File Finder decomposes your task into logical areas, creates targeted search patterns, then AI assesses actual file content for relevance. Can expand to find critical dependencies when needed. Real-time intelligence finding what matters.',
       video: 'https://vibe-manager-media.s3.amazonaws.com/step-2-find.mp4',
       poster: 'https://vibe-manager-media.s3.amazonaws.com/step-2-poster.jpg',
     },
     {
       title: '3. Phoning a Friend: Deep Research',
-      description: "Your LLM's knowledge is frozen in time. We fix that by searching for current documentation to fill knowledge gaps. Get up-to-date answers for your specific implementation problems, integrated with your code's context.",
+      description: "Your LLM's knowledge is frozen in time. The Deep Research workflow fixes that by searching for current documentation to fill knowledge gaps. Get up-to-date answers for your specific implementation problems, integrated with your code's context.",
       video: 'https://vibe-manager-media.s3.amazonaws.com/step-3-generate.mp4',
       poster: 'https://vibe-manager-media.s3.amazonaws.com/step-3-poster.jpg',
     },
     {
       title: '4. The Board Meeting: Council of LLMs',
-      description: 'Generate plans from multiple models. Our architect AI performs deep synthesis, detecting blind spots and creating emergent solutions. Review with floating notes and edit plans directly before execution.',
+      description: 'Generate plans from multiple models. The architect AI performs deep synthesis, detecting blind spots and creating emergent solutions. Review with floating notes and edit plans directly before execution.',
       video: 'https://vibe-manager-media.s3.amazonaws.com/step-4-merge.mp4',
       poster: 'https://vibe-manager-media.s3.amazonaws.com/step-4-poster.jpg',
     },

@@ -968,6 +968,7 @@ GRANT SELECT, INSERT, UPDATE ON api_quotas TO authenticated;
 GRANT SELECT, INSERT, UPDATE ON user_credits TO authenticated;
 GRANT SELECT, INSERT ON credit_transactions TO authenticated;
 GRANT SELECT ON audit_logs TO authenticated;
+GRANT SELECT ON application_configurations TO authenticated;
 
 
 -- =============================================================================

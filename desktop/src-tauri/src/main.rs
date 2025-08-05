@@ -35,16 +35,15 @@ use tauri::Manager;
 use tokio::sync::{OnceCell, RwLock};
 
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct RuntimeConfig {
-    pub server_url: String,
+    pub server_url: Mutex<Option<String>>,
 }
 
 impl Default for RuntimeConfig {
     fn default() -> Self {
         Self {
-            server_url: std::env::var("MAIN_SERVER_BASE_URL")
-                .expect("MAIN_SERVER_BASE_URL environment variable must be set"),
+            server_url: Mutex::new(None),
         }
     }
 }
@@ -54,6 +53,20 @@ pub struct AppState {
     pub client: reqwest::Client,
     pub settings: RuntimeConfig,
     pub auth0_state_store: Auth0StateStore,
+}
+
+impl AppState {
+    /// Update the server URL in runtime settings
+    pub fn set_server_url(&self, url: String) {
+        if let Ok(mut server_url) = self.settings.server_url.lock() {
+            *server_url = Some(url);
+        }
+    }
+    
+    /// Get the current server URL
+    pub fn get_server_url(&self) -> Option<String> {
+        self.settings.server_url.lock().ok()?.clone()
+    }
 }
 
 impl Default for AppState {

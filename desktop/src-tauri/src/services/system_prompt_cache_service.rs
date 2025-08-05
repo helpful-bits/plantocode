@@ -109,7 +109,7 @@ impl SystemPromptCacheService {
 pub async fn initialize_cache_service(app_handle: &AppHandle) -> AppResult<()> {
     info!("Initializing in-memory system prompt cache service...");
 
-    let server_client = app_handle.state::<Arc<ServerProxyClient>>().inner().clone();
+    let server_client = crate::api_clients::client_factory::get_server_proxy_client(app_handle).await?;
 
     let cache_service = Arc::new(SystemPromptCacheService::new(server_client));
 

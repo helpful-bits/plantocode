@@ -148,28 +148,14 @@ export function PaymentPollingScreen({
   const getStatusIcon = () => {
     switch (status) {
       case 'polling':
-        return <Loader2 className="h-12 w-12 animate-spin text-blue-500" />;
+        return <Loader2 className="h-8 w-8 animate-spin text-primary" />;
       case 'success':
-        return <CheckCircle className="h-12 w-12 text-green-500" />;
+        return <CheckCircle className="h-8 w-8 text-green-500" />;
       case 'error':
       case 'timeout':
-        return <XCircle className="h-12 w-12 text-red-500" />;
+        return <XCircle className="h-8 w-8 text-destructive" />;
       default:
-        return <AlertCircle className="h-12 w-12 text-gray-500" />;
-    }
-  };
-
-  const getStatusColor = () => {
-    switch (status) {
-      case 'polling':
-        return 'text-blue-600';
-      case 'success':
-        return 'text-green-600';
-      case 'error':
-      case 'timeout':
-        return 'text-red-600';
-      default:
-        return 'text-gray-600';
+        return <AlertCircle className="h-8 w-8 text-muted-foreground" />;
     }
   };
 
@@ -177,36 +163,36 @@ export function PaymentPollingScreen({
     const currentInterval = currentPollingIntervalRef.current / 1000;
     return (
       <div className="text-xs text-muted-foreground space-y-1">
-        <div>Checking payment status every {currentInterval.toFixed(0)} seconds</div>
-        <div>Attempts made: {pollCount}</div>
+        <div className="text-center">Checking payment status every {currentInterval.toFixed(0)} seconds</div>
+        <div className="text-center">Attempts made: {pollCount}</div>
         {isPollingPausedRef.current && (
-          <div className="text-amber-600">Polling paused - tab not visible</div>
+          <div className="text-center text-amber-500">Polling paused - tab not visible</div>
         )}
       </div>
     );
   };
 
   return (
-    <div className="space-y-6">
-      <div className="text-center space-y-4">
-        <div className="flex justify-center">
-          {getStatusIcon()}
-        </div>
+    <div className="max-w-md mx-auto space-y-6 pb-4">
+      {/* Status Section */}
+      <div className="flex flex-col items-center space-y-4 pt-6">
+        {getStatusIcon()}
         
-        <div>
-          <h2 className={`text-2xl font-bold ${getStatusColor()}`}>
+        <div className="text-center space-y-2">
+          <p className="text-lg font-medium text-foreground">
             {status === 'polling' && "Processing Payment"}
             {status === 'success' && "Payment Successful"}
             {status === 'error' && "Payment Failed"}
             {status === 'timeout' && "Payment Timeout"}
-          </h2>
+          </p>
           
-          <p className="text-muted-foreground mt-2">
+          <p className="text-sm text-muted-foreground">
             {message}
           </p>
         </div>
       </div>
 
+      {/* Error Alert */}
       {error && (
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
@@ -214,30 +200,33 @@ export function PaymentPollingScreen({
         </Alert>
       )}
 
+      {/* Polling Status */}
       {status === 'polling' && (
-        <div className="text-center space-y-4">
-          <div className="flex items-center justify-center space-x-2 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            <span>Please complete your payment in the browser window</span>
+        <>
+          <div className="space-y-2 text-center">
+            <p className="text-sm text-foreground">Please complete your payment in the browser window</p>
+            
+            <p className="text-xs text-muted-foreground">
+              This window will automatically update when payment is confirmed
+            </p>
           </div>
           
-          <div className="text-xs text-muted-foreground">
-            This window will automatically update when payment is confirmed
+          <div className="border-t pt-4">
+            {getPollingIndicator()}
           </div>
-          
-          {getPollingIndicator()}
-        </div>
+        </>
       )}
 
-      <div className="flex justify-center gap-3">
+      {/* Action Buttons */}
+      <div className="flex justify-center">
         {status === 'polling' && (
-          <Button variant="outline" onClick={handleCancel}>
+          <Button variant="outline" onClick={handleCancel} className="min-w-[120px]">
             Cancel
           </Button>
         )}
         
         {(status === 'error' || status === 'timeout') && (
-          <Button variant="outline" onClick={handleCancel}>
+          <Button variant="outline" onClick={handleCancel} className="min-w-[120px]">
             Close
           </Button>
         )}

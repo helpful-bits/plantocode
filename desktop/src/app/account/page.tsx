@@ -9,13 +9,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { Card, CardContent, CardHeader } from "@/ui/card";
 import { Button } from "@/ui/button";
 import { Badge } from "@/ui/badge";
-import { 
-  Select, 
-  SelectContent, 
-  SelectItem, 
-  SelectTrigger, 
-  SelectValue 
-} from "@/ui/select";
+import { RegionSelector } from "@/app/components/region-selector";
 import { 
   AlertDialog, 
   AlertDialogAction, 
@@ -131,8 +125,8 @@ export default function AccountPage() {
       try {
         setIsLoadingRegions(true);
         const [regions, currentUrl] = await Promise.all([
-          invoke("get_available_regions_command", {}),
-          invoke("get_selected_server_url_command", {})
+          invoke<ServerRegionInfo[]>("get_available_regions_command", {}),
+          invoke<string>("get_selected_server_url_command", {})
         ]);
         
         setAvailableRegions(regions);
@@ -176,7 +170,7 @@ export default function AccountPage() {
 
         <Card className="bg-gradient-to-r from-card to-card/90 border-2 border-border/20 shadow-sm">
           <CardContent className="space-y-6">
-            {/* User Profile Section */}
+            {/* Account Information Section */}
             <div className="space-y-4 pt-4 border-t border-border/50">
               <h3 className="text-xl font-bold flex items-center gap-3">
                 <div className="h-10 w-10 bg-primary/10 rounded-full flex items-center justify-center">
@@ -184,74 +178,62 @@ export default function AccountPage() {
                 </div>
                 Account Information
               </h3>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="flex items-center gap-3">
-                  <User className="h-4 w-4 text-muted-foreground" />
-                  <div>
-                    <p className="text-sm font-medium">{user.name || "No name provided"}</p>
-                    <p className="text-xs text-muted-foreground">Account Name</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <Mail className="h-4 w-4 text-muted-foreground" />
-                  <div>
-                    <p className="text-sm font-medium break-all">{user.email}</p>
-                    <p className="text-xs text-muted-foreground">Account Email</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Server Region Section */}
-            <div className="space-y-4 pt-4 border-t border-border/50">
-              <h3 className="text-xl font-bold flex items-center gap-3">
-                <div className="h-10 w-10 bg-primary/10 rounded-full flex items-center justify-center">
-                  <Globe className="h-5 w-5 text-primary" />
-                </div>
-                Server Region
-              </h3>
-              
-              {isLoadingRegions ? (
-                <div className="animate-pulse space-y-3">
-                  <div className="h-4 bg-muted rounded w-1/3"></div>
-                  <div className="h-10 bg-muted rounded w-full"></div>
-                </div>
-              ) : (
-                <div className="space-y-3">
+              <div className="space-y-4">
+                {/* Basic Account Info */}
+                <div className="grid gap-3 sm:grid-cols-2">
                   <div className="flex items-center gap-3">
-                    <Globe className="h-4 w-4 text-muted-foreground" />
-                    <div className="flex-1">
-                      <p className="text-sm font-medium">Current Region</p>
-                      <p className="text-xs text-muted-foreground">
-                        Choose the server region closest to you for optimal performance
-                      </p>
+                    <User className="h-4 w-4 text-muted-foreground" />
+                    <div>
+                      <p className="text-sm font-medium">{user.name || "No name provided"}</p>
+                      <p className="text-xs text-muted-foreground">Account Name</p>
                     </div>
                   </div>
-                  
-                  <Select 
-                    value={currentRegion || ""} 
-                    onValueChange={handleRegionChange}
-                    disabled={isChangingRegion}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Select a region..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {availableRegions.map((region) => (
-                        <SelectItem key={region.url} value={region.url}>
-                          {region.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  
-                  {availableRegions.length === 0 && !isLoadingRegions && (
-                    <p className="text-sm text-muted-foreground">
-                      No regions available. Please check your connection and try again.
-                    </p>
+                  <div className="flex items-center gap-3">
+                    <Mail className="h-4 w-4 text-muted-foreground" />
+                    <div>
+                      <p className="text-sm font-medium break-all">{user.email}</p>
+                      <p className="text-xs text-muted-foreground">Account Email</p>
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Server Region */}
+                <div className="pt-3">
+                  {isLoadingRegions ? (
+                    <div className="animate-pulse space-y-2">
+                      <div className="h-4 bg-muted rounded w-1/4"></div>
+                      <div className="h-10 bg-muted rounded w-full"></div>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-3">
+                        <Globe className="h-4 w-4 text-muted-foreground" />
+                        <div className="flex-1">
+                          <p className="text-sm font-medium">Server Region</p>
+                          <p className="text-xs text-muted-foreground">
+                            Choose the closest region for optimal performance. Changing regions will sign you out.
+                          </p>
+                        </div>
+                      </div>
+                      
+                      <div className="sm:w-1/2">
+                        <RegionSelector
+                          regions={availableRegions}
+                          currentRegion={currentRegion}
+                          onRegionChange={handleRegionChange}
+                          disabled={isChangingRegion}
+                        />
+                      </div>
+                      
+                      {availableRegions.length === 0 && !isLoadingRegions && (
+                        <p className="text-sm text-muted-foreground mt-2">
+                          No regions available. Please check your connection and try again.
+                        </p>
+                      )}
+                    </div>
                   )}
                 </div>
-              )}
+              </div>
             </div>
 
             {/* Billing Information Section */}

@@ -18,11 +18,8 @@ pub async fn fetch_and_update_runtime_ai_config(app_handle: &AppHandle) -> Resul
     // Fetch RuntimeAIConfig from server using the ServerProxyClient which is already initialized and managed
     info!("Fetching RuntimeAIConfig from server");
 
-    // Get ServerProxyClient from app state
-    let server_proxy_client = app_handle
-        .state::<Arc<crate::api_clients::server_proxy_client::ServerProxyClient>>()
-        .inner()
-        .clone();
+    // Get ServerProxyClient from app state using the proper getter that handles initialization
+    let server_proxy_client = crate::api_clients::client_factory::get_server_proxy_client(app_handle).await?;
 
     // Call the get_runtime_ai_config method on ServerProxyClient
     // This endpoint now gets model information from the database instead of environment variables
@@ -359,11 +356,8 @@ pub async fn detect_configuration_drift(app_handle: &AppHandle) -> Result<Vec<St
         }
     };
 
-    // Get fresh config from server
-    let server_proxy_client = app_handle
-        .state::<Arc<crate::api_clients::server_proxy_client::ServerProxyClient>>()
-        .inner()
-        .clone();
+    // Get fresh config from server using the proper getter that handles initialization
+    let server_proxy_client = crate::api_clients::client_factory::get_server_proxy_client(app_handle).await?;
 
     let fresh_config_value = server_proxy_client
         .get_runtime_ai_config()

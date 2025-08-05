@@ -151,7 +151,7 @@ impl UnifiedPromptProcessor {
                 (custom_prompt.system_prompt.clone(), custom_prompt.system_prompt, "custom".to_string())
             }
             // Fall back to server default system prompt
-            else if let Some(default_prompt) = app_handle.state::<Arc<ServerProxyClient>>().inner().clone()
+            else if let Some(default_prompt) = crate::api_clients::client_factory::get_server_proxy_client(&app_handle).await?
                 .get_default_system_prompt(task_type).await? {
                 // Use the system_prompt field directly from the struct
                 let prompt_str = &default_prompt.system_prompt;
