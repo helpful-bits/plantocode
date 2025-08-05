@@ -53,6 +53,18 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-cargo-
           
+    - name: Debug - List repository structure
+      shell: powershell
+      run: |
+        Write-Host "Repository root contents:"
+        Get-ChildItem -Path . -Force
+        Write-Host "`nDesktop directory contents:"
+        if (Test-Path desktop) {
+          Get-ChildItem -Path desktop -Force
+        } else {
+          Write-Host "Desktop directory not found!"
+        }
+        
     - name: Install frontend dependencies
       run: |
         cd desktop
