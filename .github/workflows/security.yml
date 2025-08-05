@@ -183,7 +183,13 @@ jobs:
     - name: Install dependencies
       run: |
         cd desktop
-        pnpm install --frozen-lockfile
+        if [ -f "pnpm-lock.yaml" ]; then
+          echo "Found pnpm-lock.yaml, using frozen lockfile"
+          pnpm install --frozen-lockfile
+        else
+          echo "No pnpm-lock.yaml found, using regular install"
+          pnpm install
+        fi
       
     - name: Run npm audit (Node.js vulnerability scanning)
       run: |
@@ -251,7 +257,13 @@ jobs:
     - name: Install dependencies
       run: |
         cd desktop
-        pnpm install --frozen-lockfile
+        if [ -f "pnpm-lock.yaml" ]; then
+          echo "Found pnpm-lock.yaml, using frozen lockfile"
+          pnpm install --frozen-lockfile
+        else
+          echo "No pnpm-lock.yaml found, using regular install"
+          pnpm install
+        fi
       
     - name: Run ESLint security rules
       run: |
@@ -330,7 +342,13 @@ jobs:
     - name: Install dependencies
       run: |
         cd desktop
-        pnpm install --frozen-lockfile
+        if [ -f "pnpm-lock.yaml" ]; then
+          echo "Found pnpm-lock.yaml, using frozen lockfile"
+          pnpm install --frozen-lockfile
+        else
+          echo "No pnpm-lock.yaml found, using regular install"
+          pnpm install
+        fi
       
     - name: Install Tauri CLI
       run: cargo install tauri-cli --version "^2.0" --locked
