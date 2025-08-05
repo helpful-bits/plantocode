@@ -53,7 +53,14 @@ jobs:
           version: 9
 
       - name: Install Dependencies
-        run: pnpm install --frozen-lockfile
+        run: |
+          if [ -f "pnpm-lock.yaml" ]; then
+            echo "Found pnpm-lock.yaml, using frozen lockfile"
+            pnpm install --frozen-lockfile
+          else
+            echo "No pnpm-lock.yaml found, using regular install"
+            pnpm install
+          fi
 
       - name: TypeScript Check
         run: pnpm run typecheck

@@ -66,9 +66,16 @@ jobs:
         }
         
     - name: Install frontend dependencies
+      shell: powershell
       run: |
         cd desktop
-        pnpm install --frozen-lockfile
+        if (Test-Path "pnpm-lock.yaml") {
+          Write-Host "Found pnpm-lock.yaml, using frozen lockfile"
+          pnpm install --frozen-lockfile
+        } else {
+          Write-Host "No pnpm-lock.yaml found, using regular install"
+          pnpm install
+        }
       
     - name: Build frontend
       run: |
