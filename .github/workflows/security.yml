@@ -16,7 +16,10 @@ env:
 jobs:
   rust-security:
     name: Rust Security Audit
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-linux-16vcpu  # 16 vCPU for fast security checks
+    # Alternative fast runners:
+    # runs-on: buildjet-8vcpu-ubuntu-2204
+    # runs-on: warpbuild-linux-x64-16vcpu
     
     steps:
     - name: Checkout code
@@ -163,7 +166,10 @@ jobs:
 
   nodejs-security:
     name: Node.js Security Audit  
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-linux-16vcpu  # 16 vCPU for fast security checks
+    # Alternative fast runners:
+    # runs-on: buildjet-8vcpu-ubuntu-2204
+    # runs-on: warpbuild-linux-x64-16vcpu
     
     steps:
     - name: Checkout code
@@ -237,7 +243,10 @@ jobs:
 
   eslint-security:
     name: ESLint Security Analysis
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-linux-16vcpu  # 16 vCPU for fast security checks
+    # Alternative fast runners:
+    # runs-on: buildjet-8vcpu-ubuntu-2204
+    # runs-on: warpbuild-linux-x64-16vcpu
     
     steps:
     - name: Checkout code
@@ -270,8 +279,8 @@ jobs:
         cd desktop
         echo "Running ESLint with security-focused rules..."
         
-        # Run security linting
-        pnpm run lint:security --format json > eslint-security-results.json || echo "ESLint found security issues"
+        # Run security linting with JSON output
+        npx eslint . --ext .js,.jsx,.ts,.tsx --config eslint.security.config.mjs --format json > eslint-security-results.json || echo "ESLint found security issues"
         
         # Parse and format results
         echo "## 🔒 ESLint Security Results" >> $GITHUB_STEP_SUMMARY
@@ -315,7 +324,10 @@ jobs:
 
   tauri-security:
     name: Tauri Security Audit
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-linux-16vcpu  # 16 vCPU for fast security checks
+    # Alternative fast runners:
+    # runs-on: buildjet-8vcpu-ubuntu-2204
+    # runs-on: warpbuild-linux-x64-16vcpu
     
     steps:
     - name: Checkout code
@@ -502,7 +514,10 @@ jobs:
 
   property-tests:
     name: Property-Based Security Tests
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-linux-16vcpu  # 16 vCPU for fast security checks
+    # Alternative fast runners:
+    # runs-on: buildjet-8vcpu-ubuntu-2204
+    # runs-on: warpbuild-linux-x64-16vcpu
     
     services:
       postgres:
@@ -577,7 +592,10 @@ jobs:
 
   security-summary:
     name: Security Summary
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-linux-16vcpu  # 16 vCPU for fast security checks
+    # Alternative fast runners:
+    # runs-on: buildjet-8vcpu-ubuntu-2204
+    # runs-on: warpbuild-linux-x64-16vcpu
     needs: [rust-security, nodejs-security, eslint-security, tauri-security, property-tests]
     if: always()
     
