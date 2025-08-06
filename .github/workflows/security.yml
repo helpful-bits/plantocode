@@ -16,10 +16,11 @@ env:
 jobs:
   rust-security:
     name: Rust Security Audit
-    runs-on: namespace-profile-linux-16vcpu  # 16 vCPU for fast security checks
-    # Alternative fast runners:
-    # runs-on: buildjet-8vcpu-ubuntu-2204
-    # runs-on: warpbuild-linux-x64-16vcpu
+    runs-on: buildjet-4vcpu-ubuntu-2204  # BuildJet: 2x faster
+    # FAST RUNNER OPTIONS (requires setup):
+    # runs-on: namespace-profile-linux-16vcpu  # Namespace: 16 vCPU - requires namespace.so account
+    # runs-on: buildjet-8vcpu-ubuntu-2204       # BuildJet: 8 vCPU - requires buildjet.com account
+    # runs-on: warpbuild-linux-x64-16vcpu       # WarpBuild: 16 vCPU - requires warpbuild.com account
     
     steps:
     - name: Checkout code
@@ -166,10 +167,11 @@ jobs:
 
   nodejs-security:
     name: Node.js Security Audit  
-    runs-on: namespace-profile-linux-16vcpu  # 16 vCPU for fast security checks
-    # Alternative fast runners:
-    # runs-on: buildjet-8vcpu-ubuntu-2204
-    # runs-on: warpbuild-linux-x64-16vcpu
+    runs-on: buildjet-4vcpu-ubuntu-2204  # BuildJet: 2x faster
+    # FAST RUNNER OPTIONS (requires setup):
+    # runs-on: namespace-profile-linux-16vcpu  # Namespace: 16 vCPU - requires namespace.so account
+    # runs-on: buildjet-8vcpu-ubuntu-2204       # BuildJet: 8 vCPU - requires buildjet.com account
+    # runs-on: warpbuild-linux-x64-16vcpu       # WarpBuild: 16 vCPU - requires warpbuild.com account
     
     steps:
     - name: Checkout code
@@ -243,10 +245,11 @@ jobs:
 
   eslint-security:
     name: ESLint Security Analysis
-    runs-on: namespace-profile-linux-16vcpu  # 16 vCPU for fast security checks
-    # Alternative fast runners:
-    # runs-on: buildjet-8vcpu-ubuntu-2204
-    # runs-on: warpbuild-linux-x64-16vcpu
+    runs-on: buildjet-4vcpu-ubuntu-2204  # BuildJet: 2x faster
+    # FAST RUNNER OPTIONS (requires setup):
+    # runs-on: namespace-profile-linux-16vcpu  # Namespace: 16 vCPU - requires namespace.so account
+    # runs-on: buildjet-8vcpu-ubuntu-2204       # BuildJet: 8 vCPU - requires buildjet.com account
+    # runs-on: warpbuild-linux-x64-16vcpu       # WarpBuild: 16 vCPU - requires warpbuild.com account
     
     steps:
     - name: Checkout code
@@ -324,10 +327,11 @@ jobs:
 
   tauri-security:
     name: Tauri Security Audit
-    runs-on: namespace-profile-linux-16vcpu  # 16 vCPU for fast security checks
-    # Alternative fast runners:
-    # runs-on: buildjet-8vcpu-ubuntu-2204
-    # runs-on: warpbuild-linux-x64-16vcpu
+    runs-on: buildjet-4vcpu-ubuntu-2204  # BuildJet: 2x faster
+    # FAST RUNNER OPTIONS (requires setup):
+    # runs-on: namespace-profile-linux-16vcpu  # Namespace: 16 vCPU - requires namespace.so account
+    # runs-on: buildjet-8vcpu-ubuntu-2204       # BuildJet: 8 vCPU - requires buildjet.com account
+    # runs-on: warpbuild-linux-x64-16vcpu       # WarpBuild: 16 vCPU - requires warpbuild.com account
     
     steps:
     - name: Checkout code
@@ -514,10 +518,11 @@ jobs:
 
   property-tests:
     name: Property-Based Security Tests
-    runs-on: namespace-profile-linux-16vcpu  # 16 vCPU for fast security checks
-    # Alternative fast runners:
-    # runs-on: buildjet-8vcpu-ubuntu-2204
-    # runs-on: warpbuild-linux-x64-16vcpu
+    runs-on: buildjet-4vcpu-ubuntu-2204  # BuildJet: 2x faster
+    # FAST RUNNER OPTIONS (requires setup):
+    # runs-on: namespace-profile-linux-16vcpu  # Namespace: 16 vCPU - requires namespace.so account
+    # runs-on: buildjet-8vcpu-ubuntu-2204       # BuildJet: 8 vCPU - requires buildjet.com account
+    # runs-on: warpbuild-linux-x64-16vcpu       # WarpBuild: 16 vCPU - requires warpbuild.com account
     
     services:
       postgres:
@@ -592,10 +597,11 @@ jobs:
 
   security-summary:
     name: Security Summary
-    runs-on: namespace-profile-linux-16vcpu  # 16 vCPU for fast security checks
-    # Alternative fast runners:
-    # runs-on: buildjet-8vcpu-ubuntu-2204
-    # runs-on: warpbuild-linux-x64-16vcpu
+    runs-on: buildjet-4vcpu-ubuntu-2204  # BuildJet: 2x faster
+    # FAST RUNNER OPTIONS (requires setup):
+    # runs-on: namespace-profile-linux-16vcpu  # Namespace: 16 vCPU - requires namespace.so account
+    # runs-on: buildjet-8vcpu-ubuntu-2204       # BuildJet: 8 vCPU - requires buildjet.com account
+    # runs-on: warpbuild-linux-x64-16vcpu       # WarpBuild: 16 vCPU - requires warpbuild.com account
     needs: [rust-security, nodejs-security, eslint-security, tauri-security, property-tests]
     if: always()
     
