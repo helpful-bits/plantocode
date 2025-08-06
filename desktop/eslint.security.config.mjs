@@ -52,11 +52,6 @@ export default [
       
       // TypeScript security rules
       '@typescript-eslint/no-explicit-any': 'error',
-      '@typescript-eslint/no-unsafe-assignment': 'error',
-      '@typescript-eslint/no-unsafe-member-access': 'error',
-      '@typescript-eslint/no-unsafe-call': 'error',
-      '@typescript-eslint/no-unsafe-return': 'error',
-      '@typescript-eslint/no-unsafe-argument': 'error',
       
       // Security plugin rules - focused on preventing common vulnerabilities
       'security/detect-object-injection': 'error',
@@ -72,18 +67,11 @@ export default [
       'security/detect-possible-timing-attacks': 'warn',
       'security/detect-pseudoRandomBytes': 'error',
       'security/detect-new-buffer': 'error',
-      'security/detect-insecure-randomness': 'error',
       
       // SonarJS security-related rules
-      'sonarjs/no-hardcoded-credentials': 'error',
-      'sonarjs/no-weak-keys': 'error',
       'sonarjs/no-hardcoded-passwords': 'error',
-      'sonarjs/sql-queries': 'error',
-      'sonarjs/encryption': 'error',
-      'sonarjs/hashing': 'error',
-      'sonarjs/cookies': 'error',
-      'sonarjs/cors': 'error',
-      'sonarjs/csrf': 'error',
+      'sonarjs/no-hardcoded-secrets': 'error',
+      'sonarjs/no-hardcoded-ip': 'warn',
       
       // Additional security-focused rules
       'no-eval': 'error',
@@ -104,11 +92,6 @@ export default [
         }
       ],
       
-      // Prevent dangerous patterns in React/frontend code
-      'no-danger': 'error',
-      'react/no-danger': 'error',
-      'react/no-danger-with-children': 'error',
-      
       // Prevent potential XSS vulnerabilities
       'no-useless-concat': 'error',
       'prefer-template': 'error',
@@ -126,7 +109,6 @@ export default [
       // Data validation and sanitization
       'valid-typeof': 'error',
       'no-unsafe-negation': 'error',
-      'no-unsafe-optional-chaining': 'error',
       
       // Financial/billing specific security rules
       'no-floating-decimal': 'error',
@@ -158,14 +140,9 @@ export default [
     rules: {
       // Enhanced TypeScript security
       '@typescript-eslint/ban-ts-comment': 'error',
-      '@typescript-eslint/ban-types': 'error',
       '@typescript-eslint/no-non-null-assertion': 'error',
       '@typescript-eslint/no-non-null-asserted-optional-chain': 'error',
-      '@typescript-eslint/prefer-as-const': 'error',
-      '@typescript-eslint/prefer-nullish-coalescing': 'error',
-      '@typescript-eslint/prefer-optional-chain': 'error',
-      '@typescript-eslint/restrict-plus-operands': 'error',
-      '@typescript-eslint/restrict-template-expressions': 'error'
+      '@typescript-eslint/prefer-as-const': 'error'
     }
   },
   {

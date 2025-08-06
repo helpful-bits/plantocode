@@ -171,7 +171,11 @@
       "Bash(ansible-playbook:*)",
       "Bash(ansible:*)",
       "WebFetch(domain:api.eu.vibemanager.app)",
-      "Bash(DATABASE_URL=\"postgresql://localhost:5432/vibe_manager\" cargo sqlx prepare)"
+      "Bash(DATABASE_URL=\"postgresql://localhost:5432/vibe_manager\" cargo sqlx prepare)",
+      "Bash(export APPLE_API_KEY=\"T9SPBD48N3\")",
+      "Bash(export APPLE_API_KEY_PATH=\"/Users/kirylkazlovich/dev/vibe-manager/secrets/AuthKey_T9SPBD48N3.p8\")",
+      "Bash(export APPLE_API_ISSUER=\"38c0c750-d236-4564-8251-fbbd06073c60\")",
+      "Bash(export:*)"
     ],
     "deny": []
   },

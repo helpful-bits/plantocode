@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "identifier": "com.vibemanager.desktop",
+  "identifier": "app.vibemanager",
   "productName": "Vibe Manager",
   "version": "1.0.0",
 
@@ -36,6 +36,7 @@
 
   "bundle": {
     "active": true,
+    "createUpdaterArtifacts": true,
     "targets": ["app", "dmg", "msi", "nsis"],
     "category": "Productivity",
     "shortDescription": "Vibe Manager - AI-powered productivity and content management",
@@ -80,6 +81,12 @@
   "plugins": {
     "http": null,
     "dialog": null,
-    "shell": {}
+    "shell": {},
+    "updater": {
+      "endpoints": [
+        "https://s3.eu-central-1.amazonaws.com/vibemanager.app/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEVFNDJBM0E0QzE4RUJENTAKUldSUXZZN0JwS05DN21HSHVQV0JsdVRERXVEYXRkUlZaTld6Q0pnQys2Szl6c3hhK3hwWk5rWGwK"
+    }
   }
 }
