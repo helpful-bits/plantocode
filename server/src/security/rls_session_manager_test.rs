@@ -1,10 +1,9 @@
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::security::rls_session_manager::RLSSessionManager;
     use sqlx::{PgPool, Row};
     use std::env;
     use uuid::Uuid;
-    use tokio::test;
     use bigdecimal::{BigDecimal, FromPrimitive};
 
     /// Test database pool creation for security testing
@@ -53,8 +52,8 @@ mod tests {
         )
         .bind(user_id)
         .bind(transaction_type)
-        .bind(amount)
         .bind(amount.clone())
+        .bind(amount)
         .bind(BigDecimal::from(0))
         .bind(balance_after)
         .execute(pool)
@@ -120,8 +119,8 @@ mod tests {
         let balance_1 = BigDecimal::from_f64(100.0000).unwrap(); // 100.0000
         let balance_2 = BigDecimal::from_f64(200.0000).unwrap(); // 200.0000
         
-        create_user_credits(&pool, user_1_id, balance_1).await.unwrap();
-        create_user_credits(&pool, user_2_id, balance_2).await.unwrap();
+        create_user_credits(&pool, user_1_id, balance_1.clone()).await.unwrap();
+        create_user_credits(&pool, user_2_id, balance_2.clone()).await.unwrap();
 
         // Test 1: User 1 should only see their own credit balance
         let mut conn_1 = manager
@@ -138,7 +137,7 @@ mod tests {
         .await
         .expect("User 1 should be able to access their own credit balance");
         
-        assert_eq!(user_1_balance, balance_1, "User 1 should see their correct balance");
+        assert_eq!(user_1_balance, balance_1.clone(), "User 1 should see their correct balance");
 
         // Critical Security Test: User 1 should NOT see user 2's balance
         let user_2_balance_access = sqlx::query_scalar::<_, BigDecimal>(
@@ -183,7 +182,7 @@ mod tests {
         .await
         .expect("User 2 should be able to access their own credit balance");
         
-        assert_eq!(user_2_own_balance, balance_2, "User 2 should see their correct balance");
+        assert_eq!(user_2_own_balance, balance_2.clone(), "User 2 should see their correct balance");
 
         // Critical Security Test: User 2 should NOT see user 1's balance
         let user_1_balance_access = sqlx::query_scalar::<_, BigDecimal>(
@@ -231,8 +230,8 @@ mod tests {
         let balance_2 = BigDecimal::from_f64(200.0000).unwrap(); // 200.0000
         let transaction_amount = BigDecimal::from_f64(50.0000).unwrap(); // 50.0000
         
-        create_user_credits(&pool, user_1_id, balance_1).await.unwrap();
-        create_user_credits(&pool, user_2_id, balance_2).await.unwrap();
+        create_user_credits(&pool, user_1_id, balance_1.clone()).await.unwrap();
+        create_user_credits(&pool, user_2_id, balance_2.clone()).await.unwrap();
         
         create_credit_transaction(&pool, user_1_id, "purchase", transaction_amount.clone(), &balance_1 + &transaction_amount).await.unwrap();
         create_credit_transaction(&pool, user_2_id, "purchase", transaction_amount.clone(), &balance_2 + &transaction_amount).await.unwrap();
@@ -662,7 +661,7 @@ mod tests {
         for (i, &user_id) in user_ids.iter().enumerate() {
             let email = format!("comprehensive_test_user_{}@example.com", i);
             create_test_user(&pool, user_id, &email).await.unwrap();
-            create_user_credits(&pool, user_id, balances[i]).await.unwrap();
+            create_user_credits(&pool, user_id, balances[i].clone()).await.unwrap();
             
             // Create transaction history
             create_credit_transaction(

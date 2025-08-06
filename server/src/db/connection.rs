@@ -156,7 +156,7 @@ mod tests {
         // This test will only run if DATABASE_URL is set in the environment
         if let Ok(_) = env::var("DATABASE_URL") {
             if let Ok(pools) = create_dual_pools().await {
-                let result = verify_connection(&pools.system_pool).await;
+                let _result = verify_connection(&pools.system_pool).await;
                 // We don't assert result.is_ok() because it depends on the database being available
             }
         }

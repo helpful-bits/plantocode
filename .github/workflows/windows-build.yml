@@ -4,54 +4,60 @@ on:
   push:
     branches: [ main, develop ]
     tags: [ 'v*' ]
+    paths:
+      - 'desktop/**'
+      - 'server/**'
+      - '.github/workflows/windows-build.yml'
   pull_request:
     branches: [ main ]
+    paths:
+      - 'desktop/**'
+      - 'server/**'
+      - '.github/workflows/windows-build.yml'
   workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
+  CARGO_INCREMENTAL: 0
+  CARGO_NET_RETRY: 10
+  RUSTUP_MAX_RETRIES: 10
 
 jobs:
   build-windows:
     name: Build Windows with Updater Artifacts
-    runs-on: windows-latest
+    runs-on: namespace-profile-windows-32vcpu  # Namespace: 32 vCPU, 64GB RAM (fastest)
+    # Alternative fast runners:
+    # runs-on: buildjet-32vcpu-windows-2022      # BuildJet: 32 vCPU (good price/performance)
+    # runs-on: warpbuild-windows-x64-32vcpu      # WarpBuild: 32 vCPU (AWS/GCP/Azure)
+    # runs-on: blacksmith-32vcpu-windows-2022    # Blacksmith: 32 vCPU (EU-based)
+    timeout-minutes: 30
     
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
       
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '20'
-        
     - name: Install pnpm
       uses: pnpm/action-setup@v4
       with:
         version: 9
         run_install: false
+        
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
       
     - name: Install Rust toolchain
-      uses: actions-rs/toolchain@v1
-      with:
-        profile: minimal
-        toolchain: stable
-        target: x86_64-pc-windows-msvc
-        override: true
+      run: rustup toolchain install stable --profile minimal --target x86_64-pc-windows-msvc
         
-    - name: Cache Rust dependencies
-      uses: actions/cache@v4
+    - name: Rust Cache
+      uses: Swatinem/rust-cache@v2
       with:
-        path: |
-          ~/.cargo/bin/
-          ~/.cargo/registry/index/
-          ~/.cargo/registry/cache/
-          ~/.cargo/git/db/
-          desktop/src-tauri/target/
-        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-        restore-keys: |
-          ${{ runner.os }}-cargo-
+        workspaces: "desktop/src-tauri -> target"
+        cache-targets: "true"
+        cache-on-failure: "false"
+        prefix-key: "v1-rust-windows"
           
     - name: Install dependencies
       run: |
@@ -63,7 +69,15 @@ jobs:
         cd desktop
         pnpm run build
       
+    - name: Cache Tauri CLI
+      id: cache-tauri
+      uses: actions/cache@v4
+      with:
+        path: ~/.cargo/bin/cargo-tauri
+        key: ${{ runner.os }}-tauri-cli-2.0
+        
     - name: Install Tauri CLI
+      if: steps.cache-tauri.outputs.cache-hit != 'true'
       run: cargo install tauri-cli --version "^2.0" --locked
       
     - name: Build Windows app with updater artifacts
@@ -87,43 +101,44 @@ jobs:
 
   build-macos:
     name: Build macOS with Updater Artifacts
-    runs-on: macos-latest
+    runs-on: namespace-profile-macos-m4-pro  # Namespace: Apple M4 Pro (fastest for macOS)
+    # Alternative fast runners:
+    # runs-on: buildjet-8vcpu-macos-14           # BuildJet: 8 vCPU (good price)
+    # runs-on: warpbuild-macos-arm64-m2-pro      # WarpBuild: M2 Pro, macOS 13/14
+    # runs-on: blacksmith-16vcpu-macos-arm64     # Blacksmith: 16 vCPU ARM64
+    timeout-minutes: 30
     
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
       
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '20'
-        
     - name: Install pnpm
       uses: pnpm/action-setup@v4
       with:
         version: 9
         run_install: false
+        
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
       
     - name: Install Rust toolchain
-      uses: actions-rs/toolchain@v1
-      with:
-        profile: minimal
-        toolchain: stable
-        target: x86_64-apple-darwin
-        override: true
+      run: rustup toolchain install stable --profile minimal --target x86_64-apple-darwin
+    
+    - name: Install OpenSSL for cross-compilation
+      run: |
+        brew install openssl@3
+        echo "OPENSSL_DIR=$(brew --prefix openssl@3)" >> $GITHUB_ENV
+        echo "PKG_CONFIG_PATH=$(brew --prefix openssl@3)/lib/pkgconfig" >> $GITHUB_ENV
         
-    - name: Cache Rust dependencies
-      uses: actions/cache@v4
+    - name: Rust Cache
+      uses: Swatinem/rust-cache@v2
       with:
-        path: |
-          ~/.cargo/bin/
-          ~/.cargo/registry/index/
-          ~/.cargo/registry/cache/
-          ~/.cargo/git/db/
-          desktop/src-tauri/target/
-        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-        restore-keys: |
-          ${{ runner.os }}-cargo-
+        workspaces: "desktop/src-tauri -> target"
+        cache-targets: "true"
+        cache-on-failure: "false"
+        prefix-key: "v1-rust-macos"
           
     - name: Install dependencies
       run: |
@@ -135,7 +150,15 @@ jobs:
         cd desktop
         pnpm run build
       
+    - name: Cache Tauri CLI
+      id: cache-tauri
+      uses: actions/cache@v4
+      with:
+        path: ~/.cargo/bin/cargo-tauri
+        key: ${{ runner.os }}-tauri-cli-2.0
+        
     - name: Install Tauri CLI
+      if: steps.cache-tauri.outputs.cache-hit != 'true'
       run: cargo install tauri-cli --version "^2.0" --locked
       
     - name: Build macOS app with updater artifacts
@@ -148,6 +171,8 @@ jobs:
         APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
         APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
         APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        OPENSSL_DIR: ${{ env.OPENSSL_DIR }}
+        PKG_CONFIG_PATH: ${{ env.PKG_CONFIG_PATH }}
         
     - name: Upload macOS artifacts (for manual S3 upload)
       uses: actions/upload-artifact@v4

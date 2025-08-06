@@ -40,7 +40,7 @@ impl MailgunConfig {
 }
 
 impl EmailNotificationService {
-    pub fn new(db_pools: DatabasePools) -> Result<Self, AppError> {
+    pub fn new(_db_pools: DatabasePools) -> Result<Self, AppError> {
         let mailgun_config = MailgunConfig::from_env()?;
         let http_client = reqwest::Client::new();
 
