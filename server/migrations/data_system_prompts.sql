@@ -385,7 +385,7 @@ Generate ONLY this format (no other text allowed):
     <![CDATA[
     Task: [What user wants to do]
     Relevant API/Library: [Name of external API/library]
-    Current implementation: [Include relevant code snippets showing how this API/library is currently used in the codebase, including key method calls, configurations, error handling, and any patterns that need verification or improvement]
+    Current implementation: [Include relevant code snippets showing how this API/library is currently used in the codebase, including key method calls, configurations, error handling, and any patterns that need verification or improvement. Include EXACT version numbers if they are explicitly specified in package.json, Cargo.toml, or other dependency files - never guess or hallucinate versions]
     ]]>
   </context>
 
@@ -408,7 +408,8 @@ Generate ONLY this format (no other text allowed):
 6. NO explanations
 7. Generate prompts ONLY if they are absolutely necessary for the user''s task
 8. Separate with `<<<Separator>>>`
-9. Each llm_research_prompt should be a clear paragraph explaining what information is needed from official docs', 'Simplified research prompt generator', '15.0'),
+9. Each llm_research_prompt should be a clear paragraph explaining what information is needed from official docs
+10. CRITICAL: NEVER hallucinate or guess version numbers - only include EXACT versions that are explicitly found in dependency files (package.json, Cargo.toml, etc.). If no exact version can be determined, do NOT mention any version at all', 'Simplified research prompt generator', '15.0'),
 
 ('default_web_search_execution', 'web_search_execution', 'You are a **Task-Focused Integration & Verification Specialist**. You receive research prompts and provide either integration guidance for new features or verification for existing implementations.
 

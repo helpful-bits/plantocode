@@ -460,6 +460,21 @@ ON users FOR SELECT
 TO vibe_manager_app
 USING (auth0_user_id IS NOT NULL);
 
+-- Policy allowing vibe_manager_app to INSERT users during Auth0 authentication
+DROP POLICY IF EXISTS "App can insert users during authentication" ON users;
+CREATE POLICY "App can insert users during authentication"
+ON users FOR INSERT
+TO vibe_manager_app
+WITH CHECK (true);  -- App service needs to create users during Auth0 login flow
+
+-- Policy allowing vibe_manager_app to UPDATE users during Auth0 authentication
+DROP POLICY IF EXISTS "App can update users during authentication" ON users;
+CREATE POLICY "App can update users during authentication"
+ON users FOR UPDATE
+TO vibe_manager_app
+USING (true)
+WITH CHECK (true);  -- App service needs to update user details from Auth0
+
 -- Note: DELETE is typically handled by backend/service roles, not direct user RLS.
 -- Ensure users.id is indexed (Primary Key implicitly creates an index).
 
@@ -593,10 +608,17 @@ USING (true);
 -- RLS for application_configurations table
 ALTER TABLE application_configurations ENABLE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS "App users can select application configurations" ON application_configurations;
-CREATE POLICY "App users can select application configurations"
+-- Separate policies for each role to avoid RLS context issues during signup
+DROP POLICY IF EXISTS "App role can always select application configurations" ON application_configurations;
+CREATE POLICY "App role can always select application configurations"
 ON application_configurations FOR SELECT
-TO vibe_manager_app, authenticated
+TO vibe_manager_app
+USING (true);
+
+DROP POLICY IF EXISTS "Authenticated users can select application configurations" ON application_configurations;
+CREATE POLICY "Authenticated users can select application configurations"
+ON application_configurations FOR SELECT
+TO authenticated
 USING (true);
 
 -- INSERT, UPDATE, DELETE typically handled by backend/service roles.
@@ -710,7 +732,7 @@ CREATE TABLE IF NOT EXISTS user_credits (
 CREATE TABLE IF NOT EXISTS credit_transactions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    transaction_type VARCHAR(50) NOT NULL, -- 'purchase', 'consumption', 'refund', 'adjustment', 'expiry', 'consumption_adjustment', 'refund_adjustment'
+    transaction_type VARCHAR(50) NOT NULL, -- 'purchase', 'consumption', 'refund', 'adjustment', 'expiry', 'consumption_adjustment', 'refund_adjustment', 'signup_bonus'
     net_amount DECIMAL(12, 4) NOT NULL, -- Positive for additions, negative for deductions
     gross_amount DECIMAL(12, 4),
     fee_amount DECIMAL(12, 4),
@@ -749,7 +771,7 @@ DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'credit_transactions_transaction_type_check') THEN
         ALTER TABLE credit_transactions ADD CONSTRAINT credit_transactions_transaction_type_check 
-        CHECK (transaction_type IN ('purchase', 'consumption', 'refund', 'adjustment', 'expiry', 'consumption_adjustment', 'refund_adjustment'));
+        CHECK (transaction_type IN ('purchase', 'consumption', 'refund', 'adjustment', 'expiry', 'consumption_adjustment', 'refund_adjustment', 'signup_bonus'));
     END IF;
 END $$;
 

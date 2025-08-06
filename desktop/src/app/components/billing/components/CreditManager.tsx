@@ -53,6 +53,7 @@ export const CreditManager = ({ isOpen, onClose }: CreditManagerProps) => {
         invoke<BillingDashboardData>('get_billing_dashboard_data_command'),
         getCreditPurchaseFeeTiers()
       ]);
+      // Only show paid credits balance here, not free credits
       setBalance(billingData.creditBalanceUsd);
       setFeeTiers(tiers);
     } catch (err) {

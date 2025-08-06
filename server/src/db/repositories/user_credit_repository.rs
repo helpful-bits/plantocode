@@ -228,12 +228,15 @@ impl UserCreditRepository {
         Ok(result)
     }
 
-    /// Check if user has sufficient credits for a given amount
+    /// Check if user has sufficient credits for a given amount (including free credits)
     pub async fn has_sufficient_credits(&self, user_id: &Uuid, required_amount: &BigDecimal) -> Result<bool, AppError> {
         let balance = self.get_balance(user_id).await?;
         
         match balance {
-            Some(user_credit) => Ok(&user_credit.balance >= required_amount),
+            Some(user_credit) => {
+                let total_available = &user_credit.balance + &user_credit.free_credit_balance;
+                Ok(&total_available >= required_amount)
+            },
             None => Ok(false), // No credit record means no credits
         }
     }
@@ -247,7 +250,10 @@ impl UserCreditRepository {
         let balance = self.get_balance_with_executor(user_id, executor).await?;
         
         match balance {
-            Some(user_credit) => Ok(&user_credit.balance >= required_amount),
+            Some(user_credit) => {
+                let total_available = &user_credit.balance + &user_credit.free_credit_balance;
+                Ok(&total_available >= required_amount)
+            },
             None => Ok(false), // No credit record means no credits
         }
     }
@@ -339,5 +345,74 @@ impl UserCreditRepository {
         .map_err(|e| AppError::Database(format!("Failed to update user credit balance: {}", e)))?;
         
         Ok((updated, from_free, from_paid))
+    }
+
+    /// Refund credits with priority: restore to free credits first (up to original limit), then to paid balance
+    pub async fn refund_credits_with_priority(
+        &self,
+        user_id: &Uuid,
+        amount: &BigDecimal,
+        executor: &mut sqlx::Transaction<'_, sqlx::Postgres>
+    ) -> Result<UserCredit, AppError> {
+        // Get current balance
+        let current = self.get_balance_with_executor(user_id, executor).await?
+            .ok_or_else(|| AppError::NotFound("User credit record not found".to_string()))?;
+        
+        let mut remaining_to_refund = amount.clone();
+        let mut to_free = BigDecimal::from(0);
+        let mut to_paid = BigDecimal::from(0);
+        
+        // First, try to restore to free credits if they had free credits originally
+        // and haven't exceeded the original limit (typically $2.00)
+        if let Some(expires_at) = current.free_credits_expires_at {
+            if expires_at > Utc::now() && !current.free_credits_expired {
+                // Assume original free credit limit was $2.00 (could be made configurable)
+                let free_credit_limit = BigDecimal::from(2);
+                let available_free_space = &free_credit_limit - &current.free_credit_balance;
+                
+                if available_free_space > BigDecimal::from(0) {
+                    // Can restore some to free credits
+                    if remaining_to_refund <= available_free_space {
+                        // Can restore entirely to free credits
+                        to_free = remaining_to_refund.clone();
+                        remaining_to_refund = BigDecimal::from(0);
+                    } else {
+                        // Restore what we can to free credits
+                        to_free = available_free_space;
+                        remaining_to_refund -= &to_free;
+                    }
+                }
+            }
+        }
+        
+        // Remaining amount goes to paid balance
+        if remaining_to_refund > BigDecimal::from(0) {
+            to_paid = remaining_to_refund;
+        }
+        
+        // Update balances
+        let new_free_balance = &current.free_credit_balance + &to_free;
+        let new_paid_balance = &current.balance + &to_paid;
+        
+        let updated = sqlx::query_as!(
+            UserCredit,
+            r#"
+            UPDATE user_credits 
+            SET balance = $2, 
+                free_credit_balance = $3,
+                updated_at = NOW()
+            WHERE user_id = $1
+            RETURNING user_id, balance, currency, free_credit_balance, free_credits_granted_at, 
+                      free_credits_expires_at, free_credits_expired, created_at, updated_at
+            "#,
+            user_id,
+            new_paid_balance,
+            new_free_balance
+        )
+        .fetch_one(&mut **executor)
+        .await
+        .map_err(|e| AppError::Database(format!("Failed to refund user credits: {}", e)))?;
+        
+        Ok(updated)
     }
 }

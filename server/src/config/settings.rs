@@ -77,7 +77,8 @@ pub struct RateLimitConfig {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct BillingConfig {
-    pub default_signup_credits: f64,
+    // All billing configuration is now stored in the database
+    // See application_configurations table
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -209,11 +210,7 @@ impl AppSettings {
             .parse::<u64>()
             .map_err(|_| AppError::Configuration("ACCOUNT_CREATION_RATE_LIMIT_MAX_REQUESTS must be a valid number".to_string()))?;
         
-        // Billing defaults
-        let default_signup_credits = env::var("DEFAULT_SIGNUP_CREDITS")
-            .unwrap_or_else(|_| "5.0".to_string())
-            .parse::<f64>()
-            .map_err(|_| AppError::Configuration("DEFAULT_SIGNUP_CREDITS must be a valid number".to_string()))?;
+        // Billing configuration is now in the database
 
         // Stripe configuration
         let stripe_secret_key = env::var("STRIPE_SECRET_KEY")
@@ -301,7 +298,7 @@ impl AppSettings {
                 cleanup_interval_secs: None,
             },
             billing: BillingConfig {
-                default_signup_credits,
+                // All billing configuration is now in the database
             },
             stripe: StripeConfig {
                 secret_key: stripe_secret_key,

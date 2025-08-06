@@ -6,6 +6,7 @@ use crate::services::billing_service::BillingService;
 use crate::models::billing::{BillingDashboardData, UsageSummaryQuery};
 use crate::models::AuthenticatedUser;
 use crate::db::repositories::api_usage_repository::{ApiUsageRepository, DetailedUsageResponse};
+use crate::db::connection::DatabasePools;
 use chrono::{DateTime, Utc};
 use log::{info, error};
 
@@ -28,10 +29,11 @@ pub async fn get_detailed_usage_with_summary_handler(
     user: web::ReqData<AuthenticatedUser>,
     query: web::Query<UsageSummaryQuery>,
     api_usage_repo: web::Data<ApiUsageRepository>,
+    db_pools: web::Data<DatabasePools>,
 ) -> Result<HttpResponse, AppError> {
     
     let usage_summary = api_usage_repo
-        .get_detailed_usage_with_summary(&user.user_id, query.start_date, query.end_date)
+        .get_detailed_usage_with_summary_with_system_pool(&user.user_id, query.start_date, query.end_date, &db_pools.system_pool)
         .await?;
     
     info!("Successfully retrieved detailed usage with summary for user: {}", user.user_id);

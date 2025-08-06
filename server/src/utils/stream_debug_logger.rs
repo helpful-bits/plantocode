@@ -12,17 +12,26 @@ pub struct StreamDebugLogger {
 }
 
 impl StreamDebugLogger {
+    fn is_debug_logging_enabled() -> bool {
+        log::log_enabled!(log::Level::Debug) && 
+        std::env::var("ENABLE_STREAM_DEBUG_LOGGING")
+            .unwrap_or_default()
+            .to_lowercase() == "true"
+    }
+
     pub fn new(provider: &str, request_id: &str) -> Self {
         let provider_clean = provider.to_lowercase();
         let server_root = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
         let streams_dir = server_root.join("gen").join("streams");
         let file_path = streams_dir.join(format!("stream_debug_{}_{}.log", provider_clean, request_id));
         
-        // Ensure the gen/streams directory exists
-        if let Err(e) = std::fs::create_dir_all(&streams_dir) {
-            error!("Failed to create gen/streams directory: {}", e);
-        } else {
-            info!("Stream debug logs will be stored at: {}", file_path.display());
+        // Only create debug directories if explicitly enabled via environment variable
+        if Self::is_debug_logging_enabled() {
+            if let Err(e) = std::fs::create_dir_all(&streams_dir) {
+                error!("Failed to create gen/streams directory: {}", e);
+            } else {
+                info!("Stream debug logs will be stored at: {}", file_path.display());
+            }
         }
         
         Self {
@@ -33,7 +42,7 @@ impl StreamDebugLogger {
     }
     
     pub fn log_chunk(&self, chunk_data: &[u8]) {
-        if !log::log_enabled!(log::Level::Debug) {
+        if !Self::is_debug_logging_enabled() {
             return;
         }
         
@@ -45,7 +54,7 @@ impl StreamDebugLogger {
     
     
     pub fn log_error(&self, error_msg: &str) {
-        if !log::log_enabled!(log::Level::Debug) {
+        if !Self::is_debug_logging_enabled() {
             return;
         }
         
@@ -60,7 +69,7 @@ impl StreamDebugLogger {
     }
     
     pub fn log_stream_start(&self) {
-        if !log::log_enabled!(log::Level::Debug) {
+        if !Self::is_debug_logging_enabled() {
             return;
         }
         
@@ -76,7 +85,7 @@ impl StreamDebugLogger {
     }
     
     pub fn log_stream_end(&self) {
-        if !log::log_enabled!(log::Level::Debug) {
+        if !Self::is_debug_logging_enabled() {
             return;
         }
         

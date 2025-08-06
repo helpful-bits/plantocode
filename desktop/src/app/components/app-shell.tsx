@@ -7,6 +7,7 @@ import { ScreenRecordingProvider } from "@/contexts/screen-recording";
 import { BackgroundJobsSidebar } from "../client-components";
 import { Navigation } from "./navigation";
 import { GlobalRecordingIndicator } from "./global/GlobalRecordingIndicator";
+import { UpdaterStatus } from "./updater/updater-status";
 
 import type { ReactNode } from "react";
 
@@ -52,6 +53,9 @@ export function AppShell({ children }: { children: ReactNode }) {
       
       {/* Global recording indicator */}
       <GlobalRecordingIndicator />
+      
+      {/* Auto-updater status handler */}
+      <UpdaterStatus />
     </ScreenRecordingProvider>
   );
 }

@@ -179,7 +179,7 @@
           debug:
             msg:
               - "Deployment successful!"
-              - "Version: {{ version_check.stdout }}"
+              - "Timestamp: {{ deploy_timestamp }}"
               - "Service Status: {{ service_status.status.ActiveState }}"
               - "Health Check: {{ 'Passed' if health_check.status == 200 else 'Failed - implement /health endpoint' }}"
 
@@ -187,6 +187,7 @@
     # ROLLBACK PROCEDURE
     # ========================================
     - name: Rollback to Previous Version
+      when: "'rollback' in ansible_run_tags"
       tags: [rollback, never]
       block:
         - name: List available releases
@@ -228,6 +229,7 @@
     # CLEANUP OLD RELEASES
     # ========================================
     - name: Cleanup Old Releases
+      when: "'cleanup' in ansible_run_tags"
       tags: [cleanup]
       block:
         - name: Find old releases

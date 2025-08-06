@@ -38,7 +38,6 @@ pub struct BillingService {
     audit_service: Arc<AuditService>,
     settings_repository: Arc<SettingsRepository>,
     stripe_service: Option<StripeService>,
-    default_signup_credits: f64,
     app_settings: crate::config::settings::AppSettings,
     redis_client: Option<Arc<redis::aio::ConnectionManager>>,
 }
@@ -57,10 +56,6 @@ impl BillingService {
         let model_repository = Arc::new(ModelRepository::new(Arc::new(db_pools.system_pool.clone())));
         
         // Note: CreditService handles its own pool configuration for user credit operations
-        
-        
-        // Get default signup credits from app settings
-        let default_signup_credits = app_settings.billing.default_signup_credits;
         
         // Create credit service for pure prepaid billing
         let credit_service = Arc::new(CreditService::new(db_pools.clone()));
@@ -95,7 +90,6 @@ impl BillingService {
             audit_service,
             settings_repository,
             stripe_service,
-            default_signup_credits,
             app_settings,
             redis_client: None, // Will be set asynchronously
         }
@@ -192,7 +186,14 @@ impl BillingService {
 
         let credit_balance = credit_balance_res?;
 
-        let usage_limit_usd = self.default_signup_credits;
+        // Get the free credits amount from database configuration
+        let usage_limit_usd = match self.settings_repository.get_free_credits_amount().await {
+            Ok(amount) => amount.to_f64().unwrap_or(2.0),
+            Err(e) => {
+                warn!("Failed to get free credits amount from database, using fallback: {}", e);
+                2.0 // Fallback to $2.00 if database read fails
+            }
+        };
         let free_credit_balance_usd = credit_balance.free_credit_balance.to_f64().unwrap_or(0.0);
         let current_usage = (usage_limit_usd - free_credit_balance_usd).max(0.0);
 
@@ -374,6 +375,26 @@ impl BillingService {
     ) -> Result<CheckoutSession, AppError> {
         let stripe_service = self.get_stripe_service()?;
         let customer_id = self.get_or_create_stripe_customer(user_id).await?;
+
+        // CRITICAL: Validate billing setup before allowing credit purchases
+        info!("Validating billing setup for credit purchase - user: {}", user_id);
+        let (is_payment_method_required, is_billing_info_required) = self._check_billing_readiness(user_id).await?;
+        
+        if is_payment_method_required {
+            warn!("Credit purchase blocked - payment method required for user: {}", user_id);
+            return Err(AppError::PaymentMethodRequired(
+                "A payment method is required before purchasing credits. Please add a payment method in your billing settings.".to_string()
+            ));
+        }
+        
+        if is_billing_info_required {
+            warn!("Credit purchase blocked - billing info required for user: {}", user_id);
+            return Err(AppError::BillingAddressRequired(
+                "Complete billing information is required before purchasing credits. Please update your billing information.".to_string()
+            ));
+        }
+        
+        info!("Billing setup validated successfully for credit purchase - user: {}", user_id);
         
         // Parse amount string to BigDecimal for validation
         let amount_decimal = BigDecimal::parse_bytes(amount.as_bytes(), 10)
@@ -596,6 +617,28 @@ impl BillingService {
         amount: Option<BigDecimal>,
     ) -> Result<AutoTopOffSettings, AppError> {
         debug!("Updating auto top-off settings for user: {}", user_id);
+        
+        // CRITICAL: Validate billing setup before allowing auto top-off to be enabled
+        if enabled {
+            info!("Validating billing setup for auto top-off configuration - user: {}", user_id);
+            let (is_payment_method_required, is_billing_info_required) = self._check_billing_readiness(user_id).await?;
+            
+            if is_payment_method_required {
+                warn!("Auto top-off configuration blocked - payment method required for user: {}", user_id);
+                return Err(AppError::PaymentMethodRequired(
+                    "A payment method is required before enabling auto top-off. Please add a payment method in your billing settings.".to_string()
+                ));
+            }
+            
+            if is_billing_info_required {
+                warn!("Auto top-off configuration blocked - billing info required for user: {}", user_id);
+                return Err(AppError::BillingAddressRequired(
+                    "Complete billing information is required before enabling auto top-off. Please update your billing information.".to_string()
+                ));
+            }
+            
+            info!("Billing setup validated successfully for auto top-off configuration - user: {}", user_id);
+        }
         
         // Start transaction for atomic operations
         let mut tx = self.db_pools.user_pool.begin().await
@@ -951,16 +994,37 @@ impl BillingService {
         info!("User {} balance ({}) is below threshold ({}), triggering auto top-off of {}", 
               user_id, current_balance.balance, threshold, amount);
         
-        // Perform auto top-off directly
-        self.perform_auto_top_off(user_id, &amount).await?;
+        // Perform auto top-off directly with user's currency
+        self.perform_auto_top_off(user_id, &amount, &current_balance.currency).await?;
         
         Ok(())
     }
     
     /// Perform auto top-off using customer's default payment method
-    pub async fn perform_auto_top_off(&self, user_id: &Uuid, amount: &BigDecimal) -> Result<(), AppError> {
+    pub async fn perform_auto_top_off(&self, user_id: &Uuid, amount: &BigDecimal, currency: &str) -> Result<(), AppError> {
         info!("Starting auto top-off process for user {} with amount {}", user_id, amount);
         debug!("Auto top-off execution flow: step 1 - validating Stripe service availability");
+        
+        // CRITICAL: Validate billing setup before allowing auto top-off
+        info!("Validating billing setup for auto top-off - user: {}", user_id);
+        let (is_payment_method_required, is_billing_info_required) = self._check_billing_readiness(user_id).await?;
+        
+        if is_payment_method_required {
+            warn!("Auto top-off blocked - payment method required for user: {}", user_id);
+            return Err(AppError::PaymentMethodRequired(
+                "Auto top-off failed: A payment method is required. Please add a payment method in your billing settings.".to_string()
+            ));
+        }
+        
+        if is_billing_info_required {
+            warn!("Auto top-off blocked - billing info required for user: {}", user_id);
+            return Err(AppError::BillingAddressRequired(
+                "Auto top-off failed: Complete billing information is required. Please update your billing information.".to_string()
+            ));
+        }
+        
+        info!("Billing setup validated successfully for auto top-off - user: {}", user_id);
+        debug!("Auto top-off execution flow: step 1.5 - billing validation completed successfully");
         
         // Ensure Stripe is configured
         let stripe_service = match &self.stripe_service {
@@ -1097,9 +1161,9 @@ impl BillingService {
             &idempotency_key,
             &customer_id,
             amount_cents as i64,
-            "usd",
+            &currency.to_lowercase(),
             &format!("Automatic credit top-off for ${}", amount),
-        ).await.map_err(|e| {
+            ).await.map_err(|e| {
             warn!("Auto top-off execution flow: FAILED at step 11 - invoice creation failed for user {}: {}", user_id, e);
             AppError::External(format!("Failed to create invoice for auto top-off: {}", e))
         })?;
@@ -1156,11 +1220,8 @@ impl BillingService {
 
 
     /// Check billing readiness requirements for a user
+    /// ALWAYS validates actual billing completeness regardless of purchase history
     async fn _check_billing_readiness(&self, user_id: &Uuid) -> Result<(bool, bool), AppError> {
-        if !self.credit_service.has_user_made_purchase(user_id).await? {
-            return Ok((false, false));
-        }
-
         let stripe_service = self.get_stripe_service()?;
         
         // Read-only lookup for stripe_customer_id
@@ -1176,8 +1237,8 @@ impl BillingService {
                 .map_err(|e| AppError::External(format!("Failed to search for Stripe customer: {}", e)))? {
                 customer.id
             } else {
-                // No stripe customer, so no readiness requirements apply.
-                return Ok((false, false));
+                // No Stripe customer exists - both payment method and billing info are required
+                return Ok((true, true));
             }
         };
 

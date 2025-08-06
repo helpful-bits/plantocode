@@ -130,5 +130,5 @@
 # ========================================
 # STEP 4: DEPLOY APPLICATION
 # ========================================
-- import_playbook: rust-deploy.yml
-  tags: [deploy]
+# Note: Deployment is handled separately by site-app.yml
+# This prevents duplicate deployments when running with --tags deploy

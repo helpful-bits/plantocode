@@ -552,9 +552,9 @@ jobs:
         # Install sqlx-cli for database migrations
         cargo install sqlx-cli --no-default-features --features postgres
         
-        # Run migrations to set up test database
-        sqlx database create || echo "Database already exists"
-        sqlx migrate run --source migrations
+        # Run migrations using custom script that preserves data_xxx naming
+        chmod +x scripts/run-migrations.sh
+        ./scripts/run-migrations.sh
         
     - name: Run property-based billing tests
       env:

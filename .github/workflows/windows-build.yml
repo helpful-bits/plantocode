@@ -1,4 +1,4 @@
-name: Build Windows App for Microsoft Store
+name: Build Desktop Apps with Updater Artifacts
 
 on:
   push:
@@ -6,7 +6,7 @@ on:
     tags: [ 'v*' ]
   pull_request:
     branches: [ main ]
-  workflow_dispatch: # Allows manual triggering
+  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
@@ -14,7 +14,7 @@ env:
 
 jobs:
   build-windows:
-    name: Build Windows MSI for Microsoft Store
+    name: Build Windows with Updater Artifacts
     runs-on: windows-latest
     
     steps:
@@ -53,29 +53,10 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-cargo-
           
-    - name: Debug - List repository structure
-      shell: powershell
-      run: |
-        Write-Host "Repository root contents:"
-        Get-ChildItem -Path . -Force
-        Write-Host "`nDesktop directory contents:"
-        if (Test-Path desktop) {
-          Get-ChildItem -Path desktop -Force
-        } else {
-          Write-Host "Desktop directory not found!"
-        }
-        
-    - name: Install frontend dependencies
-      shell: powershell
+    - name: Install dependencies
       run: |
         cd desktop
-        if (Test-Path "pnpm-lock.yaml") {
-          Write-Host "Found pnpm-lock.yaml, using frozen lockfile"
-          pnpm install --frozen-lockfile
-        } else {
-          Write-Host "No pnpm-lock.yaml found, using regular install"
-          pnpm install
-        }
+        pnpm install --frozen-lockfile
       
     - name: Build frontend
       run: |
@@ -85,52 +66,96 @@ jobs:
     - name: Install Tauri CLI
       run: cargo install tauri-cli --version "^2.0" --locked
       
-    - name: Build Tauri app for Microsoft Store
+    - name: Build Windows app with updater artifacts
       run: |
         cd desktop
-        # Build for Microsoft Store (MSI format with offline WebView2)
-        cargo tauri build --target x86_64-pc-windows-msvc --config src-tauri/tauri.microsoftstore.conf.json
+        cargo tauri build --target x86_64-pc-windows-msvc
       env:
         TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         
-    - name: Find and display build artifacts
-      shell: powershell
-      run: |
-        Write-Host "=== Build Artifacts ==="
-        $bundleDir = "desktop\src-tauri\target\x86_64-pc-windows-msvc\release\bundle"
-        
-        if (Test-Path $bundleDir) {
-          Get-ChildItem -Recurse $bundleDir | Where-Object { $_.Extension -in @('.msi', '.exe') } | ForEach-Object {
-            Write-Host "Found: $($_.FullName)"
-            Write-Host "Size: $([math]::Round($_.Length / 1MB, 2)) MB"
-            Write-Host "---"
-          }
-        } else {
-          Write-Host "Bundle directory not found at: $bundleDir"
-          Write-Host "Available directories:"
-          Get-ChildItem -Recurse desktop\src-tauri\target -Directory | Select-Object FullName
-        }
-        
-    - name: Upload Windows artifacts
+    - name: Upload Windows artifacts (for manual S3 upload)
       uses: actions/upload-artifact@v4
       with:
-        name: windows-app-${{ github.sha }}
+        name: windows-updater-artifacts-${{ github.sha }}
         path: |
           desktop/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi
-          desktop/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
-          desktop/src-tauri/target/x86_64-pc-windows-msvc/release/*.exe
+          desktop/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi.zip
+          desktop/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi.zip.sig
         retention-days: 30
         if-no-files-found: warn
-        
-    - name: Create release (on tags)
-      if: startsWith(github.ref, 'refs/tags/v')
-      uses: softprops/action-gh-release@v1
+
+  build-macos:
+    name: Build macOS with Updater Artifacts
+    runs-on: macos-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
       with:
-        files: |
-          desktop/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi
-          desktop/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
-        draft: true
-        prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') || contains(github.ref, 'rc') }}
+        node-version: '20'
+        
+    - name: Install pnpm
+      uses: pnpm/action-setup@v4
+      with:
+        version: 9
+        run_install: false
+      
+    - name: Install Rust toolchain
+      uses: actions-rs/toolchain@v1
+      with:
+        profile: minimal
+        toolchain: stable
+        target: x86_64-apple-darwin
+        override: true
+        
+    - name: Cache Rust dependencies
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/bin/
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+          desktop/src-tauri/target/
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-
+          
+    - name: Install dependencies
+      run: |
+        cd desktop
+        pnpm install --frozen-lockfile
+      
+    - name: Build frontend
+      run: |
+        cd desktop
+        pnpm run build
+      
+    - name: Install Tauri CLI
+      run: cargo install tauri-cli --version "^2.0" --locked
+      
+    - name: Build macOS app with updater artifacts
+      run: |
+        cd desktop
+        cargo tauri build --target x86_64-apple-darwin
       env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+        APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        
+    - name: Upload macOS artifacts (for manual S3 upload)
+      uses: actions/upload-artifact@v4
+      with:
+        name: macos-updater-artifacts-${{ github.sha }}
+        path: |
+          desktop/src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg
+          desktop/src-tauri/target/x86_64-apple-darwin/release/bundle/macos/*.app.tar.gz
+          desktop/src-tauri/target/x86_64-apple-darwin/release/bundle/macos/*.app.tar.gz.sig
+        retention-days: 30
+        if-no-files-found: warn

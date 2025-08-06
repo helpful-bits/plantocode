@@ -293,14 +293,14 @@ where
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         // 1. Handle user cancellation
-        if self.cancellation_token.is_cancelled() && !self.was_cancelled {
+        if self.cancellation_token.is_cancelled() && !self.was_cancelled && !self.billing_finalized {
             self.was_cancelled = true;
             self.debug_logger.log_error("Stream cancelled by client");
             return self.handle_stream_termination(true);
         }
         
         // 2. Check if stream was marked as completed (e.g., by [DONE] marker)
-        if self.stream_completed {
+        if self.stream_completed && !self.billing_finalized {
             return self.handle_stream_termination(false);
         }
         

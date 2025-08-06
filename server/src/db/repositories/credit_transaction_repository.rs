@@ -52,7 +52,6 @@ impl CreditTransactionRepository {
     pub async fn create_transaction_with_executor(
         &self,
         transaction: &CreditTransaction,
-        balance_after: &BigDecimal,
         executor: &mut sqlx::Transaction<'_, sqlx::Postgres>
     ) -> Result<CreditTransaction, AppError> {
         let result = sqlx::query_as!(
@@ -77,7 +76,7 @@ impl CreditTransactionRepository {
             transaction.stripe_charge_id,
             transaction.related_api_usage_id,
             transaction.metadata,
-            balance_after
+            &transaction.balance_after
         )
         .fetch_one(&mut **executor)
         .await
@@ -359,7 +358,7 @@ impl CreditTransactionRepository {
             balance_after: balance_after.clone(),
         };
 
-        self.create_transaction_with_executor(&transaction, balance_after, executor).await
+        self.create_transaction_with_executor(&transaction, executor).await
     }
 
     pub async fn has_purchase_transaction_with_executor(

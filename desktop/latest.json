@@ -1,0 +1,15 @@
+{
+  "version": "v1.0.0",
+  "notes": "Initial release with auto-updater support",
+  "pub_date": "2025-08-06T12:00:00Z",
+  "platforms": {
+    "darwin-aarch64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSUXZZN0JwS05DN2toMWx1SVBzcFZITnlTTzlrSEZtQWErZlVodmtuR3ZVeEJCL29iRnBxZHFJb0JrMVF4OHI2VXZxNEtYeXJKb1hLeFZmbzNkMlBtejVWR011aHB1WlFnPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzU0NDgzODU0CWZpbGU6VmliZSBNYW5hZ2VyLmFwcC50YXIuZ3oKN1RPdUQ5a2lheGs3SG05ZUJxUENsRitrWi9Db2E2YUhJa0J3elQ2QVlkN0xyekxQaitPQ3pzR0h4TjZlYjRJbm5HWWdRNzJJTmdkS1NjUlRDd1N6Q3c9PQo=",
+      "url": "https://s3.eu-central-1.amazonaws.com/vibemanager.app/Vibe Manager.app.tar.gz"
+    },
+    "windows-x86_64": {
+      "signature": "REPLACE_WITH_WINDOWS_SIGNATURE",
+      "url": "https://s3.eu-central-1.amazonaws.com/vibemanager.app/Vibe Manager_1.0.0_x64_en-US.msi.zip"
+    }
+  }
+}

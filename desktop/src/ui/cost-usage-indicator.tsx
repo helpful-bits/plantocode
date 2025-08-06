@@ -33,10 +33,11 @@ export function CostUsageIndicator({
   onClick,
 }: CostUsageIndicatorProps) {
   // Fetch billing data
-  const { creditBalanceUsd, isLoading, error, refreshBillingData } = useBillingData();
+  const { creditBalanceUsd, paidCreditBalanceUsd, freeCreditBalanceUsd, isLoading, error, refreshBillingData } = useBillingData();
 
   // Use provided values or fetched values with safe fallbacks
   const actualCreditBalance = (creditBalance ?? creditBalanceUsd) ?? 0;
+  const hasFreeCredits = freeCreditBalanceUsd > 0;
 
   // Format currency with 2 decimal places
   const formattedCreditBalance = actualCreditBalance.toFixed(2);
@@ -54,9 +55,11 @@ export function CostUsageIndicator({
 
         <Badge 
           variant="outline" 
-          className="bg-background/80 border-border/60 backdrop-blur-sm text-foreground"
+          className={`bg-background/80 border-border/60 backdrop-blur-sm ${actualCreditBalance > 0 ? 'text-foreground' : 'text-destructive border-destructive/50'}`}
+          title={hasFreeCredits ? `Paid: $${paidCreditBalanceUsd.toFixed(2)} | Free: $${freeCreditBalanceUsd.toFixed(2)}` : undefined}
         >
           Credits: {currencySymbol}{formattedCreditBalance}
+          {hasFreeCredits && <span className="text-xs ml-1 text-green-600 dark:text-green-400">(incl. free)</span>}
         </Badge>
 
         {showRefreshButton && (
@@ -89,9 +92,11 @@ export function CostUsageIndicator({
           <div className="flex items-center gap-2">
             <Badge 
               variant="outline" 
-              className="bg-background/80 border-border/60 backdrop-blur-sm text-xs text-foreground"
+              className={`bg-background/80 border-border/60 backdrop-blur-sm text-xs ${actualCreditBalance > 0 ? 'text-foreground' : 'text-destructive border-destructive/50'}`}
+              title={hasFreeCredits ? `Paid: $${paidCreditBalanceUsd.toFixed(2)} | Free: $${freeCreditBalanceUsd.toFixed(2)}` : undefined}
             >
               {currencySymbol}{formattedCreditBalance}
+              {hasFreeCredits && <span className="text-xs ml-1 text-green-600 dark:text-green-400">(incl. free)</span>}
             </Badge>
 
             {showRefreshButton && (

@@ -5,6 +5,9 @@ use std::env;
 
 use tauri::Emitter;
 
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+use tauri_plugin_updater::UpdaterExt;
+
 pub mod api_clients;
 pub mod app_setup;
 pub mod auth;
@@ -105,7 +108,7 @@ fn main() {
 
     info!("App identifier: {}", app_identifier);
 
-    tauri::Builder::default()
+    let mut builder = tauri::Builder::default()
         .manage(AppState::default())
         .manage(ConfigCache::new(Mutex::new(HashMap::new())))
         // Initialize RwLock containers for deferred API client initialization
@@ -120,7 +123,16 @@ fn main() {
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
-        .plugin(tauri_plugin_store::Builder::default().build())
+        .plugin(tauri_plugin_store::Builder::default().build());
+    
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    {
+        builder = builder
+            .plugin(tauri_plugin_updater::Builder::new().build())
+            .plugin(tauri_plugin_process::init());
+    }
+    
+    builder
         .setup(|app| {
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Regular);
