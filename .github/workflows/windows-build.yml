@@ -26,11 +26,12 @@ env:
 jobs:
   build-windows:
     name: Build Windows with Updater Artifacts
-    runs-on: namespace-profile-windows-32vcpu  # Namespace: 32 vCPU, 64GB RAM (fastest)
-    # Alternative fast runners:
-    # runs-on: buildjet-32vcpu-windows-2022      # BuildJet: 32 vCPU (good price/performance)
-    # runs-on: warpbuild-windows-x64-32vcpu      # WarpBuild: 32 vCPU (AWS/GCP/Azure)
-    # runs-on: blacksmith-32vcpu-windows-2022    # Blacksmith: 32 vCPU (EU-based)
+    runs-on: buildjet-8vcpu-windows-2022  # BuildJet: 4x faster
+    # FAST RUNNER OPTIONS (requires setup - see comments):
+    # runs-on: namespace-profile-windows-32vcpu  # Namespace: 32 vCPU, 64GB RAM (fastest) - requires namespace.so account
+    # runs-on: buildjet-32vcpu-windows-2022      # BuildJet: 32 vCPU - requires buildjet.com account
+    # runs-on: warpbuild-windows-x64-32vcpu      # WarpBuild: 32 vCPU - requires warpbuild.com account
+    # runs-on: blacksmith-32vcpu-windows-2022    # Blacksmith: 32 vCPU - requires blacksmith.sh account
     timeout-minutes: 30
     
     steps:
@@ -101,11 +102,12 @@ jobs:
 
   build-macos:
     name: Build macOS with Updater Artifacts
-    runs-on: namespace-profile-macos-m4-pro  # Namespace: Apple M4 Pro (fastest for macOS)
-    # Alternative fast runners:
-    # runs-on: buildjet-8vcpu-macos-14           # BuildJet: 8 vCPU (good price)
-    # runs-on: warpbuild-macos-arm64-m2-pro      # WarpBuild: M2 Pro, macOS 13/14
-    # runs-on: blacksmith-16vcpu-macos-arm64     # Blacksmith: 16 vCPU ARM64
+    runs-on: buildjet-4vcpu-macos-14  # BuildJet: 2x faster
+    # FAST RUNNER OPTIONS (requires setup - see comments):
+    # runs-on: namespace-profile-macos-m4-pro    # Namespace: Apple M4 Pro (fastest) - requires namespace.so account
+    # runs-on: buildjet-8vcpu-macos-14           # BuildJet: 8 vCPU - requires buildjet.com account
+    # runs-on: warpbuild-macos-arm64-m2-pro      # WarpBuild: M2 Pro - requires warpbuild.com account
+    # runs-on: blacksmith-16vcpu-macos-arm64     # Blacksmith: 16 vCPU - requires blacksmith.sh account
     timeout-minutes: 30
     
     steps:
