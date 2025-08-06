@@ -3,12 +3,14 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use crate::auth_stores::{PollingStore, Auth0StateStore, Auth0PendingCodeInfo, Auth0StateStoreValue};
 use crate::services::auth::oauth::Auth0OAuthService;
+use crate::services::billing_service::BillingService;
 use crate::error::AppError;
 use crate::models::AuthenticatedUser;
 use crate::security::encryption;
-use log::{info, error, warn};
+use log::{info, error, warn, debug};
 use chrono::Utc;
 use crate::models::runtime_config::AppState;
+use std::sync::Arc;
 
 #[derive(Deserialize)]
 pub struct InitiateLoginQuery {
@@ -141,6 +143,7 @@ pub async fn poll_auth_status(
 
 pub async fn finalize_auth0_login(
     auth_service: web::Data<Auth0OAuthService>,
+    billing_service: web::Data<Arc<BillingService>>,
     token_request: web::Json<FinalizeLoginRequest>,
     req: HttpRequest,
 ) -> Result<HttpResponse, AppError> {
@@ -161,6 +164,28 @@ pub async fn finalize_auth0_login(
     ).await?;
     
     info!("Auth0 login finalized for user: {}", auth_response.user.email);
+    
+    // Grant initial signup credits if this is a new user
+    // Parse the user ID from the response
+    if let Ok(user_id) = Uuid::parse_str(&auth_response.user.id) {
+        // Use the credit service from billing service to grant credits
+        match billing_service.get_credit_service().grant_initial_signup_credits(&user_id).await {
+            Ok(granted) => {
+                if granted {
+                    info!("Successfully granted signup credits to new user: {}", auth_response.user.email);
+                } else {
+                    debug!("User {} already has signup credits", auth_response.user.email);
+                }
+            },
+            Err(e) => {
+                // Log the error but don't fail the login
+                error!("Failed to grant signup credits to user {}: {}", auth_response.user.email, e);
+                // Continue with login even if credit granting fails
+            }
+        }
+    } else {
+        error!("Failed to parse user ID for credit granting: {}", auth_response.user.id);
+    }
     
     Ok(HttpResponse::Ok().json(auth_response))
 }

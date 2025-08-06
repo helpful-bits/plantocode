@@ -4,6 +4,7 @@ use crate::db::repositories::{
     UserCredit, CreditTransaction, CreditTransactionStats, ModelRepository, ApiUsageRepository
 };
 use crate::db::repositories::api_usage_repository::{ApiUsageEntryDto, ApiUsageRecord};
+use crate::db::repositories::settings_repository::SettingsRepository;
 use crate::models::model_pricing::ModelPricing;
 use crate::models::billing::{UnifiedCreditHistoryEntry, UnifiedCreditHistoryResponse};
 use crate::clients::usage_extractor::ProviderUsage;
@@ -15,12 +16,12 @@ use crate::utils::financial_validation::{
 use bigdecimal::{BigDecimal, FromPrimitive, ToPrimitive, Signed, Zero};
 use std::str::FromStr;
 use uuid::Uuid;
-use chrono::Utc;
+use chrono::{Utc, Duration};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use sqlx::PgPool;
 use crate::db::connection::DatabasePools;
-use log::{info, warn, error};
+use log::{info, warn, error, debug};
 
 #[derive(Debug, Clone)]
 pub struct CreditService {
@@ -125,21 +126,28 @@ impl CreditService {
             }
         };
 
-        // Check if user has sufficient credits for the estimate
-        if current_balance.balance < cost {
+        // Check if user has sufficient credits for the estimate (including free credits)
+        let total_available = &current_balance.balance + &current_balance.free_credit_balance;
+        if total_available < cost {
             return Err(AppError::CreditInsufficient(
-                format!("Insufficient credits. Required: {}, Available: {}", cost, current_balance.balance)
+                format!("Insufficient credits. Required: {}, Available: {} (Paid: {}, Free: {})", 
+                        cost, total_available, current_balance.balance, current_balance.free_credit_balance)
             ));
         }
 
         // Deduct the estimated credits within the transaction
-        let negative_amount = -&cost;
-        let updated_balance = self.user_credit_repository
-            .increment_balance_with_executor(&api_usage_record.user_id, &negative_amount, tx)
+        // Use the repository's deduct_credits_with_priority method which handles free vs paid credits
+        let (updated_balance, from_free, from_paid) = self.user_credit_repository
+            .deduct_credits_with_priority(&api_usage_record.user_id, &cost, tx)
             .await?;
+        
+        debug!("Deducted {} total: {} from free credits, {} from paid credits", 
+               cost, from_free, from_paid);
 
         // Record the initial consumption transaction
         let usage_description = format!("{} - Estimated usage", api_usage_record.service_name);
+        // The total amount deducted (negative because it's a consumption)
+        let negative_amount = -(from_free + from_paid);
         let transaction = CreditTransaction {
             id: Uuid::new_v4(),
             user_id: api_usage_record.user_id,
@@ -161,7 +169,7 @@ impl CreditService {
         };
 
         let _created_transaction = self.credit_transaction_repository
-            .create_transaction_with_executor(&transaction, &updated_balance.balance, tx)
+            .create_transaction_with_executor(&transaction, tx)
             .await?;
         
         Ok((request_id, updated_balance))
@@ -174,7 +182,8 @@ impl CreditService {
         final_cost: &BigDecimal,
         executor: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     ) -> Result<(bool, Option<String>, bool), AppError> {
-        // Query application configurations for adjustment limits
+        // Use system pool to fetch configuration to avoid RLS issues
+        // This is safe because we're only reading configuration data, not user data
         let config = sqlx::query!(
             r#"
             SELECT config_value
@@ -182,7 +191,7 @@ impl CreditService {
             WHERE config_key = 'billing_adjustment_limits'
             "#
         )
-        .fetch_optional(&mut **executor)
+        .fetch_optional(&self.db_pools.system_pool)
         .await
         .map_err(|e| AppError::Database(format!("Failed to fetch application configuration: {}", e)))?;
         
@@ -198,7 +207,7 @@ impl CreditService {
                     json_val.get("max_adjustment_percentage")
                         .and_then(|v| v.as_i64())
                         .map(BigDecimal::from)
-                        .unwrap_or(BigDecimal::from(500)),
+                        .unwrap_or(BigDecimal::from(2500)),
                     json_val.get("alert_threshold_amount")
                         .and_then(|v| v.as_f64())
                         .and_then(BigDecimal::from_f64)
@@ -211,7 +220,7 @@ impl CreditService {
             },
             None => (
                 BigDecimal::from(50),   // max_adjustment_amount
-                BigDecimal::from(500),  // max_adjustment_percentage
+                BigDecimal::from(2500), // max_adjustment_percentage
                 BigDecimal::from(10),   // alert_threshold_amount
                 BigDecimal::from(200)   // alert_threshold_percentage
             )
@@ -220,12 +229,21 @@ impl CreditService {
         // Calculate the adjustment amount (this is the absolute change in balance)
         let adjustment_amount = (final_cost - estimated_cost).abs();
         
-        // Calculate percentage change
-        let percentage_change = if estimated_cost != &BigDecimal::from(0) {
+        // Calculate percentage change with safeguards for small estimates
+        let percentage_change = if estimated_cost > &BigDecimal::from_f64(0.001).unwrap() {
+            // Only calculate percentage if estimate is meaningful (> $0.001)
             (&adjustment_amount / estimated_cost) * BigDecimal::from(100)
+        } else if estimated_cost != &BigDecimal::from(0) {
+            // For very small estimates (< $0.001), cap the percentage at 2000% to avoid explosion
+            let calculated_pct = (&adjustment_amount / estimated_cost) * BigDecimal::from(100);
+            if calculated_pct > BigDecimal::from(2000) {
+                BigDecimal::from(2000)
+            } else {
+                calculated_pct
+            }
         } else if final_cost != &BigDecimal::from(0) {
-            // If estimated is 0 but final is not, this is effectively infinite percentage
-            BigDecimal::from(999999)
+            // If estimated is 0 but final is not, treat as 2000% for consistent handling
+            BigDecimal::from(2000)
         } else {
             // Both are 0, no difference
             BigDecimal::from(0)
@@ -487,13 +505,21 @@ impl CreditService {
                     .map_err(|e| AppError::Database(format!("Failed to create adjustment alert: {}", e)))?;
                 }
             
-                // Validate that the adjustment won't result in a negative balance
-                crate::utils::financial_validation::validate_balance_adjustment(&current_balance.balance, &balance_adjustment, "Usage finalization")?;
-                
-                // Adjust the balance with the negated amount
-                final_balance = self.user_credit_repository
-                    .increment_balance_with_executor(&existing_record.user_id, &balance_adjustment, tx)
-                    .await?;
+                // Apply the balance adjustment to the correct credit pools
+                if balance_adjustment.is_positive() {
+                    // Positive adjustment = refund - add back to free credits first, then paid
+                    final_balance = self.user_credit_repository
+                        .refund_credits_with_priority(&existing_record.user_id, &balance_adjustment, tx)
+                        .await?;
+                } else if balance_adjustment.is_negative() {
+                    // Negative adjustment = additional charge - deduct from free first, then paid
+                    let charge_amount = balance_adjustment.abs();
+                    let (updated_balance, _from_free, _from_paid) = self.user_credit_repository
+                        .deduct_credits_with_priority(&existing_record.user_id, &charge_amount, tx)
+                        .await?;
+                    final_balance = updated_balance;
+                }
+                // If balance_adjustment is zero, no change needed
             }
             
             // Create adjustment transaction description based on the original cost_delta
@@ -532,7 +558,7 @@ impl CreditService {
             };
             
             self.credit_transaction_repository
-                .create_transaction_with_executor(&transaction, &final_balance.balance, tx)
+                .create_transaction_with_executor(&transaction, tx)
                 .await?;
         }
         
@@ -852,7 +878,7 @@ impl CreditService {
         };
 
         let _created_transaction = self.credit_transaction_repository
-            .create_transaction_with_executor(&transaction, &updated_balance.balance, &mut tx)
+            .create_transaction_with_executor(&transaction, &mut tx)
             .await?;
 
         // Commit the transaction
@@ -921,7 +947,7 @@ impl CreditService {
         };
 
         let _created_transaction = self.credit_transaction_repository
-            .create_transaction_with_executor(&transaction, &updated_balance.balance, executor)
+            .create_transaction_with_executor(&transaction, executor)
             .await?;
 
         info!("Atomically adjusted {} credits for user {} (balance: {} -> {})", amount, user_id, current_balance.balance, updated_balance.balance);
@@ -1086,7 +1112,7 @@ impl CreditService {
             };
 
             let _created_transaction = self.credit_transaction_repository
-                .create_transaction_with_executor(&transaction, &updated_balance.balance, &mut tx)
+                .create_transaction_with_executor(&transaction, &mut tx)
                 .await?;
 
             // Commit transaction and handle both constraint violations and serialization failures
@@ -1217,6 +1243,147 @@ impl CreditService {
     /// Get access to the user credit repository
     pub fn get_user_credit_repository(&self) -> &Arc<UserCreditRepository> {
         &self.user_credit_repository
+    }
+
+    /// Grant initial signup credits to a new user
+    /// This should be called once when a user first signs up
+    pub async fn grant_initial_signup_credits(&self, user_id: &Uuid) -> Result<bool, AppError> {
+        debug!("Checking if user {} needs initial signup credits", user_id);
+        
+        // Start transaction
+        let pool = self.user_credit_repository.get_pool();
+        let mut tx = pool.begin().await
+            .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
+        
+        // Set user context for RLS
+        sqlx::query("SELECT set_config('app.current_user_id', $1, true)")
+            .bind(user_id.to_string())
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| AppError::Database(format!("Failed to set user context: {}", e)))?;
+        
+        // Check if user already has credits (existing user)
+        let existing_balance = sqlx::query_as!(
+            UserCredit,
+            r#"
+            SELECT user_id, balance, currency, free_credit_balance,
+                   free_credits_granted_at, free_credits_expires_at, free_credits_expired,
+                   created_at, updated_at
+            FROM user_credits
+            WHERE user_id = $1
+            FOR UPDATE
+            "#,
+            user_id
+        )
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(|e| AppError::Database(format!("Failed to check existing balance: {}", e)))?;
+        
+        if let Some(balance) = existing_balance {
+            // User has a balance record, check if they already received free credits
+            if balance.free_credits_granted_at.is_some() {
+                debug!("User {} already received signup credits", user_id);
+                tx.rollback().await.ok();
+                return Ok(false); // User already has signup credits
+            }
+            debug!("User {} has balance record but no free credits, granting signup credits", user_id);
+        } else {
+            debug!("User {} has no balance record, creating with signup credits", user_id);
+        }
+        
+        // Get signup credit configuration from database
+        let settings_repo = SettingsRepository::new(self.db_pools.system_pool.clone());
+        
+        let free_credits_amount = settings_repo.get_free_credits_amount().await
+            .map_err(|e| {
+                error!("Failed to get free credits amount from database: {}", e);
+                AppError::Configuration("Failed to get signup credits configuration".to_string())
+            })?;
+        
+        let expiry_days = settings_repo.get_free_credits_expiry_days().await
+            .map_err(|e| {
+                error!("Failed to get free credits expiry days from database: {}", e);
+                AppError::Configuration("Failed to get signup credits expiry configuration".to_string())
+            })?;
+        
+        let now = Utc::now();
+        let expires_at = now + Duration::days(expiry_days);
+        
+        // Insert or update user_credits record with free credits
+        sqlx::query!(
+            r#"
+            INSERT INTO user_credits (
+                user_id, 
+                balance, 
+                currency, 
+                free_credit_balance,
+                free_credits_granted_at,
+                free_credits_expires_at,
+                free_credits_expired,
+                created_at,
+                updated_at
+            )
+            VALUES ($1, 0.0000, 'USD', $2, $3, $4, false, NOW(), NOW())
+            ON CONFLICT (user_id) DO UPDATE SET
+                free_credit_balance = user_credits.free_credit_balance + EXCLUDED.free_credit_balance,
+                free_credits_granted_at = COALESCE(user_credits.free_credits_granted_at, EXCLUDED.free_credits_granted_at),
+                free_credits_expires_at = EXCLUDED.free_credits_expires_at,
+                updated_at = NOW()
+            RETURNING user_id
+            "#,
+            user_id,
+            &free_credits_amount,
+            now,
+            expires_at
+        )
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(|e| AppError::Database(format!("Failed to grant signup credits: {}", e)))?;
+        
+        // Create a credit transaction record for audit
+        sqlx::query!(
+            r#"
+            INSERT INTO credit_transactions (
+                user_id,
+                transaction_type,
+                net_amount,
+                gross_amount,
+                fee_amount,
+                balance_after,
+                description,
+                metadata,
+                created_at
+            )
+            VALUES ($1, 'signup_bonus', $2, $2, 0.0000, $2, $3, $4, NOW())
+            "#,
+            user_id,
+            &free_credits_amount,
+            "Welcome bonus - free credits for new users",
+            serde_json::json!({
+                "type": "signup_bonus",
+                "expires_at": expires_at.to_rfc3339(),
+                "granted_at": now.to_rfc3339(),
+                "free_credit_amount": free_credits_amount.to_string()
+            })
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| AppError::Database(format!("Failed to create signup bonus transaction: {}", e)))?;
+        
+        // Commit transaction
+        tx.commit().await
+            .map_err(|e| AppError::Database(format!("Failed to commit signup credits transaction: {}", e)))?;
+        
+        info!("Successfully granted ${} signup credits to user {} (expires: {})", 
+              free_credits_amount, user_id, expires_at);
+        
+        Ok(true) // Credits were granted
+    }
+    
+    /// Check if a user has already received signup credits
+    pub async fn has_received_signup_credits(&self, user_id: &Uuid) -> Result<bool, AppError> {
+        let balance = self.get_user_balance(user_id).await?;
+        Ok(balance.free_credits_granted_at.is_some())
     }
 }
 

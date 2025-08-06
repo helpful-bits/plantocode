@@ -12,6 +12,7 @@ export interface BillingContextData {
   customerBillingInfo: CustomerBillingInfo | null;
   creditBalance: number;
   creditBalanceUsd: number;
+  paidCreditBalanceUsd: number; // Add paid credits separately
   isPaymentMethodRequired: boolean;
   isBillingInfoRequired: boolean;
   isLoading: boolean;
@@ -144,11 +145,19 @@ export function BillingProvider({ children }: { children: React.ReactNode }) {
     return Number(Number(balance).toFixed(6));
   }, [dashboardData]);
 
+  // Calculate TOTAL available balance (paid + free credits)
+  const totalAvailableBalance = useMemo(() => {
+    const paid = dashboardData?.creditBalanceUsd || 0;
+    const free = dashboardData?.freeCreditBalanceUsd || 0;
+    return Number(Number(paid + free).toFixed(6));
+  }, [dashboardData]);
+
   const contextValue = useMemo(() => ({
     dashboardData,
     customerBillingInfo: dashboardData?.customerBillingInfo || null,
-    creditBalance,
-    creditBalanceUsd: creditBalance,
+    creditBalance: totalAvailableBalance, // Use total available balance
+    creditBalanceUsd: totalAvailableBalance, // Use total available balance
+    paidCreditBalanceUsd: creditBalance, // Keep paid balance separate
     isPaymentMethodRequired: dashboardData?.isPaymentMethodRequired || false,
     isBillingInfoRequired: dashboardData?.isBillingInfoRequired || false,
     isLoading,
@@ -161,6 +170,7 @@ export function BillingProvider({ children }: { children: React.ReactNode }) {
   }), [
     dashboardData,
     creditBalance,
+    totalAvailableBalance,
     isLoading,
     error,
     refreshBillingData,

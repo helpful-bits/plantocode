@@ -138,33 +138,106 @@ export function BillingDashboard({}: BillingDashboardProps = {}) {
   }
 
 
-  return (
-    <div className="space-y-8" role="main" aria-label="Billing Dashboard">
-      
-      {(dashboardData?.isPaymentMethodRequired || dashboardData?.isBillingInfoRequired) && (
-        <Alert variant="destructive" className="border-orange-200 bg-orange-50">
-          <FileWarning className="h-5 w-5" />
-          <AlertTitle className="text-orange-800 font-semibold">Action Required</AlertTitle>
-          <AlertDescription className="flex items-center justify-between mt-2">
-            <span className="text-orange-700">
-              {dashboardData?.isPaymentMethodRequired && dashboardData?.isBillingInfoRequired
-                ? "A payment method and complete billing information are required to ensure uninterrupted service."
-                : dashboardData?.isPaymentMethodRequired
-                ? "A payment method is required to ensure uninterrupted service."
-                : "Complete billing information is required to ensure uninterrupted service."
-              }
-            </span>
+  // Check if billing setup is incomplete
+  const isBillingSetupIncomplete = dashboardData?.isPaymentMethodRequired || dashboardData?.isBillingInfoRequired;
+
+  // If billing setup is incomplete, show setup-focused interface
+  if (isBillingSetupIncomplete) {
+    return (
+      <div className="space-y-8" role="main" aria-label="Billing Setup Required">
+        {/* Prominent Setup Required Card */}
+        <Card className="border-2 border-orange-200 bg-gradient-to-br from-orange-50 to-orange-50/80 shadow-lg">
+          <CardHeader className="text-center pb-4">
+            <div className="mx-auto h-16 w-16 bg-orange-100 rounded-full flex items-center justify-center mb-4">
+              <FileWarning className="h-8 w-8 text-orange-600" />
+            </div>
+            <CardTitle className="text-2xl font-bold text-orange-800">
+              Complete Your Billing Setup
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="text-center space-y-6">
+            <p className="text-lg text-orange-700 max-w-2xl mx-auto">
+              To purchase credits, enable auto top-off, and access all billing features, please complete your billing setup.
+            </p>
+            
+            <div className="space-y-4 max-w-md mx-auto">
+              <div className="flex items-center gap-4 text-left p-4 bg-white/80 rounded-lg border border-orange-200">
+                <div className={`h-8 w-8 rounded-full flex items-center justify-center ${dashboardData?.isBillingInfoRequired ? 'bg-orange-200 text-orange-600' : 'bg-green-200 text-green-600'}`}>
+                  {dashboardData?.isBillingInfoRequired ? '1' : '✓'}
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-semibold text-gray-900">Billing Information</h3>
+                  <p className="text-sm text-gray-600">Name and billing address</p>
+                </div>
+              </div>
+              
+              <div className="flex items-center gap-4 text-left p-4 bg-white/80 rounded-lg border border-orange-200">
+                <div className={`h-8 w-8 rounded-full flex items-center justify-center ${dashboardData?.isPaymentMethodRequired ? 'bg-orange-200 text-orange-600' : 'bg-green-200 text-green-600'}`}>
+                  {dashboardData?.isPaymentMethodRequired ? '2' : '✓'}
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-semibold text-gray-900">Payment Method</h3>
+                  <p className="text-sm text-gray-600">Credit card or bank account</p>
+                </div>
+              </div>
+            </div>
+
             <Button 
-              size="sm" 
+              size="lg" 
               onClick={handleUpdateBillingInfo}
               disabled={isOpeningPortal}
-              className="ml-4 bg-orange-600 hover:bg-orange-700"
+              className="bg-orange-600 hover:bg-orange-700 text-white px-8 py-3 text-lg font-semibold"
             >
-              {isOpeningPortal ? "Opening..." : "Update Information Now"}
+              {isOpeningPortal ? (
+                <>
+                  <RefreshCw className="h-5 w-5 mr-2 animate-spin" />
+                  Opening...
+                </>
+              ) : (
+                <>
+                  <FileWarning className="h-5 w-5 mr-2" />
+                  Complete Billing Setup
+                </>
+              )}
             </Button>
-          </AlertDescription>
-        </Alert>
-      )}
+          </CardContent>
+        </Card>
+
+        {/* Limited Credits Display - Read-only */}
+        <Card className="border border-gray-200 bg-gradient-to-br from-gray-50 to-gray-50/80 opacity-75">
+          <CardHeader className="pb-4">
+            <CardTitle className="text-xl font-bold flex items-center gap-3">
+              <div className="h-10 w-10 bg-gray-100 rounded-full flex items-center justify-center">
+                <DollarSign className="h-5 w-5 text-gray-400" />
+              </div>
+              Credits (View Only)
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4 text-center">
+            <div className={`text-4xl font-bold ${dashboardData ? ((dashboardData.creditBalanceUsd + dashboardData.freeCreditBalanceUsd) <= 0 ? 'text-red-600' : 'text-gray-600') : 'text-gray-400'}`}>
+              {dashboardData ? (
+                formatUsdCurrency(dashboardData.creditBalanceUsd + dashboardData.freeCreditBalanceUsd)
+              ) : (
+                <span>Loading...</span>
+              )}
+            </div>
+            {dashboardData && dashboardData.freeCreditBalanceUsd > 0 && (
+              <div className="flex items-center justify-center gap-4 text-sm text-gray-500">
+                <span>Paid: {formatUsdCurrency(dashboardData.creditBalanceUsd)}</span>
+                <span>•</span>
+                <span>Free: {formatUsdCurrency(dashboardData.freeCreditBalanceUsd)}</span>
+              </div>
+            )}
+            <p className="text-sm text-gray-500">Complete billing setup to purchase more credits</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // Full billing dashboard for users with complete setup
+  return (
+    <div className="space-y-8" role="main" aria-label="Billing Dashboard">
 
       {dashboardData?.servicesBlocked && (
         <Alert variant="destructive" className="border-red-200 bg-red-50">
@@ -260,16 +333,28 @@ export function BillingDashboard({}: BillingDashboardProps = {}) {
               <div className="flex items-center justify-center gap-2 mb-2">
                 <Zap className="h-4 w-4 text-primary" />
                 <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
-                  Current Balance
+                  Available Balance
                 </h4>
               </div>
-              <div className={`text-5xl font-black mb-4 ${dashboardData?.creditBalanceUsd !== undefined && dashboardData.creditBalanceUsd <= 0 ? 'text-red-600' : dashboardData?.creditBalanceUsd !== undefined && dashboardData.creditBalanceUsd < 1.0 ? 'text-amber-600' : 'text-primary'}`}>
-                {dashboardData?.creditBalanceUsd !== undefined ? (
-                  formatUsdCurrency(dashboardData.creditBalanceUsd)
+              <div className={`text-5xl font-black mb-2 ${dashboardData ? ((dashboardData.creditBalanceUsd + dashboardData.freeCreditBalanceUsd) <= 0 ? 'text-red-600' : 'text-primary') : 'text-muted-foreground'}`}>
+                {dashboardData ? (
+                  formatUsdCurrency(dashboardData.creditBalanceUsd + dashboardData.freeCreditBalanceUsd)
                 ) : (
                   <span className="text-muted-foreground">Loading...</span>
                 )}
               </div>
+              {/* Show breakdown if user has free credits */}
+              {dashboardData && dashboardData.freeCreditBalanceUsd > 0 && (
+                <div className="flex items-center justify-center gap-4 text-sm text-muted-foreground">
+                  <span>
+                    Paid: {formatUsdCurrency(dashboardData.creditBalanceUsd)}
+                  </span>
+                  <span className="text-border">•</span>
+                  <span className="text-green-600 dark:text-green-400">
+                    Free: {formatUsdCurrency(dashboardData.freeCreditBalanceUsd)}
+                  </span>
+                </div>
+              )}
             </div>
             
             {/* Free Tier Usage Progress */}
@@ -301,7 +386,11 @@ export function BillingDashboard({}: BillingDashboardProps = {}) {
             <Button 
               size="lg" 
               onClick={() => setIsCreditManagerOpen(true)}
-              className={`w-full max-w-md font-semibold shadow-md hover:shadow-lg transition-all duration-200 ${dashboardData?.creditBalanceUsd !== undefined && dashboardData.creditBalanceUsd <= 0 ? 'bg-red-600 hover:bg-red-700' : 'bg-primary hover:bg-primary/90'}`}
+              className={`w-full max-w-md font-semibold shadow-md hover:shadow-lg transition-all duration-200 ${
+                dashboardData && (dashboardData.creditBalanceUsd + dashboardData.freeCreditBalanceUsd) <= 0 
+                  ? 'bg-red-600 hover:bg-red-700' 
+                  : 'bg-primary hover:bg-primary/90'
+              }`}
             >
               <Plus className="h-5 w-5 mr-2" />
               Buy Credits
@@ -312,7 +401,9 @@ export function BillingDashboard({}: BillingDashboardProps = {}) {
 
       <div className="grid gap-8">
         <div className="space-y-8">
-          <AutoTopOffSettings className="transition-all duration-200 hover:shadow-lg" />
+          <AutoTopOffSettings 
+            className="transition-all duration-200 hover:shadow-lg"
+          />
           
           <PaymentMethodsList className="transition-all duration-200 hover:shadow-lg" />
           

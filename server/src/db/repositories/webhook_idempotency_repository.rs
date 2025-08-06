@@ -87,7 +87,7 @@ impl WebhookIdempotencyRepository {
                     locked_at = CASE 
                         WHEN webhook_idempotency.status = 'completed' 
                         THEN webhook_idempotency.locked_at
-                        WHEN webhook_idempotency.locked_at IS NULL 
+                        WHEN webhook_idempotency.locked_at = '1970-01-01 00:00:00+00'::timestamp with time zone 
                              OR webhook_idempotency.lock_expires_at < NOW() 
                              OR webhook_idempotency.status = 'failed' 
                         THEN NOW()
@@ -96,7 +96,7 @@ impl WebhookIdempotencyRepository {
                     locked_by = CASE 
                         WHEN webhook_idempotency.status = 'completed' 
                         THEN webhook_idempotency.locked_by
-                        WHEN webhook_idempotency.locked_at IS NULL 
+                        WHEN webhook_idempotency.locked_at = '1970-01-01 00:00:00+00'::timestamp with time zone 
                              OR webhook_idempotency.lock_expires_at < NOW() 
                              OR webhook_idempotency.status = 'failed' 
                         THEN $5
@@ -105,7 +105,7 @@ impl WebhookIdempotencyRepository {
                     lock_expires_at = CASE 
                         WHEN webhook_idempotency.status = 'completed' 
                         THEN webhook_idempotency.lock_expires_at
-                        WHEN webhook_idempotency.locked_at IS NULL 
+                        WHEN webhook_idempotency.locked_at = '1970-01-01 00:00:00+00'::timestamp with time zone 
                              OR webhook_idempotency.lock_expires_at < NOW() 
                              OR webhook_idempotency.status = 'failed' 
                         THEN $6
@@ -114,7 +114,7 @@ impl WebhookIdempotencyRepository {
                     status = CASE 
                         WHEN webhook_idempotency.status = 'completed' 
                         THEN webhook_idempotency.status
-                        WHEN webhook_idempotency.locked_at IS NULL 
+                        WHEN webhook_idempotency.locked_at = '1970-01-01 00:00:00+00'::timestamp with time zone 
                              OR webhook_idempotency.lock_expires_at < NOW() 
                              OR webhook_idempotency.status = 'failed' 
                         THEN 'processing'
@@ -178,9 +178,9 @@ impl WebhookIdempotencyRepository {
             SET status = 'completed',
                 processing_result = 'success', 
                 processed_at = NOW(),
-                locked_at = NULL,
-                locked_by = NULL,
-                lock_expires_at = NULL,
+                locked_at = '1970-01-01 00:00:00+00'::timestamp with time zone,
+                locked_by = '',
+                lock_expires_at = '1970-01-01 00:00:00+00'::timestamp with time zone,
                 metadata = COALESCE($2, metadata),
                 updated_at = NOW()
             WHERE webhook_event_id = $1
@@ -208,9 +208,9 @@ impl WebhookIdempotencyRepository {
             SET status = 'failed',
                 processing_result = 'failure', 
                 processed_at = NOW(),
-                locked_at = NULL,
-                locked_by = NULL,
-                lock_expires_at = NULL,
+                locked_at = '1970-01-01 00:00:00+00'::timestamp with time zone,
+                locked_by = '',
+                lock_expires_at = '1970-01-01 00:00:00+00'::timestamp with time zone,
                 error_message = $2,
                 last_error_at = NOW(),
                 metadata = COALESCE($3, metadata),
@@ -254,9 +254,9 @@ impl WebhookIdempotencyRepository {
                     next_retry_at = $3,
                     status = 'pending',
                     processing_result = NULL,
-                    locked_at = NULL,
-                    locked_by = NULL,
-                    lock_expires_at = NULL,
+                    locked_at = '1970-01-01 00:00:00+00'::timestamp with time zone,
+                    locked_by = '',
+                    lock_expires_at = '1970-01-01 00:00:00+00'::timestamp with time zone,
                     error_message = $4,
                     last_error_at = NOW(),
                     metadata = COALESCE($5, metadata),
@@ -278,9 +278,9 @@ impl WebhookIdempotencyRepository {
                     next_retry_at = NULL,
                     status = 'failed',
                     processing_result = 'failure',
-                    locked_at = NULL,
-                    locked_by = NULL,
-                    lock_expires_at = NULL,
+                    locked_at = '1970-01-01 00:00:00+00'::timestamp with time zone,
+                    locked_by = '',
+                    lock_expires_at = '1970-01-01 00:00:00+00'::timestamp with time zone,
                     error_message = $3,
                     last_error_at = NOW(),
                     metadata = COALESCE($4, metadata),
@@ -344,7 +344,7 @@ impl WebhookIdempotencyRepository {
             WHERE status = 'pending' 
               AND retry_count < max_retries 
               AND next_retry_at <= NOW()
-              AND (locked_at IS NULL OR lock_expires_at < NOW())
+              AND (locked_at = '1970-01-01 00:00:00+00'::timestamp with time zone OR lock_expires_at < NOW())
             ORDER BY next_retry_at ASC
             LIMIT $1
             "#,

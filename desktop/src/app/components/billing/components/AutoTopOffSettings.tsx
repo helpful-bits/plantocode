@@ -316,6 +316,7 @@ export function AutoTopOffSettings({ className }: AutoTopOffSettingsProps) {
             />
           </div>
 
+
           {enabled ? (
             <div className="space-y-4 p-4 bg-muted/30 rounded-lg border">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

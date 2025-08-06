@@ -80,7 +80,7 @@ pub const KV_PROJECT_DIRECTORY: &str = "project_directory";
 
 // Authentication keys
 // Note: TOKEN_KEY is primarily used when USE_SESSION_STORAGE is false (for keyring operations)
-pub const TOKEN_KEY: &str = "com.vibe-manager.auth.token.v1";
+pub const TOKEN_KEY: &str = "app.vibemanager.auth.token.v1";
 
 // Storage mode configuration
 // Development: Use in-memory session storage. Production: Use OS keyring.
@@ -121,8 +121,8 @@ pub static EXCLUDED_DIRS_FOR_SCAN: [&str; 20] = [
 // No fallback constants - server configuration is required
 
 // Directory and file constants
-pub const APP_DATA_DIR_NAME: &str = "com.vibe-manager.app";
-pub const APP_TEMP_SUBDIR_NAME: &str = "com.vibe-manager.desktop/temp";
+pub const APP_DATA_DIR_NAME: &str = "app.vibemanager";
+pub const APP_TEMP_SUBDIR_NAME: &str = "app.vibemanager/temp";
 pub const DB_FILENAME: &str = "appdata.db";
 
 // ====================================
