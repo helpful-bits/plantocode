@@ -873,7 +873,7 @@ mod tests {
         
         assert!(result.is_err());
         let error_msg = result.unwrap_err().to_string();
-        assert!(error_msg.contains("Failed to extract usage from provider response"));
+        assert!(error_msg.contains("Failed to parse JSON"));
     }
     
     #[tokio::test] 
