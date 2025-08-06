@@ -56,7 +56,7 @@ jobs:
     - name: Install dependencies
       run: |
         cd desktop
-        pnpm install --frozen-lockfile
+        pnpm install
       
     - name: Build frontend
       run: |
@@ -128,7 +128,7 @@ jobs:
     - name: Install dependencies
       run: |
         cd desktop
-        pnpm install --frozen-lockfile
+        pnpm install
       
     - name: Build frontend
       run: |

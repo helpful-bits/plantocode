@@ -185,7 +185,7 @@ jobs:
         cd desktop
         if [ -f "pnpm-lock.yaml" ]; then
           echo "Found pnpm-lock.yaml, using frozen lockfile"
-          pnpm install --frozen-lockfile
+          pnpm install
         else
           echo "No pnpm-lock.yaml found, using regular install"
           pnpm install
@@ -259,7 +259,7 @@ jobs:
         cd desktop
         if [ -f "pnpm-lock.yaml" ]; then
           echo "Found pnpm-lock.yaml, using frozen lockfile"
-          pnpm install --frozen-lockfile
+          pnpm install
         else
           echo "No pnpm-lock.yaml found, using regular install"
           pnpm install
@@ -344,7 +344,7 @@ jobs:
         cd desktop
         if [ -f "pnpm-lock.yaml" ]; then
           echo "Found pnpm-lock.yaml, using frozen lockfile"
-          pnpm install --frozen-lockfile
+          pnpm install
         else
           echo "No pnpm-lock.yaml found, using regular install"
           pnpm install
