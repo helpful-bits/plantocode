@@ -16,7 +16,7 @@ env:
 jobs:
   rust-security:
     name: Rust Security Audit
-    runs-on: buildjet-4vcpu-ubuntu-2204  # BuildJet: 2x faster
+    runs-on: ubuntu-latest  # GitHub default runner (sufficient for security scanning)
     # FAST RUNNER OPTIONS (requires setup):
     # runs-on: namespace-profile-linux-16vcpu  # Namespace: 16 vCPU - requires namespace.so account
     # runs-on: buildjet-8vcpu-ubuntu-2204       # BuildJet: 8 vCPU - requires buildjet.com account
@@ -167,7 +167,7 @@ jobs:
 
   nodejs-security:
     name: Node.js Security Audit  
-    runs-on: buildjet-4vcpu-ubuntu-2204  # BuildJet: 2x faster
+    runs-on: ubuntu-latest  # GitHub default runner (sufficient for security scanning)
     # FAST RUNNER OPTIONS (requires setup):
     # runs-on: namespace-profile-linux-16vcpu  # Namespace: 16 vCPU - requires namespace.so account
     # runs-on: buildjet-8vcpu-ubuntu-2204       # BuildJet: 8 vCPU - requires buildjet.com account
@@ -245,7 +245,7 @@ jobs:
 
   eslint-security:
     name: ESLint Security Analysis
-    runs-on: buildjet-4vcpu-ubuntu-2204  # BuildJet: 2x faster
+    runs-on: ubuntu-latest  # GitHub default runner (sufficient for security scanning)
     # FAST RUNNER OPTIONS (requires setup):
     # runs-on: namespace-profile-linux-16vcpu  # Namespace: 16 vCPU - requires namespace.so account
     # runs-on: buildjet-8vcpu-ubuntu-2204       # BuildJet: 8 vCPU - requires buildjet.com account
@@ -327,7 +327,7 @@ jobs:
 
   tauri-security:
     name: Tauri Security Audit
-    runs-on: buildjet-4vcpu-ubuntu-2204  # BuildJet: 2x faster
+    runs-on: ubuntu-latest  # GitHub default runner (sufficient for security scanning)
     # FAST RUNNER OPTIONS (requires setup):
     # runs-on: namespace-profile-linux-16vcpu  # Namespace: 16 vCPU - requires namespace.so account
     # runs-on: buildjet-8vcpu-ubuntu-2204       # BuildJet: 8 vCPU - requires buildjet.com account
@@ -518,7 +518,7 @@ jobs:
 
   property-tests:
     name: Property-Based Security Tests
-    runs-on: buildjet-4vcpu-ubuntu-2204  # BuildJet: 2x faster
+    runs-on: ubuntu-latest  # GitHub default runner (sufficient for security scanning)
     # FAST RUNNER OPTIONS (requires setup):
     # runs-on: namespace-profile-linux-16vcpu  # Namespace: 16 vCPU - requires namespace.so account
     # runs-on: buildjet-8vcpu-ubuntu-2204       # BuildJet: 8 vCPU - requires buildjet.com account
@@ -597,7 +597,7 @@ jobs:
 
   security-summary:
     name: Security Summary
-    runs-on: buildjet-4vcpu-ubuntu-2204  # BuildJet: 2x faster
+    runs-on: ubuntu-latest  # GitHub default runner (sufficient for security scanning)
     # FAST RUNNER OPTIONS (requires setup):
     # runs-on: namespace-profile-linux-16vcpu  # Namespace: 16 vCPU - requires namespace.so account
     # runs-on: buildjet-8vcpu-ubuntu-2204       # BuildJet: 8 vCPU - requires buildjet.com account

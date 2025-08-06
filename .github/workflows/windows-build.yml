@@ -26,7 +26,7 @@ env:
 jobs:
   build-windows:
     name: Build Windows with Updater Artifacts
-    runs-on: buildjet-8vcpu-windows-2022  # BuildJet: 4x faster
+    runs-on: buildjet-32vcpu-windows-2022  # BuildJet: MAXIMUM SPEED - 32 vCPU!
     # FAST RUNNER OPTIONS (requires setup - see comments):
     # runs-on: namespace-profile-windows-32vcpu  # Namespace: 32 vCPU, 64GB RAM (fastest) - requires namespace.so account
     # runs-on: buildjet-32vcpu-windows-2022      # BuildJet: 32 vCPU - requires buildjet.com account
@@ -102,7 +102,7 @@ jobs:
 
   build-macos:
     name: Build macOS with Updater Artifacts
-    runs-on: buildjet-4vcpu-macos-14  # BuildJet: 2x faster
+    runs-on: macos-latest  # GitHub default runner (sufficient for macOS)
     # FAST RUNNER OPTIONS (requires setup - see comments):
     # runs-on: namespace-profile-macos-m4-pro    # Namespace: Apple M4 Pro (fastest) - requires namespace.so account
     # runs-on: buildjet-8vcpu-macos-14           # BuildJet: 8 vCPU - requires buildjet.com account
