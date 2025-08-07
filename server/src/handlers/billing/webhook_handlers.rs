@@ -95,7 +95,7 @@ async fn process_payment_completion(
             
             // Send email notification for credit purchases
             if let Some(email_service) = email_service {
-                send_credit_purchase_email(email_service, billing_service, &user_id, &gross_amount, &platform_fee).await;
+                send_credit_purchase_email(email_service, billing_service, &user_id, &gross_amount, &platform_fee, &currency).await;
             }
         },
         
@@ -219,6 +219,7 @@ async fn send_credit_purchase_email(
     user_id: &Uuid,
     gross_amount: &BigDecimal,
     fee_amount: &BigDecimal,
+    currency: &str,
 ) {
     let net_amount = gross_amount - fee_amount;
     let user_repo = crate::db::repositories::user_repository::UserRepository::new(billing_service.get_system_db_pool());
@@ -228,7 +229,7 @@ async fn send_credit_purchase_email(
             user_id,
             &user.email,
             &net_amount,
-            "USD",
+            currency,
         ).await {
             warn!("Failed to send credit purchase confirmation email to user {}: {}", user_id, e);
         }
@@ -887,6 +888,14 @@ async fn handle_checkout_session_completed(
     email_service: &crate::services::email_notification_service::EmailNotificationService,
 ) -> Result<(), AppError> {
     info!("Handling checkout session completed: {}", session.id);
+    
+    // Log multi-currency information if Adaptive Pricing is used
+    if let Some(presentment_details) = &session.presentment_details {
+        info!("Checkout session {} completed with Adaptive Pricing: {} {} (originally USD)", 
+              session.id, 
+              presentment_details.presentment_amount, 
+              presentment_details.presentment_currency);
+    }
     
     match session.mode {
         CheckoutSessionMode::Payment => {

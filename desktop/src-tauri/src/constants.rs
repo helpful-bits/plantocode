@@ -6,6 +6,11 @@ pub const OPENROUTER_API_URL: &str = "https://openrouter.ai/api/v1/chat/completi
 // Default fallback URL for the server API. Prefer environment variables.
 pub const SERVER_API_URL: &str = "http://localhost:8080";
 
+// Auth0 Configuration - Embedded at build time
+pub const AUTH0_DOMAIN: Option<&str> = option_env!("AUTH0_DOMAIN");
+pub const AUTH0_NATIVE_CLIENT_ID: Option<&str> = option_env!("AUTH0_NATIVE_CLIENT_ID");
+pub const AUTH0_API_AUDIENCE: Option<&str> = option_env!("AUTH0_API_AUDIENCE");
+
 // HTTP Headers for API requests
 pub const APP_HTTP_REFERER: &str = "https://github.com/vibe-manager/vibe-manager";
 pub const APP_X_TITLE: &str = "Vibe Manager Desktop";

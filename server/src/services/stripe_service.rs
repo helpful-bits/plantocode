@@ -433,6 +433,12 @@ impl StripeService {
             "created_by": "vibe_manager"
         });
         
+        // Note: We don't set currency here - Stripe will automatically set it based on:
+        // 1. The first payment method's currency
+        // 2. The first subscription/invoice currency
+        // 3. The account's default currency
+        // This prevents currency lock-in issues
+        
         let response = self.make_stripe_request_with_idempotency(
             reqwest::Method::POST,
             "customers",
@@ -562,7 +568,7 @@ impl StripeService {
     pub async fn get_payment_intent(&self, payment_intent_id: &str) -> Result<stripe_types::PaymentIntent, StripeServiceError> {
         let response = self.make_stripe_request_with_idempotency(
             reqwest::Method::GET,
-            &format!("payment_intents/{}", payment_intent_id),
+            &format!("payment_intents/{}?expand[]=latest_charge.balance_transaction", payment_intent_id),
             None,
             None,
         ).await?;
@@ -806,8 +812,7 @@ impl StripeService {
             "client_reference_id": user_id.to_string(),
             "mode": mode_str,
             "success_url": success_url_with_session,
-            "cancel_url": cancel_url,
-            "currency": "usd"
+            "cancel_url": cancel_url
         });
         
         // Only set line_items for non-Setup modes
@@ -1093,6 +1098,129 @@ impl StripeService {
         
         info!("Completed cleanup of pending invoice items for customer: {}", customer_id);
         Ok(())
+    }
+    
+    /// Clean up pending invoice items that don't match the specified currency
+    /// Returns the number of items deleted
+    pub async fn cleanup_pending_invoice_items_except_currency(&self, customer_id: &str, keep_currency: &str) -> Result<usize, StripeServiceError> {
+        info!("Cleaning up pending invoice items not in {} for customer: {}", keep_currency, customer_id);
+        
+        let mut total_deleted = 0;
+        
+        // List pending invoice items for the customer
+        let list_response = self.make_stripe_request_with_idempotency(
+            reqwest::Method::GET,
+            &format!("invoiceitems?customer={}&pending=true&limit=100", customer_id),
+            None,
+            None,
+        ).await?;
+        
+        let items_list: serde_json::Value = list_response;
+        let items = items_list.get("data").and_then(|d| d.as_array()).cloned().unwrap_or_default();
+        
+        // Delete only items with mismatched currency
+        for item in &items {
+            if let Some(item_id) = item.get("id").and_then(|id| id.as_str()) {
+                let currency = item.get("currency").and_then(|c| c.as_str()).unwrap_or("");
+                let amount = item.get("amount").and_then(|a| a.as_i64()).unwrap_or(0);
+                
+                // Only delete if currency doesn't match
+                if currency.to_lowercase() != keep_currency.to_lowercase() {
+                    match self.make_stripe_request_with_idempotency(
+                        reqwest::Method::DELETE,
+                        &format!("invoiceitems/{}", item_id),
+                        None,
+                        None,
+                    ).await {
+                        Ok(_) => {
+                            info!("Deleted mismatched currency invoice item: {} (was {} {}, keeping only {})", 
+                                  item_id, amount, currency, keep_currency);
+                            total_deleted += 1;
+                        },
+                        Err(e) => {
+                            warn!("Failed to delete invoice item {} (amount: {} {}): {}", 
+                                  item_id, amount, currency, e);
+                        }
+                    }
+                } else {
+                    debug!("Keeping invoice item {} in matching currency {}", item_id, currency);
+                }
+            }
+        }
+        
+        if total_deleted > 0 {
+            info!("Deleted {} invoice items with non-{} currencies for customer: {}", 
+                  total_deleted, keep_currency, customer_id);
+        }
+        
+        Ok(total_deleted)
+    }
+    
+    /// Clean up ALL pending invoice items for a customer, regardless of currency
+    /// Returns the number of items deleted
+    pub async fn cleanup_all_pending_invoice_items(&self, customer_id: &str) -> Result<usize, StripeServiceError> {
+        info!("Cleaning up ALL pending invoice items (all currencies) for customer: {}", customer_id);
+        
+        let mut total_deleted = 0;
+        let mut has_more = true;
+        
+        // Keep fetching and deleting until no more items remain
+        while has_more {
+            // List pending invoice items for the customer
+            let list_response = self.make_stripe_request_with_idempotency(
+                reqwest::Method::GET,
+                &format!("invoiceitems?customer={}&pending=true&limit=100", customer_id),
+                None,
+                None,
+            ).await?;
+            
+            let items_list: serde_json::Value = list_response;
+            let items = items_list.get("data").and_then(|d| d.as_array()).cloned().unwrap_or_default();
+            
+            if items.is_empty() {
+                has_more = false;
+                break;
+            }
+            
+            info!("Found {} pending invoice items in this batch for customer: {}", items.len(), customer_id);
+            
+            // Delete each pending invoice item
+            for item in &items {
+                if let Some(item_id) = item.get("id").and_then(|id| id.as_str()) {
+                    // Log the currency of the item being deleted for debugging
+                    let currency = item.get("currency").and_then(|c| c.as_str()).unwrap_or("unknown");
+                    let amount = item.get("amount").and_then(|a| a.as_i64()).unwrap_or(0);
+                    
+                    match self.make_stripe_request_with_idempotency(
+                        reqwest::Method::DELETE,
+                        &format!("invoiceitems/{}", item_id),
+                        None,
+                        None,
+                    ).await {
+                        Ok(_) => {
+                            info!("Deleted pending invoice item: {} (amount: {} {})", item_id, amount, currency);
+                            total_deleted += 1;
+                        },
+                        Err(e) => {
+                            // Log but continue - some items might be attached to finalized invoices
+                            warn!("Failed to delete pending invoice item {} (amount: {} {}): {}", 
+                                  item_id, amount, currency, e);
+                        }
+                    }
+                }
+            }
+            
+            // Check if there are more items to fetch
+            has_more = items_list.get("has_more")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+        }
+        
+        if total_deleted > 0 {
+            info!("Successfully deleted {} pending invoice items for customer: {}", total_deleted, customer_id);
+        }
+        
+        Ok(total_deleted)
     }
 
 

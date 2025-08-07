@@ -117,7 +117,7 @@ export interface Invoice {
   id: string;
   created: number;
   dueDate?: number;
-  amountDue: number;
+  amountPaidDisplay: string;
   amountPaid: number;
   currency: string;
   status: string;
@@ -126,11 +126,12 @@ export interface Invoice {
 
 export interface ListInvoicesResponse {
   invoices: Invoice[];
+  totalInvoices: number;
   hasMore: boolean;
 }
 
-export async function listInvoices(limit?: number, offset?: number): Promise<ListInvoicesResponse> {
-  return await invoke<ListInvoicesResponse>('list_invoices_command', { limit, offset });
+export async function listInvoices(limit?: number, startingAfter?: string): Promise<ListInvoicesResponse> {
+  return await invoke<ListInvoicesResponse>('list_invoices_command', { limit, startingAfter });
 }
 
 export async function downloadInvoicePdf(invoiceId: string, pdfUrl: string): Promise<string> {

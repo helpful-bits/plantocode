@@ -117,7 +117,8 @@ ON CONFLICT (config_key) DO UPDATE SET
 INSERT INTO application_configurations (config_key, config_value, description)
 VALUES 
   ('billing_free_credits_expiry_days', '"3"', 'Number of days before free credits expire for new users'),
-  ('billing_free_credits_amount', '"2.00"', 'Amount of free credits (USD) granted to new users')
+  ('billing_free_credits_amount', '"2.00"', 'Amount of free credits (USD) granted to new users'),
+  ('billing_max_credit_purchase', '1000', 'Maximum amount of credits that can be purchased in a single transaction')
 ON CONFLICT (config_key) DO UPDATE SET
   config_value = EXCLUDED.config_value,
   description = EXCLUDED.description,

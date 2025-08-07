@@ -16,7 +16,7 @@ use crate::utils::transcription_validation::{
     validate_server_language, validate_server_prompt, validate_server_temperature,
 };
 use crate::utils::multipart_utils::process_video_analysis_multipart;
-use actix_web::{HttpResponse, web};
+use actix_web::{HttpRequest, HttpResponse, web};
 use bigdecimal::{BigDecimal, FromPrimitive};
 use chrono;
 use serde_json::{Value, json};
@@ -1320,8 +1320,9 @@ pub struct TranscriptionResponse {
 }
 
 /// Handle audio transcription (multipart form) - mimics OpenAI's /v1/audio/transcriptions
-#[instrument(skip(payload, user, app_settings, billing_service, model_repository))]
+#[instrument(skip(req, payload, user, app_settings, billing_service, model_repository))]
 pub async fn transcription_handler(
+    req: HttpRequest,
     payload: Multipart,
     user: web::ReqData<AuthenticatedUser>,
     app_settings: web::Data<AppSettings>,
@@ -1366,10 +1367,22 @@ pub async fn transcription_handler(
     }
 
     // Create validation context
+    // Extract client IP from request headers (X-Forwarded-For or connection info)
+    let client_ip = req.connection_info()
+        .realip_remote_addr()
+        .unwrap_or("unknown")
+        .to_string();
+    
+    // Extract user agent from headers
+    let user_agent = req.headers()
+        .get("User-Agent")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string());
+    
     let validation_context = RequestValidationContext {
         user_id: user_id.to_string(),
-        client_ip: "127.0.0.1".to_string(), // TODO: Extract from request headers
-        user_agent: None,                   // TODO: Extract from request headers
+        client_ip,
+        user_agent,
         request_timestamp: chrono::Utc::now(),
     };
 
