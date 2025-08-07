@@ -1,4 +1,5 @@
-use actix_web::web;
+use actix_web::{web, HttpResponse};
+use crate::config::settings::AppSettings;
 use crate::handlers;
 use crate::middleware::RateLimitMiddleware;
 
@@ -130,21 +131,18 @@ pub fn configure_public_auth_routes(cfg: &mut web::ServiceConfig, account_creati
     );
 }
 
-// Simple logged out handler
-async fn auth0_logged_out_handler() -> actix_web::Result<actix_web::HttpResponse> {
-    Ok(actix_web::HttpResponse::Ok()
-        .content_type("text/html; charset=utf-8")
-        .body(r#"
-<!DOCTYPE html>
-<html>
-<head><title>Logged Out - Vibe Manager</title></head>
-<body>
-    <h1>Successfully Logged Out</h1>
-    <p>You have been logged out from Vibe Manager.</p>
-    <p>You can close this page.</p>
-</body>
-</html>
-        "#))
+// Logged out handler that redirects to the website
+async fn auth0_logged_out_handler(
+    settings: web::Data<AppSettings>,
+) -> actix_web::Result<HttpResponse> {
+    let redirect_url = format!(
+        "{}/auth/auth0/logged-out",
+        settings.website_base_url
+    );
+    
+    Ok(HttpResponse::Found()
+        .append_header(("Location", redirect_url))
+        .finish())
 }
 
 // Note: The public API routes (auth0 polling/finalization and config/regions) are now

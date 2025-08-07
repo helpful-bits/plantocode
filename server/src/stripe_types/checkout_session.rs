@@ -2,6 +2,13 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
+#[serde(rename_all = "snake_case")]
+pub struct PresentmentDetails {
+    pub presentment_amount: i64,
+    pub presentment_currency: String,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct CheckoutSession {
     pub id: String,
     pub object: String,
@@ -20,6 +27,7 @@ pub struct CheckoutSession {
     pub created: i64,
     pub expires_at: i64,
     pub payment_status: Option<String>,
+    pub presentment_details: Option<PresentmentDetails>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]

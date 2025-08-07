@@ -153,7 +153,7 @@ impl CacheHealthMonitor {
 
         let cache = self.app_handle.state::<ConfigCache>();
 
-        match cache.lock() {
+        let result = match cache.lock() {
             Ok(mut cache_guard) => {
                 let current_time = SystemTime::now()
                     .duration_since(UNIX_EPOCH)
@@ -190,7 +190,8 @@ impl CacheHealthMonitor {
                     e
                 )))
             }
-        }
+        };
+        result
     }
 
     /// Updates last refresh timestamp in cache metadata
@@ -198,7 +199,7 @@ impl CacheHealthMonitor {
     async fn update_last_refresh_timestamp(&self) -> Result<(), AppError> {
         let cache = self.app_handle.state::<ConfigCache>();
 
-        match cache.lock() {
+        let result = match cache.lock() {
             Ok(mut cache_guard) => {
                 let current_time = SystemTime::now()
                     .duration_since(UNIX_EPOCH)
@@ -220,7 +221,8 @@ impl CacheHealthMonitor {
                     e
                 )))
             }
-        }
+        };
+        result
     }
 
     /// Gets last refresh timestamp from cache metadata

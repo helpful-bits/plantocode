@@ -47,13 +47,13 @@ pub async fn start_auth0_login_flow(
         )
         .map_err(|e| AppError::InternalError(format!("Failed to store auth attempt: {}", e)))?;
 
-    // Get Auth0 config from environment
-    let auth0_domain = std::env::var("AUTH0_DOMAIN")
-        .map_err(|_| AppError::ConfigError("AUTH0_DOMAIN not set".to_string()))?;
-    let auth0_native_client_id = std::env::var("AUTH0_NATIVE_CLIENT_ID")
-        .map_err(|_| AppError::ConfigError("AUTH0_NATIVE_CLIENT_ID not set".to_string()))?;
-    let auth0_api_audience = std::env::var("AUTH0_API_AUDIENCE")
-        .map_err(|_| AppError::ConfigError("AUTH0_API_AUDIENCE not set".to_string()))?;
+    // Get Auth0 config from compile-time constants
+    let auth0_domain = crate::constants::AUTH0_DOMAIN
+        .ok_or_else(|| AppError::ConfigError("AUTH0_DOMAIN not configured. Please rebuild with AUTH0_DOMAIN environment variable set.".to_string()))?;
+    let auth0_native_client_id = crate::constants::AUTH0_NATIVE_CLIENT_ID
+        .ok_or_else(|| AppError::ConfigError("AUTH0_NATIVE_CLIENT_ID not configured. Please rebuild with AUTH0_NATIVE_CLIENT_ID environment variable set.".to_string()))?;
+    let auth0_api_audience = crate::constants::AUTH0_API_AUDIENCE
+        .ok_or_else(|| AppError::ConfigError("AUTH0_API_AUDIENCE not configured. Please rebuild with AUTH0_API_AUDIENCE environment variable set.".to_string()))?;
     
     // Get server URL from app state
     let server_url = app_state.get_server_url()
@@ -189,12 +189,10 @@ pub async fn check_auth_status_and_exchange_token(
     debug!("CSRF token validation successful");
 
     // Exchange authorization code for tokens using OAuth2 client
-    let auth0_domain = std::env::var("AUTH0_DOMAIN").map_err(|_| {
-        AppError::ConfigError("AUTH0_DOMAIN environment variable not set".to_string())
-    })?;
-    let auth0_native_client_id = std::env::var("AUTH0_NATIVE_CLIENT_ID").map_err(|_| {
-        AppError::ConfigError("AUTH0_NATIVE_CLIENT_ID environment variable not set".to_string())
-    })?;
+    let auth0_domain = crate::constants::AUTH0_DOMAIN
+        .ok_or_else(|| AppError::ConfigError("AUTH0_DOMAIN not configured. Please rebuild with AUTH0_DOMAIN environment variable set.".to_string()))?;
+    let auth0_native_client_id = crate::constants::AUTH0_NATIVE_CLIENT_ID
+        .ok_or_else(|| AppError::ConfigError("AUTH0_NATIVE_CLIENT_ID not configured. Please rebuild with AUTH0_NATIVE_CLIENT_ID environment variable set.".to_string()))?;
     // Get server URL from app state
     let server_url = app_state.get_server_url()
         .ok_or_else(|| AppError::ConfigError("No server URL configured. Please select a server region first.".to_string()))?;
@@ -205,7 +203,7 @@ pub async fn check_auth_status_and_exchange_token(
     let token_url = TokenUrl::new(format!("https://{}/oauth/token", auth0_domain))
         .map_err(|e| AppError::ConfigError(format!("Invalid token URL: {}", e)))?;
 
-    let oauth_client = BasicClient::new(ClientId::new(auth0_native_client_id))
+    let oauth_client = BasicClient::new(ClientId::new(auth0_native_client_id.to_string()))
         .set_auth_uri(auth_url)
         .set_token_uri(token_url)
         .set_redirect_uri(
@@ -385,10 +383,10 @@ pub async fn logout_auth0(
     token_manager.set(None).await?;
 
     // Construct Auth0 logout URL
-    let auth0_domain = std::env::var("AUTH0_DOMAIN")
-        .map_err(|_| AppError::ConfigError("AUTH0_DOMAIN not set".to_string()))?;
-    let auth0_native_client_id = std::env::var("AUTH0_NATIVE_CLIENT_ID")
-        .map_err(|_| AppError::ConfigError("AUTH0_NATIVE_CLIENT_ID not set".to_string()))?;
+    let auth0_domain = crate::constants::AUTH0_DOMAIN
+        .ok_or_else(|| AppError::ConfigError("AUTH0_DOMAIN not configured. Please rebuild with AUTH0_DOMAIN environment variable set.".to_string()))?;
+    let auth0_native_client_id = crate::constants::AUTH0_NATIVE_CLIENT_ID
+        .ok_or_else(|| AppError::ConfigError("AUTH0_NATIVE_CLIENT_ID not configured. Please rebuild with AUTH0_NATIVE_CLIENT_ID environment variable set.".to_string()))?;
     // Get server URL from app state
     let server_url = app_state.get_server_url()
         .ok_or_else(|| AppError::ConfigError("No server URL configured. Please select a server region first.".to_string()))?;

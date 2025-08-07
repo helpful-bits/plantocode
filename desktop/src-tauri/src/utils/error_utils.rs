@@ -137,20 +137,6 @@ pub fn format_user_error(error: &AppError) -> String {
         AppError::CheckoutError(_) => "Checkout error. Please try again or use a different payment method.".to_string(),
         AppError::PaymentRequired(_) => "Payment required. Please complete your payment to continue.".to_string(),
         AppError::PaymentError(_) => "Payment processing error. Please try again or contact support.".to_string(),
-        // Additional billing error handling to ensure completeness
-        AppError::BillingError(msg) => {
-            if msg.contains("insufficient") || msg.contains("limit") {
-                "Usage limit reached. Please upgrade your plan or wait for your limit to reset.".to_string()
-            } else if msg.contains("payment") {
-                "Payment issue detected. Please check your billing information.".to_string()
-            } else if msg.contains("expired") {
-                "Your billing has expired. Please add credits to continue using services.".to_string()
-            } else if msg.contains("cancelled") {
-                "Your billing has been cancelled. Reactivate to restore full access.".to_string()
-            } else {
-                "Billing service issue. Please try again or contact support for assistance.".to_string()
-            }
-        },
         AppError::Unauthorized(_) => "Authentication required. Please log in again.".to_string(),
         AppError::Forbidden(_) => "Access denied. You don't have permission to perform this action.".to_string(),
         AppError::BadRequest(_) => "Invalid request. Please check your input and try again.".to_string(),

@@ -9,6 +9,7 @@ edition = "2024"
 
 [build-dependencies]
 tauri-build = { version = "2.3.1", features = [] }
+dotenvy = "0.15.7"
 
 [dependencies]
 tauri = { version = "2.7.0", features = ["config-json5", "macos-private-api", "protocol-asset"] }
@@ -26,7 +27,7 @@ tauri-plugin-store = "2.3.0"
 blake2b_simd = "1.0.3"
 env_logger = "0.11.8"
 log = "0.4.27"
-dotenv = "0.15.0"
+dotenvy = "0.15.7"
 tokio = { version = "1.46.1", features = ["full"] }
 reqwest = { version = "0.12.22", features = ["json", "stream", "multipart"] }
 reqwest-eventsource = "0.6.0"

@@ -177,3 +177,4 @@ temp/
 /desktop/pnpm-workspace.yaml
 /gen/
 /secrets
+/desktop/desktop/src-tauri/target/

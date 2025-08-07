@@ -102,7 +102,15 @@ export function useFileSelection(projectDirectory?: string) {
   // Listen for file selection applied events and switch to selected view
   useEffect(() => {
     const handleFileSelectionApplied = () => {
+      // Always switch to selected mode when files are applied
+      // The filteredAndSortedFiles will handle showing files even if allProjectFiles is empty
       handleSetFilterMode("selected");
+      
+      // If allProjectFiles is empty, trigger a load (but don't wait for it)
+      // The UI will update when the files are loaded thanks to React's reactivity
+      if (allProjectFiles.length === 0 && projectDirectory) {
+        loadFiles();
+      }
     };
 
     window.addEventListener("file-selection-applied", handleFileSelectionApplied);
@@ -110,7 +118,7 @@ export function useFileSelection(projectDirectory?: string) {
     return () => {
       window.removeEventListener("file-selection-applied", handleFileSelectionApplied);
     };
-  }, [handleSetFilterMode]);
+  }, [handleSetFilterMode, allProjectFiles.length, projectDirectory, loadFiles]);
 
   // Sync filter mode when currentSession.filterMode changes externally
   useEffect(() => {
@@ -314,8 +322,31 @@ export function useFileSelection(projectDirectory?: string) {
 
   // Filter and sort files
   const filteredAndSortedFiles = useMemo(() => {
+    let filesToProcess = files;
+    
+    // In "selected" mode, if we have sessionIncluded files that aren't in allProjectFiles,
+    // create temporary file entries for them so they can be displayed
+    if (filterMode === "selected" && sessionIncluded.length > 0) {
+      const existingPaths = new Set(files.map(f => f.path));
+      const missingSelectedFiles = sessionIncluded
+        .filter(path => !existingPaths.has(path))
+        .map(path => ({
+          path,
+          name: path.split('/').pop() || path,
+          size: undefined,
+          modifiedAt: undefined,
+          isBinary: false,
+          included: true,
+          excluded: sessionExcluded.includes(path)
+        }));
+      
+      if (missingSelectedFiles.length > 0) {
+        filesToProcess = [...files, ...missingSelectedFiles];
+      }
+    }
+    
     // First filter
-    const filtered = files.filter(file => {
+    const filtered = filesToProcess.filter(file => {
       // Search filter
       const matchesSearch = file.path.toLowerCase().includes(searchTerm.toLowerCase());
       
@@ -327,10 +358,24 @@ export function useFileSelection(projectDirectory?: string) {
     
     // Then sort
     return sortFiles(filtered);
-  }, [files, searchTerm, filterMode, sortFiles]);
+  }, [files, searchTerm, filterMode, sortFiles, sessionIncluded, sessionExcluded]);
 
   // Count from all files, not just filtered
-  const includedCount = files.filter(f => f.included && !f.excluded).length;
+  // Also count files in sessionIncluded that might not be in allProjectFiles yet
+  const includedCount = useMemo(() => {
+    // Count files that are in both allProjectFiles and included
+    const filesIncludedCount = files.filter(f => f.included && !f.excluded).length;
+    
+    // If we have files in sessionIncluded but not in allProjectFiles, use sessionIncluded count
+    // This handles the case where files are selected from jobs but allProjectFiles hasn't loaded yet
+    if (sessionIncluded.length > 0 && filesIncludedCount === 0) {
+      // Filter out any that are in sessionExcluded
+      const excludedSet = new Set(sessionExcluded);
+      return sessionIncluded.filter(path => !excludedSet.has(path)).length;
+    }
+    
+    return filesIncludedCount;
+  }, [files, sessionIncluded, sessionExcluded]);
 
 
 

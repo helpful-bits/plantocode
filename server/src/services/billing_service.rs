@@ -1,5 +1,5 @@
 use crate::error::AppError;
-use crate::models::billing::{BillingDashboardData, AutoTopOffSettings, CustomerBillingInfo, TaxIdInfo};
+use crate::models::billing::{BillingDashboardData, AutoTopOffSettings, CustomerBillingInfo, TaxIdInfo, Invoice, ListInvoicesResponse};
 use crate::db::repositories::api_usage_repository::{ApiUsageRepository, DetailedUsageRecord, ApiUsageEntryDto, ApiUsageRecord};
 use crate::db::repositories::UserCredit;
 use crate::db::repositories::customer_billing_repository::{CustomerBillingRepository, CustomerBilling};
@@ -375,6 +375,7 @@ impl BillingService {
     ) -> Result<CheckoutSession, AppError> {
         let stripe_service = self.get_stripe_service()?;
         let customer_id = self.get_or_create_stripe_customer(user_id).await?;
+        
 
         // CRITICAL: Validate billing setup before allowing credit purchases
         info!("Validating billing setup for credit purchase - user: {}", user_id);
@@ -400,9 +401,31 @@ impl BillingService {
         let amount_decimal = BigDecimal::parse_bytes(amount.as_bytes(), 10)
             .ok_or_else(|| AppError::InvalidArgument("Invalid amount format".to_string()))?;
         
-        // Validate amount is positive and not too large
-        if amount_decimal <= BigDecimal::from(0) || amount_decimal > BigDecimal::from(10000) {
-            return Err(AppError::InvalidArgument("Amount must be between $0.01 and $10,000.00".to_string()));
+        // Validate amount is positive
+        if amount_decimal <= BigDecimal::from(0) {
+            return Err(AppError::InvalidArgument("Amount must be greater than 0".to_string()));
+        }
+        
+        // Get max credit purchase amount from configuration
+        // Key: 'billing_max_credit_purchase' in application_configurations table
+        let max_amount = match self.settings_repository.get_config_value("billing_max_credit_purchase").await? {
+            Some(config_value) => {
+                // Try to parse the config value as a number
+                if let Some(num) = config_value.as_f64() {
+                    BigDecimal::from_str(&num.to_string())
+                        .unwrap_or_else(|_| BigDecimal::from(1000))
+                } else if let Some(str_val) = config_value.as_str() {
+                    BigDecimal::from_str(str_val)
+                        .unwrap_or_else(|_| BigDecimal::from(1000))
+                } else {
+                    BigDecimal::from(1000) // Default if config format is unexpected
+                }
+            },
+            None => BigDecimal::from(1000) // Default if not configured
+        };
+        
+        if amount_decimal > max_amount {
+            return Err(AppError::InvalidArgument(format!("Amount exceeds maximum allowed: {}", max_amount)));
         }
         
         // Get fee tiers from database to validate against minimum tier
@@ -414,20 +437,15 @@ impl BillingService {
             .min()
             .ok_or_else(|| AppError::Configuration("No fee tiers configured".to_string()))?;
         
-        // Validate against the minimum tier amount
+        // Validate against the minimum tier amount from configuration
         if &amount_decimal < min_tier_amount {
             return Err(AppError::InvalidArgument(
-                format!("Amount must be at least ${} (minimum purchase amount)", min_tier_amount)
+                format!("Amount must be at least {} credits", min_tier_amount)
             ));
         }
         
-        // Also check for Stripe's minimum chargeable amount ($0.50) as a safety check
-        let stripe_min = BigDecimal::from_str("0.50").unwrap();
-        if amount_decimal < stripe_min {
-            return Err(AppError::InvalidArgument(
-                format!("Amount must be at least $0.50 (Stripe's minimum chargeable amount)")
-            ));
-        }
+        // Note: We don't check Stripe's minimum here - let Stripe return its own error
+        // This allows proper handling of different minimums per currency
         
         // Get the appropriate tier for this amount
         let tier = fee_tiers.get_tier_for_amount(&amount_decimal)?;
@@ -436,8 +454,10 @@ impl BillingService {
         let fee_amount = &amount_decimal * &tier.fee_rate;
         let net_amount = &amount_decimal - &fee_amount;
         
-        // Create price_data object instead of creating Product/Price
-        let product_name = format!("${} Credit Top-up", amount_decimal);
+        // Create price_data object with customer's currency
+        // Note: Product names should be currency-agnostic per Stripe best practices
+        // Currency display is handled by Stripe's checkout UI
+        let product_name = format!("Credit Top-up - {} credits", amount_decimal);
         let amount_cents = (amount_decimal.clone() * BigDecimal::from(100)).to_i64().unwrap_or(0);
         
         let price_data = serde_json::json!({
@@ -994,14 +1014,14 @@ impl BillingService {
         info!("User {} balance ({}) is below threshold ({}), triggering auto top-off of {}", 
               user_id, current_balance.balance, threshold, amount);
         
-        // Perform auto top-off directly with user's currency
-        self.perform_auto_top_off(user_id, &amount, &current_balance.currency).await?;
+        // Perform auto top-off with USD (enforced for off-session auto top-offs)
+        self.perform_auto_top_off(user_id, &amount).await?;
         
         Ok(())
     }
     
     /// Perform auto top-off using customer's default payment method
-    pub async fn perform_auto_top_off(&self, user_id: &Uuid, amount: &BigDecimal, currency: &str) -> Result<(), AppError> {
+    pub async fn perform_auto_top_off(&self, user_id: &Uuid, amount: &BigDecimal) -> Result<(), AppError> {
         info!("Starting auto top-off process for user {} with amount {}", user_id, amount);
         debug!("Auto top-off execution flow: step 1 - validating Stripe service availability");
         
@@ -1099,16 +1119,14 @@ impl BillingService {
             })?;
         debug!("Auto top-off execution flow: step 7 completed - transaction committed successfully");
 
-        debug!("Auto top-off execution flow: step 8 - fetching full Stripe customer object");
-        // Fetch full Stripe Customer object
+        debug!("Auto top-off execution flow: step 8 - ensuring customer has default payment method");
+        // Check if customer has a default payment method set - fetch customer for this check only
         let customer = stripe_service.get_customer(&customer_id).await
             .map_err(|e| {
                 warn!("Auto top-off execution flow: FAILED at step 8 - failed to fetch Stripe customer for user {}: {}", user_id, e);
                 AppError::External(format!("Failed to fetch Stripe customer: {}", e))
             })?;
         
-        debug!("Auto top-off execution flow: step 9 - ensuring customer has default payment method");
-        // Check if customer has a default payment method set
         let has_default_payment_method = customer.invoice_settings.as_ref()
             .and_then(|settings| settings.default_payment_method.as_ref())
             .is_some();
@@ -1148,26 +1166,39 @@ impl BillingService {
         let idempotency_key = format!("auto_topoff_{}_{}_{}", user_id, amount_cents, Utc::now().timestamp_nanos());
         debug!("Auto top-off execution flow: step 10 - payment intent parameters prepared: amount_cents={}, idempotency_key={}", amount_cents, idempotency_key);
         
-        debug!("Auto top-off execution flow: step 10.5 - cleaning up pending invoice items");
-        // Clean up any existing pending invoice items to prevent aggregation
-        if let Err(e) = stripe_service.cleanup_pending_invoice_items(&customer_id).await {
-            warn!("Failed to clean up pending invoice items for customer {}: {}", customer_id, e);
-            // Continue anyway - this is not critical for the top-off to work
+        debug!("Auto top-off execution flow: step 10.5 - cleaning up pending invoice items in different currencies");
+        // Clean up pending invoice items that don't match USD currency
+        // This prevents the "cannot combine currencies" error
+        match stripe_service.cleanup_pending_invoice_items_except_currency(&customer_id, "usd").await {
+            Ok(removed_count) => {
+                if removed_count > 0 {
+                    info!("Cleaned up {} pending invoice items in non-USD currencies for customer {}", 
+                          removed_count, customer_id);
+                }
+            },
+            Err(e) => {
+                warn!("Failed to clean up mismatched currency invoice items for customer {}: {}", customer_id, e);
+                // Fall back to cleaning all items if the selective cleanup fails
+                if let Err(e2) = stripe_service.cleanup_all_pending_invoice_items(&customer_id).await {
+                    warn!("Failed to clean up all pending invoice items: {}", e2);
+                }
+            }
         }
         
-        debug!("Auto top-off execution flow: step 11 - creating invoice for auto top-off");
-        // Create an invoice for auto top-off (which will automatically charge the customer)
+        debug!("Auto top-off execution flow: step 11 - creating invoice for auto top-off with currency: USD");
+        // Create an invoice for auto top-off using USD (enforced for off-session auto top-offs)
         let invoice = stripe_service.create_invoice_for_auto_topoff(
             &idempotency_key,
             &customer_id,
             amount_cents as i64,
-            &currency.to_lowercase(),
-            &format!("Automatic credit top-off for ${}", amount),
+            "usd",
+            &format!("Automatic credit top-off - {} credits", amount),
             ).await.map_err(|e| {
-            warn!("Auto top-off execution flow: FAILED at step 11 - invoice creation failed for user {}: {}", user_id, e);
+            warn!("Auto top-off execution flow: FAILED at step 11 - invoice creation failed for user {} with currency USD: {}", 
+                  user_id, e);
             AppError::External(format!("Failed to create invoice for auto top-off: {}", e))
         })?;
-        info!("Auto top-off execution flow: step 11 completed - invoice created and finalized successfully: {} - payment intent: {} - relying on webhooks for credit fulfillment", 
+        info!("Auto top-off execution flow: step 11 completed - invoice created and finalized successfully in USD: {} - payment intent: {} - relying on webhooks for credit fulfillment", 
             invoice.id, 
             match &invoice.payment_intent {
                 Some(crate::stripe_types::Expandable::Id(id)) => id.as_str(),
@@ -1175,7 +1206,7 @@ impl BillingService {
                 None => "none"
             });
 
-        info!("Auto top-off execution flow: COMPLETED SUCCESSFULLY - user {} auto top-off invoice created with amount {} - webhooks will handle credit fulfillment", user_id, amount);
+        info!("Auto top-off execution flow: COMPLETED SUCCESSFULLY - user {} auto top-off invoice created in USD with amount {} - webhooks will handle credit fulfillment", user_id, amount);
         Ok(())
     }
 
@@ -1262,7 +1293,7 @@ impl BillingService {
         user_id: Uuid,
         limit: i32,
         starting_after: Option<String>,
-    ) -> Result<crate::models::ListInvoicesResponse, AppError> {
+    ) -> Result<ListInvoicesResponse, AppError> {
         debug!("Listing invoices for user: {}", user_id);
 
         // Get customer ID for the user
@@ -1270,7 +1301,7 @@ impl BillingService {
             Ok(id) => id,
             Err(_) => {
                 // If no Stripe customer, return empty list
-                return Ok(crate::models::ListInvoicesResponse {
+                return Ok(ListInvoicesResponse {
                     total_invoices: 0,
                     invoices: vec![],
                     has_more: false,
@@ -1290,7 +1321,7 @@ impl BillingService {
             Ok(json) => json,
             Err(e) => {
                 warn!("Failed to list invoices from Stripe for user {}: {:?}", user_id, e);
-                return Ok(crate::models::ListInvoicesResponse {
+                return Ok(ListInvoicesResponse {
                     total_invoices: 0,
                     invoices: vec![],
                     has_more: false,
@@ -1311,11 +1342,55 @@ impl BillingService {
         // Convert Stripe invoices to our Invoice model
         let mut invoices = Vec::new();
         for invoice_json in data_array {
-            // Extract fee information from payment intent metadata if available
-            let (gross_amount, platform_fee, net_amount, payment_type) = 
-                self.extract_fee_info_from_invoice(&invoice_json, &stripe_service).await;
+            let currency = invoice_json.get("currency")
+                .and_then(|v| v.as_str())
+                .unwrap_or("usd")
+                .to_string();
             
-            let invoice = crate::models::Invoice {
+            let amount_paid = invoice_json.get("amount_paid")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0);
+
+            // Determine the amount to display in USD
+            let amount_paid_display = if currency != "usd" {
+                // For non-USD invoices, fetch the PaymentIntent with expanded balance_transaction
+                if let Some(payment_intent_id) = invoice_json.get("payment_intent").and_then(|pi| pi.as_str()) {
+                    match stripe_service.get_payment_intent(payment_intent_id).await {
+                        Ok(payment_intent) => {
+                            // Try to extract the USD amount from the balance transaction
+                            if let Some(latest_charge) = payment_intent.latest_charge {
+                                // Check if the charge is expanded (not just an ID)
+                                if let Expandable::Object(charge) = latest_charge {
+                                    // Check if balance_transaction is present on the charge
+                                    if let Some(balance_transaction) = charge.balance_transaction {
+                                        // balance_transaction.amount is in USD cents (gross charge)
+                                        format!("{:.2}", balance_transaction.amount as f64 / 100.0)
+                                    } else {
+                                        // Fallback to original amount
+                                        format!("{:.2}", amount_paid as f64 / 100.0)
+                                    }
+                                } else {
+                                    // Charge is not expanded, fallback to original amount
+                                    format!("{:.2}", amount_paid as f64 / 100.0)
+                                }
+                            } else {
+                                format!("{:.2}", amount_paid as f64 / 100.0)
+                            }
+                        }
+                        Err(_) => {
+                            // Fallback to original amount if PaymentIntent fetch fails
+                            format!("{:.2}", amount_paid as f64 / 100.0)
+                        }
+                    }
+                } else {
+                    format!("{:.2}", amount_paid as f64 / 100.0)
+                }
+            } else {
+                // For USD invoices, use the original amount_paid
+                format!("{:.2}", amount_paid as f64 / 100.0)
+            };
+            
+            let invoice = Invoice {
                 id: invoice_json.get("id")
                     .and_then(|v| v.as_str())
                     .unwrap_or("")
@@ -1325,16 +1400,9 @@ impl BillingService {
                     .unwrap_or(0),
                 due_date: invoice_json.get("due_date")
                     .and_then(|v| v.as_i64()),
-                amount_due: invoice_json.get("amount_due")
-                    .and_then(|v| v.as_i64())
-                    .unwrap_or(0),
-                amount_paid: invoice_json.get("amount_paid")
-                    .and_then(|v| v.as_i64())
-                    .unwrap_or(0),
-                currency: invoice_json.get("currency")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("usd")
-                    .to_string(),
+                amount_paid_display,
+                amount_paid,
+                currency,
                 status: invoice_json.get("status")
                     .and_then(|v| v.as_str())
                     .unwrap_or("unknown")
@@ -1342,70 +1410,19 @@ impl BillingService {
                 invoice_pdf_url: invoice_json.get("invoice_pdf")
                     .and_then(|v| v.as_str())
                     .map(|s| s.to_string()),
-                // Add fee breakdown information
-                gross_amount,
-                platform_fee,
-                net_amount,
-                payment_type,
             };
             invoices.push(invoice);
         }
 
         info!("Successfully retrieved {} invoices for user {}", invoices.len(), user_id);
 
-        Ok(crate::models::ListInvoicesResponse {
+        Ok(ListInvoicesResponse {
             total_invoices: invoices.len() as i32,
             invoices,
             has_more,
         })
     }
 
-    /// Extract fee information from invoice data by checking payment intent metadata
-    async fn extract_fee_info_from_invoice(
-        &self,
-        invoice_json: &serde_json::Value,
-        stripe_service: &crate::services::stripe_service::StripeService,
-    ) -> (Option<String>, Option<String>, Option<String>, Option<String>) {
-        // Try to get payment intent ID from the invoice
-        let payment_intent_id = invoice_json
-            .get("payment_intent")
-            .and_then(|pi| pi.as_str());
-        
-        if let Some(pi_id) = payment_intent_id {
-            // Fetch payment intent to get metadata
-            if let Ok(payment_intent) = stripe_service.get_payment_intent(pi_id).await {
-                if let Some(metadata) = &payment_intent.metadata {
-                    let gross_amount = metadata.get("gross_amount").map(|s| format!("{:.2}", s.parse::<f64>().unwrap_or(0.0)));
-                    let platform_fee = metadata.get("platform_fee").map(|s| format!("{:.2}", s.parse::<f64>().unwrap_or(0.0)));
-                    let net_amount = metadata.get("net_amount").map(|s| format!("{:.2}", s.parse::<f64>().unwrap_or(0.0)));
-                    let payment_type = metadata.get("type").map(|s| s.clone());
-                    
-                    return (gross_amount, platform_fee, net_amount, payment_type);
-                }
-            }
-        }
-        
-        // Fallback: check if it's an auto top-off from invoice metadata
-        if let Some(invoice_metadata) = invoice_json.get("metadata") {
-            if let Some(invoice_type) = invoice_metadata.get("type").and_then(|t| t.as_str()) {
-                if invoice_type == "auto_topoff" {
-                    // For auto top-offs, calculate from invoice amount (no separate fees)
-                    if let Some(amount_paid) = invoice_json.get("amount_paid").and_then(|a| a.as_i64()) {
-                        let amount_dollars = format!("{:.2}", amount_paid as f64 / 100.0);
-                        return (
-                            Some(amount_dollars.clone()),
-                            Some("0.00".to_string()), // Auto top-offs don't have platform fees
-                            Some(amount_dollars),
-                            Some("auto_topoff".to_string()),
-                        );
-                    }
-                }
-            }
-        }
-        
-        // Default: no fee information available
-        (None, None, None, None)
-    }
 
     /// Calculate cost for streaming tokens using server-side model pricing
     pub async fn calculate_streaming_cost(

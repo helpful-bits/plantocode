@@ -916,18 +916,18 @@ pub async fn get_payment_methods_command(
 #[tauri::command]
 pub async fn list_invoices_command(
     limit: Option<i32>,
-    offset: Option<i32>,
+    starting_after: Option<String>,
     billing_client: State<'_, Arc<BillingClient>>,
 ) -> Result<ListInvoicesResponse, AppError> {
     debug!(
-        "List invoices command called with limit: {:?}, offset: {:?}",
-        limit, offset
+        "List invoices command called with limit: {:?}, starting_after: {:?}",
+        limit, starting_after
     );
 
     // Security validation
     check_rate_limit("list_invoices")?;
 
-    let response = billing_client.list_invoices(limit, offset).await?;
+    let response = billing_client.list_invoices(limit, starting_after).await?;
 
     info!(
         "Successfully retrieved {} invoices via command",

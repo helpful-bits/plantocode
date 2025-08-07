@@ -998,14 +998,14 @@ impl CreditService {
         // Validate purchase amount using financial validation utility
         validate_credit_purchase_amount(&net_amount)?;
         
-        if currency.to_uppercase() != "USD" {
-            return Err(AppError::InvalidArgument(
-                format!("Only USD currency is supported, got: {}", currency)
-            ));
-        }
+        // Accept all currencies - credits are currency-agnostic internal units
+        // The actual currency conversion happens at the payment processor level (Stripe)
+        // We record the currency for audit purposes but credits remain the same regardless
+        // TODO: Consider implementing exchange rate conversion if needed for reporting
+        let currency_upper = currency.to_uppercase();
         
         info!("Processing credit purchase for user {}: gross {} {}, fee {}, net {}", 
-              user_id, gross_amount, currency, fee_amount, net_amount);
+              user_id, gross_amount, currency_upper, fee_amount, net_amount);
         
         let pool = self.user_credit_repository.get_pool();
         

@@ -26,12 +26,16 @@ env:
 jobs:
   build-windows:
     name: Build Windows with Updater Artifacts
-    runs-on: buildjet-32vcpu-windows-2022  # BuildJet: MAXIMUM SPEED - 32 vCPU!
-    # FAST RUNNER OPTIONS (requires setup - see comments):
-    # runs-on: namespace-profile-windows-32vcpu  # Namespace: 32 vCPU, 64GB RAM (fastest) - requires namespace.so account
-    # runs-on: buildjet-32vcpu-windows-2022      # BuildJet: 32 vCPU - requires buildjet.com account
-    # runs-on: warpbuild-windows-x64-32vcpu      # WarpBuild: 32 vCPU - requires warpbuild.com account
-    # runs-on: blacksmith-32vcpu-windows-2022    # Blacksmith: 32 vCPU - requires blacksmith.sh account
+    runs-on: windows-latest  # GitHub default runner
+    # FAST ALTERNATIVES (Windows runners that actually work):
+    # runs-on: depot-windows-32vcpu-x64          # Depot: 32 vCPU, 4x cheaper - sign up at depot.dev
+    # runs-on: runson-windows-x64-4cpu           # RunsOn: Self-hosted in your AWS - runs-on.com
+    # 
+    # DON'T WORK FOR WINDOWS:
+    # BuildJet: Linux/Ubuntu only, no Windows support
+    # WarpBuild: Windows support "coming soon" (not available yet)
+    # Namespace: No Windows support
+    # Blacksmith: No Windows support
     timeout-minutes: 30
     
     steps:
@@ -103,11 +107,6 @@ jobs:
   build-macos:
     name: Build macOS with Updater Artifacts
     runs-on: macos-latest  # GitHub default runner (sufficient for macOS)
-    # FAST RUNNER OPTIONS (requires setup - see comments):
-    # runs-on: namespace-profile-macos-m4-pro    # Namespace: Apple M4 Pro (fastest) - requires namespace.so account
-    # runs-on: buildjet-8vcpu-macos-14           # BuildJet: 8 vCPU - requires buildjet.com account
-    # runs-on: warpbuild-macos-arm64-m2-pro      # WarpBuild: M2 Pro - requires warpbuild.com account
-    # runs-on: blacksmith-16vcpu-macos-arm64     # Blacksmith: 16 vCPU - requires blacksmith.sh account
     timeout-minutes: 30
     
     steps:

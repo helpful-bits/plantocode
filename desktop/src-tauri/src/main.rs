@@ -28,7 +28,7 @@ use crate::db_utils::{BackgroundJobRepository, SessionRepository, SettingsReposi
 use crate::error::AppError;
 use crate::services::config_cache_service::ConfigCache;
 use crate::utils::FileLockManager;
-use dotenv::dotenv;
+use dotenvy::dotenv;
 use log::{debug, error, info, warn};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

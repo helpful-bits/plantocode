@@ -14,6 +14,7 @@ import { createCreditPurchaseCheckoutSession, getCreditPurchaseFeeTiers, type Fe
 import { useNotification } from "@/contexts/notification-context";
 import { getErrorMessage } from "@/utils/error-handling";
 import { open } from "@/utils/shell-utils";
+import { formatUsdCurrency } from "@/utils/currency-utils";
 import { PaymentPollingScreen } from "./PaymentPollingScreen";
 import { Badge } from "@/ui/badge";
 import { cn } from "@/utils/utils";
@@ -165,7 +166,7 @@ export const CreditManager = ({ isOpen, onClose }: CreditManagerProps) => {
           : 1;
         
         if (!isNaN(amount) && amount < minAmount) {
-          setError(`Amount must be at least $${minAmount.toFixed(2)}`);
+          setError(`Amount must be at least ${formatUsdCurrency(minAmount)}`);
         } else {
           setError(null);
         }
@@ -182,7 +183,7 @@ export const CreditManager = ({ isOpen, onClose }: CreditManagerProps) => {
       : 1;
     
     if (!amount || amount < minAmount) {
-      setError(`Please enter an amount of at least $${minAmount.toFixed(2)}`);
+      setError(`Please enter an amount of at least ${formatUsdCurrency(minAmount)}`);
       return;
     }
 
@@ -320,7 +321,7 @@ export const CreditManager = ({ isOpen, onClose }: CreditManagerProps) => {
                 </div>
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-muted-foreground">
-                    ${tier.min.toFixed(0)}{tier.max ? `–$${(tier.max - 0.01).toFixed(2)}` : '+'}
+                    ${formatUsdCurrency(tier.min).replace('.00', '')}{tier.max ? `–${formatUsdCurrency(tier.max - 0.01)}` : '+'}
                   </span>
                   {isCurrentTier && (
                     <Badge variant="outline" className="border-primary text-primary">
@@ -368,7 +369,7 @@ export const CreditManager = ({ isOpen, onClose }: CreditManagerProps) => {
               Save {savingsPercent}% on fees!
             </p>
             <p className="text-sm text-muted-foreground">
-              Add just <span className="font-semibold text-foreground">${nextTierInfo.amountNeeded.toFixed(2)}</span> more to reach the <span className="font-medium">{nextTierInfo.tier.label}</span> tier.
+              Add just <span className="font-semibold text-foreground">{formatUsdCurrency(nextTierInfo.amountNeeded)}</span> more to reach the <span className="font-medium">{nextTierInfo.tier.label}</span> tier.
             </p>
           </div>
         </div>
@@ -421,17 +422,17 @@ export const CreditManager = ({ isOpen, onClose }: CreditManagerProps) => {
                     <div className="grid grid-cols-3 gap-4 text-sm">
                       <div>
                         <p className="text-muted-foreground mb-1">You pay</p>
-                        <p className="font-semibold">${totalPaid.toFixed(2)}</p>
+                        <p className="font-semibold">{formatUsdCurrency(totalPaid)}</p>
                       </div>
                       <div>
                         <p className="text-muted-foreground mb-1">Fees</p>
                         <p className="font-semibold text-destructive">
-                          -${totalFees.toFixed(2)} ({((totalFees / totalPaid) * 100).toFixed(0)}%)
+                          -{formatUsdCurrency(totalFees)} ({((totalFees / totalPaid) * 100).toFixed(0)}%)
                         </p>
                       </div>
                       <div>
                         <p className="text-muted-foreground mb-1">Credits</p>
-                        <p className="font-semibold text-success">${totalCredits.toFixed(2)}</p>
+                        <p className="font-semibold text-success">{formatUsdCurrency(totalCredits)}</p>
                       </div>
                     </div>
                   </div>
@@ -484,7 +485,7 @@ export const CreditManager = ({ isOpen, onClose }: CreditManagerProps) => {
                       </span>
                     </div>
                     <div className="text-5xl font-bold text-foreground">
-                      ${balance.toFixed(2)}
+                      {formatUsdCurrency(balance)}
                     </div>
                   </div>
                   <div className="hidden md:block opacity-10">
@@ -537,7 +538,7 @@ export const CreditManager = ({ isOpen, onClose }: CreditManagerProps) => {
                               </div>
                             )}
                             <div className="text-center">
-                              <p className="text-3xl font-bold mb-1">${preset}</p>
+                              <p className="text-3xl font-bold mb-1">{formatUsdCurrency(preset).replace('.00', '')}</p>
                               {tier && (
                                 <p className={cn(
                                   "text-xs",
@@ -582,7 +583,7 @@ export const CreditManager = ({ isOpen, onClose }: CreditManagerProps) => {
                         </div>
                         <p className="text-sm text-muted-foreground">
                           {feeTiers && feeTiers.tiers.length > 0 ? (
-                            <>Minimum amount: ${Math.min(...feeTiers.tiers.map(t => t.min)).toFixed(2)}</>
+                            <>Minimum amount: {formatUsdCurrency(Math.min(...feeTiers.tiers.map(t => t.min)))}</>
                           ) : (
                             <>Minimum amount: $1.00</>
                           )}
@@ -612,20 +613,20 @@ export const CreditManager = ({ isOpen, onClose }: CreditManagerProps) => {
                             <div className="space-y-3">
                               <div className="flex justify-between items-center py-2">
                                 <span className="text-muted-foreground">Amount</span>
-                                <span className="font-semibold text-lg">${amount.toFixed(2)}</span>
+                                <span className="font-semibold text-lg">{formatUsdCurrency(amount)}</span>
                               </div>
                               <div className="flex justify-between items-center py-2 border-t border-border/50">
                                 <span className="text-muted-foreground">
                                   Processing fee ({(feeRate * 100).toFixed(0)}%)
                                 </span>
                                 <span className="text-destructive font-medium">
-                                  -${feeAmount.toFixed(2)}
+                                  -{formatUsdCurrency(feeAmount)}
                                 </span>
                               </div>
                               <div className="flex justify-between items-center py-3 border-t-2 border-primary/20 bg-primary/5 -mx-6 px-6 -mb-6 rounded-b-xl">
                                 <span className="font-semibold text-lg">Credits received</span>
                                 <span className="font-bold text-2xl text-primary">
-                                  ${netAmount.toFixed(2)}
+                                  {formatUsdCurrency(netAmount)}
                                 </span>
                               </div>
                             </div>
@@ -648,7 +649,7 @@ export const CreditManager = ({ isOpen, onClose }: CreditManagerProps) => {
                       ) : isValidAmount() ? (
                         <>
                           <CreditCard className="h-5 w-5 mr-2" />
-                          Purchase ${getCurrentAmount()!.toFixed(2)}
+                          Purchase ${formatUsdCurrency(getCurrentAmount()!)}
                         </>
                       ) : (
                         'Select an amount to purchase'

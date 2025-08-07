@@ -267,7 +267,10 @@ impl Auth0OAuthService {
         auth0_refresh_token: Option<String>,
         client_id_from_header: Option<&str>,
     ) -> Result<AuthDataResponse, AppError> {
-        if !user_info.email_verified.unwrap_or(false) {
+        // Skip email verification for GitHub users (GitHub is a trusted provider)
+        let is_github_user = user_info.sub.starts_with("github|");
+        
+        if !is_github_user && !user_info.email_verified.unwrap_or(false) {
             return Err(AppError::Unauthorized("Email verification is required to log in. Please verify your email with your provider.".to_string()));
         }
         

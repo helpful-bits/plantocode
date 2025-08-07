@@ -547,22 +547,28 @@ impl BillingClient {
     pub async fn list_invoices(
         &self,
         limit: Option<i32>,
-        offset: Option<i32>,
+        starting_after: Option<String>,
     ) -> Result<ListInvoicesResponse, AppError> {
         debug!(
-            "Listing invoices with limit: {:?}, offset: {:?}",
-            limit, offset
+            "Listing invoices with limit: {:?}, starting_after: {:?}",
+            limit, starting_after
         );
 
         // Validate pagination parameters
         let limit = limit.map(|l| l.clamp(1, 100)).unwrap_or(50);
-        let offset = offset.map(|o| o.max(0)).unwrap_or(0);
-
+        
         let mut query_params = Vec::new();
         query_params.push(format!("limit={}", limit));
-        query_params.push(format!("offset={}", offset));
-
-        let query_string = format!("?{}", query_params.join("&"));
+        
+        if let Some(cursor) = starting_after {
+            query_params.push(format!("starting_after={}", cursor));
+        }
+        
+        let query_string = if query_params.is_empty() {
+            String::new()
+        } else {
+            format!("?{}", query_params.join("&"))
+        };
         let endpoint = format!("/api/billing/invoices{}", query_string);
 
         let response = self

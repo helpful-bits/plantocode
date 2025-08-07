@@ -94,13 +94,14 @@ pub async fn fetch_and_cache_server_configurations(
 pub fn get_cached_config_value(key: &str, app_handle: &AppHandle) -> Option<JsonValue> {
     let cache = app_handle.state::<ConfigCache>();
 
-    match cache.lock() {
+    let result = match cache.lock() {
         Ok(cache_guard) => {
             let value = cache_guard.get(key).cloned();
             value
         }
-        Err(e) => None,
-    }
+        Err(_e) => None,
+    };
+    result
 }
 
 /// Retrieves all cached configuration values
@@ -110,7 +111,7 @@ pub fn get_all_cached_config_values(
 ) -> Result<HashMap<String, JsonValue>, AppError> {
     let cache = app_handle.state::<ConfigCache>();
 
-    match cache.lock() {
+    let result = match cache.lock() {
         Ok(cache_guard) => {
             let configs = cache_guard.clone();
             Ok(configs)
@@ -119,7 +120,8 @@ pub fn get_all_cached_config_values(
             "Failed to retrieve cached configurations: {}",
             e
         ))),
-    }
+    };
+    result
 }
 
 /// Refreshes the configuration cache on demand
@@ -147,7 +149,7 @@ pub async fn auto_sync_cache_with_server(app_handle: AppHandle) {
                     }
                 }
             }
-            Err(e) => {}
+            Err(_e) => {}
         }
     }
 }
@@ -217,7 +219,7 @@ pub async fn get_server_config_hash(app_handle: &AppHandle) -> Result<u64, AppEr
 pub fn get_cached_config_hash(app_handle: &AppHandle) -> Result<u64, AppError> {
     let cache = app_handle.state::<ConfigCache>();
 
-    match cache.lock() {
+    let result = match cache.lock() {
         Ok(cache_guard) => {
             let mut hasher = DefaultHasher::new();
 
@@ -245,7 +247,8 @@ pub fn get_cached_config_hash(app_handle: &AppHandle) -> Result<u64, AppError> {
             "Failed to calculate cached config hash: {}",
             e
         ))),
-    }
+    };
+    result
 }
 
 /// Validates runtime configuration before caching - ZERO tolerance for invalid configs

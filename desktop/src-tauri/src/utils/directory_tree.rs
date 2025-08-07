@@ -134,7 +134,7 @@ fn format_directory_tree(paths: &[PathBuf]) -> String {
     result.push_str(".\n");
 
     for path in paths {
-        let path_str = path.to_string_lossy();
+        let _path_str = path.to_string_lossy();
         let depth = path.components().count();
 
         // Indent based on depth
