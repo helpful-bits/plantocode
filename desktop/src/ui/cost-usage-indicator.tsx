@@ -1,6 +1,7 @@
 import { RefreshCw } from "lucide-react";
 
 import { useBillingData } from "@/hooks/use-billing-data";
+import { formatUsdCurrency } from "@/utils/currency-utils";
 
 import { Badge } from "./badge";
 import { Button } from "./button";
@@ -39,12 +40,6 @@ export function CostUsageIndicator({
   const actualCreditBalance = (creditBalance ?? creditBalanceUsd) ?? 0;
   const hasFreeCredits = freeCreditBalanceUsd > 0;
 
-  // Format currency with 2 decimal places
-  const formattedCreditBalance = actualCreditBalance.toFixed(2);
-
-  // Format currency symbol
-  const currencySymbol = '$';
-
   // Show compact view with just the essentials
   if (compact) {
     return (
@@ -56,9 +51,9 @@ export function CostUsageIndicator({
         <Badge 
           variant="outline" 
           className={`bg-background/80 border-border/60 backdrop-blur-sm ${actualCreditBalance > 0 ? 'text-foreground' : 'text-destructive border-destructive/50'}`}
-          title={hasFreeCredits ? `Paid: $${paidCreditBalanceUsd.toFixed(2)} | Free: $${freeCreditBalanceUsd.toFixed(2)}` : undefined}
+          title={hasFreeCredits ? `Paid: ${formatUsdCurrency(paidCreditBalanceUsd)} | Free: ${formatUsdCurrency(freeCreditBalanceUsd)}` : undefined}
         >
-          Credits: {currencySymbol}{formattedCreditBalance}
+          Credits: {formatUsdCurrency(actualCreditBalance)}
           {hasFreeCredits && <span className="text-xs ml-1 text-green-600 dark:text-green-400">(incl. free)</span>}
         </Badge>
 
@@ -93,9 +88,9 @@ export function CostUsageIndicator({
             <Badge 
               variant="outline" 
               className={`bg-background/80 border-border/60 backdrop-blur-sm text-xs ${actualCreditBalance > 0 ? 'text-foreground' : 'text-destructive border-destructive/50'}`}
-              title={hasFreeCredits ? `Paid: $${paidCreditBalanceUsd.toFixed(2)} | Free: $${freeCreditBalanceUsd.toFixed(2)}` : undefined}
+              title={hasFreeCredits ? `Paid: ${formatUsdCurrency(paidCreditBalanceUsd)} | Free: ${formatUsdCurrency(freeCreditBalanceUsd)}` : undefined}
             >
-              {currencySymbol}{formattedCreditBalance}
+              {formatUsdCurrency(actualCreditBalance)}
               {hasFreeCredits && <span className="text-xs ml-1 text-green-600 dark:text-green-400">(incl. free)</span>}
             </Badge>
 

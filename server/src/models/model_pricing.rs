@@ -132,12 +132,12 @@ pub trait ModelPricing {
         // Check for long context pricing threshold
         let long_context_threshold = parse_pricing_field_i64(pricing_info, "long_context_threshold")
             .unwrap_or(i64::MAX);
-        let total_tokens = usage.prompt_tokens + usage.completion_tokens;
-        let use_long_context = total_tokens as i64 > long_context_threshold;
+        // Google's pricing tiers are based on input tokens only, not total tokens
+        let use_long_context = usage.prompt_tokens as i64 > long_context_threshold;
         
         // Determine input pricing rate (with long context support)
         let input_rate = if use_long_context {
-            parse_pricing_field(pricing_info, "input_long_context_per_million", &min_price, &max_price)
+            parse_pricing_field(pricing_info, "long_context_input_per_million", &min_price, &max_price)
                 .or_else(|_| parse_pricing_field(pricing_info, "input_per_million", &min_price, &max_price))
         } else {
             parse_pricing_field(pricing_info, "input_per_million", &min_price, &max_price)
@@ -146,7 +146,7 @@ pub trait ModelPricing {
         
         // Determine output pricing rate (with long context support)
         let output_rate = if use_long_context {
-            parse_pricing_field(pricing_info, "output_long_context_per_million", &min_price, &max_price)
+            parse_pricing_field(pricing_info, "long_context_output_per_million", &min_price, &max_price)
                 .or_else(|_| parse_pricing_field(pricing_info, "output_per_million", &min_price, &max_price))
         } else {
             parse_pricing_field(pricing_info, "output_per_million", &min_price, &max_price)
@@ -181,9 +181,17 @@ pub trait ModelPricing {
         
         // Calculate cache read cost (if available)
         if usage.cache_read_tokens > 0 {
-            let cache_read_rate = parse_pricing_field(pricing_info, "cache_read_per_million", &min_price, &max_price)
-                .or_else(|_| parse_pricing_field(pricing_info, "cached_input_per_million", &min_price, &max_price))
-                .unwrap_or_else(|_| input_rate.clone());
+            let cache_read_rate = if use_long_context {
+                // Try long context cached rate first, then fall back to regular cached rate
+                parse_pricing_field(pricing_info, "long_context_cached_input_per_million", &min_price, &max_price)
+                    .or_else(|_| parse_pricing_field(pricing_info, "cached_input_per_million", &min_price, &max_price))
+                    .or_else(|_| parse_pricing_field(pricing_info, "cache_read_per_million", &min_price, &max_price))
+                    .unwrap_or_else(|_| input_rate.clone())
+            } else {
+                parse_pricing_field(pricing_info, "cache_read_per_million", &min_price, &max_price)
+                    .or_else(|_| parse_pricing_field(pricing_info, "cached_input_per_million", &min_price, &max_price))
+                    .unwrap_or_else(|_| input_rate.clone())
+            };
             let cache_read_cost = calculate_token_cost(usage.cache_read_tokens as i64, &cache_read_rate, &million)?;
             total_cost = total_cost.checked_add(&cache_read_cost)
                 .ok_or_else(|| "Cost arithmetic overflow in cache read calculation".to_string())?;
@@ -402,22 +410,62 @@ mod tests {
             pricing_info: json!({
                 "input_per_million": 0.125,
                 "output_per_million": 0.375,
-                "input_long_context_per_million": 0.25,
-                "output_long_context_per_million": 0.75,
+                "long_context_input_per_million": 0.25,
+                "long_context_output_per_million": 0.75,
                 "long_context_threshold": 128000
             }),
             provider_code: "test".to_string(),
         };
         
-        // Test with tokens exceeding threshold
-        let usage = ProviderUsage::new(100000, 50000, 0, 0, "test-model".to_string());
+        // Test with tokens NOT exceeding threshold (should use regular pricing)
+        let usage_regular = ProviderUsage::new(100000, 50000, 0, 0, "test-model".to_string());
+        let result_regular = model.calculate_total_cost(&usage_regular);
+        assert!(result_regular.is_ok());
+        // Input tokens: 100000 < 128000, so use regular pricing
+        // Cost: (100000 * 0.125) / 1M + (50000 * 0.375) / 1M = 0.0125 + 0.01875 = 0.03125
+        let cost_regular = result_regular.unwrap();
+        let expected_regular = BigDecimal::from_str("0.03125").unwrap();
+        assert_eq!(cost_regular, expected_regular);
+        
+        // Test with tokens exceeding threshold (should use long context pricing)
+        let usage_long = ProviderUsage::new(150000, 50000, 0, 0, "test-model".to_string());
+        let result_long = model.calculate_total_cost(&usage_long);
+        assert!(result_long.is_ok());
+        // Input tokens: 150000 > 128000, so use long context pricing
+        // Cost: (150000 * 0.25) / 1M + (50000 * 0.75) / 1M = 0.0375 + 0.0375 = 0.075
+        let cost_long = result_long.unwrap();
+        let expected_long = BigDecimal::from_str("0.075").unwrap();
+        assert_eq!(cost_long, expected_long);
+    }
+
+    #[test]
+    fn test_long_context_cached_input_pricing() {
+        let model = MockModel {
+            pricing_info: json!({
+                "input_per_million": 1.25,
+                "output_per_million": 10.00,
+                "long_context_input_per_million": 2.50,
+                "long_context_output_per_million": 15.00,
+                "cached_input_per_million": 0.31,
+                "long_context_cached_input_per_million": 0.625,
+                "long_context_threshold": 200000
+            }),
+            provider_code: "google".to_string(),
+        };
+        
+        // Test with long context and cached input (like Gemini 2.5 Pro)
+        // Total input: 250000 tokens (200000 regular + 50000 cached)
+        let usage = ProviderUsage::new(250000, 3000, 0, 50000, "gemini-2.5-pro".to_string());
         let result = model.calculate_total_cost(&usage);
         assert!(result.is_ok());
         
-        // Total tokens: 150000 > 128000, so use long context pricing
-        // Cost: (100000 * 0.25) / 1M + (50000 * 0.75) / 1M = 0.025 + 0.0375 = 0.0625
+        // Input tokens: 250000 > 200000, so use long context pricing
+        // Regular input: 250000 - 50000 = 200000 @ $2.50/M = $0.50
+        // Cached input: 50000 @ $0.625/M = $0.03125
+        // Output: 3000 @ $15.00/M = $0.045
+        // Total: $0.50 + $0.03125 + $0.045 = $0.57625
         let cost = result.unwrap();
-        let expected = BigDecimal::from_str("0.0625").unwrap();
+        let expected = BigDecimal::from_str("0.57625").unwrap();
         assert_eq!(cost, expected);
     }
 

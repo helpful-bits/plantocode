@@ -175,7 +175,9 @@
       "Bash(export APPLE_API_KEY=\"T9SPBD48N3\")",
       "Bash(export APPLE_API_KEY_PATH=\"/Users/kirylkazlovich/dev/vibe-manager/secrets/AuthKey_T9SPBD48N3.p8\")",
       "Bash(export APPLE_API_ISSUER=\"38c0c750-d236-4564-8251-fbbd06073c60\")",
-      "Bash(export:*)"
+      "Bash(export:*)",
+      "Bash(sh:*)",
+      "Bash(aws s3 cp:*)"
     ],
     "deny": []
   },

@@ -9,16 +9,11 @@ pub struct Invoice {
     pub id: String,
     pub created: i64,
     pub due_date: Option<i64>,
-    pub amount_due: i64,
+    pub amount_paid_display: String,
     pub amount_paid: i64,
     pub currency: String,
     pub status: String,
     pub invoice_pdf_url: Option<String>,
-    // Fee breakdown fields - extracted from payment intent metadata or charge details
-    pub gross_amount: Option<String>,
-    pub platform_fee: Option<String>, 
-    pub net_amount: Option<String>,
-    pub payment_type: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

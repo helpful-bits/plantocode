@@ -1087,42 +1087,37 @@ export async function logError(
     };
   }
 
-  // Error logging is disabled by default. This is a placeholder for future implementation.
-  // In a production setting, this would send errors to a monitoring service.
+  // Log errors locally using structured logging
+  // In development, use the logger module for better formatting
   if (import.meta.env.DEV) {
     // Use structured logging in development
     const logger = await import('./logger').then(m => m.createLogger({ namespace: 'ErrorHandling' }));
     logger.error(`${context}:`, errorInfo.message, enrichedMetadata);
-    return;
+  } else {
+    // In production, log to console with structured format for monitoring tools
+    console.error('[ERROR]', {
+      timestamp: new Date().toISOString(),
+      context,
+      message: errorInfo.message,
+      type: errorInfo.type,
+      metadata: enrichedMetadata,
+      workflowContext: errorInfo.workflowContext
+    });
   }
-
-  // Try to get server URL from Tauri backend
-  let serverUrl: string | null = null;
+  
+  // Optional: Send error telemetry to Tauri backend for local logging/metrics
+  // This doesn't require network access or authentication
   try {
     const { invoke } = await import('@tauri-apps/api/core');
-    serverUrl = await invoke<string>('get_server_url');
-  } catch (e) {
-    // If we can't get server URL, just return
-    return;
-  }
-
-  if (!serverUrl) {
-    return;
-  }
-
-  try {
-    await fetch(`${serverUrl}/api/error`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ 
-        error: errorInfo.message, 
-        errorType: errorInfo.type,
-        context, 
-        metadata: enrichedMetadata 
-      }),
+    await invoke('log_client_error', {
+      error: errorInfo.message,
+      errorType: errorInfo.type,
+      context,
+      metadata: enrichedMetadata
     });
   } catch (_e) {
-    // Swallow errors in production logging to avoid recursive failures
+    // If Tauri command doesn't exist or fails, silently continue
+    // This is optional telemetry and shouldn't break the app
   }
 }
 

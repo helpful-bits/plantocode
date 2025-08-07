@@ -43,20 +43,19 @@ export function InvoicesList({ className }: InvoicesListProps) {
   const [invoicesData, setInvoicesData] = useState<ListInvoicesResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [currentPage, setCurrentPage] = useState(1);
+  const [pageHistory, setPageHistory] = useState<string[]>([]);
+  const [currentPageIndex, setCurrentPageIndex] = useState(0);
   const [downloadingInvoice, setDownloadingInvoice] = useState<string | null>(null);
   const [downloadedFiles, setDownloadedFiles] = useState<Record<string, string>>({});
 
-  const loadInvoices = async (page: number = 1) => {
+  const loadInvoices = async (startingAfter?: string) => {
     try {
       setIsLoading(true);
       setError(null);
       
-      const offset = (page - 1) * ITEMS_PER_PAGE;
-      const response = await listInvoices(ITEMS_PER_PAGE, offset);
+      const response = await listInvoices(ITEMS_PER_PAGE, startingAfter);
       
       setInvoicesData(response);
-      setCurrentPage(page);
     } catch (err) {
       const errorMessage = getErrorMessage(err);
       
@@ -78,14 +77,15 @@ export function InvoicesList({ className }: InvoicesListProps) {
 
   // Initial load
   useEffect(() => {
-    loadInvoices(1);
+    loadInvoices();
   }, []); // Empty dependency array for initial load only
 
   // Listen for billing data updates
   useEffect(() => {
     const handleBillingDataUpdated = () => {
       // Reload the current page of invoices
-      loadInvoices(currentPage);
+      const cursor = currentPageIndex > 0 ? pageHistory[currentPageIndex - 1] : undefined;
+      loadInvoices(cursor);
     };
 
     window.addEventListener('billing-data-updated', handleBillingDataUpdated);
@@ -93,14 +93,40 @@ export function InvoicesList({ className }: InvoicesListProps) {
     return () => {
       window.removeEventListener('billing-data-updated', handleBillingDataUpdated);
     };
-  }, [currentPage]); // Only depend on currentPage
+  }, [currentPageIndex, pageHistory]); // Depend on pagination state
 
   const handleRetry = () => {
-    loadInvoices(currentPage);
+    const cursor = currentPageIndex > 0 ? pageHistory[currentPageIndex - 1] : undefined;
+    loadInvoices(cursor);
   };
 
-  const handlePageChange = (newPage: number) => {
-    loadInvoices(newPage);
+  const handleNextPage = async () => {
+    if (!invoicesData || invoicesData.invoices.length === 0) return;
+    
+    const lastInvoiceId = invoicesData.invoices[invoicesData.invoices.length - 1].id;
+    
+    // Add current last invoice ID to history if moving forward
+    const newHistory = [...pageHistory.slice(0, currentPageIndex), lastInvoiceId];
+    setPageHistory(newHistory);
+    setCurrentPageIndex(currentPageIndex + 1);
+    
+    await loadInvoices(lastInvoiceId);
+  };
+  
+  const handlePreviousPage = async () => {
+    if (currentPageIndex <= 0) return;
+    
+    const newIndex = currentPageIndex - 1;
+    setCurrentPageIndex(newIndex);
+    
+    const cursor = newIndex > 0 ? pageHistory[newIndex - 1] : undefined;
+    await loadInvoices(cursor);
+  };
+  
+  const handleFirstPage = async () => {
+    setCurrentPageIndex(0);
+    setPageHistory([]);
+    await loadInvoices();
   };
 
   const handleDownloadInvoice = async (invoice: Invoice) => {
@@ -139,7 +165,7 @@ export function InvoicesList({ className }: InvoicesListProps) {
 
   // Only show "No Billing History" if we're on the first page with no data
   // If we're on a later page with no data, show the empty table with pagination
-  if (!invoicesData || (invoicesData.invoices.length === 0 && currentPage === 1)) {
+  if (!invoicesData || (invoicesData.invoices.length === 0 && currentPageIndex === 0)) {
     return (
       <Card className={className}>
         <CardHeader>
@@ -191,11 +217,11 @@ export function InvoicesList({ className }: InvoicesListProps) {
                       <p className="text-sm text-muted-foreground">
                         No invoices yet. Your invoice history will appear here after purchases.
                       </p>
-                      {currentPage > 1 && (
+                      {currentPageIndex > 0 && (
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => handlePageChange(currentPage - 1)}
+                          onClick={handlePreviousPage}
                           className="h-8 px-3"
                         >
                           <ChevronLeft className="h-4 w-4 mr-2" />
@@ -213,7 +239,7 @@ export function InvoicesList({ className }: InvoicesListProps) {
                 >
                   <td className="py-2 px-1">
                     <span className="font-medium text-sm">
-                      {formatUsdCurrency(invoice.amountDue / 100)}
+                      {formatUsdCurrency(Number(invoice.amountPaidDisplay))}
                     </span>
                   </td>
                   <td className="py-2 px-1">
@@ -257,18 +283,18 @@ export function InvoicesList({ className }: InvoicesListProps) {
         </div>
 
         {/* Pagination */}
-        {(invoicesData.hasMore || currentPage > 1) && (
+        {(invoicesData.hasMore || currentPageIndex > 0) && (
           <div className="pt-4 border-t flex-shrink-0">
             <div className="flex items-center justify-between">
               <div className="text-sm text-muted-foreground">
-                Page {currentPage}
+                Page {currentPageIndex + 1}
               </div>
               <div className="flex items-center gap-2">
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => handlePageChange(1)}
-                  disabled={currentPage <= 1 || isLoading}
+                  onClick={handleFirstPage}
+                  disabled={currentPageIndex <= 0 || isLoading}
                   className="h-8 px-2"
                   title="First page"
                 >
@@ -277,8 +303,8 @@ export function InvoicesList({ className }: InvoicesListProps) {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => handlePageChange(currentPage - 1)}
-                  disabled={currentPage <= 1 || isLoading}
+                  onClick={handlePreviousPage}
+                  disabled={currentPageIndex <= 0 || isLoading}
                   className="h-8 px-3"
                 >
                   <ChevronLeft className="h-4 w-4" />
@@ -286,7 +312,7 @@ export function InvoicesList({ className }: InvoicesListProps) {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => handlePageChange(currentPage + 1)}
+                  onClick={handleNextPage}
                   disabled={!invoicesData.hasMore || isLoading}
                   className="h-8 px-3"
                 >
