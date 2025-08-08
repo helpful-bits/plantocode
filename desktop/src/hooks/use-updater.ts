@@ -65,6 +65,7 @@ export function useUpdater() {
           setStatus(prev => ({
             ...prev,
             isDownloading: true,
+            downloadProgress: 0,
             contentLength: event.data.contentLength
           }))
         } else if (event.event === 'Progress') {

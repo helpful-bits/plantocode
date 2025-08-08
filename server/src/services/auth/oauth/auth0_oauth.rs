@@ -10,7 +10,7 @@ use sqlx::PgPool;
 use uuid::Uuid;
 use std::sync::Arc;
 use std::time::Duration;
-use log::{debug, error, info};
+use log::{debug, error, info, warn};
 use jsonwebtoken::{decode, decode_header, Algorithm, DecodingKey, Validation};
 use tokio::sync::Mutex;
 
@@ -270,12 +270,21 @@ impl Auth0OAuthService {
         // Skip email verification for GitHub users (GitHub is a trusted provider)
         let is_github_user = user_info.sub.starts_with("github|");
         
+        // Debug logging for GitHub users
+        if is_github_user {
+            info!("GitHub user login - sub: {}, email: {:?}, email_verified: {:?}, name: {:?}", 
+                user_info.sub, user_info.email, user_info.email_verified, user_info.name);
+        }
+        
         if !is_github_user && !user_info.email_verified.unwrap_or(false) {
             return Err(AppError::Unauthorized("Email verification is required to log in. Please verify your email with your provider.".to_string()));
         }
         
         let auth0_sub = user_info.sub.clone();
-        let email = user_info.email.clone().unwrap_or_else(|| format!("user-{}", auth0_sub));
+        let email = user_info.email.clone().unwrap_or_else(|| {
+            warn!("No email provided by Auth0 for user: {}. Using fallback.", auth0_sub);
+            format!("user-{}", auth0_sub)
+        });
         let name = user_info.name.clone();
 
         let user_repo = UserRepository::new(self.db_pool.clone());

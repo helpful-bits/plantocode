@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { motion, AnimatePresence } from 'framer-motion';
-import { variants } from '@/lib/animations';
+import Reveal from '@/components/motion/Reveal';
 
 interface FAQItem {
   question: string;
@@ -20,42 +20,26 @@ export function FAQ({ items }: FAQProps) {
   return (
     <section className="relative py-12 sm:py-16 md:py-20 lg:py-24 px-4 overflow-hidden" id="faq">
       <div className="container mx-auto max-w-3xl relative z-10">
-        <motion.div
-          className="text-center mb-12"
-          initial="hidden"
-          whileInView="visible"
-          variants={variants.section}
-          viewport={{ once: true, amount: 0.5 }}
-        >
-          <motion.h2
-            className="text-3xl sm:text-4xl lg:text-5xl mb-4 text-primary-emphasis"
-            variants={variants.item}
-          >
+        <div className="text-center mb-12">
+          <Reveal as="h2" className="text-3xl sm:text-4xl lg:text-5xl mb-4 text-primary-emphasis">
             Frequently Asked Questions
-          </motion.h2>
-          <motion.p
-            className="text-lg sm:text-xl max-w-2xl mx-auto leading-relaxed font-medium text-foreground/80"
-            variants={variants.item}
-          >
+          </Reveal>
+          <Reveal as="p" className="text-lg sm:text-xl max-w-2xl mx-auto leading-relaxed font-medium text-foreground/80" delay={0.05}>
             Everything you need to know about Vibe Manager
-          </motion.p>
-        </motion.div>
+          </Reveal>
+        </div>
 
-        <motion.div
-          className="space-y-4 p-2"
-          initial="hidden"
-          whileInView="visible"
-          variants={variants.section}
-          viewport={{ once: true, amount: 0.1 }}
-        >
+        <div className="space-y-4 p-2">
           {items.map((item, index) => (
-            <motion.div
+            <Reveal
               key={index}
-              className="faq-item"
-              transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
-              variants={variants.item}
-              whileHover={{ scale: 1.02 }}
+              delay={0.1 + index * 0.05}
             >
+              <motion.div
+                className="faq-item"
+                transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
+                whileHover={{ scale: 1.02 }}
+              >
               <GlassCard className="overflow-hidden">
                 <motion.div
                   initial={{ backgroundColor: 'rgba(0, 0, 0, 0)' }}
@@ -162,9 +146,10 @@ export function FAQ({ items }: FAQProps) {
                   </AnimatePresence>
                 </motion.div>
               </GlassCard>
-            </motion.div>
+              </motion.div>
+            </Reveal>
           ))}
-        </motion.div>
+        </div>
       </div>
     </section>
   );

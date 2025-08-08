@@ -793,7 +793,6 @@ impl StripeService {
         billing_address_collection: Option<bool>,
         automatic_tax: Option<bool>,
         invoice_creation_enabled: Option<bool>,
-        price_data: Option<serde_json::Value>,
     ) -> Result<stripe_types::CheckoutSession, StripeServiceError> {
         // Create checkout session using direct API call with idempotency key
         let mode_str = mode;
@@ -825,18 +824,15 @@ impl StripeService {
                     if let Some(price) = &item.price {
                         line_item.insert("price".to_string(), serde_json::Value::String(price.clone()));
                     }
+                    if let Some(price_data) = &item.price_data {
+                        line_item.insert("price_data".to_string(), price_data.clone());
+                    }
                     if let Some(quantity) = item.quantity {
                         line_item.insert("quantity".to_string(), serde_json::Value::Number(serde_json::Number::from(quantity)));
                     }
                     line_items_array.push(serde_json::Value::Object(line_item));
                 }
                 session_data["line_items"] = serde_json::Value::Array(line_items_array);
-            } else if let Some(price_data_value) = price_data {
-                // Use price_data when provided instead of price ID
-                let mut line_item = serde_json::Map::new();
-                line_item.insert("price_data".to_string(), price_data_value);
-                line_item.insert("quantity".to_string(), serde_json::Value::Number(serde_json::Number::from(1)));
-                session_data["line_items"] = serde_json::Value::Array(vec![serde_json::Value::Object(line_item)]);
             }
         }
         

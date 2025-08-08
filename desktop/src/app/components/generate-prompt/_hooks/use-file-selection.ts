@@ -99,6 +99,12 @@ export function useFileSelection(projectDirectory?: string) {
     loadFiles();
   }, [loadFiles]);
 
+  // Use a ref to access current allProjectFiles without causing effect re-runs
+  const allProjectFilesRef = useRef(allProjectFiles);
+  useEffect(() => {
+    allProjectFilesRef.current = allProjectFiles;
+  }, [allProjectFiles]);
+
   // Listen for file selection applied events and switch to selected view
   useEffect(() => {
     const handleFileSelectionApplied = () => {
@@ -108,7 +114,8 @@ export function useFileSelection(projectDirectory?: string) {
       
       // If allProjectFiles is empty, trigger a load (but don't wait for it)
       // The UI will update when the files are loaded thanks to React's reactivity
-      if (allProjectFiles.length === 0 && projectDirectory) {
+      // Use ref to get current value without causing effect dependencies
+      if (allProjectFilesRef.current.length === 0 && projectDirectory) {
         loadFiles();
       }
     };
@@ -118,7 +125,7 @@ export function useFileSelection(projectDirectory?: string) {
     return () => {
       window.removeEventListener("file-selection-applied", handleFileSelectionApplied);
     };
-  }, [handleSetFilterMode, allProjectFiles.length, projectDirectory, loadFiles]);
+  }, [handleSetFilterMode, projectDirectory, loadFiles]);
 
   // Sync filter mode when currentSession.filterMode changes externally
   useEffect(() => {

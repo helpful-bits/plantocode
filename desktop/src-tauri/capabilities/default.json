@@ -26,6 +26,7 @@
     "shell:allow-open",
     "store:default",
     "updater:default",
-    "process:default"
+    "process:default",
+    "process:allow-restart"
   ]
 }

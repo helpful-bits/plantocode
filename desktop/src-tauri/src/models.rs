@@ -859,7 +859,7 @@ pub struct Invoice {
     pub id: String,
     pub created: i64,
     pub due_date: Option<i64>,
-    pub amount_due: i64,
+    pub amount_paid_display: String,
     pub amount_paid: i64,
     pub currency: String,
     pub status: String,

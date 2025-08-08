@@ -1,15 +1,15 @@
 {
-  "version": "v1.0.0",
-  "notes": "Initial release with auto-updater support",
-  "pub_date": "2025-08-07T16:00:00Z",
+  "version": "v1.0.1",
+  "notes": "Bug fixes and performance improvements",
+  "pub_date": "2025-08-07T21:40:00Z",
   "platforms": {
     "darwin-aarch64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSUXZZN0JwS05DN3RFdEVjeGx2ZGE3eUoxN21tWmZibzlYVDlGVkJyaDBacFJvTklIbStYaVNCc1V0dUREQU1tSVBaZ2Fwbmd6cldFYm9NZEVGc1lnQlZtdXQvTDZSdGd3PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzU0NTU4MDg2CWZpbGU6VmliZSBNYW5hZ2VyLmFwcC50YXIuZ3oKRGNwRzNpN2trMXY5NUtCMStyMG9ES01TcXlkZTBjdmExUVhlSjZuN3ZleHBLb3U3ejI3K2VYZnNHNU1rT1BIZ0JmQUNPb3c2R3ZHQ0ZxdlE0OGRWQ2c9PQo=",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSUXZZN0JwS05DN3MrR21XV0dlazRmbVEzcUFBQ1gvOHJ4Tm9laTlabXRRa1VQWFpXWlBsUXJyajJrTERsMmt0WkF3TDFaV1BqQ2Y0bEoyV3VlVUZOWitSTnVLRVovUFE0PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzU0NTk5MTYxCWZpbGU6VmliZSBNYW5hZ2VyLmFwcC50YXIuZ3oKemd2MHhUYXRWcXhiRmxrWVBxMXd5OVNtMmh0L2NxWUcwSkdHRjErdyt4eklFYzk3T0c2SGkwMTQ0ZC9NU1UwaFBoSGIyU25XSWh0YzFTcFk1VDljQ3c9PQo=",
       "url": "https://s3.eu-central-1.amazonaws.com/vibemanager.app/Vibe Manager.app.tar.gz"
     },
     "windows-x86_64": {
       "signature": "REPLACE_WITH_WINDOWS_SIGNATURE",
-      "url": "https://s3.eu-central-1.amazonaws.com/vibemanager.app/Vibe Manager_1.0.0_x64_en-US.msi.zip"
+      "url": "https://s3.eu-central-1.amazonaws.com/vibemanager.app/Vibe Manager_1.0.1_x64_en-US.msi.zip"
     }
   }
 }

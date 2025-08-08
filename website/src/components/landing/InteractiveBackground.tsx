@@ -1,7 +1,7 @@
 'use client';
 
 import { Canvas } from '@react-three/fiber';
-// import { ScrollControls } from '@react-three/drei'
+import { AdaptiveDpr, PerformanceMonitor } from '@react-three/drei';
 import * as THREE from 'three';
 import { ParticleScene } from './ParticleScene';
 import { useEffect, useState } from 'react';
@@ -23,6 +23,8 @@ export function InteractiveBackground({
   const [agentCounts, setAgentCounts] = useState({ leaders: 2, followers: 160 });
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [canvasReady, setCanvasReady] = useState(false);
+  const [performanceLevel, setPerformanceLevel] = useState<'high' | 'low'>('high');
 
   useEffect(() => {
     setMounted(true);
@@ -50,14 +52,37 @@ export function InteractiveBackground({
     mediaQuery.addEventListener('change', handleChange);
     window.addEventListener('resize', handleResize);
 
-    return () => {
-      mediaQuery.removeEventListener('change', handleChange);
-      window.removeEventListener('resize', handleResize);
-    };
+    // Defer Canvas mounting for better initial load performance
+    if ('requestIdleCallback' in window) {
+      const idleCallback = (window as any).requestIdleCallback(() => {
+        setCanvasReady(true);
+      });
+      return () => {
+        (window as any).cancelIdleCallback(idleCallback);
+        mediaQuery.removeEventListener('change', handleChange);
+        window.removeEventListener('resize', handleResize);
+      };
+    } else {
+      const timeout = setTimeout(() => {
+        setCanvasReady(true);
+      }, 250);
+      return () => {
+        clearTimeout(timeout);
+        mediaQuery.removeEventListener('change', handleChange);
+        window.removeEventListener('resize', handleResize);
+      };
+    }
   }, [getResponsiveAgentCounts]);
 
+  // Update document performance attribute
+  useEffect(() => {
+    if (typeof document !== 'undefined') {
+      document.documentElement.dataset.performance = performanceLevel;
+    }
+  }, [performanceLevel]);
+
   // Always render fallback on server and before mount
-  if (!mounted || prefersReducedMotion) {
+  if (!mounted || !canvasReady || prefersReducedMotion) {
     return (
       <div className={`fixed inset-0 -z-10 pointer-events-none ${className}`}>
         <div className="w-full h-full" style={{ backgroundColor: 'var(--color-background)' }} />
@@ -66,7 +91,7 @@ export function InteractiveBackground({
   }
 
   return (
-    <div id="particle-container" className={`fixed inset-0 -z-10 pointer-events-none ${className}`}>
+    <div id="particle-container" className={`particle-scene fixed inset-0 -z-10 pointer-events-none ${className}`}>
       <Canvas
           style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh' }}
           camera={{
@@ -75,7 +100,7 @@ export function InteractiveBackground({
             near: 0.1,
             far: 100,
           }}
-          dpr={typeof window === 'undefined' ? 1 : Math.min(window.devicePixelRatio, 2)}
+          dpr={[1, typeof window === 'undefined' ? 1 : Math.min(window.devicePixelRatio || 1, 1.75)]}
           gl={{
             antialias: false,
             alpha: true,
@@ -101,13 +126,25 @@ export function InteractiveBackground({
             camera.updateProjectionMatrix();
           }}
         >
-          <ParticleScene
-            key={agentCounts.leaders + agentCounts.followers}
-            leaderCount={agentCounts.leaders}
-            followerCount={agentCounts.followers}
-            forceWeights={config.forceWeights}
-            physicsConstants={config.physicsConstants}
-          />
+          <PerformanceMonitor
+            onDecline={() => {
+              setPerformanceLevel('low');
+            }}
+            onIncline={() => {
+              setPerformanceLevel('high');
+            }}
+            flipflops={3}
+            factor={0.5}
+          >
+            <AdaptiveDpr pixelated />
+            <ParticleScene
+              key={agentCounts.leaders + agentCounts.followers}
+              leaderCount={agentCounts.leaders}
+              followerCount={agentCounts.followers}
+              forceWeights={config.forceWeights}
+              physicsConstants={config.physicsConstants}
+            />
+          </PerformanceMonitor>
         </Canvas>
     </div>
   );

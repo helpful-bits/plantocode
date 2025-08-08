@@ -74,7 +74,7 @@ export function ErrorState({ message, onRetry }: ErrorStateProps) {
       <div className="text-center space-y-4 p-6">
         <AlertCircle className="h-12 w-12 text-destructive mx-auto" />
         <div>
-          <h3 className="font-semibold mb-2">Billing Error</h3>
+          <h3 className="font-semibold mb-2 text-foreground">Billing Error</h3>
           <p className="text-sm text-muted-foreground leading-7">
             {message}
           </p>

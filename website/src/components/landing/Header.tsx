@@ -7,6 +7,7 @@ import { Menu, X, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
 import { cn } from '@/lib/utils';
+import { defaultEase, defaultDuration } from '@/lib/animations';
 
 export function Header() {
   const [scrolled, setScrolled] = useState(false);
@@ -43,7 +44,7 @@ export function Header() {
         animate={{ y: 0, opacity: 1 }}
         className="fixed top-0 inset-x-0 z-50"
         initial={{ y: -100, opacity: 0 }}
-        transition={{ duration: 0.8, ease: [0.25, 0.1, 0.25, 1] }}
+        transition={{ duration: defaultDuration * 1.6, ease: defaultEase }}
       >
         {/* Background layer */}
         <div
@@ -93,7 +94,7 @@ export function Header() {
                   key={link.href}
                   animate={{ opacity: 1, y: 0 }}
                   initial={{ opacity: 0, y: -20 }}
-                  transition={{ delay: index * 0.1 + 0.3, duration: 0.5 }}
+                  transition={{ delay: index * 0.1 + 0.3, duration: defaultDuration, ease: defaultEase }}
                 >
                   <Link
                     className={cn(
@@ -127,7 +128,7 @@ export function Header() {
                 animate={{ opacity: 1, x: 0 }}
                 className="hidden md:flex items-center gap-2"
                 initial={{ opacity: 0, x: 20 }}
-                transition={{ delay: 0.7, duration: 0.5 }}
+                transition={{ delay: 0.7, duration: defaultDuration, ease: defaultEase }}
               >
                 <ThemeToggle />
                 <Button
@@ -159,7 +160,7 @@ export function Header() {
                     : 'bg-background/80 backdrop-blur-sm text-foreground hover:bg-background/90 border border-border/50',
                 )}
                 initial={{ opacity: 0 }}
-                transition={{ delay: 0.5, duration: 0.5 }}
+                transition={{ delay: 0.5, duration: defaultDuration, ease: defaultEase }}
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
                 onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
@@ -203,7 +204,7 @@ export function Header() {
               className="fixed inset-0 z-40 bg-background/60 backdrop-blur-md md:hidden"
               exit={{ opacity: 0 }}
               initial={{ opacity: 0 }}
-              transition={{ duration: 0.3, ease: 'easeOut' }}
+              transition={{ duration: defaultDuration * 0.6, ease: defaultEase }}
               onClick={() => setMobileMenuOpen(false)}
             />
 
@@ -224,9 +225,9 @@ export function Header() {
               exit={{ opacity: 0, y: -30, scale: 0.9 }}
               initial={{ opacity: 0, y: -30, scale: 0.9 }}
               transition={{
-                duration: 0.4,
-                ease: [0.25, 0.1, 0.25, 1],
-                opacity: { duration: 0.3 },
+                duration: defaultDuration * 0.8,
+                ease: defaultEase,
+                opacity: { duration: defaultDuration * 0.6 },
               }}
             >
               <div className="space-y-2">

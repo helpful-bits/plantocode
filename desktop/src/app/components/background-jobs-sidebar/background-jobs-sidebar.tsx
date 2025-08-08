@@ -11,6 +11,8 @@ import { useSessionStateContext, useSessionActionsContext } from "@/contexts/ses
 import { invoke } from '@tauri-apps/api/core';
 import { useNotification } from '@/contexts/notification-context';
 import { getSystemPromptForTaskAction } from "@/actions/ai/prompt.actions";
+import { extractFilesFromResponse } from "@/utils/response-utils";
+import { toProjectRelativePath } from "@/utils/path-utils";
 
 import { JobContent } from "./_components/job-content";
 import { useJobFiltering } from "./hooks/use-job-filtering";
@@ -236,29 +238,16 @@ export const BackgroundJobsSidebar = () => {
       return;
     }
     
-    let paths: string[] = [];
-    
-    // Use standardized response format from backend
-    if (jobWithResponse.response) {
-      try {
-        let response: any;
-        if (typeof jobWithResponse.response === 'string') {
-          response = JSON.parse(jobWithResponse.response);
-        } else {
-          response = jobWithResponse.response;
-        }
-        // Backend standardizes all file-finding responses to have 'files' array
-        if (response.files && Array.isArray(response.files)) {
-          paths = response.files;
-        }
-      } catch (e) {
-        console.error('Failed to parse job response:', e);
-      }
-    }
+    // Use centralized extraction that handles all response formats
+    const paths = extractFilesFromResponse(jobWithResponse.response);
     
     if (paths.length > 0) {
-      applyFileSelectionUpdate(paths, `job ${job.id}`);
-    } else {
+      // Normalize paths to project-relative format
+      const normalized = currentSession?.projectDirectory
+        ? Array.from(new Set(paths.map(p => toProjectRelativePath(p, currentSession.projectDirectory))))
+        : Array.from(new Set(paths.map(p => p.replace(/\\/g, '/'))));
+      
+      applyFileSelectionUpdate(normalized, `job ${job.id}`);
     }
   };
 

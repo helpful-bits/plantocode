@@ -27,6 +27,8 @@ interface ActiveNotification extends NotificationType {
 
 export interface NotificationContextValue {
   showNotification: (notification: NotificationType) => void;
+  showPersistentNotification: (notification: NotificationType) => string;
+  dismissNotification: (id: string) => void;
   showError: (error: unknown, context?: string, userContext?: string) => void;
   showSuccess: (message: string, title?: string) => void;
   showWarning: (message: string, title?: string) => void;
@@ -34,6 +36,8 @@ export interface NotificationContextValue {
 
 const NotificationContext = createContext<NotificationContextValue>({
   showNotification: () => {},
+  showPersistentNotification: () => '',
+  dismissNotification: () => {},
   showError: () => {},
   showSuccess: () => {},
   showWarning: () => {},
@@ -90,6 +94,21 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       clearTimeout(timeoutId);
       activeTimeoutsRef.current.delete(id);
     }
+  }, []);
+
+  const showPersistentNotification = useCallback((notification: NotificationType): string => {
+    const id = Math.random().toString(36).substr(2, 9);
+    const persistentNotification: ActiveNotification = {
+      id,
+      title: notification.title,
+      message: notification.message,
+      type: notification.type || "info",
+      duration: 0, // Force duration to 0 for persistent
+      actionButton: notification.actionButton,
+    };
+
+    setNotifications(prev => [...prev, persistentNotification]);
+    return id;
   }, []);
 
   // Cleanup all timeouts on unmount
@@ -458,7 +477,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   }, [showNotification]);
 
   return (
-    <NotificationContext.Provider value={{ showNotification, showError, showSuccess, showWarning }}>
+    <NotificationContext.Provider value={{ showNotification, showPersistentNotification, dismissNotification, showError, showSuccess, showWarning }}>
       {children}
       
       {/* Render active notifications */}

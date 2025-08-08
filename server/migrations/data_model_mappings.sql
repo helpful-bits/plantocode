@@ -23,6 +23,9 @@ VALUES
 -- OpenAI models routed through OpenRouter (for fallback scenarios)
 ('openai/gpt-4.1', 'openrouter', 'openai/gpt-4.1'),
 ('openai/gpt-4.1-mini', 'openrouter', 'openai/gpt-4.1-mini'),
+('openai/gpt-5', 'openrouter', 'openai/gpt-5'),
+('openai/gpt-5-mini', 'openrouter', 'openai/gpt-5-mini'),
+('openai/gpt-5-nano', 'openrouter', 'openai/gpt-5-nano'),
 ('openai/o3', 'openrouter', 'openai/o3'),
 ('openai/o3-deep-research-2025-06-26', 'openrouter', 'openai/o3-deep-research-2025-06-26'),
 ('openai/o4-mini', 'openrouter', 'openai/o4-mini'),
@@ -31,6 +34,9 @@ VALUES
 -- OpenAI direct API mappings
 ('openai/gpt-4.1', 'openai', 'gpt-4.1'),
 ('openai/gpt-4.1-mini', 'openai', 'gpt-4.1-mini'),
+('openai/gpt-5', 'openai', 'gpt-5'),
+('openai/gpt-5-mini', 'openai', 'gpt-5-mini'),
+('openai/gpt-5-nano', 'openai', 'gpt-5-nano'),
 ('openai/o3', 'openai', 'o3'),
 ('openai/o3-deep-research-2025-06-26', 'openai', 'o3-deep-research-2025-06-26'),
 ('openai/o4-mini', 'openai', 'o4-mini'),

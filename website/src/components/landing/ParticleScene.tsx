@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useRef, useMemo, useLayoutEffect } from 'react';
+import React, { useRef, useMemo, useLayoutEffect, useEffect } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useTheme } from 'next-themes';
@@ -79,14 +79,14 @@ export function ParticleScene({ leaderCount, followerCount, forceWeights, physic
     const hasFullFloatRT = gl.extensions.get('EXT_color_buffer_float');
     const hasHalfFloatRT = gl.extensions.get('EXT_color_buffer_half_float');
     
-    // Prefer half float for better performance if available
-    if (hasHalfFloatRT) {
-      return THREE.HalfFloatType;
-    }
-    
-    // Fall back to full float if available
+    // Prefer full float for better precision to avoid accumulated errors
     if (hasFullFloatRT) {
       return THREE.FloatType;
+    }
+    
+    // Fall back to half float if available
+    if (hasHalfFloatRT) {
+      return THREE.HalfFloatType;
     }
     
     // Worst case: use unsigned byte (will have precision issues)
@@ -125,6 +125,7 @@ export function ParticleScene({ leaderCount, followerCount, forceWeights, physic
         uViewportBounds: { value: new THREE.Vector2(viewport.width / 2, viewport.height / 2) },
         uTime: { value: 0 },
         uLeaderCount: { value: leaderCount },
+        uTotalCount: { value: totalCount },
       },
       vertexShader: `
         void main() {
@@ -134,7 +135,7 @@ export function ParticleScene({ leaderCount, followerCount, forceWeights, physic
       fragmentShader: positionComputeShader,
     });
     return material;
-  }, [textureSize, viewport]);
+  }, [textureSize, viewport, totalCount]);
 
   const velocityComputeMaterial = useMemo(() => {
     const material = new THREE.ShaderMaterial({
@@ -143,6 +144,7 @@ export function ParticleScene({ leaderCount, followerCount, forceWeights, physic
         textureSize: new THREE.Vector2(textureSize, textureSize),
         viewport: new THREE.Vector2(viewport.width, viewport.height),
         leaderCount: leaderCount,
+        totalCount: totalCount,
         weights: {
           cohesion: weights.cohesion,
           alignment: weights.alignment,
@@ -168,7 +170,7 @@ export function ParticleScene({ leaderCount, followerCount, forceWeights, physic
       fragmentShader: velocityComputeShader,
     });
     return material;
-  }, [textureSize, viewport, leaderCount, weights, physics]);
+  }, [textureSize, viewport, leaderCount, weights, physics, totalCount]);
 
 
   const particleMaterial = useMemo(() => {
@@ -305,6 +307,22 @@ export function ParticleScene({ leaderCount, followerCount, forceWeights, physic
     velocityTexture.dispose();
   }, [gl, viewport, textureSize, totalCount, leaderCount, followerCount]);
 
+  // Visibility tracking
+  const isVisibleRef = useRef(true);
+  const accumulatorRef = useRef(0);
+  const frameTimeRef = useRef(0);
+  const adaptiveUniformsRef = useRef({ noiseStrength: 5.0 });
+  
+  // Track document visibility
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      isVisibleRef.current = document.visibilityState === 'visible';
+    };
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, []);
+
   // Swap utility function for ping-ponging FBOs
   const swapFBO = (ref: React.MutableRefObject<{ read: any; write: any }>) => {
     const temp = ref.current.read;
@@ -314,6 +332,43 @@ export function ParticleScene({ leaderCount, followerCount, forceWeights, physic
 
   useFrame((state, delta) => {
     if (!metadataTexture.current) return;
+    
+    // Early return if tab is not visible
+    if (!isVisibleRef.current) return;
+    
+    // Track frame time for adaptive quality
+    frameTimeRef.current = delta;
+    
+    // Adaptive quality based on frame time
+    if (delta > 0.03) { // Less than 33fps
+      adaptiveUniformsRef.current.noiseStrength = Math.max(1.0, adaptiveUniformsRef.current.noiseStrength * 0.95);
+    } else if (delta < 0.02) { // More than 50fps
+      adaptiveUniformsRef.current.noiseStrength = Math.min(5.0, adaptiveUniformsRef.current.noiseStrength * 1.02);
+    }
+    
+    // Calculate actual viewport size at particle depth (z = -5)
+    // Camera is at z = 5, particles at z = -5, so distance = 10
+    const distance = 10; // Camera to particle distance
+    const vFov = 75 * Math.PI / 180; // Convert FOV to radians
+    const visibleHeight = 2 * Math.tan(vFov / 2) * distance;
+    const visibleWidth = visibleHeight * state.viewport.aspect;
+    
+    // Fixed timestep accumulator for consistent simulation at 60Hz
+    const fixedTimeStep = 1 / 60;
+    accumulatorRef.current += Math.min(delta, 0.1); // Cap delta to prevent spiral of death
+    
+    // Only run simulation at fixed timestep
+    if (accumulatorRef.current < fixedTimeStep) {
+      // Still update render uniforms even when not simulating
+      particleMaterial.uniforms.uTime!.value = state.clock.elapsedTime;
+      particleMaterial.uniforms.uIsDark!.value = isDark ? 1.0 : 0.0;
+      particleMaterial.uniforms.uViewport!.value.set(visibleWidth, visibleHeight);
+      return;
+    }
+    
+    // Run simulation step(s)
+    while (accumulatorRef.current >= fixedTimeStep) {
+      accumulatorRef.current -= fixedTimeStep;
 
     // Pass 1: Update velocities
     velocityComputeMaterial.uniforms.texturePosition!.value = pos.current.read.texture;
@@ -323,16 +378,10 @@ export function ParticleScene({ leaderCount, followerCount, forceWeights, physic
     velocityComputeMaterial.uniforms.uDeltaTime!.value = delta;
     velocityComputeMaterial.uniforms.uMouse!.value.set(mouse.x, mouse.y);
     velocityComputeMaterial.uniforms.uScrollVelocity!.value = scrollData.current.delta; // Full scroll influence
-    // Calculate actual viewport size at particle depth (z = -5)
-    // Camera is at z = 5, particles at z = -5, so distance = 10
-    const distance = 10; // Camera to particle distance
-    const vFov = 75 * Math.PI / 180; // Convert FOV to radians
-    const visibleHeight = 2 * Math.tan(vFov / 2) * distance;
-    const visibleWidth = visibleHeight * state.viewport.aspect;
     velocityComputeMaterial.uniforms.uViewport!.value.set(visibleWidth, visibleHeight);
     velocityComputeMaterial.uniforms.uSafeZone!.value.set(SafeZone.width, SafeZone.height);
     velocityComputeMaterial.uniforms.uNoiseScale!.value = 0.002;
-    velocityComputeMaterial.uniforms.uNoiseStrength!.value = 5.0;
+    velocityComputeMaterial.uniforms.uNoiseStrength!.value = adaptiveUniformsRef.current.noiseStrength;
 
     fullscreenQuad.material = velocityComputeMaterial;
     gl.setRenderTarget(vel.current.write);
@@ -343,7 +392,7 @@ export function ParticleScene({ leaderCount, followerCount, forceWeights, physic
     positionComputeMaterial.uniforms.texturePosition!.value = pos.current.read.texture;
     positionComputeMaterial.uniforms.textureVelocity!.value = vel.current.read.texture;
     positionComputeMaterial.uniforms.textureAttributes!.value = metadataTexture.current;
-    positionComputeMaterial.uniforms.uDeltaTime!.value = delta;
+    positionComputeMaterial.uniforms.uDeltaTime!.value = fixedTimeStep;
     positionComputeMaterial.uniforms.uTime!.value = state.clock.elapsedTime;
     positionComputeMaterial.uniforms.uViewportBounds!.value.set(visibleWidth / 2, visibleHeight / 2);
 
@@ -353,7 +402,9 @@ export function ParticleScene({ leaderCount, followerCount, forceWeights, physic
     swapFBO(pos);
 
     gl.setRenderTarget(null);
+    }
 
+    // Always update render uniforms
     particleMaterial.uniforms.uTime!.value = state.clock.elapsedTime;
     particleMaterial.uniforms.uIsDark!.value = isDark ? 1.0 : 0.0;
     particleMaterial.uniforms.uViewport!.value.set(visibleWidth, visibleHeight);

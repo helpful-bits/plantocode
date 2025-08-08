@@ -101,13 +101,36 @@ jobs:
           desktop/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi
           desktop/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi.zip
           desktop/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi.zip.sig
+          desktop/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.nsis.zip
+          desktop/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.nsis.zip.sig
         retention-days: 30
         if-no-files-found: warn
+    
+    - name: Publish to S3 (if on main branch with secrets)
+      if: github.ref == 'refs/heads/main' && github.event_name == 'push' && env.AWS_ACCESS_KEY_ID != ''
+      run: |
+        # Install AWS CLI if not present
+        if ! command -v aws &> /dev/null; then
+          curl "https://awscli.amazonaws.com/AWSCLIV2.msi" -o "AWSCLIV2.msi"
+          msiexec.exe /i AWSCLIV2.msi /quiet
+          $env:Path += ";C:\Program Files\Amazon\AWSCLIV2"
+        fi
+        
+        # Upload Windows updater artifacts
+        aws s3 cp desktop/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/ s3://vibemanager.app/ --recursive --include "*.msi.zip" --include "*.msi.zip.sig"
+        aws s3 cp desktop/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/ s3://vibemanager.app/ --recursive --include "*.nsis.zip" --include "*.nsis.zip.sig"
+      env:
+        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        AWS_DEFAULT_REGION: eu-central-1
 
   build-macos:
-    name: Build macOS with Updater Artifacts
+    name: Build macOS ${{ matrix.target }} with Updater Artifacts
     runs-on: macos-latest  # GitHub default runner (sufficient for macOS)
     timeout-minutes: 30
+    strategy:
+      matrix:
+        target: [x86_64-apple-darwin, aarch64-apple-darwin]
     
     steps:
     - name: Checkout code
@@ -125,7 +148,7 @@ jobs:
         node-version: '20'
       
     - name: Install Rust toolchain
-      run: rustup toolchain install stable --profile minimal --target x86_64-apple-darwin
+      run: rustup toolchain install stable --profile minimal --target ${{ matrix.target }}
     
     - name: Install OpenSSL for cross-compilation
       run: |
@@ -165,7 +188,7 @@ jobs:
     - name: Build macOS app with updater artifacts
       run: |
         cd desktop
-        cargo tauri build --target x86_64-apple-darwin
+        cargo tauri build --target ${{ matrix.target }}
       env:
         TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
@@ -178,10 +201,45 @@ jobs:
     - name: Upload macOS artifacts (for manual S3 upload)
       uses: actions/upload-artifact@v4
       with:
-        name: macos-updater-artifacts-${{ github.sha }}
+        name: macos-updater-artifacts-${{ matrix.target }}-${{ github.sha }}
         path: |
-          desktop/src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg
-          desktop/src-tauri/target/x86_64-apple-darwin/release/bundle/macos/*.app.tar.gz
-          desktop/src-tauri/target/x86_64-apple-darwin/release/bundle/macos/*.app.tar.gz.sig
+          desktop/src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg
+          desktop/src-tauri/target/${{ matrix.target }}/release/bundle/macos/*.app.tar.gz
+          desktop/src-tauri/target/${{ matrix.target }}/release/bundle/macos/*.app.tar.gz.sig
         retention-days: 30
         if-no-files-found: warn
+    
+    - name: Publish to S3 (if on main branch with secrets)
+      if: github.ref == 'refs/heads/main' && github.event_name == 'push' && env.AWS_ACCESS_KEY_ID != ''
+      run: |
+        # Upload macOS updater artifacts
+        aws s3 cp desktop/src-tauri/target/${{ matrix.target }}/release/bundle/macos/ s3://vibemanager.app/ --recursive --include "*.app.tar.gz" --include "*.app.tar.gz.sig"
+      env:
+        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        AWS_DEFAULT_REGION: eu-central-1
+  
+  publish-latest-json:
+    name: Publish latest.json to S3
+    needs: [build-windows, build-macos]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Upload latest.json to S3
+      if: env.AWS_ACCESS_KEY_ID != ''
+      run: |
+        # Upload the latest.json file from the desktop directory
+        if [ -f desktop/latest.json ]; then
+          aws s3 cp desktop/latest.json s3://vibemanager.app/latest.json --content-type "application/json"
+          echo "latest.json uploaded successfully"
+        else
+          echo "latest.json not found in desktop directory"
+        fi
+      env:
+        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        AWS_DEFAULT_REGION: eu-central-1

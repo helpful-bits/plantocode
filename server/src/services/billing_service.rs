@@ -40,6 +40,7 @@ pub struct BillingService {
     stripe_service: Option<StripeService>,
     app_settings: crate::config::settings::AppSettings,
     redis_client: Option<Arc<redis::aio::ConnectionManager>>,
+    pending_charge_manager: Option<Arc<crate::services::pending_charge_manager::PendingChargeManager>>,
 }
 
 impl BillingService {
@@ -92,13 +93,109 @@ impl BillingService {
             stripe_service,
             app_settings,
             redis_client: None, // Will be set asynchronously
+            pending_charge_manager: None, // Will be set asynchronously
         }
     }
     
-    /// Set Redis client for caching final costs
-    pub fn set_redis_client(&mut self, redis_client: Arc<redis::aio::ConnectionManager>) {
-        self.redis_client = Some(redis_client);
-        info!("Redis client set for billing service");
+    pub fn set_redis_client(&mut self, conn: Arc<redis::aio::ConnectionManager>, default_ttl_ms: u64) {
+        self.redis_client = Some(conn.clone());
+        self.pending_charge_manager = Some(Arc::new(crate::services::pending_charge_manager::PendingChargeManager::new(conn, default_ttl_ms)));
+        info!("Redis client set for billing service with default TTL: {}ms", default_ttl_ms);
+    }
+
+    fn get_pending_manager(&self) -> Result<&crate::services::pending_charge_manager::PendingChargeManager, AppError> {
+        self.pending_charge_manager.as_deref().ok_or_else(|| AppError::Internal("PendingChargeManager not configured".to_string()))
+    }
+
+    async fn compute_reserve_margin(&self, amount: &BigDecimal) -> Result<BigDecimal, AppError> {
+        // Try billing_adjustment_limits first (max_amount_usd, max_percentage)
+        if let Some(config_value) = self.settings_repository.get_config_value("billing_adjustment_limits").await? {
+            if let (Some(max_amount_usd), Some(max_percentage)) = (
+                config_value.get("max_amount_usd").and_then(|v| v.as_str()).and_then(|s| BigDecimal::from_str(s).ok()),
+                config_value.get("max_percentage").and_then(|v| v.as_f64())
+            ) {
+                let percentage_margin = amount * BigDecimal::from_str(&(max_percentage / 100.0).to_string()).unwrap_or_else(|_| BigDecimal::from_str("0.0").unwrap());
+                let margin = percentage_margin.min(max_amount_usd);
+                return Ok(margin.max(BigDecimal::from(0)));
+            }
+        }
+
+        // Fall back to billing_reservation_buffer_multiplier (default 1.5)
+        let multiplier = match self.settings_repository.get_config_value("billing_reservation_buffer_multiplier").await? {
+            Some(config_value) => {
+                config_value.as_f64()
+                    .and_then(|f| BigDecimal::from_str(&f.to_string()).ok())
+                    .unwrap_or_else(|| BigDecimal::from_str("1.5").unwrap())
+            },
+            None => BigDecimal::from_str("1.5").unwrap()
+        };
+
+        let margin = amount * (multiplier - BigDecimal::from(1));
+        Ok(margin.max(BigDecimal::from(0)))
+    }
+
+    async fn get_reservation_ttl_ms(&self) -> u64 {
+        match self.settings_repository.get_config_value("billing_reservation_ttl_seconds").await {
+            Ok(Some(config_value)) => {
+                config_value.as_u64()
+                    .map(|s| s * 1000) // Convert seconds to milliseconds
+                    .unwrap_or(900_000) // Default 15 minutes
+            },
+            _ => 900_000 // Default 15 minutes
+        }
+    }
+    
+    pub async fn reconcile_timed_out_pending_charges(&self) -> Result<usize, AppError> {
+        debug!("Starting reconciliation of timed-out pending charges");
+        
+        // Query pending api_usage with pending_timeout_at < now LIMIT 500
+        let now = chrono::Utc::now();
+        let records = sqlx::query!(
+            r#"
+            SELECT request_id, user_id
+            FROM api_usage
+            WHERE status = 'pending'
+            AND pending_timeout_at < $1
+            LIMIT 500
+            "#,
+            now
+        )
+        .fetch_all(&self.db_pools.user_pool)
+        .await
+        .map_err(|e| AppError::Database(format!("Failed to query timed-out charges: {}", e)))?;
+        
+        let mut processed = 0;
+        for record in records {
+            if let Some(request_id) = record.request_id {
+                let user_id = record.user_id;
+                info!("Reconciling timed-out pending charge: {} for user {}", request_id, user_id);
+                
+                // Call fail_api_charge to refund and release reservation
+                if let Err(e) = self.fail_api_charge(&request_id, &user_id, "Timed out").await {
+                    warn!("Failed to reconcile timed-out charge {}: {}", request_id, e);
+                } else {
+                    processed += 1;
+                }
+            }
+        }
+        
+        if processed > 0 {
+            info!("Reconciled {} timed-out pending charges", processed);
+        }
+        
+        Ok(processed)
+    }
+    
+    pub fn spawn_pending_reconciliation(self: Arc<Self>) {
+        tokio::spawn(async move {
+            let interval = std::time::Duration::from_secs(60);
+            loop {
+                if let Err(e) = self.reconcile_timed_out_pending_charges().await {
+                    warn!("reconcile_timed_out_pending_charges error: {}", e);
+                }
+                tokio::time::sleep(interval).await;
+            }
+        });
     }
     
     pub async fn check_service_access(
@@ -454,24 +551,49 @@ impl BillingService {
         let fee_amount = &amount_decimal * &tier.fee_rate;
         let net_amount = &amount_decimal - &fee_amount;
         
-        // Create price_data object with customer's currency
-        // Note: Product names should be currency-agnostic per Stripe best practices
-        // Currency display is handled by Stripe's checkout UI
-        let product_name = format!("Credit Top-up - {} credits", amount_decimal);
-        let amount_cents = (amount_decimal.clone() * BigDecimal::from(100)).to_i64().unwrap_or(0);
+        // Convert to cents with consistent rounding
+        let gross_amount_cents = (amount_decimal.clone() * BigDecimal::from(100)).to_i64().unwrap_or(0);
+        let fee_amount_cents = (fee_amount.clone() * BigDecimal::from(100)).to_i64().unwrap_or(0);
+        let net_amount_cents = gross_amount_cents - fee_amount_cents; // Ensure net + fee = gross
         
-        let price_data = serde_json::json!({
-            "currency": "usd",
-            "unit_amount": amount_cents,
-            "product_data": {
-                "name": product_name
-            }
-        });
+        // Create two line items: one for credits, one for processing fee
+        let mut line_items = Vec::new();
+        
+        // Credits line item
+        let credits_line = crate::stripe_types::checkout_session::CreateCheckoutSessionLineItems {
+            price: None,
+            price_data: Some(serde_json::json!({
+                "currency": "usd",
+                "unit_amount": net_amount_cents,
+                "product_data": {
+                    "name": "Top-up Credits"
+                }
+            })),
+            quantity: Some(1),
+        };
+        line_items.push(credits_line);
+        
+        // Processing fee line item
+        let fee_line = crate::stripe_types::checkout_session::CreateCheckoutSessionLineItems {
+            price: None,
+            price_data: Some(serde_json::json!({
+                "currency": "usd",
+                "unit_amount": fee_amount_cents,
+                "product_data": {
+                    "name": "Processing fee"
+                }
+            })),
+            quantity: Some(1),
+        };
+        line_items.push(fee_line);
 
         // Add metadata for webhook fulfillment
         let mut metadata = std::collections::HashMap::new();
         metadata.insert("type".to_string(), "credit_purchase".to_string());
         metadata.insert("user_id".to_string(), user_id.to_string());
+        metadata.insert("gross_amount_cents".to_string(), gross_amount_cents.to_string());
+        metadata.insert("platform_fee_cents".to_string(), fee_amount_cents.to_string());
+        metadata.insert("net_amount_cents".to_string(), net_amount_cents.to_string());
         metadata.insert("gross_amount".to_string(), amount_decimal.to_string());
         metadata.insert("platform_fee".to_string(), fee_amount.to_string());
         metadata.insert("net_amount".to_string(), net_amount.to_string());
@@ -486,14 +608,13 @@ impl BillingService {
             &customer_id,
             user_id,
             CHECKOUT_SESSION_MODE_PAYMENT,
-            None, // No line_items when using price_data
+            Some(line_items),
             &success_url,
             &cancel_url,
             metadata,
             None, // billing_address_collection not required for credit purchases
             None, // automatic_tax not required for credit purchases
             Some(true), // invoice_creation_enabled
-            Some(price_data), // Pass price_data directly
         ).await.map_err(|e| AppError::External(format!("Failed to create checkout session: {}", e)))?;
 
         Ok(session)
@@ -589,7 +710,6 @@ impl BillingService {
             None, // billing_address_collection not applicable for setup mode
             None, // automatic_tax not applicable for setup mode
             None, // invoice_creation_enabled not applicable for setup mode
-            None, // price_data not applicable for setup mode
         ).await.map_err(|e| AppError::External(format!("Failed to create setup checkout session: {}", e)))?;
 
         Ok(session)
@@ -753,9 +873,11 @@ impl BillingService {
     ) -> Result<(String, UserCredit), AppError> {
         debug!("Initiating API charge with estimates for user: {}", entry.user_id);
         
-        // Ensure request_id is present
+        // Extract needed values before moving entry
+        let user_id = entry.user_id;
         let request_id = entry.request_id.as_ref()
-            .ok_or_else(|| AppError::InvalidArgument("request_id is required for two-phase billing".to_string()))?;
+            .ok_or_else(|| AppError::InvalidArgument("request_id is required for two-phase billing".to_string()))?
+            .clone();
         
         // Get model for cost estimation
         let model_repository = Arc::new(crate::db::repositories::ModelRepository::new(
@@ -783,20 +905,103 @@ impl BillingService {
         // Use CostResolver to calculate estimated cost
         let estimated_cost = crate::services::cost_resolver::CostResolver::resolve(estimated_usage, &model)?;
         
-        // Start transaction
+        // NEW: Start a transaction for atomic reservation + initiation
         let pool = self.credit_service.get_user_credit_repository().get_pool();
-        let mut tx = pool.begin().await.map_err(AppError::from)?;
+        let mut tx = pool.begin().await.map_err(|e| AppError::Database(format!("Failed to start transaction: {}", e)))?;
         
-        // Initiate charge with credit service
-        let (request_id, user_credit) = self.credit_service
-            .initiate_charge_in_transaction(entry, estimated_cost, &mut tx)
-            .await?;
+        // Set RLS context for the transaction
+        sqlx::query("SELECT set_config('app.current_user_id', $1, true)")
+            .bind(user_id.to_string())
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| AppError::Database(format!("Failed to set user context in transaction: {}", e)))?;
         
-        // Commit transaction
-        tx.commit().await.map_err(AppError::from)?;
+        // NEW: Load user balances with FOR UPDATE lock
+        let user_balance = sqlx::query!(
+            r#"
+            SELECT balance, free_credit_balance 
+            FROM user_credits 
+            WHERE user_id = $1 
+            FOR UPDATE
+            "#,
+            user_id
+        )
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(|e| AppError::Database(format!("Failed to lock user credits: {}", e)))?;
         
-        info!("Successfully initiated charge for request {}", request_id);
-        Ok((request_id, user_credit))
+        let total_available = user_balance.balance + user_balance.free_credit_balance;
+        
+        // NEW: Reserve overage margin if Redis is configured
+        let reserved = if let Some(manager) = &self.pending_charge_manager {
+            // Compute reserve margin
+            let reserve_margin = self.compute_reserve_margin(&estimated_cost).await?;
+            
+            if reserve_margin > BigDecimal::from(0) {
+                let ttl_ms = self.get_reservation_ttl_ms().await;
+                
+                // Attempt reservation
+                let reservation_success = manager.reserve_overage(
+                    &user_id.to_string(),
+                    &request_id,
+                    &reserve_margin,
+                    &total_available,
+                    Some(ttl_ms / 1000) // Convert ms to seconds
+                ).await?;
+                
+                if !reservation_success {
+                    // Rollback and fail fast
+                    tx.rollback().await.ok();
+                    return Err(AppError::CreditInsufficient(
+                        "Insufficient credits considering in-flight reservations".to_string()
+                    ));
+                }
+                
+                info!(
+                    "Reserved {} (masked) for user {} request {}",
+                    if reserve_margin > BigDecimal::from(1000) { ">1000" } else { "<1000" },
+                    user_id,
+                    request_id
+                );
+                true
+            } else {
+                false
+            }
+        } else {
+            warn!("Redis not configured for pending charge reservations");
+            false
+        };
+        
+        // Proceed with existing logic for deducting estimated cost and creating api_usage record
+        // BUT: Wrap it in error handling that releases reservation on failure
+        let result = async {
+            // existing credit deduction and api_usage insertion logic here
+            // This uses the transaction (&mut *tx)
+            self.credit_service
+                .initiate_charge_in_transaction(entry, estimated_cost, &mut tx)
+                .await
+        }.await;
+        
+        match result {
+            Ok(data) => {
+                // Commit transaction
+                tx.commit().await.map_err(|e| AppError::Database(format!("Failed to commit: {}", e)))?;
+                info!("Successfully initiated charge for request {}", data.0);
+                Ok(data)
+            }
+            Err(e) => {
+                // Release reservation on error
+                if reserved {
+                    if let Some(manager) = &self.pending_charge_manager {
+                        if let Err(release_err) = manager.release_reservation(&user_id.to_string(), &request_id).await {
+                            warn!("Failed to release reservation on error: {}", release_err);
+                        }
+                    }
+                }
+                tx.rollback().await.ok();
+                Err(e)
+            }
+        }
     }
 
     /// Finalize an API charge with actual usage and metadata
@@ -843,6 +1048,15 @@ impl BillingService {
         
         info!("Successfully finalized charge with metadata for request {} - user {} for model {} (cost: {})", 
               request_id, api_usage_record.user_id, api_usage_record.service_name, api_usage_record.cost);
+        
+        // Release Redis reservation after successful finalization
+        if let Some(manager) = &self.pending_charge_manager {
+            if let Err(e) = manager.release_reservation(&user_id.to_string(), request_id).await {
+                warn!("Failed to release reservation after finalization: {}", e);
+            } else {
+                debug!("Released reservation for request {} after finalization", request_id);
+            }
+        }
         
         // After successful billing, check and trigger auto top-off if needed
         if let Err(e) = self.check_and_trigger_auto_top_off(&api_usage_record.user_id).await {
@@ -901,6 +1115,16 @@ impl BillingService {
         tx.commit().await.map_err(AppError::from)?;
         
         info!("Successfully marked charge as failed for request {}", request_id);
+        
+        // Release Redis reservation after marking as failed
+        if let Some(manager) = &self.pending_charge_manager {
+            if let Err(e) = manager.release_reservation(&user_id.to_string(), request_id).await {
+                warn!("Failed to release reservation after failure: {}", e);
+            } else {
+                debug!("Released reservation for request {} after failure", request_id);
+            }
+        }
+        
         Ok(())
     }
     

@@ -32,6 +32,7 @@ uniform float uSeparationForce;
 uniform float uPatrolSpeed;
 uniform float uScrollImpulseStrength;
 uniform vec2 uSafeZone;
+uniform int uTotalCount;
 
 layout(location = 0) out vec4 fragColor;
 
@@ -90,6 +91,15 @@ vec2 limit(vec2 v, float maxLength) {
     return v;
 }
 
+// Safe normalization to avoid NaN
+vec2 safeNormalize(vec2 v) {
+    float len = length(v);
+    if (len > 1e-5) {
+        return v / len;
+    }
+    return vec2(0.0);
+}
+
 // Seek steering behavior
 vec2 seek(vec2 currentPos, vec2 targetPos, vec2 currentVel) {
     vec2 desired = targetPos - currentPos;
@@ -125,7 +135,7 @@ vec2 arrive(vec2 currentPos, vec2 targetPos, vec2 currentVel, float arriveRadius
 }
 
 // Calculate separation, alignment, and cohesion forces by checking nearby particles
-void calculateFlockingForces(vec2 pos, vec2 vel, out vec2 separationForce, out vec2 alignmentVel, out vec2 cohesionForce) {
+void calculateFlockingForces(vec2 pos, vec2 vel, ivec2 currentCoord, out vec2 separationForce, out vec2 alignmentVel, out vec2 cohesionForce) {
     separationForce = vec2(0.0);
     alignmentVel = vec2(0.0);
     cohesionForce = vec2(0.0);
@@ -143,20 +153,16 @@ void calculateFlockingForces(vec2 pos, vec2 vel, out vec2 separationForce, out v
         for (int dx = -2; dx <= 2; dx++) {
             if (dx == 0 && dy == 0) continue;
             
-            // Calculate neighbor UV
-            vec2 offset = vec2(float(dx * gridStep), float(dy * gridStep)) / vec2(texSize);
-            vec2 neighborUV = gl_FragCoord.xy / vec2(texSize) + offset;
+            // Calculate neighbor coordinates with wrapping
+            ivec2 ncoord = (currentCoord + ivec2(dx * gridStep, dy * gridStep) + texSize) % texSize;
             
-            // Wrap around texture edges
-            neighborUV = fract(neighborUV);
+            // Sample neighbor data using texelFetch
+            vec4 neighborPos = texelFetch(texturePosition, ncoord, 0);
+            vec4 neighborVel = texelFetch(textureVelocity, ncoord, 0);
+            vec4 neighborAttr = texelFetch(textureAttributes, ncoord, 0);
             
-            // Sample neighbor data
-            vec4 neighborPos = texture(texturePosition, neighborUV);
-            vec4 neighborVel = texture(textureVelocity, neighborUV);
-            vec4 neighborAttr = texture(textureAttributes, neighborUV);
-            
-            // Skip if neighbor is a leader
-            if (neighborAttr.w > 0.5) continue;
+            // Skip if neighbor is inactive (lifetime <= 0) or is a leader
+            if (neighborPos.w <= 0.0 || neighborAttr.w > 0.5) continue;
             
             float dist = distance(pos, neighborPos.xy);
             
@@ -167,7 +173,7 @@ void calculateFlockingForces(vec2 pos, vec2 vel, out vec2 separationForce, out v
                 float strength = 1.0 - smoothstep(0.0, uSeparationRadius, dist);
                 // Prevent extreme forces when very close
                 strength = min(strength, 3.0);
-                separationForce += normalize(diff) * strength;
+                separationForce += safeNormalize(diff) * strength;
                 separationCount++;
             }
             
@@ -261,7 +267,7 @@ vec2 centerRepulsion(vec2 pos, vec2 viewport) {
             force = vec2(1.0, 0.0) * 5.0;
         } else {
             // Smooth force that increases as we approach center
-            vec2 awayFromCenter = normalize(pos);
+            vec2 awayFromCenter = safeNormalize(pos);
             
             // Use smoothstep for very gradual, fluid-like transition
             float influence = 1.0 - smoothstep(zoneRadius * 0.7, zoneRadius * 1.05, distFromCenter);
@@ -276,11 +282,19 @@ vec2 centerRepulsion(vec2 pos, vec2 viewport) {
 
 void main() {
     ivec2 texSize = textureSize(texturePosition, 0);
-    vec2 uv = gl_FragCoord.xy / vec2(texSize);
+    ivec2 coord = ivec2(gl_FragCoord.xy);
+    int index = coord.y * texSize.x + coord.x;
     
-    vec4 position = texture(texturePosition, uv);
-    vec4 velocity = texture(textureVelocity, uv);
-    vec4 attributes = texture(textureAttributes, uv);
+    // Early-out for texels beyond particle count
+    if (index >= uTotalCount) {
+        fragColor = vec4(0.0);
+        return;
+    }
+    
+    // Use texelFetch for precise sampling without interpolation
+    vec4 position = texelFetch(texturePosition, coord, 0);
+    vec4 velocity = texelFetch(textureVelocity, coord, 0);
+    vec4 attributes = texelFetch(textureAttributes, coord, 0);
     
     vec3 pos = position.xyz;
     vec3 vel = velocity.xyz;
@@ -290,7 +304,7 @@ void main() {
     float particleId = gl_FragCoord.x + gl_FragCoord.y * resolution.x;
     
     // Check if this is a leader particle from the attributes texture
-    float isLeader = texture(textureAttributes, uv).w;
+    float isLeader = attributes.w;
     
     if (isLeader > 0.5) {
         // Leader patrol logic - organic wander behavior with edge attraction
@@ -311,8 +325,9 @@ void main() {
         // Combine forces with appropriate weights
         vec2 acceleration = wanderForce * 0.5 + edgeForce * 1.5 + centerForce * 2.0;
         
-        // Update velocity with acceleration
-        vec2 newVel = vel.xy + acceleration * FIXED_TIMESTEP;
+        // Update velocity with acceleration (clamp dt for stability)
+        float dt = min(FIXED_TIMESTEP, 0.1);
+        vec2 newVel = vel.xy + acceleration * dt;
         
         // Apply drag
         newVel *= uDragCoefficient;
@@ -336,11 +351,11 @@ void main() {
             float texWidth = float(texSize.x);
             float leaderX = mod(leaderIndex, texWidth) + 0.5;
             float leaderY = floor(leaderIndex / texWidth) + 0.5;
-            vec2 leaderUV = vec2(leaderX, leaderY) / vec2(texSize);
+            ivec2 leaderCoord = ivec2(int(leaderX), int(leaderY));
             
-            vec4 leaderPosData = texture(texturePosition, leaderUV);
-            vec4 leaderVelData = texture(textureVelocity, leaderUV);
-            vec4 leaderAttrs = texture(textureAttributes, leaderUV);
+            vec4 leaderPosData = texelFetch(texturePosition, leaderCoord, 0);
+            vec4 leaderVelData = texelFetch(textureVelocity, leaderCoord, 0);
+            vec4 leaderAttrs = texelFetch(textureAttributes, leaderCoord, 0);
             
             // Check if this is actually a leader
             if (leaderAttrs.w > 0.5) {
@@ -355,7 +370,7 @@ void main() {
         
         // Calculate flocking forces from nearby followers
         vec2 separationForce, localAlignmentVel, cohesionForce;
-        calculateFlockingForces(pos.xy, vel.xy, separationForce, localAlignmentVel, cohesionForce);
+        calculateFlockingForces(pos.xy, vel.xy, coord, separationForce, localAlignmentVel, cohesionForce);
         
         // Calculate steering forces based on nearest leader
         // Followers should orbit around leaders, not seek their exact position
@@ -368,7 +383,7 @@ void main() {
             seekForce = seek(pos.xy, nearestLeaderPos, vel.xy) * 0.5; // Gentler approach
         } else if (leaderDist < 40.0) {  // Reduced from 80
             // Too close - move away
-            seekForce = -normalize(toLeader) * uSeekMaxForce * 0.3; // Gentle push
+            seekForce = -safeNormalize(toLeader) * uSeekMaxForce * 0.3; // Gentle push
         }
         
         vec2 arriveForce = arrive(pos.xy, nearestLeaderPos, vel.xy, ARRIVE_RADIUS);
@@ -413,8 +428,9 @@ void main() {
             acceleration.x += scrollResponse * sin(pos.y * 0.01) * 0.2; // Subtle horizontal drift
         }
         
-        // Update velocity with acceleration using fixed timestep
-        vec2 newVel = vel.xy + acceleration * FIXED_TIMESTEP;
+        // Update velocity with acceleration using clamped timestep
+        float dt = min(FIXED_TIMESTEP, 0.1);
+        vec2 newVel = vel.xy + acceleration * dt;
         
         // Apply drag
         newVel *= uDragCoefficient;
