@@ -536,8 +536,10 @@ export function useSessionActions({
         });
       }
       
-      // Dispatch custom event after update
-      window.dispatchEvent(new CustomEvent('file-selection-applied'));
+      // Dispatch custom event in a microtask to ensure state is updated first
+      queueMicrotask(() => {
+        window.dispatchEvent(new CustomEvent('file-selection-applied'));
+      });
     },
     [updateCurrentSessionFields, showNotification]
   );

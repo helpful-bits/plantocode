@@ -38,9 +38,13 @@ pub enum CheckoutSessionMode {
 }
 
 // Helper structs for creating checkout sessions
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default, Serialize)]
 pub struct CreateCheckoutSessionLineItems {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub price: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub price_data: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub quantity: Option<i64>,
 }
 

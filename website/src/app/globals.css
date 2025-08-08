@@ -1176,6 +1176,35 @@ html {
 
 }
 
+/* Performance-based fallbacks */
+[data-performance="low"] .particle-scene {
+  opacity: 0.9;
+}
+
+[data-performance="low"] .backdrop-blur-xl {
+  backdrop-filter: blur(12px);
+}
+
+[data-performance="low"] .backdrop-blur-lg {
+  backdrop-filter: blur(8px);
+}
+
+[data-performance="low"] .backdrop-blur-md {
+  backdrop-filter: blur(6px);
+}
+
+[data-performance="low"] .backdrop-blur {
+  backdrop-filter: blur(4px);
+}
+
+[data-performance="low"] .shadow-2xl {
+  box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.08), 0 8px 10px -6px rgb(0 0 0 / 0.08);
+}
+
+[data-performance="low"] .shadow-xl {
+  box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.06), 0 8px 10px -6px rgb(0 0 0 / 0.06);
+}
+
 @layer utilities {
 }
 

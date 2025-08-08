@@ -111,6 +111,7 @@ temp/
 *.pem
 *.pfx
 *.p12
+infrastructure/ansible/group_vars/*/secrets.yml
 /desktop/src-tauri/gen/
 /desktop/src-tauri/icons/android/mipmap-hdpi/ic_launcher.png
 /desktop/src-tauri/icons/android/mipmap-hdpi/ic_launcher_foreground.png

@@ -359,7 +359,7 @@ impl CreditService {
             .map_err(|e| AppError::Database(format!("Failed to set user context: {}", e)))?;
         
         // Calculate the cost difference (can be negative for refund)
-        let estimated_cost = existing_record.cost;
+        let estimated_cost = existing_record.cost.clone();
         let cost_delta = &final_cost - &estimated_cost;
         
         // Determine status from metadata or default to "completed"
@@ -368,6 +368,101 @@ impl CreditService {
             .and_then(|s| s.as_str())
             .unwrap_or("completed");
 
+        // Handle failed requests with proper refund behavior
+        let is_failed = metadata.as_ref()
+            .and_then(|m| m.get("status"))
+            .and_then(|s| s.as_str())
+            .map(|s| s == "failed")
+            .unwrap_or(false);
+        
+        if is_failed {
+            // For failed requests: final_cost = 0, refund the full estimate
+            // Use the already cloned estimated_cost from above
+            
+            // Update api_usage to failed status with zero final cost
+            sqlx::query!(
+                r#"
+                UPDATE api_usage
+                SET status = 'failed',
+                    cost = 0,
+                    metadata = COALESCE($2, metadata),
+                    tokens_input = $3,
+                    tokens_output = $4,
+                    cache_write_tokens = $5,
+                    cache_read_tokens = $6
+                WHERE request_id = $1
+                "#,
+                request_id,
+                metadata.as_ref(),
+                final_usage.prompt_tokens,
+                final_usage.completion_tokens,
+                final_usage.cache_write_tokens,
+                final_usage.cache_read_tokens
+            )
+            .execute(&mut **tx)
+            .await
+            .map_err(|e| AppError::Database(format!("Failed to update API usage to failed: {}", e)))?;
+            
+            // Apply the refund to user balance if there was an estimated cost
+            if estimated_cost > BigDecimal::from(0) {
+                // Refund the estimated cost back to the user
+                let refund_balance = self.user_credit_repository
+                    .refund_credits_with_priority(&existing_record.user_id, &estimated_cost, tx)
+                    .await?;
+                
+                // Create a refund transaction record for audit
+                let refund_transaction = CreditTransaction {
+                    id: uuid::Uuid::new_v4(),
+                    user_id: existing_record.user_id,
+                    transaction_type: "refund".to_string(),
+                    net_amount: estimated_cost.clone(),
+                    gross_amount: None,
+                    fee_amount: None,
+                    currency: "USD".to_string(),
+                    description: Some(format!("Refund for failed API request {}", request_id)),
+                    stripe_charge_id: None,
+                    related_api_usage_id: Some(existing_record.id),
+                    metadata: Some(serde_json::json!({
+                        "request_id": request_id,
+                        "reason": "failed_request",
+                        "original_estimated_cost": estimated_cost
+                    })),
+                    created_at: Some(chrono::Utc::now()),
+                    balance_after: refund_balance.balance.clone(),
+                };
+                
+                self.credit_transaction_repository
+                    .create_transaction_with_executor(&refund_transaction, tx)
+                    .await?;
+                
+                info!("Refunded {} to user {} for failed request {}", 
+                     estimated_cost, existing_record.user_id, request_id);
+            }
+            
+            // Return the failed record with updated balance
+            let updated_balance = self.user_credit_repository
+                .get_balance_with_executor(&existing_record.user_id, tx)
+                .await?
+                .ok_or_else(|| AppError::NotFound("User credit record not found".to_string()))?;
+            
+            let updated_record = ApiUsageRecord {
+                id: Some(existing_record.id),
+                user_id: existing_record.user_id,
+                service_name: existing_record.service_name,
+                tokens_input: final_usage.prompt_tokens as i64,
+                tokens_output: final_usage.completion_tokens as i64,
+                cache_write_tokens: final_usage.cache_write_tokens as i64,
+                cache_read_tokens: final_usage.cache_read_tokens as i64,
+                cost: BigDecimal::from(0), // Failed requests have zero cost
+                request_id: Some(request_id.to_string()),
+                metadata: metadata.clone(),
+                timestamp: existing_record.timestamp,
+                provider_reported_cost: None,
+            };
+            
+            return Ok((updated_record, updated_balance));
+        }
+        
         // Update the api_usage record with final values and metadata
         self.api_usage_repository.update_usage_with_metadata_executor(
             request_id,
@@ -380,33 +475,6 @@ impl CreditService {
             status,
             tx,
         ).await?;
-        
-        // Skip balance adjustments for failed charges
-        if status == "failed" {
-            // Construct the updated record manually since we just updated it
-            let updated_record = ApiUsageRecord {
-                id: Some(existing_record.id),
-                user_id: existing_record.user_id,
-                service_name: existing_record.service_name,
-                tokens_input: final_usage.prompt_tokens as i64,
-                tokens_output: final_usage.completion_tokens as i64,
-                cache_write_tokens: final_usage.cache_write_tokens as i64,
-                cache_read_tokens: final_usage.cache_read_tokens as i64,
-                cost: final_cost.clone(),
-                request_id: Some(request_id.to_string()),
-                metadata: metadata.clone(),
-                timestamp: existing_record.timestamp,
-                provider_reported_cost: None,
-            };
-            
-            // Get current balance without modification
-            let current_balance = self.user_credit_repository
-                .get_balance_with_executor(&existing_record.user_id, tx)
-                .await?
-                .ok_or_else(|| AppError::NotFound("User credit record not found".to_string()))?;
-            
-            return Ok((updated_record, current_balance));
-        }
         
         // Get current balance
         let current_balance = self.user_credit_repository

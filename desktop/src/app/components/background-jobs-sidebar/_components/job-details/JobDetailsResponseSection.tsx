@@ -80,7 +80,7 @@ export function JobDetailsResponseSection() {
     return jobs.find(j => j.id === openedJobId) || null;
   }, [openedJobId, jobs]);
 
-  const isImplementationPlan = job.taskType === "implementation_plan";
+  const isImplementationPlan = job.taskType === "implementation_plan" || job.taskType === "implementation_plan_merge";
 
   // Response content is now pre-formatted from context
   let displayContentForViewer = responseContent || "";

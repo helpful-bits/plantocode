@@ -22,6 +22,7 @@ import { Button } from "@/ui/button";
 import { Progress } from "@/ui/progress";
 import { cn } from "@/utils/utils";
 import { useNotification } from "@/contexts/notification-context";
+import { extractFilesFromResponse, hasFilesInResponse } from "@/utils/response-utils";
 
 import {
   getStatusIconClass,
@@ -447,8 +448,9 @@ export const JobCard = React.memo(
                                 );
                               }
                               
-                              // Fall back to simplified count logic
-                              const count = responseObj.files?.length || 0;
+                              // Use centralized extraction for consistent file count
+                              const files = extractFilesFromResponse(job.response);
+                              const count = files.length;
                               return (
                                 <span className="font-medium text-foreground">
                                   {count > 0 ? `${count} file${count !== 1 ? 's' : ''} found` : 'No files found'}
@@ -468,7 +470,7 @@ export const JobCard = React.memo(
                         }
                         
                         // Handle implementation plans
-                        if (job.taskType === "implementation_plan") {
+                        if (job.taskType === "implementation_plan" || job.taskType === "implementation_plan_merge") {
                           const sessionName = parsedMeta?.taskData?.sessionName;
                           return (
                             <span className="font-medium text-foreground">
@@ -665,22 +667,7 @@ export const JobCard = React.memo(
                           // File finding tasks - show button only if files were found
                           (fileFindingTasks.includes(job.taskType) && 
                             job.status === "completed" && 
-                            job.response && (() => {
-                              try {
-                                let responseObj: any;
-                                if (typeof job.response === 'string') {
-                                  responseObj = JSON.parse(job.response);
-                                } else {
-                                  responseObj = job.response;
-                                }
-                                
-                                // Check if files array exists and has files
-                                const fileCount = responseObj.files?.length || 0;
-                                return fileCount > 0;
-                              } catch (e) {
-                                return false;
-                              }
-                            })()
+                            hasFilesInResponse(job.response)
                           ) ||
                           // Video analysis with completed results
                           (job.taskType === "video_analysis" && 

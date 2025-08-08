@@ -48,7 +48,7 @@ export function createInitialParticleTextures(
   // Store leader positions for follower spawning
   const leaderPositions: Array<{x: number, y: number}> = [];
 
-  // Initialize particles
+  // Initialize active particles
   for (let i = 0; i < safeCount; i++) {
     const i4 = i * 4; // Each particle uses 4 floats (RGBA)
     const isLeader = i < leaderCount;
@@ -158,6 +158,29 @@ export function createInitialParticleTextures(
     metadataData[i4 + 2] = 0.5 + Math.random() * 0.5; // particleSize (0.5-1.0)
     metadataData[i4 + 3] = isLeader ? 1.0 : 0.0; // isLeader flag
   }
+  
+  // Initialize padded texels to be inert (defensive programming)
+  const totalTexels = textureSize * textureSize;
+  for (let i = safeCount; i < totalTexels; i++) {
+    const i4 = i * 4;
+    // Position: zeros with lifetime 0
+    positionData[i4] = 0.0;
+    positionData[i4 + 1] = 0.0;
+    positionData[i4 + 2] = 0.0;
+    positionData[i4 + 3] = 0.0; // lifetime = 0
+    
+    // Velocity: all zeros
+    velocityData[i4] = 0.0;
+    velocityData[i4 + 1] = 0.0;
+    velocityData[i4 + 2] = 0.0;
+    velocityData[i4 + 3] = 0.0;
+    
+    // Metadata: mark as inactive
+    metadataData[i4] = 0.0;
+    metadataData[i4 + 1] = 0.0;
+    metadataData[i4 + 2] = 0.0;
+    metadataData[i4 + 3] = 0.0; // not a leader, inactive
+  }
 
   // Mark textures as needing upload
   positionTexture.needsUpdate = true;
@@ -175,6 +198,7 @@ export function buildVelocityUniforms({
   textureSize,
   viewport,
   leaderCount,
+  totalCount,
   weights,
   physics,
   safeZone,
@@ -182,6 +206,7 @@ export function buildVelocityUniforms({
   textureSize: THREE.Vector2;
   viewport: THREE.Vector2;
   leaderCount: number;
+  totalCount?: number;
   weights: any;
   physics: any;
   safeZone: { width: number; height: number };
@@ -197,6 +222,7 @@ export function buildVelocityUniforms({
     uScrollVelocity: { value: 0.0 },
     uViewport: { value: viewport },
     uLeaderCount: { value: leaderCount },
+    uTotalCount: { value: totalCount || leaderCount },
     uSeekForceWeight: { value: weights.seek },
     uAlignmentForceWeight: { value: weights.alignment },
     uSeparationForceWeight: { value: weights.separation },

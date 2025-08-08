@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { motion } from 'framer-motion';
 import { CheckCircle2, Zap } from 'lucide-react';
+import Reveal from '@/components/motion/Reveal';
 
 interface CallToActionProps {
   title: string;
@@ -85,64 +86,21 @@ export function CallToAction({ title, description, buttonText, buttonLink }: Cal
                   />
                 </div>
 
-                <motion.div
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 dark:bg-primary/15 text-primary mb-6 text-sm font-medium"
-                  variants={{
-                    hidden: { opacity: 0, scale: 0.8 },
-                    visible: {
-                      opacity: 1,
-                      scale: 1,
-                      transition: { duration: 0.5, delay: 0.2 },
-                    },
-                  }}
-                >
+                <Reveal className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 dark:bg-primary/15 text-primary mb-6 text-sm font-medium" delay={0.1}>
                   <Zap className="w-4 h-4" />
                   <span>Transform Your Development Today</span>
-                </motion.div>
+                </Reveal>
 
-                <motion.h2
-                  className="text-3xl sm:text-4xl lg:text-5xl xl:text-6xl mb-6 text-primary-emphasis relative z-10"
-                  variants={{
-                    hidden: { opacity: 0, y: 20 },
-                    visible: {
-                      opacity: 1,
-                      y: 0,
-                      transition: {
-                        duration: 0.5,
-                        delay: 0.2,
-                        ease: [0.4, 0, 0.2, 1],
-                      },
-                    },
-                  }}
-                >
+                <Reveal as="h2" className="text-3xl sm:text-4xl lg:text-5xl xl:text-6xl mb-6 text-primary-emphasis relative z-10" delay={0.15}>
                   {title}
-                </motion.h2>
+                </Reveal>
 
-                <motion.p
-                  className="text-lg sm:text-xl lg:text-2xl mb-10 max-w-2xl mx-auto leading-relaxed font-medium text-foreground/80 relative z-10"
-                  variants={{
-                    hidden: { opacity: 0, y: 15 },
-                    visible: {
-                      opacity: 1,
-                      y: 0,
-                      transition: { duration: 0.5, delay: 0.25, ease: [0.4, 0, 0.2, 1] },
-                    },
-                  }}
-                >
+                <Reveal as="p" className="text-lg sm:text-xl lg:text-2xl mb-10 max-w-2xl mx-auto leading-relaxed font-medium text-foreground/80 relative z-10" delay={0.2}>
                   {description}
-                </motion.p>
+                </Reveal>
 
-                <motion.div
-                  variants={{
-                    hidden: { opacity: 0, y: 15 },
-                    visible: {
-                      opacity: 1,
-                      y: 0,
-                      transition: { duration: 0.5, delay: 0.35, ease: [0.4, 0, 0.2, 1] },
-                    },
-                  }}
-                  whileTap={{ scale: 0.95 }}
-                >
+                <Reveal delay={0.25}>
+                  <motion.div whileTap={{ scale: 0.95 }}>
                   <Button
                     asChild
                     size="xl"
@@ -160,18 +118,10 @@ export function CallToAction({ title, description, buttonText, buttonLink }: Cal
                       </svg>
                     </Link>
                   </Button>
-                </motion.div>
+                  </motion.div>
+                </Reveal>
 
-                <motion.div
-                  className="mt-8 flex items-center justify-center gap-8 text-sm text-foreground/60"
-                  variants={{
-                    hidden: { opacity: 0 },
-                    visible: {
-                      opacity: 1,
-                      transition: { duration: 0.5, delay: 0.45, ease: [0.4, 0, 0.2, 1] },
-                    },
-                  }}
-                >
+                <Reveal className="mt-8 flex items-center justify-center gap-8 text-sm text-foreground/60" delay={0.3}>
                   <div className="flex items-center gap-2">
                     <CheckCircle2 className="w-4 h-4 text-primary/70" />
                     <span>Free forever</span>
@@ -184,7 +134,7 @@ export function CallToAction({ title, description, buttonText, buttonLink }: Cal
                     <CheckCircle2 className="w-4 h-4 text-primary/70" />
                     <span>Start working instantly</span>
                   </div>
-                </motion.div>
+                </Reveal>
               </div>
             </GlassCard>
           </motion.div>

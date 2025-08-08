@@ -18,6 +18,13 @@ use crate::stripe_types::enums::*;
 use serde::{Deserialize, Serialize};
 use crate::db::repositories::user_repository::User;
 
+/// Result of credit recording to indicate whether a new record was created or a duplicate was detected
+#[derive(Debug, Clone, Copy)]
+enum CreditRecordResult {
+    Created,
+    Duplicate,
+}
+
 /// Payment completion context for different payment types
 #[derive(Debug)]
 enum PaymentCompletionContext {
@@ -81,7 +88,7 @@ async fn process_payment_completion(
             let credit_service = billing_service.get_credit_service();
             let audit_context = AuditContext::new(user_id);
             
-            record_credit_transaction(
+            let result = record_credit_transaction(
                 &credit_service,
                 &user_id,
                 &gross_amount,
@@ -93,9 +100,22 @@ async fn process_payment_completion(
                 &format!("credit purchase for payment intent {}", payment_intent.id),
             ).await?;
             
-            // Send email notification for credit purchases
-            if let Some(email_service) = email_service {
-                send_credit_purchase_email(email_service, billing_service, &user_id, &gross_amount, &platform_fee, &currency).await;
+            // Send email notification for credit purchases only if a new record was created
+            match result {
+                CreditRecordResult::Created => {
+                    if let Some(email_service) = email_service {
+                        send_credit_purchase_email(email_service, billing_service, &user_id, &gross_amount, &platform_fee, &currency).await;
+                        info!("Email notification sent for credit purchase - payment_intent: {}, user_id: {}, amount: {}",
+                              payment_intent.id, user_id, gross_amount);
+                    } else {
+                        info!("Credit record created but no email sent (no email service) - payment_intent: {}, user_id: {}, amount: {}",
+                              payment_intent.id, user_id, gross_amount);
+                    }
+                },
+                CreditRecordResult::Duplicate => {
+                    info!("Duplicate credit record detected, skipping email - payment_intent: {}, user_id: {}, amount: {}",
+                          payment_intent.id, user_id, gross_amount);
+                }
             }
         },
         
@@ -133,7 +153,7 @@ async fn process_payment_completion(
             let credit_service = billing_service.get_credit_service();
             let audit_context = AuditContext::new(user.id);
             
-            record_credit_transaction(
+            let result = record_credit_transaction(
                 &credit_service,
                 &user.id,
                 &gross_amount,
@@ -145,7 +165,17 @@ async fn process_payment_completion(
                 &format!("auto top-off for payment intent {}", payment_intent.id),
             ).await?;
             
-            // No email for auto top-off
+            // Log the result for observability but no email for auto top-off
+            match result {
+                CreditRecordResult::Created => {
+                    info!("Auto top-off credit record created - payment_intent: {}, user_id: {}, amount: {}",
+                          payment_intent.id, user.id, gross_amount);
+                },
+                CreditRecordResult::Duplicate => {
+                    info!("Duplicate auto top-off credit record detected - payment_intent: {}, user_id: {}, amount: {}",
+                          payment_intent.id, user.id, gross_amount);
+                }
+            }
         },
     }
     
@@ -186,7 +216,7 @@ async fn record_credit_transaction(
     metadata: serde_json::Value,
     audit_context: &AuditContext,
     description: &str,
-) -> Result<(), AppError> {
+) -> Result<CreditRecordResult, AppError> {
     match credit_service.record_credit_purchase(
         user_id,
         gross_amount,
@@ -199,17 +229,17 @@ async fn record_credit_transaction(
         Ok(updated_balance) => {
             info!("Successfully processed {} - user {} new balance: ${}", 
                   description, user_id, updated_balance.balance);
+            Ok(CreditRecordResult::Created)
         },
         Err(AppError::AlreadyExists(_)) => {
             info!("{} was already processed (duplicate)", description);
-            return Ok(());
+            Ok(CreditRecordResult::Duplicate)
         },
         Err(e) => {
             error!("Failed to record {}: {}", description, e);
-            return Err(AppError::Payment(format!("Failed to record {}: {}", description, e)));
+            Err(AppError::Payment(format!("Failed to record {}: {}", description, e)))
         }
-    };
-    Ok(())
+    }
 }
 
 /// Send credit purchase email notification
@@ -507,7 +537,7 @@ async fn process_stripe_webhook_event(
                         user_id,
                     };
                     
-                    match process_payment_completion(context, billing_service, None).await {
+                    match process_payment_completion(context, billing_service, Some(&email_service)).await {
                         Ok(_) => {
                             info!("Successfully processed credit purchase for payment intent {} - user_id: {}, amount: {}", 
                                   payment_intent_id, user_id_str, amount);
@@ -571,7 +601,7 @@ async fn process_stripe_webhook_event(
                                 user_id,
                             };
                             
-                            match process_payment_completion(context, billing_service, None).await {
+                            match process_payment_completion(context, billing_service, Some(&email_service)).await {
                                 Ok(_) => {
                                     info!("Successfully processed unknown payment type as credit purchase for payment intent {}", payment_intent_id);
                                 },
@@ -685,7 +715,7 @@ async fn process_stripe_webhook_event(
                 let description = format!("Credit purchase via Stripe invoice {}", invoice.id);
                 
                 // Use the helper function instead of calling record_credit_purchase directly
-                record_credit_transaction(
+                let result = record_credit_transaction(
                     &credit_service,
                     &user.id,
                     &gross_amount,
@@ -697,8 +727,16 @@ async fn process_stripe_webhook_event(
                     &description,
                 ).await?;
                 
-                info!("Successfully processed auto top-off invoice {} for user {} - added ${} credits", 
-                      invoice.id, user.id, gross_amount);
+                match result {
+                    CreditRecordResult::Created => {
+                        info!("Successfully processed auto top-off invoice {} for user {} - added ${} credits", 
+                              invoice.id, user.id, gross_amount);
+                    },
+                    CreditRecordResult::Duplicate => {
+                        info!("Duplicate auto top-off invoice {} for user {} detected - credits already processed", 
+                              invoice.id, user.id);
+                    }
+                }
             } else {
                 info!("Invoice {} is not an auto top-off, skipping credit processing", invoice.id);
             }
