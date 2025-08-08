@@ -85,6 +85,14 @@ impl RateLimitStorage {
             user_storage: Arc::new(DashMap::new()),
         }
     }
+    
+    /// Get the Redis connection manager if using Redis storage
+    pub fn get_redis_connection_manager(&self) -> Option<Arc<redis::aio::ConnectionManager>> {
+        match self {
+            RateLimitStorage::Redis { connection_manager } => Some(connection_manager.clone()),
+            _ => None,
+        }
+    }
 
     /// Create a new Redis-based storage
     pub async fn new_redis(redis_url: &str) -> Result<Self, redis::RedisError> {

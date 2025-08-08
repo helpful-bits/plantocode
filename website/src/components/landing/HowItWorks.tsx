@@ -2,8 +2,8 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { GlassCard } from '@/components/ui/GlassCard';
-import { motion, useInView } from 'framer-motion';
-import { variants } from '@/lib/animations';
+import { useInView } from 'framer-motion';
+import Reveal from '@/components/motion/Reveal';
 
 interface Step {
   title: string;
@@ -70,39 +70,21 @@ export function HowItWorks({ steps = defaultSteps }: HowItWorksProps) {
   return (
     <section className="relative py-12 sm:py-16 md:py-20 lg:py-24 px-4 overflow-hidden" id="how-it-works">
       <div className="container mx-auto relative z-10">
-        <motion.div
-          className="text-center mb-16"
-          initial="hidden"
-          whileInView="visible"
-          variants={variants.section}
-          viewport={{ once: true, amount: 0.5 }}
-        >
-          <motion.h2
-            className="text-4xl sm:text-5xl lg:text-6xl mb-6 text-primary-emphasis font-bold"
-            variants={variants.item}
-          >
+        <div className="text-center mb-16">
+          <Reveal as="h2" className="text-4xl sm:text-5xl lg:text-6xl mb-6 text-primary-emphasis font-bold">
             How It Works
-          </motion.h2>
-          <motion.p
-            className="text-lg sm:text-xl max-w-2xl mx-auto leading-relaxed font-medium text-foreground/80"
-            variants={variants.item}
-          >
+          </Reveal>
+          <Reveal as="p" className="text-lg sm:text-xl max-w-2xl mx-auto leading-relaxed font-medium text-foreground/80" delay={0.05}>
             From task description to implementation plan in minutes
-          </motion.p>
-        </motion.div>
+          </Reveal>
+        </div>
 
-        <motion.div
-          className="space-y-16 max-w-5xl mx-auto"
-          initial="hidden"
-          whileInView="visible"
-          variants={variants.section}
-          viewport={{ once: true, amount: 0.1 }}
-        >
+        <div className="space-y-16 max-w-5xl mx-auto">
           {steps.map((step, index) => (
-            <motion.div
+            <Reveal
               key={index}
               className="how-it-works-step group"
-              variants={variants.item}
+              delay={0.1 + index * 0.05}
             >
               <GlassCard className="overflow-hidden">
                 <div className="p-8 sm:p-10 lg:p-12">
@@ -123,17 +105,17 @@ export function HowItWorks({ steps = defaultSteps }: HowItWorksProps) {
                     </p>
                   </div>
 
-                  <div className="relative group">
+                  <Reveal className="relative group" delay={0.15 + index * 0.05}>
                     <div className="absolute -inset-4 bg-gradient-to-r from-primary/20 via-primary/10 to-primary/20 rounded-2xl blur-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
                     <div className="relative rounded-xl overflow-hidden shadow-2xl ring-1 ring-primary/10 group-hover:ring-primary/20">
                       <OptimizedVideo poster={step.poster} video={step.video} />
                     </div>
-                  </div>
+                  </Reveal>
                 </div>
               </GlassCard>
-            </motion.div>
+            </Reveal>
           ))}
-        </motion.div>
+        </div>
       </div>
     </section>
   );

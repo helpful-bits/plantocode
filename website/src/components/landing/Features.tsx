@@ -2,8 +2,7 @@
 
 import React from 'react';
 import { GlassCard } from '@/components/ui/GlassCard';
-import { motion } from 'framer-motion';
-import { variants } from '@/lib/animations';
+import Reveal from '@/components/motion/Reveal';
 
 interface Feature {
   title: string;
@@ -21,39 +20,21 @@ export function Features({ features = defaultFeatures }: FeaturesProps) {
   return (
     <section className="relative pt-16 pb-12 sm:py-16 md:py-20 lg:py-24 px-4 overflow-hidden" id="features">
       <div className="container mx-auto relative z-10">
-        <motion.div
-          className="text-center mb-12"
-          initial="hidden"
-          whileInView="visible"
-          variants={variants.section}
-          viewport={{ once: true, amount: 0.2 }}
-        >
-          <motion.h2
-            className="text-3xl sm:text-4xl lg:text-5xl mb-4 text-primary-emphasis font-bold text-shadow-subtle"
-            variants={variants.item}
-          >
+        <div className="text-center mb-12">
+          <Reveal as="h2" className="text-3xl sm:text-4xl lg:text-5xl mb-4 text-primary-emphasis font-bold text-shadow-subtle" delay={0}>
             Key Features
-          </motion.h2>
-          <motion.p
-            className="text-lg sm:text-xl max-w-2xl mx-auto leading-relaxed font-medium text-description-muted"
-            variants={variants.item}
-          >
+          </Reveal>
+          <Reveal as="p" className="text-lg sm:text-xl max-w-2xl mx-auto leading-relaxed font-medium text-description-muted" delay={0.05}>
             Powerful tools designed for large codebase development and AI-assisted workflow optimization
-          </motion.p>
-        </motion.div>
+          </Reveal>
+        </div>
 
-        <motion.div
-          className="grid md:grid-cols-2 lg:grid-cols-3 gap-8 p-2"
-          initial="hidden"
-          whileInView="visible"
-          variants={variants.section}
-          viewport={{ once: true, amount: 0.1 }}
-        >
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8 p-2">
           {features.map((feature, index) => (
-            <motion.div
+            <Reveal
               key={index}
               className="feature-card group"
-              variants={variants.item}
+              delay={0.1 + index * 0.05}
             >
               <GlassCard className="h-full">
                 <div className="content-spacing text-safe-padding">
@@ -73,9 +54,9 @@ export function Features({ features = defaultFeatures }: FeaturesProps) {
                   </p>
                 </div>
               </GlassCard>
-            </motion.div>
+            </Reveal>
           ))}
-        </motion.div>
+        </div>
       </div>
     </section>
   );

@@ -156,8 +156,8 @@ export default function TaskModelSettings({
   const isDifferentFromDefault = useCallback((taskKey: keyof TaskSettings, settingName: 'model' | 'maxTokens' | 'temperature' | 'languageCode' | 'copyButtons') => {
     if (!serverDefaults || !serverDefaults[taskKey]) return false;
     
-    // Only check copyButtons for implementation plans
-    if (settingName === 'copyButtons' && taskKey !== 'implementationPlan') {
+    // Only check copyButtons for implementation plans (both regular and merge)
+    if (settingName === 'copyButtons' && taskKey !== 'implementationPlan' && taskKey !== 'implementationPlanMerge') {
       return false;
     }
     

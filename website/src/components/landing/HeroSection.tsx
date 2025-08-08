@@ -4,6 +4,7 @@ import React from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { motion } from 'framer-motion';
+import Reveal from '@/components/motion/Reveal';
 
 export function HeroSection() {
 
@@ -11,26 +12,14 @@ export function HeroSection() {
     <section className="relative h-auto sm:min-h-screen flex items-start sm:items-center justify-center overflow-hidden bg-transparent py-16 sm:py-12 md:py-16 lg:py-0">
       <div className="relative text-center px-4 sm:px-6 lg:px-8 max-w-5xl mx-auto my-8">
         {/* Primary heading */}
-        <motion.h1
-          className="relative text-4xl sm:text-5xl lg:text-6xl font-bold mb-6 leading-tight"
-          initial={{ opacity: 0, y: 30 }}
-          transition={{ duration: 0.7, delay: 0.1 }}
-          viewport={{ once: true }}
-          whileInView={{ opacity: 1, y: 0 }}
-        >
+        <Reveal as="h1" className="relative text-4xl sm:text-5xl lg:text-6xl font-bold mb-6 leading-tight" delay={0.1}>
           <span className="text-hero-title">
             The Polite Context Guidance Centre for Somewhat Bewildered AI Agents
           </span>
-        </motion.h1>
+        </Reveal>
 
         {/* Subtitle - Enhanced with the story */}
-        <motion.div
-          className="relative mb-8 max-w-3xl mx-auto space-y-4"
-          initial={{ opacity: 0, y: 30 }}
-          transition={{ duration: 0.7, delay: 0.6 }}
-          viewport={{ once: true }}
-          whileInView={{ opacity: 1, y: 0 }}
-        >
+        <Reveal className="relative mb-8 max-w-3xl mx-auto space-y-4" delay={0.2}>
           <p className="relative text-lg sm:text-xl text-description-muted leading-relaxed">
             You know the feeling. You're "vibe coding" with an AI agent - the ideas are flowing, it's magical... until it's not. 
             The agent gets hopelessly lost in your codebase, starts ignoring instructions, hallucinates APIs, and writes code 
@@ -48,49 +37,39 @@ export function HeroSection() {
             Vibe Manager was born from hitting that wall. Hard. Agents don't need more rules - they need the right files, 
             real context, and clear tasks. Simple as that.
           </p>
-        </motion.div>
+        </Reveal>
 
         {/* Action buttons */}
         <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            transition={{ duration: 0.7, delay: 0.8 }}
-            viewport={{ once: true }}
-            whileInView={{ opacity: 1, y: 0 }}
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-          >
-            <Button asChild className="relative overflow-hidden" size="xl" variant="cta">
-              <Link href="/download">
-                Get Your Weekend Back
-              </Link>
-            </Button>
-          </motion.div>
+          <Reveal delay={0.3}>
+            <motion.div
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+            >
+              <Button asChild className="relative overflow-hidden" size="xl" variant="cta">
+                <Link href="/download">
+                  Get Your Weekend Back
+                </Link>
+              </Button>
+            </motion.div>
+          </Reveal>
 
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            transition={{ duration: 0.7, delay: 0.9 }}
-            viewport={{ once: true }}
-            whileInView={{ opacity: 1, y: 0 }}
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-          >
-            <Button asChild size="lg" variant="gradient-outline">
-              <Link href="#how-it-works">
-                See How It Works
-              </Link>
-            </Button>
-          </motion.div>
+          <Reveal delay={0.35}>
+            <motion.div
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+            >
+              <Button asChild size="lg" variant="gradient-outline">
+                <Link href="#how-it-works">
+                  See How It Works
+                </Link>
+              </Button>
+            </motion.div>
+          </Reveal>
         </div>
 
         {/* Trust indicators */}
-        <motion.div
-          className="mt-8 sm:mt-12 flex flex-wrap gap-x-8 gap-y-4 justify-center text-sm text-muted-foreground"
-          initial={{ opacity: 0 }}
-          transition={{ duration: 0.7, delay: 1.1 }}
-          viewport={{ once: true }}
-          whileInView={{ opacity: 1 }}
-        >
+        <Reveal className="mt-8 sm:mt-12 flex flex-wrap gap-x-8 gap-y-4 justify-center text-sm text-muted-foreground" delay={0.4}>
           <span className="flex items-center gap-2">
             <span className="text-primary">✓</span> Built by a developer, for developers
           </span>
@@ -100,7 +79,7 @@ export function HeroSection() {
           <span className="flex items-center gap-2">
             <span className="text-primary">✓</span> No subscriptions
           </span>
-        </motion.div>
+        </Reveal>
       </div>
 
     </section>

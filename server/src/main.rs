@@ -323,28 +323,22 @@ async fn main() -> std::io::Result<()> {
     // Initialize billing service
     let mut billing_service = BillingService::new(db_pools.clone(), app_settings.clone());
     
-    // Set up Redis for billing service (mandatory)
-    match redis::Client::open(app_settings.redis.url.as_str()) {
-        Ok(client) => {
-            match redis::aio::ConnectionManager::new(client).await {
-                Ok(conn_mgr) => {
-                    billing_service.set_redis_client(Arc::new(conn_mgr));
-                    log::info!("Redis connected for billing service caching");
-                }
-                Err(e) => {
-                    log::error!("Failed to create Redis connection for billing: {}", e);
-                    std::process::exit(1);
-                }
-            }
-        }
-        Err(e) => {
-            log::error!("Failed to open Redis client for billing: {}", e);
-            std::process::exit(1);
-        }
+    // Set up Redis for billing service (mandatory) - get Redis manager from rate limiting storage
+    if let Some(redis_conn) = rate_limit_storage.get_redis_connection_manager() {
+        let default_ttl_ms = 900_000; // 15 minutes
+        billing_service.set_redis_client(redis_conn, default_ttl_ms);
+        log::info!("Redis connected for billing service with pending charge reservations enabled");
+    } else {
+        log::error!("Redis connection manager not available from rate limiting storage");
+        std::process::exit(1);
     }
     
     // Wrap billing service in Arc for sharing across handlers
     let billing_service = Arc::new(billing_service);
+    
+    // Spawn background reconciliation task for timed-out pending charges
+    billing_service.clone().spawn_pending_reconciliation();
+    log::info!("Background reconciliation task spawned for pending charge cleanup");
     
     // Clone app_settings for use outside the closure
     let app_settings_for_server = app_settings.clone();

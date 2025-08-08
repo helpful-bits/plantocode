@@ -1,17 +1,20 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useUpdater } from '@/hooks/use-updater'
 import { useNotification } from '@/contexts/notification-context'
+import { isTauriAvailable } from '@/utils/tauri-utils'
 
 export function UpdaterStatus() {
   const { status, checkForUpdates, downloadAndInstallUpdate } = useUpdater()
-  const { showNotification, showError } = useNotification()
+  const { showNotification, showPersistentNotification, dismissNotification, showError } = useNotification()
   const [hasCheckedOnStartup, setHasCheckedOnStartup] = useState(false)
+  const downloadNotificationIdRef = useRef<string | null>(null)
+  const installNotificationIdRef = useRef<string | null>(null)
 
   // Check for updates on startup
   useEffect(() => {
-    if (!hasCheckedOnStartup) {
+    if (!hasCheckedOnStartup && isTauriAvailable()) {
       setHasCheckedOnStartup(true)
       
       checkForUpdates()
@@ -47,21 +50,41 @@ export function UpdaterStatus() {
   // Show status notifications for download/install progress
   useEffect(() => {
     if (status.isDownloading) {
-      showNotification({
+      // Dismiss any existing download notification and create a new one
+      if (downloadNotificationIdRef.current) {
+        dismissNotification(downloadNotificationIdRef.current)
+      }
+      const id = showPersistentNotification({
         title: 'Downloading Update',
         message: 'Update is being downloaded in the background...',
-        type: 'info',
-        duration: 0
+        type: 'info'
       })
-    } else if (status.isInstalling) {
-      showNotification({
+      downloadNotificationIdRef.current = id
+    } else if (downloadNotificationIdRef.current) {
+      // Dismiss download notification when no longer downloading
+      dismissNotification(downloadNotificationIdRef.current)
+      downloadNotificationIdRef.current = null
+    }
+  }, [status.isDownloading, showPersistentNotification, dismissNotification])
+
+  useEffect(() => {
+    if (status.isInstalling) {
+      // Dismiss any existing install notification and create a new one
+      if (installNotificationIdRef.current) {
+        dismissNotification(installNotificationIdRef.current)
+      }
+      const id = showPersistentNotification({
         title: 'Installing Update',
         message: 'The app will restart automatically when installation is complete.',
-        type: 'info',
-        duration: 0
+        type: 'info'
       })
+      installNotificationIdRef.current = id
+    } else if (installNotificationIdRef.current) {
+      // Dismiss install notification when no longer installing
+      dismissNotification(installNotificationIdRef.current)
+      installNotificationIdRef.current = null
     }
-  }, [status.isDownloading, status.isInstalling, showNotification])
+  }, [status.isInstalling, showPersistentNotification, dismissNotification])
 
   // Show error notifications
   useEffect(() => {

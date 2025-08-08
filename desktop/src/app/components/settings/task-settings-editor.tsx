@@ -358,7 +358,7 @@ export function TaskSettingsEditor({
       )}
 
       {/* Copy Buttons Section - Only for Implementation Plans */}
-      {taskKey === 'implementationPlan' && (
+      {(taskKey === 'implementationPlan' || taskKey === 'implementationPlanMerge') && (
         <TaskSettingsCard title="Copy Buttons">
         <div className="space-y-3">
           <div className="flex items-start justify-between">

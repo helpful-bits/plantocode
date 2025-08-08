@@ -412,13 +412,13 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
       <DialogContent className="max-w-6xl h-[95vh] !flex !flex-col !gap-0 text-foreground !bg-background rounded-xl shadow-lg !backdrop-blur-none">
         <DialogHeader>
           <DialogTitle
-            className={`${displayJob?.taskType === "implementation_plan" ? "text-xl" : ""} text-foreground`}
+            className={`${(displayJob?.taskType === "implementation_plan" || displayJob?.taskType === "implementation_plan_merge") ? "text-xl" : ""} text-foreground`}
           >
             {(() => {
               const parsedMeta = contextValue.parsedMetadata;
 
               if (
-                displayJob?.taskType === "implementation_plan" &&
+                (displayJob?.taskType === "implementation_plan" || displayJob?.taskType === "implementation_plan_merge") &&
                 parsedMeta?.taskData?.showPureContent === true
               ) {
                 return (
@@ -430,7 +430,7 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
                   </div>
                 );
               } else if (
-                displayJob?.taskType === "implementation_plan" &&
+                (displayJob?.taskType === "implementation_plan" || displayJob?.taskType === "implementation_plan_merge") &&
                 parsedMeta?.taskData?.sessionName
               ) {
                 return <>Implementation Plan: {parsedMeta.taskData.sessionName}</>;

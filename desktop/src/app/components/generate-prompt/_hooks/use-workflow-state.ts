@@ -1,16 +1,14 @@
 "use client";
 
-import { useContext, useMemo, useCallback, useEffect, useRef } from "react";
+import { useContext, useMemo, useCallback } from "react";
 import { BackgroundJobsContext } from "@/contexts/background-jobs";
-import { useSessionStateContext, useSessionActionsContext } from "@/contexts/session";
+import { useSessionStateContext } from "@/contexts/session";
 import { JOB_STATUSES } from "@/types/session-types";
 import { startFileFinderWorkflowAction, cancelWorkflowAction } from "@/actions/workflows";
 
 export function useWorkflowState() {
   const { jobs } = useContext(BackgroundJobsContext);
   const { currentSession } = useSessionStateContext();
-  const { applyFileSelectionUpdate } = useSessionActionsContext();
-  const processedJobIds = useRef<Set<string>>(new Set());
 
   // Check for active file-finding stage jobs instead of master workflow job
   const activeFileFindingJob = useMemo(() => {
@@ -91,32 +89,8 @@ export function useWorkflowState() {
     }
   }, [fileFinderWorkflowJob]);
 
-  useEffect(() => {
-    if (!fileFinderWorkflowJob) return;
-    
-    const handleWorkflowCompletion = async () => {
-      if (fileFinderWorkflowJob.status === 'completed' && !processedJobIds.current.has(fileFinderWorkflowJob.id)) {
-        processedJobIds.current.add(fileFinderWorkflowJob.id);
-        
-        // Only apply if this workflow belongs to the current session
-        if (fileFinderWorkflowJob.sessionId === currentSession?.id) {
-          try {
-            const parsedResponse = typeof fileFinderWorkflowJob.response === 'string' 
-              ? JSON.parse(fileFinderWorkflowJob.response) 
-              : fileFinderWorkflowJob.response;
-            
-            if (parsedResponse?.selectedFiles && Array.isArray(parsedResponse.selectedFiles)) {
-              await applyFileSelectionUpdate(parsedResponse.selectedFiles, "AI File Finder");
-            }
-          } catch (error) {
-            console.error('Failed to parse workflow response:', error);
-          }
-        }
-      }
-    };
-    
-    handleWorkflowCompletion();
-  }, [fileFinderWorkflowJob, currentSession?.id, applyFileSelectionUpdate]);
+  // Removed auto-apply logic - let users click "Use Files" button on completed jobs
+  // This gives users control over when to apply the found files
 
   return {
     findingFiles,

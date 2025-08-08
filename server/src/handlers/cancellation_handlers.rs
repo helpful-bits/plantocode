@@ -6,6 +6,7 @@ use tracing::{info, warn, error, instrument};
 use crate::error::AppError;
 use crate::models::AuthenticatedUser;
 use crate::services::request_tracker::RequestTracker;
+use crate::services::billing_service::BillingService;
 use crate::config::settings::AppSettings;
 use crate::utils::http_client::new_api_client;
 
@@ -20,11 +21,12 @@ pub struct CancelRequestResponse {
     pub message: String,
 }
 
-#[instrument(skip(payload, user, request_tracker, app_settings))]
+#[instrument(skip(payload, user, request_tracker, billing_service, app_settings))]
 pub async fn cancel_request_handler(
     payload: web::Json<CancelRequestPayload>,
     user: web::ReqData<AuthenticatedUser>,
     request_tracker: web::Data<RequestTracker>,
+    billing_service: web::Data<BillingService>,
     app_settings: web::Data<AppSettings>,
 ) -> Result<HttpResponse, AppError> {
     let user_id = user.user_id;
@@ -81,6 +83,11 @@ pub async fn cancel_request_handler(
                 // Remove from tracker
                 request_tracker.remove_request(request_id).await;
                 
+                // Fail the charge to refund the estimate and release reservation
+                if let Err(e) = billing_service.fail_api_charge(request_id, &user_id, "Cancelled by user").await {
+                    warn!("Failed to refund charge for cancelled request {}: {}", request_id, e);
+                }
+                
                 Ok(HttpResponse::Ok().json(CancelRequestResponse {
                     success: true,
                     message: format!("Request {} has been cancelled", request_id),
@@ -88,6 +95,11 @@ pub async fn cancel_request_handler(
             } else {
                 // Request hasn't reached OpenAI yet, just remove from tracker
                 request_tracker.remove_request(request_id).await;
+                
+                // Fail the charge to refund the estimate and release reservation
+                if let Err(e) = billing_service.fail_api_charge(request_id, &user_id, "Cancelled before processing").await {
+                    warn!("Failed to refund charge for cancelled request {}: {}", request_id, e);
+                }
                 
                 Ok(HttpResponse::Ok().json(CancelRequestResponse {
                     success: true,

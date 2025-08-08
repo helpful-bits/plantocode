@@ -79,6 +79,58 @@ export async function makePathRelative(
 }
 
 /**
+ * Converts a file path to project-relative format synchronously.
+ * This is useful for immediate UI operations where async normalization isn't feasible.
+ * 
+ * @param filePath - The file path to convert (absolute or relative)
+ * @param projectDirectory - The project root directory
+ * @returns A project-relative path with forward slashes
+ */
+export function toProjectRelativePath(filePath: string, projectDirectory: string): string {
+  if (!filePath || !projectDirectory) return filePath || '';
+  
+  // Normalize separators to forward slashes
+  const normalizedPath = filePath.replace(/\\/g, '/');
+  const normalizedProject = projectDirectory.replace(/\\/g, '/');
+  
+  // Remove trailing slashes from project directory for consistent comparison
+  const projectBase = normalizedProject.endsWith('/') 
+    ? normalizedProject.slice(0, -1) 
+    : normalizedProject;
+  
+  // Handle case-insensitive comparison for Windows-style paths
+  const isWindows = /^[a-zA-Z]:/.test(normalizedPath) || /^[a-zA-Z]:/.test(projectBase);
+  
+  if (isWindows) {
+    // Case-insensitive comparison for Windows
+    const lowerPath = normalizedPath.toLowerCase();
+    const lowerProject = projectBase.toLowerCase();
+    
+    if (lowerPath === lowerProject) {
+      return '.';
+    }
+    
+    if (lowerPath.startsWith(lowerProject + '/')) {
+      // Extract the relative part preserving original case
+      return normalizedPath.slice(projectBase.length + 1);
+    }
+  } else {
+    // Case-sensitive comparison for Unix-like systems
+    if (normalizedPath === projectBase) {
+      return '.';
+    }
+    
+    if (normalizedPath.startsWith(projectBase + '/')) {
+      return normalizedPath.slice(projectBase.length + 1);
+    }
+  }
+  
+  // Path is already relative or outside project directory
+  // Just normalize separators and return
+  return normalizedPath;
+}
+
+/**
  * Creates a comparable path key for consistent file identification in UI state.
  * 
  * **Primary Use Case**: Creating consistent, comparable string keys for UI state management,

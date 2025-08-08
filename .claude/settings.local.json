@@ -177,7 +177,8 @@
       "Bash(export APPLE_API_ISSUER=\"38c0c750-d236-4564-8251-fbbd06073c60\")",
       "Bash(export:*)",
       "Bash(sh:*)",
-      "Bash(aws s3 cp:*)"
+      "Bash(aws s3 cp:*)",
+      "Bash(PGDATABASE=vibe_manager psql -h localhost -p 5432 -c \"SELECT id, name, api_model_id, status, provider_id FROM models WHERE id LIKE ''%gpt%'' OR name LIKE ''%gpt%'' OR api_model_id LIKE ''%gpt%'' ORDER BY id;\")"
     ],
     "deny": []
   },
