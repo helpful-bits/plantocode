@@ -26,9 +26,16 @@ export function useUpdater() {
     setStatus(prev => ({ ...prev, isChecking: true, error: undefined }))
 
     try {
+      console.log('[Updater] Checking for updates...')
       const update = await check()
       
       if (update) {
+        console.log('[Updater] Update available:', {
+          current: update.currentVersion,
+          available: update.version,
+          date: update.date,
+          body: update.body?.substring(0, 100)
+        })
         setStatus(prev => ({
           ...prev,
           isChecking: false,
@@ -38,6 +45,7 @@ export function useUpdater() {
         }))
         return update
       } else {
+        console.log('[Updater] No updates available')
         setStatus(prev => ({
           ...prev,
           isChecking: false,
@@ -46,10 +54,17 @@ export function useUpdater() {
         return null
       }
     } catch (error) {
+      console.error('[Updater] Error during check:', error)
+      const errorMessage = error instanceof Error 
+        ? error.message 
+        : typeof error === 'string' 
+          ? error 
+          : 'Unknown updater error during check'
+      
       setStatus(prev => ({
         ...prev,
         isChecking: false,
-        error: error instanceof Error ? error.message : 'Failed to check for updates'
+        error: errorMessage
       }))
       return null
     }
@@ -59,9 +74,14 @@ export function useUpdater() {
     setStatus(prev => ({ ...prev, isDownloading: true, error: undefined }))
 
     try {
+      console.log('[Updater] Starting download and install for version:', update.version)
+      
       // Download and install with progress tracking
       await update.downloadAndInstall((event: DownloadEvent) => {
+        console.log('[Updater] Download event:', event.event)
+        
         if (event.event === 'Started') {
+          console.log('[Updater] Download started, content length:', event.data.contentLength)
           setStatus(prev => ({
             ...prev,
             isDownloading: true,
@@ -76,6 +96,7 @@ export function useUpdater() {
               : event.data.chunkLength
           }))
         } else if (event.event === 'Finished') {
+          console.log('[Updater] Download finished, starting installation')
           setStatus(prev => ({
             ...prev,
             isDownloading: false,
@@ -84,16 +105,34 @@ export function useUpdater() {
         }
       })
       
-      // Relaunch the application
+      // Relaunch the app after successful installation
+      console.log('[Updater] Update installed successfully, relaunching...')
       await relaunch()
       
     } catch (error) {
+      console.error('[Updater] Error during download/install:', {
+        error,
+        errorType: typeof error,
+        errorName: error instanceof Error ? error.name : 'unknown',
+        errorMessage: error instanceof Error ? error.message : String(error),
+        errorStack: error instanceof Error ? error.stack : undefined
+      })
+      
+      const errorMessage = error instanceof Error 
+        ? error.message 
+        : typeof error === 'string' 
+          ? error 
+          : 'Unknown updater error during install'
+      
       setStatus(prev => ({
         ...prev,
         isDownloading: false,
         isInstalling: false,
-        error: error instanceof Error ? error.message : 'Failed to install update'
+        error: errorMessage
       }))
+      
+      // Re-throw for the caller to handle if needed
+      throw error
     }
   }, [])
 

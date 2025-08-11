@@ -1,6 +1,7 @@
 use futures::{StreamExt, stream};
 use log::{debug, error, info};
-use regex::Regex;
+use fancy_regex::Regex;
+use tokio::time::timeout;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashSet;
@@ -34,11 +35,11 @@ impl RegexFileFilterProcessor {
         Self {}
     }
 
-    /// Compile regex pattern with validation
+    /// Compile regex pattern with validation (now supports lookahead/lookbehind)
     fn compile_regex(&self, pattern: &str) -> AppResult<Regex> {
         match Regex::new(pattern) {
             Ok(regex) => {
-                debug!("Successfully compiled regex pattern: {}", pattern);
+                debug!("Successfully compiled regex pattern (with fancy features): {}", pattern);
                 Ok(regex)
             }
             Err(e) => {
@@ -109,7 +110,14 @@ impl RegexFileFilterProcessor {
                     Ok(_) => {
                         // Valid UTF-8, proceed with pattern matching
                         let content = String::from_utf8_lossy(&bytes);
-                        content_regex.is_match(&content)
+                        // fancy-regex returns Result, handle potential errors
+                        match content_regex.is_match(&content) {
+                            Ok(matches) => matches,
+                            Err(e) => {
+                                debug!("Regex matching error for file {}: {}", file_path, e);
+                                false
+                            }
+                        }
                     }
                     Err(_) => {
                         debug!(
@@ -130,7 +138,7 @@ impl RegexFileFilterProcessor {
         }
     }
 
-    /// Process a single pattern group and return matching files
+    /// Process a single pattern group and return matching files with timeout protection
     async fn process_pattern_group(
         &self,
         compiled_group: &CompiledPatternGroup,
@@ -161,7 +169,14 @@ impl RegexFileFilterProcessor {
 
                 // Check path pattern (if specified)
                 if let Some(ref path_regex) = path_regex {
-                    path_matches = path_regex.is_match(&file_path);
+                    // fancy-regex returns Result, handle potential errors
+                    path_matches = match path_regex.is_match(&file_path) {
+                        Ok(matches) => matches,
+                        Err(e) => {
+                            debug!("Path regex matching error for {}: {}", file_path, e);
+                            false
+                        }
+                    };
                 }
 
                 // Check content pattern (if specified)
@@ -196,11 +211,11 @@ impl RegexFileFilterProcessor {
         {
             let excluded_count = positive_matches
                 .iter()
-                .filter(|file_path| neg_path_regex.is_match(file_path))
+                .filter(|file_path| neg_path_regex.is_match(file_path).unwrap_or(false))
                 .count();
             let filtered: Vec<String> = positive_matches
                 .into_iter()
-                .filter(|file_path| !neg_path_regex.is_match(file_path))
+                .filter(|file_path| !neg_path_regex.is_match(file_path).unwrap_or(false))
                 .collect();
             if excluded_count > 0 {}
             filtered
@@ -386,19 +401,33 @@ impl JobProcessor for RegexFileFilterProcessor {
                 // Use HashSet to collect unique files across all groups (OR logic between groups)
                 let mut all_matching_files = HashSet::new();
 
-                // Process each pattern group for all files (git handles efficiency)
+                // Process each pattern group for all files with 10-second timeout per group
                 for compiled_group in &compiled_groups {
-                    let group_matches = self
-                        .process_pattern_group(
+                    // Apply 10-second timeout to prevent runaway regex execution
+                    let timeout_duration = Duration::from_secs(10);
+                    match timeout(
+                        timeout_duration,
+                        self.process_pattern_group(
                             &compiled_group,
                             &all_files,
                             &normalized_project_dir_str,
-                        )
-                        .await;
-
-                    // Add all matches from this group to the overall set
-                    for file in group_matches {
-                        all_matching_files.insert(file);
+                        ),
+                    )
+                    .await
+                    {
+                        Ok(group_matches) => {
+                            // Add all matches from this group to the overall set
+                            for file in group_matches {
+                                all_matching_files.insert(file);
+                            }
+                        }
+                        Err(_) => {
+                            error!(
+                                "Pattern group '{}' timed out after 10 seconds - skipping",
+                                compiled_group.title
+                            );
+                            // Continue with other pattern groups instead of failing entirely
+                        }
                     }
                 }
 

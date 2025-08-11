@@ -81,8 +81,9 @@ pub async fn initialize_database(app_handle: &AppHandle) -> Result<(), AppError>
                     AppError::DatabaseError(format!("Failed to read migration file: {}", e))
                 })?
             } else {
-                info!("Using embedded migration SQL");
-                include_str!("../../migrations/consolidated_schema.sql").to_string()
+                return Err(AppError::DatabaseError(
+                    "Migration file not found and no embedded fallback available".to_string()
+                ));
             }
         };
 
@@ -92,11 +93,6 @@ pub async fn initialize_database(app_handle: &AppHandle) -> Result<(), AppError>
             .map_err(|e| AppError::DatabaseError(format!("Failed to apply migrations: {}", e)))?;
 
         info!("Database migrations applied successfully");
-        
-        // Initialize temp_files table
-        if let Err(e) = crate::db_utils::temp_file_repository::init_table(&db).await {
-            error!("Failed to initialize temp_files table: {}", e);
-        }
     } else {
         // Check if existing database is healthy, attempt recovery if needed
         match check_database_health(&db).await {
@@ -118,6 +114,52 @@ pub async fn initialize_database(app_handle: &AppHandle) -> Result<(), AppError>
     // Manage the pool as state
     app_handle.manage(db.clone());
     let pool_arc = Arc::new(db);
+    
+    // Ensure error_logs exists for existing databases (best-effort)
+    if let Err(e) = sqlx::query(r#"
+      CREATE TABLE IF NOT EXISTS error_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+        level TEXT NOT NULL DEFAULT 'ERROR' CHECK (level IN ('ERROR','WARN','INFO','DEBUG')),
+        error_type TEXT,
+        message TEXT NOT NULL,
+        context TEXT,
+        stack TEXT,
+        metadata TEXT,
+        app_version TEXT,
+        platform TEXT
+      )
+    "#).execute(&*pool_arc).await {
+      log::warn!("Failed ensuring error_logs table: {}", e);
+    }
+    if let Err(e) = sqlx::query(r#"
+      CREATE INDEX IF NOT EXISTS idx_error_logs_timestamp ON error_logs(timestamp)
+    "#).execute(&*pool_arc).await {
+      log::warn!("Failed ensuring error_logs index: {}", e);
+    }
+
+    // Manage ErrorLogRepository in Tauri state
+    let error_log_repo = crate::db_utils::ErrorLogRepository::new(pool_arc.clone());
+    app_handle.manage(error_log_repo.clone());
+
+    // Best-effort prune (30 days)
+    tauri::async_runtime::spawn(async move {
+      if let Err(e) = error_log_repo.prune_older_than_days(30).await {
+        log::warn!("Error log prune failed: {}", e);
+      }
+    });
+
+    // Run version-based migrations
+    info!("Checking for version-based migrations...");
+    let current_version = app_handle.package_info().version.to_string();
+    let migration_system = crate::db_utils::MigrationSystem::new(pool_arc.clone());
+    
+    if let Err(e) = migration_system.run_migrations(app_handle, &current_version).await {
+        error!("Version migration failed: {}", e);
+        // Log the error but continue - most migrations are non-critical
+        warn!("Continuing despite migration failure. Some features may not work correctly.");
+    }
+
     info!("Database connection established");
 
     // Ensure database permissions

@@ -12,6 +12,7 @@ import { Button } from "@/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/ui/dialog";
 import { Progress } from "@/ui/progress";
 import { VirtualizedCodeViewer } from "@/ui/virtualized-code-viewer";
+import { useThrottledValue } from "@/hooks/use-throttled-value";
 
 import { getJobDisplaySessionName } from "../../background-jobs-sidebar/_utils/job-display-utils";
 import { getContentForStep } from "../_utils/plan-content-parser";
@@ -173,11 +174,23 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
   // Use live progress hook for consistent real-time updates
   const progress = useLiveProgress(displayPlan);
 
-  const viewerLanguage = "xml"; // Default to XML for implementation plans
+  // Get streamed content from the live plan during streaming
+  const streamedContent = useMemo(() => {
+    if (!isStreaming || !displayPlan) return "";
+    // Use raw string if available to avoid parsing overhead
+    if (typeof displayPlan.response === "string") return displayPlan.response;
+    return normalizeJobResponse(displayPlan.response).content;
+  }, [isStreaming, displayPlan?.response]);
+
+  // Throttle streamed content to reduce re-renders during streaming
+  const throttledStreamContent = useThrottledValue(streamedContent, isStreaming ? 400 : 0);
+
+  // Use plaintext language during streaming to minimize tokenization overhead
+  const viewerLanguage = isStreaming ? "plaintext" : "xml";
 
   // Determine if we should show the loading indicator
   // Only show loading when streaming AND no content has arrived yet
-  const showLoadingIndicator = isStreaming && editedContent.trim() === "";
+  const showLoadingIndicator = isStreaming && throttledStreamContent.trim() === "";
 
   // Use centralized utility function for consistent sessionName logic
   const sessionName = getJobDisplaySessionName(displayPlan);
@@ -210,14 +223,17 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
     }
   }, [editedContent, selectedStepNumber, showNotification]);
 
-  // Initialize edited content when plan changes
+  // Initialize edited content when plan changes or streaming completes
   React.useEffect(() => {
+    // Don't overwrite edited content during streaming
+    if (isStreaming) return;
+    
     if (displayPlan) {
       const currentContent = normalizeJobResponse(displayPlan.response).content;
       setEditedContent(currentContent);
       setHasUnsavedChanges(false);
     }
-  }, [displayPlan?.id, displayPlan?.response]);
+  }, [displayPlan?.id, displayPlan?.response, isStreaming]);
 
   // Handle content changes in the editor
   const handleContentChange = React.useCallback((newContent: string | undefined) => {
@@ -408,7 +424,7 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
         {/* Content */}
         <div className="flex-1 min-h-0 relative">
           <VirtualizedCodeViewer
-            content={editedContent}
+            content={isStreaming ? throttledStreamContent : editedContent}
             height="100%"
             showCopy={false}
             showContentSize={true}
@@ -417,7 +433,18 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
             language={viewerLanguage}
             className=""
             readOnly={isStreaming} 
+            streamOptimized={isStreaming}
+            showFollowToggle={true}
+            followStreamingDefault={true}
+            disableMetrics={isStreaming}
             onChange={isStreaming ? undefined : handleContentChange}
+            editorOptions={isStreaming ? {
+              renderWhitespace: 'none',
+              smoothScrolling: false,
+              occurrencesHighlight: false,
+              minimap: { enabled: false },
+              wordWrap: 'off',
+            } : undefined}
             loadingIndicator={
               <div className="flex items-center justify-center h-full">
                 <div className="flex items-center gap-2">

@@ -10,7 +10,7 @@ import { motion, HTMLMotionProps } from 'framer-motion';
 import { cn } from '@/lib/utils';
 
 const buttonVariants = cva(
-  'inline-flex items-center justify-center whitespace-nowrap rounded-xl text-sm font-semibold ring-offset-background duration-200 focus:outline-none focus-visible:ring-3 focus-visible:ring-ring focus-visible:ring-offset-3 disabled:pointer-events-none disabled:opacity-50 cursor-pointer',
+  'inline-flex items-center justify-center whitespace-nowrap rounded-xl text-sm font-semibold ring-offset-background duration-200 focus:outline-none focus-visible:ring-3 focus-visible:ring-ring focus-visible:ring-offset-3 disabled:pointer-events-none disabled:opacity-50',
   {
     variants: {
       variant: {
@@ -28,9 +28,9 @@ const buttonVariants = cva(
         'gradient-outline':
           'bg-transparent text-[oklch(0.48_0.15_195)] font-semibold border border-[oklch(0.48_0.15_195_/_0.5)] shadow-lg shadow-[oklch(0.48_0.15_195_/_0.1)] hover:bg-[oklch(0.48_0.15_195_/_0.08)] hover:shadow-xl hover:shadow-[oklch(0.48_0.15_195_/_0.2)] hover:border-[oklch(0.48_0.15_195)] dark:text-[oklch(0.75_0.12_195)] dark:border-[oklch(0.75_0.12_195_/_0.7)] dark:hover:bg-[oklch(0.75_0.12_195_/_0.15)] dark:hover:border-[oklch(0.75_0.12_195)]',
         primary:
-          'bg-[oklch(0.48_0.15_195)] hover:bg-[oklch(0.42_0.17_195)] text-white shadow-lg shadow-[oklch(0.48_0.15_195_/_0.25)] hover:shadow-xl hover:shadow-[oklch(0.48_0.15_195_/_0.35)] dark:bg-[oklch(0.58_0.12_195)] dark:hover:bg-[oklch(0.55_0.13_195)] dark:text-white dark:shadow-[oklch(0.58_0.12_195_/_0.3)]',
+          'bg-[oklch(0.48_0.15_195)] text-white shadow-lg shadow-[oklch(0.48_0.15_195_/_0.25)] dark:bg-[oklch(0.58_0.12_195)] dark:text-white dark:shadow-[oklch(0.58_0.12_195_/_0.3)]',
         cta:
-          'bg-gradient-to-r from-[oklch(0.48_0.15_195)] via-[oklch(0.50_0.14_190)] to-[oklch(0.52_0.13_185)] hover:from-[oklch(0.42_0.17_195)] hover:via-[oklch(0.44_0.16_190)] hover:to-[oklch(0.46_0.15_185)] text-white font-bold shadow-lg shadow-[oklch(0.48_0.15_195_/_0.3)] hover:shadow-xl hover:shadow-[oklch(0.48_0.15_195_/_0.4)] dark:from-[oklch(0.58_0.12_195)] dark:via-[oklch(0.60_0.11_190)] dark:to-[oklch(0.62_0.10_185)] dark:hover:from-[oklch(0.55_0.13_195)] dark:hover:via-[oklch(0.57_0.12_190)] dark:hover:to-[oklch(0.59_0.11_185)] dark:text-white',
+          'bg-gradient-to-r from-[oklch(0.48_0.15_195)] via-[oklch(0.50_0.14_190)] to-[oklch(0.52_0.13_185)] text-white font-bold shadow-lg shadow-[oklch(0.48_0.15_195_/_0.3)] dark:from-[oklch(0.58_0.12_195)] dark:via-[oklch(0.60_0.11_190)] dark:to-[oklch(0.62_0.10_185)] dark:text-white',
       },
       size: {
         default: 'h-10 px-4 py-2',

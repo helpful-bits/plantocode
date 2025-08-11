@@ -73,7 +73,7 @@
     "shell": {},
     "updater": {
       "endpoints": [
-        "https://s3.eu-central-1.amazonaws.com/vibemanager.app/latest.json"
+        "https://d2tyb0wucqqf48.cloudfront.net/latest.json"
       ],
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEVFNDJBM0E0QzE4RUJENTAKUldSUXZZN0JwS05DN21HSHVQV0JsdVRERXVEYXRkUlZaTld6Q0pnQys2Szl6c3hhK3hwWk5rWGwK",
       "windows": {

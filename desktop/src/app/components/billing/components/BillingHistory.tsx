@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { DollarSign, ChevronLeft, ChevronRight, Search, Loader2, Calendar, X } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/ui/card";
 import { Button } from "@/ui/button";
@@ -13,12 +13,14 @@ import { getProvidersWithModels } from "@/actions/config.actions";
 import { type ProviderWithModels } from "@/types/config-types";
 import { getErrorMessage } from "@/utils/error-handling";
 import { formatUsdCurrencyPrecise, formatUsdCurrency } from "@/utils/currency-utils";
+import { useDynamicTableRows } from "@/hooks/use-dynamic-table-rows";
 
 export interface BillingHistoryProps {
   className?: string;
+  isInModal?: boolean;
 }
 
-const ITEMS_PER_PAGE = 10;
+// Dynamic items per page based on screen size
 
 function formatTransactionDate(dateString: string): string {
   return new Date(dateString).toLocaleDateString('en-US', {
@@ -30,7 +32,16 @@ function formatTransactionDate(dateString: string): string {
   });
 }
 
-export function BillingHistory({ className }: BillingHistoryProps) {
+export function BillingHistory({ className, isInModal = false }: BillingHistoryProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const tableBodyContainerRef = useRef<HTMLDivElement>(null);
+  const lastFetchRef = useRef<number>(0);
+  const fetchInProgressRef = useRef<boolean>(false);
+  const itemsPerPageRef = useRef<number>(10); // Store current value in ref
+  
+  // State declarations - moved before useEffects
+  const [activeTab, setActiveTab] = useState("transactions");
+  const [modalVisibleRows, setModalVisibleRows] = useState(10);
   const [transactionHistoryData, setTransactionHistoryData] = useState<UnifiedCreditHistoryResponse | null>(null);
   const [isTransactionsLoading, setIsTransactionsLoading] = useState(true);
   const [isTransactionsLoadingPage, setIsTransactionsLoadingPage] = useState(false);
@@ -38,7 +49,6 @@ export function BillingHistory({ className }: BillingHistoryProps) {
   const [currentPage, setCurrentPage] = useState(1);
   const [searchTerm, setSearchTerm] = useState("");
   const [isSearchActive, setIsSearchActive] = useState(false);
-
   const [usageData, setUsageData] = useState<DetailedUsageRecord[]>([]);
   const [usageSummary, setUsageSummary] = useState<UsageSummary | null>(null);
   const [isUsageLoading, setIsUsageLoading] = useState(false);
@@ -51,21 +61,37 @@ export function BillingHistory({ className }: BillingHistoryProps) {
   const [endDate, setEndDate] = useState(() => {
     return new Date().toISOString().split('T')[0];
   });
-
-  const [activeTab, setActiveTab] = useState("transactions");
   const [hasLoadedUsage, setHasLoadedUsage] = useState(false);
   const [sliderPage, setSliderPage] = useState(1);
   const [providers, setProviders] = useState<ProviderWithModels[]>([]);
   const [selectedPreset, setSelectedPreset] = useState<'last1hour' | 'last24hours' | 'last7days' | 'thisweek' | 'thismonth' | 'last30days' | null>('last24hours');
+  
+  // Safety buffer for measurement calculations
+  const SAFETY_BUFFER_PX = 1;
 
   const getProviderDisplayName = (providerCode: string): string => {
     const provider = providers.find(p => p.provider.code === providerCode);
     return provider?.provider.name || providerCode;
   };
 
-
-
-  const loadCreditHistory = useCallback(async (page: number = 1, search?: string) => {
+  const loadCreditHistory = useCallback(async (page: number = 1, search?: string, forceItemsPerPage?: number) => {
+    // Prevent multiple simultaneous fetches
+    if (fetchInProgressRef.current) {
+      console.warn('Fetch already in progress, skipping duplicate request');
+      return;
+    }
+    
+    // Throttle requests - minimum 500ms between fetches
+    const now = Date.now();
+    const timeSinceLastFetch = now - lastFetchRef.current;
+    if (timeSinceLastFetch < 500) {
+      console.warn(`Throttling request, only ${timeSinceLastFetch}ms since last fetch`);
+      return;
+    }
+    
+    fetchInProgressRef.current = true;
+    lastFetchRef.current = now;
+    
     try {
       if (page > 1) {
         setIsTransactionsLoadingPage(true);
@@ -78,8 +104,10 @@ export function BillingHistory({ className }: BillingHistoryProps) {
         await new Promise(resolve => setTimeout(resolve, 300));
       }
       
-      const offset = (page - 1) * ITEMS_PER_PAGE;
-      const response = await getCreditHistory(ITEMS_PER_PAGE, offset, search);
+      // Use provided items per page or current value from ref
+      const pageSize = forceItemsPerPage ?? itemsPerPageRef.current;
+      const offset = (page - 1) * pageSize;
+      const response = await getCreditHistory(pageSize, offset, search);
       
       setTransactionHistoryData(response);
       setCurrentPage(page);
@@ -90,8 +118,9 @@ export function BillingHistory({ className }: BillingHistoryProps) {
     } finally {
       setIsTransactionsLoading(false);
       setIsTransactionsLoadingPage(false);
+      fetchInProgressRef.current = false;
     }
-  }, []);
+  }, []); // Remove itemsPerPage from dependencies
 
   const loadUsageData = useCallback(async () => {
     if (!startDate || !endDate) return;
@@ -147,16 +176,162 @@ export function BillingHistory({ className }: BillingHistoryProps) {
     }
   }, [startDate, endDate, selectedPreset]);
 
-  useEffect(() => {
-    loadCreditHistory(1);
-    // Load provider information for display names
-    getProvidersWithModels().then(setProviders).catch(console.error);
-  }, [loadCreditHistory]);
+  // Precise DOM measurement helper for modal row calculation
+  const measureAndSetModalRows = () => {
+    if (!isInModal) return;
+    const container = tableBodyContainerRef.current as HTMLElement | null;
+    if (!container) return;
 
-  // Listen for billing data updates
+    const containerHeight = container.clientHeight;
+    if (!containerHeight) return;
+
+    const headerEl = container.querySelector('thead') as HTMLElement | null;
+    const headerHeight = headerEl?.offsetHeight ?? 40;
+
+    // Prefer a real data row; otherwise allow a skeleton row
+    const rowEl = container.querySelector('tbody > tr') as HTMLElement | null;
+    const rowHeight = rowEl?.offsetHeight ?? 48;
+
+    if (!rowHeight || rowHeight === 0) return;
+
+    const availableForRows = containerHeight - headerHeight - SAFETY_BUFFER_PX;
+    const computed = availableForRows > 0 ? Math.floor(availableForRows / rowHeight) : 0;
+
+    const finalRows = Math.max(0, computed);
+    setModalVisibleRows((prev) => (prev !== finalRows ? finalRows : prev));
+  };
+  
+  // ResizeObserver with rAF debounced measurement for modal rows
+  useEffect(() => {
+    if (!isInModal || !tableBodyContainerRef.current) return;
+
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const debouncedMeasure = () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        measureAndSetModalRows();
+      }, 150);
+    };
+
+    // Initial measurement after layout settles
+    let initialRaf = 0;
+    let initialTimer: ReturnType<typeof setTimeout> | null = null;
+    initialRaf = requestAnimationFrame(() => {
+      initialTimer = setTimeout(() => {
+        measureAndSetModalRows();
+      }, 60);
+    });
+
+    const observer = new ResizeObserver(() => {
+      debouncedMeasure();
+    });
+    observer.observe(tableBodyContainerRef.current);
+
+    return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      if (initialTimer) clearTimeout(initialTimer);
+      if (initialRaf) cancelAnimationFrame(initialRaf);
+      observer.disconnect();
+    };
+  }, [isInModal]);
+
+  // Re-measurement on data and tab transitions
+  useEffect(() => {
+    if (!isInModal) return;
+
+    // Use a short rAF + timeout to wait for DOM updates on tab/data change
+    let raf = 0;
+    let t: ReturnType<typeof setTimeout> | null = null;
+    raf = requestAnimationFrame(() => {
+      t = setTimeout(() => {
+        measureAndSetModalRows();
+      }, 50);
+    });
+
+    return () => {
+      if (t) clearTimeout(t);
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, [
+    isInModal,
+    activeTab,
+    isTransactionsLoading,
+    isUsageLoading,
+    transactionHistoryData?.entries?.length,
+    usageData?.length
+  ]);
+  
+  const itemsPerPage = isInModal 
+    ? modalVisibleRows
+    : useDynamicTableRows(
+        containerRef as React.RefObject<HTMLElement>, 
+        {
+          rowHeight: 48,
+          headerHeight: 40,
+          paginationHeight: 70,
+          extraPadding: 180,
+          minRows: 5,
+          maxRows: 25,
+        }
+      );
+  
+  // Update ref when itemsPerPage changes
+  useEffect(() => {
+    itemsPerPageRef.current = itemsPerPage;
+  }, [itemsPerPage]);
+
+  // Align server pagination with dynamic itemsPerPage in modal
+  useEffect(() => {
+    if (!isInModal || itemsPerPage <= 0) return;
+
+    if (activeTab === "transactions" && transactionHistoryData) {
+      const totalCount = transactionHistoryData.totalCount ?? 0;
+      const newTotalPages = Math.max(1, Math.ceil(totalCount / itemsPerPage));
+      const clampedPage = Math.min(currentPage, newTotalPages);
+      
+      if (clampedPage !== currentPage) {
+        setCurrentPage(clampedPage);
+        setSliderPage(clampedPage);
+      }
+      
+      // Refetch with new itemsPerPage
+      loadCreditHistory(clampedPage, searchTerm, itemsPerPage);
+    } else if (activeTab === "usage" && hasLoadedUsage) {
+      // Usage tab doesn't have server-side pagination, but we could reload if needed
+      // Since usage data is already client-side paginated by slicing, no need to refetch
+    }
+  }, [itemsPerPage, isInModal, activeTab, transactionHistoryData, currentPage, searchTerm, loadCreditHistory, setCurrentPage, setSliderPage, hasLoadedUsage]);
+
+  // Initial load only - no dependencies on loadCreditHistory
+  useEffect(() => {
+    let mounted = true;
+    
+    const initialize = async () => {
+      if (!mounted) return;
+      loadCreditHistory(1);
+      // Load provider information for display names
+      try {
+        const providers = await getProvidersWithModels();
+        if (mounted) {
+          setProviders(providers);
+        }
+      } catch (error) {
+        console.error('Failed to load providers:', error);
+      }
+    };
+    
+    initialize();
+    
+    return () => {
+      mounted = false;
+    };
+  }, []); // Empty dependency array - only run once on mount
+
+  // Listen for billing data updates - use refs to avoid dependencies
   useEffect(() => {
     const handleBillingDataUpdated = () => {
-      // Reload the current page of transaction history
+      // Use current values without making them dependencies
       loadCreditHistory(currentPage, searchTerm);
       // If usage tab is active, reload usage data too
       if (activeTab === "usage" && hasLoadedUsage) {
@@ -169,7 +344,7 @@ export function BillingHistory({ className }: BillingHistoryProps) {
     return () => {
       window.removeEventListener('billing-data-updated', handleBillingDataUpdated);
     };
-  }, [currentPage, searchTerm, activeTab, hasLoadedUsage, loadCreditHistory, loadUsageData]);
+  }, []); // Empty dependencies - handler will use current values via closure
 
 
 
@@ -223,7 +398,7 @@ export function BillingHistory({ className }: BillingHistoryProps) {
         loadCreditHistory(page, searchTerm);
       }
     }),
-    [currentPage, loadCreditHistory, searchTerm]
+    [currentPage, searchTerm, loadCreditHistory] // loadCreditHistory is now stable
   );
 
   useEffect(() => {
@@ -277,8 +452,13 @@ export function BillingHistory({ className }: BillingHistoryProps) {
     }
   };
 
-  const renderTransactionSkeletonRows = () => (
-    Array.from({ length: transactionHistoryData ? transactionHistoryData.entries.length : ITEMS_PER_PAGE }).map((_, index) => (
+  const renderTransactionSkeletonRows = () => {
+    // Use itemsPerPage for skeleton count when in modal and loading
+    const skeletonCount = isInModal 
+      ? itemsPerPage 
+      : (transactionHistoryData ? transactionHistoryData.entries.length : itemsPerPage);
+    
+    return Array.from({ length: skeletonCount }).map((_, index) => (
       <tr key={`skeleton-${index}`} className="hover:bg-muted/30 transition-colors">
         <td className="py-3 px-1 min-w-[100px]">
           <span className="h-5 w-16 bg-muted/30 rounded animate-pulse inline-block" />
@@ -302,11 +482,14 @@ export function BillingHistory({ className }: BillingHistoryProps) {
           <span className="h-3 w-20 bg-muted/30 rounded animate-pulse inline-block ml-auto" />
         </td>
       </tr>
-    ))
-  );
+    ));
+  };
 
-  const renderUsageSkeletonRows = () => (
-    Array.from({ length: 8 }).map((_, index) => (
+  const renderUsageSkeletonRows = () => {
+    // Use itemsPerPage for skeleton count when in modal
+    const skeletonCount = isInModal ? itemsPerPage : 8;
+    
+    return Array.from({ length: skeletonCount }).map((_, index) => (
       <tr key={`usage-skeleton-${index}`} className="border-b border-border/30 last:border-b-0 hover:bg-muted/30 transition-colors">
         <td className="py-3 px-1">
           <span className="h-3 w-24 bg-muted/30 rounded animate-pulse inline-block" />
@@ -336,11 +519,11 @@ export function BillingHistory({ className }: BillingHistoryProps) {
           <span className="h-3 w-20 bg-muted/30 rounded animate-pulse inline-block ml-auto" />
         </td>
       </tr>
-    ))
-  );
+    ));
+  };
 
   return (
-    <Card className={`${className} flex flex-col`}>
+    <Card className={`${className} flex flex-col ${isInModal ? 'h-full' : 'max-h-[800px]'}`} ref={containerRef}>
       <CardHeader className="flex-shrink-0">
         <div className="flex items-center justify-between">
           <div>
@@ -356,14 +539,14 @@ export function BillingHistory({ className }: BillingHistoryProps) {
           </div>
         </div>
       </CardHeader>
-      <CardContent className="flex flex-col">
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full flex flex-col">
+      <CardContent className="flex flex-col flex-1 min-h-0">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full flex flex-col h-full">
           <TabsList className="grid w-full grid-cols-2 flex-shrink-0">
             <TabsTrigger value="transactions">Transactions</TabsTrigger>
             <TabsTrigger value="usage">Usage Details</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="transactions" className="flex flex-col gap-4 mt-4">
+          <TabsContent value="transactions" className="flex flex-col mt-4 flex-1 min-h-0">
             {isTransactionsLoading ? (
               <LoadingSkeleton />
             ) : transactionsError ? (
@@ -379,8 +562,8 @@ export function BillingHistory({ className }: BillingHistoryProps) {
                 </div>
               </div>
             ) : (
-              <div className="flex flex-col">
-                <div className="flex items-center justify-between">
+              <div className="flex flex-col flex-1 min-h-0 gap-3">
+                <div className="flex items-center justify-between flex-shrink-0">
                   <div className="flex items-center gap-2">
                     <div className="relative">
                       <Search className="absolute left-2.5 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -418,52 +601,48 @@ export function BillingHistory({ className }: BillingHistoryProps) {
                   </span>
                 </div>
 
-                <div className="relative">
-                  
-                  <div 
-                    className="overflow-x-auto" 
-                  >
-                    <table className="w-full min-w-[640px]">
-                      <thead className="sticky top-0 z-10">
+                <div className="flex-1 min-h-0 rounded-lg border border-border/40 overflow-hidden" ref={isInModal ? tableBodyContainerRef : undefined}>
+                    <table className="w-full">
+                      <thead>
                         <tr className="border-b border-border/40 bg-muted/30">
-                          <th className="text-left text-xs font-medium text-muted-foreground py-2 px-1 min-w-[100px] whitespace-nowrap">Price</th>
-                          <th className="text-left text-xs font-medium text-muted-foreground py-2 px-1 whitespace-nowrap">Date</th>
-                          <th className="text-left text-xs font-medium text-muted-foreground py-2 px-1 whitespace-nowrap">Model</th>
-                          <th className="text-right text-xs font-medium text-muted-foreground py-2 px-1 whitespace-nowrap">Input Tokens</th>
-                          <th className="text-right text-xs font-medium text-muted-foreground py-2 px-1 whitespace-nowrap hidden sm:table-cell">Output Tokens</th>
-                          <th className="text-right text-xs font-medium text-muted-foreground py-2 px-1 whitespace-nowrap hidden md:table-cell">Cached Tokens</th>
-                          <th className="text-right text-xs font-medium text-muted-foreground py-2 px-1 whitespace-nowrap">Balance</th>
+                          <th className="text-left text-xs font-medium text-muted-foreground py-2 px-1">Price</th>
+                          <th className={`text-left text-xs font-medium text-muted-foreground py-2 px-1 ${isInModal ? 'hidden sm:table-cell' : ''}`}>Date</th>
+                          <th className="text-left text-xs font-medium text-muted-foreground py-2 px-1">Model</th>
+                          <th className={`text-right text-xs font-medium text-muted-foreground py-2 px-1 ${isInModal ? 'hidden md:table-cell' : ''}`}>Input Tokens</th>
+                          <th className={`text-right text-xs font-medium text-muted-foreground py-2 px-1 ${isInModal ? 'hidden lg:table-cell' : 'hidden sm:table-cell'}`}>Output Tokens</th>
+                          <th className={`text-right text-xs font-medium text-muted-foreground py-2 px-1 ${isInModal ? 'hidden' : 'hidden md:table-cell'}`}>Cached Tokens</th>
+                          <th className="text-right text-xs font-medium text-muted-foreground py-2 px-1">Balance</th>
                         </tr>
                     </thead>
                     <tbody>
                       {isTransactionsLoadingPage ? (
                         renderTransactionSkeletonRows()
                       ) : (
-                        transactionHistoryData.entries.map((transaction: UnifiedCreditHistoryEntry) => {
+                        transactionHistoryData.entries.slice(0, itemsPerPage).map((transaction: UnifiedCreditHistoryEntry) => {
                           const cachedTokens = (transaction.cacheReadTokens ?? 0) + (transaction.cacheWriteTokens ?? 0);
                           return (
                             <tr
                               key={transaction.id}
                               className="border-b border-border/30 last:border-b-0 hover:bg-muted/30 transition-colors"
                             >
-                              <td className="py-3 px-1 min-w-[100px]">
+                              <td className="py-3 px-1">
                                 <span className={`font-medium text-sm ${transaction.price >= 0 ? 'text-green-600' : 'text-foreground'}`}>
                                   {transaction.price >= 0 ? '+' : ''}{formatUsdCurrencyPrecise(transaction.price)}
                                 </span>
                               </td>
-                              <td className="py-3 px-1 text-xs text-muted-foreground">
+                              <td className={`py-3 px-1 text-xs text-muted-foreground ${isInModal ? 'hidden sm:table-cell' : ''}`}>
                                 {formatTransactionDate(transaction.date)}
                               </td>
-                              <td className="py-3 px-1 text-xs text-muted-foreground">
+                              <td className="py-3 px-1 text-xs text-muted-foreground truncate max-w-[150px]">
                                 {transaction.model || 'Credit Purchase'}
                               </td>
-                              <td className="py-3 px-1 text-xs text-muted-foreground text-right">
+                              <td className={`py-3 px-1 text-xs text-muted-foreground text-right ${isInModal ? 'hidden md:table-cell' : ''}`}>
                                 {transaction.inputTokens ? transaction.inputTokens.toLocaleString() : '-'}
                               </td>
-                              <td className="py-3 px-1 text-xs text-muted-foreground text-right hidden sm:table-cell">
+                              <td className={`py-3 px-1 text-xs text-muted-foreground text-right ${isInModal ? 'hidden lg:table-cell' : 'hidden sm:table-cell'}`}>
                                 {transaction.outputTokens ? transaction.outputTokens.toLocaleString() : '-'}
                               </td>
-                              <td className="py-3 px-1 text-xs text-muted-foreground text-right hidden md:table-cell">
+                              <td className={`py-3 px-1 text-xs text-muted-foreground text-right ${isInModal ? 'hidden' : 'hidden md:table-cell'}`}>
                                 {cachedTokens > 0 ? cachedTokens.toLocaleString() : '-'}
                               </td>
                               <td className="py-3 px-1 text-xs text-muted-foreground text-right">
@@ -476,10 +655,9 @@ export function BillingHistory({ className }: BillingHistoryProps) {
                     </tbody>
                   </table>
                 </div>
-              </div>
 
-                {Math.ceil(transactionHistoryData.totalCount / ITEMS_PER_PAGE) > 1 && transactionHistoryData.totalCount > 0 && (
-                  <div className="pt-4 border-t flex-shrink-0">
+                {Math.ceil(transactionHistoryData.totalCount / itemsPerPage) > 1 && transactionHistoryData.totalCount > 0 && (
+                  <div className="pt-2 border-t flex-shrink-0">
                     <div className="flex items-center gap-3">
                       <span className="text-xs text-muted-foreground whitespace-nowrap">
                         1
@@ -487,14 +665,14 @@ export function BillingHistory({ className }: BillingHistoryProps) {
                       <Slider
                         value={[sliderPage]}
                         onValueChange={handleSliderChange}
-                        max={Math.ceil(transactionHistoryData.totalCount / ITEMS_PER_PAGE)}
+                        max={Math.ceil(transactionHistoryData.totalCount / itemsPerPage)}
                         min={1}
                         step={1}
                         className="flex-1"
                         disabled={isTransactionsLoadingPage}
                       />
                       <span className="text-xs text-muted-foreground whitespace-nowrap">
-                        {Math.ceil(transactionHistoryData.totalCount / ITEMS_PER_PAGE)}
+                        {Math.ceil(transactionHistoryData.totalCount / itemsPerPage)}
                       </span>
                       <div className="flex items-center gap-2 flex-shrink-0 ml-2">
                         <Button
@@ -528,7 +706,7 @@ export function BillingHistory({ className }: BillingHistoryProps) {
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => handlePageChange(Math.ceil(transactionHistoryData.totalCount / ITEMS_PER_PAGE))}
+                          onClick={() => handlePageChange(Math.ceil(transactionHistoryData.totalCount / itemsPerPage))}
                           disabled={!transactionHistoryData.hasMore || isTransactionsLoadingPage}
                           className="h-8 px-2"
                           title="Last page"
@@ -543,7 +721,7 @@ export function BillingHistory({ className }: BillingHistoryProps) {
             )}
           </TabsContent>
 
-          <TabsContent value="usage" className="flex flex-col gap-4 mt-4">
+          <TabsContent value="usage" className="flex flex-col mt-4 flex-1 min-h-0">
             <div className="flex items-center justify-between p-3 bg-muted/20 rounded-lg border border-border/40 flex-shrink-0">
               <div className="flex flex-wrap items-center gap-2">
                 <Button
@@ -656,87 +834,10 @@ export function BillingHistory({ className }: BillingHistoryProps) {
             )}
 
             {(isUsageLoading || (!usageError && usageData.length > 0)) && (
-              <div className="flex flex-col">
-                <div className="relative">
-                  
-                  <div 
-                    className="overflow-x-auto" 
-                  >
-                  <table className="w-full min-w-[640px]">
-                    <colgroup>
-                      <col className="w-auto" />
-                      <col className="w-auto" />
-                      <col className="w-20" />
-                      <col className="w-24" />
-                      <col className="w-28" />
-                      <col className="w-28" />
-                      <col className="w-28" />
-                    </colgroup>
-                    <thead className="sticky top-0 z-10">
-                      <tr className="border-b border-border/40 bg-muted/30">
-                        <th className="text-left text-xs font-medium text-muted-foreground py-3 px-1">
-                          Model
-                        </th>
-                        <th className="text-left text-xs font-medium text-muted-foreground py-3 px-1">
-                          Provider
-                        </th>
-                        <th className="text-right text-xs font-medium text-muted-foreground py-3 px-1">
-                          Cost
-                        </th>
-                        <th className="text-right text-xs font-medium text-muted-foreground py-3 px-1">
-                          Requests
-                        </th>
-                        <th className="text-right text-xs font-medium text-muted-foreground py-3 px-1">
-                          Input Tokens
-                        </th>
-                        <th className="text-right text-xs font-medium text-muted-foreground py-3 px-1">
-                          Output Tokens
-                        </th>
-                        <th className="text-right text-xs font-medium text-muted-foreground py-3 px-1">
-                          Cached Tokens
-                        </th>
-                      </tr>
-                  </thead>
-                  <tbody>
-                    {isUsageLoading ? (
-                      renderUsageSkeletonRows()
-                    ) : (
-                      <>
-                        {usageData.map((usage, index) => (
-                          <tr key={index} className="border-b border-border/30 hover:bg-muted/30 transition-colors">
-                            <td className="py-3 px-1 text-xs text-muted-foreground">
-                              {usage.modelDisplayName}
-                            </td>
-                            <td className="py-3 px-1 text-xs text-muted-foreground">
-                              {getProviderDisplayName(usage.providerCode)}
-                            </td>
-                            <td className="py-3 px-1 text-xs text-muted-foreground text-right">
-                              {formatUsdCurrency(usage.totalCost)}
-                            </td>
-                            <td className="py-3 px-1 text-xs text-muted-foreground text-right">
-                              {usage.totalRequests.toLocaleString()}
-                            </td>
-                            <td className="py-3 px-1 text-xs text-muted-foreground text-right">
-                              {usage.totalInputTokens.toLocaleString()}
-                            </td>
-                            <td className="py-3 px-1 text-xs text-muted-foreground text-right">
-                              {usage.totalOutputTokens.toLocaleString()}
-                            </td>
-                            <td className="py-3 px-1 text-xs text-muted-foreground text-right">
-                              {(usage.totalCachedTokens ?? 0) > 0 ? usage.totalCachedTokens.toLocaleString() : '-'}
-                            </td>
-                          </tr>
-                        ))}
-                      </>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-                {/* Total row outside scrollable area */}
-                {!isUsageLoading && !usageError && usageData.length > 0 && usageSummary && (
-                  <div className="overflow-x-auto border-t-2 border-border bg-muted/20 flex-shrink-0">
-                    <table className="w-full min-w-[640px]">
+              <div className="flex flex-col flex-1 min-h-0">
+                <div className="flex-1 min-h-0 rounded-lg border border-border/40 overflow-hidden" ref={isInModal && activeTab === "usage" ? tableBodyContainerRef : undefined}>
+                  <table className="w-full table-fixed">
+                    {!isInModal && (
                       <colgroup>
                         <col className="w-auto" />
                         <col className="w-auto" />
@@ -746,27 +847,103 @@ export function BillingHistory({ className }: BillingHistoryProps) {
                         <col className="w-28" />
                         <col className="w-28" />
                       </colgroup>
+                    )}
+                    <thead className="sticky top-0 z-10">
+                      <tr className="border-b border-border/40 bg-muted/30">
+                        <th className="text-left text-xs font-medium text-muted-foreground py-3 px-1">
+                          Model
+                        </th>
+                        <th className={`text-left text-xs font-medium text-muted-foreground py-3 px-1 ${isInModal ? 'hidden sm:table-cell' : ''}`}>
+                          Provider
+                        </th>
+                        <th className="text-right text-xs font-medium text-muted-foreground py-3 px-1">
+                          Cost
+                        </th>
+                        <th className={`text-right text-xs font-medium text-muted-foreground py-3 px-1 ${isInModal ? 'hidden md:table-cell' : ''}`}>
+                          Requests
+                        </th>
+                        <th className={`text-right text-xs font-medium text-muted-foreground py-3 px-1 ${isInModal ? 'hidden lg:table-cell' : ''}`}>
+                          Input Tokens
+                        </th>
+                        <th className={`text-right text-xs font-medium text-muted-foreground py-3 px-1 ${isInModal ? 'hidden lg:table-cell' : ''}`}>
+                          Output Tokens
+                        </th>
+                        <th className={`text-right text-xs font-medium text-muted-foreground py-3 px-1 ${isInModal ? 'hidden' : ''}`}>
+                          Cached Tokens
+                        </th>
+                      </tr>
+                  </thead>
+                  <tbody>
+                    {isUsageLoading ? (
+                      renderUsageSkeletonRows()
+                    ) : (
+                      <>
+                        {usageData.slice(0, itemsPerPage).map((usage, index) => (
+                          <tr key={index} className="border-b border-border/30 hover:bg-muted/30 transition-colors">
+                            <td className="py-3 px-1 text-xs text-muted-foreground truncate">
+                              {usage.modelDisplayName}
+                            </td>
+                            <td className={`py-3 px-1 text-xs text-muted-foreground ${isInModal ? 'hidden sm:table-cell' : ''}`}>
+                              {getProviderDisplayName(usage.providerCode)}
+                            </td>
+                            <td className="py-3 px-1 text-xs text-muted-foreground text-right">
+                              {formatUsdCurrency(usage.totalCost)}
+                            </td>
+                            <td className={`py-3 px-1 text-xs text-muted-foreground text-right ${isInModal ? 'hidden md:table-cell' : ''}`}>
+                              {usage.totalRequests.toLocaleString()}
+                            </td>
+                            <td className={`py-3 px-1 text-xs text-muted-foreground text-right ${isInModal ? 'hidden lg:table-cell' : ''}`}>
+                              {usage.totalInputTokens.toLocaleString()}
+                            </td>
+                            <td className={`py-3 px-1 text-xs text-muted-foreground text-right ${isInModal ? 'hidden lg:table-cell' : ''}`}>
+                              {usage.totalOutputTokens.toLocaleString()}
+                            </td>
+                            <td className={`py-3 px-1 text-xs text-muted-foreground text-right ${isInModal ? 'hidden' : ''}`}>
+                              {(usage.totalCachedTokens ?? 0) > 0 ? usage.totalCachedTokens.toLocaleString() : '-'}
+                            </td>
+                          </tr>
+                        ))}
+                      </>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+                {/* Total row outside scrollable area */}
+                {!isUsageLoading && !usageError && usageData.length > 0 && usageSummary && (
+                  <div className="border-t-2 border-border bg-muted/20 flex-shrink-0 mt-3">
+                    <table className="w-full table-fixed">
+                      {!isInModal && (
+                        <colgroup>
+                          <col className="w-auto" />
+                          <col className="w-auto" />
+                          <col className="w-20" />
+                          <col className="w-24" />
+                          <col className="w-28" />
+                          <col className="w-28" />
+                          <col className="w-28" />
+                        </colgroup>
+                      )}
                       <tbody>
                         <tr className="font-medium">
                           <td className="py-3 px-1 text-xs font-semibold">
                             Total
                           </td>
-                          <td className="py-3 px-1 text-xs">
+                          <td className={`py-3 px-1 text-xs ${isInModal ? 'hidden sm:table-cell' : ''}`}>
                             {/* Empty cell for Provider column */}
                           </td>
                           <td className="py-3 px-1 text-xs font-bold text-right text-primary">
                             {formatUsdCurrency(usageSummary.totalCost)}
                           </td>
-                          <td className="py-3 px-1 text-xs font-semibold text-right">
+                          <td className={`py-3 px-1 text-xs font-semibold text-right ${isInModal ? 'hidden md:table-cell' : ''}`}>
                             {usageSummary.totalRequests.toLocaleString()}
                           </td>
-                          <td className="py-3 px-1 text-xs font-semibold text-right">
+                          <td className={`py-3 px-1 text-xs font-semibold text-right ${isInModal ? 'hidden lg:table-cell' : ''}`}>
                             {usageSummary.totalInputTokens.toLocaleString()}
                           </td>
-                          <td className="py-3 px-1 text-xs font-semibold text-right">
+                          <td className={`py-3 px-1 text-xs font-semibold text-right ${isInModal ? 'hidden lg:table-cell' : ''}`}>
                             {usageSummary.totalOutputTokens.toLocaleString()}
                           </td>
-                          <td className="py-3 px-1 text-xs font-semibold text-right">
+                          <td className={`py-3 px-1 text-xs font-semibold text-right ${isInModal ? 'hidden' : ''}`}>
                             {(usageSummary.totalCachedTokens ?? 0) > 0 ? usageSummary.totalCachedTokens.toLocaleString() : '-'}
                           </td>
                         </tr>

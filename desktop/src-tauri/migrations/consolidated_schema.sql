@@ -153,6 +153,81 @@ CREATE INDEX IF NOT EXISTS idx_project_system_prompts_is_custom ON project_syste
 -- Model configurations are fetched from server - no local storage needed
 -- Desktop only stores user-specific local preferences in key_value_store if needed
 
+-- =====================================================================
+-- Error Logging
+-- =====================================================================
+CREATE TABLE IF NOT EXISTS error_logs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  timestamp INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+  level TEXT NOT NULL DEFAULT 'ERROR' CHECK (level IN ('ERROR','WARN','INFO','DEBUG')),
+  error_type TEXT,
+  message TEXT NOT NULL,
+  context TEXT,
+  stack TEXT,
+  metadata TEXT,           -- JSON string
+  app_version TEXT,
+  platform TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_error_logs_timestamp ON error_logs(timestamp);
+
+-- Add additional indexes for error logs
+CREATE INDEX IF NOT EXISTS idx_error_logs_type ON error_logs(error_type) 
+WHERE error_type IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_error_logs_version_level 
+ON error_logs(app_version, level) 
+WHERE app_version IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_error_logs_platform 
+ON error_logs(platform, error_type) 
+WHERE platform IS NOT NULL;
+
+-- =====================================================================
+-- Additional Performance Indexes
+-- =====================================================================
+-- Sessions table performance indexes
+CREATE INDEX IF NOT EXISTS idx_sessions_created_at ON sessions(created_at);
+CREATE INDEX IF NOT EXISTS idx_sessions_name ON sessions(name);
+
+-- Background jobs performance indexes
+CREATE INDEX IF NOT EXISTS idx_background_jobs_created_at ON background_jobs(created_at);
+CREATE INDEX IF NOT EXISTS idx_background_jobs_updated_at ON background_jobs(updated_at);
+CREATE INDEX IF NOT EXISTS idx_background_jobs_composite 
+ON background_jobs(session_id, status, task_type)
+WHERE is_finalized = 0;
+
+-- Key-value store performance index
+CREATE INDEX IF NOT EXISTS idx_key_value_store_updated_at ON key_value_store(updated_at);
+
+-- Task description history composite index (duplicate removed, already exists on line 66)
+-- File selection history composite index (duplicate removed, already exists on line 79)
+
+-- Project system prompts composite index
+CREATE INDEX IF NOT EXISTS idx_project_system_prompts_composite 
+ON project_system_prompts(project_hash, task_type, updated_at);
+
+-- =====================================================================
+-- Workflow-specific Indexes
+-- =====================================================================
+-- Background jobs workflow-specific indexes
+CREATE INDEX IF NOT EXISTS idx_background_jobs_workflow_id 
+ON background_jobs(metadata) 
+WHERE json_extract(metadata, '$.workflowId') IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_background_jobs_stage_name 
+ON background_jobs(metadata) 
+WHERE json_extract(metadata, '$.stageName') IS NOT NULL;
+
+-- Composite index for workflow stage queries
+CREATE INDEX IF NOT EXISTS idx_background_jobs_workflow_stage 
+ON background_jobs(task_type, status, json_extract(metadata, '$.workflowId'))
+WHERE task_type IN ('file_finder_workflow', 'web_search_workflow', 'video_analysis');
+
+-- Index for server request tracking
+CREATE INDEX IF NOT EXISTS idx_background_jobs_server_request 
+ON background_jobs(server_request_id, status)
+WHERE server_request_id IS NOT NULL;
 
 -- Record this consolidated schema in the key_value_store table
 -- =========================================================================

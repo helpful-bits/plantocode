@@ -53,7 +53,7 @@ export function CallToAction({ title, description, buttonText, buttonLink }: Cal
             <GlassCard className="relative" highlighted={true}>
               <div className="text-center p-16 relative">
                 {/* Enhanced burst pattern overlay */}
-                <div className="absolute inset-0 opacity-8">
+                <div className="absolute inset-0 opacity-8 pointer-events-none">
                   <div className="absolute inset-0 bg-[radial-gradient(circle_at_1px_1px,_hsl(var(--primary))_1px,_transparent_1px)] bg-[size:32px_32px]" />
                   <div
                     className="absolute inset-0 opacity-30"
@@ -100,13 +100,13 @@ export function CallToAction({ title, description, buttonText, buttonLink }: Cal
                 </Reveal>
 
                 <Reveal delay={0.25}>
-                  <motion.div whileTap={{ scale: 0.95 }}>
+                  <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
                   <Button
                     asChild
                     size="xl"
                     variant="primary"
                   >
-                    <Link className="inline-flex items-center justify-center gap-3" href={buttonLink}>
+                    <Link className="inline-flex items-center justify-center gap-3 no-hover-effect cursor-pointer" href={buttonLink}>
                       {buttonText}
                       <svg
                         className="w-5 h-5 flex-shrink-0"
@@ -122,10 +122,6 @@ export function CallToAction({ title, description, buttonText, buttonLink }: Cal
                 </Reveal>
 
                 <Reveal className="mt-8 flex items-center justify-center gap-8 text-sm text-foreground/60" delay={0.3}>
-                  <div className="flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-primary/70" />
-                    <span>Free forever</span>
-                  </div>
                   <div className="flex items-center gap-2">
                     <CheckCircle2 className="w-4 h-4 text-primary/70" />
                     <span>No credit card required</span>

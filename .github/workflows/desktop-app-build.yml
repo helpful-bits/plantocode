@@ -85,6 +85,12 @@ jobs:
       if: steps.cache-tauri.outputs.cache-hit != 'true'
       run: cargo install tauri-cli --version "^2.0" --locked
       
+    - name: Get App Version
+      run: |
+        $version = (Get-Content desktop/package.json | ConvertFrom-Json).version
+        echo "APP_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      shell: pwsh
+      
     - name: Build Windows app with updater artifacts
       run: |
         cd desktop
@@ -93,7 +99,7 @@ jobs:
         TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         
-    - name: Upload Windows artifacts (for manual S3 upload)
+    - name: Upload Windows artifacts
       uses: actions/upload-artifact@v4
       with:
         name: windows-updater-artifacts-${{ github.sha }}
@@ -106,6 +112,14 @@ jobs:
         retention-days: 30
         if-no-files-found: warn
     
+    - name: Upload Windows signature for latest.json
+      uses: actions/upload-artifact@v4
+      with:
+        name: signature-windows-x86_64
+        path: desktop/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi.zip.sig
+        retention-days: 1
+        if-no-files-found: warn
+    
     - name: Publish to S3 (if on main branch with secrets)
       if: github.ref == 'refs/heads/main' && github.event_name == 'push' && env.AWS_ACCESS_KEY_ID != ''
       run: |
@@ -116,9 +130,18 @@ jobs:
           $env:Path += ";C:\Program Files\Amazon\AWSCLIV2"
         fi
         
-        # Upload Windows updater artifacts
-        aws s3 cp desktop/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/ s3://vibemanager.app/ --recursive --include "*.msi.zip" --include "*.msi.zip.sig"
-        aws s3 cp desktop/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/ s3://vibemanager.app/ --recursive --include "*.nsis.zip" --include "*.nsis.zip.sig"
+        # Rename artifacts with underscores and upload
+        cd desktop/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi
+        $version = "${{ env.APP_VERSION }}"
+        
+        # Find and rename MSI zip with underscores
+        Get-ChildItem -Filter "*.msi.zip" | ForEach-Object {
+          $newName = "Vibe_Manager_${version}_x64_en-US.msi.zip"
+          Move-Item $_.Name $newName -Force
+          Move-Item "$($_.Name).sig" "${newName}.sig" -Force
+        }
+        
+        aws s3 cp . s3://vibemanager.app/ --recursive --exclude "*" --include "Vibe_Manager_*.msi.zip" --include "Vibe_Manager_*.msi.zip.sig"
       env:
         AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
         AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -185,6 +208,10 @@ jobs:
       if: steps.cache-tauri.outputs.cache-hit != 'true'
       run: cargo install tauri-cli --version "^2.0" --locked
       
+    - name: Get App Version
+      run: echo "APP_VERSION=$(jq -r .version desktop/package.json)" >> $GITHUB_ENV
+      shell: bash
+      
     - name: Build macOS app with updater artifacts
       run: |
         cd desktop
@@ -198,7 +225,7 @@ jobs:
         OPENSSL_DIR: ${{ env.OPENSSL_DIR }}
         PKG_CONFIG_PATH: ${{ env.PKG_CONFIG_PATH }}
         
-    - name: Upload macOS artifacts (for manual S3 upload)
+    - name: Upload macOS artifacts
       uses: actions/upload-artifact@v4
       with:
         name: macos-updater-artifacts-${{ matrix.target }}-${{ github.sha }}
@@ -209,18 +236,39 @@ jobs:
         retention-days: 30
         if-no-files-found: warn
     
+    - name: Upload macOS signature for latest.json
+      uses: actions/upload-artifact@v4
+      with:
+        name: signature-macos-${{ matrix.target }}
+        path: desktop/src-tauri/target/${{ matrix.target }}/release/bundle/macos/*.app.tar.gz.sig
+        retention-days: 1
+        if-no-files-found: warn
+    
     - name: Publish to S3 (if on main branch with secrets)
       if: github.ref == 'refs/heads/main' && github.event_name == 'push' && env.AWS_ACCESS_KEY_ID != ''
       run: |
-        # Upload macOS updater artifacts
-        aws s3 cp desktop/src-tauri/target/${{ matrix.target }}/release/bundle/macos/ s3://vibemanager.app/ --recursive --include "*.app.tar.gz" --include "*.app.tar.gz.sig"
+        # Rename artifacts with underscores and upload
+        cd desktop/src-tauri/target/${{ matrix.target }}/release/bundle/macos
+        VERSION="${{ env.APP_VERSION }}"
+        TARGET="${{ matrix.target }}"
+        
+        # Rename with underscores
+        for file in *.app.tar.gz; do
+          if [ -f "$file" ]; then
+            NEW_NAME="Vibe_Manager_${VERSION}_${TARGET}.app.tar.gz"
+            mv "$file" "$NEW_NAME"
+            mv "${file}.sig" "${NEW_NAME}.sig"
+          fi
+        done
+        
+        aws s3 cp . s3://vibemanager.app/ --recursive --exclude "*" --include "Vibe_Manager_*.app.tar.gz" --include "Vibe_Manager_*.app.tar.gz.sig"
       env:
         AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
         AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         AWS_DEFAULT_REGION: eu-central-1
   
   publish-latest-json:
-    name: Publish latest.json to S3
+    name: Generate and Publish latest.json to S3
     needs: [build-windows, build-macos]
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
@@ -229,16 +277,88 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
     
-    - name: Upload latest.json to S3
+    - name: Download all signature artifacts
+      uses: actions/download-artifact@v4
+      with:
+        pattern: signature-*
+        path: artifacts/
+    
+    - name: Get App Version
+      run: echo "APP_VERSION=$(jq -r .version desktop/package.json)" >> $GITHUB_ENV
+    
+    - name: Generate and upload latest.json
       if: env.AWS_ACCESS_KEY_ID != ''
       run: |
-        # Upload the latest.json file from the desktop directory
-        if [ -f desktop/latest.json ]; then
-          aws s3 cp desktop/latest.json s3://vibemanager.app/latest.json --content-type "application/json"
-          echo "latest.json uploaded successfully"
-        else
-          echo "latest.json not found in desktop directory"
+        set -euo pipefail
+        
+        APP_VERSION="${{ env.APP_VERSION }}"
+        CDN_BASE="https://d2tyb0wucqqf48.cloudfront.net"
+        PUB_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+        
+        # Read signatures (handle if files don't exist)
+        SIG_WIN=""
+        SIG_MAC_ARM=""
+        SIG_MAC_INTEL=""
+        
+        if [ -f "artifacts/signature-windows-x86_64/*.sig" ]; then
+          SIG_WIN=$(cat artifacts/signature-windows-x86_64/*.sig 2>/dev/null || true)
         fi
+        
+        if [ -f "artifacts/signature-macos-aarch64-apple-darwin/*.sig" ]; then
+          SIG_MAC_ARM=$(cat artifacts/signature-macos-aarch64-apple-darwin/*.sig 2>/dev/null || true)
+        fi
+        
+        if [ -f "artifacts/signature-macos-x86_64-apple-darwin/*.sig" ]; then
+          SIG_MAC_INTEL=$(cat artifacts/signature-macos-x86_64-apple-darwin/*.sig 2>/dev/null || true)
+        fi
+        
+        # Build JSON dynamically
+        cat > latest.json << 'EOF'
+        {
+          "version": "$APP_VERSION",
+          "notes": "Bug fixes and performance improvements",
+          "pub_date": "$PUB_DATE",
+          "platforms": {}
+        }
+        EOF
+        
+        # Add Windows platform if signature exists
+        if [ -n "$SIG_WIN" ]; then
+          WIN_URL="${CDN_BASE}/Vibe_Manager_${APP_VERSION}_x64_en-US.msi.zip"
+          jq --arg url "$WIN_URL" --arg sig "$SIG_WIN" \
+            '.platforms["windows-x86_64"] = {"url": $url, "signature": $sig}' \
+            latest.json > tmp.json && mv tmp.json latest.json
+        fi
+        
+        # Add macOS ARM platform if signature exists
+        if [ -n "$SIG_MAC_ARM" ]; then
+          MAC_ARM_URL="${CDN_BASE}/Vibe_Manager_${APP_VERSION}_aarch64-apple-darwin.app.tar.gz"
+          jq --arg url "$MAC_ARM_URL" --arg sig "$SIG_MAC_ARM" \
+            '.platforms["darwin-aarch64"] = {"url": $url, "signature": $sig}' \
+            latest.json > tmp.json && mv tmp.json latest.json
+        fi
+        
+        # Add macOS Intel platform if signature exists
+        if [ -n "$SIG_MAC_INTEL" ]; then
+          MAC_INTEL_URL="${CDN_BASE}/Vibe_Manager_${APP_VERSION}_x86_64-apple-darwin.app.tar.gz"
+          jq --arg url "$MAC_INTEL_URL" --arg sig "$SIG_MAC_INTEL" \
+            '.platforms["darwin-x86_64"] = {"url": $url, "signature": $sig}' \
+            latest.json > tmp.json && mv tmp.json latest.json
+        fi
+        
+        # Substitute variables in the JSON
+        envsubst < latest.json > final-latest.json
+        
+        # Validate JSON structure
+        jq -e '.version and .pub_date and .platforms' final-latest.json >/dev/null
+        
+        # Show what we're uploading (for debugging)
+        echo "Generated latest.json:"
+        cat final-latest.json
+        
+        # Upload to S3
+        aws s3 cp final-latest.json s3://vibemanager.app/latest.json --content-type "application/json"
+        echo "latest.json uploaded successfully"
       env:
         AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
         AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}

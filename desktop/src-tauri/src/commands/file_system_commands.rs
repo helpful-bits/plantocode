@@ -401,6 +401,16 @@ pub struct SanitizeFilenameArgs {
     pub name: String,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileInfoResponse {
+    pub exists: bool,
+    pub size: Option<u64>,
+    pub is_file: bool,
+    pub is_directory: bool,
+    pub modified_at: Option<i64>,
+}
+
 #[command]
 pub fn path_join_command(paths: Vec<String>) -> AppResult<String> {
     let result = paths
@@ -484,4 +494,51 @@ pub async fn get_temp_dir_command() -> AppResult<String> {
 #[command]
 pub fn path_is_absolute_command(path: String) -> AppResult<bool> {
     Ok(std::path::Path::new(&path).is_absolute())
+}
+
+#[command]
+pub async fn get_file_info_command(
+    path: String,
+    app_handle: AppHandle,
+) -> AppResult<FileInfoResponse> {
+    info!("Getting file info for: {}", path);
+    
+    let file_path = std::path::Path::new(&path);
+    
+    // Check if the path exists
+    let exists = file_path.exists();
+    
+    if !exists {
+        return Ok(FileInfoResponse {
+            exists: false,
+            size: None,
+            is_file: false,
+            is_directory: false,
+            modified_at: None,
+        });
+    }
+    
+    // Get metadata
+    let metadata = tokio::fs::metadata(&file_path).await
+        .map_err(|e| AppError::FileSystemError(format!("Failed to get file metadata: {}", e)))?;
+    
+    let size = if metadata.is_file() {
+        Some(metadata.len())
+    } else {
+        None
+    };
+    
+    let modified_at = metadata
+        .modified()
+        .ok()
+        .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|duration| duration.as_millis() as i64);
+    
+    Ok(FileInfoResponse {
+        exists,
+        size,
+        is_file: metadata.is_file(),
+        is_directory: metadata.is_dir(),
+        modified_at,
+    })
 }

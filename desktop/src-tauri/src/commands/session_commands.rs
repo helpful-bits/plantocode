@@ -434,19 +434,21 @@ pub async fn get_file_selection_history_command(
 pub async fn sync_file_selection_history_command(
     app_handle: AppHandle,
     session_id: String,
-    history: Vec<FileSelectionHistoryEntry>,
+    history: Vec<FileSelectionHistoryEntryWithTimestamp>,
 ) -> AppResult<()> {
     let repo = app_handle
         .state::<Arc<crate::db_utils::session_repository::SessionRepository>>()
         .inner()
         .clone();
 
-    let history_tuples: Vec<(String, String)> = history
+    // Convert to tuples with individual timestamps preserved
+    let history_tuples: Vec<(String, String, i64)> = history
         .into_iter()
         .map(|entry| {
             (
                 entry.included_files.join("\n"),
                 entry.force_excluded_files.join("\n"),
+                entry.created_at,
             )
         })
         .collect();

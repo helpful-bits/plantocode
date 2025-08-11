@@ -421,8 +421,8 @@ pub async fn get_user_info_with_app_jwt(
 
     info!("Getting user info via server proxy");
 
-    // Add overall timeout protection
-    match timeout(Duration::from_secs(45), server_proxy_client.get_user_info()).await {
+    // Add overall timeout protection (reduced to 10s to match frontend)
+    match timeout(Duration::from_secs(10), server_proxy_client.get_user_info()).await {
         Ok(result) => result,
         Err(_) => {
             error!("Timeout fetching user info from server");

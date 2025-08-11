@@ -1,7 +1,7 @@
 {
   "name": "vibe-manager-desktop",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.0.11",
   "type": "module",
   "scripts": {
     "dev": "vite --config src/vite.config.mts",
@@ -50,6 +50,7 @@
     "@tauri-apps/api": "^2.7.0",
     "@tauri-apps/plugin-dialog": "^2.3.2",
     "@tauri-apps/plugin-fs": "^2.4.1",
+    "@tauri-apps/plugin-log": "^2.6.0",
     "@tauri-apps/plugin-os": "^2.3.0",
     "@tauri-apps/plugin-process": "^2.3.0",
     "@tauri-apps/plugin-shell": "^2.3.0",
@@ -62,9 +63,10 @@
     "date-fns": "^4.1.0",
     "jwt-decode": "^4.0.0",
     "lucide-react": "^0.511.0",
+    "monaco-editor": "^0.52.2",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
-    "react-router-dom": "^7.7.1",
+    "react-router-dom": "^7.8.0",
     "react-window": "^1.8.11",
     "tailwind-merge": "^3.3.1",
     "tailwindcss-animate": "^1.0.7"

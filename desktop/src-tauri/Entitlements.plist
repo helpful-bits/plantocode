@@ -2,41 +2,14 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <!-- App Sandbox -->
+    <!-- App Sandbox is DISABLED for full file system access -->
+    <!-- Database will be in ~/Library/Application Support/com.vibemgr.app/... -->
     <key>com.apple.security.app-sandbox</key>
-    <true/>
+    <false/>
     
-    <!-- Network Access -->
-    <key>com.apple.security.network.client</key>
-    <true/>
-    <key>com.apple.security.network.server</key>
-    <true/>
+    <!-- Hardened Runtime Entitlements (for notarization) -->
     
-    <!-- File Access -->
-    <key>com.apple.security.files.user-selected.read-write</key>
-    <true/>
-    <key>com.apple.security.files.downloads.read-write</key>
-    <true/>
-    
-    <!-- Device Access -->
-    <key>com.apple.security.device.audio-input</key>
-    <true/>
-    <key>com.apple.security.device.microphone</key>
-    <true/>
-    
-    <!-- Screen Recording -->
-    <key>com.apple.security.screen-capture</key>
-    <true/>
-    
-    <!-- Required for shell commands execution -->
-    <key>com.apple.security.inherit</key>
-    <true/>
-    
-    <!-- Allow DYLD Environment Variables (for development) -->
-    <key>com.apple.security.cs.allow-dyld-environment-variables</key>
-    <true/>
-    
-    <!-- Allow JIT (required for some JavaScript engines) -->
+    <!-- Allow JIT (required for JavaScript engines and WebView) -->
     <key>com.apple.security.cs.allow-jit</key>
     <true/>
     
@@ -46,6 +19,39 @@
     
     <!-- Disable library validation to allow loading of third-party code -->
     <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+    
+    <!-- Allow DYLD Environment Variables (for development) -->
+    <key>com.apple.security.cs.allow-dyld-environment-variables</key>
+    <true/>
+    
+    <!-- Device Access (for Hardened Runtime) -->
+    <key>com.apple.security.device.audio-input</key>
+    <true/>
+    
+    <!-- Sandbox-specific entitlements -->
+    <!-- Network Access (required for API calls) -->
+    <key>com.apple.security.network.client</key>
+    <true/>
+    <key>com.apple.security.network.server</key>
+    <true/>
+    
+    <!-- File Access (for user-selected files) -->
+    <key>com.apple.security.files.user-selected.read-write</key>
+    <true/>
+    <key>com.apple.security.files.downloads.read-write</key>
+    <true/>
+    
+    <!-- Microphone access (sandbox version) -->
+    <key>com.apple.security.device.microphone</key>
+    <true/>
+    
+    <!-- Required for shell commands execution in sandbox -->
+    <key>com.apple.security.inherit</key>
+    <true/>
+    
+    <!-- Security-scoped bookmarks for persistent file access -->
+    <key>com.apple.security.files.bookmarks.app-scope</key>
     <true/>
 </dict>
 </plist>

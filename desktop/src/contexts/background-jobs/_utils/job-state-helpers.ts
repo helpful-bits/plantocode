@@ -139,28 +139,13 @@ export function areJobsEqual(
         return false;
       }
 
-      // Enhanced response content comparison for streaming jobs
-      if (
-        typeof jobA.response === "string" &&
-        typeof jobB.response === "string"
-      ) {
-        // Length comparison is faster than content comparison
-        if (jobA.response.length !== jobB.response.length) {
-          logger.debug(
-            `Response length changed for job ${jobA.id}: ${jobA.response.length} → ${jobB.response.length}`
-          );
-          return false;
-        }
-
-        // For relatively short responses, compare content directly
-        // This catches character changes even when length is identical
-        if (jobA.response.length < 5000 && jobA.response !== jobB.response) {
-          logger.debug(
-            `Response content changed for streaming job ${jobA.id} despite same length`
-          );
-          return false;
-        }
-      }
+      // Skip expensive response comparisons during streaming
+      // We rely on metadata (responseLength, streamProgress, lastStreamUpdateTime, estimatedTotalLength)
+      // which are already checked above for detecting stream changes.
+      // This dramatically reduces CPU usage during rapid streaming updates.
+      logger.debug(
+        `Skipping response content comparison for streaming job ${jobA.id} - relying on metadata`
+      );
     }
   }
 
@@ -253,35 +238,41 @@ export function areJobsEqual(
     return false;
   }
 
-  // Response content comparison for all job types
-  if (!safeStringCompare(normalizeJobResponse(jobA.response).content, normalizeJobResponse(jobB.response).content)) {
-    logger.debug(
-      `Response content changed for job ${jobA.id}`
-    );
-
-    // Additional debugging: detect file reference vs content changes
-    const aHasFileRef =
-      safeResponseIncludes(jobA.response, "Content stored in file:") ||
-      safeResponseIncludes(jobA.response, "available in file:");
-    const bHasFileRef =
-      safeResponseIncludes(jobB.response, "Content stored in file:") ||
-      safeResponseIncludes(jobB.response, "available in file:");
-
-    if (aHasFileRef !== bHasFileRef) {
+  // Skip response content comparison for streaming jobs to improve performance
+  const isJobStreaming = jobA.status === "running" && 
+    metaA?.taskData?.isStreaming === true;
+  
+  if (!isJobStreaming) {
+    // Response content comparison for non-streaming job types
+    if (!safeStringCompare(normalizeJobResponse(jobA.response).content, normalizeJobResponse(jobB.response).content)) {
       logger.debug(
-        `File reference changed in response: ${aHasFileRef} → ${bHasFileRef}`
+        `Response content changed for job ${jobA.id}`
       );
-    }
-    
-    return false;
-  }
 
-  // Check response field explicitly
-  if (!safeStringCompare(jobA.response, jobB.response)) {
-    logger.debug(
-      `Response content field changed for job ${jobA.id}`
-    );
-    return false;
+      // Additional debugging: detect file reference vs content changes
+      const aHasFileRef =
+        safeResponseIncludes(jobA.response, "Content stored in file:") ||
+        safeResponseIncludes(jobA.response, "available in file:");
+      const bHasFileRef =
+        safeResponseIncludes(jobB.response, "Content stored in file:") ||
+        safeResponseIncludes(jobB.response, "available in file:");
+
+      if (aHasFileRef !== bHasFileRef) {
+        logger.debug(
+          `File reference changed in response: ${aHasFileRef} → ${bHasFileRef}`
+        );
+      }
+      
+      return false;
+    }
+
+    // Check response field explicitly
+    if (!safeStringCompare(jobA.response, jobB.response)) {
+      logger.debug(
+        `Response content field changed for job ${jobA.id}`
+      );
+      return false;
+    }
   }
 
   // For debugging, log that jobs are considered equal

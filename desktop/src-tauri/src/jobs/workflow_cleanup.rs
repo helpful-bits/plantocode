@@ -6,7 +6,6 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::db_utils::background_job_repository::BackgroundJobRepository;
-use crate::db_utils::temp_file_repository;
 use crate::error::{AppError, AppResult};
 use crate::jobs::types::CleanupResult;
 use crate::jobs::workflow_types::WorkflowStage;
@@ -183,27 +182,6 @@ impl WorkflowCleanupHandler {
         Ok(())
     }
 
-    /// Clean up temporary files for a specific workflow
-    pub async fn cleanup_temp_files(&self, workflow_id: &str) -> AppResult<u64> {
-        log::debug!("Cleaning up temporary files for workflow: {}", workflow_id);
-
-        let temp_dir = self.get_workflow_temp_dir(workflow_id);
-        let mut files_cleaned = 0;
-
-        if std::path::Path::new(&temp_dir).exists() {
-            match std::fs::remove_dir_all(&temp_dir) {
-                Ok(_) => {
-                    files_cleaned = 1; // Directory removed
-                    log::debug!("Removed temp directory: {}", temp_dir);
-                }
-                Err(e) => {
-                    log::error!("Failed to remove temp directory {}: {}", temp_dir, e);
-                }
-            }
-        }
-
-        Ok(files_cleaned)
-    }
 
     /// Clean up memory caches for a workflow
     pub async fn cleanup_memory_caches(&self, workflow_id: &str) -> AppResult<()> {
@@ -246,8 +224,6 @@ impl WorkflowCleanupHandler {
     ) -> AppResult<()> {
         log::debug!("Cleaning up resources for job: {}", job.id);
 
-        // Clean up job-specific temporary files
-        self.cleanup_job_temp_files(&job.id).await?;
 
         // Clear any job-specific memory caches
         self.cleanup_job_memory_caches(&job.id).await?;
@@ -271,8 +247,6 @@ impl WorkflowCleanupHandler {
             workflow_id
         );
 
-        // Clean up workflow temporary files
-        let temp_files_cleaned = self.cleanup_temp_files(workflow_id).await?;
 
         // Clean up workflow memory caches
         self.cleanup_memory_caches(workflow_id).await?;
@@ -280,7 +254,7 @@ impl WorkflowCleanupHandler {
         // Clean up workflow coordination data
         self.cleanup_workflow_coordination_data(workflow_id).await?;
 
-        Ok(temp_files_cleaned > 0)
+        Ok(false)
     }
 
     async fn is_job_orphaned(&self, job: &BackgroundJob) -> AppResult<bool> {
@@ -368,7 +342,6 @@ impl WorkflowCleanupHandler {
 
     async fn force_cleanup_job(&self, job: &BackgroundJob) -> AppResult<()> {
         // Emergency cleanup that doesn't fail
-        let _ = self.cleanup_job_temp_files(&job.id).await;
         let _ = self.cleanup_job_memory_caches(&job.id).await;
         let _ = self.cleanup_job_locks(&job.id).await;
         Ok(())
@@ -377,11 +350,6 @@ impl WorkflowCleanupHandler {
     async fn cleanup_global_resources(&self, app_handle: &AppHandle) -> AppResult<()> {
         log::debug!("Cleaning up global resources");
 
-        // Clean up global temporary directories
-        let global_temp_dir = "/tmp/vibe_manager_jobs";
-        if std::path::Path::new(global_temp_dir).exists() {
-            let _ = std::fs::remove_dir_all(global_temp_dir);
-        }
 
         // Emit global cleanup event
         let event_payload = serde_json::json!({
@@ -394,22 +362,6 @@ impl WorkflowCleanupHandler {
         Ok(())
     }
 
-    async fn cleanup_job_temp_files(&self, job_id: &str) -> AppResult<()> {
-        let temp_file_path = format!("/tmp/vibe_manager_job_{}", job_id);
-        if std::path::Path::new(&temp_file_path).exists() {
-            match std::fs::remove_file(&temp_file_path) {
-                Ok(_) => log::debug!("Removed temp file: {}", temp_file_path),
-                Err(e) => log::error!("Failed to remove temp file {}: {}", temp_file_path, e),
-            }
-        }
-        
-        let pool = self.repo.get_pool();
-        if let Err(e) = temp_file_repository::delete_for_job(&pool, job_id).await {
-            log::error!("Failed to delete temp files for job {}: {}", job_id, e);
-        }
-        
-        Ok(())
-    }
 
     async fn cleanup_job_memory_caches(&self, job_id: &str) -> AppResult<()> {
         log::debug!("Cleaning up memory caches for job: {}", job_id);
@@ -435,9 +387,6 @@ impl WorkflowCleanupHandler {
         Ok(())
     }
 
-    fn get_workflow_temp_dir(&self, workflow_id: &str) -> String {
-        format!("/tmp/vibe_manager_workflow_{}", workflow_id)
-    }
 
     async fn emit_cleanup_event(
         &self,
@@ -487,7 +436,6 @@ pub struct CleanupConfig {
     pub cleanup_interval_hours: u64,
     pub max_job_age_hours: u64,
     pub max_workflow_age_hours: u64,
-    pub cleanup_temp_files: bool,
     pub cleanup_orphaned_jobs: bool,
 }
 
@@ -498,7 +446,6 @@ impl Default for CleanupConfig {
             cleanup_interval_hours: 24,  // Daily cleanup
             max_job_age_hours: 72,       // 3 days
             max_workflow_age_hours: 168, // 1 week
-            cleanup_temp_files: true,
             cleanup_orphaned_jobs: true,
         }
     }
@@ -528,18 +475,6 @@ impl CleanupScheduler {
         // For now, we'll just perform one cleanup cycle
         self.perform_cleanup_cycle(app_handle).await?;
         
-        // Schedule periodic cleanup every 6 hours for temp files
-        let repo = self.cleanup_handler.repo.clone();
-        tokio::spawn(async move {
-            let mut interval = tokio::time::interval(Duration::from_secs(6 * 3600));
-            loop {
-                interval.tick().await;
-                let pool = repo.get_pool();
-                if let Err(e) = temp_file_repository::delete_expired_files(&pool, 86400).await {
-                    log::error!("Failed to delete expired temp files in periodic task: {}", e);
-                }
-            }
-        });
 
         Ok(())
     }
@@ -568,11 +503,7 @@ impl CleanupScheduler {
             }
         }
         
-        // Clean up expired temp files (24 hours old)
-        let pool = self.cleanup_handler.repo.get_pool();
-        if let Err(e) = temp_file_repository::delete_expired_files(&pool, 86400).await {
-            log::error!("Failed to delete expired temp files: {}", e);
-        }
+        // Temp file cleanup removed - no actual temp files are created
 
         log::info!("Cleanup cycle completed: {:?}", summary);
         Ok(summary)
@@ -584,7 +515,6 @@ pub struct CleanupSummary {
     pub expired_workflows_cleaned: usize,
     pub orphaned_jobs_cleaned: usize,
     pub total_jobs_cleaned: usize,
-    pub temp_files_cleaned: u64,
     pub errors_encountered: usize,
 }
 
@@ -618,7 +548,6 @@ mod tests {
         let repo = Arc::new(BackgroundJobRepository::new(pool.clone()));
         let handler = WorkflowCleanupHandler::new(repo);
 
-        let temp_dir = handler.get_workflow_temp_dir("workflow_123");
-        assert_eq!(temp_dir, "/tmp/vibe_manager_workflow_workflow_123");
+        // Handler created successfully - temp file cleanup removed
     }
 }

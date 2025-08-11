@@ -25,6 +25,7 @@ pub struct Customer {
     pub description: Option<String>,
     pub metadata: Option<HashMap<String, String>>,
     pub created: i64,
+    pub deleted: Option<bool>,
     pub currency: Option<String>,
     pub default_source: Option<String>,
     pub invoice_settings: Option<CustomerInvoiceSettings>,

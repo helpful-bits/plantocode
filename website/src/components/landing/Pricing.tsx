@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { motion } from 'framer-motion';
@@ -61,14 +62,21 @@ export function Pricing() {
                 </Reveal>
 
                 <Reveal delay={0.3}>
-                  <Button
-                    className="w-full sm:w-auto"
-                    size="xl"
-                    variant="cta"
+                  <motion.div
+                    whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
                   >
-                    Download & Start Free
-                  </Button>
+                    <Button
+                      asChild
+                      className="w-full sm:w-auto"
+                      size="xl"
+                      variant="cta"
+                    >
+                      <Link href="/download" className="no-hover-effect cursor-pointer">
+                        Download & Start Free
+                      </Link>
+                    </Button>
+                  </motion.div>
                 </Reveal>
               </div>
             </GlassCard>
