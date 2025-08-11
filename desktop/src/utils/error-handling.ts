@@ -1109,15 +1109,19 @@ export async function logError(
   // This doesn't require network access or authentication
   try {
     const { invoke } = await import('@tauri-apps/api/core');
-    await invoke('log_client_error', {
-      error: errorInfo.message,
-      errorType: errorInfo.type,
-      context,
-      metadata: enrichedMetadata
+    // Extract the actual error object to get stack trace if available
+    const errorLike = error as any;
+    void invoke('log_client_error', {
+      args: {
+        error: errorInfo.message,
+        errorType: errorInfo.type ?? 'Unknown',
+        context,
+        metadata: enrichedMetadata,
+        stack: errorLike?.stack ?? undefined,
+      }
     });
-  } catch (_e) {
-    // If Tauri command doesn't exist or fails, silently continue
-    // This is optional telemetry and shouldn't break the app
+  } catch (loggingError) {
+    console.error('[Logging Error] Failed to send error to backend:', loggingError);
   }
 }
 

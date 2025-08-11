@@ -169,7 +169,13 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
         if (settingsResult.isSuccess && settingsResult.data && job.taskType) {
           // Extract settings for specific job taskType
           const toCamelCase = (s: string) => s.replace(/(_\w)/g, m => m[1].toUpperCase());
-          const taskKey = toCamelCase(job.taskType) as keyof typeof settingsResult.data;
+          let taskKey = toCamelCase(job.taskType) as keyof typeof settingsResult.data;
+          
+          // For implementation_plan_merge, use implementation_plan settings (especially for copy buttons)
+          if (taskKey === 'implementationPlanMerge') {
+            taskKey = 'implementationPlan';
+          }
+          
           const taskSettings = settingsResult.data[taskKey];
           setJobTaskSettings(taskSettings || null);
         } else {

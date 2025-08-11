@@ -43,7 +43,6 @@ enum PaymentCompletionContext {
 async fn process_payment_completion(
     context: PaymentCompletionContext,
     billing_service: &BillingService,
-    email_service: Option<&crate::services::email_notification_service::EmailNotificationService>,
 ) -> Result<(), AppError> {
     match context {
         PaymentCompletionContext::CreditPurchase { payment_intent, user_id } => {
@@ -100,21 +99,19 @@ async fn process_payment_completion(
                 &format!("credit purchase for payment intent {}", payment_intent.id),
             ).await?;
             
-            // Send email notification for credit purchases only if a new record was created
+            // Credit purchase recorded. Stripe will handle customer receipts/invoices.
             match result {
                 CreditRecordResult::Created => {
-                    if let Some(email_service) = email_service {
-                        send_credit_purchase_email(email_service, billing_service, &user_id, &gross_amount, &platform_fee, &currency).await;
-                        info!("Email notification sent for credit purchase - payment_intent: {}, user_id: {}, amount: {}",
-                              payment_intent.id, user_id, gross_amount);
-                    } else {
-                        info!("Credit record created but no email sent (no email service) - payment_intent: {}, user_id: {}, amount: {}",
-                              payment_intent.id, user_id, gross_amount);
-                    }
-                },
+                    info!(
+                        "CreditPurchase completed — relying on Stripe to send receipts/invoices (manual emails disabled). PaymentIntent: {}, user_id: {}, amount: {}",
+                        payment_intent.id, user_id, gross_amount
+                    );
+                }
                 CreditRecordResult::Duplicate => {
-                    info!("Duplicate credit record detected, skipping email - payment_intent: {}, user_id: {}, amount: {}",
-                          payment_intent.id, user_id, gross_amount);
+                    info!(
+                        "Duplicate credit record detected for PaymentIntent: {}, user_id: {}, amount: {}",
+                        payment_intent.id, user_id, gross_amount
+                    );
                 }
             }
         },
@@ -238,30 +235,6 @@ async fn record_credit_transaction(
         Err(e) => {
             error!("Failed to record {}: {}", description, e);
             Err(AppError::Payment(format!("Failed to record {}: {}", description, e)))
-        }
-    }
-}
-
-/// Send credit purchase email notification
-async fn send_credit_purchase_email(
-    email_service: &crate::services::email_notification_service::EmailNotificationService,
-    billing_service: &BillingService,
-    user_id: &Uuid,
-    gross_amount: &BigDecimal,
-    fee_amount: &BigDecimal,
-    currency: &str,
-) {
-    let net_amount = gross_amount - fee_amount;
-    let user_repo = crate::db::repositories::user_repository::UserRepository::new(billing_service.get_system_db_pool());
-    
-    if let Ok(user) = user_repo.get_by_id(user_id).await {
-        if let Err(e) = email_service.send_credit_purchase_notification(
-            user_id,
-            &user.email,
-            &net_amount,
-            currency,
-        ).await {
-            warn!("Failed to send credit purchase confirmation email to user {}: {}", user_id, e);
         }
     }
 }
@@ -453,8 +426,6 @@ async fn process_stripe_webhook_event(
     billing_service: &BillingService,
     _app_state: &crate::models::runtime_config::AppState,
 ) -> Result<HttpResponse, AppError> {
-    let db_pools = billing_service.get_db_pools();
-    let email_service = crate::services::email_notification_service::EmailNotificationService::new(db_pools.clone())?;
     let audit_service = billing_service.get_audit_service();
     
     // Get credit service for metered billing operations  
@@ -466,7 +437,7 @@ async fn process_stripe_webhook_event(
             info!("Processing checkout session completed: {}", event.id);
             let session: CheckoutSession = serde_json::from_value(event.data["object"].clone())
                 .map_err(|e| AppError::InvalidArgument(format!("Failed to parse checkout session: {}", e)))?;
-            handle_checkout_session_completed(&session, billing_service, &email_service).await?;
+            handle_checkout_session_completed(&session, billing_service).await?;
         },
         EVENT_PAYMENT_INTENT_SUCCEEDED => {
             info!("Processing payment intent succeeded: {}", event.id);
@@ -537,7 +508,7 @@ async fn process_stripe_webhook_event(
                         user_id,
                     };
                     
-                    match process_payment_completion(context, billing_service, Some(&email_service)).await {
+                match process_payment_completion(context, billing_service).await {
                         Ok(_) => {
                             info!("Successfully processed credit purchase for payment intent {} - user_id: {}, amount: {}", 
                                   payment_intent_id, user_id_str, amount);
@@ -571,7 +542,7 @@ async fn process_stripe_webhook_event(
                         user,
                     };
                     
-                    match process_payment_completion(context, billing_service, None).await {
+                match process_payment_completion(context, billing_service).await {
                         Ok(_) => {
                             info!("Successfully processed auto top-off for payment intent {}", payment_intent_id);
                         },
@@ -601,7 +572,7 @@ async fn process_stripe_webhook_event(
                                 user_id,
                             };
                             
-                            match process_payment_completion(context, billing_service, Some(&email_service)).await {
+                            match process_payment_completion(context, billing_service).await {
                                 Ok(_) => {
                                     info!("Successfully processed unknown payment type as credit purchase for payment intent {}", payment_intent_id);
                                 },
@@ -923,7 +894,6 @@ async fn handle_customer_default_source_updated(
 async fn handle_checkout_session_completed(
     session: &CheckoutSession,
     billing_service: &BillingService,
-    email_service: &crate::services::email_notification_service::EmailNotificationService,
 ) -> Result<(), AppError> {
     info!("Handling checkout session completed: {}", session.id);
     
@@ -958,7 +928,7 @@ async fn handle_checkout_session_completed(
                     user_id,
                 };
                 
-                process_payment_completion(context, billing_service, Some(email_service)).await?;
+                process_payment_completion(context, billing_service).await?;
             }
         },
         CheckoutSessionMode::Setup => {

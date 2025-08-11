@@ -75,7 +75,11 @@ impl BillingService {
             env::var("STRIPE_PUBLISHABLE_KEY")
         ) {
             (Ok(secret_key), Ok(webhook_secret), Ok(publishable_key)) => {
-                Some(StripeService::new(secret_key, webhook_secret, publishable_key))
+                let service = StripeService::new(secret_key, webhook_secret, publishable_key);
+                // Stripe-managed billing emails policy
+                // Billing emails: Stripe-managed receipts/invoices are enabled; ensure Stripe Dashboard email settings are on and Customers have an email.
+                info!("Billing emails: Stripe-managed receipts/invoices are enabled; ensure Stripe Dashboard email settings are on and Customers have an email.");
+                Some(service)
             },
             _ => {
                 warn!("Stripe environment variables not set, Stripe functionality disabled");
@@ -107,7 +111,23 @@ impl BillingService {
         self.pending_charge_manager.as_deref().ok_or_else(|| AppError::Internal("PendingChargeManager not configured".to_string()))
     }
 
-    async fn compute_reserve_margin(&self, amount: &BigDecimal) -> Result<BigDecimal, AppError> {
+    async fn compute_reserve_margin(&self, amount: &BigDecimal, task_type: Option<&str>) -> Result<BigDecimal, AppError> {
+        // SIMPLE APPROACH: Fixed $1.20 reserve for high-variance tasks
+        if let Some(task_type) = task_type {
+            // Convert to lowercase for case-insensitive matching
+            let task_type_lower = task_type.to_lowercase();
+            
+            // Check for high-variance operations that need fixed reserve
+            if task_type_lower.contains("web_search") || 
+               task_type_lower.contains("websearch") ||
+               task_type_lower == "video_analysis" ||
+               task_type_lower == "videoanalysis" {
+                // Fixed $1.20 USD reserve for these high-variance operations
+                info!("Using fixed $1.20 reserve for high-variance task: {}", task_type);
+                return Ok(BigDecimal::from_str("1.20").unwrap());
+            }
+        }
+
         // Try billing_adjustment_limits first (max_amount_usd, max_percentage)
         if let Some(config_value) = self.settings_repository.get_config_value("billing_adjustment_limits").await? {
             if let (Some(max_amount_usd), Some(max_percentage)) = (
@@ -364,23 +384,60 @@ impl BillingService {
             .map_err(|e| AppError::Database(format!("Failed to set user context in transaction: {}", e)))?;
 
         // 1. Check local DB first
+        let mut existing_stripe_id: Option<String> = None;
         if let Some(customer_billing) = self.customer_billing_repository.get_by_user_id_with_executor(user_id, &mut tx).await? {
             if let Some(stripe_id) = customer_billing.stripe_customer_id {
-                tx.commit().await.map_err(|e| AppError::Database(format!("Failed to commit transaction: {}", e)))?;
-                return Ok(stripe_id);
+                // Verify the customer still exists and is not deleted in Stripe
+                let stripe_service = self.get_stripe_service()?;
+                match stripe_service.get_customer(&stripe_id).await {
+                    Ok(customer) => {
+                        // Check if customer is deleted (though this shouldn't happen with current Stripe API behavior)
+                        if customer.deleted.unwrap_or(false) {
+                            warn!("Stripe customer {} is marked as deleted for user {}. Will create a new one.", stripe_id, user_id);
+                            existing_stripe_id = Some(stripe_id);
+                            // Continue to create a new customer
+                        } else {
+                            // Customer exists and is not deleted, we're good
+                            tx.commit().await.map_err(|e| AppError::Database(format!("Failed to commit transaction: {}", e)))?;
+                            return Ok(stripe_id);
+                        }
+                    },
+                    Err(e) => {
+                        // Check error type
+                        let error_str = e.to_string();
+                        
+                        // When a customer is deleted, Stripe returns a minimal object that fails to parse
+                        // because it's missing required fields like 'created'
+                        if error_str.contains("missing field") && error_str.contains("created") {
+                            warn!("Stripe customer {} is deleted (parsing failed due to missing fields) for user {}. Will create a new one.", stripe_id, user_id);
+                            existing_stripe_id = Some(stripe_id);
+                            // Continue to create a new customer
+                        } else if error_str.contains("No such customer") || error_str.contains("resource_missing") {
+                            warn!("Stripe customer {} does not exist for user {}. Will create a new one.", stripe_id, user_id);
+                            existing_stripe_id = Some(stripe_id);
+                            // Continue to create a new customer  
+                        } else {
+                            // Some other error, propagate it
+                            tx.rollback().await.ok();
+                            return Err(AppError::External(format!("Failed to verify Stripe customer: {}", e)));
+                        }
+                    }
+                }
             }
         }
 
-        // 2. If not found locally, search Stripe
+        // 2. If not found locally or customer was deleted from Stripe, search Stripe for existing customer
         let stripe_service = self.get_stripe_service()?;
-        if let Some(customer) = stripe_service.search_customer_by_user_id(user_id).await
-            .map_err(|e| AppError::External(format!("Failed to search for Stripe customer: {}", e)))? {
-            self.customer_billing_repository.upsert_stripe_customer_id_with_executor(user_id, &customer.id, &mut tx).await?;
-            tx.commit().await.map_err(|e| AppError::Database(format!("Failed to commit transaction: {}", e)))?;
-            return Ok(customer.id);
+        if existing_stripe_id.is_none() {
+            if let Some(customer) = stripe_service.search_customer_by_user_id(user_id).await
+                .map_err(|e| AppError::External(format!("Failed to search for Stripe customer: {}", e)))? {
+                self.customer_billing_repository.upsert_stripe_customer_id_with_executor(user_id, &customer.id, &mut tx).await?;
+                tx.commit().await.map_err(|e| AppError::Database(format!("Failed to commit transaction: {}", e)))?;
+                return Ok(customer.id);
+            }
         }
 
-        // 3. If not found on Stripe, create a new Stripe customer
+        // 3. Create a new Stripe customer
         let user_repo = UserRepository::new(self.db_pools.system_pool.clone());
         let user = user_repo.get_by_id(user_id).await?;
         let idempotency_key = uuid::Uuid::new_v4().to_string();
@@ -390,6 +447,8 @@ impl BillingService {
             &user.email,
             user.full_name.as_deref(),
         ).await.map_err(|e| AppError::External(format!("Failed to create Stripe customer: {}", e)))?;
+        
+        info!("Created new Stripe customer {} for user {} (replacing: {:?})", new_customer.id, user_id, existing_stripe_id);
         
         // 4. Upsert the new customer ID into our DB
         self.customer_billing_repository.upsert_stripe_customer_id_with_executor(user_id, &new_customer.id, &mut tx).await?;
@@ -615,6 +674,7 @@ impl BillingService {
             None, // billing_address_collection not required for credit purchases
             None, // automatic_tax not required for credit purchases
             Some(true), // invoice_creation_enabled
+            // Rely on Stripe to email receipts/invoices for this Checkout Session; no manual customer email is sent.
         ).await.map_err(|e| AppError::External(format!("Failed to create checkout session: {}", e)))?;
 
         Ok(session)
@@ -934,8 +994,13 @@ impl BillingService {
         
         // NEW: Reserve overage margin if Redis is configured
         let reserved = if let Some(manager) = &self.pending_charge_manager {
-            // Compute reserve margin
-            let reserve_margin = self.compute_reserve_margin(&estimated_cost).await?;
+            // Extract task_type from metadata if available
+            let task_type = entry.metadata.as_ref()
+                .and_then(|m| m.get("task_type"))
+                .and_then(|t| t.as_str());
+            
+            // Compute reserve margin with task type for high-variance operations
+            let reserve_margin = self.compute_reserve_margin(&estimated_cost, task_type).await?;
             
             if reserve_margin > BigDecimal::from(0) {
                 let ttl_ms = self.get_reservation_ttl_ms().await;
@@ -952,9 +1017,34 @@ impl BillingService {
                 if !reservation_success {
                     // Rollback and fail fast
                     tx.rollback().await.ok();
-                    return Err(AppError::CreditInsufficient(
-                        "Insufficient credits considering in-flight reservations".to_string()
-                    ));
+                    
+                    // Provide clear error message based on task type
+                    let error_msg = if let Some(task_type) = task_type {
+                        let task_type_lower = task_type.to_lowercase();
+                        if task_type_lower.contains("web_search") || task_type_lower.contains("websearch") {
+                            format!(
+                                "Insufficient credits. Web search requires at least $1.20 available. Your balance: ${:.2}",
+                                total_available
+                            )
+                        } else if task_type_lower == "video_analysis" || task_type_lower == "videoanalysis" {
+                            format!(
+                                "Insufficient credits. Video analysis requires at least $1.20 available. Your balance: ${:.2}",
+                                total_available
+                            )
+                        } else {
+                            format!(
+                                "Insufficient credits for this operation. Required: ${:.2}, Available: ${:.2}",
+                                reserve_margin, total_available
+                            )
+                        }
+                    } else {
+                        format!(
+                            "Insufficient credits for this operation. Required: ${:.2}, Available: ${:.2}",
+                            reserve_margin, total_available
+                        )
+                    };
+                    
+                    return Err(AppError::CreditInsufficient(error_msg));
                 }
                 
                 info!(
@@ -1385,10 +1475,26 @@ impl BillingService {
         }
 
         debug!("Auto top-off execution flow: step 10 - preparing payment intent creation");
+        
+        // Get fee tiers to calculate the fee
+        let fee_tiers = self.settings_repository.get_credit_purchase_fee_tiers().await
+            .map_err(|e| AppError::Configuration(format!("Failed to get fee tiers: {}", e)))?;
+        let tier = fee_tiers.get_tier_for_amount(&amount)
+            .map_err(|e| AppError::Configuration(format!("Failed to get fee tier: {}", e)))?;
+        
+        // Calculate fee and net amounts using the tier's fee rate
+        let fee_amount = amount.clone() * &tier.fee_rate;
+        let net_amount = amount.clone() - &fee_amount;
+        
+        // Convert to cents with consistent rounding
+        let gross_amount_cents = (amount.clone() * BigDecimal::from(100)).to_i64().unwrap_or(0);
+        let fee_amount_cents = (fee_amount.clone() * BigDecimal::from(100)).to_i64().unwrap_or(0);
+        let net_amount_cents = gross_amount_cents - fee_amount_cents; // Ensure net + fee = gross
+        
         // Generate idempotency key
-        let amount_cents = (amount.clone() * BigDecimal::from(100)).to_i64().unwrap_or(0);
-        let idempotency_key = format!("auto_topoff_{}_{}_{}", user_id, amount_cents, Utc::now().timestamp_nanos());
-        debug!("Auto top-off execution flow: step 10 - payment intent parameters prepared: amount_cents={}, idempotency_key={}", amount_cents, idempotency_key);
+        let idempotency_key = format!("auto_topoff_{}_{}_{}", user_id, gross_amount_cents, Utc::now().timestamp_nanos());
+        debug!("Auto top-off execution flow: step 10 - payment intent parameters prepared: gross_amount_cents={}, fee_cents={}, net_cents={}, idempotency_key={}", 
+               gross_amount_cents, fee_amount_cents, net_amount_cents, idempotency_key);
         
         debug!("Auto top-off execution flow: step 10.5 - cleaning up pending invoice items in different currencies");
         // Clean up pending invoice items that don't match USD currency
@@ -1410,13 +1516,29 @@ impl BillingService {
         }
         
         debug!("Auto top-off execution flow: step 11 - creating invoice for auto top-off with currency: USD");
+        
+        // Create metadata for the invoice with fee information
+        let metadata = serde_json::json!({
+            "user_id": user_id.to_string(),
+            "gross_amount_cents": gross_amount_cents.to_string(),
+            "platform_fee_cents": fee_amount_cents.to_string(),
+            "net_amount_cents": net_amount_cents.to_string(),
+            "gross_amount": amount.to_string(),
+            "platform_fee": fee_amount.to_string(),
+            "net_amount": net_amount.to_string(),
+            "currency": "USD"
+        });
+        
         // Create an invoice for auto top-off using USD (enforced for off-session auto top-offs)
+        // Pass both net and fee amounts for proper breakdown
         let invoice = stripe_service.create_invoice_for_auto_topoff(
             &idempotency_key,
             &customer_id,
-            amount_cents as i64,
+            net_amount_cents as i64,
+            fee_amount_cents as i64,
             "usd",
-            &format!("Automatic credit top-off - {} credits", amount),
+            "Automatic credit top-off",
+            Some(metadata),
             ).await.map_err(|e| {
             warn!("Auto top-off execution flow: FAILED at step 11 - invoice creation failed for user {} with currency USD: {}", 
                   user_id, e);
@@ -1430,6 +1552,7 @@ impl BillingService {
                 None => "none"
             });
 
+        // Stripe will email invoice/receipt per account settings; manual customer emails are disabled.
         info!("Auto top-off execution flow: COMPLETED SUCCESSFULLY - user {} auto top-off invoice created in USD with amount {} - webhooks will handle credit fulfillment", user_id, amount);
         Ok(())
     }

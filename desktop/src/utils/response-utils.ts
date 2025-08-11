@@ -13,6 +13,12 @@ export function normalizeJobResponse(response: string | object | undefined | nul
   }
   
   if (typeof response === 'string') {
+    // Fast pre-check to avoid JSON parsing for non-JSON content
+    const trimmed = response.trim();
+    if (!(trimmed.startsWith('{') || trimmed.startsWith('['))) {
+      return { content: response, isJson: false };
+    }
+    
     // Try to parse as JSON for structured access
     try {
       const parsed = JSON.parse(response);

@@ -45,6 +45,10 @@ export function useOrchestratedBackgroundJobsState({
   const isFetchingRef = useRef(false);
   const consecutiveErrorsRef = useRef(0);
   
+  // Refs for debouncing job updates during streaming
+  const bufferRef = useRef<Map<string, any>>(new Map());
+  const flushTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  
   // Derive activeJobs from jobs
   const activeJobs = useMemo(() => jobs.filter((job) => JOB_STATUSES.ACTIVE.includes(job.status)), [jobs]);
 
@@ -301,11 +305,35 @@ export function useOrchestratedBackgroundJobsState({
     setJobs(prevJobs => upsertJobInternal(prevJobs, jobUpdate, prepend));
   }, [upsertJobInternal]);
   
+  // Batch update multiple jobs in a single reducer pass
+  const bulkUpsertJobs = useCallback((
+    jobUpdates: Array<Partial<BackgroundJob> & { id: string }>
+  ) => {
+    setJobs(prev => jobUpdates.reduce((acc, u) => upsertJobInternal(acc, u), prev));
+  }, [upsertJobInternal]);
+  
   // Listen for SSE events from the Rust backend
   useEffect(() => {
     let unlistenJobCreated: UnlistenFn | null = null;
     let unlistenJobDeleted: UnlistenFn | null = null;
     let unlistenJobUpdated: UnlistenFn | null = null;
+    
+    // Setup flush interval for buffered updates
+    const flushBufferedUpdates = () => {
+      if (bufferRef.current.size > 0) {
+        // Collect all buffered updates
+        const updates = Array.from(bufferRef.current.values());
+        bufferRef.current.clear();
+        
+        // Apply all updates in a single batch
+        if (updates.length > 0) {
+          bulkUpsertJobs(updates);
+        }
+      }
+    };
+    
+    // Start flush interval at 250ms
+    flushTimerRef.current = setInterval(flushBufferedUpdates, 250);
     
     const setupListeners = async () => {
       try {
@@ -340,28 +368,34 @@ export function useOrchestratedBackgroundJobsState({
             // Filter out workflow orchestrator jobs
             const workflowTypes = ['file_finder_workflow', 'web_search_workflow'];
             if (!jobUpdate.taskType || !workflowTypes.includes(jobUpdate.taskType)) {
-              // Check if this is a finalized cost update or a completed job
-              if (jobUpdate.isFinalized === true) {
-                // For finalized updates, ensure we properly handle the cost and token data
-                const finalizedUpdate = {
+              // Check if this is a finalized cost update or a completed/failed/cancelled job
+              const isFinalized = jobUpdate.isFinalized === true;
+              const isTerminal = jobUpdate.status && ['completed', 'failed', 'cancelled'].includes(jobUpdate.status);
+              
+              if (isFinalized || isTerminal) {
+                // Apply immediately for finalized or terminal updates (bypass buffer)
+                const immediateUpdate = {
                   ...jobUpdate,
-                  isFinalized: true,
+                  isFinalized: isFinalized || undefined,
                   updatedAt: Date.now(),
                 };
-                upsertJob(finalizedUpdate);
+                upsertJob(immediateUpdate);
                 
-                // Log finalized cost update for debugging
-                console.debug(`[BackgroundJobs] Job ${jobUpdate.id} finalized with authoritative cost data`);
-              } else if (jobUpdate.status === 'completed') {
-                // For completed jobs, always update to ensure final response overwrites streamed data
-                const completedUpdate = {
+                // Remove from buffer if present
+                bufferRef.current.delete(jobUpdate.id);
+                
+                // Log important updates for debugging
+                if (isFinalized) {
+                  console.debug(`[BackgroundJobs] Job ${jobUpdate.id} finalized with authoritative cost data`);
+                } else if (jobUpdate.status === 'completed') {
+                  console.debug(`[BackgroundJobs] Job ${jobUpdate.id} completed - updating with final data`);
+                }
+              } else {
+                // Buffer non-terminal updates for batching
+                bufferRef.current.set(jobUpdate.id, {
                   ...jobUpdate,
                   updatedAt: Date.now(),
-                };
-                upsertJob(completedUpdate);
-                console.debug(`[BackgroundJobs] Job ${jobUpdate.id} completed - updating with final data`);
-              } else {
-                upsertJob(jobUpdate);
+                });
               }
             }
           } catch (err) {
@@ -376,13 +410,21 @@ export function useOrchestratedBackgroundJobsState({
 
     void setupListeners();
 
-    // Clean up the listeners when component unmounts
+    // Clean up the listeners and intervals when component unmounts
     return () => {
       unlistenJobCreated?.();
       unlistenJobDeleted?.();
       unlistenJobUpdated?.();
+      
+      // Clear flush interval and process any remaining buffered updates
+      if (flushTimerRef.current) {
+        clearInterval(flushTimerRef.current);
+        flushTimerRef.current = null;
+      }
+      flushBufferedUpdates();
+      bufferRef.current.clear();
     };
-  }, [upsertJob]);
+  }, [upsertJob, bulkUpsertJobs]);
 
   // Initial job fetch on mount
   useEffect(() => {

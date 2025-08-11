@@ -1,11 +1,11 @@
 ---
-title: "Vibe Manager | Stop Babysitting Your AI Coder"
+title: "Vibe Manager | Context for Lost AI Agents"
 description: "A rather civilized solution for AI agents experiencing mild navigational difficulties in your codebase. We provide gentle context curation to help them find their way. Built by a developer, for developers, from the trenches."
 imageUrl: "https://vibe-manager-media.s3.amazonaws.com/og-image.png"
 keywords: ["AI coding assistant", "context curation", "vibe coding", "multi-model AI", "codebase analysis", "implementation plans", "developer tools", "local AI", "private AI coding", "Claude Code", "Gemini"]
 ---
 
-# Vibe Manager: The Polite Context Guidance Centre for Somewhat Bewildered AI Agents
+# Vibe Manager: Context for Lost AI Agents
 
 You know the feeling. You're "vibe coding" with an AI agent—the ideas are flowing, and it's magical... until it's not. The agent gets hopelessly lost in your large codebase, starts ignoring instructions, hallucinates APIs, and writes code that feels like it belongs in a different project entirely.
 

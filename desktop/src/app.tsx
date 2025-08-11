@@ -23,14 +23,35 @@ import SettingsPage from "@/app/settings/page";
 import AccountPage from "@/app/account/page";
 import FeedbackPage from "@/app/feedback/page";
 import NotFoundPage from "@/app/not-found";
-import { AuthProvider } from "@/contexts/auth-context";
+import { AuthProvider, useAuth } from "@/contexts/auth-context";
 import { UILayoutProvider } from "@/contexts/ui-layout-context";
 import { EmptyState, LoadingScreen } from "@/ui";
+import { setAuthErrorHandler } from "@/utils/tauri-invoke-wrapper";
 
 import { RuntimeConfigProvider } from "./contexts/runtime-config-context";
 // Custom provider for desktop-specific functionality
 import { TauriEnvironmentChecker } from "./providers/tauri-environment-checker";
 
+
+// Component to set up auth error handling
+function AuthErrorInterceptor({ children }: { children: React.ReactNode }) {
+  const { setTokenExpired } = useAuth();
+  
+  useEffect(() => {
+    // Set up the global auth error handler
+    setAuthErrorHandler(() => {
+      console.warn('Token expired, redirecting to login...');
+      setTokenExpired(true);
+    });
+    
+    // Cleanup on unmount
+    return () => {
+      setAuthErrorHandler(() => null);
+    };
+  }, [setTokenExpired]);
+  
+  return <>{children}</>;
+}
 
 // Safe app structure to ensure proper provider nesting and prevent remounting
 function SafeAppContent() {
@@ -39,24 +60,26 @@ function SafeAppContent() {
     <ThemeProvider defaultTheme="system" enableSystem>
       <RuntimeConfigProvider>
         <AuthProvider>
-          <TauriEnvironmentChecker>
-            <UILayoutProvider>
-              <AuthFlowManager>
-                <ProvidersWrapper environmentConfig={{ isDesktop: true }}>
-                  {/* App Shell Component */}
-                  <AppShell>
-                    <Routes>
-                      <Route path="/" element={<CoreHomePage />} />
-                      <Route path="/settings" element={<SettingsPage />} />
-                      <Route path="/account" element={<AccountPage />} />
-                      <Route path="/feedback" element={<FeedbackPage />} />
-                      <Route path="*" element={<NotFoundPage />} />
-                    </Routes>
-                  </AppShell>
-                </ProvidersWrapper>
-              </AuthFlowManager>
-            </UILayoutProvider>
-          </TauriEnvironmentChecker>
+          <AuthErrorInterceptor>
+            <TauriEnvironmentChecker>
+              <UILayoutProvider>
+                <AuthFlowManager>
+                  <ProvidersWrapper environmentConfig={{ isDesktop: true }}>
+                    {/* App Shell Component */}
+                    <AppShell>
+                      <Routes>
+                        <Route path="/" element={<CoreHomePage />} />
+                        <Route path="/settings" element={<SettingsPage />} />
+                        <Route path="/account" element={<AccountPage />} />
+                        <Route path="/feedback" element={<FeedbackPage />} />
+                        <Route path="*" element={<NotFoundPage />} />
+                      </Routes>
+                    </AppShell>
+                  </ProvidersWrapper>
+                </AuthFlowManager>
+              </UILayoutProvider>
+            </TauriEnvironmentChecker>
+          </AuthErrorInterceptor>
         </AuthProvider>
       </RuntimeConfigProvider>
     </ThemeProvider>
@@ -82,12 +105,12 @@ export default function App() {
       // Check if Tauri is available for desktop functionality
       if (isTauri) {
         
-        // Basic Tauri environment validation
+        // Basic Tauri environment validation with improved timeout handling
         try {
           // Test basic Tauri functionality with a timeout
           let timeoutId: number;
           const timeoutPromise = new Promise<never>((_, reject) => {
-            timeoutId = window.setTimeout(() => reject(new Error('Tauri API timeout')), 5000);
+            timeoutId = window.setTimeout(() => reject(new Error('Tauri API timeout')), 3000); // Reduced to 3s for faster failure
           });
 
           try {
@@ -99,7 +122,12 @@ export default function App() {
             clearTimeout(timeoutId!);
           }
         } catch (tauriError) {
+          const isTimeout = tauriError instanceof Error && tauriError.message === 'Tauri API timeout';
           console.warn("[App] Tauri API validation failed:", tauriError);
+          // If it's a timeout, log it more specifically
+          if (isTimeout) {
+            console.warn("[App] Tauri API timed out - app may be slow to respond");
+          }
           // Continue anyway - the app can still function with limited features
         }
       } else {
@@ -119,8 +147,18 @@ export default function App() {
 
   // Set app as ready after ensuring environment is initialized
   useEffect(() => {
+    // Add a global initialization timeout to prevent infinite loading
+    const globalTimeout = setTimeout(() => {
+      if (!appReady && !initError) {
+        console.error("[App] Global initialization timeout - forcing app ready state");
+        setAppReady(true); // Force the app to proceed even if initialization is incomplete
+      }
+    }, 20000); // 20 second global timeout
+    
     void initializeApp();
-  }, [initializeApp]);
+    
+    return () => clearTimeout(globalTimeout);
+  }, [initializeApp, appReady, initError]);
 
   // Listen for app close event to handle unsaved changes
   useEffect(() => {
@@ -163,17 +201,37 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    const handleRejection = (event: PromiseRejectionEvent) => {
+    const handleRejection = async (event: PromiseRejectionEvent) => {
       if (event.reason?.message?.includes('unregisterListener')) {
         console.warn('Caught a late-unmount Tauri listener error. Safely ignored.', event.reason);
         event.preventDefault();
+        return;
       }
+
+      // Log unhandled promise rejections
+      const { logError } = await import('@/utils/error-handling');
+      await logError(event.reason, 'Unhandled Promise Rejection', {
+        promise: event.promise?.toString(),
+      }).catch(console.error);
+    };
+
+    const handleError = async (event: ErrorEvent) => {
+      // Log unhandled errors
+      const { logError } = await import('@/utils/error-handling');
+      await logError(event.error || event.message, 'Unhandled Error', {
+        message: event.message,
+        filename: event.filename,
+        lineno: event.lineno,
+        colno: event.colno,
+      }).catch(console.error);
     };
 
     window.addEventListener('unhandledrejection', handleRejection);
+    window.addEventListener('error', handleError);
 
     return () => {
       window.removeEventListener('unhandledrejection', handleRejection);
+      window.removeEventListener('error', handleError);
     };
   }, []);
 

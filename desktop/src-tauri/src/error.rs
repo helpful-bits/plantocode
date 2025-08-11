@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use thiserror::Error;
+use tauri::Manager;
 
 #[derive(Error, Debug, Serialize, Clone)]
 pub enum AppError {
@@ -78,6 +79,9 @@ pub enum AppError {
 
     #[error("Serialization error: {0}")]
     SerializationError(String),
+    
+    #[error("Updater error: {0}")]
+    UpdaterError(String),
 
     #[error("SQLx error: {0}")]
     SqlxError(String),
@@ -246,7 +250,8 @@ pub struct SerializableError {
 
 impl From<AppError> for SerializableError {
     fn from(error: AppError) -> Self {
-        let code = match error {
+        // Log error to database automatically
+        let error_type = match &error {
             AppError::IoError(_) => "IO_ERROR",
             AppError::SerdeError(_) => "SERDE_ERROR",
             AppError::DatabaseError(_) => "DATABASE_ERROR",
@@ -306,11 +311,35 @@ impl From<AppError> for SerializableError {
             AppError::TaskInitiationFailed(_) => "TASK_INITIATION_FAILED",
             AppError::TaskFinalizationFailed(_) => "TASK_FINALIZATION_FAILED",
             AppError::VideoAnalysisError(_) => "VIDEO_ANALYSIS_ERROR",
+            AppError::UpdaterError(_) => "UPDATER_ERROR",
         }
         .to_string();
 
+        // Centralized error logging - log ALL backend errors automatically
+        let error_message = error.to_string();
+        let error_type_clone = error_type.clone();
+        
+        // Spawn async task to log error (non-blocking)
+        tauri::async_runtime::spawn(async move {
+            // Try to get the error log repository from a global state
+            // This will be set up during app initialization
+            if let Some(handle) = crate::GLOBAL_APP_HANDLE.get() {
+                let repo = handle.state::<crate::db_utils::ErrorLogRepository>();
+                let _ = repo.insert_error(
+                    "ERROR",
+                    Some(&error_type_clone),
+                    &error_message,
+                    Some("Backend"),
+                    None, // stack trace
+                    None, // metadata
+                    Some(env!("CARGO_PKG_VERSION")),
+                    Some(std::env::consts::OS),
+                ).await;
+            }
+        });
+
         SerializableError {
-            code,
+            code: error_type,
             message: error.to_string(),
             details: None,
         }

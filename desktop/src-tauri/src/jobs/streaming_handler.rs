@@ -73,7 +73,17 @@ impl StreamedResponseHandler {
 
         // Throttling setup
         let mut last_update = Instant::now();
-        let update_interval = Duration::from_millis(200);
+        
+        // Make stream update interval configurable via environment variable
+        let interval_ms = std::env::var("STREAM_UPDATE_INTERVAL_MS")
+            .ok()
+            .and_then(|s| s.parse::<u64>().ok())
+            .unwrap_or(200); // Default to 200ms if not set or invalid
+        
+        let update_interval = Duration::from_millis(interval_ms);
+        
+        // Log the effective interval once for diagnostics
+        debug!("Stream update interval set to {}ms for job {}", interval_ms, self.job_id);
 
         // Process stream events
         while let Some(event_result) = stream.next().await {

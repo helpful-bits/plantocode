@@ -131,18 +131,22 @@ export function Header() {
                 transition={{ delay: 0.7, duration: defaultDuration, ease: defaultEase }}
               >
                 <ThemeToggle />
-                <Button
-                  asChild
-                  className="ml-2 relative"
-                  size="lg"
-                  variant="cta"
+                <motion.div
+                  className="ml-2"
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
                 >
-                  <Link href="/download">
-                    Download Free
-                  </Link>
-                </Button>
+                  <Button
+                    asChild
+                    className="relative"
+                    size="lg"
+                    variant="cta"
+                  >
+                    <Link href="/download" className="no-hover-effect cursor-pointer">
+                      Download Free
+                    </Link>
+                  </Button>
+                </motion.div>
               </motion.div>
             </nav>
 
@@ -287,8 +291,8 @@ export function Header() {
                 <ThemeToggle />
                 <motion.div
                   className="flex-1"
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
                 >
                   <Button
                     asChild
@@ -297,7 +301,7 @@ export function Header() {
                     variant="cta"
                     onClick={() => setMobileMenuOpen(false)}
                   >
-                    <Link href="/download">
+                    <Link href="/download" className="no-hover-effect cursor-pointer">
                       Download Free
                     </Link>
                   </Button>

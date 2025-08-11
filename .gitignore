@@ -30,6 +30,7 @@ server/target/
 # Build artifacts
 *.tsbuildinfo
 next-env.d.ts
+desktop/latest.json
 
 # Misc
 .DS_Store
@@ -54,9 +55,14 @@ debug.log
 .env.test.local
 .env.production.local
 .env.backup
+.env.secrets-backup
+*.env.backup
+*.env.secrets-backup
+.env.sqlx
 core/.env
 core/.env.local
 server/.env
+server/.env.sqlx
 desktop/.env
 
 # Vercel
@@ -79,6 +85,8 @@ Cargo.lock
 
 # Tauri
 .tauri/
+desktop/~/.tauri/
+*.key
 
 # IDE and editors
 .idea/
@@ -112,6 +120,7 @@ temp/
 *.pfx
 *.p12
 infrastructure/ansible/group_vars/*/secrets.yml
+/desktop/BUILD.md
 /desktop/src-tauri/gen/
 /desktop/src-tauri/icons/android/mipmap-hdpi/ic_launcher.png
 /desktop/src-tauri/icons/android/mipmap-hdpi/ic_launcher_foreground.png

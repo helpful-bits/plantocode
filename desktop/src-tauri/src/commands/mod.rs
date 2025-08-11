@@ -25,6 +25,7 @@ pub mod screen_recording_commands;
 pub mod video_analysis_commands;
 pub mod web_search_commands;
 pub mod workflow_commands;
+pub mod logging_commands;
 
 // Re-export all command functions for easier imports
 pub use app_commands::{get_app_info, get_config_load_error, get_database_info_command};
@@ -166,5 +167,8 @@ pub use error_recovery_commands::{
 
 // Re-exports from video analysis commands module
 pub use video_analysis_commands::start_video_analysis_job;
+
+// Re-exports from logging commands module
+pub use logging_commands::log_client_error;
 
 // All command functions will return AppResult<T> directly

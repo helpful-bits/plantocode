@@ -1,15 +1,11 @@
 {
-  "version": "v1.0.1",
-  "notes": "Bug fixes and performance improvements",
-  "pub_date": "2025-08-07T21:40:00Z",
+  "version": "1.0.11",
+  "notes": "Version 1.0.11 Release\n\n- New features and improvements\n- Bug fixes and performance enhancements\n- Enhanced user experience",
+  "pub_date": "2025-08-10T06:53:00Z",
   "platforms": {
     "darwin-aarch64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSUXZZN0JwS05DN3MrR21XV0dlazRmbVEzcUFBQ1gvOHJ4Tm9laTlabXRRa1VQWFpXWlBsUXJyajJrTERsMmt0WkF3TDFaV1BqQ2Y0bEoyV3VlVUZOWitSTnVLRVovUFE0PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzU0NTk5MTYxCWZpbGU6VmliZSBNYW5hZ2VyLmFwcC50YXIuZ3oKemd2MHhUYXRWcXhiRmxrWVBxMXd5OVNtMmh0L2NxWUcwSkdHRjErdyt4eklFYzk3T0c2SGkwMTQ0ZC9NU1UwaFBoSGIyU25XSWh0YzFTcFk1VDljQ3c9PQo=",
-      "url": "https://s3.eu-central-1.amazonaws.com/vibemanager.app/Vibe Manager.app.tar.gz"
-    },
-    "windows-x86_64": {
-      "signature": "REPLACE_WITH_WINDOWS_SIGNATURE",
-      "url": "https://s3.eu-central-1.amazonaws.com/vibemanager.app/Vibe Manager_1.0.1_x64_en-US.msi.zip"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSUXZZN0JwS05DN2xrRU5meW5OT2lNalprdHdjTlV1VEVhUFoxaTJ0Si9ONjdYSllsclppYWNodEt0aWl1cjRWWllYd3dLVnNEMDVRUjd6U1NoZng4TlFlcXpGUmtHdmdJPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzU0ODA5MTkzCWZpbGU6VmliZSBNYW5hZ2VyXzEuMC4xMV9hYXJjaDY0LmFwcC50YXIuZ3oKMUMwdi9NTUJUYmt0a3FOait3dm1MeHVuaVZvTFFVWk5BaGY1bUxMVlRhUzBMS3lzSGluS0x5dGNWcGUrTHpqZVFOcTNKeVV5SHVaUUE2eWlMWllhQXc9PQo=",
+      "url": "https://d2tyb0wucqqf48.cloudfront.net/desktop/mac/Vibe%20Manager_1.0.11_aarch64.app.tar.gz"
     }
   }
 }

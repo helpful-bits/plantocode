@@ -1,3 +1,5 @@
+//! Customer-facing payment notifications (receipts/invoices) are handled by Stripe.
+//! Manual purchase emails are intentionally disabled to avoid duplicates and reduce operational dependencies.
 // STRIPE API IDEMPOTENCY REQUIREMENTS:
 //
 // All mutating Stripe API operations (POST requests) MUST include an `Idempotency-Key` header
@@ -433,12 +435,6 @@ impl StripeService {
             "created_by": "vibe_manager"
         });
         
-        // Note: We don't set currency here - Stripe will automatically set it based on:
-        // 1. The first payment method's currency
-        // 2. The first subscription/invoice currency
-        // 3. The account's default currency
-        // This prevents currency lock-in issues
-        
         let response = self.make_stripe_request_with_idempotency(
             reqwest::Method::POST,
             "customers",
@@ -469,70 +465,6 @@ impl StripeService {
     }
 
 
-    /// Create a payment intent for processing payments using latest Stripe patterns
-    pub async fn create_payment_intent(
-        &self,
-        idempotency_key: &str,
-        customer_id: &str,
-        amount_cents: i64,
-        currency: &str,
-        description: &str,
-        metadata: HashMap<String, String>,
-        save_payment_method: bool,
-    ) -> Result<stripe_types::PaymentIntent, StripeServiceError> {
-        // Validate amount
-        if amount_cents <= 0 {
-            return Err(StripeServiceError::PaymentProcessing(
-                "Payment amount must be greater than 0".to_string()
-            ));
-        }
-        
-        // Create payment intent using direct API call with idempotency key
-        let mut payment_data = serde_json::json!({
-            "amount": amount_cents,
-            "currency": currency.to_lowercase(),
-            "customer": customer_id,
-            "confirmation_method": "automatic",
-            // Enable automatic payment method handling for better conversion
-            "automatic_payment_methods": {
-                "enabled": true
-            }
-        });
-        
-        if !description.is_empty() {
-            payment_data["description"] = serde_json::Value::String(description.to_string());
-        }
-        
-        // Add metadata
-        for (key, value) in metadata {
-            payment_data[format!("metadata[{}]", key)] = serde_json::Value::String(value);
-        }
-        
-        if save_payment_method {
-            payment_data["setup_future_usage"] = serde_json::Value::String("off_session".to_string());
-        }
-        
-        let response = self.make_stripe_request_with_idempotency(
-            reqwest::Method::POST,
-            "payment_intents",
-            Some(payment_data),
-            Some(idempotency_key),
-        ).await.map_err(|e| {
-            error!("Failed to create payment intent: {}", e);
-            StripeServiceError::PaymentProcessing(format!("Failed to create payment intent: {}", e))
-        })?;
-        
-        // Parse the response into a PaymentIntent struct
-        let payment_intent: stripe_types::PaymentIntent = serde_json::from_value(response)
-            .map_err(|e| {
-                error!("Failed to parse payment intent response: {}", e);
-                StripeServiceError::Configuration(format!("Failed to parse payment intent response: {}", e))
-            })?;
-        
-        info!("Created PaymentIntent: {} for customer: {} with amount: {} {}", 
-              payment_intent.id, customer_id, amount_cents, currency);
-        Ok(payment_intent)
-    }
 
 
     /// Create billing portal session for customer self-service
@@ -924,67 +856,43 @@ impl StripeService {
         Ok(session)
     }
 
-    pub async fn create_and_confirm_payment_intent(
-        &self,
-        idempotency_key: &str,
-        customer_id: &str,
-        payment_method_id: &str,
-        amount_cents: i64,
-        currency: &str,
-        description: &str,
-    ) -> Result<stripe_types::PaymentIntent, StripeServiceError> {
-        info!("Creating and confirming payment intent for customer: {} with amount: {} {}", customer_id, amount_cents, currency);
-        
-        let payment_intent_data = serde_json::json!({
-            "amount": amount_cents,
-            "currency": currency.to_lowercase(),
-            "customer": customer_id,
-            "payment_method": payment_method_id,
-            "description": description,
-            "off_session": true,
-            "confirm": true,
-            "metadata": {
-                "type": "auto_topoff"
-            }
-        });
-        
-        let response = self.make_stripe_request_with_idempotency(
-            reqwest::Method::POST,
-            "payment_intents",
-            Some(payment_intent_data),
-            Some(idempotency_key),
-        ).await.map_err(|e| {
-            error!("Failed to create payment intent for customer {}: {}", customer_id, e);
-            e
-        })?;
-        
-        let payment_intent: stripe_types::PaymentIntent = serde_json::from_value(response)
-            .map_err(|e| StripeServiceError::Configuration(format!("Failed to parse payment intent response: {}", e)))?;
-        
-        info!("Successfully created and confirmed payment intent: {} for customer: {}", payment_intent.id, customer_id);
-        Ok(payment_intent)
-    }
 
     /// Create an invoice for a customer with automatic payment collection
     pub async fn create_invoice_for_auto_topoff(
         &self,
         idempotency_key: &str,
         customer_id: &str,
-        amount_cents: i64,
+        net_amount_cents: i64,
+        fee_amount_cents: i64,
         currency: &str,
         description: &str,
+        metadata: Option<serde_json::Value>,
     ) -> Result<stripe_types::Invoice, StripeServiceError> {
-        info!("Creating invoice for auto top-off - customer: {}, amount: {} {}", customer_id, amount_cents, currency);
+        let total_amount_cents = net_amount_cents + fee_amount_cents;
+        info!("Creating invoice for auto top-off - customer: {}, net: {} cents, fee: {} cents, total: {} {}", 
+              customer_id, net_amount_cents, fee_amount_cents, total_amount_cents, currency);
         
         // Step 1: Create a draft invoice first (exclude pending items to avoid aggregation)
+        let mut invoice_metadata = serde_json::json!({
+            "type": "auto_topoff"
+        });
+        
+        // Merge additional metadata if provided
+        if let Some(additional_metadata) = metadata {
+            if let serde_json::Value::Object(map) = additional_metadata {
+                for (key, value) in map {
+                    invoice_metadata[key] = value;
+                }
+            }
+        }
+        
         let invoice_data = serde_json::json!({
             "customer": customer_id,
+            "currency": currency.to_lowercase(),
             "collection_method": "charge_automatically",
             "auto_advance": true,
             "pending_invoice_items_behavior": "exclude",
-            "metadata": {
-                "type": "auto_topoff"
-            }
+            "metadata": invoice_metadata
         });
         
         let invoice_response = self.make_stripe_request_with_idempotency(
@@ -999,25 +907,48 @@ impl StripeService {
         
         info!("Created draft invoice: {}", invoice.id);
         
-        // Step 2: Create invoice item attached directly to this specific invoice
-        let invoice_item_data = serde_json::json!({
+        // Step 2: Create TWO invoice items - one for credits, one for fee
+        // First item: Credits
+        let credits_item_data = serde_json::json!({
             "customer": customer_id,
             "invoice": invoice.id,
-            "amount": amount_cents,
+            "amount": net_amount_cents,
             "currency": currency.to_lowercase(),
             "description": description,
         });
         
-        let item_response = self.make_stripe_request_with_idempotency(
+        let credits_response = self.make_stripe_request_with_idempotency(
             reqwest::Method::POST,
             "invoiceitems",
-            Some(invoice_item_data),
-            Some(&format!("{}_item", idempotency_key)),
+            Some(credits_item_data),
+            Some(&format!("{}_credits_item", idempotency_key)),
         ).await?;
         
-        let invoice_item: serde_json::Value = item_response;
-        let invoice_item_id = invoice_item.get("id").and_then(|v| v.as_str()).unwrap_or("unknown");
-        info!("Created invoice item: {} attached to invoice: {}", invoice_item_id, invoice.id);
+        let credits_item: serde_json::Value = credits_response;
+        let credits_item_id = credits_item.get("id").and_then(|v| v.as_str()).unwrap_or("unknown");
+        info!("Created credits invoice item: {} attached to invoice: {}", credits_item_id, invoice.id);
+        
+        // Second item: Processing fee (only if fee > 0)
+        if fee_amount_cents > 0 {
+            let fee_item_data = serde_json::json!({
+                "customer": customer_id,
+                "invoice": invoice.id,
+                "amount": fee_amount_cents,
+                "currency": currency.to_lowercase(),
+                "description": "Processing fee",
+            });
+            
+            let fee_response = self.make_stripe_request_with_idempotency(
+                reqwest::Method::POST,
+                "invoiceitems",
+                Some(fee_item_data),
+                Some(&format!("{}_fee_item", idempotency_key)),
+            ).await?;
+            
+            let fee_item: serde_json::Value = fee_response;
+            let fee_item_id = fee_item.get("id").and_then(|v| v.as_str()).unwrap_or("unknown");
+            info!("Created fee invoice item: {} attached to invoice: {}", fee_item_id, invoice.id);
+        }
         
         // Step 3: Finalize the invoice (this creates the PaymentIntent and attempts payment)
         // Since auto_advance is true, Stripe should automatically attempt collection
@@ -1055,8 +986,8 @@ impl StripeService {
             }
         }
         
-        info!("Successfully created and finalized invoice: {} with item: {} for customer: {}", 
-              invoice.id, invoice_item_id, customer_id);
+        info!("Successfully created and finalized invoice: {} with {} items for customer: {}", 
+              invoice.id, if fee_amount_cents > 0 { "2" } else { "1" }, customer_id);
         Ok(invoice)
     }
 

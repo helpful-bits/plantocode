@@ -13,6 +13,9 @@ const __dirname = path.dirname(__filename);
 export default defineConfig({
   plugins: [react(), tsconfigPaths(), tailwindcss()],
   
+  // Use relative paths for production builds
+  base: './',
+  
   // Set root to the desktop/ directory (parent of src/)
   root: path.resolve(__dirname, ".."),
 
@@ -33,6 +36,11 @@ export default defineConfig({
       "@desktop": path.resolve(__dirname, "."),
       "@ui": path.resolve(__dirname, "./ui"),
     },
+  },
+
+  // Configure worker bundling for maximum WebView compatibility
+  worker: {
+    format: 'iife'
   },
 
   // Prevent vite from obscuring rust errors

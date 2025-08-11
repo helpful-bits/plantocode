@@ -39,8 +39,8 @@ export function useFileSelection(projectDirectory?: string) {
   const [sortBy, setSortBy] = useState<"name" | "size" | "modified">("name");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
   
-  // History for undo/redo
-  const [historyState, setHistoryState] = useState<{ entries: FileSelectionHistoryEntry[], currentIndex: number }>({ entries: [], currentIndex: -1 });
+  // History for undo/redo - now with timestamps for each entry
+  const [historyState, setHistoryState] = useState<{ entries: (FileSelectionHistoryEntry & { createdAt: number })[], currentIndex: number }>({ entries: [], currentIndex: -1 });
   const isUndoRedoInProgress = useRef(false);
   const historyStateRef = useRef(historyState);
   
@@ -141,12 +141,14 @@ export function useFileSelection(projectDirectory?: string) {
         if (result.isSuccess && result.data) {
           const entries = result.data.map(entry => ({
             includedFiles: entry.includedFiles,
-            forceExcludedFiles: entry.forceExcludedFiles
+            forceExcludedFiles: entry.forceExcludedFiles,
+            createdAt: entry.createdAt
           }));
           
           const currentSessionState = {
             includedFiles: sessionIncluded,
-            forceExcludedFiles: sessionExcluded
+            forceExcludedFiles: sessionExcluded,
+            createdAt: Date.now()
           };
           
           const lastEntry = entries[entries.length - 1];
@@ -197,7 +199,8 @@ export function useFileSelection(projectDirectory?: string) {
       
       const currentState = {
         includedFiles: sessionIncluded,
-        forceExcludedFiles: sessionExcluded
+        forceExcludedFiles: sessionExcluded,
+        createdAt: Date.now()
       };
       
       const currentEntry = prevState.entries[prevState.currentIndex];

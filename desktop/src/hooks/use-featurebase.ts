@@ -84,7 +84,7 @@ export function useFeaturebase(options: UseFeaturebaseOptions = {}): UseFeatureb
       const checkAndEmbed = () => {
         const container = document.getElementById(options.containerId!);
         if (container) {
-          const organization = options.organization || import.meta.env.VITE_FEATUREBASE_ORGANIZATION || 'helpfulbitsgmbh';
+          const organization = options.organization || import.meta.env.VITE_FEATUREBASE_ORGANIZATION || 'vibemanager';
           
           const config: any = {
             organization,
@@ -109,7 +109,7 @@ export function useFeaturebase(options: UseFeaturebaseOptions = {}): UseFeatureb
       }
     } else {
       // Non-portal mode, embed immediately
-      const organization = options.organization || import.meta.env.VITE_FEATUREBASE_ORGANIZATION || 'helpfulbitsgmbh';
+      const organization = options.organization || import.meta.env.VITE_FEATUREBASE_ORGANIZATION || 'vibemanager';
       
       const config: any = {
         organization,

@@ -5,7 +5,7 @@ This document explores various text options for the Vibe Manager website, focusi
 ## Hero Section Variants
 
 ### Current Version
-**The Polite Context Guidance Centre for Somewhat Bewildered AI Agents**
+**Context for Lost AI Agents**
 
 You know the feeling. You're "vibe coding" with an AI agent - the ideas are flowing, it's magical... until it's not. The agent gets hopelessly lost in your codebase, starts ignoring instructions, hallucinates APIs, and writes code that feels like it belongs in a different project entirely.
 
@@ -16,7 +16,7 @@ Here's the thing: your code IS the documentation. It evolves fast. Every refacto
 Vibe Manager was born from hitting that wall. Hard. Agents don't need more rules - they need the right files, real context, and clear tasks. Simple as that.
 
 ### Example Refined Version
-**The Polite Context Guidance Centre for Somewhat Bewildered AI Agents**
+**Context for Lost AI Agents**
 
 You've been there. You're "vibe coding" with an AI agent—the ideas flow, the results feel magical... until they don't. Suddenly, the agent is lost, ignoring your instructions, hallucinating APIs, and writing code that's clearly meant for another universe.
 

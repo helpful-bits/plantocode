@@ -1,6 +1,6 @@
 "use client";
 
-import { forwardRef, ReactNode, useMemo, useState, useCallback, useEffect } from "react";
+import { forwardRef, ReactNode, useMemo, useState, useCallback, useEffect, useRef } from "react";
 import { ClipboardCopy, Loader2 } from "lucide-react";
 import { Editor } from "@monaco-editor/react";
 
@@ -50,6 +50,16 @@ export interface VirtualizedCodeViewerProps {
   warningThreshold?: number;
   /** Whether to enable text improvement integration */
   enableTextImprovement?: boolean;
+  /** Enable stream-optimized mode for better performance during streaming */
+  streamOptimized?: boolean;
+  /** Disable metrics calculations for better performance */
+  disableMetrics?: boolean;
+  /** Whether to follow streaming content by default */
+  followStreamingDefault?: boolean;
+  /** Callback when follow streaming state changes */
+  onFollowStreamingChange?: (isFollowing: boolean) => void;
+  /** Whether to show the auto-follow toggle */
+  showFollowToggle?: boolean;
 }
 
 // Hook to resolve the current theme, handling "system" preference
@@ -121,14 +131,35 @@ const VirtualizedCodeViewer = forwardRef<HTMLDivElement, VirtualizedCodeViewerPr
     onChange,
     warningThreshold = 100000, // 100KB
     enableTextImprovement = false,
+    streamOptimized = false,
+    disableMetrics = false,
+    followStreamingDefault = true,
+    onFollowStreamingChange,
+    showFollowToggle = false,
     ...props
   }, ref) => {
     const [editorContainerRef, setEditorContainerRef] = useState<HTMLDivElement | null>(null);
     const { showNotification } = useNotification();
     const resolvedTheme = useResolvedTheme();
+    const editorRef = useRef<any>(null);
+    const lastContentLengthRef = useRef<number>(0);
+    const updateRafRef = useRef<number | null>(null);
+    const [isFollowingStream, setIsFollowingStream] = useState(followStreamingDefault);
+    const userManualOverrideRef = useRef<false | 'off'>(false);
+    const nearBottomRef = useRef(false);
+    const scrollRafRef = useRef<number | null>(null);
 
     // Calculate content metrics
     const contentMetrics = useMemo(() => {
+      if (disableMetrics) {
+        return {
+          size: 0,
+          lines: 0,
+          shouldVirtualize: false,
+          isLarge: false,
+          detectedLanguage: language || detectLanguage(content)
+        };
+      }
       const size = new Blob([content]).size;
       const lines = content.split('\n').length;
       const shouldVirtualize = enableVirtualization ?? (size > virtualizationThreshold);
@@ -141,7 +172,7 @@ const VirtualizedCodeViewer = forwardRef<HTMLDivElement, VirtualizedCodeViewerPr
         isLarge,
         detectedLanguage: language || detectLanguage(content)
       };
-    }, [content, language, enableVirtualization, virtualizationThreshold, warningThreshold]);
+    }, [content, language, enableVirtualization, virtualizationThreshold, warningThreshold, disableMetrics]);
 
     // Determine theme using app's theme system
     const editorTheme = useMemo(() => {
@@ -169,6 +200,29 @@ const VirtualizedCodeViewer = forwardRef<HTMLDivElement, VirtualizedCodeViewerPr
         });
       }
     }, [content, copyText, showNotification]);
+    
+    // Handle auto-follow toggle
+    const handleFollowToggleClick = useCallback(() => {
+      if (isFollowingStream) {
+        // Turn OFF - user explicitly overrides
+        setIsFollowingStream(false);
+        userManualOverrideRef.current = 'off';
+        onFollowStreamingChange?.(false);
+      } else {
+        // Turn ON - clear override and scroll to bottom
+        userManualOverrideRef.current = false;
+        setIsFollowingStream(true);
+        onFollowStreamingChange?.(true);
+        // Scroll to bottom when turning on
+        if (editorRef.current) {
+          const model = editorRef.current.getModel();
+          if (model) {
+            const lineCount = model.getLineCount();
+            editorRef.current.revealLine(lineCount);
+          }
+        }
+      }
+    }, [isFollowingStream, onFollowStreamingChange]);
 
     // Default loading indicator
     const defaultLoadingIndicator = (
@@ -181,33 +235,100 @@ const VirtualizedCodeViewer = forwardRef<HTMLDivElement, VirtualizedCodeViewerPr
     );
 
     // Editor configuration
-    const editorConfig = {
-      value: content,
-      language: contentMetrics.detectedLanguage,
-      theme: editorTheme,
-      readOnly,
-      lineNumbers: showLineNumbers ? "on" : "off",
-      wordWrap: wordWrap ? "on" : "off",
-      minimap: { enabled: contentMetrics.lines > 100 },
-      scrollBeyondLastLine: false,
-      automaticLayout: true,
-      fontSize: 13,
-      lineHeight: 1.4,
-      fontFamily: "ui-monospace, SFMono-Regular, 'SF Mono', Monaco, 'Consolas', 'Ubuntu Mono', monospace",
-      padding: { top: 12, bottom: 12 },
-      smoothScrolling: true,
-      mouseWheelZoom: true,
-      folding: true,
-      foldingStrategy: "indentation",
-      showFoldingControls: "always",
-      ...editorOptions
-    };
+    const editorConfig = useMemo(() => {
+      // Determine if we need performance-optimized settings
+      const needsPerformanceMode = streamOptimized || contentMetrics.shouldVirtualize || contentMetrics.isLarge;
+      
+      const baseConfig = {
+        language: contentMetrics.detectedLanguage,
+        theme: editorTheme,
+        readOnly,
+        lineNumbers: showLineNumbers ? "on" : "off",
+        wordWrap: needsPerformanceMode ? "off" : (wordWrap ? "on" : "off"),
+        minimap: { enabled: !needsPerformanceMode && contentMetrics.lines > 100 },
+        scrollBeyondLastLine: false,
+        automaticLayout: true,
+        fontSize: 13,
+        lineHeight: 1.4,
+        fontFamily: "ui-monospace, SFMono-Regular, 'SF Mono', Monaco, 'Consolas', 'Ubuntu Mono', monospace",
+        padding: { top: 12, bottom: 12 },
+        smoothScrolling: !needsPerformanceMode,
+        mouseWheelZoom: true,
+        folding: !needsPerformanceMode,
+        foldingStrategy: "indentation",
+        showFoldingControls: needsPerformanceMode ? "never" : "always"
+      };
+
+      if (needsPerformanceMode) {
+        // Force strict performance options when streaming or handling large content
+        const performanceConfig = {
+          ...baseConfig,
+          minimap: { enabled: false },
+          wordWrap: "off",
+          renderLineHighlight: "none",
+          occurrencesHighlight: false,
+          selectionHighlight: false,
+          codeLens: false,
+          links: false,
+          folding: false,
+          smoothScrolling: false,
+          renderWhitespace: "none",
+          renderLineHighlightOnlyWhenFocus: true,
+          colorDecorators: false,
+          contextmenu: !streamOptimized,
+          renderValidationDecorations: "off"
+        };
+        
+        // Merge user options but don't allow overriding critical performance settings
+        const mergedConfig = { ...editorOptions, ...performanceConfig };
+        return mergedConfig;
+      }
+
+      return {
+        ...baseConfig,
+        ...editorOptions
+      };
+    }, [contentMetrics.detectedLanguage, contentMetrics.lines, contentMetrics.shouldVirtualize, contentMetrics.isLarge, editorTheme, readOnly, showLineNumbers, wordWrap, streamOptimized, editorOptions]);
 
     // Handle editor mount
     const handleEditorDidMount = (editor: any) => {
-      // Configure editor for large content performance
-      if (contentMetrics.shouldVirtualize) {
-        editor.updateOptions({
+      editorRef.current = editor;
+      
+      // Register scroll change listener for auto-follow behavior
+      const scrollDisposable = editor.onDidScrollChange(() => {
+        if (scrollRafRef.current) cancelAnimationFrame(scrollRafRef.current);
+        scrollRafRef.current = requestAnimationFrame(() => {
+          const layout = editor.getLayoutInfo();
+          const maxScrollTop = editor.getScrollHeight() - layout.height;
+          const distanceFromBottom = Math.max(0, maxScrollTop - editor.getScrollTop());
+          const isNear = distanceFromBottom <= 100; // threshold 100px
+          
+          if (nearBottomRef.current !== isNear) {
+            nearBottomRef.current = isNear;
+          }
+          
+          // Auto-adjust follow when user hasn't explicitly overridden
+          if (userManualOverrideRef.current !== 'off') {
+            if (isNear && !isFollowingStream) {
+              setIsFollowingStream(true);
+              onFollowStreamingChange?.(true);
+            } else if (!isNear && isFollowingStream) {
+              setIsFollowingStream(false);
+              onFollowStreamingChange?.(false);
+            }
+          }
+        });
+      });
+      
+      // Store the disposable for cleanup
+      (editor as any)._scrollDisposable = scrollDisposable;
+      
+      // Double-ensure performance options are applied for streaming or large content
+      const needsPerformanceMode = contentMetrics.shouldVirtualize || contentMetrics.isLarge || streamOptimized;
+      
+      if (needsPerformanceMode) {
+        // Force apply performance options again to ensure they're not overridden
+        const strictPerformanceOptions = {
           scrollBeyondLastLine: false,
           renderValidationDecorations: "off",
           renderLineHighlight: "none",
@@ -215,10 +336,26 @@ const VirtualizedCodeViewer = forwardRef<HTMLDivElement, VirtualizedCodeViewerPr
           selectionHighlight: false,
           codeLens: false,
           colorDecorators: false,
-          contextmenu: false,
+          contextmenu: !streamOptimized,
           links: false,
           folding: false,
-        });
+          minimap: { enabled: false },
+          wordWrap: "off",
+          smoothScrolling: false,
+          renderWhitespace: "none",
+          renderLineHighlightOnlyWhenFocus: true,
+          renderIndentGuides: false,
+          renderLineNumbers: showLineNumbers ? "on" : "off",
+          lineNumbersMinChars: 3,
+          glyphMargin: false,
+          overviewRulerLanes: 0,
+          scrollbar: {
+            useShadows: false,
+            verticalScrollbarSize: 10,
+            horizontalScrollbarSize: 10
+          }
+        };
+        editor.updateOptions(strictPerformanceOptions);
       }
 
       // Register editor for text improvement if enabled AND editor is editable
@@ -255,6 +392,21 @@ const VirtualizedCodeViewer = forwardRef<HTMLDivElement, VirtualizedCodeViewerPr
       // Return undefined for non-text-improvement cases
       return undefined;
     };
+    
+    // Clean up on unmount
+    useEffect(() => {
+      return () => {
+        // Clean up scroll listener on unmount
+        if (editorRef.current && (editorRef.current as any)._scrollDisposable) {
+          (editorRef.current as any)._scrollDisposable.dispose();
+          delete (editorRef.current as any)._scrollDisposable;
+        }
+        if (scrollRafRef.current) {
+          cancelAnimationFrame(scrollRafRef.current);
+          scrollRafRef.current = null;
+        }
+      };
+    }, []);
 
     // Handle wheel events to prevent scroll propagation conflicts
     const handleWheel = useCallback((e: WheelEvent) => {
@@ -303,6 +455,75 @@ const VirtualizedCodeViewer = forwardRef<HTMLDivElement, VirtualizedCodeViewerPr
       };
     }, [handleWheel, editorContainerRef]);
 
+    // Handle incremental updates when in stream-optimized mode
+    useEffect(() => {
+      if (!streamOptimized || !editorRef.current) return;
+
+      // Cancel any pending updates
+      if (updateRafRef.current !== null) {
+        cancelAnimationFrame(updateRafRef.current);
+      }
+
+      // Schedule update via requestAnimationFrame
+      updateRafRef.current = requestAnimationFrame(() => {
+        const editor = editorRef.current;
+        const model = editor?.getModel();
+        if (!model) return;
+
+        const prevLen = lastContentLengthRef.current || 0;
+        const currentModelLength = model.getValueLength();
+        const newContentLength = content.length;
+
+        // Check if we can do an incremental append
+        if (newContentLength >= prevLen && currentModelLength === prevLen) {
+          const suffix = content.slice(prevLen);
+          
+          // Use incremental append for reasonably sized chunks
+          if (suffix.length > 0 && suffix.length <= 10000) {
+            const lineCount = model.getLineCount();
+            const lastLineColumn = model.getLineMaxColumn(lineCount);
+            
+            // Apply edit to append the suffix
+            model.applyEdits([{
+              range: new (window as any).monaco.Range(lineCount, lastLineColumn, lineCount, lastLineColumn),
+              text: suffix
+            }]);
+          } else if (suffix.length > 10000) {
+            // Fallback to setValue for large jumps
+            model.setValue(content);
+          }
+        } else if (newContentLength !== currentModelLength) {
+          // Content has diverged or shrunk, reset
+          model.setValue(content);
+        }
+
+        // Update tracked length
+        lastContentLengthRef.current = newContentLength;
+
+        // Only auto-reveal last line if following
+        if (isFollowingStream) {
+          const finalLineCount = model.getLineCount();
+          editor.revealLine(finalLineCount);
+        }
+        
+        updateRafRef.current = null;
+      });
+
+      return () => {
+        if (updateRafRef.current !== null) {
+          cancelAnimationFrame(updateRafRef.current);
+          updateRafRef.current = null;
+        }
+      };
+    }, [content, streamOptimized, isFollowingStream]);
+
+    // Reset lastContentLengthRef when switching out of stream mode
+    useEffect(() => {
+      if (!streamOptimized) {
+        lastContentLengthRef.current = content.length;
+      }
+    }, [streamOptimized, content.length]);
+
     if (isLoading) {
       return (
         <div 
@@ -348,7 +569,7 @@ const VirtualizedCodeViewer = forwardRef<HTMLDivElement, VirtualizedCodeViewerPr
         {/* Header with content info and copy button */}
         <div className="flex items-center justify-between p-2 border-b border-border/20 bg-muted/20">
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            {showContentSize && (
+            {showContentSize && !disableMetrics && (
               <>
                 <span>{Math.round(contentMetrics.size / 1024)}KB</span>
                 <span>•</span>
@@ -363,8 +584,28 @@ const VirtualizedCodeViewer = forwardRef<HTMLDivElement, VirtualizedCodeViewerPr
                 <span className="text-primary">Virtualized</span>
               </>
             )}
+            {streamOptimized && (
+              <>
+                <span>•</span>
+                <span className="text-blue-500">Streaming</span>
+              </>
+            )}
           </div>
           
+          {showFollowToggle && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={handleFollowToggleClick}
+              className={cn(
+                "h-6 px-2 text-xs mr-2",
+                isFollowingStream && "bg-primary/10 hover:bg-primary/20"
+              )}
+              title="Automatically scroll to the newest content"
+            >
+              {isFollowingStream ? "Auto-follow: ON" : "Auto-follow: OFF"}
+            </Button>
+          )}
           {showCopy && (
             <Button
               size="sm"
@@ -389,12 +630,12 @@ const VirtualizedCodeViewer = forwardRef<HTMLDivElement, VirtualizedCodeViewerPr
           }}
         >
           <Editor
-            value={content}
+            {...(streamOptimized ? { defaultValue: content } : { value: content })}
             language={contentMetrics.detectedLanguage}
             theme={editorTheme}
             options={editorConfig}
             onMount={handleEditorDidMount}
-            onChange={onChange}
+            onChange={streamOptimized ? undefined : onChange}
             loading={
               <div className="flex items-center justify-center h-full">
                 <Loader2 className="h-4 w-4 animate-spin mr-2" />

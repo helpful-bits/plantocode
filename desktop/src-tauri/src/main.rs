@@ -29,8 +29,9 @@ use crate::error::AppError;
 use crate::services::config_cache_service::ConfigCache;
 use crate::utils::FileLockManager;
 use dotenvy::dotenv;
-use log::{debug, error, info, warn};
+use log::{debug, error, info, warn, LevelFilter};
 use serde::{Deserialize, Serialize};
+use tauri_plugin_log::{Builder as LogBuilder, Target, TargetKind};
 use std::collections::HashMap;
 use std::sync::{atomic::AtomicBool, Arc, Mutex};
 use std::time::Duration;
@@ -88,27 +89,27 @@ impl Default for AppState {
 }
 
 pub(crate) static FILE_LOCK_MANAGER: OnceCell<Arc<FileLockManager>> = OnceCell::const_new();
+pub(crate) static GLOBAL_APP_HANDLE: OnceCell<tauri::AppHandle> = OnceCell::const_new();
 
 fn main() {
     dotenv().ok();
 
-    // Initialize logger with environment variables
+    // Note: Logging is now initialized via tauri-plugin-log in the builder chain
     // Set RUST_LOG=info,vibe_manager=debug for enhanced logging during development
     // Set RUST_LOG=warn for production to reduce noise
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
-        .format_timestamp(Some(env_logger::fmt::TimestampPrecision::Millis))
-        .format_module_path(true)
-        .format_target(false) // Hide target module path to reduce log verbosity
-        .init();
-
-    info!("Starting Vibe Manager Desktop application");
 
     let tauri_context = tauri::generate_context!();
-    let app_identifier = &tauri_context.config().identifier;
-
-    info!("App identifier: {}", app_identifier);
 
     let mut builder = tauri::Builder::default()
+        // Initialize logging first before other plugins
+        .plugin(
+            LogBuilder::new()
+                .target(Target::new(TargetKind::Stdout))
+                .target(Target::new(TargetKind::Webview))
+                .level(LevelFilter::Debug)
+                .level_for("tauri_plugin_updater", LevelFilter::Trace)
+                .build()
+        )
         .manage(AppState::default())
         .manage(ConfigCache::new(Mutex::new(HashMap::new())))
         // Initialize RwLock containers for deferred API client initialization
@@ -134,8 +135,15 @@ fn main() {
     
     builder
         .setup(|app| {
+            // Log startup info now that logger is initialized
+            info!("Starting Vibe Manager Desktop application");
+            info!("App identifier: {}", app.config().identifier);
+            
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Regular);
+
+            // Store global app handle for error logging
+            let _ = GLOBAL_APP_HANDLE.set(app.handle().clone());
 
             // Keyring is used for secure storage (OS native credential vault)
             info!("Using OS keyring for secure credential storage.");
@@ -144,7 +152,7 @@ fn main() {
 
             tauri::async_runtime::spawn(async move {
                 if let Err(e) = app_setup::run_async_initialization(&app_handle_clone).await {
-                    error!("Async initialization failed: {}", e);
+                    panic!("CRITICAL: Async initialization failed: {}", e);
                 }
             });
 
@@ -185,6 +193,7 @@ fn main() {
             commands::app_commands::get_app_info,
             commands::app_commands::get_config_load_error,
             commands::app_commands::get_database_info_command,
+            commands::app_commands::get_database_path_command,
             // Auth0 commands (includes JWT token management)
             commands::auth0_commands::start_auth0_login_flow,
             commands::auth0_commands::check_auth_status_and_exchange_token,
@@ -256,6 +265,7 @@ fn main() {
             commands::file_system_commands::normalize_path_command,
             commands::file_system_commands::get_temp_dir_command,
             commands::file_system_commands::path_is_absolute_command,
+            commands::file_system_commands::get_file_info_command,
             commands::workflow_commands::cancel_workflow_stage_command,
             // Text commands
             commands::text_commands::improve_text_command,
@@ -356,6 +366,8 @@ fn main() {
             commands::backup_commands::create_manual_backup_command,
             commands::backup_commands::verify_backup_command,
             commands::backup_commands::delete_backup_command,
+            // Error logging commands
+            commands::logging_commands::log_client_error,
         ])
         // Use the context we created earlier
         .run(tauri_context)

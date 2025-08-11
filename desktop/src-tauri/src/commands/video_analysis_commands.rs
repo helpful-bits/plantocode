@@ -81,10 +81,5 @@ pub async fn start_video_analysis_job(
     .await
     .map_err(|e| format!("Failed to create job: {}", e))?;
 
-    let pool = app_handle.state::<sqlx::SqlitePool>().inner();
-    if let Err(e) = crate::db_utils::temp_file_repository::register_temp_file(pool, &video_path, Some(&job_id)).await {
-        error!("Failed to register video file as temp file: {}", e);
-    }
-
     Ok(JobCommandResponse { job_id })
 }

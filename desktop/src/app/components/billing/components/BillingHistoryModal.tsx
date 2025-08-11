@@ -1,5 +1,4 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/ui/dialog";
-import { ScrollArea } from "@/ui/scroll-area";
 import { BillingHistory } from "./BillingHistory";
 
 export interface BillingHistoryModalProps {
@@ -10,13 +9,13 @@ export interface BillingHistoryModalProps {
 export function BillingHistoryModal({ open, onOpenChange }: BillingHistoryModalProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
-        <DialogHeader className="flex-shrink-0">
+      <DialogContent className="max-w-4xl h-[75vh] min-h-[500px] flex flex-col p-0 overflow-hidden">
+        <DialogHeader className="flex-shrink-0 px-6 pt-6 pb-4">
           <DialogTitle>Billing History</DialogTitle>
         </DialogHeader>
-        <ScrollArea className="flex-1 min-h-0">
-          <BillingHistory />
-        </ScrollArea>
+        <div className="flex-1 min-h-0 flex flex-col px-6 pb-6">
+          <BillingHistory isInModal={true} />
+        </div>
       </DialogContent>
     </Dialog>
   );

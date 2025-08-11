@@ -1,9 +1,18 @@
 import { useState, useEffect } from "react";
-import { convertFileSrc } from "@tauri-apps/api/core";
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { ChevronDown, ChevronUp, AlertCircle } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/ui/collapsible";
 import { useJobDetailsContext } from "../../_contexts/job-details-context";
+import { formatFileSize } from "@/utils/string-utils";
+
+interface FileInfo {
+  exists: boolean;
+  size?: number;
+  isFile: boolean;
+  isDirectory: boolean;
+  modifiedAt?: number;
+}
 
 export function JobDetailsVideoSection() {
   const { job, parsedMetadata } = useJobDetailsContext();
@@ -11,6 +20,7 @@ export function JobDetailsVideoSection() {
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [fileSize, setFileSize] = useState<number | null>(null);
 
   // Only render for video_analysis jobs
   if (job.taskType !== "video_analysis") {
@@ -36,6 +46,20 @@ export function JobDetailsVideoSection() {
       try {
         setIsLoading(true);
         setError(null);
+        
+        // Get file info including size
+        try {
+          const fileInfo = await invoke<FileInfo>('get_file_info_command', {
+            path: videoPath
+          });
+          if (fileInfo.exists && fileInfo.size !== undefined) {
+            setFileSize(fileInfo.size);
+          }
+        } catch (err) {
+          console.error("Failed to get file info:", err);
+          // Continue even if we can't get file size
+        }
+        
         // Convert the local file path to a URL that can be loaded in the browser
         const url = await convertFileSrc(videoPath);
         setVideoUrl(url);
@@ -61,7 +85,10 @@ export function JobDetailsVideoSection() {
                   <span>Video Preview</span>
                 </CardTitle>
                 <CardDescription className="text-sm text-muted-foreground/80 mt-1">
-                  Analyzed video recording
+                  {fileSize !== null 
+                    ? `Analyzed video recording (${formatFileSize(fileSize)})`
+                    : 'Analyzed video recording'
+                  }
                 </CardDescription>
               </div>
               <div className="flex items-center gap-2">
@@ -86,20 +113,32 @@ export function JobDetailsVideoSection() {
               <AlertCircle className="h-8 w-8 text-destructive" />
               <span className="text-sm text-destructive">{error}</span>
               {videoPath && (
-                <span className="text-xs text-muted-foreground mt-2">Path: {videoPath}</span>
+                <div className="flex flex-col items-center gap-1 mt-2">
+                  <span className="text-xs text-muted-foreground">Path: {videoPath}</span>
+                  {fileSize !== null && (
+                    <span className="text-xs text-muted-foreground">Size: {formatFileSize(fileSize)}</span>
+                  )}
+                </div>
               )}
             </div>
           ) : videoUrl ? (
-            <div className="rounded-md overflow-hidden bg-black">
-              <video
-                controls
-                className="w-full max-h-[500px]"
-                src={videoUrl}
-              >
-                <p className="text-sm text-muted-foreground p-4">
-                  Your browser does not support the video tag.
-                </p>
-              </video>
+            <div className="space-y-2">
+              <div className="rounded-md overflow-hidden bg-black">
+                <video
+                  controls
+                  className="w-full max-h-[500px]"
+                  src={videoUrl}
+                >
+                  <p className="text-sm text-muted-foreground p-4">
+                    Your browser does not support the video tag.
+                  </p>
+                </video>
+              </div>
+              {fileSize !== null && (
+                <div className="text-xs text-muted-foreground text-center">
+                  File size: {formatFileSize(fileSize)}
+                </div>
+              )}
             </div>
           ) : (
             <div className="flex items-center justify-center h-64 bg-muted/20 rounded-md">

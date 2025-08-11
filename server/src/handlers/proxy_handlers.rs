@@ -358,7 +358,8 @@ pub async fn llm_chat_completion_handler(
             "billing_type": "initial_estimate",
             "timestamp": chrono::Utc::now().to_rfc3339(),
             "estimated_output": true,
-            "pending_timeout_minutes": 10
+            "pending_timeout_minutes": 10,
+            "task_type": payload.task_type.as_deref().unwrap_or("general")
         })),
         provider_reported_cost: None,
     };
@@ -1538,6 +1539,7 @@ pub async fn video_analysis_handler(
         request_id: Some(final_request_id.clone()),
         metadata: Some(json!({
             "task": "video_analysis",
+            "task_type": "video_analysis",
             "duration_ms": duration_ms,
             "status": "pending",
             "original_request_id": request_id

@@ -526,8 +526,6 @@
       0 0 0 2px oklch(0.68 0.085 195 / 0.15),
       0 24px 48px -8px oklch(0.68 0.085 195 / 0.3),
       0 12px 36px -4px oklch(0.48 0.15 195 / 0.25);
-    transform: translateY(-2px);
-    transition: all 0.3s ease;
   }
   
   .dark .glass-highlighted:hover {
@@ -738,13 +736,13 @@
       color-mix(in oklch, var(--color-primary) 20%, transparent) 50%, 
       transparent 70%
     );
-    transform: translateX(-100%) skewX(-15deg);
-    transition: transform 0.6s ease;
+    /*transform: translateX(-100%) skewX(-15deg);*/
+    /*transition: transform 0.6s ease;*/
   }
 
-  .button-glow:hover::after {
-    transform: translateX(100%) skewX(-15deg);
-  }
+  /*.button-glow:hover::after {*/
+  /*  transform: translateX(100%) skewX(-15deg);*/
+  /*}*/
 
   /* Interactive State Colors - Intelligent OKLCH shifts */
   .interactive-hover:hover {
@@ -761,8 +759,8 @@
   
   .interactive-active:active {
     color: color-mix(in oklch, var(--color-adaptive-primary) 85%, oklch(0.3 0.2 195) 15%);
-    transform: translateY(1px);
-    transition: color 0.1s cubic-bezier(0.4, 0, 0.2, 1), transform 0.1s cubic-bezier(0.4, 0, 0.2, 1);
+    /*transform: translateY(1px);*/
+    /*transition: color 0.1s cubic-bezier(0.4, 0, 0.2, 1), transform 0.1s cubic-bezier(0.4, 0, 0.2, 1);*/
   }
   
   .interactive-bg-hover:hover {
@@ -924,9 +922,9 @@
   transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.hover-lift:hover {
-  transform: translateY(-4px) translateZ(0);
-}
+/*.hover-lift:hover {*/
+/*  transform: translateY(-4px) translateZ(0);*/
+/*}*/
 
 .hover-glow {
   transition: box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -1063,7 +1061,7 @@ section:not(:first-child) {
 
 .interactive-text:hover {
   color: var(--color-primary);
-  transform: translateY(-1px);
+  /*transform: translateY(-1px);*/
 }
 
 .interactive-text:focus-visible {
@@ -1074,7 +1072,7 @@ section:not(:first-child) {
 }
 
 .interactive-text:active {
-  transform: translateY(0);
+  /*transform: translateY(0);*/
   color: var(--color-primary);
 }
 
@@ -1148,7 +1146,7 @@ a:not(.no-hover-effect):focus-visible {
 
 /* Video and media optimizations */
 video {
-  transform: translate3d(0, 0, 0);
+  /*transform: translate3d(0, 0, 0);*/
   backface-visibility: hidden;
 }
 
