@@ -64,8 +64,16 @@ export function useAuth0AuthHandler() {
             logger.debug("Found stored token, validating...");
             if (abortController.signal.aborted) return;
             
-            // Validate token by fetching user info
-            const userInfo = await invoke<FrontendUser>('get_user_info_with_app_jwt');
+            // Add timeout for token validation to prevent hanging
+            const validationTimeoutPromise = new Promise<never>((_, reject) => {
+              setTimeout(() => reject(new Error('Token validation timeout')), 10000); // 10 second timeout
+            });
+            
+            // Validate token by fetching user info with timeout
+            const userInfo = await Promise.race([
+              invoke<FrontendUser>('get_user_info_with_app_jwt'),
+              validationTimeoutPromise
+            ]);
             
             if (abortController.signal.aborted) return;
             
@@ -86,8 +94,9 @@ export function useAuth0AuthHandler() {
           } catch (error) {
             if (abortController.signal.aborted) return;
             
-            // Token is invalid, clear it
-            logger.error("Stored token invalid:", error);
+            // Token is invalid or validation timed out, clear it
+            const isTimeout = error instanceof Error && error.message === 'Token validation timeout';
+            logger.error(isTimeout ? "Token validation timed out" : "Stored token invalid:", error);
             let finalError = getErrorMessage(error) || "Failed to validate stored token";
             
             try {

@@ -24,19 +24,17 @@ export function ModelSelectorToggle({ models, selectedModelId, onSelect, estimat
           
           return (
             <React.Fragment key={model.id}>
-              <div className={`
-                flex items-center h-7 px-3 text-xs border-0 rounded-none transition-all duration-200 backdrop-blur-sm
-                ${selectedModelId === model.id 
-                  ? "bg-primary/10 hover:bg-primary/15" 
-                  : "hover:bg-accent/30"
-                }
-                ${exceedsLimit ? "hover:bg-destructive/10" : ""}
-              `}>
-<button
+              <div className="flex items-center gap-1.5">
+                <button
                   type="button"
                   onClick={() => !exceedsLimit && onSelect(model.id)}
                   className={`
-                    flex-1 text-left transition-colors duration-200
+                    flex items-center h-7 px-3 text-xs border-0 rounded-none transition-all duration-200 backdrop-blur-sm
+                    ${selectedModelId === model.id 
+                      ? "bg-primary/10 hover:bg-primary/15" 
+                      : "hover:bg-accent/30"
+                    }
+                    ${exceedsLimit ? "hover:bg-destructive/10" : ""}
                     ${exceedsLimit 
                       ? "text-destructive cursor-not-allowed" 
                       : selectedModelId === model.id 
@@ -45,28 +43,28 @@ export function ModelSelectorToggle({ models, selectedModelId, onSelect, estimat
                     }
                   `}
                 >
-                  <div className="flex items-center gap-1.5">
-                    {model.name}
-                    {exceedsLimit && (
-                      <Tooltip>
-                        <TooltipTrigger>
-                          <AlertTriangle className="text-destructive h-3 w-3" />
-                        </TooltipTrigger>
-                        <TooltipContent className="w-64 bg-popover text-popover-foreground border border-border">
-                          <div className="p-2 text-xs space-y-1">
-                            <div>Input Tokens: {estimatedTokens?.toLocaleString() ?? 'N/A'}</div>
-                            <div>Max Output Tokens: {maxOutputTokens?.toLocaleString() ?? 'N/A'}</div>
-                            <div>Estimated Total: {totalRequiredTokens.toLocaleString()}</div>
-                            <div>Model Limit: {contextWindow.toLocaleString()}</div>
-                            <div className="font-bold text-destructive pt-1 border-t border-border/20 mt-2 pt-2">
-                              ⚠️ Exceeds limit by {(totalRequiredTokens - contextWindow).toLocaleString()} tokens
-                            </div>
-                          </div>
-                        </TooltipContent>
-                      </Tooltip>
-                    )}
-                  </div>
+                  {model.name}
                 </button>
+                {exceedsLimit && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="flex items-center">
+                        <AlertTriangle className="text-destructive h-3 w-3 cursor-help" />
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent className="w-64 bg-popover text-popover-foreground border border-border">
+                      <div className="p-2 text-xs space-y-1">
+                        <div>Input Tokens: {estimatedTokens?.toLocaleString() ?? 'N/A'}</div>
+                        <div>Max Output Tokens: {maxOutputTokens?.toLocaleString() ?? 'N/A'}</div>
+                        <div>Estimated Total: {totalRequiredTokens.toLocaleString()}</div>
+                        <div>Model Limit: {contextWindow.toLocaleString()}</div>
+                        <div className="font-bold text-destructive pt-1 border-t border-border/20 mt-2 pt-2">
+                          ⚠️ Exceeds limit by {(totalRequiredTokens - contextWindow).toLocaleString()} tokens
+                        </div>
+                      </div>
+                    </TooltipContent>
+                  </Tooltip>
+                )}
               </div>
             {index < models.length - 1 && (
               <div className="w-[1px] h-6 bg-border/40" />

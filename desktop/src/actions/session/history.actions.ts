@@ -50,9 +50,16 @@ export async function getFileSelectionHistoryAction(sessionId: string): Promise<
   }
 }
 
-export async function syncFileSelectionHistoryAction(sessionId: string, history: FileSelectionHistoryEntry[]): Promise<ActionState<void>> {
+export async function syncFileSelectionHistoryAction(sessionId: string, history: (FileSelectionHistoryEntry & { createdAt: number })[]): Promise<ActionState<void>> {
   try {
-    await invoke("sync_file_selection_history_command", { sessionId, history });
+    // Convert to the format expected by the backend
+    const historyWithTimestamps: FileSelectionHistoryEntryWithTimestamp[] = history.map(entry => ({
+      includedFiles: entry.includedFiles,
+      forceExcludedFiles: entry.forceExcludedFiles,
+      createdAt: entry.createdAt
+    }));
+    
+    await invoke("sync_file_selection_history_command", { sessionId, history: historyWithTimestamps });
     return {
       isSuccess: true,
       data: undefined,

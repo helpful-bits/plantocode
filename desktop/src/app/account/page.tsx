@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { User, LogOut, Trash2, Mail, Phone, MapPin, Shield, CreditCard, Settings, Globe } from "lucide-react";
+import { User, LogOut, Trash2, Mail, Phone, MapPin, Shield, CreditCard, Settings, Globe, Info, Database } from "lucide-react";
 import { open } from "@tauri-apps/plugin-shell";
 import { invoke } from "@tauri-apps/api/core";
+import { getVersion } from "@tauri-apps/api/app";
 
 import { useAuth } from "@/contexts/auth-context";
 import { Card, CardContent, CardHeader } from "@/ui/card";
@@ -31,6 +32,8 @@ export default function AccountPage() {
   const { showNotification } = useNotification();
   const { customerBillingInfo: billingInfo, isLoading: billingLoading } = useBillingData();
   const [isOpeningPortal, setIsOpeningPortal] = useState(false);
+  const [appVersion, setAppVersion] = useState<string | null>(null);
+  const [databasePath, setDatabasePath] = useState<string | null>(null);
   
   // Region management state
   const [availableRegions, setAvailableRegions] = useState<ServerRegionInfo[]>([]);
@@ -119,20 +122,24 @@ export default function AccountPage() {
     setPendingRegion(null);
   };
 
-  // Fetch regions on component mount
+  // Fetch regions and app version on component mount
   useEffect(() => {
-    const fetchRegions = async () => {
+    const fetchInitialData = async () => {
       try {
         setIsLoadingRegions(true);
-        const [regions, currentUrl] = await Promise.all([
+        const [regions, currentUrl, version, dbPath] = await Promise.all([
           invoke<ServerRegionInfo[]>("get_available_regions_command", {}),
-          invoke<string>("get_selected_server_url_command", {})
+          invoke<string>("get_selected_server_url_command", {}),
+          getVersion(),
+          invoke<string>("get_database_path_command", {})
         ]);
         
         setAvailableRegions(regions);
         setCurrentRegion(currentUrl);
+        setAppVersion(version);
+        setDatabasePath(dbPath);
       } catch (err) {
-        console.error("Failed to fetch regions:", err);
+        console.error("Failed to fetch initial data:", err);
         showNotification({
           title: "Region Loading Failed",
           message: "Failed to load available regions.",
@@ -143,7 +150,7 @@ export default function AccountPage() {
       }
     };
 
-    fetchRegions();
+    fetchInitialData();
   }, [showNotification]);
 
   if (!user) {
@@ -421,6 +428,26 @@ export default function AccountPage() {
                 Delete Account
               </Button>
             </div>
+          </CardContent>
+        </Card>
+
+        {/* App Version Info */}
+        <Card className="bg-gradient-to-r from-card to-card/90 border border-border/50 shadow-sm">
+          <CardContent className="pt-6 pb-4 space-y-3">
+            <div className="flex items-center justify-center gap-3 text-muted-foreground">
+              <Info className="h-4 w-4" />
+              <p className="text-sm">
+                Vibe Manager {appVersion ? `v${appVersion}` : 'Loading...'}
+              </p>
+            </div>
+            {databasePath && (
+              <div className="flex items-center justify-center gap-3 text-muted-foreground">
+                <Database className="h-4 w-4" />
+                <p className="text-sm break-all">
+                  Database: {databasePath}
+                </p>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

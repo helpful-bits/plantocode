@@ -50,12 +50,20 @@ export function AuthFlowManager({ children }: AuthFlowManagerProps) {
     // Use the token refresher hook to keep the JWT fresh
     useAuthTokenRefresher(user);
 
-    // Check for selected server URL and get available regions
+    // Check for selected server URL and get available regions with timeout
     useEffect(() => {
       const checkServerSelection = async () => {
         try {
-          // First check if a server URL is already selected
-          const currentUrl = await invoke<string | null>('get_selected_server_url_command', {});
+          // Add timeout protection to prevent hanging
+          const timeoutPromise = new Promise<never>((_, reject) => {
+            setTimeout(() => reject(new Error('Server check timeout')), 5000); // 5 second timeout
+          });
+          
+          // First check if a server URL is already selected with timeout
+          const currentUrl = await Promise.race([
+            invoke<string | null>('get_selected_server_url_command', {}),
+            timeoutPromise
+          ]);
           
           if (currentUrl) {
             setSelectedUrl(currentUrl);
@@ -63,7 +71,14 @@ export function AuthFlowManager({ children }: AuthFlowManagerProps) {
             // No URL selected, get available regions
             setSelectedUrl(null);
             try {
-              const regions = await invoke<ServerRegionInfo[]>('get_available_regions_command', {});
+              const regionsTimeoutPromise = new Promise<never>((_, reject) => {
+                setTimeout(() => reject(new Error('Regions fetch timeout')), 5000);
+              });
+              
+              const regions = await Promise.race([
+                invoke<ServerRegionInfo[]>('get_available_regions_command', {}),
+                regionsTimeoutPromise
+              ]);
               setAvailableRegions(regions);
             } catch (regionError) {
               const errorInfo = extractErrorInfo(regionError);
@@ -78,13 +93,16 @@ export function AuthFlowManager({ children }: AuthFlowManagerProps) {
             }
           }
         } catch (e) {
+          const isTimeout = e instanceof Error && e.message.includes('timeout');
           const errorInfo = extractErrorInfo(e);
-          const userMessage = createUserFriendlyErrorMessage(errorInfo, "server selection");
+          const userMessage = isTimeout 
+            ? "Server check timed out. The app may be having connectivity issues."
+            : createUserFriendlyErrorMessage(errorInfo, "server selection");
           
           await logError(e, "AuthFlowManager.checkServerSelection");
           setSelectedUrl(null); // Default to no selection if check fails
           showNotification({
-            title: "Server Check Failed",
+            title: isTimeout ? "Server Check Timeout" : "Server Check Failed",
             message: userMessage,
             type: "warning"
           });
@@ -235,8 +253,15 @@ export function AuthFlowManager({ children }: AuthFlowManagerProps) {
       const tokenValid = !isTokenExpired;
       const serverSelected = selectedUrl !== null && selectedUrl !== undefined;
 
-      // Only mark initialization as complete when ALL conditions are satisfied
-      if (onboardingDone && authResolved && configResolved && hasValidUser && noConfigError && tokenValid && serverSelected) {
+      // Check if we're in a state where we should show UI (even if not fully loaded)
+      const shouldShowLogin = !hasValidUser && authResolved && serverSelected;
+      const shouldShowApp = onboardingDone && authResolved && hasValidUser && serverSelected;
+      
+      // Only mark initialization as complete when we can show meaningful UI
+      if (shouldShowLogin || shouldShowApp) {
+        // We can show either login or the main app
+        setAppInitializing(false);
+      } else if (onboardingDone && authResolved && configResolved && hasValidUser && noConfigError && tokenValid && serverSelected) {
         // All critical async operations before rendering main app are done
         setAppInitializing(false);
       } else {
@@ -254,6 +279,21 @@ export function AuthFlowManager({ children }: AuthFlowManagerProps) {
       selectedUrl,
       setAppInitializing
     ]);
+
+    // Add a fallback timeout to prevent infinite loading
+    useEffect(() => {
+      // If we're stuck on initializing for more than 15 seconds, force a state
+      const fallbackTimeout = setTimeout(() => {
+        if (isOnboardingNeeded === null) {
+          setIsOnboardingNeeded(false); // Default to no onboarding needed
+        }
+        if (selectedUrl === undefined) {
+          setSelectedUrl(null); // Force to show server selection
+        }
+      }, 15000); // 15 second fallback
+      
+      return () => clearTimeout(fallbackTimeout);
+    }, [isOnboardingNeeded, selectedUrl]);
 
     // Show loading screen while checking onboarding status or server selection
     if (isOnboardingNeeded === null || selectedUrl === undefined) {

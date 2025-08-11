@@ -54,14 +54,6 @@ export function Community() {
                 </div>
               </Reveal>
 
-              <Reveal delay={0.25}>
-                <Button asChild size="lg" variant="default">
-                  <Link href="https://vibemanager.featurebase.app" target="_blank" rel="noopener noreferrer">
-                    Visit Our FeatureBase Portal
-                  </Link>
-                </Button>
-              </Reveal>
-
             </div>
           </GlassCard>
         </Reveal>

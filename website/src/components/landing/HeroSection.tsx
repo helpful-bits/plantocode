@@ -47,7 +47,7 @@ export function HeroSection() {
               whileTap={{ scale: 0.95 }}
             >
               <Button asChild className="relative overflow-hidden" size="xl" variant="cta">
-                <Link href="/download">
+                <Link href="/download" className="no-hover-effect cursor-pointer">
                   Get Your Weekend Back
                 </Link>
               </Button>
@@ -60,7 +60,7 @@ export function HeroSection() {
               whileTap={{ scale: 0.95 }}
             >
               <Button asChild size="lg" variant="gradient-outline">
-                <Link href="#how-it-works">
+                <Link href="#how-it-works" className="no-hover-effect cursor-pointer">
                   See How It Works
                 </Link>
               </Button>

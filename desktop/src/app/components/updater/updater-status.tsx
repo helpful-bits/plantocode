@@ -29,9 +29,24 @@ export function UpdaterStatus() {
                 label: 'Install Update',
                 onClick: async () => {
                   try {
+                    console.log('[UpdaterStatus] User clicked Install Update')
                     await downloadAndInstallUpdate(update)
                   } catch (error) {
-                    showError(error, 'Update installation failed')
+                    console.error('[UpdaterStatus] Update installation error:', {
+                      error,
+                      errorMessage: error instanceof Error ? error.message : String(error)
+                    })
+                    
+                    // Check if this is a user cancellation or interruption
+                    const errorMessage = error instanceof Error ? error.message : String(error)
+                    const isUserAction = errorMessage.toLowerCase().includes('interrupted') || 
+                                       errorMessage.toLowerCase().includes('cancelled') ||
+                                       errorMessage.toLowerCase().includes('canceled')
+                    
+                    if (!isUserAction) {
+                      // Only show error for non-user-initiated issues
+                      showError(error, 'Update installation failed')
+                    }
                   }
                 },
                 variant: 'default'
@@ -39,10 +54,15 @@ export function UpdaterStatus() {
             })
           }
         })
-        .catch(error => {
-          // Silently handle update check failures on startup
-          // Only show errors if user manually checks
+        .catch(async error => {
+          // Log the error to the database even though we don't show it to the user
           console.warn('Auto update check failed:', error)
+          try {
+            const { logError } = await import('@/utils/error-handling')
+            await logError(error, 'Auto update check on startup')
+          } catch (loggingError) {
+            console.error('Failed to log update check error:', loggingError)
+          }
         })
     }
   }, [hasCheckedOnStartup, checkForUpdates, downloadAndInstallUpdate, showNotification, showError])
@@ -89,9 +109,25 @@ export function UpdaterStatus() {
   // Show error notifications
   useEffect(() => {
     if (status.error) {
-      showError(new Error(status.error), 'Update process failed')
+      // Check if this is a user-initiated interruption
+      const isUserInterruption = status.error.toLowerCase().includes('interrupted by user') || 
+                                status.error.toLowerCase().includes('user cancelled') ||
+                                status.error.toLowerCase().includes('user canceled')
+      
+      if (isUserInterruption) {
+        // For user interruptions, just show a simple notification without logging
+        showNotification({
+          title: 'Update Cancelled',
+          message: 'The update process was cancelled.',
+          type: 'info',
+          duration: 3000
+        })
+      } else {
+        // For actual errors, show error notification with logging
+        showError(new Error(status.error), 'Update process failed')
+      }
     }
-  }, [status.error, showError])
+  }, [status.error, showError, showNotification])
 
   // This component doesn't render anything visible
   // It just handles the update checking and notifications

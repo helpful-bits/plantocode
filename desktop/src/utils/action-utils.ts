@@ -1,5 +1,5 @@
 import { type ActionState } from "@/types";
-import { AppError, ErrorType } from "@/utils/error-handling";
+import { AppError, ErrorType, logError } from "@/utils/error-handling";
 import { createLogger } from "@/utils/logger";
 
 const logger = createLogger({ namespace: "ActionUtils" });
@@ -207,6 +207,14 @@ export function handleActionError(
 ): ActionState<unknown> {
   // Debug log to see the error structure
   logger.debug("handleActionError received:", error);
+
+  // Log all errors centrally (fire and forget)
+  void logError(error, 'Action Error Handler', { 
+    source: 'handleActionError',
+    errorType: typeof error 
+  }).catch(() => {
+    // Ignore logging failures to prevent recursive errors
+  });
 
   // If error is already an AppError, return it directly in an ActionState
   if (error instanceof AppError) {

@@ -439,7 +439,7 @@ impl SessionRepository {
     pub async fn sync_file_selection_history(
         &self,
         session_id: &str,
-        history: &[(String, String)],
+        history: &[(String, String, i64)],
     ) -> AppResult<()> {
         let mut tx =
             self.pool.begin().await.map_err(|e| {
@@ -457,13 +457,13 @@ impl SessionRepository {
                 ))
             })?;
 
-        let now = crate::utils::date_utils::get_timestamp();
-        for (included_files, force_excluded_files) in history {
+        // Now each history entry has its own timestamp
+        for (included_files, force_excluded_files, created_at) in history {
             sqlx::query("INSERT INTO file_selection_history (session_id, included_files, force_excluded_files, created_at) VALUES ($1, $2, $3, $4)")
                 .bind(session_id)
                 .bind(included_files)
                 .bind(force_excluded_files)
-                .bind(now)
+                .bind(created_at) // Use the individual timestamp from each entry
                 .execute(&mut *tx)
                 .await
                 .map_err(|e| AppError::DatabaseError(format!("Failed to insert file selection history: {}", e)))?;

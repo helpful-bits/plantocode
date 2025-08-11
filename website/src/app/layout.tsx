@@ -13,7 +13,7 @@ export const metadata: Metadata = {
   metadataBase: new URL('https://vibemanager.app'),
   title: {
     template: '%s | Vibe Manager',
-    default: 'Vibe Manager | Stop Babysitting Your AI Coder',
+    default: 'Vibe Manager | Context for Lost AI Agents',
   },
   description: "The AI coding assistant that acts as a middle-manager for your LLMs, curating the perfect context so they can't get lost. Built by a developer, for developers, from the trenches.",
   keywords: ['AI coding assistant', 'context curation', 'vibe coding', 'multi-model AI', 'codebase analysis', 'implementation plans', 'developer tools', 'local AI', 'private AI coding', 'Claude Code', 'Gemini', 'large codebase', 'developer productivity'],
@@ -31,7 +31,7 @@ export const metadata: Metadata = {
     canonical: 'https://vibemanager.app/',
   },
   openGraph: {
-    title: 'Vibe Manager | The Polite Context Guidance Centre for Somewhat Bewildered AI Agents',
+    title: 'Vibe Manager | Context for Lost AI Agents',
     description: 'Tired of babysitting your AI agent? Vibe Manager is the competent middle manager that curates perfect context from your codebase and the web, so your agents can build correctly the first time.',
     url: 'https://vibemanager.app/',
     siteName: 'Vibe Manager',
@@ -47,7 +47,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Vibe Manager | The Polite Context Guidance Centre for Somewhat Bewildered AI Agents',
+    title: 'Vibe Manager | Context for Lost AI Agents',
     description: 'Tired of babysitting your AI agent? Vibe Manager is the competent middle manager that curates perfect context from your codebase and the web, so your agents can build correctly the first time.',
     images: [{
       url: 'https://vibe-manager-media.s3.amazonaws.com/og-image.png',

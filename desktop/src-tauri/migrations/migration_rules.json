@@ -1,0 +1,67 @@
+{
+  "migrations": [
+    {
+      "id": "add_error_logs",
+      "from_version": "*",
+      "to_version": ">=1.0.0",
+      "migration_file": "migrations/features/add_error_logs.sql",
+      "description": "Add error logging table and indexes",
+      "required": false,
+      "priority": 10
+    },
+    {
+      "id": "performance_indexes_2025",
+      "from_version": "*",
+      "to_version": ">=1.0.0",
+      "migration_file": "migrations/optimizations/indexes.sql",
+      "description": "Add performance indexes for better query performance",
+      "required": false,
+      "priority": 100
+    },
+    {
+      "id": "billing_v2_upgrade",
+      "from_version": "1.*",
+      "to_version": ">=2.0.0",
+      "migration_file": "migrations/features/billing_v2.sql",
+      "description": "Upgrade billing system to v2 with enhanced credit tracking",
+      "required": true,
+      "priority": 20
+    },
+    {
+      "id": "auth_security_patch",
+      "from_version": ">=1.0.0, <1.5.0",
+      "to_version": ">=1.5.0",
+      "migration_file": "migrations/security/auth_fix.sql",
+      "description": "Security patch for authentication system",
+      "required": true,
+      "priority": 1
+    },
+    {
+      "id": "cleanup_deprecated_tables",
+      "from_version": "<2.0.0",
+      "to_version": ">=2.0.0",
+      "migration_file": "migrations/cleanup/remove_deprecated.sql",
+      "description": "Remove deprecated tables and columns",
+      "required": false,
+      "priority": 200
+    },
+    {
+      "id": "add_workflow_indexes",
+      "from_version": "*",
+      "to_version": ">=1.1.0",
+      "migration_file": "migrations/optimizations/workflow_indexes.sql",
+      "description": "Add indexes for workflow performance",
+      "required": false,
+      "priority": 110
+    },
+    {
+      "id": "add_audit_tables",
+      "from_version": ">=1.2.0",
+      "to_version": ">=1.3.0",
+      "migration_file": "migrations/features/audit_tables.sql",
+      "description": "Add audit logging tables for compliance",
+      "required": false,
+      "priority": 50
+    }
+  ]
+}
