@@ -146,16 +146,26 @@ export function TextImprovementProvider({ children }: TextImprovementProviderPro
         const selectedText = model.getValueInRange(selection);
         
         if (selectedText.trim()) {
-          // Position near the editor
-          const editorElement = document.querySelector('.monaco-editor.focused') as HTMLElement;
+          // Use editor instance to compute reliable popover position
+          const editorDomNode = editor.getDomNode?.();
           let popoverPosition = { top: 100, left: 100 }; // Default fallback
           
-          if (editorElement) {
-            const rect = editorElement.getBoundingClientRect();
-            popoverPosition = {
-              top: rect.top + 40,
-              left: rect.left + 60,
-            };
+          if (editorDomNode) {
+            const rect = editorDomNode.getBoundingClientRect();
+            const startPosition = selection.getStartPosition();
+            const svp = editor.getScrolledVisiblePosition?.(startPosition);
+            
+            if (svp) {
+              popoverPosition = {
+                top: rect.top + svp.top + 20,
+                left: rect.left + svp.left,
+              };
+            } else {
+              popoverPosition = {
+                top: rect.top + 40,
+                left: rect.left + 60,
+              };
+            }
           }
 
           setPosition(popoverPosition);

@@ -1,6 +1,7 @@
 pub mod auth_jwt_claims;
 pub mod authenticated_user;
 pub mod billing;
+pub mod consent;
 pub mod error_details;
 pub mod model_pricing;
 pub mod region;
@@ -10,6 +11,7 @@ pub mod usage_metadata;
 pub use auth_jwt_claims::*;
 pub use authenticated_user::*;
 pub use billing::*;
+pub use consent::*;
 pub use error_details::*;
 pub use model_pricing::*;
 pub use region::*;

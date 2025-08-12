@@ -11,3 +11,4 @@ pub mod provider_transformers;
 pub mod featurebase_handlers;
 pub mod cancellation_handlers;
 pub mod region_handlers;
+pub mod consent_handlers;

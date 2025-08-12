@@ -543,11 +543,14 @@ export function ImplementationPlansPanel({
               <div className="mb-3">
                 <div className="space-y-2">
                   <div className="text-xs text-muted-foreground">
-                    Estimated tokens (preliminary): <AnimatedNumber 
+                    Estimated tokens*: <AnimatedNumber 
                       value={estimatedTokens} 
                       previousValue={previousEstimatedTokens}
                       className="text-foreground font-medium"
                     />
+                  </div>
+                  <div className="text-xs text-muted-foreground/70">
+                    * This is an estimate. The final token count will be provided by your AI provider after processing and may differ between providers for the same content.
                   </div>
                 </div>
               </div>

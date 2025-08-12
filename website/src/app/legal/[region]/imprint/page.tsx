@@ -59,7 +59,7 @@ export default async function ImprintPage({ params }: ImprintPageProps) {
       <section>
         <h2 className="text-2xl font-semibold mb-4">Contact Information</h2>
         <div className="space-y-2">
-          <p><strong>Email:</strong> <a href="mailto:legal@vibemanager.app" className="text-blue-600 hover:underline">legal@vibemanager.app</a></p>
+          <p><strong>Email:</strong> <a href="mailto:legal@vibemanager.app" className="link-primary">legal@vibemanager.app</a></p>
           <p><strong>Phone:</strong> +49 89 122237960</p>
           <p><strong>Rapid Communication:</strong> For urgent matters, please use email as the fastest communication channel</p>
         </div>
@@ -90,6 +90,16 @@ export default async function ImprintPage({ params }: ImprintPageProps) {
           All information on this website is provided without guarantee. We reserve the right to change, 
           supplement or delete parts of the pages or the entire offer without prior notice or to cease 
           publication temporarily or permanently.
+        </p>
+      </section>
+
+      <section>
+        <h2 className="text-2xl font-semibold mb-4">Consumer Dispute Resolution</h2>
+        <p>
+          According to § 36 VSBG (Consumer Dispute Resolution Act): helpful bits GmbH is neither willing nor obligated to participate in dispute resolution proceedings before a consumer arbitration board.
+        </p>
+        <p className="mt-4">
+          The European Commission provides a platform for online dispute resolution (ODR). Note: As of July 2025, the EU ODR platform has been discontinued pursuant to EU regulations.
         </p>
       </section>
     </LegalContent>

@@ -673,23 +673,23 @@ impl BillingClient {
     ) -> Result<UnifiedCreditHistoryResponse, AppError> {
         debug!("Getting unified credit history via BillingClient");
 
+        // Additional clamp at client layer for defense in depth
+        let limit_q = limit.unwrap_or(20).clamp(1, 100);
+        let offset_q = offset.unwrap_or(0).max(0);
+
         let mut query_params = Vec::new();
-        if let Some(limit) = limit {
-            query_params.push(format!("limit={}", limit));
-        }
-        if let Some(offset) = offset {
-            query_params.push(format!("offset={}", offset));
-        }
+        query_params.push(format!("limit={}", limit_q));
+        query_params.push(format!("offset={}", offset_q));
+        
+        // Only include search if non-empty after trimming
         if let Some(search) = search {
-            query_params.push(format!("search={}", urlencoding::encode(&search)));
+            let trimmed = search.trim();
+            if !trimmed.is_empty() {
+                query_params.push(format!("search={}", urlencoding::encode(trimmed)));
+            }
         }
 
-        let query_string = if query_params.is_empty() {
-            String::new()
-        } else {
-            format!("?{}", query_params.join("&"))
-        };
-
+        let query_string = format!("?{}", query_params.join("&"));
         let endpoint = format!("/api/billing/credits/unified-history{}", query_string);
 
         let unified_history_response = self

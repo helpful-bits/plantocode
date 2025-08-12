@@ -165,3 +165,69 @@ docker run --rm -it \
 - The `--env-file ./.env` flag assumes you have a `.env` file in the `server/` directory based on the `.env.example` file.
 - The container exposes port `8080`, which is mapped to port `8080` on the host.
 - The application will attempt to connect to the database and Redis instances specified in your environment variables. Ensure the container can reach them (e.g., by using `host.docker.internal` on Docker Desktop or appropriate container networking).
+
+## Consent Tracking
+
+### Overview
+The consent tracking system manages user acceptance of legal documents (Terms of Service and Privacy Policy) with full audit trails.
+
+### Database Tables
+- `legal_documents`: Current version of each document type per region
+- `user_consent_events`: Immutable audit log of all consent actions
+- `user_consents`: Per-user snapshot of latest acceptances for fast verification
+
+### Updating Legal Documents
+To update the current version of a legal document (requires database access):
+
+```sql
+UPDATE legal_documents 
+SET version = '2025-08-15',
+    effective_at = '2025-08-15'::timestamptz,
+    url = '/legal/eu/terms',
+    content_hash = 'sha256_hash_here',
+    material_change = true,
+    updated_at = NOW()
+WHERE doc_type = 'terms' AND region = 'eu';
+```
+
+This will automatically trigger re-consent for users who have accepted a previous version.
+
+### API Endpoints
+
+#### Get Current Documents
+```bash
+curl -H "Authorization: Bearer $TOKEN" \
+  "https://api.vibemanager.app/api/consent/documents/current?region=eu"
+```
+
+#### Check User Status
+```bash
+curl -H "Authorization: Bearer $TOKEN" \
+  "https://api.vibemanager.app/api/consent/status?region=eu"
+```
+
+#### Verify Consent
+```bash
+curl -H "Authorization: Bearer $TOKEN" \
+  "https://api.vibemanager.app/api/consent/verify?region=eu"
+```
+
+#### Accept Consent
+```bash
+curl -X POST -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"doc_type":"terms","region":"eu"}' \
+  "https://api.vibemanager.app/api/consent/accept"
+```
+
+#### Admin Report (requires admin role)
+```bash
+curl -H "Authorization: Bearer $TOKEN" \
+  "https://api.vibemanager.app/api/consent/admin/report?format=csv&region=eu"
+```
+
+### Re-consent Semantics
+Users are prompted to re-consent when:
+- Their accepted_version differs from the current version in legal_documents
+- They have never accepted a particular document type
+- A material_change flag is set on the new version

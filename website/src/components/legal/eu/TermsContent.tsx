@@ -20,7 +20,10 @@ export default function EUTermsContent() {
       <section>
         <h2 id="eligibility-accounts" className="text-2xl font-semibold mb-4">Eligibility and Accounts</h2>
         <p>
-          You must be at least 18 years old to use our Service. By creating an account, you represent that you have the legal capacity to enter into these Terms. You are responsible for maintaining the security of your account credentials and for all activities that occur under your account.
+          You must be at least 18 years old or the age of legal majority in your jurisdiction, whichever is greater, to use our Service. This Service is not intended for or directed at anyone under 18 years of age. By creating an account, you represent that you have the legal capacity to enter into these Terms. You are responsible for maintaining the security of your account credentials and for all activities that occur under your account.
+        </p>
+        <p className="mt-4">
+          By creating an account, you represent and warrant that you meet this age requirement. We reserve the right to immediately terminate the accounts of any users we discover to be under 18 years of age.
         </p>
         <p className="mt-4">
           You agree to provide accurate, current, and complete information when creating your account and to update such information as necessary to keep it accurate, current, and complete.
@@ -47,6 +50,26 @@ export default function EUTermsContent() {
           <li>We reserve the right to change our pricing with 30 days' notice</li>
           <li>You are responsible for all taxes associated with your use of the Service</li>
         </ul>
+        
+        <h3 className="text-xl font-medium mb-3 mt-6">Automatic Top-Up (Recurring Payment Authorization)</h3>
+        <div className="border-l-4 border-amber-500 pl-6 py-4 my-4 bg-amber-50 dark:bg-amber-900/20 rounded-lg">
+          <p className="font-semibold mb-2">⚠️ Important Recurring Payment Terms</p>
+          <ul className="list-disc list-inside space-y-2 text-sm">
+            <li>Your account will be automatically charged when your credit balance falls below your set threshold</li>
+            <li>This is a recurring charge that will continue until you cancel</li>
+            <li>You can cancel anytime in your account settings with immediate effect</li>
+            <li>No refunds for credits already purchased</li>
+          </ul>
+        </div>
+        <p>
+          By enabling automatic top-up, you expressly authorize us to charge your saved payment method for your selected amount whenever your balance falls below your chosen threshold. This authorization remains in effect until you cancel it.
+        </p>
+        <p className="mt-4">
+          <strong>How to Cancel:</strong> You can disable auto top-up at any time through your account dashboard under "Billing Settings" with a simple one-click process. Cancellation takes effect immediately and no further automatic charges will occur.
+        </p>
+        <p className="mt-4">
+          <strong>Confirmation:</strong> After enabling auto top-up, we will send you an email confirmation with these terms and instructions on how to cancel.
+        </p>
       </section>
 
       <section>
@@ -59,7 +82,7 @@ export default function EUTermsContent() {
         </p>
         <p className="mt-4">
           <strong>Exercise of Withdrawal Right:</strong> To exercise your right of withdrawal, you must inform us at legal@vibemanager.app of your decision to withdraw by means of a clear statement. You may use the withdrawal form available at{' '}
-          <a href="/legal/eu/withdrawal-policy" className="text-blue-600 hover:underline">
+          <a href="/legal/eu/withdrawal-policy" className="link-primary">
             /legal/eu/withdrawal-policy
           </a>
           {', '}but it is not obligatory.
@@ -102,8 +125,8 @@ export default function EUTermsContent() {
       </section>
 
       <section>
-        <h2 id="acceptable-use" className="text-2xl font-semibold mb-4">Acceptable Use</h2>
-        <p>You may not use our Service for any of the following prohibited activities:</p>
+        <h2 id="prohibited-uses" className="text-2xl font-semibold mb-4">Prohibited Uses</h2>
+        <p>You may <strong>NOT</strong> use our Service for any of the following prohibited activities:</p>
         <ul className="list-disc list-inside space-y-2 mt-4">
           <li><strong>Illegal Use:</strong> Using the Service for any unlawful purpose or in violation of any applicable laws or regulations</li>
           <li><strong>Intellectual Property Infringement:</strong> Infringing or violating the intellectual property rights of others</li>
@@ -112,7 +135,7 @@ export default function EUTermsContent() {
           <li><strong>Interference and Malware:</strong> Interfering with or disrupting the Service, its servers, or introducing malware, viruses, or harmful code</li>
           <li>Reverse engineering, decompiling, or disassembling the Service</li>
           <li>Sharing your account credentials with others</li>
-          <li>Using the Service to generate content that violates our content policies</li>
+          <li>Using the Service to generate illegal, harmful, threatening, abusive, harassing, defamatory, vulgar, obscene, or invasive content</li>
         </ul>
 
         <h3 className="text-xl font-medium mb-3 mt-6">High-Risk and Regulated Uses</h3>
@@ -135,47 +158,47 @@ export default function EUTermsContent() {
       <section>
         <h2 id="third-party-ai" className="text-2xl font-semibold mb-4">Third-Party AI Providers</h2>
         <p>
-          Our Service integrates with various third-party AI providers. <strong>Important:</strong> We configure third-party AI providers to <strong>disable training where available</strong> and to use your data <strong>only to provide the Service</strong>. Providers may retain limited logs for <strong>fraud, abuse, or security</strong> for short periods per their policies. See our <Link href="/legal/eu/subprocessors" className="text-blue-600 hover:underline">subprocessors</Link> page for current vendors, locations, and settings. Your use of AI features is subject to the terms and policies of these providers:
+          Our Service integrates with various third-party AI providers. <strong>Important:</strong> We configure third-party AI providers to <strong>disable training where available</strong> and to use your data <strong>only to provide the Service</strong>. Providers may retain limited logs for <strong>fraud, abuse, or security</strong> for short periods per their policies. See our <Link href="/legal/eu/subprocessors" className="link-primary">subprocessors</Link> page for current vendors, locations, and settings. Your use of AI features is subject to the terms and policies of these providers:
         </p>
         
         <ul className="list-disc list-inside space-y-2 mt-4">
           <li>
             <strong>OpenAI:</strong>{' '}
-            <a href="https://openai.com/policies/terms-of-use" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+            <a href="https://openai.com/policies/terms-of-use" target="_blank" rel="noopener noreferrer" className="link-primary">
               Terms of Service
             </a>
             {' | '}
-            <a href="https://openai.com/policies/privacy-policy" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+            <a href="https://openai.com/policies/privacy-policy" target="_blank" rel="noopener noreferrer" className="link-primary">
               Privacy Policy
             </a>
           </li>
           <li>
             <strong>Google Gemini:</strong>{' '}
-            <a href="https://ai.google.dev/terms" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+            <a href="https://ai.google.dev/terms" target="_blank" rel="noopener noreferrer" className="link-primary">
               Terms of Service
             </a>
             {' | '}
-            <a href="https://policies.google.com/privacy" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+            <a href="https://policies.google.com/privacy" target="_blank" rel="noopener noreferrer" className="link-primary">
               Privacy Policy
             </a>
           </li>
           <li>
             <strong>xAI:</strong>{' '}
-            <a href="https://x.ai/legal" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+            <a href="https://x.ai/legal" target="_blank" rel="noopener noreferrer" className="link-primary">
               Terms of Service
             </a>
             {' | '}
-            <a href="https://x.ai/legal/privacy-policy" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+            <a href="https://x.ai/legal/privacy-policy" target="_blank" rel="noopener noreferrer" className="link-primary">
               Privacy Policy
             </a>
           </li>
           <li>
             <strong>OpenRouter:</strong>{' '}
-            <a href="https://openrouter.ai/terms" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+            <a href="https://openrouter.ai/terms" target="_blank" rel="noopener noreferrer" className="link-primary">
               Terms of Service
             </a>
             {' | '}
-            <a href="https://openrouter.ai/privacy" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+            <a href="https://openrouter.ai/privacy" target="_blank" rel="noopener noreferrer" className="link-primary">
               Privacy Policy
             </a>
           </li>
@@ -186,6 +209,28 @@ export default function EUTermsContent() {
         <h2 id="user-content" className="text-2xl font-semibold mb-4">User Content</h2>
         <p>
           You retain ownership of any content you create or input into our Service ("User Content"). By using our Service, you grant us a limited license to use, process, and transmit your User Content as necessary to provide the Service. You are solely responsible for your User Content and must ensure it complies with applicable laws and these Terms.
+        </p>
+      </section>
+
+      <section>
+        <h2 id="code-ownership" className="text-2xl font-semibold mb-4">Code Ownership and Intellectual Property</h2>
+        <p>
+          <strong>Your Code Remains Yours:</strong> You retain all ownership rights to any code, workflows, or other content you create, upload, or process through our Service ("Your Code"). We do not claim any ownership rights to Your Code.
+        </p>
+        <p className="mt-4">
+          <strong>Limited License to Us:</strong> By using our Service, you grant us a limited, non-exclusive, worldwide license to use, process, store, and transmit Your Code solely as necessary to provide the Service to you. This includes the right to:
+        </p>
+        <ul className="list-disc list-inside space-y-2 mt-2">
+          <li>Process Your Code through AI models as you direct</li>
+          <li>Store Your Code temporarily during processing</li>
+          <li>Display Your Code back to you through the Service interface</li>
+          <li>Create backups for disaster recovery purposes</li>
+        </ul>
+        <p className="mt-4">
+          <strong>No Training Use:</strong> We will not use Your Code to train our own AI models or those of third parties without your explicit written consent.
+        </p>
+        <p className="mt-4">
+          <strong>Confidentiality:</strong> We treat Your Code as confidential information and will not disclose it to third parties except as necessary to provide the Service (e.g., to AI API providers for processing) or as required by law.
         </p>
       </section>
 
@@ -238,6 +283,20 @@ export default function EUTermsContent() {
         <h3 className="text-xl font-medium mb-3 mt-6">Consumer Rights</h3>
         <p>
           If you are a consumer, nothing in these Terms limits your statutory rights under applicable consumer protection laws, including rights under warranty, guarantee, and product liability legislation.
+        </p>
+
+        <h3 className="text-xl font-medium mb-3 mt-6">Disclaimer of Warranties</h3>
+        <p>
+          To the maximum extent permitted by applicable law, we provide the Service "as is" and "as available" without warranties of any kind, whether express, implied, or statutory. We specifically disclaim all implied warranties including:
+        </p>
+        <ul className="list-disc list-inside space-y-2 mt-4">
+          <li>Implied warranties of merchantability and fitness for a particular purpose</li>
+          <li>Warranties that the Service will be uninterrupted, error-free, or secure</li>
+          <li>Warranties regarding the accuracy, reliability, or completeness of any AI-generated content</li>
+          <li>Warranties that defects will be corrected or that the Service is free of viruses or harmful components</li>
+        </ul>
+        <p className="mt-4">
+          <strong>AI Output Disclaimer:</strong> AI-generated content may contain errors, biases, or inaccuracies. You are solely responsible for reviewing and verifying any AI output before use. We do not warrant that AI outputs will meet your requirements or expectations.
         </p>
       </section>
 
@@ -297,6 +356,13 @@ export default function EUTermsContent() {
         <h2 id="force-majeure" className="text-2xl font-semibold mb-4">Force Majeure</h2>
         <p>
           We shall not be liable for any failure or delay in performing our obligations under these Terms if such failure or delay results from circumstances beyond our reasonable control, including but not limited to acts of God, natural disasters, war, terrorism, labor disputes, government actions, or technical failures of third-party systems.
+        </p>
+      </section>
+
+      <section>
+        <h2 id="no-third-party-beneficiaries" className="text-2xl font-semibold mb-4">No Third-Party Beneficiaries</h2>
+        <p>
+          These Terms are for the sole benefit of you and us. Nothing in these Terms creates or is intended to create any third-party beneficiary rights. These Terms do not provide any third party with any remedy, claim, liability, reimbursement, or cause of action.
         </p>
       </section>
 

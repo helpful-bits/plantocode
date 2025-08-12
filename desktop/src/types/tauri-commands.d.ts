@@ -412,6 +412,8 @@ export interface ChangeServerUrlAndResetCommandArgs {
   newUrl: string;
 }
 
+
+
 // Commands from config_commands / key-value store
 export interface GetKeyValueCommandArgs {
   key: string;
@@ -563,6 +565,42 @@ export interface BatchTranscriptionResponse {
   duration_ms?: number;
 }
 
+// Consent-related interfaces
+export interface LegalDocument {
+  id: string;
+  docType: 'terms' | 'privacy';
+  region: 'eu' | 'us';
+  version: string;
+  effectiveAt: string;
+  url: string;
+  contentHash?: string | null;
+  materialChange: boolean;
+}
+
+export interface ConsentStatusItem {
+  docType: 'terms' | 'privacy';
+  region: 'eu' | 'us';
+  currentVersion: string;
+  acceptedVersion?: string | null;
+  acceptedAt?: string | null;
+  requiresReconsent: boolean;
+  effectiveAt: string;
+  url: string;
+}
+
+export interface ConsentStatusResponse {
+  userId: string;
+  region: 'eu' | 'us';
+  items: ConsentStatusItem[];
+  allConsented: boolean;
+}
+
+export interface ConsentVerificationResponse {
+  requiresReconsent: boolean;
+  missing: string[];
+  details: ConsentStatusItem[];
+}
+
 // Tauri invoke function type
 export type TauriInvoke = {
   "get_database_info_command": () => Promise<DatabaseInfo>;
@@ -683,7 +721,7 @@ export type TauriInvoke = {
   "create_billing_portal_session_command": () => Promise<BillingPortalResponse>;
   
   // Invoice management commands
-  "list_invoices_command": (args: { limit?: number; offset?: number }) => Promise<import("@/actions/billing/invoice.actions").ListInvoicesResponse>;
+  "list_invoices_command": (args: { limit?: number; startingAfter?: string }) => Promise<import("@/actions/billing/billing.actions").ListInvoicesResponse>;
   "download_invoice_pdf_command": (args: { invoiceId: string; pdfUrl: string }) => Promise<string>;
   "reveal_file_in_explorer_command": (args: { filePath: string }) => Promise<void>;
   
@@ -709,6 +747,12 @@ export type TauriInvoke = {
   // Video recording and analysis commands
   "start_video_analysis_job": (args: StartVideoAnalysisJobCommandArgs) => Promise<import("@/types/video-analysis-types").VideoAnalysisJobResponse>;
   "stop_screen_recording": () => Promise<void>;
+
+  // Consent management commands
+  "get_current_legal_documents_command": (args: { region: 'eu' | 'us' }) => Promise<LegalDocument[]>;
+  "get_consent_status_command": (args: { region: 'eu' | 'us' }) => Promise<ConsentStatusResponse>;
+  "verify_consent_command": (args: { region: 'eu' | 'us' }) => Promise<ConsentVerificationResponse>;
+  "accept_consent_command": (args: { docType: 'terms' | 'privacy'; region: 'eu' | 'us'; metadata?: Record<string, unknown> }) => Promise<void>;
 };
 
 // Billing-related types
@@ -720,7 +764,7 @@ export interface DetailedUsageRecord {
   totalRequests: number;
   totalInputTokens: number;
   totalOutputTokens: number;
-  totalCachedTokens: number;
+  totalCachedTokens?: number | null;
 }
 
 export interface UsageInfo {

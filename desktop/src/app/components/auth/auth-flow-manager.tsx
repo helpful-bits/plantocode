@@ -225,6 +225,21 @@ export function AuthFlowManager({ children }: AuthFlowManagerProps) {
             } finally {
               clearTimeout(configTimeoutId!);
             }
+
+            try {
+              let userRegion = 'us';
+              try {
+                const region = await invoke<string | null>('get_key_value_command', { key: 'user_region' });
+                userRegion = region || 'us';
+              } catch (regionError) {
+              }
+
+              await invoke('verify_consent_command', {
+                region: userRegion
+              });
+            } catch (consentError) {
+              await logError(consentError, "AuthFlowManager.consentVerification", { userId: user?.id });
+            }
           } catch (err) {
             const errorInfo = extractErrorInfo(err);
             const userMessage = createUserFriendlyErrorMessage(errorInfo, "initialization");
@@ -241,7 +256,7 @@ export function AuthFlowManager({ children }: AuthFlowManagerProps) {
 
         void initializeAfterAuth();
       }
-    }, [user, loadConfig]);
+    }, [user, loadConfig, showNotification]);
 
     // Set app initializing to false when all conditions for rendering main app are met
     useEffect(() => {
