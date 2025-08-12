@@ -210,6 +210,8 @@ fn main() {
             commands::consent_commands::get_consent_status_command,
             commands::consent_commands::verify_consent_command,
             commands::consent_commands::accept_consent_command,
+            // Geo detection command
+            commands::geo_commands::detect_user_region_command,
             // Auto top-off commands
             commands::billing_commands::get_auto_top_off_settings_command,
             commands::billing_commands::update_auto_top_off_settings_command,
