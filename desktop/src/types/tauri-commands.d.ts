@@ -1,5 +1,11 @@
 // Command interface definitions
 
+// Geo detection response
+export interface GeoDetectionResponse {
+  country: string;
+  region: string;
+}
+
 // Commands from app_commands
 export interface GetDatabaseInfoCommandArgs {
 }
@@ -681,6 +687,9 @@ export type TauriInvoke = {
   "fetch_default_system_prompts_from_server": (args: FetchDefaultSystemPromptsFromServerCommandArgs) => Promise<import("@/types/system-prompts").DefaultSystemPrompt[]>;
   "fetch_default_system_prompt_from_server": (args: FetchDefaultSystemPromptFromServerCommandArgs) => Promise<import("@/types/system-prompts").DefaultSystemPrompt | null>;
   "initialize_system_prompts_from_server": (args: InitializeSystemPromptsFromServerCommandArgs) => Promise<void>;
+  
+  // Geo detection command
+  "detect_user_region_command": () => Promise<GeoDetectionResponse>;
   
   // Server region management commands
   "get_available_regions_command": (args: GetAvailableRegionsCommandArgs) => Promise<ServerRegionInfo[]>;

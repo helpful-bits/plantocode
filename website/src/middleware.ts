@@ -10,16 +10,23 @@ import {
 export async function middleware(request: NextRequest) {
   const path = request.nextUrl.pathname;
   
-  // Skip geo-check for static assets and API health checks
-  if (path.startsWith('/_next') || path.startsWith('/api/health')) {
+  // Skip geo-check for static assets
+  if (path.startsWith('/_next')) {
     return NextResponse.next();
   }
 
-  // Get country from multiple sources
+  // Get country from multiple sources (do this for ALL requests)
   const country = getCountryFromRequest(
     request.headers,
     (request as any).geo
   );
+  
+  // For geo detection endpoint, just add the header and continue
+  if (path === '/api/geo' || path.startsWith('/api/health')) {
+    const response = NextResponse.next();
+    response.headers.set('X-User-Country', country);
+    return response;
+  }
 
   // Check if this is the restricted page itself (avoid redirect loop)
   const isRestrictedPage = path.startsWith('/legal/restricted');
