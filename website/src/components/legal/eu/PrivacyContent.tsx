@@ -1,6 +1,7 @@
 'use client';
 
 import { useConsent } from '@/components/providers/ConsentProvider';
+import { Button } from '@/components/ui/button';
 
 export default function EUPrivacyContent() {
   const { openPreferences } = useConsent();
@@ -33,7 +34,10 @@ export default function EUPrivacyContent() {
           Email: legal@vibemanager.app
         </address>
         <p className="mt-4">
-          <strong>Data Protection Contact:</strong> For data protection inquiries, please contact our Data Protection Contact at <a href="mailto:legal@vibemanager.app" className="text-blue-600 hover:underline">legal@vibemanager.app</a>.
+          <strong>Data Protection Contact:</strong> For data protection inquiries, please contact our Data Protection Contact at{' '}
+          <a href="mailto:legal@vibemanager.app" className="link-primary">
+            legal@vibemanager.app
+          </a>.
         </p>
       </section>
 
@@ -72,7 +76,7 @@ export default function EUPrivacyContent() {
         <h2 id="data-categories" className="text-2xl font-semibold mb-4">Data Categories We Collect</h2>
         <ul className="list-disc list-inside space-y-2">
           <li><strong>Account Data:</strong> Email address, username, authentication credentials</li>
-          <li><strong>Phone Number:</strong> Phone number (for two-factor authentication and account verification, retained until account deletion)</li>
+          <li><strong>Authentication Data:</strong> Managed securely through Auth0 identity platform</li>
           <li><strong>Billing Data:</strong> Transaction records, billing address (payment processing via Stripe)</li>
           <li><strong>Usage Data:</strong> Anonymized application usage statistics, error reports</li>
           <li><strong>AI Interaction Data:</strong> Prompts and workflow data sent to AI providers when using AI features</li>
@@ -131,7 +135,10 @@ export default function EUPrivacyContent() {
         </ul>
         
         <p className="mt-4">
-          For a complete and up-to-date list of our data processors and their locations, please visit our <a href="/legal/eu/subprocessors" className="text-blue-600 hover:underline">subprocessors page</a>.
+          For a complete and up-to-date list of our data processors and their locations, please visit our{' '}
+          <a href="/legal/eu/subprocessors" className="link-primary">
+            subprocessors page
+          </a>.
         </p>
       </section>
 
@@ -150,31 +157,34 @@ export default function EUPrivacyContent() {
         <ul className="list-disc list-inside space-y-2">
           <li>
             <strong>OpenAI:</strong>{' '}
-            <a href="https://openai.com/policies/privacy-policy" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+            <a href="https://openai.com/policies/privacy-policy" target="_blank" rel="noopener noreferrer" className="link-primary">
               Privacy Policy
             </a>
           </li>
           <li>
             <strong>Google Gemini:</strong>{' '}
-            <a href="https://policies.google.com/privacy" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+            <a href="https://policies.google.com/privacy" target="_blank" rel="noopener noreferrer" className="link-primary">
               Privacy Policy
             </a>
           </li>
           <li>
             <strong>OpenRouter:</strong>{' '}
-            <a href="https://openrouter.ai/privacy" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+            <a href="https://openrouter.ai/privacy" target="_blank" rel="noopener noreferrer" className="link-primary">
               Privacy Policy
             </a>
           </li>
           <li>
             <strong>xAI:</strong>{' '}
-            <a href="https://x.ai/legal/privacy-policy" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+            <a href="https://x.ai/legal/privacy-policy" target="_blank" rel="noopener noreferrer" className="link-primary">
               Privacy Policy
             </a>
           </li>
         </ul>
         <p className="mt-4">
-          For the complete and current list of AI providers we work with, please check our <a href="/legal/eu/subprocessors" className="text-blue-600 hover:underline">subprocessors page</a>.
+          For the complete and current list of AI providers we work with, please check our{' '}
+          <a href="/legal/eu/subprocessors" className="link-primary">
+            subprocessors page
+          </a>.
         </p>
       </section>
 
@@ -190,26 +200,78 @@ export default function EUPrivacyContent() {
           <li><strong>Periodic Review:</strong> We periodically review and update safeguards (SCCs/adequacy, plus supplementary measures) as needed</li>
         </ul>
         <p className="mt-4">
-          For detailed information about our current data processors, their locations, and the specific safeguards in place, please visit our <a href="/legal/eu/subprocessors" className="text-blue-600 hover:underline">subprocessors page</a>.
+          For detailed information about our current data processors, their locations, and the specific safeguards in place, please visit our{' '}
+          <a href="/legal/eu/subprocessors" className="link-primary">
+            subprocessors page
+          </a>.
         </p>
       </section>
 
       <section>
-        <h2 id="data-retention" className="text-2xl font-semibold mb-4">Data Retention</h2>
-        <p>
-          We retain personal data only as long as necessary for the purposes outlined in this policy or as required by law:
+        <h2 id="data-retention" className="text-2xl font-semibold mb-4">Data Retention Periods</h2>
+        <p>We retain personal data only as long as necessary for the purposes outlined in this policy or as required by law:</p>
+        
+        <div className="overflow-x-auto mt-4">
+          <table className="w-full border-collapse border border-gray-300 text-sm">
+            <thead>
+              <tr className="bg-muted/50">
+                <th className="border border-gray-300 p-3 text-left">Data Category</th>
+                <th className="border border-gray-300 p-3 text-left">Retention Period</th>
+                <th className="border border-gray-300 p-3 text-left">Retention Criteria</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td className="border border-gray-300 p-3">Account data</td>
+                <td className="border border-gray-300 p-3">Active account + 30 days</td>
+                <td className="border border-gray-300 p-3">Deleted 30 days after account closure</td>
+              </tr>
+              <tr className="bg-muted/30">
+                <td className="border border-gray-300 p-3">Transaction records</td>
+                <td className="border border-gray-300 p-3">7 years</td>
+                <td className="border border-gray-300 p-3">Tax and accounting requirements</td>
+              </tr>
+              <tr>
+                <td className="border border-gray-300 p-3">AI prompts and outputs</td>
+                <td className="border border-gray-300 p-3">30 days</td>
+                <td className="border border-gray-300 p-3">Service provision and abuse prevention</td>
+              </tr>
+              <tr className="bg-muted/30">
+                <td className="border border-gray-300 p-3">Security logs</td>
+                <td className="border border-gray-300 p-3">12 months</td>
+                <td className="border border-gray-300 p-3">Security and fraud prevention</td>
+              </tr>
+              <tr>
+                <td className="border border-gray-300 p-3">Analytics data</td>
+                <td className="border border-gray-300 p-3">26 months</td>
+                <td className="border border-gray-300 p-3">Service improvement (anonymized after 14 months)</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        
+        <p className="mt-4">
+          <strong>Criteria for Determining Retention:</strong> Where specific periods are not fixed, we determine retention based on: (1) the purpose for which data was collected, (2) legal obligations, (3) statute of limitations for legal claims, and (4) industry best practices.
         </p>
-        <ul className="list-disc list-inside space-y-2 mt-4">
-          <li><strong>Account data:</strong> Duration of account plus 30 days after deletion</li>
-          <li><strong>Transaction records:</strong> 7 years (tax/accounting requirements)</li>
-          <li><strong>Usage logs:</strong> 12 months maximum</li>
-        </ul>
       </section>
 
       <section>
         <h2 id="security-measures" className="text-2xl font-semibold mb-4">Security Measures</h2>
         <p>
-          We implement appropriate technical and organizational security measures to protect your personal data against unauthorized access, alteration, disclosure, or destruction. These measures include encryption, access controls, regular security assessments, and employee training.
+          We implement industry-standard technical and organizational security measures to protect your personal data:
+        </p>
+        <ul className="list-disc list-inside space-y-2 mt-4">
+          <li><strong>Encryption:</strong> TLS 1.3 for data in transit, AES-256 encryption for data at rest</li>
+          <li><strong>Access Controls:</strong> Role-based access control (RBAC) with principle of least privilege</li>
+          <li><strong>Authentication:</strong> Multi-factor authentication available via Auth0</li>
+          <li><strong>Monitoring:</strong> 24/7 security monitoring and intrusion detection systems</li>
+          <li><strong>Regular Audits:</strong> Quarterly security assessments and annual penetration testing</li>
+          <li><strong>Employee Training:</strong> Annual security awareness training for all staff</li>
+          <li><strong>Incident Response:</strong> Documented incident response plan with 72-hour breach notification</li>
+          <li><strong>Physical Security:</strong> Data centers with SOC 2 Type II certification</li>
+        </ul>
+        <p className="mt-4">
+          While we implement robust security measures, no method of electronic transmission or storage is 100% secure. We cannot guarantee absolute security but commit to promptly notifying you of any breach that may impact your rights and freedoms.
         </p>
       </section>
 
@@ -232,7 +294,11 @@ export default function EUPrivacyContent() {
 
         <h3 className="text-xl font-medium mb-3 mt-6">How to Exercise Your Rights</h3>
         <p>
-          Contact us at <a href="mailto:legal@vibemanager.app" className="text-blue-600 hover:underline">legal@vibemanager.app</a> with your request. We will respond within <strong>one month</strong> of receiving your request, as required by GDPR Article 12(3). In complex cases, this period may be extended by two additional months.
+          Contact us at{' '}
+          <a href="mailto:legal@vibemanager.app" className="link-primary">
+            legal@vibemanager.app
+          </a>{' '}
+          with your request. We will respond within <strong>one month</strong> of receiving your request, as required by GDPR Article 12(3). In complex cases, this period may be extended by two additional months.
         </p>
 
         <h3 className="text-xl font-medium mb-3 mt-6">Supervisory Authority</h3>
@@ -243,8 +309,60 @@ export default function EUPrivacyContent() {
           <strong>Bayerisches Landesamt für Datenschutzaufsicht (BayLDA)</strong><br />
           Promenade 18<br />
           91522 Ansbach, Germany<br />
-          Email: <a href="mailto:poststelle@lda.bayern.de" className="text-blue-600 hover:underline">poststelle@lda.bayern.de</a>
+          Email:{' '}
+          <a href="mailto:poststelle@lda.bayern.de" className="link-primary">
+            poststelle@lda.bayern.de
+          </a>
         </address>
+      </section>
+
+      <section>
+        <h2 id="legal-basis-details" className="text-2xl font-semibold mb-4">Detailed Legal Basis for Processing</h2>
+        <p>We process your personal data only when we have a valid legal basis under Article 6 of the GDPR:</p>
+        
+        <div className="overflow-x-auto mt-4">
+          <table className="w-full border-collapse border border-gray-300 text-sm">
+            <thead>
+              <tr className="bg-muted/50">
+                <th className="border border-gray-300 p-3 text-left">Processing Activity</th>
+                <th className="border border-gray-300 p-3 text-left">Data Categories</th>
+                <th className="border border-gray-300 p-3 text-left">Legal Basis</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td className="border border-gray-300 p-3">Account creation and management</td>
+                <td className="border border-gray-300 p-3">Email, username, authentication data</td>
+                <td className="border border-gray-300 p-3">Contract performance (Art. 6(1)(b))</td>
+              </tr>
+              <tr className="bg-muted/30">
+                <td className="border border-gray-300 p-3">Payment processing</td>
+                <td className="border border-gray-300 p-3">Billing data, transaction records</td>
+                <td className="border border-gray-300 p-3">Contract performance (Art. 6(1)(b))</td>
+              </tr>
+              <tr>
+                <td className="border border-gray-300 p-3">AI service provision</td>
+                <td className="border border-gray-300 p-3">Prompts, workflow data</td>
+                <td className="border border-gray-300 p-3">Contract performance (Art. 6(1)(b))</td>
+              </tr>
+              <tr className="bg-muted/30">
+                <td className="border border-gray-300 p-3">Security and fraud prevention</td>
+                <td className="border border-gray-300 p-3">IP addresses, access logs</td>
+                <td className="border border-gray-300 p-3">Legitimate interests (Art. 6(1)(f))</td>
+              </tr>
+              <tr>
+                <td className="border border-gray-300 p-3">Analytics (when enabled)</td>
+                <td className="border border-gray-300 p-3">Usage data, performance metrics</td>
+                <td className="border border-gray-300 p-3">Consent (Art. 6(1)(a))</td>
+              </tr>
+              <tr className="bg-muted/30">
+                <td className="border border-gray-300 p-3">Tax and legal compliance</td>
+                <td className="border border-gray-300 p-3">Transaction records, billing data</td>
+                <td className="border border-gray-300 p-3">Legal obligation (Art. 6(1)(c))</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </section>
 
       <section>
@@ -260,12 +378,13 @@ export default function EUPrivacyContent() {
         </ul>
 
         <div className="mt-6 p-4 bg-muted/30 dark:bg-muted/20 rounded-lg">
-          <button
+          <Button
             onClick={openPreferences}
-            className="inline-flex items-center px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
+            variant="outline"
+            size="default"
           >
             Manage Cookie Settings
-          </button>
+          </Button>
           <p className="text-sm text-muted-foreground mt-2">
             Click here to review and modify your cookie preferences at any time.
           </p>
@@ -283,7 +402,7 @@ export default function EUPrivacyContent() {
       <section>
         <h2 id="childrens-privacy" className="text-2xl font-semibold mb-4">Children's Privacy</h2>
         <p>
-          Our services are not intended for children under 13 years of age (or 16 years of age in the EEA). We do not knowingly collect personal information from children under these ages. If we become aware that we have collected personal information from a child under the applicable age, we will take steps to delete such information.
+          Our services are not intended for anyone under 18 years of age. We do not knowingly collect personal information from individuals under 18. If we become aware that we have collected personal information from someone under 18, we will take steps to delete such information immediately.
         </p>
       </section>
 
@@ -297,7 +416,10 @@ export default function EUPrivacyContent() {
       <section>
         <h2 id="contact-us" className="text-2xl font-semibold mb-4">Contact Us</h2>
         <p>
-          If you have any questions about this privacy policy or our data practices, please contact us at legal@vibemanager.app. You also have the right to lodge a complaint with your local data protection authority if you believe your rights have been violated.
+          If you have any questions about this privacy policy or our data practices, please contact us at{' '}
+          <a href="mailto:legal@vibemanager.app" className="link-primary">
+            legal@vibemanager.app
+          </a>. You also have the right to lodge a complaint with your local data protection authority if you believe your rights have been violated.
         </p>
       </section>
 
@@ -311,7 +433,10 @@ export default function EUPrivacyContent() {
       <section>
         <h2 id="cpra-compliance" className="text-2xl font-semibold mb-4">CPRA Compliance</h2>
         <p>
-          California residents have additional rights under the California Privacy Rights Act (CPRA). You may exercise these rights by contacting us at <a href="mailto:legal@vibemanager.app" className="text-blue-600 hover:underline">legal@vibemanager.app</a>.
+          California residents have additional rights under the California Privacy Rights Act (CPRA). You may exercise these rights by contacting us at{' '}
+          <a href="mailto:legal@vibemanager.app" className="link-primary">
+            legal@vibemanager.app
+          </a>.
         </p>
 
         <h3 className="text-xl font-medium mb-3 mt-6">Additional California Rights</h3>
@@ -338,7 +463,11 @@ export default function EUPrivacyContent() {
           While we currently do not sell or share personal information, California residents may opt out using these methods if needed in the future:
         </p>
         <ul className="list-disc list-inside space-y-2 mt-2">
-          <li>Email us at <a href="mailto:legal@vibemanager.app" className="text-blue-600 hover:underline">legal@vibemanager.app</a></li>
+          <li>Email us at{' '}
+            <a href="mailto:legal@vibemanager.app" className="link-primary">
+              legal@vibemanager.app
+            </a>
+          </li>
           <li>Use Global Privacy Control (GPC) browser settings, which we will honor</li>
         </ul>
       </section>

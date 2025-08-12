@@ -12,9 +12,9 @@ import { Button } from "@/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/ui/dialog";
 import { Progress } from "@/ui/progress";
 import { VirtualizedCodeViewer } from "@/ui/virtualized-code-viewer";
-import { useThrottledValue } from "@/hooks/use-throttled-value";
 
 import { getJobDisplaySessionName } from "../../background-jobs-sidebar/_utils/job-display-utils";
+import { getStreamingStatus } from "../../background-jobs-sidebar/utils";
 import { getContentForStep } from "../_utils/plan-content-parser";
 import { replacePlaceholders } from "@/utils/placeholder-utils";
 import { normalizeJobResponse } from '@/utils/response-utils';
@@ -168,8 +168,9 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
 
   if (!displayPlan) return null;
 
-  const isStreaming = JOB_STATUSES.ACTIVE.includes(displayPlan.status) &&
-                     ["running", "processingStream", "generatingStream"].includes(displayPlan.status);
+  // Use unified streaming detection with ACTIVE fallback
+  const isStreaming = getStreamingStatus(displayPlan?.metadata) || 
+                     (displayPlan?.status ? ['queued','running','processing','generating'].includes(displayPlan.status) : false);
   
   // Use live progress hook for consistent real-time updates
   const progress = useLiveProgress(displayPlan);
@@ -182,15 +183,12 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
     return normalizeJobResponse(displayPlan.response).content;
   }, [isStreaming, displayPlan?.response]);
 
-  // Throttle streamed content to reduce re-renders during streaming
-  const throttledStreamContent = useThrottledValue(streamedContent, isStreaming ? 400 : 0);
-
-  // Use plaintext language during streaming to minimize tokenization overhead
-  const viewerLanguage = isStreaming ? "plaintext" : "xml";
+  // Use consistent language for both states
+  const viewerLanguage = "xml";
 
   // Determine if we should show the loading indicator
   // Only show loading when streaming AND no content has arrived yet
-  const showLoadingIndicator = isStreaming && throttledStreamContent.trim() === "";
+  const showLoadingIndicator = isStreaming && streamedContent.trim() === "";
 
   // Use centralized utility function for consistent sessionName logic
   const sessionName = getJobDisplaySessionName(displayPlan);
@@ -424,7 +422,7 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
         {/* Content */}
         <div className="flex-1 min-h-0 relative">
           <VirtualizedCodeViewer
-            content={isStreaming ? throttledStreamContent : editedContent}
+            content={isStreaming ? streamedContent : editedContent}
             height="100%"
             showCopy={false}
             showContentSize={true}
@@ -436,15 +434,7 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
             streamOptimized={isStreaming}
             showFollowToggle={true}
             followStreamingDefault={true}
-            disableMetrics={isStreaming}
             onChange={isStreaming ? undefined : handleContentChange}
-            editorOptions={isStreaming ? {
-              renderWhitespace: 'none',
-              smoothScrolling: false,
-              occurrencesHighlight: false,
-              minimap: { enabled: false },
-              wordWrap: 'off',
-            } : undefined}
             loadingIndicator={
               <div className="flex items-center justify-center h-full">
                 <div className="flex items-center gap-2">

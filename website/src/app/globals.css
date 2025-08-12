@@ -890,6 +890,32 @@
     padding-right: 0.5rem;
   }
   
+  /* Consistent link styling with teal theme */
+  .link-primary {
+    color: oklch(0.48 0.15 195);
+    text-decoration: underline;
+    text-decoration-color: oklch(0.48 0.15 195 / 0.3);
+    text-underline-offset: 2px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+  
+  .link-primary:hover {
+    color: oklch(0.42 0.17 195);
+    text-decoration-color: oklch(0.42 0.17 195 / 0.6);
+  }
+  
+  .dark .link-primary {
+    color: oklch(0.68 0.12 195);
+    text-decoration-color: oklch(0.68 0.12 195 / 0.4);
+    cursor: pointer;
+  }
+  
+  .dark .link-primary:hover {
+    color: oklch(0.75 0.10 195);
+    text-decoration-color: oklch(0.75 0.10 195 / 0.7);
+  }
+  
   /* Responsive spacing that scales beautifully */
   .responsive-spacing-y {
     padding-top: clamp(2rem, 6vw, 4rem);

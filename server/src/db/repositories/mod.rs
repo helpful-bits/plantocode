@@ -1,5 +1,6 @@
 pub mod api_usage_repository;
 pub mod audit_log_repository;
+pub mod consent_repository;
 pub mod credit_transaction_repository;
 pub mod customer_billing_repository;
 pub mod estimation_coefficient_repository;
@@ -15,6 +16,7 @@ pub mod revoked_token_repository;
 
 pub use api_usage_repository::ApiUsageRepository;
 pub use audit_log_repository::{AuditLogRepository, AuditLog, CreateAuditLogRequest, AuditLogFilter};
+pub use consent_repository::{ConsentRepository, ConsentReportRow};
 pub use credit_transaction_repository::{CreditTransactionRepository, CreditTransaction, CreditTransactionStats};
 pub use customer_billing_repository::{CustomerBillingRepository, CustomerBilling};
 pub use estimation_coefficient_repository::{EstimationCoefficientRepository, EstimationCoefficient};

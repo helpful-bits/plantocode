@@ -14,6 +14,7 @@ pub mod settings_commands;
 // New modular task command modules
 pub mod backup_commands;
 pub mod config_cache_commands;
+pub mod consent_commands;
 pub mod database_maintenance_commands;
 pub mod error_recovery_commands;
 pub mod generic_task_commands;
@@ -170,5 +171,11 @@ pub use video_analysis_commands::start_video_analysis_job;
 
 // Re-exports from logging commands module
 pub use logging_commands::log_client_error;
+
+// Re-exports from consent commands module
+pub use consent_commands::{
+    accept_consent_command, get_consent_status_command, get_current_legal_documents_command,
+    verify_consent_command,
+};
 
 // All command functions will return AppResult<T> directly

@@ -49,7 +49,7 @@ export function CookieConsentBanner() {
               We use cookies to enhance your experience. These include necessary cookies for site functionality, and optional cookies for analytics, personalization, and marketing. You can learn more in our{' '}
               <a
                 href={region ? `/legal/${region}/privacy#cookies` : '/legal/us/privacy#cookies'}
-                className="text-blue-600 dark:text-blue-400 underline hover:text-blue-800 dark:hover:text-blue-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 rounded"
+                className="link-primary focus:outline-none focus:ring-2 focus:ring-primary focus:ring-opacity-50 rounded"
               >
                 privacy policy
               </a>

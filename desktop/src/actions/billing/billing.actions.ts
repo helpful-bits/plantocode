@@ -23,11 +23,21 @@ export async function getCreditHistory(
   offset: number = 0,
   search?: string
 ): Promise<UnifiedCreditHistoryResponse> {
-  return await invoke<UnifiedCreditHistoryResponse>('get_credit_history_command', {
-    limit,
-    offset,
-    search,
-  });
+  // Ensure valid, positive limit and non-negative offset
+  const safeLimit = Math.max(1, Math.floor(limit ?? 10));
+  const safeOffset = Math.max(0, Math.floor(offset ?? 0));
+  
+  // Omit search parameter entirely when blank
+  const normalizedSearch = search && search.trim().length > 0 ? search.trim() : undefined;
+  
+  // Build payload omitting undefined search
+  const payload = {
+    limit: safeLimit,
+    offset: safeOffset,
+    ...(normalizedSearch !== undefined ? { search: normalizedSearch } : {})
+  };
+  
+  return await invoke<UnifiedCreditHistoryResponse>('get_credit_history_command', payload);
 }
 
 // Plan/Usage types and actions

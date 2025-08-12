@@ -211,11 +211,11 @@ export default function ChangelogPage() {
         <div className="text-center">
           <p className="text-muted-foreground">
             Want to be notified about new releases?{' '}
-            <a href="https://x.com/vibemanagerapp" className="text-primary hover:underline" target="_blank" rel="noopener noreferrer">
+            <a href="https://x.com/vibemanagerapp" className="link-primary" target="_blank" rel="noopener noreferrer">
               Follow us on X
             </a>{' '}
             or{' '}
-            <a href="https://vibemanager.featurebase.app" className="text-primary hover:underline" target="_blank" rel="noopener noreferrer">
+            <a href="https://vibemanager.featurebase.app" className="link-primary" target="_blank" rel="noopener noreferrer">
               join our community
             </a>
             .

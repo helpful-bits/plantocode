@@ -117,6 +117,16 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig, strict_rate_limiter: RateL
             .route("/defaults", web::get().to(handlers::system_prompts_handlers::get_default_system_prompts))
             .route("/defaults/{task_type}", web::get().to(handlers::system_prompts_handlers::get_default_system_prompt_by_task_type))
     );
+
+    // Consent routes (/api/consent/*)
+    cfg.service(
+        web::scope("/consent")
+            .route("/documents/current", web::get().to(handlers::consent_handlers::get_current_legal_documents))
+            .route("/status", web::get().to(handlers::consent_handlers::get_consent_status))
+            .route("/verify", web::get().to(handlers::consent_handlers::verify_consent))
+            .route("/accept", web::post().to(handlers::consent_handlers::accept_consent))
+            .route("/admin/report", web::get().to(handlers::consent_handlers::get_consent_report))
+    );
 }
 
 /// Configures public authentication routes (not part of /api).

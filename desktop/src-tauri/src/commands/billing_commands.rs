@@ -576,10 +576,19 @@ pub async fn get_credit_history_command(
     offset: Option<i32>,
     search: Option<String>,
 ) -> Result<UnifiedCreditHistoryResponse, AppError> {
-    debug!("Getting unified credit history via Tauri command");
+    // Clamp and sanitize inputs to ensure valid pagination
+    let limit = limit.unwrap_or(20).clamp(1, 100);
+    let offset = offset.unwrap_or(0).max(0);
+    let search_opt = match search {
+        Some(s) if !s.trim().is_empty() => Some(s),
+        _ => None,
+    };
+    
+    debug!("Getting unified credit history via Tauri command with limit={}, offset={}, search={:?}", 
+           limit, offset, search_opt);
 
     let unified_credit_history = billing_client
-        .get_unified_credit_history(limit, offset, search)
+        .get_unified_credit_history(Some(limit), Some(offset), search_opt)
         .await?;
 
     info!("Successfully retrieved unified credit history");
