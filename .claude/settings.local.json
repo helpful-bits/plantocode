@@ -195,7 +195,8 @@
       "Bash(COPYFILE_DISABLE=1 tar -czf \"Vibe Manager_1.0.11_aarch64.app.tar.gz\" \"Vibe Manager.app\")",
       "Bash(aws cloudfront create-invalidation:*)",
       "Bash(/opt/homebrew/lib/node_modules/@anthropic-ai/claude-code/vendor/ripgrep/arm64-darwin/rg \"getCreditHistory\" /Users/kirylkazlovich/dev/vibe-manager/desktop/src --type ts --type tsx)",
-      "Bash(git log:*)"
+      "Bash(git log:*)",
+      "Bash(aws route53 get-change:*)"
     ],
     "deny": []
   },
