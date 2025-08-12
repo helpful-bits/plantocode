@@ -41,6 +41,9 @@ use crate::services::auth::jwt;
 use crate::services::auth::oauth::Auth0OAuthService;
 use crate::services::billing_service::BillingService;
 use crate::services::credit_service::CreditService;
+use crate::services::consent_service::ConsentService;
+use crate::services::audit_service::AuditService;
+use crate::db::repositories::consent_repository::ConsentRepository;
 use crate::services::reconciliation_service::ReconciliationService;
 use crate::services::request_tracker::RequestTracker;
 use crate::routes::{configure_routes, configure_public_auth_routes, configure_webhook_routes};
@@ -391,6 +394,16 @@ async fn main() -> std::io::Result<()> {
         let api_usage_repository = std::sync::Arc::new(api_usage_repository);
         let credit_service = crate::services::credit_service::CreditService::new(db_pools.clone());
         
+        // Initialize audit service
+        let audit_service = std::sync::Arc::new(AuditService::new(db_pools.clone()));
+        
+        // Initialize consent repository and service
+        let consent_repository = std::sync::Arc::new(ConsentRepository::new(db_pools.system_pool.clone()));
+        let consent_service = std::sync::Arc::new(ConsentService::new(
+            consent_repository.clone(),
+            audit_service.clone(),
+        ));
+        
         // Configure CORS using actix-cors
         let mut cors = Cors::default()
             .supports_credentials();
@@ -479,6 +492,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(web::Data::new((*app_state.model_repository).clone()))
             .app_data(web::Data::new(system_prompts_repository.clone()))
             .app_data(web::Data::new(credit_service.clone()))
+            .app_data(web::Data::new(consent_service.clone()))
             .app_data(web::Data::new(app_settings.clone()))
             .app_data(web::Data::new(db_pools.clone()))
             .app_data(web::Data::new(ApiUsageRepository::new(db_pools.user_pool.clone())))

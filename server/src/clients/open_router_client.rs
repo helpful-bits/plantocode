@@ -43,6 +43,8 @@ pub struct OpenRouterChatRequest {
     pub presence_penalty: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub usage: Option<UsageInclude>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data_collection: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -214,6 +216,7 @@ impl OpenRouterClient {
         
         let mut request_with_usage = request;
         request_with_usage.usage = Some(UsageInclude { include: true });
+        request_with_usage.data_collection = Some("deny".to_string());
         
         // Map model ID to OpenRouter-compatible format
         request_with_usage.model = self.get_provider_model_id(&request_with_usage.model).await?;
@@ -271,6 +274,7 @@ impl OpenRouterClient {
         let mut streaming_request = request.clone();
         streaming_request.stream = Some(true);
         streaming_request.usage = Some(UsageInclude { include: true });
+        streaming_request.data_collection = Some("deny".to_string());
         streaming_request.model = self.get_provider_model_id(&streaming_request.model).await?;
         
         // Clone necessary parts for 'static lifetime

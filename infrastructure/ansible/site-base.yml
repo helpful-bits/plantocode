@@ -46,6 +46,14 @@
 - import_playbook: playbooks/base-infrastructure/nginx-ssl.yml
   tags: [nginx, ssl, never]
 
+# Region restrictions and geolocation blocking
+- import_playbook: playbooks/base-infrastructure/region-restrictions.yml
+  tags: [region, restrictions, geoip]
+
+# Region restriction monitoring and alerting
+- import_playbook: playbooks/base-infrastructure/region-monitoring.yml
+  tags: [region, monitoring, alerts]
+
 # ========================================
 # INFRASTRUCTURE STATUS CHECK
 # ========================================

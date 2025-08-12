@@ -8,6 +8,7 @@ import { BackgroundJobsSidebar } from "../client-components";
 import { Navigation } from "./navigation";
 import { GlobalRecordingIndicator } from "./global/GlobalRecordingIndicator";
 import { UpdaterStatus } from "./updater/updater-status";
+import { LegalConsentBanner } from "./system/LegalConsentBanner";
 
 import type { ReactNode } from "react";
 
@@ -21,6 +22,9 @@ export function AppShell({ children }: { children: ReactNode }) {
   // AuthFlowManager controls when this component renders, so we can proceed directly with the full UI
   return (
     <ScreenRecordingProvider>
+      {/* Legal consent banner - positioned at top */}
+      <LegalConsentBanner />
+
       {/* Background jobs sidebar - positioned outside flex layout */}
       <BackgroundJobsSidebar />
 

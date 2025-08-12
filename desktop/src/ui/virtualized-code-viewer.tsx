@@ -142,12 +142,15 @@ const VirtualizedCodeViewer = forwardRef<HTMLDivElement, VirtualizedCodeViewerPr
     const { showNotification } = useNotification();
     const resolvedTheme = useResolvedTheme();
     const editorRef = useRef<any>(null);
+    const monacoRef = useRef<any | null>(null);
     const lastContentLengthRef = useRef<number>(0);
     const updateRafRef = useRef<number | null>(null);
     const [isFollowingStream, setIsFollowingStream] = useState(followStreamingDefault);
     const userManualOverrideRef = useRef<false | 'off'>(false);
     const nearBottomRef = useRef(false);
     const scrollRafRef = useRef<number | null>(null);
+    const selectionDisposableRef = useRef<{ dispose: () => void } | null>(null);
+    const registryIdRef = useRef<string | null>(null);
 
     // Calculate content metrics
     const contentMetrics = useMemo(() => {
@@ -236,8 +239,8 @@ const VirtualizedCodeViewer = forwardRef<HTMLDivElement, VirtualizedCodeViewerPr
 
     // Editor configuration
     const editorConfig = useMemo(() => {
-      // Determine if we need performance-optimized settings
-      const needsPerformanceMode = streamOptimized || contentMetrics.shouldVirtualize || contentMetrics.isLarge;
+      // Determine if we need performance-optimized settings (size-only, not streaming state)
+      const needsPerformanceMode = contentMetrics.shouldVirtualize || contentMetrics.isLarge;
       
       const baseConfig = {
         language: contentMetrics.detectedLanguage,
@@ -256,7 +259,11 @@ const VirtualizedCodeViewer = forwardRef<HTMLDivElement, VirtualizedCodeViewerPr
         mouseWheelZoom: true,
         folding: !needsPerformanceMode,
         foldingStrategy: "indentation",
-        showFoldingControls: needsPerformanceMode ? "never" : "always"
+        showFoldingControls: needsPerformanceMode ? "never" : "always",
+        occurrencesHighlight: !needsPerformanceMode,
+        selectionHighlight: !needsPerformanceMode,
+        links: !needsPerformanceMode,
+        contextmenu: true
       };
 
       if (needsPerformanceMode) {
@@ -275,7 +282,7 @@ const VirtualizedCodeViewer = forwardRef<HTMLDivElement, VirtualizedCodeViewerPr
           renderWhitespace: "none",
           renderLineHighlightOnlyWhenFocus: true,
           colorDecorators: false,
-          contextmenu: !streamOptimized,
+          contextmenu: false,
           renderValidationDecorations: "off"
         };
         
@@ -288,11 +295,16 @@ const VirtualizedCodeViewer = forwardRef<HTMLDivElement, VirtualizedCodeViewerPr
         ...baseConfig,
         ...editorOptions
       };
-    }, [contentMetrics.detectedLanguage, contentMetrics.lines, contentMetrics.shouldVirtualize, contentMetrics.isLarge, editorTheme, readOnly, showLineNumbers, wordWrap, streamOptimized, editorOptions]);
+    }, [contentMetrics.detectedLanguage, contentMetrics.lines, contentMetrics.shouldVirtualize, contentMetrics.isLarge, editorTheme, readOnly, showLineNumbers, wordWrap, editorOptions]);
 
     // Handle editor mount
-    const handleEditorDidMount = (editor: any) => {
+    const handleEditorDidMount = (editor: any, monacoInstance: any) => {
       editorRef.current = editor;
+      monacoRef.current = monacoInstance;
+      
+      // Initialize lastContentLengthRef from the model on mount
+      const model = editor.getModel();
+      lastContentLengthRef.current = model?.getValueLength() ?? content.length;
       
       // Register scroll change listener for auto-follow behavior
       const scrollDisposable = editor.onDidScrollChange(() => {
@@ -323,8 +335,8 @@ const VirtualizedCodeViewer = forwardRef<HTMLDivElement, VirtualizedCodeViewerPr
       // Store the disposable for cleanup
       (editor as any)._scrollDisposable = scrollDisposable;
       
-      // Double-ensure performance options are applied for streaming or large content
-      const needsPerformanceMode = contentMetrics.shouldVirtualize || contentMetrics.isLarge || streamOptimized;
+      // Double-ensure performance options are applied for large content only
+      const needsPerformanceMode = contentMetrics.shouldVirtualize || contentMetrics.isLarge;
       
       if (needsPerformanceMode) {
         // Force apply performance options again to ensure they're not overridden
@@ -336,7 +348,7 @@ const VirtualizedCodeViewer = forwardRef<HTMLDivElement, VirtualizedCodeViewerPr
           selectionHighlight: false,
           codeLens: false,
           colorDecorators: false,
-          contextmenu: !streamOptimized,
+          contextmenu: false,
           links: false,
           folding: false,
           minimap: { enabled: false },
@@ -363,9 +375,10 @@ const VirtualizedCodeViewer = forwardRef<HTMLDivElement, VirtualizedCodeViewerPr
         const registry = (window as any).monacoEditorRegistry;
         const editorId = `monaco-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
         registry.set(editorId, editor);
+        registryIdRef.current = editorId;
 
         // Set up selection change listener for text improvement
-        const selectionListener = editor.onDidChangeCursorSelection(() => {
+        selectionDisposableRef.current = editor.onDidChangeCursorSelection(() => {
           const selection = editor.getSelection();
           if (selection && !selection.isEmpty()) {
             // Double-check editor is still editable before showing popover
@@ -381,16 +394,7 @@ const VirtualizedCodeViewer = forwardRef<HTMLDivElement, VirtualizedCodeViewerPr
             }
           }
         });
-
-        // Cleanup on unmount
-        return () => {
-          registry.delete(editorId);
-          selectionListener.dispose();
-        };
       }
-      
-      // Return undefined for non-text-improvement cases
-      return undefined;
     };
     
     // Clean up on unmount
@@ -404,6 +408,19 @@ const VirtualizedCodeViewer = forwardRef<HTMLDivElement, VirtualizedCodeViewerPr
         if (scrollRafRef.current) {
           cancelAnimationFrame(scrollRafRef.current);
           scrollRafRef.current = null;
+        }
+        // Clean up selection listener
+        if (selectionDisposableRef.current) {
+          selectionDisposableRef.current.dispose();
+          selectionDisposableRef.current = null;
+        }
+        // Clean up registry entry
+        if (registryIdRef.current && typeof window !== 'undefined') {
+          const registry = (window as any).monacoEditorRegistry;
+          if (registry) {
+            registry.delete(registryIdRef.current);
+            registryIdRef.current = null;
+          }
         }
       };
     }, []);
@@ -449,7 +466,7 @@ const VirtualizedCodeViewer = forwardRef<HTMLDivElement, VirtualizedCodeViewerPr
     useEffect(() => {
       if (!editorContainerRef) return;
 
-      editorContainerRef.addEventListener('wheel', handleWheel, { passive: false });
+      editorContainerRef.addEventListener('wheel', handleWheel, { passive: true });
       return () => {
         editorContainerRef.removeEventListener('wheel', handleWheel);
       };
@@ -457,7 +474,12 @@ const VirtualizedCodeViewer = forwardRef<HTMLDivElement, VirtualizedCodeViewerPr
 
     // Handle incremental updates when in stream-optimized mode
     useEffect(() => {
-      if (!streamOptimized || !editorRef.current) return;
+      if (!streamOptimized) return;
+      
+      // Guard against missing editor or model
+      if (!editorRef.current) return;
+      const model = editorRef.current.getModel();
+      if (!model) return;
 
       // Cancel any pending updates
       if (updateRafRef.current !== null) {
@@ -467,15 +489,23 @@ const VirtualizedCodeViewer = forwardRef<HTMLDivElement, VirtualizedCodeViewerPr
       // Schedule update via requestAnimationFrame
       updateRafRef.current = requestAnimationFrame(() => {
         const editor = editorRef.current;
-        const model = editor?.getModel();
+        if (!editor) return;
+        const model = editor.getModel();
         if (!model) return;
 
-        const prevLen = lastContentLengthRef.current || 0;
+        const prevLen = lastContentLengthRef.current;
         const currentModelLength = model.getValueLength();
         const newContentLength = content.length;
 
+        // If content length decreased or model prefix mismatch, reset
+        if (newContentLength < prevLen || (prevLen > 0 && !content.startsWith(model.getValue().slice(0, Math.min(prevLen, 100))))) {
+          model.setValue(content);
+          lastContentLengthRef.current = newContentLength;
+          return;
+        }
+
         // Check if we can do an incremental append
-        if (newContentLength >= prevLen && currentModelLength === prevLen) {
+        if (newContentLength > prevLen && currentModelLength === prevLen) {
           const suffix = content.slice(prevLen);
           
           // Use incremental append for reasonably sized chunks
@@ -483,9 +513,15 @@ const VirtualizedCodeViewer = forwardRef<HTMLDivElement, VirtualizedCodeViewerPr
             const lineCount = model.getLineCount();
             const lastLineColumn = model.getLineMaxColumn(lineCount);
             
-            // Apply edit to append the suffix
+            // Apply edit to append the suffix using plain IRange object
+            const range = {
+              startLineNumber: lineCount,
+              startColumn: lastLineColumn,
+              endLineNumber: lineCount,
+              endColumn: lastLineColumn
+            };
             model.applyEdits([{
-              range: new (window as any).monaco.Range(lineCount, lastLineColumn, lineCount, lastLineColumn),
+              range: range,
               text: suffix
             }]);
           } else if (suffix.length > 10000) {
@@ -493,7 +529,7 @@ const VirtualizedCodeViewer = forwardRef<HTMLDivElement, VirtualizedCodeViewerPr
             model.setValue(content);
           }
         } else if (newContentLength !== currentModelLength) {
-          // Content has diverged or shrunk, reset
+          // Content has diverged, reset
           model.setValue(content);
         }
 
@@ -635,7 +671,7 @@ const VirtualizedCodeViewer = forwardRef<HTMLDivElement, VirtualizedCodeViewerPr
             theme={editorTheme}
             options={editorConfig}
             onMount={handleEditorDidMount}
-            onChange={streamOptimized ? undefined : onChange}
+            onChange={readOnly ? undefined : onChange}
             loading={
               <div className="flex items-center justify-center h-full">
                 <Loader2 className="h-4 w-4 animate-spin mr-2" />

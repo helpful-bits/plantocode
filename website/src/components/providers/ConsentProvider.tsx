@@ -1,6 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { Button } from '@/components/ui/button';
 
 interface ConsentState {
   necessary: boolean;
@@ -249,32 +250,38 @@ export function ConsentProvider({ children }: ConsentProviderProps) {
               </div>
               
               <div className="flex gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
-                <button
+                <Button
                   onClick={() => {
                     updateConsent({ analytics: false, functional: false, marketing: false });
                     closePreferences();
                   }}
-                  className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  variant="outline"
+                  size="default"
+                  className="flex-1"
                 >
                   Reject All
-                </button>
-                <button
+                </Button>
+                <Button
                   onClick={() => {
                     updateConsent({ analytics: true, functional: true, marketing: true });
                     closePreferences();
                   }}
-                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  variant="default"
+                  size="default"
+                  className="flex-1"
                 >
                   Accept All
-                </button>
+                </Button>
               </div>
               <div className="pt-2">
-                <button
+                <Button
                   onClick={closePreferences}
-                  className="w-full px-4 py-2 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  variant="ghost"
+                  size="default"
+                  className="w-full"
                 >
                   Save Settings
-                </button>
+                </Button>
               </div>
             </div>
           </div>

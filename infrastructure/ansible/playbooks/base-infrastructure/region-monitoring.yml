@@ -1,0 +1,488 @@
+---
+# Region Restriction Monitoring and Alerting
+# ========================================
+# This playbook sets up monitoring and alerting for
+# region restriction violations and suspicious access patterns
+# ========================================
+
+- name: Configure Region Restriction Monitoring
+  hosts: all
+  become: yes
+  vars:
+    alert_threshold: 10  # Log alert after N blocked attempts from same IP
+    monitoring_interval: 300  # Check every 5 minutes
+    alert_log_dir: /var/log/vibe-manager
+    
+  tasks:
+    # ========================================
+    # STEP 1: CREATE MONITORING SCRIPTS
+    # ========================================
+    - name: Create monitoring scripts directory
+      file:
+        path: /opt/monitoring/scripts
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+    
+    - name: Create alert log directory
+      file:
+        path: "{{ alert_log_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+    
+    - name: Create region violation monitoring script
+      copy:
+        dest: /opt/monitoring/scripts/check_region_violations.sh
+        mode: '0755'
+        content: |
+          #!/bin/bash
+          
+          # Region Violation Monitoring Script
+          # Checks for suspicious access patterns and logs alerts
+          
+          LOG_DIR="/var/log/nginx"
+          BLOCKED_LOG="${LOG_DIR}/blocked_access.log"
+          RESTRICTED_LOG="${LOG_DIR}/restricted_access.log"
+          STATE_FILE="/var/cache/monitoring/region_violations.state"
+          ALERT_LOG="{{ alert_log_dir }}/region-alerts.log"
+          ALERT_THRESHOLD={{ alert_threshold }}
+          
+          # Create state directory if it doesn't exist
+          mkdir -p /var/cache/monitoring
+          mkdir -p {{ alert_log_dir }}
+          
+          # Function to log alert
+          log_alert() {
+              local alert_type="$1"
+              local message="$2"
+              
+              echo "[$(date '+%Y-%m-%d %H:%M:%S')] [${alert_type}] ${message}" >> "$ALERT_LOG"
+              echo "======================================" >> "$ALERT_LOG"
+              echo -e "$message" >> "$ALERT_LOG"
+              echo "======================================" >> "$ALERT_LOG"
+              echo "" >> "$ALERT_LOG"
+          }
+          
+          # Check for sanctioned country access attempts
+          check_sanctioned_access() {
+              if [ -f "$BLOCKED_LOG" ]; then
+                  # Get unique IPs from last 5 minutes
+                  local recent_blocks=$(find "$BLOCKED_LOG" -mmin -5 -exec tail -n 1000 {} \; 2>/dev/null | \
+                      awk '{print $1}' | sort | uniq -c | sort -rn)
+                  
+                  if [ ! -z "$recent_blocks" ]; then
+                      local alert_body="Detected access attempts from sanctioned countries:\n\n"
+                      alert_body+="Count | IP Address\n"
+                      alert_body+="------|------------\n"
+                      
+                      while IFS= read -r line; do
+                          local count=$(echo "$line" | awk '{print $1}')
+                          local ip=$(echo "$line" | awk '{print $2}')
+                          
+                          if [ "$count" -ge "$ALERT_THRESHOLD" ]; then
+                              alert_body+="$count   | $ip\n"
+                              
+                              # Get country info if available
+                              local country=$(geoiplookup "$ip" 2>/dev/null | cut -d: -f2 | sed 's/^ //')
+                              if [ ! -z "$country" ]; then
+                                  alert_body+="       | Location: $country\n"
+                              fi
+                          fi
+                      done <<< "$recent_blocks"
+                      
+                      # Log alert if we have violations
+                      if [[ "$alert_body" == *"Location"* ]]; then
+                          log_alert "SANCTIONED_ACCESS" "$alert_body"
+                      fi
+                  fi
+              fi
+          }
+          
+          # Check for VPN/Proxy detection patterns
+          check_vpn_patterns() {
+              local vpn_indicators=(
+                  "X-Forwarded-For.*,.*,"  # Multiple proxy hops
+                  "User-Agent.*VPN"
+                  "User-Agent.*Proxy"
+              )
+              
+              local suspicious_count=0
+              for pattern in "${vpn_indicators[@]}"; do
+                  if [ -f "$RESTRICTED_LOG" ]; then
+                      local matches=$(grep -E "$pattern" "$RESTRICTED_LOG" 2>/dev/null | wc -l)
+                      suspicious_count=$((suspicious_count + matches))
+                  fi
+              done
+              
+              if [ "$suspicious_count" -gt 50 ]; then
+                  log_alert "VPN_PROXY_DETECTED" \
+                      "Detected $suspicious_count suspicious access patterns in the last monitoring interval.\n\nPlease review: $RESTRICTED_LOG"
+              fi
+          }
+          
+          # Check for repeated failed access from same IP
+          check_brute_force() {
+              if [ -f "$RESTRICTED_LOG" ]; then
+                  local repeat_offenders=$(tail -n 10000 "$RESTRICTED_LOG" 2>/dev/null | \
+                      awk '{print $1}' | sort | uniq -c | sort -rn | \
+                      awk -v threshold="$ALERT_THRESHOLD" '$1 >= threshold {print $2, $1}')
+                  
+                  if [ ! -z "$repeat_offenders" ]; then
+                      local alert_body="Detected repeated access attempts from restricted regions:\n\n"
+                      alert_body+="IP Address      | Attempts\n"
+                      alert_body+="----------------|----------\n"
+                      
+                      while IFS=' ' read -r ip count; do
+                          alert_body+="$ip | $count\n"
+                      done <<< "$repeat_offenders"
+                      
+                      log_alert "BRUTE_FORCE" "$alert_body"
+                  fi
+              fi
+          }
+          
+          # Generate daily summary report
+          generate_daily_report() {
+              local hour=$(date +%H)
+              
+              # Only run at 8 AM
+              if [ "$hour" -eq "08" ]; then
+                  local today=$(date +%Y-%m-%d)
+                  local report_file="/tmp/region_report_$today.txt"
+                  
+                  echo "Region Restriction Report for $today" > "$report_file"
+                  echo "======================================" >> "$report_file"
+                  echo "" >> "$report_file"
+                  
+                  # Sanctioned countries summary
+                  echo "Sanctioned Country Blocks:" >> "$report_file"
+                  if [ -f "$BLOCKED_LOG" ]; then
+                      grep "$today" "$BLOCKED_LOG" 2>/dev/null | wc -l >> "$report_file"
+                  else
+                      echo "0" >> "$report_file"
+                  fi
+                  echo "" >> "$report_file"
+                  
+                  # Restricted region blocks summary
+                  echo "Restricted Region Blocks:" >> "$report_file"
+                  if [ -f "$RESTRICTED_LOG" ]; then
+                      grep "$today" "$RESTRICTED_LOG" 2>/dev/null | wc -l >> "$report_file"
+                  else
+                      echo "0" >> "$report_file"
+                  fi
+                  echo "" >> "$report_file"
+                  
+                  # Top blocked countries
+                  echo "Top Blocked Countries:" >> "$report_file"
+                  if [ -f "$BLOCKED_LOG" ] && [ -f "$RESTRICTED_LOG" ]; then
+                      cat "$BLOCKED_LOG" "$RESTRICTED_LOG" 2>/dev/null | \
+                          awk '{print $1}' | \
+                          xargs -I {} geoiplookup {} 2>/dev/null | \
+                          cut -d: -f2 | sed 's/^ //' | \
+                          sort | uniq -c | sort -rn | head -10 >> "$report_file"
+                  fi
+                  
+                  # Save report to log
+                  log_alert "DAILY_REPORT" "$(cat $report_file)"
+                  
+                  # Also save to dedicated daily report file
+                  cp "$report_file" "{{ alert_log_dir }}/daily-report-$today.log"
+                  rm -f "$report_file"
+              fi
+          }
+          
+          # Main monitoring loop
+          main() {
+              check_sanctioned_access
+              check_vpn_patterns
+              check_brute_force
+              generate_daily_report
+          }
+          
+          # Run main function
+          main
+    
+    # ========================================
+    # STEP 2: CREATE SYSTEMD SERVICE
+    # ========================================
+    - name: Create systemd service for monitoring
+      copy:
+        dest: /etc/systemd/system/region-monitor.service
+        content: |
+          [Unit]
+          Description=Vibe Manager Region Restriction Monitor
+          After=network.target nginx.service
+          
+          [Service]
+          Type=oneshot
+          ExecStart=/opt/monitoring/scripts/check_region_violations.sh
+          User=root
+          StandardOutput=journal
+          StandardError=journal
+    
+    - name: Create systemd timer for monitoring
+      copy:
+        dest: /etc/systemd/system/region-monitor.timer
+        content: |
+          [Unit]
+          Description=Run Region Restriction Monitor every 5 minutes
+          Requires=region-monitor.service
+          
+          [Timer]
+          OnBootSec=5min
+          OnUnitActiveSec={{ monitoring_interval }}s
+          
+          [Install]
+          WantedBy=timers.target
+    
+    - name: Enable and start monitoring timer
+      systemd:
+        name: region-monitor.timer
+        state: started
+        enabled: yes
+        daemon_reload: yes
+    
+    # ========================================
+    # STEP 3: PROMETHEUS METRICS EXPORT
+    # ========================================
+    - name: Create Prometheus metrics exporter script
+      copy:
+        dest: /opt/monitoring/scripts/region_metrics_exporter.py
+        mode: '0755'
+        content: |
+          #!/usr/bin/env python3
+          """
+          Export region restriction metrics for Prometheus monitoring
+          """
+          
+          import os
+          import re
+          import time
+          from collections import defaultdict
+          from datetime import datetime, timedelta
+          from prometheus_client import start_http_server, Gauge, Counter
+          
+          # Define metrics
+          blocked_access_total = Counter('vibe_manager_blocked_access_total', 
+                                        'Total blocked access attempts',
+                                        ['country', 'reason'])
+          
+          blocked_ips_gauge = Gauge('vibe_manager_blocked_unique_ips',
+                                   'Number of unique blocked IPs in last hour')
+          
+          violation_rate = Gauge('vibe_manager_violation_rate',
+                                'Access violations per minute')
+          
+          def parse_nginx_log(log_file, time_window_minutes=60):
+              """Parse nginx log for recent entries"""
+              if not os.path.exists(log_file):
+                  return []
+              
+              entries = []
+              cutoff_time = datetime.now() - timedelta(minutes=time_window_minutes)
+              
+              with open(log_file, 'r') as f:
+                  for line in f:
+                      # Parse nginx log format
+                      match = re.match(r'(\S+) .* \[([^\]]+)\]', line)
+                      if match:
+                          ip = match.group(1)
+                          timestamp_str = match.group(2)
+                          
+                          try:
+                              # Parse timestamp
+                              timestamp = datetime.strptime(timestamp_str.split(' ')[0], 
+                                                           '%d/%b/%Y:%H:%M:%S')
+                              if timestamp > cutoff_time:
+                                  entries.append({'ip': ip, 'time': timestamp, 'line': line})
+                          except:
+                              continue
+              
+              return entries
+          
+          def update_metrics():
+              """Update Prometheus metrics"""
+              # Parse blocked access log
+              blocked_entries = parse_nginx_log('/var/log/nginx/blocked_access.log')
+              restricted_entries = parse_nginx_log('/var/log/nginx/restricted_access.log')
+              
+              # Update unique IPs gauge
+              unique_ips = set([e['ip'] for e in blocked_entries + restricted_entries])
+              blocked_ips_gauge.set(len(unique_ips))
+              
+              # Calculate violation rate (per minute)
+              total_violations = len(blocked_entries) + len(restricted_entries)
+              violation_rate.set(total_violations / 60.0)
+              
+              # Update country-specific counters (would need GeoIP lookup here)
+              # This is a simplified version
+              for entry in blocked_entries:
+                  blocked_access_total.labels(country='unknown', reason='sanctioned').inc()
+              
+              for entry in restricted_entries:
+                  blocked_access_total.labels(country='unknown', reason='restricted').inc()
+          
+          if __name__ == '__main__':
+              # Start Prometheus metrics server on port 9091
+              start_http_server(9091)
+              
+              # Update metrics every 30 seconds
+              while True:
+                  update_metrics()
+                  time.sleep(30)
+    
+    - name: Create systemd service for metrics exporter
+      copy:
+        dest: /etc/systemd/system/region-metrics-exporter.service
+        content: |
+          [Unit]
+          Description=Vibe Manager Region Metrics Exporter
+          After=network.target
+          
+          [Service]
+          Type=simple
+          ExecStart=/usr/bin/python3 /opt/monitoring/scripts/region_metrics_exporter.py
+          Restart=always
+          RestartSec=10
+          User=www-data
+          
+          [Install]
+          WantedBy=multi-user.target
+    
+    - name: Start metrics exporter service
+      systemd:
+        name: region-metrics-exporter.service
+        state: started
+        enabled: yes
+        daemon_reload: yes
+    
+    # ========================================
+    # STEP 4: CONFIGURE FAIL2BAN
+    # ========================================
+    - name: Install fail2ban
+      apt:
+        name: fail2ban
+        state: present
+    
+    - name: Create fail2ban filter for region violations
+      copy:
+        dest: /etc/fail2ban/filter.d/vibe-region.conf
+        content: |
+          [Definition]
+          failregex = ^<HOST> .* (403|451) .*$
+          ignoreregex =
+    
+    - name: Create fail2ban jail for region violations
+      copy:
+        dest: /etc/fail2ban/jail.d/vibe-region.conf
+        content: |
+          [vibe-region]
+          enabled = true
+          filter = vibe-region
+          logpath = /var/log/nginx/blocked_access.log
+                    /var/log/nginx/restricted_access.log
+          maxretry = {{ alert_threshold }}
+          findtime = 600
+          bantime = 86400
+          action = iptables-multiport[name=VibeRegion, port="80,443"]
+    
+    - name: Restart fail2ban
+      systemd:
+        name: fail2ban
+        state: restarted
+        enabled: yes
+    
+    # ========================================
+    # STEP 5: CREATE DASHBOARD ENDPOINT
+    # ========================================
+    - name: Create monitoring dashboard script
+      copy:
+        dest: /opt/monitoring/scripts/generate_dashboard.sh
+        mode: '0755'
+        content: |
+          #!/bin/bash
+          
+          # Generate simple HTML dashboard with current stats
+          
+          OUTPUT_FILE="/var/www/html/region-stats.html"
+          
+          # Get current stats
+          BLOCKED_TODAY=$(grep "$(date +%Y-%m-%d)" /var/log/nginx/blocked_access.log 2>/dev/null | wc -l)
+          RESTRICTED_TODAY=$(grep "$(date +%Y-%m-%d)" /var/log/nginx/restricted_access.log 2>/dev/null | wc -l)
+          
+          # Generate HTML
+          cat > "$OUTPUT_FILE" << 'EOF'
+          <!DOCTYPE html>
+          <html>
+          <head>
+              <title>Region Restriction Statistics</title>
+              <meta http-equiv="refresh" content="60">
+              <style>
+                  body { font-family: Arial, sans-serif; margin: 20px; }
+                  .stat-box { 
+                      display: inline-block; 
+                      padding: 20px; 
+                      margin: 10px;
+                      background: #f0f0f0; 
+                      border-radius: 5px;
+                  }
+                  .number { font-size: 2em; font-weight: bold; color: #333; }
+                  .label { color: #666; margin-top: 5px; }
+                  h1 { color: #333; }
+                  .timestamp { color: #999; font-size: 0.9em; }
+              </style>
+          </head>
+          <body>
+              <h1>Region Restriction Statistics</h1>
+              <div class="timestamp">Last updated: TIMESTAMP_PLACEHOLDER</div>
+              
+              <div class="stat-box">
+                  <div class="number">BLOCKED_PLACEHOLDER</div>
+                  <div class="label">Sanctioned Country Blocks (Today)</div>
+              </div>
+              
+              <div class="stat-box">
+                  <div class="number">RESTRICTED_PLACEHOLDER</div>
+                  <div class="label">Restricted Region Blocks (Today)</div>
+              </div>
+          </body>
+          </html>
+          EOF
+          
+          # Replace placeholders
+          sed -i "s/TIMESTAMP_PLACEHOLDER/$(date '+%Y-%m-%d %H:%M:%S')/" "$OUTPUT_FILE"
+          sed -i "s/BLOCKED_PLACEHOLDER/$BLOCKED_TODAY/" "$OUTPUT_FILE"
+          sed -i "s/RESTRICTED_PLACEHOLDER/$RESTRICTED_TODAY/" "$OUTPUT_FILE"
+    
+    - name: Create cron job for dashboard updates
+      cron:
+        name: "Update region stats dashboard"
+        minute: "*/5"
+        job: "/opt/monitoring/scripts/generate_dashboard.sh"
+    
+    # ========================================
+    # STEP 6: VERIFY MONITORING SETUP
+    # ========================================
+    - name: Run initial monitoring check
+      command: /opt/monitoring/scripts/check_region_violations.sh
+      register: monitor_output
+      changed_when: false
+      ignore_errors: yes
+    
+    - name: Display monitoring setup summary
+      debug:
+        msg:
+          - "=== REGION MONITORING CONFIGURED ==="
+          - "Alert Log: {{ alert_log_dir }}/region-alerts.log"
+          - "Daily Reports: {{ alert_log_dir }}/daily-report-*.log"
+          - "Alert Threshold: {{ alert_threshold }} attempts"
+          - "Check Interval: {{ monitoring_interval }} seconds"
+          - "Fail2ban: Enabled with 24-hour bans"
+          - "Metrics: Available on port 9091"
+          - "Dashboard: /region-stats.html"
+          - "Logs monitored:"
+          - "  - /var/log/nginx/blocked_access.log (sanctioned countries)"
+          - "  - /var/log/nginx/restricted_access.log (non-approved regions)"

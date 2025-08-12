@@ -92,7 +92,14 @@ export default async function SubprocessorsPage({ params }: SubprocessorsPagePro
         </p>
         <p className="mt-4">
           If you have questions about our sub-processor arrangements or data processing practices, 
-          please contact us at <a href="mailto:legal@vibemanager.app" className="text-blue-600 hover:underline">legal@vibemanager.app</a>.
+          please contact us at <a href="mailto:legal@vibemanager.app" className="link-primary">legal@vibemanager.app</a>.
+        </p>
+      </section>
+
+      <section>
+        <h2 className="text-2xl font-semibold mb-4">Data Processing Addendum</h2>
+        <p>
+          Business customers who process personal data through our Service should review and accept our <a href={`/legal/${region}/dpa`} className="link-primary">Data Processing Addendum (DPA)</a>, which governs our data processing relationship and includes provisions for sub-processor management.
         </p>
       </section>
     </LegalContent>

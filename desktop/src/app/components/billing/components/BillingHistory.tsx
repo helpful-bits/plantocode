@@ -38,10 +38,14 @@ export function BillingHistory({ className, isInModal = false }: BillingHistoryP
   const lastFetchRef = useRef<number>(0);
   const fetchInProgressRef = useRef<boolean>(false);
   const itemsPerPageRef = useRef<number>(10); // Store current value in ref
-  const abortControllerRef = useRef<AbortController | null>(null);
+  const latestRequestIdRef = useRef(0);
+  const currentPageRef = useRef(1);
+  const searchTermRef = useRef("");
+  const activeTabRef = useRef<"transactions" | "usage">("transactions");
+  const hasLoadedUsageRef = useRef(false);
   
   // State declarations - moved before useEffects
-  const [activeTab, setActiveTab] = useState("transactions");
+  const [activeTab, setActiveTab] = useState<"transactions" | "usage">("transactions");
   const [modalVisibleRows, setModalVisibleRows] = useState(10);
   const [transactionHistoryData, setTransactionHistoryData] = useState<UnifiedCreditHistoryResponse | null>(null);
   const [isTransactionsLoading, setIsTransactionsLoading] = useState(true);
@@ -67,33 +71,45 @@ export function BillingHistory({ className, isInModal = false }: BillingHistoryP
   const [providers, setProviders] = useState<ProviderWithModels[]>([]);
   const [selectedPreset, setSelectedPreset] = useState<'last1hour' | 'last24hours' | 'last7days' | 'thisweek' | 'thismonth' | 'last30days' | null>('last24hours');
   const [tableVersion, setTableVersion] = useState(0); // Force re-render counter
+  const [observedElement, setObservedElement] = useState<HTMLElement | null>(null);
   
   // Safety buffer for measurement calculations
   const SAFETY_BUFFER_PX = 1;
+
+  useEffect(() => { currentPageRef.current = currentPage; }, [currentPage]);
+  useEffect(() => { searchTermRef.current = searchTerm; }, [searchTerm]);
+  useEffect(() => { activeTabRef.current = activeTab; }, [activeTab]);
+  useEffect(() => { hasLoadedUsageRef.current = hasLoadedUsage; }, [hasLoadedUsage]);
 
   const getProviderDisplayName = (providerCode: string): string => {
     const provider = providers.find(p => p.provider.code === providerCode);
     return provider?.provider.name || providerCode;
   };
 
-  const loadCreditHistory = useCallback(async (page: number = 1, search?: string, forceItemsPerPage?: number) => {
-    // Cancel any in-flight request
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-      abortControllerRef.current = null;
-    }
+  // Helper to normalize unified credit response
+  const normalizeUnifiedCreditResponse = (resp: UnifiedCreditHistoryResponse): UnifiedCreditHistoryResponse => {
+    // Ensure entries is an array
+    const entries = Array.isArray(resp.entries) ? resp.entries : [];
     
-    // Create new abort controller for this request
-    const abortController = new AbortController();
-    abortControllerRef.current = abortController;
+    // Ensure totalCount and hasMore have valid values
+    const totalCount = typeof resp.totalCount === 'number' ? resp.totalCount : entries.length;
+    const hasMore = typeof resp.hasMore === 'boolean' ? resp.hasMore : false;
     
-    // Reset fetch in progress flag when aborting previous request
-    fetchInProgressRef.current = false;
+    return {
+      entries,
+      totalCount,
+      hasMore
+    };
+  };
+
+  const loadCreditHistory = useCallback(async (page: number = 1, search?: string, forceItemsPerPage?: number, skipRateLimit: boolean = false) => {
+    // Increment and capture request ID for staleness check
+    const reqId = ++latestRequestIdRef.current;
     
-    // Throttle requests - minimum 500ms between fetches (skip for initial load)
+    // Throttle requests - minimum 300ms between fetches (skip for initial load)
     const now = Date.now();
     const timeSinceLastFetch = now - lastFetchRef.current;
-    if (lastFetchRef.current > 0 && timeSinceLastFetch < 500) {
+    if (!skipRateLimit && lastFetchRef.current > 0 && timeSinceLastFetch < 300) {
       console.warn(`Throttling request, only ${timeSinceLastFetch}ms since last fetch`);
       return;
     }
@@ -102,10 +118,6 @@ export function BillingHistory({ className, isInModal = false }: BillingHistoryP
     lastFetchRef.current = now;
     
     try {
-      // Check if aborted before starting
-      if (abortController.signal.aborted) {
-        return;
-      }
       if (page > 1) {
         setIsTransactionsLoadingPage(true);
       } else {
@@ -117,33 +129,49 @@ export function BillingHistory({ className, isInModal = false }: BillingHistoryP
         await new Promise(resolve => setTimeout(resolve, 300));
       }
       
-      // Use provided items per page or current value from ref
-      const pageSize = forceItemsPerPage ?? itemsPerPageRef.current;
-      const offset = (page - 1) * pageSize;
-      const response = await getCreditHistory(pageSize, offset, search);
+      // Compute safe page size - never allow 0
+      const pageSize = Math.max(1, Math.floor(forceItemsPerPage ?? itemsPerPageRef.current ?? 10));
+      const offset = Math.max(0, (Math.max(1, page) - 1) * pageSize);
       
-      // Check if request was aborted
-      if (abortController.signal.aborted) {
+      // Normalize search before calling the action
+      const trimmed = (search ?? '').trim();
+      const normalizedSearch = trimmed.length > 0 ? trimmed : undefined;
+      
+      // Debug logging (temporary)
+      console.debug('loadCreditHistory:', { pageSize, offset, normalizedSearch });
+      
+      const response = await getCreditHistory(pageSize, offset, normalizedSearch);
+      
+      // Check if this response is stale (newer request has been made)
+      if (reqId !== latestRequestIdRef.current) {
+        console.debug('Ignoring stale response from request', reqId);
         return;
       }
       
-      setTransactionHistoryData(response);
+      // Normalize the response
+      const normalizedResponse = normalizeUnifiedCreditResponse(response);
+      
+      // Debug logging (temporary)
+      console.debug('Response:', { 
+        entriesLength: normalizedResponse.entries.length, 
+        totalCount: normalizedResponse.totalCount,
+        hasMore: normalizedResponse.hasMore 
+      });
+      
+      setTransactionHistoryData(normalizedResponse);
       setCurrentPage(page);
       setTableVersion(v => v + 1); // Force table re-render
     } catch (err) {
-      // Ignore abort errors
-      if (err instanceof Error && err.name === 'AbortError') {
-        return;
-      }
       const errorMessage = getErrorMessage(err);
       setTransactionsError(errorMessage);
       console.error('Failed to load credit history:', err);
+      // Don't clear existing data on error - keep last known good state
     } finally {
       setIsTransactionsLoading(false);
       setIsTransactionsLoadingPage(false);
       fetchInProgressRef.current = false;
     }
-  }, []); // Remove itemsPerPage from dependencies
+  }, []);
 
   const loadUsageData = useCallback(async () => {
     if (!startDate || !endDate) return;
@@ -184,9 +212,13 @@ export function BillingHistory({ className, isInModal = false }: BillingHistoryP
         startDateISO = start.toISOString();
         endDateISO = end.toISOString();
       } else {
-        // For other filters (7d, 1m, custom), use the date range as before
-        startDateISO = new Date(startDate).toISOString();
-        endDateISO = new Date(endDate + 'T23:59:59').toISOString();
+        // For custom date ranges, ensure we include entire days
+        const start = new Date(startDate);
+        start.setHours(0, 0, 0, 0);
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        startDateISO = start.toISOString();
+        endDateISO = end.toISOString();
       }
       
       const result = await getDetailedUsageWithSummary(startDateISO, endDateISO);
@@ -199,7 +231,6 @@ export function BillingHistory({ className, isInModal = false }: BillingHistoryP
     }
   }, [startDate, endDate, selectedPreset]);
 
-  // Precise DOM measurement helper for modal row calculation
   const measureAndSetModalRows = () => {
     if (!isInModal) return;
     const container = tableBodyContainerRef.current as HTMLElement | null;
@@ -211,22 +242,32 @@ export function BillingHistory({ className, isInModal = false }: BillingHistoryP
     const headerEl = container.querySelector('thead') as HTMLElement | null;
     const headerHeight = headerEl?.offsetHeight ?? 40;
 
-    // Prefer a real data row; otherwise allow a skeleton row
     const rowEl = container.querySelector('tbody > tr') as HTMLElement | null;
     const rowHeight = rowEl?.offsetHeight ?? 48;
 
-    if (!rowHeight || rowHeight === 0) return;
+    if (!rowHeight || rowHeight === 0) {
+      // Keep the last known good value if measurement fails
+      return;
+    }
 
     const availableForRows = containerHeight - headerHeight - SAFETY_BUFFER_PX;
-    const computed = availableForRows > 0 ? Math.floor(availableForRows / rowHeight) : 0;
+    const computed = availableForRows > 0 ? Math.floor(availableForRows / rowHeight) : 1;
 
-    const finalRows = Math.max(0, computed);
-    setModalVisibleRows((prev) => (prev !== finalRows ? finalRows : prev));
+    const finalRows = Math.max(1, computed);
+    // Only update if value is greater than 0
+    if (finalRows > 0) {
+      setModalVisibleRows((prev) => (prev !== finalRows ? finalRows : prev));
+    }
   };
   
-  // ResizeObserver with rAF debounced measurement for modal rows
   useEffect(() => {
-    if (!isInModal || !tableBodyContainerRef.current) return;
+    if (!isInModal) return;
+    
+    setObservedElement(tableBodyContainerRef.current);
+  }, [isInModal, activeTab]);
+
+  useEffect(() => {
+    if (!observedElement) return;
 
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -237,7 +278,6 @@ export function BillingHistory({ className, isInModal = false }: BillingHistoryP
       }, 150);
     };
 
-    // Initial measurement after layout settles
     let initialRaf = 0;
     let initialTimer: ReturnType<typeof setTimeout> | null = null;
     initialRaf = requestAnimationFrame(() => {
@@ -249,7 +289,7 @@ export function BillingHistory({ className, isInModal = false }: BillingHistoryP
     const observer = new ResizeObserver(() => {
       debouncedMeasure();
     });
-    observer.observe(tableBodyContainerRef.current);
+    observer.observe(observedElement);
 
     return () => {
       if (debounceTimer) clearTimeout(debounceTimer);
@@ -257,7 +297,7 @@ export function BillingHistory({ className, isInModal = false }: BillingHistoryP
       if (initialRaf) cancelAnimationFrame(initialRaf);
       observer.disconnect();
     };
-  }, [isInModal]);
+  }, [observedElement, isInModal]);
 
   // Re-measurement on data and tab transitions
   useEffect(() => {
@@ -299,39 +339,35 @@ export function BillingHistory({ className, isInModal = false }: BillingHistoryP
         }
       );
   
+  // Update itemsPerPageRef when itemsPerPage changes - only if greater than 0
+  useEffect(() => { 
+    if (itemsPerPage > 0) {
+      itemsPerPageRef.current = itemsPerPage;
+    }
+  }, [itemsPerPage]);
+  
   // Calculate total pages for transactions
+  const effectiveItemsPerPage = Math.max(1, itemsPerPage);
   const totalTransactionPages = transactionHistoryData 
-    ? Math.max(1, Math.ceil(transactionHistoryData.totalCount / itemsPerPage))
+    ? Math.max(1, Math.ceil(transactionHistoryData.totalCount / effectiveItemsPerPage))
     : 1;
   
-  // Update ref when itemsPerPage changes
-  useEffect(() => {
-    itemsPerPageRef.current = itemsPerPage;
-  }, [itemsPerPage]);
 
-  // Track previous itemsPerPage to detect changes
-  const prevItemsPerPageRef = useRef<number | null>(null);
   
-  // Recalculate page bounds when itemsPerPage changes
+  // Handle itemsPerPage changes - but skip on initial render
+  const lastItemsPerPageRef = useRef(itemsPerPage);
   useEffect(() => {
-    if (itemsPerPage <= 0 || activeTab !== "transactions") return;
-    
-    // Skip if itemsPerPage hasn't actually changed or this is the initial render
-    if (prevItemsPerPageRef.current === null) {
-      prevItemsPerPageRef.current = itemsPerPage;
-      return; // Don't refetch on initial mount
-    }
-    
-    if (prevItemsPerPageRef.current === itemsPerPage) return;
-    
-    // Only proceed if we have data
+    // Skip if not initialized or no change
+    if (!hasInitializedRef.current) return;
+    if (itemsPerPage === lastItemsPerPageRef.current) return;
+    if (activeTab !== "transactions") return;
     if (!transactionHistoryData) return;
     
-    const prevItemsPerPage = prevItemsPerPageRef.current;
-    prevItemsPerPageRef.current = itemsPerPage;
+    console.debug('Items per page changed from', lastItemsPerPageRef.current, 'to', itemsPerPage);
+    lastItemsPerPageRef.current = itemsPerPage;
     
     // Calculate what data range we currently have
-    const currentStartIndex = (currentPage - 1) * prevItemsPerPage;
+    const currentStartIndex = (currentPage - 1) * lastItemsPerPageRef.current;
     
     // Calculate new page that would contain the same starting item
     const newPage = Math.max(1, Math.floor(currentStartIndex / itemsPerPage) + 1);
@@ -340,52 +376,38 @@ export function BillingHistory({ className, isInModal = false }: BillingHistoryP
     // Clamp to valid range
     const targetPage = Math.min(newPage, newTotalPages);
     
-    if (targetPage !== currentPage) {
-      setCurrentPage(targetPage);
-      setSliderPage(targetPage);
-    }
-    
-    // Always refetch to get correct number of items for new itemsPerPage
+    // Update page and refetch with new itemsPerPage
+    setCurrentPage(targetPage);
+    setSliderPage(targetPage);
     loadCreditHistory(targetPage, searchTerm, itemsPerPage);
-  }, [itemsPerPage, activeTab, transactionHistoryData, currentPage, searchTerm, loadCreditHistory]); // Full dependencies for reliable updates
+  }, [itemsPerPage, activeTab, transactionHistoryData, currentPage, searchTerm, loadCreditHistory]);
 
-  // Initial load only - no dependencies on loadCreditHistory
+  // Initial load - ONE TIME ONLY on mount with useRef to prevent re-runs
+  const hasInitializedRef = useRef(false);
   useEffect(() => {
-    let mounted = true;
+    if (hasInitializedRef.current) return;
+    hasInitializedRef.current = true;
     
-    const initialize = async () => {
-      if (!mounted) return;
-      // Initial load with current itemsPerPage from ref
-      loadCreditHistory(1, '', itemsPerPageRef.current);
-      // Load provider information for display names
-      try {
-        const providers = await getProvidersWithModels();
-        if (mounted) {
-          setProviders(providers);
-        }
-      } catch (error) {
-        console.error('Failed to load providers:', error);
-      }
-    };
+    console.debug('Initial load triggered');
     
-    initialize();
+    // Initial load with default itemsPerPage
+    loadCreditHistory(1, '', 10, true);
     
-    return () => {
-      mounted = false;
-      // Cancel any pending requests on unmount
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-      }
-    };
-  }, []); // Empty dependency array - only run once on mount
+    // Load provider information for display names
+    getProvidersWithModels().then(providers => {
+      setProviders(providers);
+    }).catch(error => {
+      console.error('Failed to load providers:', error);
+    });
+  }, []); // Empty deps - only run on mount
 
-  // Listen for billing data updates - use refs to avoid dependencies
   useEffect(() => {
     const handleBillingDataUpdated = () => {
-      // Use current values from refs to avoid stale closure
-      loadCreditHistory(currentPage, searchTerm, itemsPerPageRef.current);
-      // If usage tab is active, reload usage data too
-      if (activeTab === "usage" && hasLoadedUsage) {
+      const page = currentPageRef.current;
+      const search = searchTermRef.current;
+      const perPage = Math.max(1, itemsPerPageRef.current);
+      loadCreditHistory(page, search, perPage);
+      if (activeTabRef.current === "usage" && hasLoadedUsageRef.current) {
         loadUsageData();
       }
     };
@@ -395,7 +417,7 @@ export function BillingHistory({ className, isInModal = false }: BillingHistoryP
     return () => {
       window.removeEventListener('billing-data-updated', handleBillingDataUpdated);
     };
-  }, []); // Empty dependencies - handler will use current values via closure
+  }, [loadUsageData, loadCreditHistory]);
 
 
 
@@ -412,53 +434,47 @@ export function BillingHistory({ className, isInModal = false }: BillingHistoryP
     }
   }, [startDate, endDate, activeTab, hasLoadedUsage, loadUsageData]);
 
-  const handleTransactionsRetry = useCallback(() => {
+  const handleTransactionsRetry = () => {
     loadCreditHistory(currentPage, searchTerm, itemsPerPageRef.current);
-  }, [currentPage, searchTerm, loadCreditHistory]);
+  };
 
-  const handlePageChange = useCallback((newPage: number) => {
+  const handlePageChange = (newPage: number) => {
     setCurrentPage(newPage);
     setSliderPage(newPage);
     loadCreditHistory(newPage, searchTerm, itemsPerPageRef.current);
-  }, [searchTerm, loadCreditHistory]);
+  };
 
-  const handleSearch = useCallback(() => {
+  const handleSearch = () => {
     setCurrentPage(1);
     setSliderPage(1);
     setIsSearchActive(searchTerm.trim().length > 0);
     loadCreditHistory(1, searchTerm, itemsPerPageRef.current);
-  }, [searchTerm, loadCreditHistory]);
+  };
 
-  const handleClearSearch = useCallback(() => {
+  const handleClearSearch = () => {
     setSearchTerm("");
     setCurrentPage(1);
     setSliderPage(1);
     setIsSearchActive(false);
     loadCreditHistory(1, "", itemsPerPageRef.current);
-  }, [loadCreditHistory]);
+  };
 
-  const handleSliderChange = useCallback((value: number[]) => {
+  const handleSliderChange = (value: number[]) => {
     const newPage = value[0];
     setSliderPage(newPage);
-  }, []);
+  };
 
-  const debouncedPageChange = useCallback(
-    ((page: number) => {
-      if (page !== currentPage) {
-        setCurrentPage(page);
-        loadCreditHistory(page, searchTerm, itemsPerPageRef.current);
-      }
-    }),
-    [currentPage, searchTerm, loadCreditHistory] // Use ref for itemsPerPage to avoid stale closure
-  );
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      debouncedPageChange(sliderPage);
+      if (sliderPage !== currentPage) {
+        setCurrentPage(sliderPage);
+        loadCreditHistory(sliderPage, searchTerm, itemsPerPageRef.current);
+      }
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [sliderPage, debouncedPageChange]);
+  }, [sliderPage, currentPage, searchTerm]);
 
   const handlePresetClick = (preset: 'last1hour' | 'last24hours' | 'last7days' | 'thisweek' | 'thismonth' | 'last30days') => {
     const end = new Date();
@@ -504,10 +520,7 @@ export function BillingHistory({ className, isInModal = false }: BillingHistoryP
   };
 
   const renderTransactionSkeletonRows = () => {
-    // Use itemsPerPage for skeleton count when in modal and loading
-    const skeletonCount = isInModal 
-      ? itemsPerPage 
-      : (transactionHistoryData ? transactionHistoryData.entries.length : itemsPerPage);
+    const skeletonCount = Math.max(itemsPerPage || 8, 8);
     
     return Array.from({ length: skeletonCount }).map((_, index) => (
       <tr key={`skeleton-${index}`} className="hover:bg-muted/30 transition-colors">
@@ -537,8 +550,7 @@ export function BillingHistory({ className, isInModal = false }: BillingHistoryP
   };
 
   const renderUsageSkeletonRows = () => {
-    // Use itemsPerPage for skeleton count when in modal
-    const skeletonCount = isInModal ? itemsPerPage : 8;
+    const skeletonCount = Math.max(itemsPerPage || 8, 8);
     
     return Array.from({ length: skeletonCount }).map((_, index) => (
       <tr key={`usage-skeleton-${index}`} className="border-b border-border/30 last:border-b-0 hover:bg-muted/30 transition-colors">
@@ -591,7 +603,7 @@ export function BillingHistory({ className, isInModal = false }: BillingHistoryP
         </div>
       </CardHeader>
       <CardContent className="flex flex-col flex-1 min-h-0">
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full flex flex-col h-full">
+        <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "transactions" | "usage")} className="w-full flex flex-col h-full">
           <TabsList className="grid w-full grid-cols-2 flex-shrink-0">
             <TabsTrigger value="transactions">Transactions</TabsTrigger>
             <TabsTrigger value="usage">Usage Details</TabsTrigger>
@@ -603,15 +615,38 @@ export function BillingHistory({ className, isInModal = false }: BillingHistoryP
             ) : transactionsError ? (
               <ErrorState message={transactionsError} onRetry={handleTransactionsRetry} />
             ) : !transactionHistoryData || transactionHistoryData.entries.length === 0 ? (
-              <div className="flex-1 flex items-center justify-center">
-                <div className="text-center">
-                  <DollarSign className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                  <h3 className="font-semibold mb-2">No Credit Transactions</h3>
-                  <p className="text-sm text-muted-foreground">
-                    Your credit transaction history will appear here once you have credit activity.
-                  </p>
-                </div>
-              </div>
+              (() => {
+                // Debug logging for empty state conditions
+                console.log('Empty state debug:', {
+                  isTransactionsLoading,
+                  transactionsError,
+                  transactionHistoryData: transactionHistoryData ? {
+                    entriesLength: transactionHistoryData.entries.length,
+                    totalCount: transactionHistoryData.totalCount,
+                    hasMore: transactionHistoryData.hasMore
+                  } : 'null',
+                  isSearchActive,
+                  searchTerm,
+                  itemsPerPage,
+                  currentPage
+                });
+                
+                return (
+                  <div className="flex-1 flex items-center justify-center">
+                    <div className="text-center">
+                      <DollarSign className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                      <h3 className="font-semibold mb-2">
+                        {isSearchActive ? "No Matching Transactions" : "No Credit Transactions"}
+                      </h3>
+                      <p className="text-sm text-muted-foreground">
+                        {isSearchActive 
+                          ? "No transactions match your search criteria. Try adjusting your search terms."
+                          : "Your credit transaction history will appear here once you have credit activity."}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })()
             ) : (
               <div className="flex flex-col flex-1 min-h-0 gap-3">
                 <div className="flex items-center justify-between flex-shrink-0">
@@ -652,7 +687,7 @@ export function BillingHistory({ className, isInModal = false }: BillingHistoryP
                   </span>
                 </div>
 
-                <div className="flex-1 min-h-0 rounded-lg border border-border/40 overflow-hidden" ref={isInModal ? tableBodyContainerRef : undefined}>
+                <div className="flex-1 min-h-0 rounded-lg border border-border/40 overflow-auto" ref={isInModal ? tableBodyContainerRef : undefined}>
                     <table className="w-full" key={`transactions-${tableVersion}-${currentPage}-${itemsPerPage}`}>
                       <thead>
                         <tr className="border-b border-border/40 bg-muted/30">
@@ -688,10 +723,10 @@ export function BillingHistory({ className, isInModal = false }: BillingHistoryP
                                 {transaction.model || 'Credit Purchase'}
                               </td>
                               <td className={`py-3 px-1 text-xs text-muted-foreground text-right ${isInModal ? 'hidden md:table-cell' : ''}`}>
-                                {transaction.inputTokens ? transaction.inputTokens.toLocaleString() : '-'}
+                                {transaction.inputTokens != null ? transaction.inputTokens.toLocaleString() : '-'}
                               </td>
                               <td className={`py-3 px-1 text-xs text-muted-foreground text-right ${isInModal ? 'hidden lg:table-cell' : 'hidden sm:table-cell'}`}>
-                                {transaction.outputTokens ? transaction.outputTokens.toLocaleString() : '-'}
+                                {transaction.outputTokens != null ? transaction.outputTokens.toLocaleString() : '-'}
                               </td>
                               <td className={`py-3 px-1 text-xs text-muted-foreground text-right ${isInModal ? 'hidden' : 'hidden md:table-cell'}`}>
                                 {cachedTokens > 0 ? cachedTokens.toLocaleString() : '-'}

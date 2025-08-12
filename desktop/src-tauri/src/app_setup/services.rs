@@ -1,6 +1,6 @@
 use crate::api_clients::{
     ApiClient, TranscriptionClient, billing_client::BillingClient,
-    server_proxy_client::ServerProxyClient,
+    consent_client::ConsentClient, server_proxy_client::ServerProxyClient,
 };
 use crate::auth::TokenManager;
 use crate::constants::SERVER_API_URL;
@@ -102,6 +102,12 @@ pub async fn reinitialize_api_clients(app_handle: &AppHandle, server_url: String
 
     info!("BillingClient initialized");
 
+    // Initialize ConsentClient
+    let consent_client = ConsentClient::new(server_url.clone(), token_manager.clone());
+    let consent_client_arc = Arc::new(consent_client);
+
+    info!("ConsentClient initialized");
+
     // Acquire write locks and populate RwLock containers
     {
         let server_proxy_lock = app_handle.state::<Arc<tokio::sync::RwLock<Option<Arc<ServerProxyClient>>>>>()
@@ -117,6 +123,14 @@ pub async fn reinitialize_api_clients(app_handle: &AppHandle, server_url: String
             .clone();
         let mut billing_guard = billing_lock.write().await;
         *billing_guard = Some(billing_client_arc.clone());
+    }
+    
+    {
+        let consent_lock = app_handle.state::<Arc<tokio::sync::RwLock<Option<Arc<ConsentClient>>>>>()
+            .inner()
+            .clone();
+        let mut consent_guard = consent_lock.write().await;
+        *consent_guard = Some(consent_client_arc.clone());
     }
     
     {
@@ -140,6 +154,7 @@ pub async fn reinitialize_api_clients(app_handle: &AppHandle, server_url: String
     app_handle.manage(transcription_client_arc);
     app_handle.manage(server_proxy_client_arc.clone());
     app_handle.manage(billing_client_arc);
+    app_handle.manage(consent_client_arc);
 
     // Note: BackgroundJobRepository will pick up the ServerProxyClient from app state
     // when create_repositories is called in db_utils/mod.rs. Since we initialize

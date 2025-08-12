@@ -90,6 +90,28 @@ const processors: Processor[] = [
       dpa: 'https://aws.amazon.com/compliance/gdpr-center/'
     },
     euTransferSafeguards: 'Standard Contractual Clauses, EU data residency available, ISO 27001/27017/27018 certified'
+  },
+  {
+    name: 'Auth0',
+    purpose: 'Authentication and identity management services',
+    regions: 'United States, European Union',
+    links: {
+      privacy: 'https://auth0.com/privacy',
+      terms: 'https://auth0.com/terms',
+      dpa: 'https://auth0.com/docs/compliance/gdpr/data-processing-agreement'
+    },
+    euTransferSafeguards: 'Standard Contractual Clauses, EU data residency available'
+  },
+  {
+    name: 'Mailgun',
+    purpose: 'Transactional email delivery services',
+    regions: 'United States, European Union',
+    links: {
+      privacy: 'https://www.mailgun.com/legal/privacy-policy/',
+      terms: 'https://www.mailgun.com/legal/terms/',
+      dpa: 'https://www.mailgun.com/legal/dpa/'
+    },
+    euTransferSafeguards: 'Standard Contractual Clauses with supplementary measures'
   }
 ];
 
@@ -113,20 +135,20 @@ export default function SubprocessorsList({ region }: SubprocessorsListProps) {
             <p><strong>Legal Documents:</strong></p>
             <ul className="list-disc list-inside text-sm space-y-1 ml-4">
               <li>
-                <a href={processor.links.privacy} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                <a href={processor.links.privacy} target="_blank" rel="noopener noreferrer" className="link-primary">
                   Privacy Policy
                 </a>
               </li>
               {processor.links.terms && (
                 <li>
-                  <a href={processor.links.terms} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                  <a href={processor.links.terms} target="_blank" rel="noopener noreferrer" className="link-primary">
                     Terms of Service
                   </a>
                 </li>
               )}
               {processor.links.dpa && (
                 <li>
-                  <a href={processor.links.dpa} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                  <a href={processor.links.dpa} target="_blank" rel="noopener noreferrer" className="link-primary">
                     Data Processing Agreement
                   </a>
                 </li>

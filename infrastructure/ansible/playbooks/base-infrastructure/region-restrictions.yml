@@ -1,0 +1,397 @@
+---
+# Region Restrictions and Geolocation Setup
+# ========================================
+# This playbook configures region-based access restrictions
+# to ensure compliance with territorial restrictions as per
+# the Terms of Service (EU/EEA, UK, US only)
+# ========================================
+
+- name: Configure Region Restrictions and Geolocation
+  hosts: all
+  become: yes
+  vars:
+    # Approved regions as per Terms of Service
+    approved_regions:
+      eu:
+        countries: 
+          - AT  # Austria
+          - BE  # Belgium
+          - BG  # Bulgaria
+          - HR  # Croatia
+          - CY  # Cyprus
+          - CZ  # Czech Republic
+          - DK  # Denmark
+          - EE  # Estonia
+          - FI  # Finland
+          - FR  # France
+          - DE  # Germany
+          - GR  # Greece
+          - HU  # Hungary
+          - IE  # Ireland
+          - IT  # Italy
+          - LV  # Latvia
+          - LT  # Lithuania
+          - LU  # Luxembourg
+          - MT  # Malta
+          - NL  # Netherlands
+          - PL  # Poland
+          - PT  # Portugal
+          - RO  # Romania
+          - SK  # Slovakia
+          - SI  # Slovenia
+          - ES  # Spain
+          - SE  # Sweden
+          - IS  # Iceland (EEA)
+          - LI  # Liechtenstein (EEA)
+          - NO  # Norway (EEA)
+      uk:
+        countries:
+          - GB  # United Kingdom
+      us:
+        countries:
+          - US  # United States (excluding territories)
+    
+    # Sanctioned/Restricted countries (always blocked)
+    blocked_countries:
+      - CU  # Cuba
+      - IR  # Iran
+      - KP  # North Korea
+      - SY  # Syria
+      - RU  # Russia
+      - BY  # Belarus
+      # Ukraine occupied regions handled separately via IP ranges
+    
+    # GeoIP database configuration
+    geoip_db_path: /usr/share/GeoIP
+    maxmind_license_key: "{{ maxmind_license_key | default('') }}"
+    
+  tasks:
+    # ========================================
+    # STEP 1: INSTALL GEOIP DEPENDENCIES
+    # ========================================
+    - name: Install GeoIP dependencies
+      apt:
+        name:
+          - geoip-database
+          - libgeoip1
+          - libgeoip-dev
+          - geoipupdate
+          - nginx-module-geoip
+        state: present
+        update_cache: yes
+    
+    - name: Create GeoIP directory
+      file:
+        path: "{{ geoip_db_path }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+    
+    # ========================================
+    # STEP 2: CONFIGURE MAXMIND GEOIP UPDATE
+    # ========================================
+    - name: Configure GeoIP update (if license key provided)
+      when: maxmind_license_key != ''
+      block:
+        - name: Create GeoIP.conf for MaxMind
+          copy:
+            dest: /etc/GeoIP.conf
+            content: |
+              # GeoIP.conf for MaxMind GeoIP2 databases
+              AccountID {{ maxmind_account_id | default('0') }}
+              LicenseKey {{ maxmind_license_key }}
+              EditionIDs GeoLite2-Country GeoLite2-City
+              DatabaseDirectory {{ geoip_db_path }}
+            mode: '0600'
+        
+        - name: Update GeoIP databases
+          command: geoipupdate
+          changed_when: false
+        
+        - name: Setup automatic GeoIP database updates
+          cron:
+            name: "Update GeoIP databases"
+            hour: "3"
+            minute: "15"
+            day: "*"
+            weekday: "3"  # Weekly on Wednesday
+            job: "/usr/bin/geoipupdate"
+    
+    # ========================================
+    # STEP 3: NGINX GEOIP CONFIGURATION
+    # ========================================
+    - name: Create Nginx GeoIP configuration
+      copy:
+        dest: /etc/nginx/conf.d/geoip.conf
+        content: |
+          # GeoIP Configuration for Region Restrictions
+          # Load GeoIP module (may already be loaded)
+          load_module modules/ngx_http_geoip_module.so;
+          
+          # GeoIP database paths
+          geoip_country {{ geoip_db_path }}/GeoIP.dat;
+          geoip_city {{ geoip_db_path }}/GeoIPCity.dat;
+          
+          # Map country codes to allowed/blocked status
+          map $geoip_country_code $allowed_country {
+              default 0;
+              
+              # EU/EEA Countries
+              AT 1;  # Austria
+              BE 1;  # Belgium
+              BG 1;  # Bulgaria
+              HR 1;  # Croatia
+              CY 1;  # Cyprus
+              CZ 1;  # Czech Republic
+              DK 1;  # Denmark
+              EE 1;  # Estonia
+              FI 1;  # Finland
+              FR 1;  # France
+              DE 1;  # Germany
+              GR 1;  # Greece
+              HU 1;  # Hungary
+              IE 1;  # Ireland
+              IT 1;  # Italy
+              LV 1;  # Latvia
+              LT 1;  # Lithuania
+              LU 1;  # Luxembourg
+              MT 1;  # Malta
+              NL 1;  # Netherlands
+              PL 1;  # Poland
+              PT 1;  # Portugal
+              RO 1;  # Romania
+              SK 1;  # Slovakia
+              SI 1;  # Slovenia
+              ES 1;  # Spain
+              SE 1;  # Sweden
+              IS 1;  # Iceland (EEA)
+              LI 1;  # Liechtenstein (EEA)
+              NO 1;  # Norway (EEA)
+              
+              # United Kingdom
+              GB 1;
+              
+              # United States
+              US 1;
+          }
+          
+          # Map for sanctioned countries (always blocked)
+          map $geoip_country_code $sanctioned_country {
+              default 0;
+              
+              # OFAC Sanctioned Countries
+              CU 1;  # Cuba
+              IR 1;  # Iran
+              KP 1;  # North Korea
+              SY 1;  # Syria
+              
+              # Additional Sanctions
+              RU 1;  # Russia
+              BY 1;  # Belarus
+          }
+      notify: reload nginx
+    
+    # ========================================
+    # STEP 4: UPDATE NGINX SITE CONFIGURATION
+    # ========================================
+    - name: Update Nginx site configuration with region restrictions
+      blockinfile:
+        path: /etc/nginx/sites-available/vibe-manager-ssl
+        insertafter: "server_name"
+        marker: "# {mark} ANSIBLE MANAGED BLOCK - REGION RESTRICTIONS"
+        block: |
+          
+              # ===== REGION-BASED ACCESS CONTROL =====
+              # Block sanctioned countries immediately
+              if ($sanctioned_country) {
+                  return 451;  # HTTP 451: Unavailable For Legal Reasons
+              }
+              
+              # Block non-approved countries
+              if ($allowed_country = 0) {
+                  return 403;  # HTTP 403: Forbidden
+              }
+              
+              # Custom error pages for blocked access
+              error_page 451 /451.html;
+              error_page 403 /403_region.html;
+              
+              # Log blocked access attempts
+              access_log /var/log/nginx/blocked_access.log combined if=$sanctioned_country;
+              access_log /var/log/nginx/restricted_access.log combined if=$allowed_country;
+      notify: reload nginx
+    
+    # ========================================
+    # STEP 5: CREATE ERROR PAGES
+    # ========================================
+    - name: Create 451 error page (sanctioned countries)
+      copy:
+        dest: /var/www/html/451.html
+        content: |
+          <!DOCTYPE html>
+          <html lang="en">
+          <head>
+              <meta charset="UTF-8">
+              <title>451 - Unavailable For Legal Reasons</title>
+              <style>
+                  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
+                         display: flex; justify-content: center; align-items: center; 
+                         height: 100vh; margin: 0; background: #f5f5f5; }
+                  .container { text-align: center; padding: 2rem; background: white; 
+                               border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+                  h1 { color: #d32f2f; margin-bottom: 1rem; }
+                  p { color: #666; line-height: 1.6; max-width: 500px; }
+                  .code { font-size: 3rem; color: #d32f2f; margin-bottom: 1rem; }
+              </style>
+          </head>
+          <body>
+              <div class="container">
+                  <div class="code">451</div>
+                  <h1>Unavailable For Legal Reasons</h1>
+                  <p>
+                      Access to this service is not available from your location due to legal restrictions 
+                      and international sanctions compliance requirements.
+                  </p>
+                  <p>
+                      We are required to comply with applicable export control laws and sanctions regulations.
+                  </p>
+              </div>
+          </body>
+          </html>
+    
+    - name: Create 403 region error page
+      copy:
+        dest: /var/www/html/403_region.html
+        content: |
+          <!DOCTYPE html>
+          <html lang="en">
+          <head>
+              <meta charset="UTF-8">
+              <title>Service Not Available in Your Region</title>
+              <style>
+                  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
+                         display: flex; justify-content: center; align-items: center; 
+                         height: 100vh; margin: 0; background: #f5f5f5; }
+                  .container { text-align: center; padding: 2rem; background: white; 
+                               border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); 
+                               max-width: 600px; }
+                  h1 { color: #1976d2; margin-bottom: 1rem; }
+                  p { color: #666; line-height: 1.6; margin-bottom: 1rem; }
+                  .regions { background: #f0f7ff; padding: 1rem; border-radius: 4px; 
+                            margin: 1.5rem 0; }
+                  .regions h3 { color: #1976d2; margin-bottom: 0.5rem; }
+                  ul { text-align: left; display: inline-block; margin: 0.5rem 0; }
+                  .contact { margin-top: 2rem; font-size: 0.9rem; color: #999; }
+              </style>
+          </head>
+          <body>
+              <div class="container">
+                  <h1>Service Not Available in Your Region</h1>
+                  <p>
+                      We're sorry, but Vibe Manager is currently not available in your region.
+                  </p>
+                  <div class="regions">
+                      <h3>Currently Available In:</h3>
+                      <ul>
+                          <li>European Union / European Economic Area</li>
+                          <li>United Kingdom</li>
+                          <li>United States</li>
+                      </ul>
+                  </div>
+                  <p>
+                      We are working to expand our service to more regions in the future. 
+                      Please check back later for updates on availability.
+                  </p>
+                  <div class="contact">
+                      For questions, please contact: legal@vibemanager.app
+                  </div>
+              </div>
+          </body>
+          </html>
+    
+    # ========================================
+    # STEP 6: CONFIGURE IP RANGE BLOCKING
+    # ========================================
+    - name: Create IP range blocklist for occupied territories
+      copy:
+        dest: /etc/nginx/blocked_ip_ranges.conf
+        content: |
+          # Blocked IP ranges for occupied/disputed territories
+          # Crimea region IPs
+          deny 5.149.208.0/21;
+          deny 37.27.0.0/16;
+          deny 80.91.160.0/20;
+          deny 91.205.0.0/17;
+          
+          # Add additional IP ranges as needed
+          # Format: deny x.x.x.x/xx;
+    
+    - name: Include IP blocklist in Nginx configuration
+      lineinfile:
+        path: /etc/nginx/sites-available/vibe-manager-ssl
+        insertafter: "server_name"
+        line: "    include /etc/nginx/blocked_ip_ranges.conf;"
+      notify: reload nginx
+    
+    # ========================================
+    # STEP 7: LOGGING AND MONITORING
+    # ========================================
+    - name: Create log rotation for blocked access logs
+      copy:
+        dest: /etc/logrotate.d/nginx-blocked
+        content: |
+          /var/log/nginx/blocked_access.log
+          /var/log/nginx/restricted_access.log {
+              daily
+              missingok
+              rotate 30
+              compress
+              delaycompress
+              notifempty
+              create 640 www-data adm
+              sharedscripts
+              postrotate
+                  if [ -f /var/run/nginx.pid ]; then
+                      kill -USR1 `cat /var/run/nginx.pid`
+                  fi
+              endscript
+          }
+    
+    # ========================================
+    # STEP 8: APPLICATION-LEVEL CONFIGURATION
+    # ========================================
+    - name: Set environment variables for region checking
+      lineinfile:
+        path: /opt/vibe-manager/.env
+        line: "{{ item }}"
+        create: yes
+      loop:
+        - "ENFORCE_REGION_RESTRICTIONS=true"
+        - "ALLOWED_REGIONS=EU,UK,US"
+        - "GEOIP_DATABASE_PATH={{ geoip_db_path }}"
+        - "LOG_BLOCKED_ACCESS=true"
+    
+    # ========================================
+    # STEP 9: VERIFY CONFIGURATION
+    # ========================================
+    - name: Test Nginx configuration
+      command: nginx -t
+      changed_when: false
+    
+    - name: Display configuration summary
+      debug:
+        msg:
+          - "=== REGION RESTRICTIONS CONFIGURED ==="
+          - "Allowed Regions: EU/EEA, UK, US"
+          - "Blocked Countries: {{ blocked_countries | join(', ') }}"
+          - "GeoIP Database: {{ geoip_db_path }}"
+          - "Error Pages: /451.html, /403_region.html"
+          - "Logs: /var/log/nginx/blocked_access.log"
+          - "      /var/log/nginx/restricted_access.log"
+    
+  handlers:
+    - name: reload nginx
+      systemd:
+        name: nginx
+        state: reloaded

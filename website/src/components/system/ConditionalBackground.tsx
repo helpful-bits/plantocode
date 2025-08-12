@@ -8,8 +8,10 @@ import { ErrorBoundary } from '@/components/system/ErrorBoundary';
 export function ConditionalBackground() {
   const pathname = usePathname();
   
-  // Don't render particles on legal pages
-  if (pathname === '/privacy' || pathname === '/terms') {
+  // Don't render particles on legal pages (including regional legal pages and redirect routes)
+  if (pathname === '/privacy' || 
+      pathname === '/terms' || 
+      pathname.startsWith('/legal/')) {
     return null;
   }
   

@@ -29,9 +29,8 @@ use crate::error::AppError;
 use crate::services::config_cache_service::ConfigCache;
 use crate::utils::FileLockManager;
 use dotenvy::dotenv;
-use log::{debug, error, info, warn, LevelFilter};
+use log::{debug, error, info, warn};
 use serde::{Deserialize, Serialize};
-use tauri_plugin_log::{Builder as LogBuilder, Target, TargetKind};
 use std::collections::HashMap;
 use std::sync::{atomic::AtomicBool, Arc, Mutex};
 use std::time::Duration;
@@ -94,27 +93,20 @@ pub(crate) static GLOBAL_APP_HANDLE: OnceCell<tauri::AppHandle> = OnceCell::cons
 fn main() {
     dotenv().ok();
 
-    // Note: Logging is now initialized via tauri-plugin-log in the builder chain
+    // Initialize env_logger for console logging
     // Set RUST_LOG=info,vibe_manager=debug for enhanced logging during development
     // Set RUST_LOG=warn for production to reduce noise
+    env_logger::init();
 
     let tauri_context = tauri::generate_context!();
 
     let mut builder = tauri::Builder::default()
-        // Initialize logging first before other plugins
-        .plugin(
-            LogBuilder::new()
-                .target(Target::new(TargetKind::Stdout))
-                .target(Target::new(TargetKind::Webview))
-                .level(LevelFilter::Debug)
-                .level_for("tauri_plugin_updater", LevelFilter::Trace)
-                .build()
-        )
         .manage(AppState::default())
         .manage(ConfigCache::new(Mutex::new(HashMap::new())))
         // Initialize RwLock containers for deferred API client initialization
         .manage(Arc::new(RwLock::new(Option::<Arc<crate::api_clients::server_proxy_client::ServerProxyClient>>::None)))
         .manage(Arc::new(RwLock::new(Option::<Arc<crate::api_clients::billing_client::BillingClient>>::None)))
+        .manage(Arc::new(RwLock::new(Option::<Arc<crate::api_clients::consent_client::ConsentClient>>::None)))
         .manage(Arc::new(RwLock::new(Option::<Arc<dyn crate::api_clients::client_trait::ApiClient>>::None)))
         .manage(Arc::new(RwLock::new(Option::<Arc<dyn crate::api_clients::client_trait::TranscriptionClient>>::None)))
         // TokenManager will be created in reinitialize_api_clients with the AppHandle
@@ -213,6 +205,11 @@ fn main() {
             commands::billing_commands::get_spending_analytics_command,
             commands::billing_commands::get_spending_forecast_command,
             commands::billing_commands::get_payment_methods_command,
+            // Consent commands
+            commands::consent_commands::get_current_legal_documents_command,
+            commands::consent_commands::get_consent_status_command,
+            commands::consent_commands::verify_consent_command,
+            commands::consent_commands::accept_consent_command,
             // Auto top-off commands
             commands::billing_commands::get_auto_top_off_settings_command,
             commands::billing_commands::update_auto_top_off_settings_command,

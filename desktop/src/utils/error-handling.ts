@@ -478,6 +478,12 @@ function applyContextSpecificTransformations(
   // Handle specific billing error types with detailed user-friendly messages
   if (errorType) {
     switch (errorType) {
+      case ErrorType.ACTION_REQUIRED:
+        if (parsedTauriError?.errorCode === 'CONSENT_REQUIRED' || (errorMessage && errorMessage.toLowerCase().includes('consent'))) {
+          return "You must accept the latest Terms and Privacy Policy to continue.";
+        }
+        return "Action required to complete this operation. Please review your settings.";
+      
       case ErrorType.PAYMENT_FAILED:
         return "Payment failed. Please check your payment method and try again.";
       
@@ -901,6 +907,9 @@ export function mapRustErrorCodeToErrorType(code: string): ErrorType {
     // Handle generic billing error
     case "BILLING":
       return ErrorType.PAYMENT_FAILED;
+    // Handle consent-related errors
+    case "CONSENT_REQUIRED":
+      return ErrorType.ACTION_REQUIRED;
     // Map additional server error variants to appropriate frontend types
     case "AUTH":
       return ErrorType.PERMISSION_ERROR;
@@ -935,6 +944,9 @@ export function createUserFriendlyErrorMessage(
 
   switch (type) {
     case ErrorType.ACTION_REQUIRED:
+      if (errorInfo.metadata?.errorCode === 'CONSENT_REQUIRED' || (message && message.toLowerCase().includes('consent'))) {
+        return "You must accept the latest Terms and Privacy Policy to continue.";
+      }
       return message || "Action required to complete this operation. Please review your settings.";
     
     case ErrorType.PAYMENT_FAILED:
