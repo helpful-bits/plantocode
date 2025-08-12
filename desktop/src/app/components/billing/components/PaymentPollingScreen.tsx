@@ -1,5 +1,11 @@
 "use client";
 
+// TODO(legal-compliance): At checkout, capture two UNTICKED checkbox consents:
+// 1. "Start services immediately during withdrawal period" 
+// 2. "I acknowledge I lose withdrawal rights once service is fully performed"
+// Store timestamps, send durable medium confirmation (email) immediately after purchase
+// confirming these consents. Enable pro-rata refunds for credits consumed before withdrawal.
+
 import { useState, useEffect, useRef } from "react";
 import { Loader2, CheckCircle, XCircle, AlertCircle } from "lucide-react";
 import { Button } from "@/ui/button";
