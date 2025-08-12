@@ -2,10 +2,9 @@
 
 import React from 'react';
 import { GlassCard } from '@/components/ui/GlassCard';
-import { Button } from '@/components/ui/button';
 import { MessageSquare, Users, Lightbulb, Bug } from 'lucide-react';
-import Link from 'next/link';
 import Reveal from '@/components/motion/Reveal';
+import Link from 'next/link';
 
 export function Community() {
   return (
@@ -52,6 +51,17 @@ export function Community() {
                   </div>
                   <p className="text-sm font-medium">Connect with developers</p>
                 </div>
+              </Reveal>
+
+              <Reveal delay={0.25}>
+                <Link
+                  className="inline-flex items-center justify-center px-6 py-3 text-sm font-medium text-primary-foreground bg-primary hover:bg-primary/90 rounded-lg transition-colors duration-200"
+                  href="https://vibemanager.featurebase.app"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Join the Community & Share Feedback
+                </Link>
               </Reveal>
 
             </div>

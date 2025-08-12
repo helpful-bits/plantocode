@@ -36,16 +36,76 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: 0.8,
     },
     {
-      url: `${baseUrl}/privacy`,
+      url: `${baseUrl}/legal`,
+      lastModified: now,
+      changeFrequency: 'monthly',
+      priority: 0.6,
+    },
+    {
+      url: `${baseUrl}/legal/eu/terms`,
       lastModified: now,
       changeFrequency: 'monthly',
       priority: 0.5,
     },
     {
-      url: `${baseUrl}/terms`,
+      url: `${baseUrl}/legal/eu/privacy`,
       lastModified: now,
       changeFrequency: 'monthly',
       priority: 0.5,
+    },
+    {
+      url: `${baseUrl}/legal/eu/imprint`,
+      lastModified: now,
+      changeFrequency: 'monthly',
+      priority: 0.5,
+    },
+    {
+      url: `${baseUrl}/legal/eu/subprocessors`,
+      lastModified: now,
+      changeFrequency: 'monthly',
+      priority: 0.5,
+    },
+    {
+      url: `${baseUrl}/legal/eu/withdrawal-policy`,
+      lastModified: now,
+      changeFrequency: 'monthly',
+      priority: 0.5,
+    },
+    {
+      url: `${baseUrl}/legal/us/terms`,
+      lastModified: now,
+      changeFrequency: 'monthly',
+      priority: 0.5,
+    },
+    {
+      url: `${baseUrl}/legal/us/privacy`,
+      lastModified: now,
+      changeFrequency: 'monthly',
+      priority: 0.5,
+    },
+    {
+      url: `${baseUrl}/about`,
+      lastModified: now,
+      changeFrequency: 'monthly',
+      priority: 0.7,
+    },
+    {
+      url: `${baseUrl}/contact`,
+      lastModified: now,
+      changeFrequency: 'monthly',
+      priority: 0.7,
+    },
+    {
+      url: `${baseUrl}/changelog`,
+      lastModified: now,
+      changeFrequency: 'weekly',
+      priority: 0.6,
+    },
+    {
+      url: `${baseUrl}/support`,
+      lastModified: now,
+      changeFrequency: 'monthly',
+      priority: 0.8,
     },
   ];
 }

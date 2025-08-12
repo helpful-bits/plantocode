@@ -43,9 +43,6 @@ const CallToAction = dynamic(() => import('@/components/landing/CallToAction').t
   loading: () => <div className="h-[30vh]" />,
 });
 
-const Footer = dynamic(() => import('@/components/landing/Footer').then(mod => ({ default: mod.Footer })), {
-  loading: () => <div className="h-[40vh]" />,
-});
 
 export const metadata: Metadata = {
   title: 'Vibe Manager | Context for Lost AI Agents',
@@ -207,22 +204,10 @@ export default function Home() {
     },
   ];
 
-  const faqPageJsonLd: any = {
-    '@type': 'FAQPage',
-    mainEntity: faqItems.map(item => ({
-      '@type': 'Question',
-      name: item.question,
-      acceptedAnswer: {
-        '@type': 'Answer',
-        text: item.answer,
-      },
-    })),
-  };
 
   return (
     <>
       <StructuredData data={softwareApplicationJsonLd} />
-      <StructuredData data={faqPageJsonLd} />
       {/* Background gradient */}
       <div className="fixed inset-0 -z-20" style={{ background: 'var(--background-gradient)' }} />
       {/* Page content */}
@@ -265,9 +250,6 @@ export default function Home() {
             />
           </section>
         </main>
-        
-        {/* Footer - Separated from CTA with divider */}
-        <Footer />
       </div>
     </>
   );

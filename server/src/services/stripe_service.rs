@@ -712,6 +712,10 @@ impl StripeService {
     }
 
     /// Create a Stripe Checkout Session (generic for payment and setup modes)
+    // TODO(legal-compliance): Store consent timestamps from checkout (immediate performance + 
+    // withdrawal acknowledgement). Send durable medium confirmation email immediately after 
+    // successful payment with consent details. Implement pro-rata refund calculation based 
+    // on credits consumed for withdrawal cases. Expose consent data for audit trail.
     pub async fn create_checkout_session(
         &self,
         idempotency_key: &str,

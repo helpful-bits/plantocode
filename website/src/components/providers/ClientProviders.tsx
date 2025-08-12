@@ -3,7 +3,11 @@
 import type { ReactNode } from 'react';
 import { ThemeProvider } from './ThemeProvider';
 import { SmoothScroll } from './SmoothScroll';
+import { ConsentProvider } from './ConsentProvider';
 import MotionProvider from '@/components/providers/MotionProvider';
+import { CookieConsentBanner } from '@/components/system/CookieConsentBanner';
+import { ConditionalAnalytics } from '@/components/system/ConditionalAnalytics';
+import { WebAuthProvider } from '@/components/auth/WebAuthProvider';
 import { useLenisLifecycle } from '@/hooks/useLenisLifecycle';
 import { usePerformanceSignals } from '@/hooks/usePerformanceSignals';
 
@@ -25,14 +29,20 @@ function PerformanceSignalsManager() {
 
 export function ClientProviders({ children }: ClientProvidersProps) {
   return (
-    <ThemeProvider>
-      <MotionProvider>
-        <SmoothScroll>
-          <PerformanceSignalsManager />
-          <LenisLifecycleManager />
-          {children}
-        </SmoothScroll>
-      </MotionProvider>
-    </ThemeProvider>
+    <ConsentProvider>
+      <WebAuthProvider>
+        <ThemeProvider>
+          <MotionProvider>
+            <SmoothScroll>
+              <PerformanceSignalsManager />
+              <LenisLifecycleManager />
+              <ConditionalAnalytics />
+              {children}
+              <CookieConsentBanner />
+            </SmoothScroll>
+          </MotionProvider>
+        </ThemeProvider>
+      </WebAuthProvider>
+    </ConsentProvider>
   );
 }

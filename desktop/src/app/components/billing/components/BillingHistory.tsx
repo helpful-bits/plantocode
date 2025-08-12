@@ -38,6 +38,7 @@ export function BillingHistory({ className, isInModal = false }: BillingHistoryP
   const lastFetchRef = useRef<number>(0);
   const fetchInProgressRef = useRef<boolean>(false);
   const itemsPerPageRef = useRef<number>(10); // Store current value in ref
+  const abortControllerRef = useRef<AbortController | null>(null);
   
   // State declarations - moved before useEffects
   const [activeTab, setActiveTab] = useState("transactions");
@@ -65,6 +66,7 @@ export function BillingHistory({ className, isInModal = false }: BillingHistoryP
   const [sliderPage, setSliderPage] = useState(1);
   const [providers, setProviders] = useState<ProviderWithModels[]>([]);
   const [selectedPreset, setSelectedPreset] = useState<'last1hour' | 'last24hours' | 'last7days' | 'thisweek' | 'thismonth' | 'last30days' | null>('last24hours');
+  const [tableVersion, setTableVersion] = useState(0); // Force re-render counter
   
   // Safety buffer for measurement calculations
   const SAFETY_BUFFER_PX = 1;
@@ -75,16 +77,23 @@ export function BillingHistory({ className, isInModal = false }: BillingHistoryP
   };
 
   const loadCreditHistory = useCallback(async (page: number = 1, search?: string, forceItemsPerPage?: number) => {
-    // Prevent multiple simultaneous fetches
-    if (fetchInProgressRef.current) {
-      console.warn('Fetch already in progress, skipping duplicate request');
-      return;
+    // Cancel any in-flight request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
     }
     
-    // Throttle requests - minimum 500ms between fetches
+    // Create new abort controller for this request
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
+    
+    // Reset fetch in progress flag when aborting previous request
+    fetchInProgressRef.current = false;
+    
+    // Throttle requests - minimum 500ms between fetches (skip for initial load)
     const now = Date.now();
     const timeSinceLastFetch = now - lastFetchRef.current;
-    if (timeSinceLastFetch < 500) {
+    if (lastFetchRef.current > 0 && timeSinceLastFetch < 500) {
       console.warn(`Throttling request, only ${timeSinceLastFetch}ms since last fetch`);
       return;
     }
@@ -93,6 +102,10 @@ export function BillingHistory({ className, isInModal = false }: BillingHistoryP
     lastFetchRef.current = now;
     
     try {
+      // Check if aborted before starting
+      if (abortController.signal.aborted) {
+        return;
+      }
       if (page > 1) {
         setIsTransactionsLoadingPage(true);
       } else {
@@ -109,9 +122,19 @@ export function BillingHistory({ className, isInModal = false }: BillingHistoryP
       const offset = (page - 1) * pageSize;
       const response = await getCreditHistory(pageSize, offset, search);
       
+      // Check if request was aborted
+      if (abortController.signal.aborted) {
+        return;
+      }
+      
       setTransactionHistoryData(response);
       setCurrentPage(page);
+      setTableVersion(v => v + 1); // Force table re-render
     } catch (err) {
+      // Ignore abort errors
+      if (err instanceof Error && err.name === 'AbortError') {
+        return;
+      }
       const errorMessage = getErrorMessage(err);
       setTransactionsError(errorMessage);
       console.error('Failed to load credit history:', err);
@@ -276,32 +299,55 @@ export function BillingHistory({ className, isInModal = false }: BillingHistoryP
         }
       );
   
+  // Calculate total pages for transactions
+  const totalTransactionPages = transactionHistoryData 
+    ? Math.max(1, Math.ceil(transactionHistoryData.totalCount / itemsPerPage))
+    : 1;
+  
   // Update ref when itemsPerPage changes
   useEffect(() => {
     itemsPerPageRef.current = itemsPerPage;
   }, [itemsPerPage]);
 
-  // Align server pagination with dynamic itemsPerPage in modal
+  // Track previous itemsPerPage to detect changes
+  const prevItemsPerPageRef = useRef<number | null>(null);
+  
+  // Recalculate page bounds when itemsPerPage changes
   useEffect(() => {
-    if (!isInModal || itemsPerPage <= 0) return;
-
-    if (activeTab === "transactions" && transactionHistoryData) {
-      const totalCount = transactionHistoryData.totalCount ?? 0;
-      const newTotalPages = Math.max(1, Math.ceil(totalCount / itemsPerPage));
-      const clampedPage = Math.min(currentPage, newTotalPages);
-      
-      if (clampedPage !== currentPage) {
-        setCurrentPage(clampedPage);
-        setSliderPage(clampedPage);
-      }
-      
-      // Refetch with new itemsPerPage
-      loadCreditHistory(clampedPage, searchTerm, itemsPerPage);
-    } else if (activeTab === "usage" && hasLoadedUsage) {
-      // Usage tab doesn't have server-side pagination, but we could reload if needed
-      // Since usage data is already client-side paginated by slicing, no need to refetch
+    if (itemsPerPage <= 0 || activeTab !== "transactions") return;
+    
+    // Skip if itemsPerPage hasn't actually changed or this is the initial render
+    if (prevItemsPerPageRef.current === null) {
+      prevItemsPerPageRef.current = itemsPerPage;
+      return; // Don't refetch on initial mount
     }
-  }, [itemsPerPage, isInModal, activeTab, transactionHistoryData, currentPage, searchTerm, loadCreditHistory, setCurrentPage, setSliderPage, hasLoadedUsage]);
+    
+    if (prevItemsPerPageRef.current === itemsPerPage) return;
+    
+    // Only proceed if we have data
+    if (!transactionHistoryData) return;
+    
+    const prevItemsPerPage = prevItemsPerPageRef.current;
+    prevItemsPerPageRef.current = itemsPerPage;
+    
+    // Calculate what data range we currently have
+    const currentStartIndex = (currentPage - 1) * prevItemsPerPage;
+    
+    // Calculate new page that would contain the same starting item
+    const newPage = Math.max(1, Math.floor(currentStartIndex / itemsPerPage) + 1);
+    const newTotalPages = Math.max(1, Math.ceil(transactionHistoryData.totalCount / itemsPerPage));
+    
+    // Clamp to valid range
+    const targetPage = Math.min(newPage, newTotalPages);
+    
+    if (targetPage !== currentPage) {
+      setCurrentPage(targetPage);
+      setSliderPage(targetPage);
+    }
+    
+    // Always refetch to get correct number of items for new itemsPerPage
+    loadCreditHistory(targetPage, searchTerm, itemsPerPage);
+  }, [itemsPerPage, activeTab, transactionHistoryData, currentPage, searchTerm, loadCreditHistory]); // Full dependencies for reliable updates
 
   // Initial load only - no dependencies on loadCreditHistory
   useEffect(() => {
@@ -309,7 +355,8 @@ export function BillingHistory({ className, isInModal = false }: BillingHistoryP
     
     const initialize = async () => {
       if (!mounted) return;
-      loadCreditHistory(1);
+      // Initial load with current itemsPerPage from ref
+      loadCreditHistory(1, '', itemsPerPageRef.current);
       // Load provider information for display names
       try {
         const providers = await getProvidersWithModels();
@@ -325,14 +372,18 @@ export function BillingHistory({ className, isInModal = false }: BillingHistoryP
     
     return () => {
       mounted = false;
+      // Cancel any pending requests on unmount
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
     };
   }, []); // Empty dependency array - only run once on mount
 
   // Listen for billing data updates - use refs to avoid dependencies
   useEffect(() => {
     const handleBillingDataUpdated = () => {
-      // Use current values without making them dependencies
-      loadCreditHistory(currentPage, searchTerm);
+      // Use current values from refs to avoid stale closure
+      loadCreditHistory(currentPage, searchTerm, itemsPerPageRef.current);
       // If usage tab is active, reload usage data too
       if (activeTab === "usage" && hasLoadedUsage) {
         loadUsageData();
@@ -361,30 +412,30 @@ export function BillingHistory({ className, isInModal = false }: BillingHistoryP
     }
   }, [startDate, endDate, activeTab, hasLoadedUsage, loadUsageData]);
 
-  const handleTransactionsRetry = () => {
-    loadCreditHistory(currentPage, searchTerm);
-  };
+  const handleTransactionsRetry = useCallback(() => {
+    loadCreditHistory(currentPage, searchTerm, itemsPerPageRef.current);
+  }, [currentPage, searchTerm, loadCreditHistory]);
 
-  const handlePageChange = (newPage: number) => {
+  const handlePageChange = useCallback((newPage: number) => {
     setCurrentPage(newPage);
     setSliderPage(newPage);
-    loadCreditHistory(newPage, searchTerm);
-  };
+    loadCreditHistory(newPage, searchTerm, itemsPerPageRef.current);
+  }, [searchTerm, loadCreditHistory]);
 
-  const handleSearch = () => {
+  const handleSearch = useCallback(() => {
     setCurrentPage(1);
     setSliderPage(1);
     setIsSearchActive(searchTerm.trim().length > 0);
-    loadCreditHistory(1, searchTerm);
-  };
+    loadCreditHistory(1, searchTerm, itemsPerPageRef.current);
+  }, [searchTerm, loadCreditHistory]);
 
-  const handleClearSearch = () => {
+  const handleClearSearch = useCallback(() => {
     setSearchTerm("");
     setCurrentPage(1);
     setSliderPage(1);
     setIsSearchActive(false);
-    loadCreditHistory(1, "");
-  };
+    loadCreditHistory(1, "", itemsPerPageRef.current);
+  }, [loadCreditHistory]);
 
   const handleSliderChange = useCallback((value: number[]) => {
     const newPage = value[0];
@@ -395,10 +446,10 @@ export function BillingHistory({ className, isInModal = false }: BillingHistoryP
     ((page: number) => {
       if (page !== currentPage) {
         setCurrentPage(page);
-        loadCreditHistory(page, searchTerm);
+        loadCreditHistory(page, searchTerm, itemsPerPageRef.current);
       }
     }),
-    [currentPage, searchTerm, loadCreditHistory] // loadCreditHistory is now stable
+    [currentPage, searchTerm, loadCreditHistory] // Use ref for itemsPerPage to avoid stale closure
   );
 
   useEffect(() => {
@@ -602,7 +653,7 @@ export function BillingHistory({ className, isInModal = false }: BillingHistoryP
                 </div>
 
                 <div className="flex-1 min-h-0 rounded-lg border border-border/40 overflow-hidden" ref={isInModal ? tableBodyContainerRef : undefined}>
-                    <table className="w-full">
+                    <table className="w-full" key={`transactions-${tableVersion}-${currentPage}-${itemsPerPage}`}>
                       <thead>
                         <tr className="border-b border-border/40 bg-muted/30">
                           <th className="text-left text-xs font-medium text-muted-foreground py-2 px-1">Price</th>
@@ -618,7 +669,7 @@ export function BillingHistory({ className, isInModal = false }: BillingHistoryP
                       {isTransactionsLoadingPage ? (
                         renderTransactionSkeletonRows()
                       ) : (
-                        transactionHistoryData.entries.slice(0, itemsPerPage).map((transaction: UnifiedCreditHistoryEntry) => {
+                        transactionHistoryData.entries.map((transaction: UnifiedCreditHistoryEntry) => {
                           const cachedTokens = (transaction.cacheReadTokens ?? 0) + (transaction.cacheWriteTokens ?? 0);
                           return (
                             <tr
@@ -656,24 +707,21 @@ export function BillingHistory({ className, isInModal = false }: BillingHistoryP
                   </table>
                 </div>
 
-                {Math.ceil(transactionHistoryData.totalCount / itemsPerPage) > 1 && transactionHistoryData.totalCount > 0 && (
+                {transactionHistoryData.totalCount > itemsPerPage && (
                   <div className="pt-2 border-t flex-shrink-0">
                     <div className="flex items-center gap-3">
                       <span className="text-xs text-muted-foreground whitespace-nowrap">
-                        1
+                        Page {currentPage} of {totalTransactionPages}
                       </span>
                       <Slider
                         value={[sliderPage]}
                         onValueChange={handleSliderChange}
-                        max={Math.ceil(transactionHistoryData.totalCount / itemsPerPage)}
+                        max={totalTransactionPages}
                         min={1}
                         step={1}
                         className="flex-1"
                         disabled={isTransactionsLoadingPage}
                       />
-                      <span className="text-xs text-muted-foreground whitespace-nowrap">
-                        {Math.ceil(transactionHistoryData.totalCount / itemsPerPage)}
-                      </span>
                       <div className="flex items-center gap-2 flex-shrink-0 ml-2">
                         <Button
                           variant="outline"
@@ -698,7 +746,7 @@ export function BillingHistory({ className, isInModal = false }: BillingHistoryP
                           variant="outline"
                           size="sm"
                           onClick={() => handlePageChange(currentPage + 1)}
-                          disabled={!transactionHistoryData.hasMore || isTransactionsLoadingPage}
+                          disabled={currentPage >= totalTransactionPages || isTransactionsLoadingPage}
                           className="h-8 px-3"
                         >
                           <ChevronRight className="h-4 w-4" />
@@ -706,8 +754,8 @@ export function BillingHistory({ className, isInModal = false }: BillingHistoryP
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => handlePageChange(Math.ceil(transactionHistoryData.totalCount / itemsPerPage))}
-                          disabled={!transactionHistoryData.hasMore || isTransactionsLoadingPage}
+                          onClick={() => handlePageChange(totalTransactionPages)}
+                          disabled={currentPage >= totalTransactionPages || isTransactionsLoadingPage}
                           className="h-8 px-2"
                           title="Last page"
                         >
@@ -878,7 +926,7 @@ export function BillingHistory({ className, isInModal = false }: BillingHistoryP
                       renderUsageSkeletonRows()
                     ) : (
                       <>
-                        {usageData.slice(0, itemsPerPage).map((usage, index) => (
+                        {usageData.map((usage, index) => (
                           <tr key={index} className="border-b border-border/30 hover:bg-muted/30 transition-colors">
                             <td className="py-3 px-1 text-xs text-muted-foreground truncate">
                               {usage.modelDisplayName}

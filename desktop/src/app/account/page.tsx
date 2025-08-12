@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { User, LogOut, Trash2, Mail, Phone, MapPin, Shield, CreditCard, Settings, Globe, Info, Database } from "lucide-react";
+import { User, LogOut, Trash2, Mail, Phone, MapPin, Shield, CreditCard, Settings, Globe, Info } from "lucide-react";
 import { open } from "@tauri-apps/plugin-shell";
 import { invoke } from "@tauri-apps/api/core";
 import { getVersion } from "@tauri-apps/api/app";
@@ -33,7 +33,6 @@ export default function AccountPage() {
   const { customerBillingInfo: billingInfo, isLoading: billingLoading } = useBillingData();
   const [isOpeningPortal, setIsOpeningPortal] = useState(false);
   const [appVersion, setAppVersion] = useState<string | null>(null);
-  const [databasePath, setDatabasePath] = useState<string | null>(null);
   
   // Region management state
   const [availableRegions, setAvailableRegions] = useState<ServerRegionInfo[]>([]);
@@ -127,17 +126,15 @@ export default function AccountPage() {
     const fetchInitialData = async () => {
       try {
         setIsLoadingRegions(true);
-        const [regions, currentUrl, version, dbPath] = await Promise.all([
+        const [regions, currentUrl, version] = await Promise.all([
           invoke<ServerRegionInfo[]>("get_available_regions_command", {}),
           invoke<string>("get_selected_server_url_command", {}),
-          getVersion(),
-          invoke<string>("get_database_path_command", {})
+          getVersion()
         ]);
         
         setAvailableRegions(regions);
         setCurrentRegion(currentUrl);
         setAppVersion(version);
-        setDatabasePath(dbPath);
       } catch (err) {
         console.error("Failed to fetch initial data:", err);
         showNotification({
@@ -440,14 +437,6 @@ export default function AccountPage() {
                 Vibe Manager {appVersion ? `v${appVersion}` : 'Loading...'}
               </p>
             </div>
-            {databasePath && (
-              <div className="flex items-center justify-center gap-3 text-muted-foreground">
-                <Database className="h-4 w-4" />
-                <p className="text-sm break-all">
-                  Database: {databasePath}
-                </p>
-              </div>
-            )}
           </CardContent>
         </Card>
       </div>

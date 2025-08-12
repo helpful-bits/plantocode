@@ -5,9 +5,8 @@ import { StructuredData } from '@/components/seo/StructuredData';
 import type { WebSite } from 'schema-dts';
 import { ClientProviders } from '@/components/providers/ClientProviders';
 import { GoogleAnalytics } from '@next/third-parties/google';
-import { InteractiveBackground } from '@/components/landing/InteractiveBackground';
-import { Suspense } from 'react';
-import { ErrorBoundary } from '@/components/system/ErrorBoundary';
+import { ConditionalBackground } from '@/components/system/ConditionalBackground';
+import { Footer } from '@/components/landing/Footer';
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://vibemanager.app'),
@@ -55,8 +54,8 @@ export const metadata: Metadata = {
       width: 1200,
       height: 630,
     }],
-    creator: '@vibemanager',
-    site: '@vibemanager',
+    creator: '@vibemanagerapp',
+    site: '@vibemanagerapp',
   },
   robots: {
     index: true,
@@ -72,7 +71,7 @@ export const metadata: Metadata = {
     },
   },
   verification: {
-    google: 'google-site-verification-code',
+    google: process.env.GOOGLE_SITE_VERIFICATION_CODE || '',
   },
   applicationName: 'Vibe Manager',
   appleWebApp: {
@@ -112,13 +111,10 @@ export default function RootLayout({
     <html suppressHydrationWarning className={fontClasses.variables} lang="en">
       <head />
       <body className={`${fontClasses.sans} bg-transparent overflow-x-hidden`}>
-        <Suspense fallback={null}>
-          <ErrorBoundary fallback={null}>
-            <InteractiveBackground />
-          </ErrorBoundary>
-        </Suspense>
+        <ConditionalBackground />
         <ClientProviders>
           {children}
+          <Footer />
         </ClientProviders>
         {process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID && (
           <GoogleAnalytics gaId={process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID} />
