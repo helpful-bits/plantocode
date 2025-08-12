@@ -6,6 +6,7 @@ pub mod config_commands;
 pub mod db_commands;
 pub mod featurebase_commands;
 pub mod file_system_commands;
+pub mod geo_commands;
 pub mod job_commands;
 pub mod regex_commands;
 pub mod session_commands;
@@ -30,6 +31,7 @@ pub mod logging_commands;
 
 // Re-export all command functions for easier imports
 pub use app_commands::{get_app_info, get_config_load_error, get_database_info_command};
+pub use geo_commands::detect_user_region_command;
 pub use file_system_commands::{
     create_directory_command, create_unique_filepath_command, delete_file_command,
     get_app_data_directory_command, get_home_directory_command, get_temp_dir_command,

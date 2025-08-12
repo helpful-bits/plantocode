@@ -649,7 +649,7 @@ export const CreditManager = ({ isOpen, onClose }: CreditManagerProps) => {
                       ) : isValidAmount() ? (
                         <>
                           <CreditCard className="h-5 w-5 mr-2" />
-                          Purchase ${formatUsdCurrency(getCurrentAmount()!)}
+                          Purchase {formatUsdCurrency(getCurrentAmount()!)}
                         </>
                       ) : (
                         'Select an amount to purchase'

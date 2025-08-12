@@ -24,7 +24,7 @@ export function LegalSettings() {
       setLoading(true);
       
       // Get user region from settings using invoke directly
-      const regionSetting = await invoke<string | null>('get_key_value_command', { key: 'user_region' });
+      const regionSetting = await invoke<string | null>('get_key_value_command', { key: 'user_legal_region' });
       const region = (regionSetting as 'eu' | 'us') || 'us';
       setUserRegion(region);
       
