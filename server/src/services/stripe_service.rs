@@ -384,7 +384,8 @@ impl StripeService {
 
     /// Search for a customer by user_id metadata
     pub async fn search_customer_by_user_id(&self, user_id: &Uuid) -> Result<Option<Customer>, StripeServiceError> {
-        let query = format!("metadata['user_id']:'\"{}\"'", user_id);
+        // Use Stripe's Search Query Language exactly - no escaped quotes inside the value
+        let query = format!("metadata['user_id']:'{}'", user_id);
         let search_result = self.search_customers(&query).await?;
 
         if search_result.data.len() > 1 {
@@ -594,9 +595,10 @@ impl StripeService {
         interval: Option<&str>,
     ) -> Result<(stripe_types::Product, stripe_types::Price), StripeServiceError> {
         // Create product using direct API call with idempotency key
+        // Note: 'type' field is deprecated in current Stripe API
         let product_data = serde_json::json!({
             "name": product_name,
-            "type": "service"
+            "tax_code": "txcd_10103001"  // Tax code for SaaS/API credits
         });
         
         let product_response = self.make_stripe_request_with_idempotency(
@@ -613,7 +615,8 @@ impl StripeService {
         let mut price_data = serde_json::json!({
             "currency": currency.to_lowercase(),
             "product": product.id,
-            "unit_amount": price_amount
+            "unit_amount": price_amount,
+            "tax_behavior": "exclusive"  // Taxes calculated on top of price
         });
         
         // Add recurring information only if interval is provided (recurring credit plans)
@@ -729,6 +732,8 @@ impl StripeService {
         billing_address_collection: Option<bool>,
         automatic_tax: Option<bool>,
         invoice_creation_enabled: Option<bool>,
+        tax_id_collection_enabled: Option<bool>,
+        customer_update_address: Option<bool>,
     ) -> Result<stripe_types::CheckoutSession, StripeServiceError> {
         // Create checkout session using direct API call with idempotency key
         let mode_str = mode;
@@ -779,6 +784,9 @@ impl StripeService {
                 // Add capture_method for automatic payment capture
                 payment_intent_data.insert("capture_method".to_string(), serde_json::Value::String("automatic".to_string()));
                 
+                // Save the payment method for future use (off-session charges, auto top-off, etc.)
+                payment_intent_data.insert("setup_future_usage".to_string(), serde_json::Value::String("off_session".to_string()));
+                
                 // Add metadata to payment_intent_data
                 if !metadata.is_empty() {
                     let mut metadata_obj = serde_json::Map::new();
@@ -807,20 +815,35 @@ impl StripeService {
             _ => {}
         }
         
-        // Add billing address collection if specified
-        if let Some(collect_billing) = billing_address_collection {
-            if collect_billing {
-                session_data["billing_address_collection"] = serde_json::Value::String("required".to_string());
-            }
+        // Add billing address collection (default to required for tax compliance)
+        let collect_billing = billing_address_collection.unwrap_or(true);
+        if collect_billing {
+            session_data["billing_address_collection"] = serde_json::Value::String("required".to_string());
         }
         
-        // Add automatic tax if specified
-        if let Some(auto_tax) = automatic_tax {
-            if auto_tax {
-                let mut automatic_tax_obj = serde_json::Map::new();
-                automatic_tax_obj.insert("enabled".to_string(), serde_json::Value::Bool(true));
-                session_data["automatic_tax"] = serde_json::Value::Object(automatic_tax_obj);
-            }
+        // Add tax ID collection for B2B customers (VAT/GST numbers)
+        let collect_tax_ids = tax_id_collection_enabled.unwrap_or(true);
+        if collect_tax_ids && mode_str == "payment" {
+            session_data["tax_id_collection"] = serde_json::json!({
+                "enabled": true
+            });
+        }
+        
+        // Enable customer updates to persist billing addresses and business names (required for tax ID collection)
+        let update_address = customer_update_address.unwrap_or(true);
+        if update_address && mode_str == "payment" {
+            session_data["customer_update"] = serde_json::json!({
+                "address": "auto",
+                "name": "auto"  // Required when tax_id_collection is enabled
+            });
+        }
+        
+        // Add automatic tax (default to enabled for compliance)
+        let auto_tax = automatic_tax.unwrap_or(true);
+        if auto_tax && mode_str == "payment" {
+            let mut automatic_tax_obj = serde_json::Map::new();
+            automatic_tax_obj.insert("enabled".to_string(), serde_json::Value::Bool(true));
+            session_data["automatic_tax"] = serde_json::Value::Object(automatic_tax_obj);
         }
         
         // Add invoice creation if enabled for payment mode
@@ -896,6 +919,9 @@ impl StripeService {
             "collection_method": "charge_automatically",
             "auto_advance": true,
             "pending_invoice_items_behavior": "exclude",
+            "automatic_tax": {
+                "enabled": true  // Enable automatic tax calculation for invoices
+            },
             "metadata": invoice_metadata
         });
         
@@ -912,13 +938,19 @@ impl StripeService {
         info!("Created draft invoice: {}", invoice.id);
         
         // Step 2: Create TWO invoice items - one for credits, one for fee
-        // First item: Credits
+        // First item: Credits (using price_data for proper tax handling)
         let credits_item_data = serde_json::json!({
             "customer": customer_id,
             "invoice": invoice.id,
-            "amount": net_amount_cents,
-            "currency": currency.to_lowercase(),
-            "description": description,
+            "price_data": {
+                "currency": currency.to_lowercase(),
+                "unit_amount": net_amount_cents,
+                "tax_behavior": "exclusive",
+                "product_data": {
+                    "name": description,
+                    "tax_code": "txcd_10103001"  // Tax code for SaaS/API credits
+                }
+            }
         });
         
         let credits_response = self.make_stripe_request_with_idempotency(
@@ -933,13 +965,20 @@ impl StripeService {
         info!("Created credits invoice item: {} attached to invoice: {}", credits_item_id, invoice.id);
         
         // Second item: Processing fee (only if fee > 0)
+        // Note: Processing fees are typically taxable; use appropriate tax code
         if fee_amount_cents > 0 {
             let fee_item_data = serde_json::json!({
                 "customer": customer_id,
                 "invoice": invoice.id,
-                "amount": fee_amount_cents,
-                "currency": currency.to_lowercase(),
-                "description": "Processing fee",
+                "price_data": {
+                    "currency": currency.to_lowercase(),
+                    "unit_amount": fee_amount_cents,
+                    "tax_behavior": "exclusive",
+                    "product_data": {
+                        "name": "Processing fee",
+                        "tax_code": "txcd_10103001"  // Same tax code as credits (taxable service)
+                    }
+                }
             });
             
             let fee_response = self.make_stripe_request_with_idempotency(

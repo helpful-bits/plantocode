@@ -618,28 +618,32 @@ impl BillingService {
         // Create two line items: one for credits, one for processing fee
         let mut line_items = Vec::new();
         
-        // Credits line item
+        // Credits line item with tax configuration
         let credits_line = crate::stripe_types::checkout_session::CreateCheckoutSessionLineItems {
             price: None,
             price_data: Some(serde_json::json!({
                 "currency": "usd",
                 "unit_amount": net_amount_cents,
+                "tax_behavior": "exclusive",
                 "product_data": {
-                    "name": "Top-up Credits"
+                    "name": "Top-up Credits",
+                    "tax_code": "txcd_10103001"  // Tax code for SaaS/API credits
                 }
             })),
             quantity: Some(1),
         };
         line_items.push(credits_line);
         
-        // Processing fee line item
+        // Processing fee line item with tax configuration
         let fee_line = crate::stripe_types::checkout_session::CreateCheckoutSessionLineItems {
             price: None,
             price_data: Some(serde_json::json!({
                 "currency": "usd",
                 "unit_amount": fee_amount_cents,
+                "tax_behavior": "exclusive",
                 "product_data": {
-                    "name": "Processing fee"
+                    "name": "Processing fee",
+                    "tax_code": "txcd_10103001"  // Same tax code as credits (taxable service)
                 }
             })),
             quantity: Some(1),
@@ -671,9 +675,11 @@ impl BillingService {
             &success_url,
             &cancel_url,
             metadata,
-            None, // billing_address_collection not required for credit purchases
-            None, // automatic_tax not required for credit purchases
+            Some(true), // billing_address_collection required for tax compliance
+            Some(true), // automatic_tax enabled for proper tax calculation
             Some(true), // invoice_creation_enabled
+            Some(true), // tax_id_collection_enabled for B2B customers
+            Some(true), // customer_update_address to persist billing addresses
             // Rely on Stripe to email receipts/invoices for this Checkout Session; no manual customer email is sent.
         ).await.map_err(|e| AppError::External(format!("Failed to create checkout session: {}", e)))?;
 
@@ -770,6 +776,8 @@ impl BillingService {
             None, // billing_address_collection not applicable for setup mode
             None, // automatic_tax not applicable for setup mode
             None, // invoice_creation_enabled not applicable for setup mode
+            None, // tax_id_collection not applicable for setup mode
+            None, // customer_update_address not applicable for setup mode
         ).await.map_err(|e| AppError::External(format!("Failed to create setup checkout session: {}", e)))?;
 
         Ok(session)
