@@ -7,6 +7,7 @@ import { ClientProviders } from '@/components/providers/ClientProviders';
 import { GoogleAnalytics } from '@next/third-parties/google';
 import { ConditionalBackground } from '@/components/system/ConditionalBackground';
 import { Footer } from '@/components/landing/Footer';
+import { SpeedInsights } from '@vercel/speed-insights/next';
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://vibemanager.app'),
@@ -119,6 +120,7 @@ export default function RootLayout({
         {process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID && (
           <GoogleAnalytics gaId={process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID} />
         )}
+        <SpeedInsights />
         <StructuredData data={websiteJsonLd} />
       </body>
     </html>
