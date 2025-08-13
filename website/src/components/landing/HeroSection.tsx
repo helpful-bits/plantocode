@@ -40,32 +40,35 @@ export function HeroSection() {
         </Reveal>
 
         {/* Action buttons */}
-        <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
-          <Reveal delay={0.3}>
-            <motion.div
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-            >
-              <Button asChild className="relative overflow-hidden" size="xl" variant="cta">
-                <Link href="/download" className="no-hover-effect cursor-pointer">
-                  Get Your Weekend Back
-                </Link>
-              </Button>
-            </motion.div>
-          </Reveal>
+        <div className="flex flex-col items-center gap-4">
+          <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
+            <Reveal delay={0.3}>
+              <motion.div
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+              >
+                <Button asChild className="relative overflow-hidden" size="xl" variant="cta">
+                  <Link href="/download" className="no-hover-effect cursor-pointer">
+                    Download for Mac
+                  </Link>
+                </Button>
+              </motion.div>
+            </Reveal>
 
-          <Reveal delay={0.35}>
-            <motion.div
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-            >
-              <Button asChild size="lg" variant="gradient-outline">
-                <Link href="#how-it-works" className="no-hover-effect cursor-pointer">
-                  See How It Works
-                </Link>
-              </Button>
-            </motion.div>
-          </Reveal>
+            <Reveal delay={0.35}>
+              <motion.div
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+              >
+                <Button asChild size="lg" variant="gradient-outline">
+                  <Link href="#how-it-works" className="no-hover-effect cursor-pointer">
+                    See How It Works
+                  </Link>
+                </Button>
+              </motion.div>
+            </Reveal>
+          </div>
+          <span className="text-sm text-muted-foreground whitespace-nowrap">Windows coming soon</span>
         </div>
 
         {/* Trust indicators */}

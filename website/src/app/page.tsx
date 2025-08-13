@@ -244,7 +244,7 @@ export default function Home() {
           <section className="pt-8">
             <CallToAction
               buttonLink="/download"
-              buttonText="Download Vibe Manager Free"
+              buttonText="Download for Mac"
               description="Download the app, point it to your project, and get your first AI-curated implementation plan in minutes. It's time to get back to building."
               title="Ready to Stop Babysitting Your AI?"
             />
