@@ -35,13 +35,23 @@ curl https://api.stripe.com/v1/tax_ids -u sk_live_xxx: -d type=eu_vat -d value=D
 curl https://api.stripe.com/v1/tax/registrations -u sk_live_xxx: \
   -d country=DE -d country_options[de][type]=standard -d active_from=now
 
-# 4) Checkout that actually calculates tax + collects VAT IDs
+# 4) Checkout that actually calculates tax + collects VAT IDs + saves card
 curl https://api.stripe.com/v1/checkout/sessions -u sk_live_xxx: \
   -d mode=payment \
-  -d success_url="https://example.com/success" -d cancel_url="https://example.com/cancel" \
-  -d automatic_tax[enabled]=true -d billing_address_collection=required \
-  -d tax_id_collection[enabled]=true -d customer_update[address]=auto \
-  -d "line_items[0][price]"=price_xxx -d "line_items[0][quantity]"=1
+  -d success_url="https://example.com/success" \
+  -d cancel_url="https://example.com/cancel" \
+  -d automatic_tax[enabled]=true \
+  -d billing_address_collection=required \
+  -d tax_id_collection[enabled]=true \
+  -d customer_update[address]=auto \
+  -d customer_update[name]=auto \
+  -d payment_intent_data[setup_future_usage]=off_session \
+  -d "line_items[0][price_data][currency]=usd" \
+  -d "line_items[0][price_data][unit_amount]=5000" \
+  -d "line_items[0][price_data][tax_behavior]=exclusive" \
+  -d "line_items[0][price_data][product_data][name]=50.00 Credits" \
+  -d "line_items[0][price_data][product_data][tax_code]=txcd_10103001" \
+  -d "line_items[0][quantity]"=1
 
 # 5) TEMP: Block UK until GB VAT is active (allow select B2B exceptions)
 # Create an allow-list for specific B2B emails (edit)
@@ -459,22 +469,29 @@ curl https://api.stripe.com/v1/tax/registrations \
 **Checkout Sessions**
 
 ```bash
-# One‑time or subscriptions — collect addresses + tax IDs + auto tax
+# One‑time or subscriptions — collect addresses + tax IDs + auto tax, and save card for later
 curl https://api.stripe.com/v1/checkout/sessions \
   -u sk_live_xxx: \
   -d mode=payment \                            # or subscription
   -d success_url="https://example.com/success" \
   -d cancel_url="https://example.com/cancel" \
   -d automatic_tax[enabled]=true \             # triggers address collection if needed
-  -d billing_address_collection=auto \         # ensures you have an address
+  -d billing_address_collection=required \     # ensures you have an address
   -d tax_id_collection[enabled]=true \         # collect VAT/GB VAT/etc for B2B
   -d customer_update[address]=auto \           # persist address back to Customer
-  -d "line_items[0][price]"=price_xxx \
+  -d customer_update[name]=auto \              # persist business name (needed for tax IDs)
+  -d payment_intent_data[setup_future_usage]=off_session \  # save card used today for future off‑session charges
+  -d "line_items[0][price_data][currency]=usd" \
+  -d "line_items[0][price_data][unit_amount]=5000" \
+  -d "line_items[0][price_data][tax_behavior]=exclusive" \
+  -d "line_items[0][price_data][product_data][name]=50.00 Credits" \
+  -d "line_items[0][price_data][product_data][tax_code]=txcd_10103001" \
   -d "line_items[0][quantity]"=1
 ```
 
-**Invoices / Subscriptions (API‑driven)**
+````
 
+**Invoices / Subscriptions (API‑driven)**
 ```bash
 # Invoices
 curl https://api.stripe.com/v1/invoices \
@@ -488,7 +505,7 @@ curl https://api.stripe.com/v1/subscriptions \
   -d customer=cus_xxx \
   -d items[0][price]=price_xxx \
   -d automatic_tax[enabled]=true
-```
+````
 
 **Products/Prices**
 
@@ -518,7 +535,7 @@ Run a **Reports API** job and fetch the file programmatically:
 # US/EU/GB/CA itemized transactions with tax details
 curl https://api.stripe.com/v1/reporting/report_runs \
   -u sk_live_xxx: \
-  -d report_type=tax.transactions.itemized \
+  -d report_type=tax.transactions.itemized.2 \
   -d parameters[interval_start]=2025-07-01 \
   -d parameters[interval_end]=2025-07-31
 
@@ -549,6 +566,7 @@ curl https://api.stripe.com/v1/reporting/report_runs \
 * **Capture tax IDs for B2B.** With `tax_id_collection[enabled]=true`, Stripe applies reverse charge/zero‑rate when allowed.
 * **Keep product tax code accurate.** Default to `txcd_10103001` (SaaS – business use). Override per product/price if you add a different offering.
 * **EU strategy:** Prefer **OSS** for B2C across the EU. If you configure each EU country separately in Stripe, you’re opting **out** of OSS and must **file in each**.
+* **Customer Search (dev note):** When looking up customers by metadata, use `metadata['user_id']:'UUID'` (no extra quotes) and avoid using Search for strict read‑after‑write flows; persist the `customer.id` in your DB.
 
 ---
 
