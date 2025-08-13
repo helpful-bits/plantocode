@@ -923,6 +923,39 @@ async fn handle_checkout_session_completed(
                 let user_id = Uuid::parse_str(user_id_str)
                     .map_err(|e| AppError::InvalidArgument(format!("Invalid user_id UUID: {}", e)))?;
                 
+                // Set the payment method as default ONLY if customer doesn't have one already
+                // This preserves existing defaults while helping new customers
+                if let Some(payment_method_id) = &payment_intent.payment_method {
+                    if let Some(customer_id) = &payment_intent.customer {
+                        // Check if customer already has a default payment method
+                        match stripe_service.get_customer(customer_id).await {
+                            Ok(customer) => {
+                                let has_default = customer.invoice_settings
+                                    .as_ref()
+                                    .and_then(|settings| settings.default_payment_method.as_ref())
+                                    .is_some();
+                                
+                                if !has_default {
+                                    info!("Customer {} has no default payment method, setting {} as default", customer_id, payment_method_id);
+                                    let idempotency_key = format!("set_default_pm_checkout_{}_{}", session.id, payment_method_id);
+                                    if let Err(e) = stripe_service.set_default_payment_method(&idempotency_key, customer_id, payment_method_id).await {
+                                        warn!("Failed to set default payment method after checkout: {}", e);
+                                        // Non-critical error - continue processing
+                                    } else {
+                                        info!("Successfully set default payment method {} for customer {}", payment_method_id, customer_id);
+                                    }
+                                } else {
+                                    info!("Customer {} already has a default payment method, preserving existing default", customer_id);
+                                }
+                            },
+                            Err(e) => {
+                                warn!("Failed to retrieve customer {} to check default PM: {}", customer_id, e);
+                                // Non-critical error - continue processing
+                            }
+                        }
+                    }
+                }
+                
                 let context = PaymentCompletionContext::CreditPurchase {
                     payment_intent,
                     user_id,
