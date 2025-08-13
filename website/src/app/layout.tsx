@@ -8,6 +8,7 @@ import { GoogleAnalytics } from '@next/third-parties/google';
 import { ConditionalBackground } from '@/components/system/ConditionalBackground';
 import { Footer } from '@/components/landing/Footer';
 import { SpeedInsights } from '@vercel/speed-insights/next';
+import { Analytics } from '@vercel/analytics/next';
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://vibemanager.app'),
@@ -36,7 +37,7 @@ export const metadata: Metadata = {
     url: 'https://vibemanager.app/',
     siteName: 'Vibe Manager',
     images: [{
-      url: 'https://d2tyb0wucqqf48.cloudfront.net/og-image.png',
+      url: 'https://d2tyb0wucqqf48.cloudfront.net/images/og-image.png',
       width: 1200,
       height: 630,
       alt: 'Vibe Manager - AI-Powered Context Curation for Large Codebases',
@@ -50,7 +51,7 @@ export const metadata: Metadata = {
     title: 'Vibe Manager | Context for Lost AI Agents',
     description: 'Tired of babysitting your AI agent? Vibe Manager is the competent middle manager that curates perfect context from your codebase and the web, so your agents can build correctly the first time.',
     images: [{
-      url: 'https://d2tyb0wucqqf48.cloudfront.net/og-image.png',
+      url: 'https://d2tyb0wucqqf48.cloudfront.net/images/og-image.png',
       alt: 'Vibe Manager - AI-Powered Context Curation for Large Codebases',
       width: 1200,
       height: 630,
@@ -121,6 +122,7 @@ export default function RootLayout({
           <GoogleAnalytics gaId={process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID} />
         )}
         <SpeedInsights />
+        <Analytics />
         <StructuredData data={websiteJsonLd} />
       </body>
     </html>
