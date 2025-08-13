@@ -68,7 +68,7 @@ export function Footer() {
                   </li>
                   <li>
                     <Link className="text-muted-foreground hover:text-primary text-sm transition-colors duration-200 clickable-text-underline" href="/download">
-                      Download
+                      Download for Mac
                     </Link>
                   </li>
                 </ul>

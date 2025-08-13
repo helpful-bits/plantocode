@@ -100,25 +100,28 @@ export function CallToAction({ title, description, buttonText, buttonLink }: Cal
                 </Reveal>
 
                 <Reveal delay={0.25}>
-                  <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-                  <Button
-                    asChild
-                    size="xl"
-                    variant="primary"
-                  >
-                    <Link className="inline-flex items-center justify-center gap-3 no-hover-effect cursor-pointer" href={buttonLink}>
-                      {buttonText}
-                      <svg
-                        className="w-5 h-5 flex-shrink-0"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path d="M13 7l5 5m0 0l-5 5m5-5H6" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} />
-                      </svg>
-                    </Link>
-                  </Button>
-                  </motion.div>
+                  <div className="flex flex-col items-center">
+                    <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+                    <Button
+                      asChild
+                      size="xl"
+                      variant="primary"
+                    >
+                      <Link className="inline-flex items-center justify-center gap-3 no-hover-effect cursor-pointer" href={buttonLink}>
+                        {buttonText}
+                        <svg
+                          className="w-5 h-5 flex-shrink-0"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path d="M13 7l5 5m0 0l-5 5m5-5H6" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} />
+                        </svg>
+                      </Link>
+                    </Button>
+                    </motion.div>
+                    <span className="text-sm text-muted-foreground mt-3">Windows coming soon</span>
+                  </div>
                 </Reveal>
 
                 <Reveal className="mt-8 flex items-center justify-center gap-8 text-sm text-foreground/60" delay={0.3}>

@@ -131,22 +131,24 @@ export function Header() {
                 transition={{ delay: 0.7, duration: defaultDuration, ease: defaultEase }}
               >
                 <ThemeToggle />
-                <motion.div
-                  className="ml-2"
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                >
-                  <Button
-                    asChild
-                    className="relative"
-                    size="lg"
-                    variant="cta"
+                <div className="flex flex-col items-center ml-2">
+                  <motion.div
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
                   >
-                    <Link href="/download" className="no-hover-effect cursor-pointer">
-                      Download Free
-                    </Link>
-                  </Button>
-                </motion.div>
+                    <Button
+                      asChild
+                      className="relative"
+                      size="lg"
+                      variant="cta"
+                    >
+                      <Link href="/download" className="no-hover-effect cursor-pointer">
+                        Download for Mac
+                      </Link>
+                    </Button>
+                  </motion.div>
+                  <span className="text-xs text-muted-foreground mt-1 whitespace-nowrap">Windows coming soon</span>
+                </div>
               </motion.div>
             </nav>
 
@@ -294,17 +296,20 @@ export function Header() {
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
                 >
-                  <Button
-                    asChild
-                    className="w-full"
-                    size="xl"
-                    variant="cta"
-                    onClick={() => setMobileMenuOpen(false)}
-                  >
-                    <Link href="/download" className="no-hover-effect cursor-pointer">
-                      Download Free
-                    </Link>
-                  </Button>
+                  <div className="flex flex-col items-center w-full">
+                    <Button
+                      asChild
+                      className="w-full"
+                      size="xl"
+                      variant="cta"
+                      onClick={() => setMobileMenuOpen(false)}
+                    >
+                      <Link href="/download" className="no-hover-effect cursor-pointer">
+                        Download for Mac
+                      </Link>
+                    </Button>
+                    <span className="text-xs text-muted-foreground mt-2">Windows coming soon</span>
+                  </div>
                 </motion.div>
               </motion.div>
             </motion.nav>

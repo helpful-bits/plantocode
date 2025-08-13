@@ -62,21 +62,24 @@ export function Pricing() {
                 </Reveal>
 
                 <Reveal delay={0.3}>
-                  <motion.div
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                  >
-                    <Button
-                      asChild
-                      className="w-full sm:w-auto"
-                      size="xl"
-                      variant="cta"
+                  <div className="flex flex-col items-center">
+                    <motion.div
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
                     >
-                      <Link href="/download" className="no-hover-effect cursor-pointer">
-                        Download & Start Free
-                      </Link>
-                    </Button>
-                  </motion.div>
+                      <Button
+                        asChild
+                        className="w-full sm:w-auto"
+                        size="xl"
+                        variant="cta"
+                      >
+                        <Link href="/download" className="no-hover-effect cursor-pointer">
+                          Download for Mac
+                        </Link>
+                      </Button>
+                    </motion.div>
+                    <span className="text-xs text-muted-foreground mt-2">Windows coming soon</span>
+                  </div>
                 </Reveal>
               </div>
             </GlassCard>
