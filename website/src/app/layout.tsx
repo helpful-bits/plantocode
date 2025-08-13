@@ -36,7 +36,7 @@ export const metadata: Metadata = {
     url: 'https://vibemanager.app/',
     siteName: 'Vibe Manager',
     images: [{
-      url: 'https://vibe-manager-media.s3.amazonaws.com/og-image.png',
+      url: 'https://d2tyb0wucqqf48.cloudfront.net/og-image.png',
       width: 1200,
       height: 630,
       alt: 'Vibe Manager - AI-Powered Context Curation for Large Codebases',
@@ -50,7 +50,7 @@ export const metadata: Metadata = {
     title: 'Vibe Manager | Context for Lost AI Agents',
     description: 'Tired of babysitting your AI agent? Vibe Manager is the competent middle manager that curates perfect context from your codebase and the web, so your agents can build correctly the first time.',
     images: [{
-      url: 'https://vibe-manager-media.s3.amazonaws.com/og-image.png',
+      url: 'https://d2tyb0wucqqf48.cloudfront.net/og-image.png',
       alt: 'Vibe Manager - AI-Powered Context Curation for Large Codebases',
       width: 1200,
       height: 630,

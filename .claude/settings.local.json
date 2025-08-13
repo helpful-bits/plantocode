@@ -196,7 +196,9 @@
       "Bash(aws cloudfront create-invalidation:*)",
       "Bash(/opt/homebrew/lib/node_modules/@anthropic-ai/claude-code/vendor/ripgrep/arm64-darwin/rg \"getCreditHistory\" /Users/kirylkazlovich/dev/vibe-manager/desktop/src --type ts --type tsx)",
       "Bash(git log:*)",
-      "Bash(aws route53 get-change:*)"
+      "Bash(aws route53 get-change:*)",
+      "Bash(aws route53 list-hosted-zones:*)",
+      "Bash(aws route53:*)"
     ],
     "deny": []
   },
