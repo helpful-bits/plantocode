@@ -199,7 +199,12 @@
       "Bash(aws route53 get-change:*)",
       "Bash(aws route53 list-hosted-zones:*)",
       "Bash(aws route53:*)",
-      "Bash(COPYFILE_DISABLE=1 tar -czf \"Vibe Manager_1.0.13_aarch64.app.tar.gz\" \"Vibe Manager.app\")"
+      "Bash(COPYFILE_DISABLE=1 tar -czf \"Vibe Manager_1.0.13_aarch64.app.tar.gz\" \"Vibe Manager.app\")",
+      "WebSearch",
+      "WebFetch(domain:developer.apple.com)",
+      "Bash(aws cloudfront list-distributions:*)",
+      "Bash(/Users/kirylkazlovich/dev/vibe-manager/fix-cloudfront-cors.sh)",
+      "Bash(COPYFILE_DISABLE=1 tar -czf \"Vibe Manager_1.0.14_aarch64.app.tar.gz\" \"Vibe Manager.app\")"
     ],
     "deny": [],
     "defaultMode": "acceptEdits"
