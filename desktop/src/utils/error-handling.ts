@@ -1123,17 +1123,23 @@ export async function logError(
     const { invoke } = await import('@tauri-apps/api/core');
     // Extract the actual error object to get stack trace if available
     const errorLike = error as any;
+    
+    // Get app version and platform info
+    const appVersion = (window as any).__TAURI_METADATA__?.version || undefined;
+    const platform = (window as any).__TAURI_METADATA__?.currentPlatform || undefined;
+    
     void invoke('log_client_error', {
-      args: {
-        error: errorInfo.message,
-        errorType: errorInfo.type ?? 'Unknown',
-        context,
-        metadata: enrichedMetadata,
-        stack: errorLike?.stack ?? undefined,
-      }
+      level: 'ERROR',
+      error_type: errorInfo.type ?? 'UNKNOWN_ERROR',
+      message: errorInfo.message,
+      context: context || undefined,
+      stack: errorLike?.stack || undefined,
+      metadata: enrichedMetadata ? JSON.stringify(enrichedMetadata) : undefined,
+      app_version: appVersion,
+      platform: platform
     });
   } catch (loggingError) {
-    console.error('[Logging Error] Failed to send error to backend:', loggingError);
+    // Swallow to avoid user-visible impact
   }
 }
 

@@ -44,10 +44,6 @@ export interface CreateCreditCheckoutSessionCommandArgs {
   amount: number;
 }
 
-
-export interface CreateSetupCheckoutSessionCommandArgs {
-}
-
 export interface CheckoutSessionResponse {
   url: string;
   sessionId: string;
@@ -722,7 +718,6 @@ export type TauriInvoke = {
   
   // Checkout commands
   "create_credit_purchase_checkout_session_command": (args: CreateCreditCheckoutSessionCommandArgs) => Promise<CheckoutSessionResponse>;
-  "create_setup_checkout_session_command": (args: CreateSetupCheckoutSessionCommandArgs) => Promise<CheckoutSessionResponse>;
   "get_checkout_session_status_command": (args: { sessionId: string }) => Promise<CheckoutSessionStatusResponse>;
   
   // Credit lifecycle management

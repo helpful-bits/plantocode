@@ -1,14 +1,15 @@
 use crate::db_utils::{
-    BackgroundJobRepository, SessionRepository, SettingsRepository, create_repositories,
+    BackgroundJobRepository, SessionRepository, SettingsRepository,
 };
 use crate::error::AppError;
 use log::{error, info, warn};
+use tracing::{info as tracing_info, warn as tracing_warn, error as tracing_error};
 use sqlx::{Executor, SqlitePool, migrate::MigrateDatabase, sqlite::SqlitePoolOptions};
 use std::fs;
 use std::sync::Arc;
 use tauri::{AppHandle, Manager};
 
-pub async fn initialize_database(app_handle: &AppHandle) -> Result<(), AppError> {
+pub async fn initialize_database_light(app_handle: &AppHandle) -> Result<(), AppError> {
     // Initialize the SQLite database connection pool
     let app_data_dir = app_handle.path().app_local_data_dir().map_err(|e| {
         AppError::InitializationError(format!("Failed to get app local data dir: {}", e))
@@ -93,29 +94,13 @@ pub async fn initialize_database(app_handle: &AppHandle) -> Result<(), AppError>
             .map_err(|e| AppError::DatabaseError(format!("Failed to apply migrations: {}", e)))?;
 
         info!("Database migrations applied successfully");
-    } else {
-        // Check if existing database is healthy, attempt recovery if needed
-        match check_database_health(&db).await {
-            Ok(true) => {
-                info!("Database ready - health check passed");
-            }
-            Ok(false) => {
-                warn!("Database health check failed, attempting automatic recovery");
-                attempt_automatic_recovery(app_handle, &app_data_dir).await?;
-            }
-            Err(e) => {
-                error!("Database health check error: {}", e);
-                warn!("Attempting automatic recovery due to health check error");
-                attempt_automatic_recovery(app_handle, &app_data_dir).await?;
-            }
-        }
     }
 
-    // Manage the pool as state
+    // Manage the pool as state immediately
     app_handle.manage(db.clone());
     let pool_arc = Arc::new(db);
     
-    // Ensure error_logs exists for existing databases (best-effort)
+    // Ensure error_logs exists (assumes consolidated schema handles this)
     if let Err(e) = sqlx::query(r#"
       CREATE TABLE IF NOT EXISTS error_logs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -138,7 +123,7 @@ pub async fn initialize_database(app_handle: &AppHandle) -> Result<(), AppError>
       log::warn!("Failed ensuring error_logs index: {}", e);
     }
 
-    // Manage ErrorLogRepository in Tauri state
+    // Manage ErrorLogRepository in Tauri state (assumes table exists via consolidated schema)
     let error_log_repo = crate::db_utils::ErrorLogRepository::new(pool_arc.clone());
     app_handle.manage(error_log_repo.clone());
 
@@ -149,45 +134,98 @@ pub async fn initialize_database(app_handle: &AppHandle) -> Result<(), AppError>
       }
     });
 
+    // Manage ONLY SettingsRepository early
+    let settings_repo = crate::db_utils::SettingsRepository::with_app_handle(pool_arc.clone(), app_handle.clone());
+    let settings_repo_arc = std::sync::Arc::new(settings_repo);
+    app_handle.manage(settings_repo_arc);
+
+    info!("Light database initialization complete - heavy DB maintenance deferred");
+    info!("Database connection pool and settings repository ready");
+
+    Ok(())
+}
+
+pub async fn run_deferred_db_tasks(app_handle: &tauri::AppHandle) -> Result<(), crate::error::AppError> {
+    use tracing::{info, warn, error};
+    use std::sync::Arc;
+    
+    info!("Starting deferred DB tasks: health check, recovery, migrations, and repo wiring.");
+    info!("Deferred DB: starting integrity check.");
+    
+    // Retrieve pool from app state
+    let db = app_handle.state::<SqlitePool>().inner().clone();
+    let pool_arc = Arc::new(db);
+    
+    // Health check with PRAGMA integrity_check
+    match check_database_health(&*pool_arc).await {
+        Ok(true) => {
+            info!("Deferred DB: integrity check passed");
+        }
+        Ok(false) => {
+            warn!("Deferred DB: integrity check failed, attempting automatic recovery");
+            let app_data_dir = app_handle.path().app_local_data_dir().map_err(|e| {
+                crate::error::AppError::InitializationError(format!("Failed to get app local data dir: {}", e))
+            })?;
+            attempt_automatic_recovery(app_handle, &app_data_dir).await?;
+            
+            // Re-check after recovery
+            match check_database_health(&*pool_arc).await {
+                Ok(true) => {
+                    info!("Deferred DB: integrity check passed after recovery");
+                }
+                _ => {
+                    error!("Deferred DB: integrity check still failed after recovery attempt");
+                    return Err(crate::error::AppError::DatabaseError(
+                        "Database integrity check failed even after recovery".to_string()
+                    ));
+                }
+            }
+        }
+        Err(e) => {
+            error!("Deferred DB: integrity check error: {}", e);
+            warn!("Deferred DB: attempting automatic recovery due to integrity check error");
+            let app_data_dir = app_handle.path().app_local_data_dir().map_err(|e| {
+                crate::error::AppError::InitializationError(format!("Failed to get app local data dir: {}", e))
+            })?;
+            attempt_automatic_recovery(app_handle, &app_data_dir).await?;
+        }
+    }
+    
     // Run version-based migrations
-    info!("Checking for version-based migrations...");
+    info!("Deferred DB: starting version-based migrations...");
     let current_version = app_handle.package_info().version.to_string();
     let migration_system = crate::db_utils::MigrationSystem::new(pool_arc.clone());
     
     if let Err(e) = migration_system.run_migrations(app_handle, &current_version).await {
-        error!("Version migration failed: {}", e);
+        error!("Deferred DB: version migration failed: {}", e);
         // Log the error but continue - most migrations are non-critical
-        warn!("Continuing despite migration failure. Some features may not work correctly.");
+        warn!("Deferred DB: continuing despite migration failure. Some features may not work correctly.");
     }
-
-    info!("Database connection established");
-
+    
+    info!("Deferred DB: migrations completed.");
+    
     // Ensure database permissions
     let app_data_root_dir = app_handle.path().app_local_data_dir().map_err(|e| {
-        AppError::InitializationError(format!("Failed to get app local data dir: {}", e))
+        crate::error::AppError::InitializationError(format!("Failed to get app local data dir: {}", e))
     })?;
     if let Err(e) = crate::db_utils::ensure_db_permissions(&app_data_root_dir) {
-        error!("Failed to ensure DB permissions: {}", e);
+        error!("Deferred DB: failed to ensure DB permissions: {}", e);
     }
-
-    // Create repository instances
-    let (session_repo, background_job_repo, settings_repo) =
-        create_repositories(pool_arc, app_handle.clone()).map_err(|e| {
-            AppError::InitializationError(format!("Failed to create repositories: {}", e))
-        })?;
-
+    
+    // Create and manage remaining repositories: SessionRepository and BackgroundJobRepository
+    let session_repo = crate::db_utils::SessionRepository::new(pool_arc.clone());
+    let background_job_repo = crate::db_utils::BackgroundJobRepository::new(pool_arc.clone());
+    
     // Wrap repositories in Arc
     let session_repo_arc = Arc::new(session_repo);
     let background_job_repo_arc = Arc::new(background_job_repo);
-    let settings_repo_arc = Arc::new(settings_repo);
-
+    
     // Manage state with Tauri
     app_handle.manage(session_repo_arc.clone());
     app_handle.manage(background_job_repo_arc.clone());
-    app_handle.manage(settings_repo_arc.clone());
-
-    info!("Repository instances created and managed by Tauri");
-
+    
+    info!("Deferred DB: repositories (session, background jobs) wired.");
+    
     Ok(())
 }
 

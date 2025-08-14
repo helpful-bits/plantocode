@@ -106,10 +106,6 @@ export async function createCreditPurchaseCheckoutSession(
   });
 }
 
-export async function createSetupCheckoutSession(): Promise<CheckoutSessionResponse> {
-  return await invoke<CheckoutSessionResponse>('create_setup_checkout_session_command');
-}
-
 export interface CheckoutSessionStatusResponse {
   status: string;
   paymentStatus: string;

@@ -15,7 +15,7 @@ import { Button } from "@/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/ui/alert";
 import { Card, CardContent, CardHeader, CardTitle } from "@/ui/card";
 import { useBillingData } from "@/hooks/use-billing-data";
-import { CreditManager, PaymentMethodsList, InvoicesList, BillingHistory } from "./billing-components";
+import { CreditManager, InvoicesList, BillingHistory } from "./billing-components";
 import { AutoTopOffSettings } from "./components/AutoTopOffSettings";
 import { formatUsdCurrency } from "@/utils/currency-utils";
 import { openBillingPortal } from "@/actions/billing";
@@ -411,8 +411,6 @@ export function BillingDashboard({}: BillingDashboardProps = {}) {
           <AutoTopOffSettings 
             className="transition-all duration-200 hover:shadow-lg"
           />
-          
-          <PaymentMethodsList className="transition-all duration-200 hover:shadow-lg" />
           
           <BillingHistory className="transition-all duration-200 hover:shadow-lg" />
           

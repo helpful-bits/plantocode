@@ -41,12 +41,14 @@ use tokio::sync::{OnceCell, RwLock};
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RuntimeConfig {
     pub server_url: Mutex<Option<String>>,
+    pub onboarding_completed: Mutex<Option<bool>>,
 }
 
 impl Default for RuntimeConfig {
     fn default() -> Self {
         Self {
             server_url: Mutex::new(None),
+            onboarding_completed: Mutex::new(None),
         }
     }
 }
@@ -69,6 +71,18 @@ impl AppState {
     /// Get the current server URL
     pub fn get_server_url(&self) -> Option<String> {
         self.settings.server_url.lock().ok()?.clone()
+    }
+
+    /// Set onboarding completed status
+    pub fn set_onboarding_completed(&self, completed: bool) {
+        if let Ok(mut onboarding_completed) = self.settings.onboarding_completed.lock() {
+            *onboarding_completed = Some(completed);
+        }
+    }
+
+    /// Get onboarding completed status
+    pub fn get_onboarding_completed(&self) -> Option<bool> {
+        self.settings.onboarding_completed.lock().ok()?.clone()
     }
 }
 
