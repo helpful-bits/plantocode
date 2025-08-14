@@ -7,8 +7,7 @@ export {
   type BackgroundJobsContextType,
 } from "./Provider";
 
-// Export utility functions for direct usage
-export * from "./_utils";
+// Utility functions have been removed as part of the event-driven refactoring
 
 
 // Export hooks for direct usage when needed

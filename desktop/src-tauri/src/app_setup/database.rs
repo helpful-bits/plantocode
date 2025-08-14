@@ -214,7 +214,10 @@ pub async fn run_deferred_db_tasks(app_handle: &tauri::AppHandle) -> Result<(), 
     
     // Create and manage remaining repositories: SessionRepository and BackgroundJobRepository
     let session_repo = crate::db_utils::SessionRepository::new(pool_arc.clone());
-    let background_job_repo = crate::db_utils::BackgroundJobRepository::new(pool_arc.clone());
+    let background_job_repo = crate::db_utils::BackgroundJobRepository::new_with_app_handle(
+        pool_arc.clone(),
+        app_handle.clone()
+    );
     
     // Wrap repositories in Arc
     let session_repo_arc = Arc::new(session_repo);

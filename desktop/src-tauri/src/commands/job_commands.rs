@@ -1,4 +1,5 @@
 use crate::error::{AppError, AppResult};
+use crate::events::job_events::*;
 use crate::models::{BackgroundJob, TaskType};
 use log::{info, warn, error};
 use serde::{Deserialize, Serialize};
@@ -56,7 +57,9 @@ pub async fn delete_background_job_command(job_id: String, app_handle: AppHandle
         .await
         .map_err(|e| AppError::DatabaseError(format!("Failed to delete job: {}", e)))?;
 
-    app_handle.emit("job_deleted", json!({ "jobId": job_id }))?;
+    emit_job_deleted(&app_handle, JobDeletedEvent {
+        job_id: job_id.clone(),
+    });
 
     Ok(())
 }

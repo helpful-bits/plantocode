@@ -8,24 +8,7 @@ import { JobCard } from "../job-card";
 import { getParsedMetadata } from "../utils";
 
 // Memoized JobCard to prevent unnecessary re-renders
-const MemoizedJobCard = memo(JobCard, (prevProps, nextProps) => {
-  // Custom comparison function for better performance
-  return (
-    prevProps.job.id === nextProps.job.id &&
-    prevProps.job.status === nextProps.job.status &&
-    prevProps.job.response === nextProps.job.response &&
-    prevProps.job.updatedAt === nextProps.job.updatedAt &&
-    prevProps.job.actualCost === nextProps.job.actualCost &&
-    prevProps.job.tokensSent === nextProps.job.tokensSent &&
-    prevProps.job.tokensReceived === nextProps.job.tokensReceived &&
-    prevProps.isCancelling[prevProps.job.id] === nextProps.isCancelling[nextProps.job.id] &&
-    prevProps.isDeleting[prevProps.job.id] === nextProps.isDeleting[nextProps.job.id] &&
-    prevProps.currentSessionId === nextProps.currentSessionId &&
-    prevProps.hasContinuationJob === nextProps.hasContinuationJob &&
-    prevProps.isWorkflowActive === nextProps.isWorkflowActive &&
-    prevProps.webSearchSystemPrompt === nextProps.webSearchSystemPrompt
-  );
-});
+const MemoizedJobCard = memo(JobCard);
 
 interface JobContentProps {
   shouldShowLoading: boolean;

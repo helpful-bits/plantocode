@@ -199,17 +199,7 @@ pub async fn cancel_workflow_with_reason_internal(
         .mark_job_canceled(workflow_id, reason, workflow_state.total_actual_cost)
         .await?;
 
-    // Emit generic job update event for UI updates
-    crate::jobs::job_processor_utils::emit_job_update(
-        app_handle,
-        "job_updated",
-        serde_json::json!({
-            "id": workflow_id,
-            "status": "Canceled",
-            "errorMessage": reason,
-            "actual_cost": workflow_state.total_actual_cost
-        }),
-    )?;
+    // Job cancellation event handled by repository method above
 
     // Emit workflow canceled event
     event_emitter::emit_workflow_status_event_internal(

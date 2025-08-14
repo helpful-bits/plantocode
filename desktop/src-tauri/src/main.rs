@@ -16,6 +16,7 @@ pub mod constants;
 pub mod db_utils;
 pub mod error;
 pub mod error_recovery;
+mod events;
 pub mod jobs;
 pub mod models;
 pub mod services;

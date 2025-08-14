@@ -370,8 +370,7 @@ pub async fn create_and_queue_background_job(
         AppError::DatabaseError(format!("Failed to retrieve newly created job: {}", job_id))
     })?;
 
-    // Emit job_created event
-    crate::jobs::job_processor_utils::emit_job_update(app_handle, "job_created", new_job.clone())?;
+    // Job creation event already emitted by repository method above
 
     // Create a Job struct for the queue using the already typed payload
     let job_for_queue = crate::jobs::types::Job {
