@@ -112,9 +112,16 @@ export default function RootLayout({
   return (
     <html suppressHydrationWarning className={fontClasses.variables} lang="en">
       <head>
-        {/* Preconnect to critical third-party origins */}
+        {/* Preconnect to critical third-party origins - from Lighthouse report */}
         <link rel="dns-prefetch" href="https://d2tyb0wucqqf48.cloudfront.net" />
         <link rel="preconnect" href="https://d2tyb0wucqqf48.cloudfront.net" crossOrigin="anonymous" />
+        {/* Additional preconnects for analytics if enabled */}
+        {process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID && (
+          <>
+            <link rel="dns-prefetch" href="https://www.google-analytics.com" />
+            <link rel="preconnect" href="https://www.google-analytics.com" crossOrigin="anonymous" />
+          </>
+        )}
       </head>
       <body className={`${fontClasses.sans} bg-transparent overflow-x-hidden`}>
         <ConditionalBackground />
