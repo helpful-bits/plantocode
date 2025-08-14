@@ -1,7 +1,7 @@
 'use client';
 
 import { usePathname } from 'next/navigation';
-import { InteractiveBackground } from '@/components/landing/InteractiveBackground';
+import { LazyInteractiveBackground } from '@/components/landing/LazyInteractiveBackground';
 import { Suspense } from 'react';
 import { ErrorBoundary } from '@/components/system/ErrorBoundary';
 
@@ -18,7 +18,7 @@ export function ConditionalBackground() {
   return (
     <Suspense fallback={null}>
       <ErrorBoundary fallback={null}>
-        <InteractiveBackground />
+        <LazyInteractiveBackground />
       </ErrorBoundary>
     </Suspense>
   );

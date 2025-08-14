@@ -32,6 +32,18 @@ export function WebAuthProvider({ children }: { children: ReactNode }) {
   });
 
   const checkAuthStatus = async () => {
+    // Auth endpoints not yet implemented - skip auth check for now
+    setState(prev => ({
+      ...prev,
+      user: null,
+      isAuthenticated: false,
+      loading: false,
+      error: null
+    }));
+    return;
+    
+    // TODO: Uncomment when auth endpoints are implemented
+    /*
     try {
       const response = await fetch('/api/auth/me', {
         method: 'GET',
@@ -65,6 +77,7 @@ export function WebAuthProvider({ children }: { children: ReactNode }) {
         error: error instanceof Error ? error.message : 'Auth check failed'
       }));
     }
+    */
   };
 
   const signIn = async () => {

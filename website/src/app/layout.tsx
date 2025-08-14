@@ -111,7 +111,11 @@ export default function RootLayout({
 }) {
   return (
     <html suppressHydrationWarning className={fontClasses.variables} lang="en">
-      <head />
+      <head>
+        {/* Preconnect to critical third-party origins */}
+        <link rel="dns-prefetch" href="https://d2tyb0wucqqf48.cloudfront.net" />
+        <link rel="preconnect" href="https://d2tyb0wucqqf48.cloudfront.net" crossOrigin="anonymous" />
+      </head>
       <body className={`${fontClasses.sans} bg-transparent overflow-x-hidden`}>
         <ConditionalBackground />
         <ClientProviders>
