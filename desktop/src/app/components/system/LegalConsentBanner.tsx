@@ -8,7 +8,7 @@ import { Button } from "@/ui/button";
 import { Card, CardContent } from "@/ui/card";
 import { Alert, AlertDescription } from "@/ui/alert";
 import { createLogger } from "@/utils/logger";
-import { extractErrorInfo, createUserFriendlyErrorMessage, logError } from "@/utils/error-handling";
+import { extractErrorInfo, createUserFriendlyErrorMessage, logError, ErrorType } from "@/utils/error-handling";
 import { useNotification } from "@/contexts/notification-context";
 import { RegionConfirmation } from "./RegionConfirmation";
 import type { ConsentVerificationResponse } from "@/types/tauri-commands";
@@ -101,8 +101,8 @@ export function LegalConsentBanner() {
     } catch (error) {
       const errorInfo = extractErrorInfo(error);
       
-      // Check if it's an initialization error and retry up to 3 times with delay
-      if (errorInfo.type === 'InitializationError' && retryCount < 3) {
+      // Check if it's a configuration error (includes initialization errors) and retry up to 3 times with delay
+      if (errorInfo.type === ErrorType.CONFIGURATION_ERROR && retryCount < 3) {
         console.log(`Consent client not ready, retrying in ${(retryCount + 1) * 1000}ms...`);
         setTimeout(() => {
           verifyConsent(retryCount + 1);
@@ -228,7 +228,7 @@ export function LegalConsentBanner() {
   };
 
   // Handle region confirmation
-  const handleRegionConfirmed = useCallback(async (region: 'eu' | 'us') => {
+  const handleRegionConfirmed = useCallback(async () => {
     setNeedsRegionConfirmation(false);
     await verifyConsent();
   }, [verifyConsent]);
