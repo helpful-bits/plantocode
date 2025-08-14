@@ -16,21 +16,9 @@ export const InvoicesListAsync = lazy(() =>
   }))
 );
 
-export const PaymentMethodsListAsync = lazy(() => 
-  import('./components/PaymentMethodsList').then(module => ({ 
-    default: module.PaymentMethodsList 
-  }))
-);
-
 export const BillingHistoryAsync = lazy(() => import('./components/BillingHistory').then(module => ({ default: module.BillingHistory })));
 
 export const BillingHistoryModalAsync = lazy(() => import('./components/BillingHistoryModal').then(module => ({ default: module.BillingHistoryModal })));
-
-export const AddPaymentMethodModalAsync = lazy(() => 
-  import('./components/AddPaymentMethodModal').then(module => ({ 
-    default: module.AddPaymentMethodModal 
-  }))
-);
 
 export const PaymentPollingScreenAsync = lazy(() => 
   import('./components/PaymentPollingScreen').then(module => ({ 
@@ -63,18 +51,14 @@ export function withBillingSuspense<T extends object>(
 
 export const CreditManager = withBillingSuspense(CreditManagerAsync);
 export const InvoicesList = withBillingSuspense(InvoicesListAsync);
-export const PaymentMethodsList = withBillingSuspense(PaymentMethodsListAsync);
 export const BillingHistory = withBillingSuspense(BillingHistoryAsync);
 export const BillingHistoryModal = withBillingSuspense(BillingHistoryModalAsync);
-export const AddPaymentMethodModal = withBillingSuspense(AddPaymentMethodModalAsync);
 export const PaymentPollingScreen = withBillingSuspense(PaymentPollingScreenAsync);
 
 export function preloadBillingComponents(): void {
   setTimeout(() => {
     import('./components/CreditManager');
     import('./components/InvoicesList');
-    import('./components/PaymentMethodsList');
-    import('./components/AddPaymentMethodModal');
     import('./components/BillingHistory');
     import('./components/BillingHistoryModal');
     import('./components/PaymentPollingScreen');

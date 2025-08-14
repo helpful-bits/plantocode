@@ -52,25 +52,6 @@ pub fn get_database_instance(
     Ok(db)
 }
 
-/// Create all repository instances
-pub fn create_repositories(
-    pool: std::sync::Arc<sqlx::SqlitePool>,
-    app_handle: tauri::AppHandle,
-) -> Result<
-    (
-        SessionRepository,
-        BackgroundJobRepository,
-        SettingsRepository,
-    ),
-    crate::error::AppError,
-> {
-    let session_repo = SessionRepository::new(pool.clone());
-    let background_job_repo =
-        BackgroundJobRepository::new_with_app_handle(pool.clone(), app_handle.clone());
-    let settings_repo = SettingsRepository::with_app_handle(pool, app_handle);
-
-    Ok((session_repo, background_job_repo, settings_repo))
-}
 
 /// Get database diagnostic information
 pub async fn get_database_info(db: Arc<SqlitePool>) -> AppResult<DatabaseInfo> {
