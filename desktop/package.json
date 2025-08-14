@@ -1,7 +1,7 @@
 {
   "name": "vibe-manager-desktop",
   "private": true,
-  "version": "1.0.13",
+  "version": "1.0.14",
   "type": "module",
   "scripts": {
     "dev": "vite --config src/vite.config.mts",

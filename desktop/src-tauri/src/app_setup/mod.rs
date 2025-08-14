@@ -4,6 +4,7 @@ use tauri::{AppHandle, Manager};
 
 pub mod config;
 pub mod database;
+pub mod embedded_schema;
 pub mod file_management;
 pub mod job_system;
 pub mod services;

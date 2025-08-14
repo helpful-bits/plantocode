@@ -86,7 +86,7 @@ export function LegalConsentBanner() {
   };
 
 
-  const verifyConsent = useCallback(async () => {
+  const verifyConsent = useCallback(async (retryCount = 0) => {
     try {
       setHasError(false);
       setErrorMessage('');
@@ -100,6 +100,16 @@ export function LegalConsentBanner() {
       setVerification(result);
     } catch (error) {
       const errorInfo = extractErrorInfo(error);
+      
+      // Check if it's an initialization error and retry up to 3 times with delay
+      if (errorInfo.type === 'InitializationError' && retryCount < 3) {
+        console.log(`Consent client not ready, retrying in ${(retryCount + 1) * 1000}ms...`);
+        setTimeout(() => {
+          verifyConsent(retryCount + 1);
+        }, (retryCount + 1) * 1000);
+        return;
+      }
+      
       const userMessage = createUserFriendlyErrorMessage(errorInfo, "consent verification");
       
       setHasError(true);
@@ -109,7 +119,12 @@ export function LegalConsentBanner() {
   }, []);
 
   useEffect(() => {
-    void verifyConsent();
+    // Add a small delay on initial load to allow database initialization
+    const timer = setTimeout(() => {
+      void verifyConsent();
+    }, 500);
+    
+    return () => clearTimeout(timer);
   }, [verifyConsent]);
 
   const handleRetry = async () => {

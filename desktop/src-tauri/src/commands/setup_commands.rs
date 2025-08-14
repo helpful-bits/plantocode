@@ -1,7 +1,7 @@
 use crate::auth::token_persistence; // To access SERVICE_NAME and ACCOUNT_NAME
 use crate::constants::USE_SESSION_STORAGE;
 use keyring::Entry;
-use log::{error, info, warn};
+use log::{debug, error, info, warn};
 
 #[tauri::command]
 pub fn trigger_initial_keychain_access() -> Result<(), String> {
@@ -58,4 +58,61 @@ pub fn trigger_initial_keychain_access() -> Result<(), String> {
 #[tauri::command]
 pub fn get_storage_mode() -> bool {
     USE_SESSION_STORAGE
+}
+
+#[tauri::command]
+pub fn check_existing_keychain_access() -> Result<bool, String> {
+    // Skip check if using session storage
+    if USE_SESSION_STORAGE {
+        debug!("Using session storage - skipping keychain check");
+        return Ok(true); // No keychain needed, so we can skip onboarding
+    }
+
+    debug!("Checking for existing keychain access without triggering prompt");
+
+    // Try to access the keychain entry
+    let entry = Entry::new(
+        token_persistence::SERVICE_NAME_FOR_KEYRING,
+        token_persistence::ACCOUNT_NAME_FOR_KEYRING,
+    )
+    .map_err(|e| {
+        error!("Failed to create keychain entry for access check: {}", e);
+        format!("Keychain access check failed: {}", e)
+    })?;
+
+    // Try to get an existing password
+    // This will NOT prompt if:
+    // 1. User previously selected "Always Allow" (returns Ok with password or NoEntry error)
+    // 2. User previously selected "Deny" (returns NoStorageAccess error immediately)
+    // It WOULD prompt if user selected "Allow" (one-time), but that's rare
+    match entry.get_password() {
+        Ok(password) => {
+            // We have access AND there's already a value stored
+            info!("Keychain access already granted - found existing token");
+            // Check if it's just our dummy value or a real token
+            if password == "initial_setup_check" {
+                debug!("Found initial setup marker, user has granted access before");
+            } else {
+                debug!("Found actual token, user is already authenticated");
+            }
+            Ok(true) // Skip onboarding - we have access
+        }
+        Err(keyring::Error::NoEntry) => {
+            // No entry exists yet
+            // This is tricky: we can't know for sure if we have permission without
+            // potentially triggering a prompt. The safest approach is to assume
+            // we need onboarding if there's no entry yet.
+            debug!("No existing keychain entry found - assuming first run");
+            Ok(false) // Show onboarding for first-time setup
+        }
+        Err(keyring::Error::NoStorageAccess(_)) => {
+            info!("Keychain access was previously denied or not yet granted");
+            Ok(false) // Show onboarding - we need permission
+        }
+        Err(e) => {
+            warn!("Unexpected error checking keychain access: {}", e);
+            // Be conservative - show onboarding if we're not sure
+            Ok(false)
+        }
+    }
 }
