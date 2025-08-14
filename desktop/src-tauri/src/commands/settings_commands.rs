@@ -130,24 +130,31 @@ pub async fn set_key_value_command(
 }
 
 #[tauri::command]
-pub async fn set_onboarding_completed_command(app_handle: AppHandle) -> AppResult<()> {
-    let settings_repo = app_handle
-        .state::<Arc<SettingsRepository>>()
-        .inner()
-        .clone();
-    settings_repo
-        .set_value("onboarding_completed", "true")
-        .await
+pub async fn set_onboarding_completed_command(
+    app_handle: AppHandle,
+    app_state: State<'_, crate::AppState>,
+) -> AppResult<()> {
+    // Set in AppState first
+    app_state.set_onboarding_completed(true);
+    
+    // Save to settings if repository is available
+    if let Some(repo) = app_handle.try_state::<std::sync::Arc<crate::db_utils::SettingsRepository>>() {
+        repo.set_value("onboarding_completed", "true").await?;
+    }
+    
+    Ok(())
 }
 
 #[tauri::command]
-pub async fn is_onboarding_completed_command(app_handle: AppHandle) -> AppResult<bool> {
-    let settings_repo = app_handle
-        .state::<Arc<SettingsRepository>>()
-        .inner()
-        .clone();
-    let value = settings_repo.get_value("onboarding_completed").await?;
-    Ok(value.as_deref() == Some("true"))
+pub async fn is_onboarding_completed_command(
+    app_handle: AppHandle,
+    app_state: State<'_, crate::AppState>,
+) -> AppResult<bool> {
+    if let Some(repo) = app_handle.try_state::<std::sync::Arc<crate::db_utils::SettingsRepository>>() {
+        let value = repo.get_value("onboarding_completed").await?;
+        return Ok(value.as_deref() == Some("true"));
+    }
+    Ok(app_state.get_onboarding_completed().unwrap_or(false))
 }
 
 #[tauri::command]
@@ -477,23 +484,28 @@ pub async fn get_available_regions_command(
 
 #[tauri::command]
 pub async fn get_selected_server_url_command(
-    settings_repo: State<'_, Arc<SettingsRepository>>,
+    app_handle: AppHandle,
+    app_state: State<'_, crate::AppState>,
 ) -> AppResult<Option<String>> {
-    settings_repo.get_value("selected_server_url").await
+    if let Some(repo) = app_handle.try_state::<std::sync::Arc<crate::db_utils::SettingsRepository>>() {
+        return Ok(repo.get_value("selected_server_url").await?)
+    }
+    Ok(app_state.get_server_url())
 }
 
 #[tauri::command]
 pub async fn set_selected_server_url_command(
     app_handle: AppHandle,
-    settings_repo: State<'_, Arc<SettingsRepository>>,
     app_state: State<'_, crate::AppState>,
     url: String,
 ) -> AppResult<()> {
-    // Save the URL to settings
-    settings_repo.set_value("selected_server_url", &url).await?;
-    
     // Update AppState with the new URL
     app_state.set_server_url(url.clone());
+    
+    // Save the URL to settings if repository is available
+    if let Some(repo) = app_handle.try_state::<std::sync::Arc<crate::db_utils::SettingsRepository>>() {
+        repo.set_value("selected_server_url", &url).await?;
+    }
     
     // Reinitialize API clients with new URL
     reinitialize_api_clients(&app_handle, &url).await?;
@@ -504,7 +516,6 @@ pub async fn set_selected_server_url_command(
 #[tauri::command]
 pub async fn change_server_url_and_reset_command(
     app_handle: AppHandle,
-    settings_repo: State<'_, Arc<SettingsRepository>>,
     app_state: State<'_, crate::AppState>,
     token_manager: State<'_, Arc<TokenManager>>,
     config_cache: State<'_, ConfigCache>,
@@ -518,11 +529,13 @@ pub async fn change_server_url_and_reset_command(
         cache_guard.clear();
     }
     
-    // Save the new URL and reinitialize API clients
-    settings_repo.set_value("selected_server_url", &new_url).await?;
-    
     // Update AppState with the new URL
     app_state.set_server_url(new_url.clone());
+    
+    // Save the new URL if repository is available
+    if let Some(repo) = app_handle.try_state::<std::sync::Arc<crate::db_utils::SettingsRepository>>() {
+        repo.set_value("selected_server_url", &new_url).await?;
+    }
     
     reinitialize_api_clients(&app_handle, &new_url).await?;
     

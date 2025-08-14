@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { User, LogOut, Trash2, Mail, Phone, MapPin, Shield, CreditCard, Settings, Globe, Info } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import { User, LogOut, Trash2, Mail, Phone, MapPin, Shield, CreditCard, Settings, Globe, Info, Check, AlertCircle } from "lucide-react";
 import { open } from "@tauri-apps/plugin-shell";
 import { invoke } from "@tauri-apps/api/core";
 import { getVersion } from "@tauri-apps/api/app";
@@ -22,9 +22,10 @@ import {
   AlertDialogTitle 
 } from "@/ui/alert-dialog";
 import { useNotification } from "@/contexts/notification-context";
-import { openBillingPortal } from "@/actions/billing";
+import { openBillingPortal, getPaymentMethods } from "@/actions/billing";
 import { useBillingData } from "@/hooks/use-billing-data";
 import type { ServerRegionInfo } from "@/types/tauri-commands";
+import { Separator } from "@/ui/separator";
 
 import { BillingDashboard } from "@/app/components/billing/BillingDashboard";
 export default function AccountPage() {
@@ -33,6 +34,8 @@ export default function AccountPage() {
   const { customerBillingInfo: billingInfo, isLoading: billingLoading } = useBillingData();
   const [isOpeningPortal, setIsOpeningPortal] = useState(false);
   const [appVersion, setAppVersion] = useState<string | null>(null);
+  const [hasPaymentMethod, setHasPaymentMethod] = useState<boolean | null>(null);
+  const [isCheckingPayment, setIsCheckingPayment] = useState(true);
   
   // Region management state
   const [availableRegions, setAvailableRegions] = useState<ServerRegionInfo[]>([]);
@@ -60,11 +63,28 @@ export default function AccountPage() {
     }
   };
 
+  const checkPaymentMethods = useCallback(async () => {
+    try {
+      setIsCheckingPayment(true);
+      const response = await getPaymentMethods();
+      setHasPaymentMethod(response.methods.length > 0);
+    } catch (err) {
+      console.error('Failed to check payment methods:', err);
+      setHasPaymentMethod(false);
+    } finally {
+      setIsCheckingPayment(false);
+    }
+  }, []);
+
   const handleUpdateBillingInfo = async () => {
     try {
       setIsOpeningPortal(true);
       const portalUrl = await openBillingPortal();
       await open(portalUrl);
+      // Refresh payment method status after a delay
+      setTimeout(() => {
+        checkPaymentMethods();
+      }, 5000);
     } catch (err) {
       console.error("Billing portal error:", err);
       showNotification({
@@ -148,7 +168,8 @@ export default function AccountPage() {
     };
 
     fetchInitialData();
-  }, [showNotification]);
+    checkPaymentMethods();
+  }, [showNotification, checkPaymentMethods]);
 
   if (!user) {
     return (
@@ -364,6 +385,36 @@ export default function AccountPage() {
                   </p>
                 </div>
               )}
+
+              {/* Payment Method Status */}
+              <Separator className="my-4" />
+              <div className="flex items-center gap-3">
+                <CreditCard className="h-4 w-4 text-muted-foreground" />
+                <div className="flex-1">
+                  {isCheckingPayment ? (
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium">Checking payment methods...</p>
+                      <p className="text-xs text-muted-foreground">Please wait</p>
+                    </div>
+                  ) : hasPaymentMethod ? (
+                    <div className="flex items-center gap-2">
+                      <Check className="h-4 w-4 text-green-600 dark:text-green-400" />
+                      <div>
+                        <p className="text-sm font-medium">Payment method configured</p>
+                        <p className="text-xs text-muted-foreground">Ready for purchases and auto top-off</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                      <div>
+                        <p className="text-sm font-medium">No payment method configured</p>
+                        <p className="text-xs text-muted-foreground">Add a payment method in Stripe to enable purchases</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
 
             {/* Update Button */}

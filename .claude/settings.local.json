@@ -198,7 +198,8 @@
       "Bash(git log:*)",
       "Bash(aws route53 get-change:*)",
       "Bash(aws route53 list-hosted-zones:*)",
-      "Bash(aws route53:*)"
+      "Bash(aws route53:*)",
+      "Bash(COPYFILE_DISABLE=1 tar -czf \"Vibe Manager_1.0.13_aarch64.app.tar.gz\" \"Vibe Manager.app\")"
     ],
     "deny": [],
     "defaultMode": "acceptEdits"

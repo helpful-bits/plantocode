@@ -116,31 +116,8 @@ export function AuthFlowManager({ children }: AuthFlowManagerProps) {
     useEffect(() => {
       const checkOnboardingStatus = async () => {
         try {
-          // First check storage mode
-          const sessionStorageMode = await invoke<boolean>('get_storage_mode');
-          
-          if (sessionStorageMode) {
-            // If session storage is used, skip onboarding
-            setIsOnboardingNeeded(false);
-          } else {
-            // If keychain is used, check if onboarding has been completed
-            try {
-              const hasSetup = await invoke<boolean>('is_onboarding_completed_command');
-              setIsOnboardingNeeded(!hasSetup);
-            } catch (storeError) {
-              const errorInfo = extractErrorInfo(storeError);
-              const userMessage = createUserFriendlyErrorMessage(errorInfo, "setup preferences");
-              
-              await logError(storeError, "AuthFlowManager.checkOnboardingStatus.storeAccess");
-              // If we can't access settings store, assume onboarding is needed
-              setIsOnboardingNeeded(true);
-              showNotification({
-                title: "Settings Access Failed",
-                message: userMessage,
-                type: "warning"
-              });
-            }
-          }
+          const result = await invoke<boolean>('is_onboarding_completed_command');
+          setIsOnboardingNeeded(!result);
         } catch (e) {
           const errorInfo = extractErrorInfo(e);
           const userMessage = createUserFriendlyErrorMessage(errorInfo, "setup status");
