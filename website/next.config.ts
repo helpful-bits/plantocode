@@ -177,16 +177,28 @@ const nextConfig: NextConfig = {
       type: 'asset/source',
     });
     
-    // Skip polyfills for modern features
+    // Skip all polyfills for modern features - we target modern browsers only
     if (!isServer) {
       config.resolve.alias = {
         ...config.resolve.alias,
-        // Skip core-js polyfills for features available in modern browsers
+        // Skip ALL core-js polyfills - saves ~13KB based on Lighthouse
+        'core-js': false,
+        '@babel/runtime': false,
+        // Skip specific polyfills identified in Lighthouse report
         'core-js/modules/es.array.flat': false,
         'core-js/modules/es.array.flat-map': false,
+        'core-js/modules/es.array.at': false,
         'core-js/modules/es.object.from-entries': false,
+        'core-js/modules/es.object.has-own': false,
         'core-js/modules/es.string.trim-end': false,
         'core-js/modules/es.string.trim-start': false,
+      };
+      
+      // Exclude polyfills from bundle
+      config.externals = {
+        ...config.externals,
+        'core-js': 'null',
+        '@babel/runtime': 'null',
       };
     }
 

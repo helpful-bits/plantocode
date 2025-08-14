@@ -1,18 +1,27 @@
-# Browserslist configuration
-# Target modern browsers only - no legacy support needed
+# Browserslist configuration  
+# Target modern browsers only - eliminates ~13KB of legacy polyfills
+# Based on Lighthouse report recommendations
 
-# Production browsers
-last 2 Chrome versions
-last 2 Firefox versions
-last 2 Safari versions
-last 2 Edge versions
+# Minimum browser versions (supports all ES2020+ features)
+Chrome >= 95
+Firefox >= 95
+Safari >= 15.4
+Edge >= 95
 
-# No IE support
-not IE 11
+# Mobile browsers
+iOS >= 15.4
+Android >= 95
+
+# Exclude legacy browsers completely
 not dead
+not ie 11
+not op_mini all
+not safari < 15.4
+not chrome < 95
+not firefox < 95
 
-# Ensure modern JavaScript support
-Chrome >= 90
-Firefox >= 88
-Safari >= 14.1
-Edge >= 90
+# This config ensures:
+# - No babel transform-classes polyfill needed
+# - Native Array.prototype.at/flat/flatMap support
+# - Native Object.fromEntries/hasOwn support  
+# - Native String trimStart/trimEnd support
