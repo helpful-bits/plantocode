@@ -21,6 +21,7 @@ const defaultSteps: Step[] = [];
 function OptimizedVideo({ video, poster }: { video: string; poster: string }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [loadError, setLoadError] = useState(false);
+  const [posterError, setPosterError] = useState(false);
   const inView = useInView(videoRef, { margin: '100px' });
 
   useEffect(() => {
@@ -35,6 +36,13 @@ function OptimizedVideo({ video, poster }: { video: string; poster: string }) {
     }
   }, [inView]);
 
+  // Preload poster image to check if it's accessible
+  useEffect(() => {
+    const img = new Image();
+    img.onerror = () => setPosterError(true);
+    img.src = poster;
+  }, [poster]);
+
   return (
     <div className="relative w-full">
       <video
@@ -43,8 +51,8 @@ function OptimizedVideo({ video, poster }: { video: string; poster: string }) {
         muted
         playsInline
         controls={false}
-        className="w-full aspect-video relative z-10 rounded-lg"
-        poster={poster}
+        className="w-full aspect-video relative z-10 rounded-lg bg-background/10"
+        poster={posterError ? undefined : poster}
         preload="none"
         onError={() => setLoadError(true)}
       >
@@ -53,12 +61,9 @@ function OptimizedVideo({ video, poster }: { video: string; poster: string }) {
       </video>
 
       {loadError && (
-        <div
-          className="absolute inset-0 flex items-center justify-center bg-cover bg-center bg-no-repeat rounded-lg"
-          style={{ backgroundImage: `url(${poster})` }}
-        >
+        <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-background/50 to-background/30 rounded-lg">
           <div className="bg-background/80 px-4 py-2 rounded-lg text-sm text-muted-foreground">
-            Unable to load video
+            Video will be available soon
           </div>
         </div>
       )}
