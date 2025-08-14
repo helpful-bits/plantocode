@@ -200,7 +200,8 @@
       "Bash(aws route53 list-hosted-zones:*)",
       "Bash(aws route53:*)"
     ],
-    "deny": []
+    "deny": [],
+    "defaultMode": "acceptEdits"
   },
   "enableAllProjectMcpServers": false
 }

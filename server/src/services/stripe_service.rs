@@ -531,7 +531,7 @@ impl StripeService {
     pub async fn list_payment_methods(&self, customer_id: &str) -> Result<Vec<stripe_types::PaymentMethod>, StripeServiceError> {
         let response = self.make_stripe_request_with_idempotency(
             reqwest::Method::GET,
-            &format!("payment_methods?customer={}&type=card", customer_id),
+            &format!("payment_methods?customer={}", customer_id),
             None,
             None,
         ).await?;

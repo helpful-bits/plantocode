@@ -1,0 +1,18 @@
+# Browserslist configuration
+# Target modern browsers only - no legacy support needed
+
+# Production browsers
+last 2 Chrome versions
+last 2 Firefox versions
+last 2 Safari versions
+last 2 Edge versions
+
+# No IE support
+not IE 11
+not dead
+
+# Ensure modern JavaScript support
+Chrome >= 90
+Firefox >= 88
+Safari >= 14.1
+Edge >= 90

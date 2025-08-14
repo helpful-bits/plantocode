@@ -321,7 +321,7 @@ export const CreditManager = ({ isOpen, onClose }: CreditManagerProps) => {
                 </div>
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-muted-foreground">
-                    ${formatUsdCurrency(tier.min).replace('.00', '')}{tier.max ? `–${formatUsdCurrency(tier.max - 0.01)}` : '+'}
+                    {formatUsdCurrency(tier.min).replace('.00', '')}{tier.max ? `–${formatUsdCurrency(tier.max - 0.01)}` : '+'}
                   </span>
                   {isCurrentTier && (
                     <Badge variant="outline" className="border-primary text-primary">

@@ -132,6 +132,19 @@ const nextConfig: NextConfig = {
         ],
       },
       {
+        source: '/_next/static/css/(.*)',
+        headers: [
+          {
+            key: 'Content-Type',
+            value: 'text/css; charset=utf-8',
+          },
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=31536000, immutable',
+          },
+        ],
+      },
+      {
         source: '/videos/(.*)',
         headers: [
           {
@@ -163,6 +176,19 @@ const nextConfig: NextConfig = {
       test: /\.(glsl|vert|frag)$/,
       type: 'asset/source',
     });
+    
+    // Skip polyfills for modern features
+    if (!isServer) {
+      config.resolve.alias = {
+        ...config.resolve.alias,
+        // Skip core-js polyfills for features available in modern browsers
+        'core-js/modules/es.array.flat': false,
+        'core-js/modules/es.array.flat-map': false,
+        'core-js/modules/es.object.from-entries': false,
+        'core-js/modules/es.string.trim-end': false,
+        'core-js/modules/es.string.trim-start': false,
+      };
+    }
 
     // Optimize chunk splitting
     if (!dev && !isServer) {
