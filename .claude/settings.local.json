@@ -204,7 +204,9 @@
       "WebFetch(domain:developer.apple.com)",
       "Bash(aws cloudfront list-distributions:*)",
       "Bash(/Users/kirylkazlovich/dev/vibe-manager/fix-cloudfront-cors.sh)",
-      "Bash(COPYFILE_DISABLE=1 tar -czf \"Vibe Manager_1.0.14_aarch64.app.tar.gz\" \"Vibe Manager.app\")"
+      "Bash(COPYFILE_DISABLE=1 tar -czf \"Vibe Manager_1.0.14_aarch64.app.tar.gz\" \"Vibe Manager.app\")",
+      "Bash(xcrun notarytool submit:*)",
+      "Bash(COPYFILE_DISABLE=1 tar -czf \"Vibe Manager_1.0.15_aarch64.app.tar.gz\" \"Vibe Manager.app\")"
     ],
     "deny": [],
     "defaultMode": "acceptEdits"

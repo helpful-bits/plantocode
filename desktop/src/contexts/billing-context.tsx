@@ -89,13 +89,13 @@ export function BillingProvider({ children }: { children: React.ReactNode }) {
     fetchBillingData();
   }, [fetchBillingData]);
 
-  // Listen for job_updated events to refresh billing data in real-time
+  // Listen for job:updated events to refresh billing data in real-time
   useEffect(() => {
     let unlisten: UnlistenFn | null = null;
 
     const setupListener = async () => {
       try {
-        unlisten = await safeListen('job_updated', async (event) => {
+        unlisten = await safeListen('job:updated', async (event) => {
           try {
             // Event payload includes job details
             const payload = event.payload as { id: string; status: JobStatus; actualCost?: number | null };
@@ -105,11 +105,11 @@ export function BillingProvider({ children }: { children: React.ReactNode }) {
               await refreshBillingData();
             }
           } catch (err) {
-            console.error('[BillingContext] Error processing job_updated event:', err);
+            console.error('[BillingContext] Error processing job:updated event:', err);
           }
         });
       } catch (err) {
-        console.error('[BillingContext] Error setting up job_updated listener:', err);
+        console.error('[BillingContext] Error setting up job:updated listener:', err);
       }
     };
 

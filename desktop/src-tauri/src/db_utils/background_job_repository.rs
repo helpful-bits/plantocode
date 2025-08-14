@@ -1,6 +1,7 @@
 use crate::error::{AppError, AppResult};
 use crate::models::{BackgroundJob, JobStatus, OpenRouterUsage, TaskType};
 use crate::utils::get_timestamp;
+use crate::events::job_events::*;
 use log::{debug, info, warn};
 use serde_json::{Value, json};
 use sqlx::{Row, Sqlite, SqlitePool, sqlite::SqliteRow};
@@ -235,12 +236,88 @@ impl BackgroundJobRepository {
             .await
             .map_err(|e| AppError::DatabaseError(format!("Failed to commit transaction: {}", e)))?;
 
-        // Emit job_updated event with complete job data
+        // Emit granular events based on changes
         if let Some(ref app_handle) = self.app_handle {
-            // Fetch the updated job to emit complete data (outside of transaction)
-            if let Ok(Some(updated_job)) = self.get_job_by_id(job_id).await {
-                if let Err(e) = app_handle.emit("job_updated", &updated_job) {
-                    warn!("Failed to emit job_updated event for job {}: {}", job_id, e);
+            // Emit response appended event if response grew
+            let previous_response_len = job.response.as_ref().map(|r| r.len()).unwrap_or(0);
+            let current_response_len = accumulated_response.len();
+            
+            if current_response_len > previous_response_len {
+                let start_index = previous_response_len;
+                // Ensure we don't create invalid UTF-8 by splitting at char boundaries
+                let chunk = if start_index < accumulated_response.len() {
+                    &accumulated_response[start_index..]
+                } else {
+                    ""
+                };
+                
+                emit_job_response_appended(app_handle, JobResponseAppendedEvent {
+                    job_id: job_id.to_string(),
+                    chunk: chunk.to_string(),
+                    accumulated_length: current_response_len,
+                });
+            }
+            
+            // Emit stream progress event if progress changed
+            if let Some(progress) = stream_progress {
+                let previous_progress = if let Some(metadata_str) = &job.metadata {
+                    if let Ok(metadata_json) = serde_json::from_str::<Value>(metadata_str) {
+                        metadata_json
+                            .get("taskData")
+                            .and_then(|td| td.get("streamProgress"))
+                            .and_then(|v| v.as_f64())
+                            .map(|v| v as f32)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
+                
+                if previous_progress != Some(progress) {
+                    emit_job_stream_progress(app_handle, JobStreamProgressEvent {
+                        job_id: job_id.to_string(),
+                        progress: Some(progress),
+                        response_length: Some(current_response_len),
+                        last_stream_update_time: Some(now),
+                    });
+                }
+            }
+            
+            // Emit tokens updated event if tokens changed
+            if let Some(usage_data) = usage {
+                let tokens_changed = job.tokens_sent != Some(usage_data.prompt_tokens as i32) ||
+                                   job.tokens_received != Some(usage_data.completion_tokens as i32) ||
+                                   job.cache_read_tokens != Some(usage_data.cache_read_tokens as i64) ||
+                                   job.cache_write_tokens != Some(usage_data.cache_write_tokens as i64);
+                
+                if tokens_changed {
+                    emit_job_tokens_updated(app_handle, JobTokensUpdatedEvent {
+                        job_id: job_id.to_string(),
+                        tokens_sent: Some(usage_data.prompt_tokens as i32),
+                        tokens_received: Some(usage_data.completion_tokens as i32),
+                        cache_read_tokens: if usage_data.cache_read_tokens > 0 {
+                            Some(usage_data.cache_read_tokens as i32)
+                        } else {
+                            None
+                        },
+                        cache_write_tokens: if usage_data.cache_write_tokens > 0 {
+                            Some(usage_data.cache_write_tokens as i32)
+                        } else {
+                            None
+                        },
+                    });
+                }
+                
+                // Emit cost updated event if cost changed
+                if let Some(cost) = usage_data.cost {
+                    if job.actual_cost != Some(cost) {
+                        emit_job_cost_updated(app_handle, JobCostUpdatedEvent {
+                            job_id: job_id.to_string(),
+                            actual_cost: cost,
+                            is_finalized: Some(false),
+                        });
+                    }
                 }
             }
         }
@@ -294,13 +371,23 @@ impl BackgroundJobRepository {
             AppError::DatabaseError(format!("Failed to update job stream usage: {}", e))
         })?;
 
-        // Emit job_updated event
+        // Emit granular events
         if let Some(ref app_handle) = self.app_handle {
-            if let Ok(Some(updated_job)) = self.get_job_by_id(job_id).await {
-                if let Err(e) = app_handle.emit("job_updated", &updated_job) {
-                    warn!("Failed to emit job_updated event for job {}: {}", job_id, e);
-                }
-            }
+            // Emit tokens updated event
+            emit_job_tokens_updated(app_handle, JobTokensUpdatedEvent {
+                job_id: job_id.to_string(),
+                tokens_sent: Some(usage.tokens_input as i32),
+                tokens_received: Some(usage.tokens_output as i32),
+                cache_read_tokens: usage.cache_read_tokens.map(|v| v as i32),
+                cache_write_tokens: usage.cache_write_tokens.map(|v| v as i32),
+            });
+            
+            // Emit cost updated event
+            emit_job_cost_updated(app_handle, JobCostUpdatedEvent {
+                job_id: job_id.to_string(),
+                actual_cost: usage.estimated_cost,
+                is_finalized: Some(false),
+            });
         }
 
         debug!(
@@ -390,14 +477,14 @@ impl BackgroundJobRepository {
             AppError::DatabaseError(format!("Failed to update job stream progress: {}", e))
         })?;
 
-        // Emit job_updated event with complete job data
+        // Emit stream progress event
         if let Some(ref app_handle) = self.app_handle {
-            // Fetch the updated job to emit complete data
-            if let Ok(Some(updated_job)) = self.get_job_by_id(job_id).await {
-                if let Err(e) = app_handle.emit("job_updated", &updated_job) {
-                    warn!("Failed to emit job_updated event for job {}: {}", job_id, e);
-                }
-            }
+            emit_job_stream_progress(app_handle, JobStreamProgressEvent {
+                job_id: job_id.to_string(),
+                progress: stream_progress,
+                response_length: Some(usage_update.tokens_output as usize),
+                last_stream_update_time: Some(now),
+            });
         }
 
         debug!(
@@ -640,6 +727,13 @@ impl BackgroundJobRepository {
             .await
             .map_err(|e| AppError::DatabaseError(format!("Failed to insert job: {}", e)))?;
 
+        // Emit job:created event
+        if let Some(ref app_handle) = self.app_handle {
+            if let Ok(Some(created_job)) = self.get_job_by_id(&job.id).await {
+                emit_job_created(app_handle, JobCreatedEvent { job: created_job });
+            }
+        }
+
         Ok(())
     }
 
@@ -692,11 +786,15 @@ impl BackgroundJobRepository {
         .await
         .map_err(|e| AppError::DatabaseError(format!("Failed to update job: {}", e)))?;
 
-        // Emit job_updated event if we have an app handle
+        // Emit job:status-changed event if status has changed
         if let Some(app_handle) = &self.app_handle {
-            if let Err(e) = app_handle.emit("job_updated", job) {
-                warn!("Failed to emit job_updated event for job {}: {}", job.id, e);
-            }
+            emit_job_status_changed(app_handle, JobStatusChangedEvent {
+                job_id: job.id.clone(),
+                status: job.status.clone(),
+                start_time: job.start_time,
+                end_time: job.end_time,
+                sub_status_message: job.error_message.clone(),
+            });
         }
 
         Ok(())
@@ -731,14 +829,15 @@ impl BackgroundJobRepository {
         result
             .map_err(|e| AppError::DatabaseError(format!("Failed to update job status: {}", e)))?;
 
-        // Emit job_updated event if we have an app handle
+        // Emit job:status-changed event
         if let Some(app_handle) = &self.app_handle {
-            // Fetch the updated job to emit complete data
-            if let Ok(Some(updated_job)) = self.get_job_by_id(job_id).await {
-                if let Err(e) = app_handle.emit("job_updated", &updated_job) {
-                    warn!("Failed to emit job_updated event for job {}: {}", job_id, e);
-                }
-            }
+            emit_job_status_changed(app_handle, JobStatusChangedEvent {
+                job_id: job_id.to_string(),
+                status: status.to_string(),
+                start_time: None,
+                end_time: None,
+                sub_status_message: message.map(|m| m.to_string()),
+            });
         }
 
         Ok(())
@@ -769,14 +868,15 @@ impl BackgroundJobRepository {
             AppError::DatabaseError(format!("Failed to update job status with metadata: {}", e))
         })?;
 
-        // Emit job_updated event if we have an app handle
+        // Emit job:status-changed event
         if let Some(app_handle) = &self.app_handle {
-            // Fetch the updated job to emit complete data
-            if let Ok(Some(updated_job)) = self.get_job_by_id(job_id).await {
-                if let Err(e) = app_handle.emit("job_updated", &updated_job) {
-                    warn!("Failed to emit job_updated event for job {}: {}", job_id, e);
-                }
-            }
+            emit_job_status_changed(app_handle, JobStatusChangedEvent {
+                job_id: job_id.to_string(),
+                status: status.to_string(),
+                start_time: None,
+                end_time: None,
+                sub_status_message: message.map(|m| m.to_string()),
+            });
         }
 
         Ok(())
@@ -797,14 +897,15 @@ impl BackgroundJobRepository {
         .await
         .map_err(|e| AppError::DatabaseError(format!("Failed to mark job as running: {}", e)))?;
 
-        // Emit job_updated event if we have an app handle
+        // Emit job:status-changed event
         if let Some(app_handle) = &self.app_handle {
-            // Fetch the updated job to emit complete data
-            if let Ok(Some(updated_job)) = self.get_job_by_id(job_id).await {
-                if let Err(e) = app_handle.emit("job_updated", &updated_job) {
-                    warn!("Failed to emit job_updated event for job {}: {}", job_id, e);
-                }
-            }
+            emit_job_status_changed(app_handle, JobStatusChangedEvent {
+                job_id: job_id.to_string(),
+                status: JobStatus::Running.to_string(),
+                start_time: Some(now),
+                end_time: None,
+                sub_status_message: None,
+            });
         }
 
         Ok(())
@@ -967,16 +1068,29 @@ impl BackgroundJobRepository {
                 debug!("Cost ${:.6} stored in database for job {}", cost, job_id);
             }
 
-            // Emit job_updated event if we have an app handle
+            // Emit granular events
             if let Some(app_handle) = &self.app_handle {
-                // Fetch the completed job to emit complete data
-                if let Ok(Some(completed_job)) = self.get_job_by_id(job_id).await {
-                    if let Err(e) = app_handle.emit("job_updated", &completed_job) {
-                        warn!(
-                            "Failed to emit job_updated event for completed job {}: {}",
-                            job_id, e
-                        );
-                    }
+                // Emit status changed event
+                emit_job_status_changed(app_handle, JobStatusChangedEvent {
+                    job_id: job_id.to_string(),
+                    status: JobStatus::Completed.to_string(),
+                    start_time: None,
+                    end_time: Some(now),
+                    sub_status_message: None,
+                });
+                
+                // Emit finalized event if cost is provided
+                if let Some(cost) = actual_cost {
+                    emit_job_finalized(app_handle, JobFinalizedEvent {
+                        job_id: job_id.to_string(),
+                        status: JobStatus::Completed.to_string(),
+                        response: Some(response.to_string()),
+                        actual_cost: cost,
+                        tokens_sent: tokens_sent,
+                        tokens_received: tokens_received,
+                        cache_read_tokens: cache_read_tokens.map(|v| v as i32),
+                        cache_write_tokens: cache_write_tokens.map(|v| v as i32),
+                    });
                 }
             }
         } else {
@@ -1023,23 +1137,7 @@ impl BackgroundJobRepository {
                 job_id
             );
 
-            // Emit job_updated event if we have an app handle
-            if let Some(app_handle) = &self.app_handle {
-                // Fetch the updated job to emit complete data
-                if let Ok(Some(updated_job)) = self.get_job_by_id(job_id).await {
-                    if let Err(e) = app_handle.emit("job_updated", &updated_job) {
-                        warn!(
-                            "Failed to emit job_updated event for system prompt template update on job {}: {}",
-                            job_id, e
-                        );
-                    }
-                }
-            }
-        } else {
-            warn!(
-                "No rows affected when updating system prompt template for job {}",
-                job_id
-            );
+            // System prompt template updates don't need specific events - they are internal metadata updates
         }
 
         Ok(())
@@ -1174,16 +1272,29 @@ impl BackgroundJobRepository {
                 );
             }
 
-            // Emit job_updated event if we have an app handle
+            // Emit granular events
             if let Some(app_handle) = &self.app_handle {
-                // Fetch the failed job to emit complete data
-                if let Ok(Some(failed_job)) = self.get_job_by_id(job_id).await {
-                    if let Err(e) = app_handle.emit("job_updated", &failed_job) {
-                        warn!(
-                            "Failed to emit job_updated event for failed job {}: {}",
-                            job_id, e
-                        );
-                    }
+                // Emit status changed event
+                emit_job_status_changed(app_handle, JobStatusChangedEvent {
+                    job_id: job_id.to_string(),
+                    status: JobStatus::Failed.to_string(),
+                    start_time: None,
+                    end_time: Some(now),
+                    sub_status_message: Some(error_message.to_string()),
+                });
+                
+                // Emit finalized event if cost is provided (for failed jobs with partial costs)
+                if let Some(cost) = actual_cost {
+                    emit_job_finalized(app_handle, JobFinalizedEvent {
+                        job_id: job_id.to_string(),
+                        status: JobStatus::Failed.to_string(),
+                        response: None, // Failed jobs typically don't have a complete response
+                        actual_cost: cost,
+                        tokens_sent: tokens_sent,
+                        tokens_received: tokens_received,
+                        cache_read_tokens: None,
+                        cache_write_tokens: None,
+                    });
                 }
             }
         } else {
@@ -1240,17 +1351,12 @@ impl BackgroundJobRepository {
         if result.rows_affected() > 0 {
             debug!("Successfully updated error details for job {}", job_id);
 
-            // Emit job_updated event if app_handle is available
+            // Emit error details event
             if let Some(app_handle) = &self.app_handle {
-                // Fetch the updated job to emit complete data
-                if let Ok(Some(updated_job)) = self.get_job_by_id(job_id).await {
-                    if let Err(e) = app_handle.emit("job_updated", &updated_job) {
-                        warn!(
-                            "Failed to emit job_updated event for job {} with error details: {}",
-                            job_id, e
-                        );
-                    }
-                }
+                emit_job_error_details(app_handle, JobErrorDetailsEvent {
+                    job_id: job_id.to_string(),
+                    error_details: error_details.clone(),
+                });
             }
         } else {
             warn!(
@@ -1334,19 +1440,29 @@ impl BackgroundJobRepository {
                 );
             }
 
-            // Emit job_updated event if app_handle available
+            // Emit granular events
             if let Some(ref app_handle) = self.app_handle {
-                let event_payload = serde_json::json!({
-                    "id": job_id,
-                    "status": "Canceled",
-                    "errorMessage": reason,
-                    "endTime": now
+                // Emit status changed event
+                emit_job_status_changed(app_handle, JobStatusChangedEvent {
+                    job_id: job_id.to_string(),
+                    status: JobStatus::Canceled.to_string(),
+                    start_time: None,
+                    end_time: Some(now),
+                    sub_status_message: Some(reason.to_string()),
                 });
-                if let Err(e) = app_handle.emit("job_updated", &event_payload) {
-                    warn!(
-                        "Failed to emit job_updated event for canceled job {}: {}",
-                        job_id, e
-                    );
+                
+                // Emit finalized event if cost is provided
+                if let Some(cost_value) = cost {
+                    emit_job_finalized(app_handle, JobFinalizedEvent {
+                        job_id: job_id.to_string(),
+                        status: JobStatus::Canceled.to_string(),
+                        response: None,
+                        actual_cost: cost_value,
+                        tokens_sent: None,
+                        tokens_received: None,
+                        cache_read_tokens: None,
+                        cache_write_tokens: None,
+                    });
                 }
             }
         } else {
@@ -1474,6 +1590,13 @@ impl BackgroundJobRepository {
             .execute(&*self.pool)
             .await
             .map_err(|e| AppError::DatabaseError(format!("Failed to delete job: {}", e)))?;
+
+        // Emit job:deleted event
+        if let Some(ref app_handle) = self.app_handle {
+            emit_job_deleted(app_handle, JobDeletedEvent {
+                job_id: id.to_string(),
+            });
+        }
 
         Ok(())
     }
@@ -2132,11 +2255,13 @@ impl BackgroundJobRepository {
             .await?
             .ok_or_else(|| AppError::NotFoundError(format!("Job {} not found", job_id)))?;
 
-        // Emit the job_updated event with the finalized job
+        // Emit cost updated event with finalized flag
         if let Some(ref app_handle) = self.app_handle {
-            if let Err(e) = app_handle.emit("job_updated", &updated_job) {
-                warn!("Failed to emit job_updated event: {}", e);
-            }
+            emit_job_cost_updated(app_handle, JobCostUpdatedEvent {
+                job_id: job_id.to_string(),
+                actual_cost: final_cost,
+                is_finalized: Some(true),
+            });
         }
 
         Ok(updated_job)
@@ -2222,14 +2347,7 @@ impl BackgroundJobRepository {
             .await
             .map_err(|e| AppError::DatabaseError(format!("Failed to commit transaction: {}", e)))?;
 
-        // Emit job_updated event
-        if let Some(ref app_handle) = self.app_handle {
-            if let Ok(Some(updated_job)) = self.get_job_by_id(job_id).await {
-                if let Err(e) = app_handle.emit("job_updated", &updated_job) {
-                    warn!("Failed to emit job_updated event for job {}: {}", job_id, e);
-                }
-            }
-        }
+        // Metadata updates are internal - no specific events needed
 
         debug!("Successfully updated metadata for job {}", job_id);
         Ok(())

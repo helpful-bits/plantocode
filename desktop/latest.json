@@ -1,11 +1,11 @@
 {
-  "version": "1.0.14",
-  "notes": "Critical Database Fix\n\n- Fixed database initialization issue on fresh installs\n- Consolidated schema now properly bundled and applied\n- Fixed race condition in consent verification\n- All tables now created correctly on first launch",
-  "pub_date": "2025-08-14T13:59:00Z",
+  "version": "1.0.15",
+  "notes": "Version 1.0.15 Release\n\n- Performance improvements and bug fixes\n- Enhanced stability and reliability\n- Improved user experience",
+  "pub_date": "2025-08-14T14:55:00Z",
   "platforms": {
     "darwin-aarch64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSUXZZN0JwS05DN3JxN3RXcW44NXdPVzNnM1VXa0wrQ2VkU05IRk9NanM3SE54SSs4SEhYZGFpY2NWOUx6Wk1IcnVocWtlL2FDd3FBTGt6WUdUdjVja2hBS0FCVmtVMHdjPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzU1MTc5OTc4CWZpbGU6VmliZSBNYW5hZ2VyXzEuMC4xNF9hYXJjaDY0LmFwcC50YXIuZ3oKaFlpQ052VjJQcktqMFhzS3ZsWFQ2WVdSNFBLUnl3eUpHQzRjek5IWUVKUHI4dWJqRnBTR1czMVdyTWRCeXREWjVNSTlGcU52a2N3UFczWFo4ZUJPQXc9PQo=",
-      "url": "https://d2tyb0wucqqf48.cloudfront.net/desktop/mac/Vibe%20Manager_1.0.14_aarch64.app.tar.gz"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSUXZZN0JwS05DN25RZnp1VzF1NzRJOExCRDViOGd3VTU5Tm1vNnpRdnhLZStYOVBXcVVaUU83QTdhYUZDRGZBVVlsd0NRR3JtVS9HWnJZQ0FYWmd2QlFZVDZFa2VrWmdnPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzU1MTk3Njc4CWZpbGU6VmliZSBNYW5hZ2VyXzEuMC4xNV9hYXJjaDY0LmFwcC50YXIuZ3oKR08wTUUybEpseTBqSCtQQVhwZ0JEYTlkbTFJY1B6YlFYUTNCZDlmTjhxbmN1RDVnQ2E5eGdtN0JTaXBIcXNwOThJMXFOZUN1M0Vqckl0NnpBQy9XRFE9PQo=",
+      "url": "https://d2tyb0wucqqf48.cloudfront.net/desktop/mac/Vibe%20Manager_1.0.15_aarch64.app.tar.gz"
     }
   }
 }

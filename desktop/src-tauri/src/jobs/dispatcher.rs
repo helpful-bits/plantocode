@@ -132,15 +132,7 @@ pub async fn process_next_job(app_handle: AppHandle) -> AppResult<Option<JobProc
         )
         .await?;
 
-    // Emit job update event for Preparing status
-    app_handle.emit(
-        "job_updated",
-        json!({
-            "id": job_id,
-            "status": "Preparing",
-            "errorMessage": "Finding available processor..."
-        }),
-    )?;
+    // Status transition handled by repository method above
 
     // Check if this is a workflow job - workflows don't have processors
     // They are orchestrated by the WorkflowOrchestrator which creates individual stage jobs
@@ -189,14 +181,7 @@ pub async fn process_next_job(app_handle: AppHandle) -> AppResult<Option<JobProc
     // Mark job as running now that we have a processor
     background_job_repo.mark_job_running(&job_id).await?;
 
-    // Emit job update event for Running status
-    app_handle.emit(
-        "job_updated",
-        json!({
-            "id": job_id,
-            "status": "Running"
-        }),
-    )?;
+    // Status transition handled by repository method above
 
     // Process the job with timeout
     let job_result =
@@ -396,8 +381,7 @@ async fn handle_job_success(
                     AppError::NotFoundError(format!("Job {} not found after completion", job_id))
                 })?;
 
-            // Emit job update event with entire completed job object
-            app_handle.emit("job_updated", &completed_job)?;
+            // Job completion event handled by repository method above
 
             // Check if this job is part of a workflow and notify WorkflowOrchestrator
             // Use the completed_job's metadata which contains the original workflowId
@@ -484,10 +468,7 @@ async fn handle_job_success(
                 )
                 .await?;
 
-            // Fetch full job and emit it in job_updated
-            if let Ok(Some(failed_job)) = background_job_repo.get_job_by_id(job_id).await {
-                app_handle.emit("job_updated", &failed_job)?;
-            }
+            // Job failure event handled by repository method above
         }
         JobStatus::Canceled => {
             // Update job status to canceled with error message
@@ -496,10 +477,7 @@ async fn handle_job_success(
                 .mark_job_canceled(job_id, cancel_reason, None)
                 .await?;
 
-            // Emit job update event for canceled job
-            if let Ok(Some(canceled_job)) = background_job_repo.get_job_by_id(job_id).await {
-                app_handle.emit("job_updated", &canceled_job)?;
-            }
+            // Job cancellation event handled by repository method above
 
             // Get the canceled job to access its original metadata
             let canceled_job = background_job_repo
@@ -657,10 +635,7 @@ async fn handle_job_failure_or_retry_internal(
             );
         }
 
-        // Fetch and emit full job
-        if let Ok(Some(failed_job)) = background_job_repo.get_job_by_id(job_id).await {
-            app_handle.emit("job_updated", &failed_job)?;
-        }
+        // Job failure event handled by repository method above
 
         // ALWAYS pass to WorkflowOrchestrator if job has workflowId
         match get_workflow_orchestrator().await {
@@ -746,15 +721,7 @@ async fn handle_job_failure_or_retry_internal(
                     );
                 }
 
-                // Emit job updated event with user-friendly message
-                if let Ok(Some(failed_job)) = background_job_repo.get_job_by_id(job_id).await {
-                    if let Err(e) = app_handle.emit("job_updated", &failed_job) {
-                        error!(
-                            "Failed to emit job updated event for permanently failed job {}: {}. UI may not reflect current state.",
-                            job_id, e
-                        );
-                    }
-                }
+                // Job failure event handled by repository method above
 
                 return Ok(JobFailureHandlingResult::PermanentFailure(failure_reason));
             }
@@ -784,10 +751,7 @@ async fn handle_job_failure_or_retry_internal(
             error!("Failed to schedule job for retry: {}", e);
         }
 
-        // Emit job updated event with job id, status, and metadata
-        if let Ok(Some(retry_job)) = background_job_repo.get_job_by_id(job_id).await {
-            app_handle.emit("job_updated", &retry_job)?;
-        }
+        // Job retry event handled by repository method above
 
         // Re-queue the job with delay instead of sleeping
         if let Err(e) =
@@ -886,15 +850,7 @@ async fn handle_job_failure_or_retry_internal(
             );
         }
 
-        // Emit job updated event with user-friendly message
-        if let Ok(Some(failed_job)) = background_job_repo.get_job_by_id(job_id).await {
-            if let Err(e) = app_handle.emit("job_updated", &failed_job) {
-                error!(
-                    "Failed to emit job updated event for permanently failed job {}: {}. UI may not reflect current state.",
-                    job_id, e
-                );
-            }
-        }
+        // Job failure event handled by repository method above
 
         Ok(JobFailureHandlingResult::PermanentFailure(failure_reason))
     }

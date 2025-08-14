@@ -8,11 +8,9 @@ import {
   type BackgroundJob,
   JOB_STATUSES,
 } from "@/types/session-types";
-import { areJobArraysEqual, areJobsEqual } from "../_utils/job-state-helpers";
 import { logError, getErrorMessage } from "@/utils/error-handling";
 import { safeListen } from "@/utils/tauri-event-utils";
 import { getAllVisibleJobsAction } from "@/actions/background-jobs/jobs.actions";
-import { getParsedMetadata } from "@/app/components/background-jobs-sidebar/utils";
 
 export interface UseOrchestratedBackgroundJobsStateParams {
   initialJobs?: BackgroundJob[];
@@ -21,20 +19,24 @@ export interface UseOrchestratedBackgroundJobsStateParams {
 /**
  * Main orchestrator hook for background jobs state management
  *
- * This hook manages background jobs state by using Tauri commands.
+ * This hook manages background jobs state using a pure event-driven Map-based approach.
+ * It maintains a single source of truth using a Map and derives React state for rendering.
  *
- * It maintains a single source of truth for job data, tracking:
- * - All jobs (jobs)
- * - Active/non-terminal jobs (activeJobs)
- * - Loading and error states
- * - Available actions: cancel, delete, clear, refresh
+ * Features:
+ * - Map-based job storage for O(1) lookups and updates
+ * - Pure event-driven updates with surgical field modifications
+ * - Single bootstrap fetch on mount, no polling
+ * - Manual refresh capability for user-triggered updates
  */
 export function useOrchestratedBackgroundJobsState({
   initialJobs = [],
 }: UseOrchestratedBackgroundJobsStateParams = {}) {
-  // Maintain state for jobs only - activeJobs will be derived
+  // Authoritative job store using Map for O(1) operations
+  const jobsMapRef = useRef(new Map<string, BackgroundJob>());
+  
+  // React state derived from Map for rendering
   const [jobs, setJobs] = useState<BackgroundJob[]>(initialJobs);
-
+  
   // Track loading and error states
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
@@ -45,12 +47,24 @@ export function useOrchestratedBackgroundJobsState({
   const isFetchingRef = useRef(false);
   const consecutiveErrorsRef = useRef(0);
   
-  // Refs for debouncing job updates during streaming
-  const bufferRef = useRef<Map<string, any>>(new Map());
-  const flushTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Initialize Map with initial jobs
+  useEffect(() => {
+    if (initialJobs.length > 0) {
+      jobsMapRef.current.clear();
+      initialJobs.forEach(job => {
+        jobsMapRef.current.set(job.id, job);
+      });
+    }
+  }, [initialJobs]);
   
   // Derive activeJobs from jobs
   const activeJobs = useMemo(() => jobs.filter((job) => JOB_STATUSES.ACTIVE.includes(job.status)), [jobs]);
+
+  // Helper function to update Map and derive new array
+  const updateJobsFromMap = useCallback(() => {
+    const newJobsArray = Array.from(jobsMapRef.current.values());
+    setJobs(newJobsArray);
+  }, []);
 
   // Fetch jobs using Tauri command
   const fetchJobs = useCallback(async () => {
@@ -126,7 +140,7 @@ export function useOrchestratedBackgroundJobsState({
     }
   }, [initialLoad]);
 
-  // Refresh jobs and update state
+  // Manual refresh function - fetches all jobs and replaces Map contents
   const refreshJobs = useCallback(async () => {
     // Skip if already fetching
     if (isFetchingRef.current) {
@@ -138,19 +152,18 @@ export function useOrchestratedBackgroundJobsState({
     try {
       const jobsData = await fetchJobs();
 
-      // Update state if we got data back
+      // Update Map and derive new state if we got data back
       if (jobsData) {
-        setJobs((prevJobs) => {
-          if (!areJobArraysEqual(prevJobs, jobsData)) {
-            return jobsData;
-          }
-          return prevJobs;
+        jobsMapRef.current.clear();
+        jobsData.forEach(job => {
+          jobsMapRef.current.set(job.id, job);
         });
+        updateJobsFromMap();
       }
     } finally {
       setIsLoading(false);
     }
-  }, [fetchJobs]);
+  }, [fetchJobs, updateJobsFromMap]);
 
   // Cancel a job using Tauri command
   const cancelJob = useCallback(
@@ -201,205 +214,239 @@ export function useOrchestratedBackgroundJobsState({
       }
     },
     []
-  )
+  );
 
-  // Parse metadata without caching to ensure cost updates are always reflected
-  const parseMetadata = useCallback((metadata: any) => {
-    if (!metadata) return null;
-    return getParsedMetadata(metadata);
-  }, []);
-  
-  const upsertJobInternal = useCallback((prevJobs: BackgroundJob[], jobUpdate: Partial<BackgroundJob> & { id: string }, prepend = false) => {
-    // Special handling for finalized jobs - always replace with authoritative data
-    if (jobUpdate.isFinalized) {
-      console.debug(`[BackgroundJobs] Finalizing job ${jobUpdate.id} with authoritative data`);
-      
-      const newJobs = prevJobs.filter(j => j.id !== jobUpdate.id);
-      // Cast jobUpdate as full BackgroundJob since finalized updates contain all data
-      newJobs.push(jobUpdate as BackgroundJob);
-      return newJobs;
-    }
-    
-    // Filter out workflow orchestrator jobs
-    const workflowTypes = ['file_finder_workflow', 'web_search_workflow'];
-    if (jobUpdate.taskType && workflowTypes.includes(jobUpdate.taskType)) {
-      return prevJobs;
-    }
-    
-    const existingJobIndex = prevJobs.findIndex(j => j.id === jobUpdate.id);
-    
-    if (existingJobIndex !== -1) {
-      // Job exists - merge the update
-      const existingJob = prevJobs[existingJobIndex];
-      
-      // Handle metadata merging - prioritize finalized cost data
-      let mergedMetadata = existingJob.metadata;
-      if (jobUpdate.metadata !== undefined) {
-        const existingMetadata = parseMetadata(existingJob.metadata);
-        const updateMetadata = parseMetadata(jobUpdate.metadata);
-        
-        // For finalized updates, prioritize the update data completely
-        if (jobUpdate.isFinalized) {
-          mergedMetadata = updateMetadata || jobUpdate.metadata;
-        } else if (existingMetadata && updateMetadata) {
-          // Deep merge metadata objects to preserve existing fields while updating new ones
-          const merged = { ...existingMetadata, ...updateMetadata };
-          
-          // Deep merge taskData if both exist
-          if (existingMetadata.taskData && updateMetadata.taskData) {
-            merged.taskData = { ...existingMetadata.taskData, ...updateMetadata.taskData };
-          }
-          
-          mergedMetadata = merged;
-        } else if (updateMetadata) {
-          mergedMetadata = updateMetadata;
-        } else if (existingMetadata) {
-          mergedMetadata = existingMetadata;
-        }
-      }
-      
-      const mergedJob: BackgroundJob = {
-        ...existingJob,
-        ...jobUpdate,
-        // Preserve merged metadata
-        metadata: mergedMetadata,
-        // Handle response with proper null checking
-        response: jobUpdate.response !== undefined 
-          ? jobUpdate.response 
-          : existingJob.response,
-      };
-      
-      // For finalized cost updates, always update regardless of comparison
-      if (jobUpdate.isFinalized) {
-        console.debug(`[BackgroundJobs] Finalizing job ${jobUpdate.id} - updating with authoritative data`);
-        const newJobs = [...prevJobs];
-        newJobs[existingJobIndex] = mergedJob;
-        return newJobs;
-      }
-      
-      // Always update when job transitions to completed status OR when updating a completed job
-      // This ensures the final response from the database overwrites any partial streamed response
-      if (mergedJob.status === 'completed') {
-        const newJobs = [...prevJobs];
-        newJobs[existingJobIndex] = mergedJob;
-        return newJobs;
-      }
-      
-      // Only update if job actually changed
-      if (!areJobsEqual(existingJob, mergedJob)) {
-        const newJobs = [...prevJobs];
-        newJobs[existingJobIndex] = mergedJob;
-        return newJobs;
-      }
-      return prevJobs;
-    } else if (jobUpdate.status) {
-      // Job doesn't exist and we have enough info to create it
-      const newJob = jobUpdate as BackgroundJob;
-      return prepend ? [newJob, ...prevJobs] : [...prevJobs, newJob];
-    }
-    
-    return prevJobs;
-  }, [parseMetadata]);
-  
-  const upsertJob = useCallback((jobUpdate: Partial<BackgroundJob> & { id: string }, prepend = false) => {
-    setJobs(prevJobs => upsertJobInternal(prevJobs, jobUpdate, prepend));
-  }, [upsertJobInternal]);
-  
-  // Batch update multiple jobs in a single reducer pass
-  const bulkUpsertJobs = useCallback((
-    jobUpdates: Array<Partial<BackgroundJob> & { id: string }>
-  ) => {
-    setJobs(prev => jobUpdates.reduce((acc, u) => upsertJobInternal(acc, u), prev));
-  }, [upsertJobInternal]);
-  
-  // Listen for SSE events from the Rust backend
+  // Listen for event-driven updates from the Rust backend
   useEffect(() => {
     let unlistenJobCreated: UnlistenFn | null = null;
     let unlistenJobDeleted: UnlistenFn | null = null;
-    let unlistenJobUpdated: UnlistenFn | null = null;
-    
-    // Setup flush interval for buffered updates
-    const flushBufferedUpdates = () => {
-      if (bufferRef.current.size > 0) {
-        // Collect all buffered updates
-        const updates = Array.from(bufferRef.current.values());
-        bufferRef.current.clear();
-        
-        // Apply all updates in a single batch
-        if (updates.length > 0) {
-          bulkUpsertJobs(updates);
-        }
-      }
-    };
-    
-    // Start flush interval at 250ms
-    flushTimerRef.current = setInterval(flushBufferedUpdates, 250);
+    let unlistenJobStatusChanged: UnlistenFn | null = null;
+    let unlistenJobStreamProgress: UnlistenFn | null = null;
+    let unlistenJobTokensUpdated: UnlistenFn | null = null;
+    let unlistenJobCostUpdated: UnlistenFn | null = null;
+    let unlistenJobResponseAppended: UnlistenFn | null = null;
+    let unlistenJobErrorDetails: UnlistenFn | null = null;
+    let unlistenJobFinalized: UnlistenFn | null = null;
     
     const setupListeners = async () => {
       try {
-        // Listen for job created events
-        unlistenJobCreated = await safeListen("job_created", async (event) => {
+        // Listen for job created events - Insert into Map
+        unlistenJobCreated = await safeListen("job:created", async (event) => {
           try {
-            const newJob = event.payload as BackgroundJob;
+            const payload = event.payload as { job: BackgroundJob };
+            const newJob = payload.job;
             // Filter out workflow orchestrator jobs
             const workflowTypes = ['file_finder_workflow', 'web_search_workflow'];
             if (!workflowTypes.includes(newJob.taskType)) {
-              upsertJob(newJob, true); // prepend new jobs
+              jobsMapRef.current.set(newJob.id, newJob);
+              updateJobsFromMap();
             }
           } catch (err) {
-            console.error("[BackgroundJobs] Error processing job_created:", err);
+            console.error("[BackgroundJobs] Error processing job:created:", err);
           }
         });
 
-        // Listen for job deleted events
-        unlistenJobDeleted = await safeListen("job_deleted", async (event) => {
+        // Listen for job deleted events - Delete from Map
+        unlistenJobDeleted = await safeListen("job:deleted", async (event) => {
           try {
             const payload = event.payload as { jobId: string };
-            setJobs((prev) => prev.filter((job) => job.id !== payload.jobId));
+            if (jobsMapRef.current.has(payload.jobId)) {
+              jobsMapRef.current.delete(payload.jobId);
+              updateJobsFromMap();
+            }
           } catch (err) {
-            console.error("[BackgroundJobs] Error processing job_deleted:", err);
+            console.error("[BackgroundJobs] Error processing job:deleted:", err);
           }
         });
 
-        // Listen for job updated events
-        unlistenJobUpdated = await safeListen("job_updated", async (event) => {
+        // Listen for job status changed events - Patch status/timestamps/subStatusMessage
+        unlistenJobStatusChanged = await safeListen("job:status-changed", async (event) => {
           try {
-            const jobUpdate = event.payload as Partial<BackgroundJob> & { id: string };
-            // Filter out workflow orchestrator jobs
-            const workflowTypes = ['file_finder_workflow', 'web_search_workflow'];
-            if (!jobUpdate.taskType || !workflowTypes.includes(jobUpdate.taskType)) {
-              // Check if this is a finalized cost update or a completed/failed/cancelled job
-              const isFinalized = jobUpdate.isFinalized === true;
-              const isTerminal = jobUpdate.status && ['completed', 'failed', 'cancelled'].includes(jobUpdate.status);
-              
-              if (isFinalized || isTerminal) {
-                // Apply immediately for finalized or terminal updates (bypass buffer)
-                const immediateUpdate = {
-                  ...jobUpdate,
-                  isFinalized: isFinalized || undefined,
-                  updatedAt: Date.now(),
-                };
-                upsertJob(immediateUpdate);
-                
-                // Remove from buffer if present
-                bufferRef.current.delete(jobUpdate.id);
-                
-                // Log important updates for debugging
-                if (isFinalized) {
-                  console.debug(`[BackgroundJobs] Job ${jobUpdate.id} finalized with authoritative cost data`);
-                } else if (jobUpdate.status === 'completed') {
-                  console.debug(`[BackgroundJobs] Job ${jobUpdate.id} completed - updating with final data`);
-                }
-              } else {
-                // Buffer non-terminal updates for batching
-                bufferRef.current.set(jobUpdate.id, {
-                  ...jobUpdate,
-                  updatedAt: Date.now(),
-                });
-              }
+            const update = event.payload as { jobId: string; status: string; startTime?: number; endTime?: number; subStatusMessage?: string };
+            const existingJob = jobsMapRef.current.get(update.jobId);
+            if (existingJob) {
+              const updatedJob: BackgroundJob = {
+                ...existingJob,
+                status: update.status as any,
+                startTime: update.startTime ?? existingJob.startTime,
+                endTime: update.endTime ?? existingJob.endTime,
+                subStatusMessage: update.subStatusMessage ?? existingJob.subStatusMessage,
+                updatedAt: Date.now(),
+              };
+              jobsMapRef.current.set(update.jobId, updatedJob);
+              updateJobsFromMap();
             }
           } catch (err) {
-            console.error("[BackgroundJobs] Error processing job_updated:", err);
+            console.error("[BackgroundJobs] Error processing job:status-changed:", err);
+          }
+        });
+
+        // Listen for job stream progress events - Update progress and metadata.taskData fields
+        unlistenJobStreamProgress = await safeListen("job:stream-progress", async (event) => {
+          try {
+            const update = event.payload as { 
+              jobId: string; 
+              progress?: number; 
+              responseLength?: number; 
+              estimatedTotalLength?: number;
+              lastStreamUpdateTime?: number;
+              isStreaming?: boolean;
+            };
+            const existingJob = jobsMapRef.current.get(update.jobId);
+            if (existingJob) {
+              // Parse existing metadata
+              let metadata: any = existingJob.metadata;
+              if (typeof metadata === 'string') {
+                try {
+                  metadata = JSON.parse(metadata);
+                } catch {
+                  metadata = {};
+                }
+              }
+              metadata = metadata || {};
+              
+              // Update taskData fields
+              const taskData = metadata.taskData || {};
+              if (update.progress !== undefined) taskData.streamProgress = update.progress;
+              if (update.responseLength !== undefined) taskData.responseLength = update.responseLength;
+              if (update.estimatedTotalLength !== undefined) taskData.estimatedTotalLength = update.estimatedTotalLength;
+              if (update.lastStreamUpdateTime !== undefined) taskData.lastStreamUpdateTime = update.lastStreamUpdateTime;
+              if (update.isStreaming !== undefined) taskData.isStreaming = update.isStreaming;
+              
+              metadata.taskData = taskData;
+              
+              const updatedJob: BackgroundJob = {
+                ...existingJob,
+                metadata,
+                updatedAt: Date.now(),
+              };
+              jobsMapRef.current.set(update.jobId, updatedJob);
+              updateJobsFromMap();
+            }
+          } catch (err) {
+            console.error("[BackgroundJobs] Error processing job:stream-progress:", err);
+          }
+        });
+
+        // Listen for job tokens updated events - Patch token fields
+        unlistenJobTokensUpdated = await safeListen("job:tokens-updated", async (event) => {
+          try {
+            const update = event.payload as { 
+              jobId: string; 
+              tokensSent?: number; 
+              tokensReceived?: number;
+              cacheWriteTokens?: number;
+              cacheReadTokens?: number;
+            };
+            const existingJob = jobsMapRef.current.get(update.jobId);
+            if (existingJob) {
+              const updatedJob: BackgroundJob = {
+                ...existingJob,
+                tokensSent: update.tokensSent ?? existingJob.tokensSent,
+                tokensReceived: update.tokensReceived ?? existingJob.tokensReceived,
+                cacheWriteTokens: update.cacheWriteTokens ?? existingJob.cacheWriteTokens,
+                cacheReadTokens: update.cacheReadTokens ?? existingJob.cacheReadTokens,
+                updatedAt: Date.now(),
+              };
+              jobsMapRef.current.set(update.jobId, updatedJob);
+              updateJobsFromMap();
+            }
+          } catch (err) {
+            console.error("[BackgroundJobs] Error processing job:tokens-updated:", err);
+          }
+        });
+
+        // Listen for job cost updated events - Patch actualCost and isFinalized flag
+        unlistenJobCostUpdated = await safeListen("job:cost-updated", async (event) => {
+          try {
+            const update = event.payload as { jobId: string; actualCost?: number; isFinalized?: boolean };
+            const existingJob = jobsMapRef.current.get(update.jobId);
+            if (existingJob) {
+              const updatedJob: BackgroundJob = {
+                ...existingJob,
+                actualCost: update.actualCost ?? existingJob.actualCost,
+                isFinalized: update.isFinalized ?? existingJob.isFinalized,
+                updatedAt: Date.now(),
+              };
+              jobsMapRef.current.set(update.jobId, updatedJob);
+              updateJobsFromMap();
+            }
+          } catch (err) {
+            console.error("[BackgroundJobs] Error processing job:cost-updated:", err);
+          }
+        });
+
+        // Listen for job response appended events - Append chunk to response field
+        unlistenJobResponseAppended = await safeListen("job:response-appended", async (event) => {
+          try {
+            const update = event.payload as { jobId: string; chunk: string; accumulatedLength: number };
+            const existingJob = jobsMapRef.current.get(update.jobId);
+            if (existingJob) {
+              const currentResponse = existingJob.response || '';
+              const updatedJob: BackgroundJob = {
+                ...existingJob,
+                response: currentResponse + update.chunk,
+                updatedAt: Date.now(),
+              };
+              jobsMapRef.current.set(update.jobId, updatedJob);
+              updateJobsFromMap();
+            }
+          } catch (err) {
+            console.error("[BackgroundJobs] Error processing job:response-appended:", err);
+          }
+        });
+
+        // Listen for job error details events - Set errorDetails
+        unlistenJobErrorDetails = await safeListen("job:error-details", async (event) => {
+          try {
+            const update = event.payload as { jobId: string; errorDetails: any };
+            const existingJob = jobsMapRef.current.get(update.jobId);
+            if (existingJob) {
+              const updatedJob: BackgroundJob = {
+                ...existingJob,
+                errorMessage: update.errorDetails,
+                updatedAt: Date.now(),
+              };
+              jobsMapRef.current.set(update.jobId, updatedJob);
+              updateJobsFromMap();
+            }
+          } catch (err) {
+            console.error("[BackgroundJobs] Error processing job:error-details:", err);
+          }
+        });
+
+        // Listen for job finalized events - Set final status/cost/tokens snapshot
+        unlistenJobFinalized = await safeListen("job:finalized", async (event) => {
+          try {
+            const update = event.payload as { 
+              jobId: string; 
+              status: string; 
+              response?: string;
+              actualCost: number;
+              tokensSent?: number;
+              tokensReceived?: number;
+              cacheReadTokens?: number;
+              cacheWriteTokens?: number;
+            };
+            const existingJob = jobsMapRef.current.get(update.jobId);
+            if (existingJob) {
+              const updatedJob: BackgroundJob = {
+                ...existingJob,
+                status: update.status as any,
+                response: update.response ?? existingJob.response,
+                actualCost: update.actualCost,
+                tokensSent: update.tokensSent ?? existingJob.tokensSent,
+                tokensReceived: update.tokensReceived ?? existingJob.tokensReceived,
+                cacheReadTokens: update.cacheReadTokens ?? existingJob.cacheReadTokens,
+                cacheWriteTokens: update.cacheWriteTokens ?? existingJob.cacheWriteTokens,
+                isFinalized: true,
+                updatedAt: Date.now(),
+              };
+              jobsMapRef.current.set(update.jobId, updatedJob);
+              updateJobsFromMap();
+            }
+          } catch (err) {
+            console.error("[BackgroundJobs] Error processing job:finalized:", err);
           }
         });
 
@@ -410,23 +457,21 @@ export function useOrchestratedBackgroundJobsState({
 
     void setupListeners();
 
-    // Clean up the listeners and intervals when component unmounts
+    // Clean up the listeners when component unmounts
     return () => {
       unlistenJobCreated?.();
       unlistenJobDeleted?.();
-      unlistenJobUpdated?.();
-      
-      // Clear flush interval and process any remaining buffered updates
-      if (flushTimerRef.current) {
-        clearInterval(flushTimerRef.current);
-        flushTimerRef.current = null;
-      }
-      flushBufferedUpdates();
-      bufferRef.current.clear();
+      unlistenJobStatusChanged?.();
+      unlistenJobStreamProgress?.();
+      unlistenJobTokensUpdated?.();
+      unlistenJobCostUpdated?.();
+      unlistenJobResponseAppended?.();
+      unlistenJobErrorDetails?.();
+      unlistenJobFinalized?.();
     };
-  }, [upsertJob, bulkUpsertJobs]);
+  }, [updateJobsFromMap]);
 
-  // Initial job fetch on mount
+  // Initial job fetch on mount - single bootstrap call, no polling
   useEffect(() => {
     // Skip if already fetching or if we have initial jobs
     if (isFetchingRef.current || (initialJobs.length > 0 && initialLoad)) {
@@ -436,11 +481,10 @@ export function useOrchestratedBackgroundJobsState({
     void refreshJobs();
   }, [initialJobs.length, initialLoad, refreshJobs]);
 
-
   // Get job by ID helper
   const getJobById = useCallback(
-    (jobId: string) => jobs.find((job) => job.id === jobId),
-    [jobs]
+    (jobId: string) => jobsMapRef.current.get(jobId) || undefined,
+    []
   );
 
   return useMemo(
