@@ -82,9 +82,9 @@ pub async fn initialize_database_light(app_handle: &AppHandle) -> Result<(), App
                     AppError::DatabaseError(format!("Failed to read migration file: {}", e))
                 })?
             } else {
-                return Err(AppError::DatabaseError(
-                    "Migration file not found and no embedded fallback available".to_string()
-                ));
+                // Use embedded schema as final fallback
+                info!("Using embedded migration schema");
+                super::embedded_schema::CONSOLIDATED_SCHEMA.to_string()
             }
         };
 

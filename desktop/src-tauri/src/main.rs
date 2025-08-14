@@ -363,6 +363,7 @@ fn main() {
             // Setup commands
             commands::setup_commands::trigger_initial_keychain_access,
             commands::setup_commands::get_storage_mode,
+            commands::setup_commands::check_existing_keychain_access,
             // Database maintenance commands
             commands::database_maintenance_commands::check_database_health_command,
             commands::database_maintenance_commands::repair_database_command,

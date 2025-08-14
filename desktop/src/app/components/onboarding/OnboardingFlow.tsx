@@ -37,9 +37,26 @@ export function OnboardingFlow({ onOnboardingComplete }: OnboardingFlowProps) {
     void checkStorageMode();
   }, []);
 
-  const handleGetStarted = () => {
+  const handleGetStarted = async () => {
     if (isKeychainMode) {
-      setState('keychain_explanation');
+      try {
+        // Check if we already have keychain access from a previous session
+        const hasAccess = await invoke<boolean>('check_existing_keychain_access');
+        
+        if (hasAccess) {
+          // User has already granted "Always Allow" in the past
+          // Skip the explanation and go straight to completion
+          console.log('Keychain access already granted, skipping onboarding explanation');
+          onOnboardingComplete();
+        } else {
+          // First time user or access was denied - show explanation
+          setState('keychain_explanation');
+        }
+      } catch (error) {
+        console.error('Error checking keychain access:', error);
+        // If check fails, show explanation to be safe
+        setState('keychain_explanation');
+      }
     } else {
       // For session storage mode, complete onboarding immediately
       onOnboardingComplete();
