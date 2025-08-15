@@ -220,13 +220,14 @@ export function Header() {
               className={cn(
                 'fixed top-20 left-4 right-4 z-50 md:hidden',
                 'max-w-[calc(100vw-2rem)]',
+                'max-h-[calc(100vh-6rem)]',
                 'glass',
                 'rounded-2xl',
                 'p-4 sm:p-6',
                 // Enhanced background for light mode visibility
                 'bg-background/95 backdrop-blur-xl border border-border/80',
                 'shadow-2xl shadow-black/10',
-                'overflow-hidden',
+                'overflow-y-auto',
               )}
               exit={{ opacity: 0, y: -30, scale: 0.9 }}
               initial={{ opacity: 0, y: -30, scale: 0.9 }}
