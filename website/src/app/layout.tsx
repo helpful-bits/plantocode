@@ -9,6 +9,7 @@ import { ConditionalBackground } from '@/components/system/ConditionalBackground
 import { Footer } from '@/components/landing/Footer';
 import { SpeedInsights } from '@vercel/speed-insights/next';
 import { Analytics } from '@vercel/analytics/next';
+import { cdnUrl, MEDIA_CDN_BASE } from '@/lib/cdn';
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://vibemanager.app'),
@@ -37,7 +38,7 @@ export const metadata: Metadata = {
     url: 'https://vibemanager.app/',
     siteName: 'Vibe Manager',
     images: [{
-      url: 'https://d2tyb0wucqqf48.cloudfront.net/images/og-image.png',
+      url: cdnUrl('/images/og-image.png'),
       width: 1200,
       height: 630,
       alt: 'Vibe Manager - AI-Powered Context Curation for Large Codebases',
@@ -51,7 +52,7 @@ export const metadata: Metadata = {
     title: 'Vibe Manager | Context for Lost AI Agents',
     description: 'Tired of babysitting your AI agent? Vibe Manager is the competent middle manager that curates perfect context from your codebase and the web, so your agents can build correctly the first time.',
     images: [{
-      url: 'https://d2tyb0wucqqf48.cloudfront.net/images/og-image.png',
+      url: cdnUrl('/images/og-image.png'),
       alt: 'Vibe Manager - AI-Powered Context Curation for Large Codebases',
       width: 1200,
       height: 630,
@@ -113,8 +114,8 @@ export default function RootLayout({
     <html suppressHydrationWarning className={fontClasses.variables} lang="en">
       <head>
         {/* Preconnect to critical third-party origins - from Lighthouse report */}
-        <link rel="dns-prefetch" href="https://d2tyb0wucqqf48.cloudfront.net" />
-        <link rel="preconnect" href="https://d2tyb0wucqqf48.cloudfront.net" crossOrigin="anonymous" />
+        <link rel="dns-prefetch" href={MEDIA_CDN_BASE} />
+        <link rel="preconnect" href={MEDIA_CDN_BASE} crossOrigin="anonymous" />
         {/* Additional preconnects for analytics if enabled */}
         {process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID && (
           <>

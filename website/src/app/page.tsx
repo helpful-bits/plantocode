@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import type { SoftwareApplication } from 'schema-dts';
 import { SectionDividerOrbs, SectionDividerMesh } from '@/components/ui/SectionDivider';
+import { cdnUrl } from '@/lib/cdn';
 
 const Features = dynamic(() => import('@/components/landing/Features').then(mod => ({ default: mod.Features })), {
   loading: () => <div className="h-[50vh]" />,
@@ -92,7 +93,7 @@ export default function Home() {
     softwareVersion: '1.0.0',
     datePublished: '2024-01-01',
     dateModified: '2025-07-23',
-    screenshot: 'https://d2tyb0wucqqf48.cloudfront.net/images/og-image.png',
+    screenshot: cdnUrl('/images/og-image.png'),
     featureList: [
       '4-Stage File Finder Workflow (No Vector DBs)',
       'Deep Research Workflow for Current Documentation',
@@ -162,26 +163,26 @@ export default function Home() {
     {
       title: '1. The Briefing: Task Input & Refinement',
       description: 'Just talk. Explain your complex logic or brainstorm out loud - GPT-4 transcribes it perfectly. Can\'t explain in words? Record your screen while demonstrating the issue. The AI refines everything into precise specifications.',
-      video: 'https://d2tyb0wucqqf48.cloudfront.net/videos/step-1-describe.mp4',
-      poster: 'https://d2tyb0wucqqf48.cloudfront.net/images/step-1-poster.jpg',
+      video: cdnUrl('/videos/step-1-describe.mp4'),
+      poster: cdnUrl('/images/step-1-poster.jpg'),
     },
     {
       title: '2. The Recon Mission: Finding What Matters',
       description: 'The File Finder decomposes your task into logical areas, creates targeted search patterns, then AI assesses actual file content for relevance. Can expand to find critical dependencies when needed. Real-time intelligence finding what matters.',
-      video: 'https://d2tyb0wucqqf48.cloudfront.net/videos/step-2-find.mp4',
-      poster: 'https://d2tyb0wucqqf48.cloudfront.net/images/step-2-poster.jpg',
+      video: cdnUrl('/videos/step-2-find.mp4'),
+      poster: cdnUrl('/images/step-2-poster.jpg'),
     },
     {
       title: '3. Phoning a Friend: Deep Research',
       description: "Your LLM's knowledge is frozen in time. The Deep Research workflow fixes that by searching for current documentation to fill knowledge gaps. Get up-to-date answers for your specific implementation problems, integrated with your code's context.",
-      video: 'https://d2tyb0wucqqf48.cloudfront.net/videos/step-3-generate.mp4',
-      poster: 'https://d2tyb0wucqqf48.cloudfront.net/images/step-3-poster.jpg',
+      video: cdnUrl('/videos/step-3-generate.mp4'),
+      poster: cdnUrl('/images/step-3-poster.jpg'),
     },
     {
       title: '4. The Board Meeting: Council of LLMs',
       description: 'Generate plans from multiple models. The architect AI performs deep synthesis, detecting blind spots and creating emergent solutions. Review with floating notes and edit plans directly before execution.',
-      video: 'https://d2tyb0wucqqf48.cloudfront.net/videos/step-4-merge.mp4',
-      poster: 'https://d2tyb0wucqqf48.cloudfront.net/images/step-4-poster.jpg',
+      video: cdnUrl('/videos/step-4-merge.mp4'),
+      poster: cdnUrl('/images/step-4-poster.jpg'),
     },
   ];
 

@@ -9,10 +9,10 @@ import Reveal from '@/components/motion/Reveal';
 export function HeroSection() {
 
   return (
-    <section className="relative h-auto sm:min-h-screen flex items-start sm:items-center justify-center overflow-hidden bg-transparent py-16 sm:py-12 md:py-16 lg:py-0">
+    <section className="relative h-auto sm:min-h-screen flex items-start sm:items-center justify-center overflow-hidden bg-transparent py-20 sm:py-16 md:py-14 lg:py-14">
       <div className="relative text-center px-4 sm:px-6 lg:px-8 max-w-5xl mx-auto my-8">
         {/* Primary heading */}
-        <Reveal as="h1" className="relative text-4xl sm:text-5xl lg:text-6xl font-bold mb-6 leading-tight" delay={0.1}>
+        <Reveal as="h1" className="relative text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold mb-6 leading-tight" delay={0.1}>
           <span className="text-hero-title">
             The Polite Context Guidance Centre for Somewhat Bewildered AI Agents
           </span>

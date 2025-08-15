@@ -7,7 +7,7 @@ import { Home, Settings, User, MessageSquare, RotateCcw, Loader2 } from "lucide-
 import { useSessionStateContext } from "@/contexts/session";
 import { useUILayout } from "@/contexts/ui-layout-context";
 import { useResetApp } from "@/hooks/use-reset-app";
-import { ThemeToggle } from "@/ui";
+import { ThemeToggle, Badge } from "@/ui";
 import { Button } from "@/ui/button";
 import { CostUsageIndicator } from "@/ui/cost-usage-indicator";
 import { BillingHistoryModal } from "@/app/components/billing/billing-components";
@@ -50,7 +50,15 @@ export function Navigation() {
             })}
           </div>
 
-          <div className="flex items-center gap-3">
+          {/* Beta badge */}
+          <Badge 
+            variant="secondary" 
+            className="ml-4 bg-gradient-to-r from-purple-500/10 to-blue-500/10 text-purple-700 dark:text-purple-400 border-purple-500/20 font-semibold text-xs px-2.5 py-0.5"
+          >
+            BETA
+          </Badge>
+
+          <div className="flex items-center gap-3 ml-auto">
             {/* Show a small indicator when the app is busy */}
             {isBusy && (
               <div className="nav-loading-indicator">

@@ -1,12 +1,20 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { cdnUrl } from '@/lib/cdn';
 
-export async function GET() {
-  // Redirect to the latest Mac DMG download (ARM/Apple Silicon)
-  const downloadUrl = 'https://d2tyb0wucqqf48.cloudfront.net/desktop/mac/Vibe%20Manager_1.0.15_aarch64.dmg';
+export async function GET(request: NextRequest) {
+  const { searchParams } = new URL(request.url);
+  const os = searchParams.get('os');
 
-  // Use 301 redirect for better SEO and to avoid CORS preflight
+  const osUrlMap: Record<string, string> = {
+    'mac': cdnUrl('/desktop/mac/Vibe%20Manager_1.0.15_aarch64.dmg'),
+    'mac-dmg': cdnUrl('/desktop/mac/Vibe%20Manager_1.0.15_aarch64.dmg'),
+    'mac-zip': cdnUrl('/desktop/mac/Vibe%20Manager_1.0.15_aarch64.app.tar.gz'),
+  };
+
+  const downloadUrl = osUrlMap[os || ''] || '/';
+
   return NextResponse.redirect(downloadUrl, {
-    status: 301,
+    status: 302,
     headers: {
       'Cache-Control': 'no-cache, no-store, must-revalidate',
     },

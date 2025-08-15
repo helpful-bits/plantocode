@@ -3,8 +3,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-shell';
-import { AlertCircle, CheckCircle2, ExternalLink, Shield } from 'lucide-react';
+import { AlertCircle, CheckCircle2, ExternalLink, Shield, ArrowRight } from 'lucide-react';
 import { Button } from "@/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/ui/dialog";
 import { Card, CardContent } from "@/ui/card";
 import { Alert, AlertDescription } from "@/ui/alert";
 import { createLogger } from "@/utils/logger";
@@ -248,172 +249,133 @@ export function LegalConsentBanner() {
   }
 
   return (
-    <div 
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-md animate-in fade-in-0 duration-300"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="legal-consent-title"
-      aria-describedby="legal-consent-description"
-    >
-      <div className="w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
-        <Card className="!bg-background shadow-soft-md border-2 border-primary/30 dark:border-primary/40 animate-in zoom-in-96 slide-in-from-bottom-2 duration-300">
-          <CardContent className="modal-padding">
-            {hasError ? (
-              <div className="text-center">
-                <div className="mb-6">
-                  <AlertCircle className="w-16 h-16 text-destructive mx-auto mb-4" />
-                  <h2 id="legal-consent-title" className="text-2xl font-bold text-foreground">
-                    Connection Error
-                  </h2>
+    <Dialog open={true} onOpenChange={() => {}}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto !p-0" onPointerDownOutside={(e) => e.preventDefault()} onEscapeKeyDown={(e) => e.preventDefault()}>
+        <div className="p-6">
+          {hasError ? (
+            <div className="text-center">
+              <div className="mb-6">
+                <div className="w-16 h-16 mx-auto mb-4 bg-destructive/10 rounded-full flex items-center justify-center">
+                  <AlertCircle className="w-10 h-10 text-destructive" />
                 </div>
-                <p id="legal-consent-description" className="text-muted-foreground mb-6">
-                  Unable to verify legal consent status. Please check your connection and try again.
-                </p>
-                <Alert variant="destructive" className="mb-6">
-                  <AlertDescription>{errorMessage}</AlertDescription>
-                </Alert>
-                <Button
-                  onClick={handleRetry}
-                  isLoading={isRetrying}
-                  disabled={isRetrying}
-                  variant="default"
-                  size="lg"
-                >
-                  {isRetrying ? 'Retrying...' : 'Retry'}
-                </Button>
+                <DialogHeader>
+                  <DialogTitle className="text-center text-2xl">Connection Error</DialogTitle>
+                  <DialogDescription className="text-center">
+                    Unable to verify legal consent status. Please check your connection and try again.
+                  </DialogDescription>
+                </DialogHeader>
               </div>
-            ) : (
-              <div>
-                <div className="text-center mb-8">
-                  <Shield className="w-16 h-16 text-primary mx-auto mb-4" />
-                  <h2 id="legal-consent-title" className="text-2xl font-bold text-foreground mb-2">
-                    Legal Consent Required
-                  </h2>
-                  <p id="legal-consent-description" className="text-muted-foreground">
+              <Alert variant="destructive" className="mb-6">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>{errorMessage}</AlertDescription>
+              </Alert>
+              <Button
+                onClick={handleRetry}
+                isLoading={isRetrying}
+                disabled={isRetrying}
+                variant="default"
+                size="lg"
+                className="w-full"
+              >
+                {isRetrying ? 'Retrying...' : 'Retry'}
+              </Button>
+            </div>
+          ) : (
+            <div>
+              <div className="text-center mb-8">
+                <div className="w-16 h-16 mx-auto mb-4 bg-primary/10 rounded-full flex items-center justify-center">
+                  <Shield className="w-10 h-10 text-primary" />
+                </div>
+                <DialogHeader>
+                  <DialogTitle className="text-center text-2xl">Legal Consent Required</DialogTitle>
+                  <DialogDescription className="text-center">
                     You must review and accept our updated legal documents to continue using Vibe Manager.
-                  </p>
-                </div>
-
-                <div className="space-y-4 mb-8">
-                  {verification?.missing?.map((docType) => (
-                    <Card key={docType} className="bg-card/50 border border-primary/20 dark:border-primary/30 hover:border-primary/40 dark:hover:border-primary/50 transition-all duration-200">
-                      <CardContent className="p-4">
-                        <div className="flex items-center justify-between mb-3">
-                          <h3 className="font-semibold text-foreground">
-                            {formatDocumentType(docType)}
-                          </h3>
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => handleViewDocument(docType)}
-                              className="inline-flex items-center justify-center whitespace-nowrap font-medium ring-offset-background focus-ring disabled:pointer-events-none disabled:opacity-50 cursor-pointer backdrop-blur-sm rounded-md h-8 px-3 text-sm text-muted-foreground hover:text-primary border border-transparent hover:bg-accent/30 transition-all duration-200"
-                            >
-                              <ExternalLink className="h-4 w-4 mr-1.5" />
-                              View
-                            </button>
-                            <button
-                              onClick={() => handleAcceptDocument(docType)}
-                              disabled={acceptedDocuments.has(docType)}
-                              aria-pressed={acceptedDocuments.has(docType)}
-                              className={`inline-flex items-center justify-center whitespace-nowrap font-medium ring-offset-background focus-ring disabled:pointer-events-none disabled:opacity-50 cursor-pointer backdrop-blur-sm rounded-md h-8 px-3 text-sm transition-all duration-200 ${
-                                acceptedDocuments.has(docType)
-                                  ? "bg-primary/10 text-primary border border-primary/40 dark:border-primary/50"
-                                  : "hover:bg-primary/10 text-muted-foreground hover:text-primary border border-dashed border-primary/30 hover:border-primary/60 dark:border-primary/40 dark:hover:border-primary/70"
-                              }`}
-                            >
-                              {acceptedDocuments.has(docType) ? (
-                                <>
-                                  <CheckCircle2 className="h-4 w-4 mr-1.5" />
-                                  Accepted
-                                </>
-                              ) : (
-                                'Accept'
-                              )}
-                            </button>
-                          </div>
-                        </div>
-                        {acceptedDocuments.has(docType) && (
-                          <Alert className="bg-success-background border-success-border">
-                            <CheckCircle2 className="h-4 w-4 text-success" />
-                            <AlertDescription className="text-success-foreground">
-                              You have accepted this document
-                            </AlertDescription>
-                          </Alert>
-                        )}
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-
-                <div className="border-t border-border pt-6">
-                  <div className="flex flex-col sm:flex-row gap-3 justify-center">
-                    <button
-                      onClick={handleAcceptAll}
-                      disabled={canContinue}
-                      className={`inline-flex items-center justify-center whitespace-nowrap font-medium ring-offset-background focus-ring disabled:pointer-events-none disabled:opacity-50 cursor-pointer backdrop-blur-sm rounded-lg h-11 px-6 text-sm transition-all duration-200 ${
-                        canContinue 
-                          ? "bg-muted/30 text-muted-foreground border border-border cursor-not-allowed"
-                          : "bg-primary/10 hover:bg-primary/20 text-primary border border-dashed border-primary/30 hover:border-primary/50 hover:shadow-md"
-                      }`}
-                    >
-                      <CheckCircle2 className="h-4 w-4 mr-2" />
-                      Accept All
-                    </button>
-                    <button
-                      onClick={handleContinue}
-                      disabled={!canContinue || isAccepting}
-                      aria-describedby="continue-help"
-                      className={`inline-flex items-center justify-center whitespace-nowrap font-semibold ring-offset-background focus-ring disabled:pointer-events-none disabled:opacity-50 cursor-pointer backdrop-blur-sm rounded-lg h-11 px-8 text-sm transition-all duration-200 ${
-                        canContinue 
-                          ? "bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg hover:shadow-xl transform hover:scale-[1.02]"
-                          : "bg-muted/50 text-muted-foreground border border-border cursor-not-allowed"
-                      }`}
-                    >
-                      {isAccepting ? (
-                        <>
-                          <svg
-                            className="animate-spin -ml-0.5 mr-2 h-4 w-4 text-current"
-                            xmlns="http://www.w3.org/2000/svg"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                          >
-                            <circle
-                              className="opacity-25"
-                              cx="12"
-                              cy="12"
-                              r="10"
-                              stroke="currentColor"
-                              strokeWidth="2.5"
-                            />
-                            <path
-                              className="opacity-75"
-                              fill="currentColor"
-                              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                            />
-                          </svg>
-                          Processing...
-                        </>
-                      ) : (
-                        <>
-                          Continue to App
-                          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="ml-2 h-4 w-4">
-                            <path d="M5 12h14"/>
-                            <path d="m12 5 7 7-7 7"/>
-                          </svg>
-                        </>
-                      )}
-                    </button>
-                  </div>
-                  {!canContinue && (
-                    <p id="continue-help" className="text-xs text-muted-foreground text-center mt-3 animate-in fade-in-0 duration-300">
-                      Please accept all required documents to continue
-                    </p>
-                  )}
-                </div>
+                  </DialogDescription>
+                </DialogHeader>
               </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-    </div>
+
+              <div className="space-y-4 mb-8">
+                {verification?.missing?.map((docType) => (
+                  <Card key={docType} className="rounded-xl border border-border/60 bg-card hover:shadow-soft-md transition-all duration-300">
+                    <CardContent className="p-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <h3 className="font-semibold text-foreground">
+                          {formatDocumentType(docType)}
+                        </h3>
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleViewDocument(docType)}
+                          >
+                            <ExternalLink className="h-4 w-4 mr-1.5" />
+                            View
+                          </Button>
+                          <Button
+                            variant={acceptedDocuments.has(docType) ? "secondary" : "ghost"}
+                            size="sm"
+                            onClick={() => handleAcceptDocument(docType)}
+                            disabled={acceptedDocuments.has(docType)}
+                            aria-pressed={acceptedDocuments.has(docType)}
+                          >
+                            {acceptedDocuments.has(docType) ? (
+                              <>
+                                <CheckCircle2 className="h-4 w-4 mr-1.5" />
+                                Accepted
+                              </>
+                            ) : (
+                              'Accept'
+                            )}
+                          </Button>
+                        </div>
+                      </div>
+                      {acceptedDocuments.has(docType) && (
+                        <Alert className="bg-success/10 border-success/20">
+                          <CheckCircle2 className="h-4 w-4 text-success" />
+                          <AlertDescription>
+                            You have accepted this document
+                          </AlertDescription>
+                        </Alert>
+                      )}
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+
+              <div className="border-t border-border pt-6">
+                <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                  <Button
+                    variant="outline"
+                    size="lg"
+                    onClick={handleAcceptAll}
+                    disabled={canContinue}
+                  >
+                    <CheckCircle2 className="h-4 w-4 mr-2" />
+                    Accept All
+                  </Button>
+                  <Button
+                    variant="default"
+                    size="lg"
+                    onClick={handleContinue}
+                    disabled={!canContinue || isAccepting}
+                    isLoading={isAccepting}
+                    loadingText="Processing..."
+                    aria-describedby="continue-help"
+                  >
+                    Continue to App
+                    <ArrowRight className="ml-2 h-4 w-4" />
+                  </Button>
+                </div>
+                {!canContinue && (
+                  <p id="continue-help" className="text-xs text-muted-foreground text-center mt-3 animate-in fade-in-0 duration-300">
+                    Please accept all required documents to continue
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }

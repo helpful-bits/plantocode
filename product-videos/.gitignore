@@ -1,0 +1,84 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Thumbnails
+._*
+
+# Source Videos (large files, should be managed separately)
+source-videos/*
+!source-videos/.gitkeep
+
+# All exports (videos should not be in Git)
+exports/*
+!exports/.gitkeep
+
+# Node modules (for Remotion projects)
+node_modules/
+*/node_modules/
+
+# Build outputs
+dist/
+build/
+out/
+.cache/
+
+# Remotion specific
+remotion-project/.remotion/
+remotion-project/out/
+remotion-project/node_modules/
+remotion-project/package-lock.json
+remotion-project/yarn.lock
+remotion-project/pnpm-lock.yaml
+
+# Videos in Remotion public folder (should be copied locally, not in Git)
+remotion-project/public/assets/videos/*
+!remotion-project/public/assets/videos/.gitkeep
+remotion-project/public/assets/images/*
+!remotion-project/public/assets/images/.gitkeep
+remotion-project/public/assets/audio/*
+!remotion-project/public/assets/audio/.gitkeep
+
+# Log files
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+
+# Test videos
+test-*.mp4
+test-*.mov
+
+# Temporary files
+*.tmp
+.temp/
+
+# Coverage
+coverage/
+*.lcov
+
+# TypeScript
+*.tsbuildinfo
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+.eslintcache
