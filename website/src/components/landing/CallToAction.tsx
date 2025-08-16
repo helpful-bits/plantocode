@@ -51,7 +51,7 @@ export function CallToAction({ title, description, buttonText, buttonLink }: Cal
           >
 
             <GlassCard className="relative" highlighted={true}>
-              <div className="text-center p-16 relative">
+              <div className="text-center p-8 sm:p-12 md:p-16 relative">
                 {/* Enhanced burst pattern overlay */}
                 <div className="absolute inset-0 opacity-8 pointer-events-none">
                   <div className="absolute inset-0 bg-[radial-gradient(circle_at_1px_1px,_hsl(var(--primary))_1px,_transparent_1px)] bg-[size:32px_32px]" />
@@ -86,16 +86,16 @@ export function CallToAction({ title, description, buttonText, buttonLink }: Cal
                   />
                 </div>
 
-                <Reveal className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 dark:bg-primary/15 text-primary mb-6 text-sm font-medium" delay={0.1}>
-                  <Zap className="w-4 h-4" />
+                <Reveal className="inline-flex items-center gap-2 px-3 py-1.5 sm:px-4 sm:py-2 rounded-full bg-primary/10 dark:bg-primary/15 text-primary mb-4 sm:mb-6 text-xs sm:text-sm font-medium" delay={0.1}>
+                  <Zap className="w-3 h-3 sm:w-4 sm:h-4" />
                   <span>Transform Your Development Today</span>
                 </Reveal>
 
-                <Reveal as="h2" className="text-3xl sm:text-4xl lg:text-5xl xl:text-6xl mb-6 text-primary-emphasis relative z-10" delay={0.15}>
+                <Reveal as="h2" className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl xl:text-6xl mb-4 sm:mb-6 text-primary-emphasis relative z-10 font-bold" delay={0.15}>
                   {title}
                 </Reveal>
 
-                <Reveal as="p" className="text-lg sm:text-xl lg:text-2xl mb-10 max-w-2xl mx-auto leading-relaxed font-medium text-foreground/80 relative z-10" delay={0.2}>
+                <Reveal as="p" className="text-base sm:text-lg md:text-xl lg:text-2xl mb-8 sm:mb-10 max-w-2xl mx-auto leading-relaxed font-medium text-foreground/80 relative z-10" delay={0.2}>
                   {description}
                 </Reveal>
 
@@ -124,7 +124,7 @@ export function CallToAction({ title, description, buttonText, buttonLink }: Cal
                   </div>
                 </Reveal>
 
-                <Reveal className="mt-8 flex items-center justify-center gap-8 text-sm text-foreground/60" delay={0.3}>
+                <Reveal className="mt-6 sm:mt-8 flex flex-col sm:flex-row items-center justify-center gap-4 sm:gap-8 text-xs sm:text-sm text-foreground/60" delay={0.3}>
                   <div className="flex items-center gap-2">
                     <CheckCircle2 className="w-4 h-4 text-primary/70" />
                     <span>No credit card required</span>

@@ -51,7 +51,7 @@ function OptimizedVideo({ video, poster }: { video: string; poster: string }) {
         muted
         playsInline
         controls={false}
-        className="w-full aspect-video relative z-10 rounded-lg bg-background/10"
+        className="w-full aspect-video relative z-10 block bg-gradient-to-br from-background/5 to-background/10"
         poster={posterError ? undefined : poster}
         preload="none"
         onError={() => setLoadError(true)}
@@ -61,8 +61,8 @@ function OptimizedVideo({ video, poster }: { video: string; poster: string }) {
       </video>
 
       {loadError && (
-        <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-background/50 to-background/30 rounded-lg">
-          <div className="bg-background/80 px-4 py-2 rounded-lg text-sm text-muted-foreground">
+        <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-background/80 to-background/60 backdrop-blur-sm">
+          <div className="bg-background/90 backdrop-blur px-3 py-2 sm:px-4 sm:py-2.5 rounded-lg text-xs sm:text-sm text-muted-foreground font-medium shadow-lg ring-1 ring-primary/10">
             Video will be available soon
           </div>
         </div>
@@ -75,16 +75,16 @@ export function HowItWorks({ steps = defaultSteps }: HowItWorksProps) {
   return (
     <section className="relative py-12 sm:py-16 md:py-20 lg:py-24 px-4 overflow-hidden" id="how-it-works">
       <div className="container mx-auto relative z-10">
-        <div className="text-center mb-16">
-          <Reveal as="h2" className="text-4xl sm:text-5xl lg:text-6xl mb-6 text-primary-emphasis font-bold">
+        <div className="text-center mb-12 sm:mb-16">
+          <Reveal as="h2" className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl mb-4 sm:mb-6 text-primary-emphasis font-bold">
             How It Works
           </Reveal>
-          <Reveal as="p" className="text-lg sm:text-xl max-w-2xl mx-auto leading-relaxed font-medium text-foreground/80" delay={0.05}>
+          <Reveal as="p" className="text-base sm:text-lg md:text-xl max-w-2xl mx-auto leading-relaxed font-medium text-foreground/80 px-4 sm:px-0" delay={0.05}>
             From task description to implementation plan in minutes
           </Reveal>
         </div>
 
-        <div className="space-y-16 max-w-5xl mx-auto">
+        <div className="space-y-8 sm:space-y-12 md:space-y-16 max-w-5xl mx-auto">
           {steps.map((step, index) => (
             <Reveal
               key={index}
@@ -93,26 +93,22 @@ export function HowItWorks({ steps = defaultSteps }: HowItWorksProps) {
             >
               <GlassCard className="overflow-hidden">
                 <div className="p-8 sm:p-10 lg:p-12">
-                  <div className="mb-8">
-                    <div className="flex items-center gap-6 mb-6">
-                      <div className="relative">
-                        <div className="absolute inset-0 bg-gradient-to-br from-primary to-primary/60 rounded-full blur-xl opacity-60" />
-                        <div className="relative w-14 h-14 bg-gradient-to-br from-primary/30 to-primary/50 ring-2 ring-primary/40 rounded-full flex items-center justify-center font-bold text-2xl text-primary-foreground shadow-xl">
-                          {index + 1}
-                        </div>
-                      </div>
-                      <h3 className="text-2xl sm:text-3xl font-bold text-foreground">
+                  <div className="mb-6 sm:mb-8">
+                    <div className="flex items-start gap-3 sm:gap-4 mb-4 sm:mb-6">
+                      <span className="flex-shrink-0 text-3xl sm:text-4xl md:text-5xl font-bold text-primary/30 leading-none">
+                        {index + 1}
+                      </span>
+                      <h3 className="text-xl sm:text-2xl md:text-3xl font-bold text-foreground leading-tight">
                         {step.title}
                       </h3>
                     </div>
-                    <p className="text-lg leading-relaxed text-foreground/80 max-w-3xl pl-20">
+                    <p className="text-sm sm:text-base md:text-lg leading-relaxed text-foreground/80 max-w-3xl">
                       {step.description}
                     </p>
                   </div>
 
                   <Reveal className="relative group" delay={0.15 + index * 0.05}>
-                    <div className="absolute -inset-4 bg-gradient-to-r from-primary/20 via-primary/10 to-primary/20 rounded-2xl blur-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-                    <div className="relative rounded-xl overflow-hidden shadow-2xl ring-1 ring-primary/10 group-hover:ring-primary/20">
+                    <div className="relative -mx-8 sm:-mx-10 lg:-mx-12 -mb-8 sm:-mb-10 lg:-mb-12 overflow-hidden">
                       <OptimizedVideo poster={step.poster} video={step.video} />
                     </div>
                   </Reveal>
