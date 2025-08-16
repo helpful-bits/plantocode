@@ -12,12 +12,14 @@ export interface GlassCardProps extends HTMLAttributes<HTMLDivElement> {
 const GlassCardComponent = forwardRef<HTMLDivElement, GlassCardProps & { whileHover?: any; transition?: any }>(
   ({ className, highlighted = false, children, whileHover, transition, ...props }, ref) => {
     const glassClass = highlighted ? 'glass-highlighted' : 'glass';
+    const hasCustomPadding = className?.includes('p-');
 
     return (
       <div
         ref={ref}
         className={cn(
-          'relative rounded-2xl p-6 overflow-hidden',
+          'relative rounded-2xl overflow-hidden',
+          !hasCustomPadding && 'p-6',
           glassClass,
           className,
         )}
