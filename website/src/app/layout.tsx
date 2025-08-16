@@ -92,6 +92,11 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 5,
+  userScalable: true,
+  viewportFit: 'cover',
   themeColor: [
     { media: '(prefers-color-scheme: light)', color: 'oklch(0.98 0.01 195)' },
     { media: '(prefers-color-scheme: dark)', color: 'oklch(0.18 0.02 206)' },
