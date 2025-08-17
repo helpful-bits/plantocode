@@ -115,6 +115,11 @@ export function Footer() {
                     </Link>
                   </li>
                   <li>
+                    <Link className="text-muted-foreground hover:text-primary text-sm transition-colors duration-200 clickable-text-underline" href="/legal/eu/imprint">
+                      Imprint
+                    </Link>
+                  </li>
+                  <li>
                     <Link className="text-muted-foreground hover:text-primary text-sm transition-colors duration-200 clickable-text-underline" href="/legal">
                       All Legal Docs
                     </Link>
