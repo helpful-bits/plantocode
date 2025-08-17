@@ -66,17 +66,7 @@ export function useSessionLoader({
         }
       };
 
-      if (!sessionId) {
-        completeInitialization();
-        return;
-      }
-
-      if (!projectDirectory) {
-        completeInitialization();
-        return;
-      }
-
-      if (currentSessionRef.current?.id === sessionId) {
+      if (!sessionId || !projectDirectory || currentSessionRef.current?.id === sessionId) {
         completeInitialization();
         return;
       }

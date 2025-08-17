@@ -55,7 +55,7 @@ export function Community() {
 
               <Reveal delay={0.25}>
                 <Link
-                  className="inline-flex items-center justify-center px-6 py-3 text-sm font-medium text-primary-foreground bg-primary hover:bg-primary/90 rounded-lg transition-colors duration-200"
+                  className="inline-flex items-center justify-center px-8 py-4 text-base font-semibold text-white bg-gradient-to-r from-accent-500 to-accent-600 hover:from-accent-600 hover:to-accent-700 rounded-xl shadow-lg shadow-accent-500/25 hover:shadow-xl hover:shadow-accent-500/30 transform hover:-translate-y-0.5 transition-all duration-200"
                   href="https://vibemanager.featurebase.app"
                   target="_blank"
                   rel="noopener noreferrer"

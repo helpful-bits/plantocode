@@ -105,8 +105,18 @@ export function Footer() {
                 </h4>
                 <ul className="space-y-3">
                   <li>
+                    <Link className="text-muted-foreground hover:text-primary text-sm transition-colors duration-200 clickable-text-underline" href="/privacy">
+                      Privacy Policy
+                    </Link>
+                  </li>
+                  <li>
+                    <Link className="text-muted-foreground hover:text-primary text-sm transition-colors duration-200 clickable-text-underline" href="/terms">
+                      Terms of Service
+                    </Link>
+                  </li>
+                  <li>
                     <Link className="text-muted-foreground hover:text-primary text-sm transition-colors duration-200 clickable-text-underline" href="/legal">
-                      Legal Docs
+                      All Legal Docs
                     </Link>
                   </li>
                 </ul>

@@ -92,7 +92,7 @@ export function HowItWorks({ steps = defaultSteps }: HowItWorksProps) {
               delay={0.1 + index * 0.05}
             >
               <GlassCard className="overflow-hidden">
-                <div className="p-8 sm:p-10 lg:p-12">
+                <div className="p-6 sm:p-8 md:p-10 lg:p-12">
                   <div className="mb-6 sm:mb-8">
                     <div className="flex items-start gap-3 sm:gap-4 mb-4 sm:mb-6">
                       <span className="flex-shrink-0 text-3xl sm:text-4xl md:text-5xl font-bold text-primary/30 leading-none">
@@ -108,7 +108,7 @@ export function HowItWorks({ steps = defaultSteps }: HowItWorksProps) {
                   </div>
 
                   <Reveal className="relative group" delay={0.15 + index * 0.05}>
-                    <div className="relative -mx-8 sm:-mx-10 lg:-mx-12 -mb-8 sm:-mb-10 lg:-mb-12 overflow-hidden">
+                    <div className="relative -mx-6 sm:-mx-8 md:-mx-10 lg:-mx-12 mt-6 sm:mt-8 md:mt-10 overflow-hidden">
                       <OptimizedVideo poster={step.poster} video={step.video} />
                     </div>
                   </Reveal>

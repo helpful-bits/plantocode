@@ -3,11 +3,8 @@
 import React from 'react';
 import { useConsent } from '@/components/providers/ConsentProvider';
 import { Button } from '@/components/ui/button';
-import { useUserRegion } from '@/hooks/useUserRegion';
-
 export function CookieConsentBanner() {
   const { consent, setConsent, openPreferences } = useConsent();
-  const { region } = useUserRegion();
 
   // Only show when any consent choice hasn't been made yet
   if (consent.analytics !== null && consent.functional !== null && consent.marketing !== null) {
@@ -48,7 +45,7 @@ export function CookieConsentBanner() {
             <p className="text-sm text-gray-700 dark:text-gray-300">
               We use cookies to enhance your experience. These include necessary cookies for site functionality, and optional cookies for analytics, personalization, and marketing. You can learn more in our{' '}
               <a
-                href={region ? `/legal/${region}/privacy#cookies` : '/legal/us/privacy#cookies'}
+                href="/privacy#cookies"
                 className="link-primary focus:outline-none focus:ring-2 focus:ring-primary focus:ring-opacity-50 rounded"
               >
                 privacy policy

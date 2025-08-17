@@ -7,6 +7,7 @@ import { ConsentProvider } from './ConsentProvider';
 import MotionProvider from '@/components/providers/MotionProvider';
 import { CookieConsentBanner } from '@/components/system/CookieConsentBanner';
 import { ConditionalAnalytics } from '@/components/system/ConditionalAnalytics';
+import { ConditionalVercelAnalytics } from '@/components/system/ConditionalVercelAnalytics';
 import { WebAuthProvider } from '@/components/auth/WebAuthProvider';
 import { useLenisLifecycle } from '@/hooks/useLenisLifecycle';
 import { usePerformanceSignals } from '@/hooks/usePerformanceSignals';
@@ -37,6 +38,7 @@ export function ClientProviders({ children }: ClientProvidersProps) {
               <PerformanceSignalsManager />
               <LenisLifecycleManager />
               <ConditionalAnalytics />
+              <ConditionalVercelAnalytics />
               {children}
               <CookieConsentBanner />
             </SmoothScroll>
