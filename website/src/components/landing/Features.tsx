@@ -18,9 +18,9 @@ const defaultFeatures: Feature[] = [];
 
 export function Features({ features = defaultFeatures }: FeaturesProps) {
   return (
-    <section className="relative pt-16 pb-12 sm:py-16 md:py-20 lg:py-24 px-4 overflow-hidden" id="features">
+    <section className="relative py-12 sm:py-16 md:py-20 lg:py-24 px-4 overflow-hidden" id="features">
       <div className="container mx-auto relative z-10">
-        <div className="text-center mb-12">
+        <div className="text-center mb-12 sm:mb-16">
           <Reveal as="h2" className="text-3xl sm:text-4xl lg:text-5xl mb-4 text-primary-emphasis font-bold text-shadow-subtle" delay={0}>
             Key Features
           </Reveal>
@@ -29,7 +29,7 @@ export function Features({ features = defaultFeatures }: FeaturesProps) {
           </Reveal>
         </div>
 
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8 p-2">
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
           {features.map((feature, index) => (
             <Reveal
               key={index}

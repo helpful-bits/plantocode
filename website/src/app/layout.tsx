@@ -4,11 +4,9 @@ import { fontClasses } from './fonts';
 import { StructuredData } from '@/components/seo/StructuredData';
 import type { WebSite } from 'schema-dts';
 import { ClientProviders } from '@/components/providers/ClientProviders';
-import { GoogleAnalytics } from '@next/third-parties/google';
 import { ConditionalBackground } from '@/components/system/ConditionalBackground';
 import { Footer } from '@/components/landing/Footer';
 import { SpeedInsights } from '@vercel/speed-insights/next';
-import { Analytics } from '@vercel/analytics/next';
 import { cdnUrl, MEDIA_CDN_BASE } from '@/lib/cdn';
 
 export const metadata: Metadata = {
@@ -135,11 +133,7 @@ export default function RootLayout({
           {children}
           <Footer />
         </ClientProviders>
-        {process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID && (
-          <GoogleAnalytics gaId={process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID} />
-        )}
         <SpeedInsights />
-        <Analytics />
         <StructuredData data={websiteJsonLd} />
       </body>
     </html>

@@ -6,9 +6,9 @@ export async function GET(request: NextRequest) {
   const os = searchParams.get('os');
 
   const osUrlMap: Record<string, string> = {
-    'mac': cdnUrl('/desktop/mac/Vibe%20Manager_1.0.15_aarch64.dmg'),
-    'mac-dmg': cdnUrl('/desktop/mac/Vibe%20Manager_1.0.15_aarch64.dmg'),
-    'mac-zip': cdnUrl('/desktop/mac/Vibe%20Manager_1.0.15_aarch64.app.tar.gz'),
+    'mac': cdnUrl('/desktop/mac/Vibe%20Manager_1.0.16_aarch64.dmg'),
+    'mac-dmg': cdnUrl('/desktop/mac/Vibe%20Manager_1.0.16_aarch64.dmg'),
+    'mac-zip': cdnUrl('/desktop/mac/Vibe%20Manager_1.0.16_aarch64.app.tar.gz'),
   };
 
   const downloadUrl = osUrlMap[os || ''] || '/';

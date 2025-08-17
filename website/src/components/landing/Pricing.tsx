@@ -11,7 +11,7 @@ export function Pricing() {
   return (
     <section className="relative py-12 sm:py-16 md:py-20 lg:py-24 px-4 overflow-hidden perspective-1000" id="pricing">
       <div className="container mx-auto relative z-10">
-        <div className="text-center mb-16">
+        <div className="text-center mb-12 sm:mb-16">
           <Reveal as="h2" className="text-4xl sm:text-5xl lg:text-6xl mb-6 text-primary-emphasis font-bold text-shadow-subtle">
             No-Nonsense Pricing
           </Reveal>

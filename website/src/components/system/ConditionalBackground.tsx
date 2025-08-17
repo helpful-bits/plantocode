@@ -18,14 +18,17 @@ export function ConditionalBackground() {
   const pathname = usePathname();
   const [shouldRender, setShouldRender] = useState(false);
   
-  // Don't render particles on legal pages (including regional legal pages and redirect routes)
-  if (pathname === '/privacy' || 
-      pathname === '/terms' || 
-      pathname.startsWith('/legal/')) {
-    return null;
-  }
+  // Check if we're on a legal page (but don't return early to maintain hook order)
+  const isLegalPage = pathname === '/privacy' || 
+                      pathname === '/terms' || 
+                      pathname.startsWith('/legal/');
   
   useEffect(() => {
+    // Don't set up the idle callback if we're on a legal page
+    if (isLegalPage) {
+      return;
+    }
+    
     // Defer loading the 3D background until after critical content
     if ('requestIdleCallback' in window) {
       const handle = (window as any).requestIdleCallback(() => {
@@ -44,9 +47,10 @@ export function ConditionalBackground() {
       
       return () => clearTimeout(timer);
     }
-  }, []);
+  }, [isLegalPage]);
   
-  if (!shouldRender) {
+  // Don't render particles on legal pages or before idle callback
+  if (isLegalPage || !shouldRender) {
     return null;
   }
   
