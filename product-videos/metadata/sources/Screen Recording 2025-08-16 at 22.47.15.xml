@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<video_description>
+    <event time="00:00" description="The video begins with a view of the Vibe Manager application. The user initiates a 'Deep Research' function based on a task description about video folder styling and utilizing Remotion."/>
+    <event time="00:04" description="The system processes this request, which is shown as a 'Web Search Prompts Generation' task in the 'Background Tasks' panel."/>
+    <event time="00:38" description="Once the task is complete, the user clicks on it to open a 'Job Details' modal."/>
+    <event time="00:40" description="The modal displays information about the job, including the AI model used (gemini-2.5-pro), token usage, and the generated research prompts related to Remotion, performance, and Tailwind CSS integration."/>
+    <event time="00:53" description="The user closes the 'Job Details' modal and returns to the main screen."/>
+    <event time="00:55" description="The user clicks on the 'Found 3 Research Findings' button, which populates the main 'Task Description' text area with the detailed results from the research."/>
+    <event time="01:34" description="The user scrolls through the newly added, comprehensive research findings."/>
+    <event time="01:40" description="The content is structured with sections on implementation, performance, configuration, limitations, and best practices for using Remotion and Tailwind CSS, complete with code snippets and links to documentation."/>
+    <event time="01:55" description="After reviewing the research, the user scrolls down past the 'Find Relevant Files' section to the 'Implementation Plans' area."/>
+    <event time="02:05" description="The video ends with the user positioned at the 'Implementation Plans' section, indicating the next step is to create an action plan based on the gathered information."/>
+</video_description>

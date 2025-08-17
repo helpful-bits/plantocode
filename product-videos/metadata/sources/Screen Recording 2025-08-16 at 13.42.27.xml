@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<video_description>
+    <event time="00:00" description="The video starts on the Vibe Manager home screen, with a task focused on fixing mobile website UI spacing."/>
+    <event time="00:02" description="The user's cursor moves to the 'Record' icon next to the Task Description."/>
+    <event time="00:05" description="The user clicks the 'Record' icon, and a 'Record Screen for Analysis' modal appears."/>
+    <event time="00:09" description="The user begins typing in the 'Analysis Prompt' text field."/>
+    <event time="00:26" description="The user finishes typing the prompt: 'Please only focus on what UI inconsistencies you actually can see.'"/>
+    <event time="00:36" description="The user clicks and drags the 'Frame Rate (FPS)' slider to the right."/>
+    <event time="00:38" description="The user releases the slider, setting the FPS to 24."/>
+    <event time="00:40" description="The user clicks the 'Start Recording' button."/>
+    <event time="00:41" description="A native macOS screen sharing dialog appears."/>
+    <event time="00:43" description="The user clicks the 'Share this entire window' button to begin the capture."/>
+    <event time="00:46" description="A red recording indicator appears in the bottom-right corner of the Vibe Manager window."/>
+    <event time="01:28" description="The user opens the Control Center on their mirrored iPhone."/>
+    <event time="01:29" description="The user taps on the 'Screen Mirroring' option."/>
+    <event time="01:32" description="The iPhone screen mirroring connects, displaying the Safari browser open to 'vibemanager.app'."/>
+    <event time="01:35" description="The user begins scrolling down the mobile website."/>
+    <event time="01:37" description="The user scrolls past the 'Download for Mac' button to the 'Key Features' section."/>
+    <event time="01:40" description="The user scrolls past the 'Never Start from Scratch' feature card."/>
+    <event time="01:43" description="The user scrolls to the 'How it Works' section."/>
+    <event time="01:47" description="The user scrolls to the 'No-Nonsense Pricing' section."/>
+    <event time="01:49" description="The user scrolls to the 'Frequently Asked Questions' section."/>
+    <event time="01:51" description="The user expands the 'What else?' FAQ item."/>
+    <event time="01:52" description="The user expands the third FAQ item."/>
+    <event time="01:54" description="The user scrolls to the 'Built for You, With You' section in the footer."/>
+    <event time="02:01" description="The user begins scrolling back up the mobile website."/>
+    <event time="02:08" description="The user scrolls back up to the 'How it Works' section for a visual comparison."/>
+    <event time="02:11" description="The user opens the Control Center on the iPhone again."/>
+    <event time="02:12" description="The user taps 'Stop Mirroring'."/>
+    <event time="02:18" description="The user clicks the red 'Stop' button in the Vibe Manager app to end the recording."/>
+    <event time="02:22" description="A new 'Analyzing video...' task appears in the 'Background Tasks' list with a progress bar."/>
+    <event time="02:27" description="The user clicks on the 'Analyzing video...' task."/>
+    <event time="02:30" description="A 'Job Details' modal opens, showing the job status as 'Running'."/>
+    <event time="02:32" description="The user expands the 'Video Preview' accordion."/>
+    <event time="02:33" description="The user clicks 'Play' on the video preview and watches the recording."/>
+    <event time="03:04" description="The user collapses the 'Video Preview' accordion."/>
+    <event time="03:06" description="The user expands the 'Prompt' accordion to see the text that was sent to the AI."/>
+    <event time="03:13" description="The user closes the 'Job Details' modal."/>
+    <event time="03:40" description="A 'Video Analysis Complete' notification appears. The main 'Task Description' area is populated with the AI's findings, including a 'Temporal Sequence'."/>
+    <event time="03:53" description="The user scrolls down below the analysis and clicks the 'Find Relevant Files' button."/>
+    <event time="03:57" description="The user clicks on the now-completed 'Video Analysis' job in the left panel."/>
+    <event time="04:01" description="In the 'Job Details' modal, the user expands the 'Response' section to view the full, raw output from the AI model."/>
+    <event time="04:09" description="The user closes the 'Job Details' modal."/>
+    <event time="04:10" description="The user clicks the 'Credits: $120.06' button in the header."/>
+    <event time="04:11" description="The 'Billing History' modal opens to the 'Transactions' tab."/>
+    <event time="04:13" description="The user clicks on the 'Usage Details' tab."/>
+    <event time="04:19" description="The user closes the 'Billing History' modal."/>
+    <event time="04:29" description="In the left panel, the user clicks the 'Use Files' button on a completed 'AI File Relevance Assessment' task."/>
+    <event time="04:31" description="The user clicks 'Use Files' on another completed assessment, adding more files to the main context."/>
+    <event time="05:24" description="In the 'Search Files...' results, the user checks the box for 'FAQ.tsx'."/>
+    <event time="05:25" description="The user checks the box for 'Features.tsx'."/>
+    <event time="05:26" description="The user checks the boxes for 'HowItWorks.tsx' and 'GlassCard.tsx'."/>
+    <event time="05:28" description="The user checks the box for 'tailwind.config.ts'."/>
+    <event time="05:30" description="The user scrolls down and clicks the 'Create Implementation Plan' button."/>
+    <event time="05:37" description="Three parallel 'Generating implementation plan...' tasks appear, each using a different AI model."/>
+    <event time="06:27" description="After the plans complete, the user clicks 'View Content' for the first plan."/>
+    <event time="06:28" description="A modal opens showing the detailed implementation plan. The user scrolls through the generated code modifications."/>
+    <event time="06:37" description="The user closes the plan viewer."/>
+    <event time="06:39" description="The user selects the checkboxes for all three generated plans."/>
+    <event time="08:07" description="The user clicks the 'Merge Plans' button."/>
+    <event time="08:08" description="A 'Merging implementation plans...' task begins processing."/>
+    <event time="09:32" description="The merge task finishes, and a new 'Merged' plan appears in the list."/>
+    <event time="09:38" description="The user clicks 'View Content' on the successfully merged plan."/>
+    <event time="13:44" description="After thoroughly scrolling through the lengthy merged plan, the user closes the plan viewer."/>
+    <event time="14:49" description="The user scrolls up to the main 'Task Description' section."/>
+    <event time="14:54" description="The user clicks at the end of the AI-generated text and manually types a new line."/>
+    <event time="15:08" description="The user finishes typing: 'Please be sure to utilize the best tailwind practices.'"/>
+    <event time="15:13" description="The user navigates to the 'Settings' page."/>
+    <event time="15:15" description="The user clicks on 'Relevance Assessment' to view its system prompt."/>
+    <event time="15:20" description="The user clicks on 'Implementation Plans' to view its system prompt and model parameters."/>
+    <event time="15:44" description="The user clicks through other settings like 'Voice Transcription' and 'Video Analysis'."/>
+    <event time="16:07" description="The user navigates to the 'Account' page."/>
+    <event time="16:09" description="The user scrolls down the Account page, viewing billing, credits, and auto top-off settings."/>
+    <event time="16:14" description="The user navigates to the 'Feedback' page."/>
+    <event time="16:17" description="A feedback widget from 'featurebase.app' loads within the application."/>
+    <event time="16:21" description="The user clicks the 'Home' icon to return to the main project screen."/>
+    <event time="16:23" description="The video ends."/>
+</video_description>

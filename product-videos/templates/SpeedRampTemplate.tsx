@@ -1,4 +1,4 @@
-import { AbsoluteFill, Sequence, Video, useCurrentFrame, staticFile } from "remotion";
+import { AbsoluteFill, Sequence, OffthreadVideo, useCurrentFrame, staticFile } from "remotion";
 import React from "react";
 
 interface SpeedRampTemplateProps {
@@ -41,7 +41,7 @@ export const SpeedRampTemplate: React.FC<SpeedRampTemplateProps> = ({
   // Calculate durations
   const beforeSpeedDuration = speedUpStart;
   const speedUpDuration = speedUpEnd - speedUpStart;
-  const afterSpeedDuration = endTime - endTime;
+  const afterSpeedDuration = endTime - speedUpEnd;
   
   // Calculate compressed duration for sped-up section
   const compressedSpeedDuration = speedUpDuration / speedMultiplier;
@@ -55,30 +55,33 @@ export const SpeedRampTemplate: React.FC<SpeedRampTemplateProps> = ({
     <AbsoluteFill style={{ backgroundColor: "black" }}>
       {/* Section before speed-up */}
       <Sequence from={0} durationInFrames={seq1Duration}>
-        <Video 
+        <OffthreadVideo 
           src={videoSrc}
-          startFrom={startFrame}
-          endAt={speedUpStartFrame}
+          trimBefore={startFrame}
+          trimAfter={speedUpStartFrame - startFrame}
+          muted={true}
         />
       </Sequence>
       
       {/* Speed-up section */}
       <Sequence from={seq1Duration} durationInFrames={seq2Duration}>
-        <Video 
+        <OffthreadVideo 
           src={videoSrc}
-          startFrom={speedUpStartFrame}
-          endAt={speedUpEndFrame}
+          trimBefore={speedUpStartFrame}
+          trimAfter={speedUpEndFrame - speedUpStartFrame}
           playbackRate={speedMultiplier}
+          muted={true}
         />
       </Sequence>
       
       {/* Section after speed-up */}
       {afterSpeedDuration > 0 && (
         <Sequence from={seq1Duration + seq2Duration} durationInFrames={seq3Duration}>
-          <Video 
+          <OffthreadVideo 
             src={videoSrc}
-            startFrom={speedUpEndFrame}
-            endAt={endFrame}
+            trimBefore={speedUpEndFrame}
+            trimAfter={endFrame - speedUpEndFrame}
+            muted={true}
           />
         </Sequence>
       )}

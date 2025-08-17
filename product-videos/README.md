@@ -164,11 +164,34 @@ npm run benchmark          # Test render performance
 - **YouTube**: 1920x1080 @ 30/60fps
 - **Product Demos**: 3840x2160 @ 30fps
 
+## Remotion Editing Plan Exports
+
+The following compositions are aligned with `tasks/edit_1.md`:
+
+| Composition ID | Target Filename | Duration | Status |
+|----------------|-----------------|----------|--------|
+| EndToEnd | end-to-end.mp4 | 35s | ✅ Ready |
+| FileFinder | file-finder.mp4 | 28s | ✅ Ready |
+| PlanSynthesis | plan-synthesis.mp4 | 24s | ✅ Ready |
+| DeepCustomization | deep-customization.mp4 | 24s | ✅ Ready |
+| CostTracking | cost-tracking.mp4 | 20s | ✅ Ready |
+| DeepResearch | deep-research.mp4 | 22s | ⏳ Placeholder |
+
 ## 📚 Resources
 
 - [Remotion Documentation](https://www.remotion.dev/docs)
 - [React Best Practices](https://react.dev/learn)
 - [FFmpeg Guide](https://ffmpeg.org/documentation.html)
+
+## Studio Health Checklist
+
+- [ ] Remotion packages pinned to same version (4.0.333)
+- [ ] React 19 confirmed
+- [ ] @remotion/tailwind enabled in config
+- [ ] index.css imported in index.ts
+- [ ] Master video present in public/assets/videos/
+- [ ] No website globals.css imported
+- [ ] All compositions visible in Studio sidebar
 
 ## 🤝 Contributing
 

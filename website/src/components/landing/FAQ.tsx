@@ -20,7 +20,7 @@ export function FAQ({ items }: FAQProps) {
   return (
     <section className="relative py-12 sm:py-16 md:py-20 lg:py-24 px-4 overflow-hidden" id="faq">
       <div className="container mx-auto max-w-3xl relative z-10">
-        <div className="text-center mb-12">
+        <div className="text-center mb-12 sm:mb-16">
           <Reveal as="h2" className="text-3xl sm:text-4xl lg:text-5xl mb-4 text-primary-emphasis">
             Frequently Asked Questions
           </Reveal>
@@ -29,7 +29,7 @@ export function FAQ({ items }: FAQProps) {
           </Reveal>
         </div>
 
-        <div className="space-y-4 p-2">
+        <div className="space-y-8">
           {items.map((item, index) => (
             <Reveal
               key={index}
@@ -49,7 +49,7 @@ export function FAQ({ items }: FAQProps) {
                   transition={{ duration: 0.3, ease: 'easeInOut' }}
                 >
                   <motion.button
-                    className="w-full p-6 text-left flex justify-between items-center group relative"
+                    className="w-full px-4 py-4 sm:p-6 text-left flex justify-between items-center group relative"
                     whileTap={{ scale: 0.98 }}
                     onClick={() => setOpenIndex(openIndex === index ? null : index)}
                   >
@@ -136,7 +136,7 @@ export function FAQ({ items }: FAQProps) {
                         }}
                         initial={{ height: 0, opacity: 0 }}
                       >
-                        <div className="px-6 pb-6 text-foreground leading-relaxed">
+                        <div className="px-4 pb-4 sm:px-6 sm:pb-6 text-foreground leading-relaxed">
                           <div className="border-l-2 border-primary/20 pl-4">
                             {item.answer}
                           </div>

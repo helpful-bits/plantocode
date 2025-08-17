@@ -209,7 +209,8 @@
       "Bash(COPYFILE_DISABLE=1 tar -czf \"Vibe Manager_1.0.15_aarch64.app.tar.gz\" \"Vibe Manager.app\")",
       "Bash(ffmpeg:*)",
       "WebSearch",
-      "WebFetch(domain:www.remotion.dev)"
+      "WebFetch(domain:www.remotion.dev)",
+      "Bash(npx remotion render:*)"
     ],
     "deny": [],
     "defaultMode": "acceptEdits"

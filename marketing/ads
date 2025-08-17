@@ -1,0 +1,403 @@
+#!/bin/bash
+
+# Unified Ads CLI - Multi-platform advertising management tool
+# Supports: Reddit Ads, Google Ads, LinkedIn Ads
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+MAGENTA='\033[0;35m'
+BOLD='\033[1m'
+NC='\033[0m' # No Color
+
+# Platform colors
+REDDIT_COLOR='\033[38;5;202m'  # Orange
+GOOGLE_COLOR='\033[38;5;33m'   # Blue
+LINKEDIN_COLOR='\033[38;5;27m' # LinkedIn Blue
+
+VERSION="2.0.0"
+CONFIG_DIR="$SCRIPT_DIR/config"
+PLATFORMS_DIR="$SCRIPT_DIR/platforms"
+REPORTS_DIR="$SCRIPT_DIR/reports"
+
+function print_banner() {
+    echo -e "${CYAN}"
+    echo "╔══════════════════════════════════════════════╗"
+    echo "║         Unified Ads Management CLI           ║"
+    echo "║              Version $VERSION                   ║"
+    echo "║                                              ║"
+    echo "║  ${REDDIT_COLOR}Reddit${CYAN}  •  ${GOOGLE_COLOR}Google${CYAN}  •  ${LINKEDIN_COLOR}LinkedIn${CYAN}        ║"
+    echo "╚══════════════════════════════════════════════╝"
+    echo -e "${NC}"
+}
+
+function print_error() {
+    echo -e "${RED}✗${NC} $1" >&2
+}
+
+function print_success() {
+    echo -e "${GREEN}✓${NC} $1"
+}
+
+function print_info() {
+    echo -e "${YELLOW}ℹ${NC} $1"
+}
+
+function print_platform() {
+    local platform=$1
+    case $platform in
+        reddit)
+            echo -e "${REDDIT_COLOR}[Reddit]${NC}"
+            ;;
+        google)
+            echo -e "${GOOGLE_COLOR}[Google]${NC}"
+            ;;
+        linkedin)
+            echo -e "${LINKEDIN_COLOR}[LinkedIn]${NC}"
+            ;;
+        *)
+            echo -e "${CYAN}[$platform]${NC}"
+            ;;
+    esac
+}
+
+# Load platform configuration
+function load_platform_config() {
+    local platform=$1
+    local config_file="$CONFIG_DIR/${platform}.env"
+    
+    if [ -f "$config_file" ]; then
+        export $(cat "$config_file" | grep -v '^#' | xargs)
+        return 0
+    else
+        return 1
+    fi
+}
+
+# Check if platform is configured
+function check_platform_config() {
+    local platform=$1
+    local config_file="$CONFIG_DIR/${platform}.env"
+    
+    if [ ! -f "$config_file" ]; then
+        print_error "Platform '$platform' is not configured"
+        echo ""
+        echo "To configure $platform:"
+        echo "1. Copy the example configuration:"
+        echo "   cp $CONFIG_DIR/${platform}.env.example $CONFIG_DIR/${platform}.env"
+        echo ""
+        echo "2. Edit the configuration file:"
+        echo "   nano $CONFIG_DIR/${platform}.env"
+        echo ""
+        echo "3. Run setup:"
+        echo "   $0 $platform setup"
+        return 1
+    fi
+    return 0
+}
+
+# Platform-specific command router
+function run_platform_command() {
+    local platform=$1
+    local command=$2
+    shift 2
+    
+    local platform_script="$PLATFORMS_DIR/$platform/cli.sh"
+    
+    if [ ! -f "$platform_script" ]; then
+        print_error "Platform '$platform' is not available"
+        return 1
+    fi
+    
+    if ! check_platform_config "$platform"; then
+        return 1
+    fi
+    
+    # Load platform config and run command
+    load_platform_config "$platform"
+    "$platform_script" "$command" "$@"
+}
+
+# Initialize platform
+function init_platform() {
+    local platform=$1
+    
+    print_info "Initializing $platform..."
+    
+    # Create config from example if it doesn't exist
+    if [ ! -f "$CONFIG_DIR/${platform}.env" ]; then
+        if [ -f "$CONFIG_DIR/${platform}.env.example" ]; then
+            cp "$CONFIG_DIR/${platform}.env.example" "$CONFIG_DIR/${platform}.env"
+            print_success "Created configuration file for $platform"
+            echo "Please edit: $CONFIG_DIR/${platform}.env"
+        else
+            print_error "No example configuration found for $platform"
+            return 1
+        fi
+    else
+        print_info "Configuration already exists for $platform"
+    fi
+}
+
+# Generate unified report across platforms
+function generate_unified_report() {
+    local start_date=${1:-$(date -v-30d +%Y-%m-%d 2>/dev/null || date -d '30 days ago' +%Y-%m-%d)}
+    local end_date=${2:-$(date +%Y-%m-%d)}
+    local report_file="$REPORTS_DIR/unified_report_${start_date}_${end_date}.json"
+    
+    print_banner
+    echo -e "${BOLD}Generating Unified Report${NC}"
+    echo "Period: $start_date to $end_date"
+    echo ""
+    
+    # Initialize report structure
+    echo "{" > "$report_file"
+    echo "  \"period\": {" >> "$report_file"
+    echo "    \"start\": \"$start_date\"," >> "$report_file"
+    echo "    \"end\": \"$end_date\"" >> "$report_file"
+    echo "  }," >> "$report_file"
+    echo "  \"platforms\": {" >> "$report_file"
+    
+    local first=true
+    for platform in reddit google linkedin; do
+        if check_platform_config "$platform" 2>/dev/null; then
+            if [ "$first" = false ]; then
+                echo "," >> "$report_file"
+            fi
+            first=false
+            
+            print_info "Fetching $platform data..."
+            local platform_data=$("$PLATFORMS_DIR/$platform/cli.sh" report-json "$start_date" "$end_date" 2>/dev/null)
+            
+            if [ -n "$platform_data" ]; then
+                echo "    \"$platform\": $platform_data" >> "$report_file"
+                print_success "$platform data collected"
+            else
+                echo "    \"$platform\": {\"error\": \"Failed to fetch data\"}" >> "$report_file"
+                print_error "$platform data collection failed"
+            fi
+        fi
+    done
+    
+    echo "  }" >> "$report_file"
+    echo "}" >> "$report_file"
+    
+    echo ""
+    print_success "Report saved to: $report_file"
+}
+
+# List configured platforms
+function list_platforms() {
+    echo -e "${BOLD}Available Platforms:${NC}"
+    echo ""
+    
+    for platform in reddit google linkedin; do
+        local status_icon="✗"
+        local status_color="$RED"
+        local status_text="Not configured"
+        
+        if [ -f "$CONFIG_DIR/${platform}.env" ]; then
+            status_icon="✓"
+            status_color="$GREEN"
+            status_text="Configured"
+        fi
+        
+        printf "  %s %-12s %s\n" \
+            "$(print_platform $platform)" \
+            "" \
+            "${status_color}${status_icon} ${status_text}${NC}"
+    done
+    echo ""
+}
+
+# Main command router
+function main() {
+    local command=$1
+    shift
+    
+    case $command in
+        # Platform-specific commands
+        reddit|r)
+            run_platform_command reddit "$@"
+            ;;
+            
+        google|g)
+            run_platform_command google "$@"
+            ;;
+            
+        linkedin|l)
+            run_platform_command linkedin "$@"
+            ;;
+            
+        # Multi-platform commands
+        init)
+            local platform=$1
+            if [ -z "$platform" ]; then
+                print_error "Usage: $0 init <platform>"
+                echo "Available platforms: reddit, google, linkedin"
+                exit 1
+            fi
+            init_platform "$platform"
+            ;;
+            
+        setup-all)
+            print_banner
+            for platform in reddit google linkedin; do
+                echo ""
+                print_info "Setting up $(print_platform $platform)..."
+                init_platform "$platform"
+            done
+            ;;
+            
+        status|platforms)
+            print_banner
+            list_platforms
+            ;;
+            
+        report)
+            generate_unified_report "$@"
+            ;;
+            
+        campaigns-all|campaigns)
+            print_banner
+            echo -e "${BOLD}All Campaigns${NC}"
+            echo ""
+            
+            for platform in reddit google linkedin; do
+                if check_platform_config "$platform" 2>/dev/null; then
+                    echo "$(print_platform $platform)"
+                    run_platform_command "$platform" campaigns 2>/dev/null || echo "  Failed to fetch campaigns"
+                    echo ""
+                fi
+            done
+            ;;
+            
+        dashboard|dash)
+            print_banner
+            echo -e "${BOLD}Quick Dashboard${NC}"
+            echo ""
+            
+            for platform in reddit google linkedin; do
+                if check_platform_config "$platform" 2>/dev/null; then
+                    echo "$(print_platform $platform)"
+                    run_platform_command "$platform" summary 2>/dev/null || echo "  No data available"
+                    echo ""
+                fi
+            done
+            ;;
+            
+        quick-start|qs)
+            print_banner
+            echo -e "${BOLD}Quick Start Guide${NC}"
+            echo ""
+            echo "1. Initialize platforms:"
+            echo "   ${CYAN}$0 setup-all${NC}"
+            echo ""
+            echo "2. Configure each platform:"
+            echo "   ${CYAN}nano config/reddit.env${NC}"
+            echo "   ${CYAN}nano config/google.env${NC}"
+            echo "   ${CYAN}nano config/linkedin.env${NC}"
+            echo ""
+            echo "3. Authenticate each platform:"
+            echo "   ${CYAN}$0 reddit auth${NC}"
+            echo "   ${CYAN}$0 google auth${NC}"
+            echo "   ${CYAN}$0 linkedin auth${NC}"
+            echo ""
+            echo "4. Start using:"
+            echo "   ${CYAN}$0 campaigns${NC}      # List all campaigns"
+            echo "   ${CYAN}$0 report${NC}         # Generate unified report"
+            echo "   ${CYAN}$0 dashboard${NC}      # Quick overview"
+            echo ""
+            echo "Platform-specific commands:"
+            echo "   ${CYAN}$0 reddit <command>${NC}"
+            echo "   ${CYAN}$0 google <command>${NC}"
+            echo "   ${CYAN}$0 linkedin <command>${NC}"
+            echo ""
+            ;;
+            
+        help|--help|-h|"")
+            print_banner
+            echo -e "${BOLD}Usage:${NC} $0 <command> [options]"
+            echo ""
+            echo -e "${BOLD}Multi-Platform Commands:${NC}"
+            echo "  setup-all          - Initialize all platforms"
+            echo "  status, platforms  - Show platform status"
+            echo "  campaigns          - List campaigns from all platforms"
+            echo "  report [start end] - Generate unified report"
+            echo "  dashboard, dash    - Quick overview of all platforms"
+            echo "  quick-start, qs    - Show quick start guide"
+            echo ""
+            echo -e "${BOLD}Platform Commands:${NC}"
+            echo "  reddit, r          - Reddit Ads commands"
+            echo "  google, g          - Google Ads commands"
+            echo "  linkedin, l        - LinkedIn Ads commands"
+            echo ""
+            echo -e "${BOLD}Platform Usage:${NC}"
+            echo "  $0 <platform> help              - Platform-specific help"
+            echo "  $0 <platform> auth              - Authenticate"
+            echo "  $0 <platform> campaigns         - List campaigns"
+            echo "  $0 <platform> report [start end] - Platform report"
+            echo ""
+            echo -e "${BOLD}Examples:${NC}"
+            echo "  $0 setup-all"
+            echo "  $0 reddit auth"
+            echo "  $0 google campaigns"
+            echo "  $0 linkedin report 2025-01-01 2025-01-31"
+            echo "  $0 report                      # All platforms, last 30 days"
+            echo "  $0 dashboard                   # Quick overview"
+            echo ""
+            echo -e "${BOLD}Shortcuts:${NC}"
+            echo "  r = reddit, g = google, l = linkedin"
+            echo "  Example: $0 r campaigns"
+            echo ""
+            ;;
+            
+        version|v)
+            echo "Unified Ads CLI v$VERSION"
+            ;;
+            
+        *)
+            print_error "Unknown command: $command"
+            echo "Run '$0 help' for usage information"
+            exit 1
+            ;;
+    esac
+}
+
+# Check dependencies
+function check_dependencies() {
+    local missing_deps=()
+    
+    for cmd in jq curl; do
+        if ! command -v $cmd &> /dev/null; then
+            missing_deps+=($cmd)
+        fi
+    done
+    
+    if [ ${#missing_deps[@]} -gt 0 ]; then
+        print_error "Missing required dependencies: ${missing_deps[*]}"
+        echo ""
+        echo "Please install them first:"
+        echo "  macOS:         brew install ${missing_deps[*]}"
+        echo "  Ubuntu/Debian: sudo apt-get install ${missing_deps[*]}"
+        exit 1
+    fi
+}
+
+# Create necessary directories
+function ensure_directories() {
+    mkdir -p "$CONFIG_DIR" "$REPORTS_DIR"
+}
+
+# Initialize
+check_dependencies
+ensure_directories
+
+# Run main function
+main "$@"

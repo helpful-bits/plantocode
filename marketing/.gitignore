@@ -1,0 +1,25 @@
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Tokens and credentials
+*.token
+*.key
+credentials.json
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+.DS_Store
+
+# API response cache
+.cache/
+cache/
+
+# Test outputs
+test-output/
+*.test.json
