@@ -968,6 +968,7 @@
   .how-it-works-step .glass,
   .how-it-works-step .glass-highlighted {
     border-radius: 1rem;
+    border: none !important; /* Remove borders on mobile */
     box-shadow: 
       0 1px 3px 0 oklch(0 0 0 / 0.1),
       0 1px 2px -1px oklch(0 0 0 / 0.1);
@@ -1022,13 +1023,14 @@ section:not(:first-child) {
     box-shadow: none !important;
   }
   
-  /* Simplify glass effects for performance */
+  /* Simplify glass effects for performance and remove borders */
   .glass,
   .glass-subtle,
   .glass-elevated,
   .glass-intense {
     backdrop-filter: blur(8px) !important;
     -webkit-backdrop-filter: blur(8px) !important;
+    border: none !important; /* Remove all borders on mobile */
   }
   
   /* Touch-friendly interactions */
