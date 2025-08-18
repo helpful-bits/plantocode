@@ -129,7 +129,7 @@ export default function Home() {
     },
     {
       title: 'The Council of LLMs',
-      description: 'Generate plans from Gemini 2.5, Claude 4, GPT-4.1, o3/o4, Grok 4, DeepSeek R1, and Kimi K2 - even multiple runs of the same model. The list evolves quickly as more capable models appear. The merge AI synthesizes their unique insights into one superior strategy.',
+      description: 'Generate plans from Gemini 2.5, Claude 4, GPT-4.1, GPT-5, o3/o4, Grok 4, DeepSeek R1, and Kimi K2 - even multiple runs of the same model. The list evolves quickly as more capable models appear. The merge AI synthesizes their unique insights into one superior strategy.',
       icon: <BrainCircuit className="w-8 h-8" />,
     },
     {

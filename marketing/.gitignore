@@ -3,6 +3,11 @@
 .env.local
 .env.*.local
 
+# Platform configuration files (contain API keys and tokens)
+config/google.env
+config/reddit.env
+config/linkedin.env
+
 # Tokens and credentials
 *.token
 *.key

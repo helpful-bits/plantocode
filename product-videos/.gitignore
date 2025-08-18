@@ -9,6 +9,8 @@
 # Source Videos (large files, should be managed separately)
 source-videos/*
 !source-videos/.gitkeep
+remotion-project/public/source-videos/*
+!remotion-project/public/source-videos/.gitkeep
 
 # All exports (videos should not be in Git)
 exports/*
