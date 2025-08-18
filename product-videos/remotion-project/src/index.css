@@ -1,0 +1,19 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --vm-accent: #6C5CE7;
+  --vm-bg-navy: #0B1220;
+  --vm-text: #E6EAF2;
+}
+
+body {
+  background: transparent;
+}
+
+/* Global styles for Remotion project */
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, sans-serif;
+}
