@@ -52,7 +52,7 @@ function authenticate() {
     local REDIRECT_URI="${GOOGLE_REDIRECT_URI:-urn:ietf:wg:oauth:2.0:oob}"
     
     # Generate authorization URL
-    local FULL_AUTH_URL="${AUTH_URL}?client_id=${GOOGLE_CLIENT_ID}&redirect_uri=${REDIRECT_URI}&response_type=code&scope=${SCOPE}&access_type=offline&prompt=consent"
+    local FULL_AUTH_URL="${AUTH_URL}?client_id=${GOOGLE_CLIENT_ID}&redirect_uri=${REDIRECT_URI}&response_type=code&scope=${SCOPE}&access_type=offline&prompt=consent%20select_account"
     
     echo ""
     print_info "Open this URL in your browser:"
