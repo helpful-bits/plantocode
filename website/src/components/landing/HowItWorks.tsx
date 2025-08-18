@@ -1,15 +1,22 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { useInView } from 'framer-motion';
 import Reveal from '@/components/motion/Reveal';
 
+interface SubStep {
+  title: string;
+  video: string;
+  poster: string;
+}
+
 interface Step {
   title: string;
   description: string;
-  video: string;
-  poster: string;
+  video?: string;
+  poster?: string;
+  subSteps?: SubStep[];
 }
 
 interface HowItWorksProps {
@@ -19,43 +26,52 @@ interface HowItWorksProps {
 const defaultSteps: Step[] = [];
 
 function OptimizedVideo({ video, poster }: { video: string; poster: string }) {
-  const videoRef = useRef<HTMLVideoElement>(null);
   const [loadError, setLoadError] = useState(false);
   const [posterError, setPosterError] = useState(false);
-  const inView = useInView(videoRef, { margin: '100px' });
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const isInView = useInView(videoRef, { 
+    margin: '50px',
+    once: true // Only trigger once when first entering view
+  });
 
-  useEffect(() => {
-    if (videoRef.current) {
-      if (inView) {
-        videoRef.current.play().catch(() => {
-          // Autoplay was prevented.
-        });
-      } else {
-        videoRef.current.pause();
-      }
-    }
-  }, [inView]);
-
-  // Preload poster image to check if it's accessible
   useEffect(() => {
     const img = new Image();
     img.onerror = () => setPosterError(true);
     img.src = poster;
   }, [poster]);
 
+  // Autoplay on reveal
+  useEffect(() => {
+    if (isInView && videoRef.current) {
+      // Add a small delay to ensure smooth reveal animation
+      const timer = setTimeout(() => {
+        videoRef.current?.play().catch(() => {
+          // Autoplay blocked - that's fine, user can manually play
+        });
+      }, 200);
+
+      return () => clearTimeout(timer);
+    }
+  }, [isInView]);
+
+  const webmVideo = video.replace('.mp4', '_vp9.webm');
+
   return (
-    <div className="relative w-full">
+    <div className="w-screen sm:w-full -ml-[50vw] sm:-ml-0 left-1/2 sm:left-auto relative sm:static">
       <video
         ref={videoRef}
-        loop
+        controls
         muted
         playsInline
-        controls={false}
-        className="w-full aspect-video relative z-10 block bg-gradient-to-br from-background/5 to-background/10"
+        className="block object-contain bg-gradient-to-br from-background/5 to-background/10 w-full"
         poster={posterError ? undefined : poster}
-        preload="none"
+        preload="metadata"
         onError={() => setLoadError(true)}
+        style={{
+          aspectRatio: '16/9'
+        }}
       >
+        <source src={webmVideo} type="video/webm; codecs=vp9" />
         <source src={video} type="video/mp4" />
         Your browser does not support the video tag.
       </video>
@@ -91,9 +107,10 @@ export function HowItWorks({ steps = defaultSteps }: HowItWorksProps) {
               className="how-it-works-step group"
               delay={0.1 + index * 0.05}
             >
-              <GlassCard className="overflow-hidden">
-                <div className="p-6 sm:p-8 md:p-10 lg:p-12">
-                  <div className="mb-6 sm:mb-8">
+              <div className="relative overflow-visible">
+                {/* Text Content in Glass Card - Full Width on Mobile */}
+                <GlassCard className="overflow-visible rounded-t-2xl rounded-b-none sm:rounded-2xl">
+                  <div className="p-4 sm:p-6 md:p-8 lg:p-10">
                     <div className="flex items-start gap-3 sm:gap-4 mb-4 sm:mb-6">
                       <span className="flex-shrink-0 text-3xl sm:text-4xl md:text-5xl font-bold text-primary/30 leading-none">
                         {index + 1}
@@ -106,14 +123,33 @@ export function HowItWorks({ steps = defaultSteps }: HowItWorksProps) {
                       {step.description}
                     </p>
                   </div>
+                </GlassCard>
 
-                  <Reveal className="relative group" delay={0.15 + index * 0.05}>
-                    <div className="relative -mx-6 sm:-mx-8 md:-mx-10 lg:-mx-12 mt-6 sm:mt-8 md:mt-10 overflow-hidden">
-                      <OptimizedVideo poster={step.poster} video={step.video} />
+                {/* Videos - Break Out Completely */}
+                <Reveal 
+                  className="relative -mt-2.5 bg-gradient-to-br from-card/95 via-card/98 to-card backdrop-blur-sm" 
+                  delay={0.15 + index * 0.05}
+                >
+                  {step.subSteps ? (
+                    <div className="space-y-0">
+                      {step.subSteps.map((subStep, subIndex) => (
+                        <div key={subIndex} className="relative">
+                          {/* Subtitle Header - Full Width */}
+                          <div className="bg-background/95 backdrop-blur border-t border-primary/10 py-3 px-4 sm:px-6 md:px-8 lg:px-10">
+                            <h4 className="text-base sm:text-lg font-semibold text-foreground max-w-5xl mx-auto">
+                              {subStep.title}
+                            </h4>
+                          </div>
+                          {/* Video - Absolute Full Width */}
+                          <OptimizedVideo poster={subStep.poster} video={subStep.video} />
+                        </div>
+                      ))}
                     </div>
-                  </Reveal>
-                </div>
-              </GlassCard>
+                  ) : (
+                    <OptimizedVideo poster={step.poster!} video={step.video!} />
+                  )}
+                </Reveal>
+              </div>
             </Reveal>
           ))}
         </div>

@@ -129,7 +129,7 @@ export default function Home() {
     },
     {
       title: 'The Council of LLMs',
-      description: 'Generate plans from Gemini 2.5, Claude 4, GPT-4.1, GPT-5, o3/o4, Grok 4, DeepSeek R1, and Kimi K2 - even multiple runs of the same model. The list evolves quickly as more capable models appear. The merge AI synthesizes their unique insights into one superior strategy.',
+      description: 'Generate plans from Gemini 2.5, GPT-5, Claude 4, GPT-4.1, o3/o4, Grok 4, DeepSeek R1, and Kimi K2 - even multiple runs of the same model. The list evolves quickly as more capable models appear. The merge AI synthesizes their unique insights into one superior strategy.',
       icon: <BrainCircuit className="w-8 h-8" />,
     },
     {
@@ -162,9 +162,24 @@ export default function Home() {
   const steps = [
     {
       title: 'The Briefing: Task Input & Refinement',
-      description: 'Just talk. Explain your complex logic or brainstorm out loud - GPT-4 transcribes it perfectly. Can\'t explain in words? Record your screen while demonstrating the issue. The AI refines everything into precise specifications.',
-      video: cdnUrl('/videos/step-1-describe.mp4'),
-      poster: cdnUrl('/images/step-1-poster.jpg'),
+      description: 'Three ways to communicate your vision: speak your thoughts and GPT-4 transcribes perfectly, type and let Gemini 2.5 Pro refine your description, or record your screen while demonstrating the issue. Every input method gets transformed into precise specifications.',
+      subSteps: [
+        {
+          title: 'Text Input & AI Refinement',
+          video: cdnUrl('/videos/step-1-text.mp4'),
+          poster: cdnUrl('/images/step-1-text-poster.jpg'),
+        },
+        {
+          title: 'Voice Dictation & Transcription',
+          video: cdnUrl('/videos/step-1-voice.mp4'),
+          poster: cdnUrl('/images/step-1-voice-poster.jpg'),
+        },
+        {
+          title: 'Screen Recording & AI Analysis',
+          video: cdnUrl('/videos/step-1-video.mp4'),
+          poster: cdnUrl('/images/step-1-video-poster.jpg'),
+        },
+      ],
     },
     {
       title: 'The Recon Mission: Finding What Matters',
@@ -183,6 +198,12 @@ export default function Home() {
       description: 'Generate plans from multiple models. The architect AI performs deep synthesis, detecting blind spots and creating emergent solutions. Review with floating notes and edit plans directly before execution.',
       video: cdnUrl('/videos/step-4-merge.mp4'),
       poster: cdnUrl('/images/step-4-poster.jpg'),
+    },
+    {
+      title: 'The Executive Override: Taking Command',
+      description: 'Override any system prompt. Customize the copy button instructions. Your customizations are saved per project. Every aspect of the tool bends to your will - because you are the CEO of your development workflow.',
+      video: cdnUrl('/videos/step-5-customize.mp4'),
+      poster: cdnUrl('/images/step-5-poster.jpg'),
     },
   ];
 
