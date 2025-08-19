@@ -942,15 +942,11 @@ impl StripeService {
         let credits_item_data = serde_json::json!({
             "customer": customer_id,
             "invoice": invoice.id,
-            "price_data": {
-                "currency": currency.to_lowercase(),
-                "unit_amount": net_amount_cents,
-                "tax_behavior": "exclusive",
-                "product_data": {
-                    "name": description,
-                    "tax_code": "txcd_10103001"  // Tax code for SaaS/API credits
-                }
-            }
+            "amount": net_amount_cents,
+            "currency": currency.to_lowercase(),
+            "description": description,
+            "tax_code": "txcd_10103001",
+            "tax_behavior": "exclusive"
         });
         
         let credits_response = self.make_stripe_request_with_idempotency(
@@ -970,15 +966,11 @@ impl StripeService {
             let fee_item_data = serde_json::json!({
                 "customer": customer_id,
                 "invoice": invoice.id,
-                "price_data": {
-                    "currency": currency.to_lowercase(),
-                    "unit_amount": fee_amount_cents,
-                    "tax_behavior": "exclusive",
-                    "product_data": {
-                        "name": "Processing fee",
-                        "tax_code": "txcd_10103001"  // Same tax code as credits (taxable service)
-                    }
-                }
+                "amount": fee_amount_cents,
+                "currency": currency.to_lowercase(),
+                "description": "Processing fee",
+                "tax_code": "txcd_10103001",
+                "tax_behavior": "exclusive"
             });
             
             let fee_response = self.make_stripe_request_with_idempotency(

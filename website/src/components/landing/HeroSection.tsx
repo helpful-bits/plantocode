@@ -5,8 +5,14 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { motion } from 'framer-motion';
 import Reveal from '@/components/motion/Reveal';
+import { usePlausible } from '@/hooks/usePlausible';
 
 export function HeroSection() {
+  const { trackEvent } = usePlausible();
+
+  const handleDownloadClick = () => {
+    trackEvent('download_click', { location: 'hero_section' });
+  };
 
   return (
     <section className="relative h-auto sm:min-h-screen flex items-start sm:items-center justify-center overflow-hidden bg-transparent py-20 sm:py-16 md:py-14 lg:py-14">
@@ -47,7 +53,7 @@ export function HeroSection() {
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
               >
-                <Button asChild className="relative overflow-hidden" size="xl" variant="cta">
+                <Button asChild className="relative overflow-hidden" size="xl" variant="cta" onClick={handleDownloadClick}>
                   <Link href="/download" className="no-hover-effect cursor-pointer">
                     Download for Mac
                   </Link>

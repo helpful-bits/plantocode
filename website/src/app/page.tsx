@@ -46,7 +46,7 @@ const CallToAction = dynamic(() => import('@/components/landing/CallToAction').t
 
 
 export const metadata: Metadata = {
-  title: 'Vibe Manager | Context for Lost AI Agents',
+  title: 'Vibe code cleanup specialist',
   description: "The AI coding assistant that acts as a middle-manager for your LLMs, curating the perfect context so they can't get lost. Built by a developer, for developers, from the trenches.",
   keywords: [
     'AI coding assistant',

@@ -257,6 +257,21 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
         case 'extended_path_finder':
         case 'path_correction':
           if (response.files && Array.isArray(response.files)) {
+            // Check if this is an empty result with a message
+            if (response.isEmptyResult && response.message) {
+              return (
+                <div className="space-y-2">
+                  <div className="text-amber-600 dark:text-amber-400 font-medium">
+                    No files found
+                  </div>
+                  <div className="text-sm text-muted-foreground whitespace-pre-wrap">
+                    {response.message}
+                  </div>
+                </div>
+              );
+            }
+            
+            // Normal case with files
             return (
               <div className="space-y-2">
                 <div className="font-semibold">{response.summary || `${response.count || 0} files found`}</div>

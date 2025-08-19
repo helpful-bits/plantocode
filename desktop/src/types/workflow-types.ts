@@ -171,6 +171,7 @@ export interface WorkflowIntermediateData {
   extendedCorrectedPaths: string[];
   webSearchPrompts?: string[];
   webSearchResults?: string[];
+  workflowCompletionMessage?: string;
 }
 
 // Progress event payload from backend
