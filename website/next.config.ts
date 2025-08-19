@@ -1,10 +1,13 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Cross-origin development configuration
+  allowedDevOrigins: ['192.168.0.38', 'localhost'],
+
   // Next.js 15 optimizations
   experimental: {
     // Enable React 19 concurrent features (may require canary)
-    reactCompiler: true,
+    // reactCompiler: true, // Temporarily disabled - conflicts with custom webpack chunking
     // Optimize for better performance
     // optimizeCss: true,
     // PPR only available in canary versions
@@ -170,7 +173,7 @@ const nextConfig: NextConfig = {
   },
 
   // Webpack optimizations
-  webpack: (config, { dev, isServer }) => {
+  webpack: (config, { isServer }) => {
     // Shader files loader
     config.module.rules.push({
       test: /\.(glsl|vert|frag)$/,
@@ -202,56 +205,56 @@ const nextConfig: NextConfig = {
       };
     }
 
-    // Optimize chunk splitting
-    if (!dev && !isServer) {
-      config.optimization.splitChunks = {
-        chunks: 'all',
-        cacheGroups: {
-          vendor: {
-            test: /[\\/]node_modules[\\/]/,
-            name: 'vendors',
-            priority: 10,
-            reuseExistingChunk: true,
-          },
-          three: {
-            test: /[\\/]node_modules[\\/](three|@react-three)[\\/]/,
-            name: 'three',
-            priority: 20,
-            reuseExistingChunk: true,
-          },
-          common: {
-            name: 'common',
-            minChunks: 2,
-            priority: 5,
-            reuseExistingChunk: true,
-          },
-        },
-      };
-    }
+    // Optimize chunk splitting - DISABLED temporarily due to module factory conflicts
+    // if (!dev && !isServer) {
+    //   config.optimization.splitChunks = {
+    //     chunks: 'all',
+    //     cacheGroups: {
+    //       vendor: {
+    //         test: /[\\/]node_modules[\\/]/,
+    //         name: 'vendors',
+    //         priority: 10,
+    //         reuseExistingChunk: true,
+    //       },
+    //       three: {
+    //         test: /[\\/]node_modules[\\/](three|@react-three)[\\/]/,
+    //         name: 'three',
+    //         priority: 20,
+    //         reuseExistingChunk: true,
+    //       },
+    //       common: {
+    //         name: 'common',
+    //         minChunks: 2,
+    //         priority: 5,
+    //         reuseExistingChunk: true,
+    //       },
+    //     },
+    //   };
+    // }
 
-    // Tree shaking optimizations
-    if (!dev) {
-      config.optimization.usedExports = true;
-      config.optimization.sideEffects = false;
-      
-      // Additional performance optimizations
-      config.optimization.minimize = true;
-      config.optimization.concatenateModules = true;
-      
-      // Module resolution optimizations
-      config.resolve.alias = {
-        ...config.resolve.alias,
-        'react': 'react',
-        'react-dom': 'react-dom'
-      };
-      
-      // Performance budgets and code splitting
-      config.performance = {
-        maxAssetSize: 512000,
-        maxEntrypointSize: 512000,
-        hints: 'warning'
-      };
-    }
+    // Tree shaking optimizations - SIMPLIFIED to avoid module conflicts
+    // if (!dev) {
+    //   config.optimization.usedExports = true;
+    //   config.optimization.sideEffects = false;
+    //   
+    //   // Additional performance optimizations
+    //   config.optimization.minimize = true;
+    //   config.optimization.concatenateModules = true;
+    //   
+    //   // Module resolution optimizations
+    //   config.resolve.alias = {
+    //     ...config.resolve.alias,
+    //     'react': 'react',
+    //     'react-dom': 'react-dom'
+    //   };
+    //   
+    //   // Performance budgets and code splitting
+    //   config.performance = {
+    //     maxAssetSize: 512000,
+    //     maxEntrypointSize: 512000,
+    //     hints: 'warning'
+    //   };
+    // }
 
 
     return config;

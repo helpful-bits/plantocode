@@ -105,6 +105,39 @@ pub(super) async fn handle_stage_completion_internal(
         .map(|stage_job| stage_job.task_type.clone())
         .ok_or_else(|| AppError::JobError(format!("Stage job not found for job_id: {}", job_id)))?;
 
+    // Check if the regex file filter stage returned an empty result (no files found)
+    if task_type == TaskType::RegexFileFilter {
+        // Check if the stage data indicates an empty result
+        if let Some(stage_data) = workflow_state_for_payload_building.intermediate_data.stage_data.get(job_id) {
+            if let Some(is_empty) = stage_data.get("isEmptyResult").and_then(|v| v.as_bool()) {
+                if is_empty {
+                    let message = stage_data
+                        .get("message")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("No files found matching the task description");
+                    
+                    info!(
+                        "Workflow {} completing early: no files found in regex filter stage. Message: {}",
+                        workflow_id, message
+                    );
+                    
+                    // Mark workflow as completed with a special message
+                    let mut workflows_guard = workflows.lock().await;
+                    if let Some(workflow_state) = workflows_guard.get_mut(workflow_id) {
+                        workflow_state.intermediate_data.workflow_completion_message = Some(message.to_string());
+                        workflow_state.intermediate_data.regex_filtered_files = Some(vec![]);
+                        workflow_state.intermediate_data.final_selected_files = vec![];
+                    }
+                    drop(workflows_guard);
+                    
+                    // Complete the workflow successfully but with no files
+                    orchestrator.mark_workflow_completed(workflow_id).await?;
+                    return Ok(());
+                }
+            }
+        }
+    }
+
     if task_type == TaskType::FileRelevanceAssessment {
         let token_count = workflow_state_for_payload_building
             .intermediate_data

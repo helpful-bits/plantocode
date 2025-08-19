@@ -3,16 +3,9 @@
 import { usePathname } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
 import { ErrorBoundary } from '@/components/system/ErrorBoundary';
-import dynamic from 'next/dynamic';
 
-// Ultra-lazy load the 3D background - only when truly needed
-const LazyInteractiveBackground = dynamic(
-  () => import('@/components/landing/LazyInteractiveBackground').then(mod => ({ default: mod.LazyInteractiveBackground })),
-  {
-    ssr: false,
-    loading: () => null
-  }
-);
+// Import the 3D background directly to bypass webpack module issues  
+import { LazyInteractiveBackground } from '@/components/landing/LazyInteractiveBackground';
 
 export function ConditionalBackground() {
   const pathname = usePathname();

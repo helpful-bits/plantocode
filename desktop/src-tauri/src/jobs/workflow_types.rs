@@ -424,6 +424,7 @@ pub struct WorkflowIntermediateData {
     pub extended_corrected_paths: Vec<String>,
     pub web_search_prompts: Vec<String>,
     pub web_search_results: Vec<String>,
+    pub workflow_completion_message: Option<String>,
 }
 
 impl Default for WorkflowIntermediateData {
@@ -445,6 +446,7 @@ impl WorkflowIntermediateData {
             extended_corrected_paths: Vec::new(),
             web_search_prompts: Vec::new(),
             web_search_results: Vec::new(),
+            workflow_completion_message: None,
         }
     }
 

@@ -54,28 +54,60 @@ pub(super) async fn extract_and_store_stage_data_internal(
                     }
                 };
 
-                // Try standardized format first, fall back to legacy format
-                let filtered_files = response_json
-                    .get("files")
-                    .and_then(|v| v.as_array())
-                    .or_else(|| {
-                        response_json
-                            .get("filteredFiles")
-                            .and_then(|v| v.as_array())
-                    })
-                    .ok_or_else(|| {
-                        AppError::JobError(format!(
-                            "Missing or invalid 'files' field in regex file filter job {}",
+                // Check if this is an empty result (no files found)
+                let filtered_files = if let Some(is_empty) = response_json.get("isEmptyResult").and_then(|v| v.as_bool()) {
+                    if is_empty {
+                        info!(
+                            "Regex file filter job {} returned empty result - no files matched",
                             job_id
-                        ))
-                    })?;
+                        );
+                        
+                        // Return empty array for stage data (will be stored below)
+                        // The message is already in the job's response for UI display
+                        vec![]
+                    } else {
+                        // Try standardized format first, fall back to legacy format
+                        response_json
+                            .get("files")
+                            .and_then(|v| v.as_array())
+                            .or_else(|| {
+                                response_json
+                                    .get("filteredFiles")
+                                    .and_then(|v| v.as_array())
+                            })
+                            .ok_or_else(|| {
+                                AppError::JobError(format!(
+                                    "Missing or invalid 'files' field in regex file filter job {}",
+                                    job_id
+                                ))
+                            })?
+                            .clone()
+                    }
+                } else {
+                    // No isEmptyResult flag - use standard extraction
+                    response_json
+                        .get("files")
+                        .and_then(|v| v.as_array())
+                        .or_else(|| {
+                            response_json
+                                .get("filteredFiles")
+                                .and_then(|v| v.as_array())
+                        })
+                        .ok_or_else(|| {
+                            AppError::JobError(format!(
+                                "Missing or invalid 'files' field in regex file filter job {}",
+                                job_id
+                            ))
+                        })?
+                        .clone()
+                };
 
                 debug!(
                     "Extracted {} filtered files from job {}",
                     filtered_files.len(),
                     job_id
                 );
-                serde_json::Value::Array(filtered_files.clone())
+                serde_json::Value::Array(filtered_files)
             }
             TaskType::PathCorrection => {
                 // Extract files from standardized response

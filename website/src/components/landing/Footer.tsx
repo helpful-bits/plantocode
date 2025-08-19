@@ -1,8 +1,15 @@
 'use client';
 
 import Link from 'next/link';
+import { usePlausible } from '@/hooks/usePlausible';
 
 export function Footer() {
+  const { trackEvent } = usePlausible();
+
+  const handleDownloadClick = () => {
+    trackEvent('download_click', { location: 'footer' });
+  };
+
   return (
     <footer className="relative mt-24">
       {/* Gradient border */}
@@ -67,7 +74,11 @@ export function Footer() {
                     </Link>
                   </li>
                   <li>
-                    <Link className="text-muted-foreground hover:text-primary text-sm transition-colors duration-200 clickable-text-underline" href="/download">
+                    <Link 
+                      className="text-muted-foreground hover:text-primary text-sm transition-colors duration-200 clickable-text-underline" 
+                      href="/download"
+                      onClick={handleDownloadClick}
+                    >
                       Download for Mac
                     </Link>
                   </li>

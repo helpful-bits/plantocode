@@ -448,12 +448,35 @@ impl JobProcessor for RegexFileFilterProcessor {
             .and_then(|u| u.cost)
             .unwrap_or(0.0);
 
-        // Check if no files were found and terminate workflow early
+        // Check if no files were found - this is a valid result, not an error
         if filtered_files.is_empty() {
-            let error_msg = "No files found matching the task description. The task description may be too vague or doesn't match any files in the codebase. Please provide more specific information about what you're looking for, such as:\n\n• Specific file names, directories, or patterns\n• Technology stack or programming languages involved\n• Functionality or features you want to modify\n• Error messages or specific code snippets you're working with";
+            let message = "No files found matching the task description. The task description may be too vague or doesn't match any files in the codebase. Please provide more specific information about what you're looking for, such as:\n\n• Specific file names, directories, or patterns\n• Technology stack or programming languages involved\n• Functionality or features you want to modify\n• Error messages or specific code snippets you're working with";
             
-            info!("Terminating workflow early: {}", error_msg);
-            return Ok(JobProcessResult::failure(job.id.clone(), error_msg.to_string()));
+            info!("No files found matching task description - returning empty result");
+            
+            // Return success with empty files array and informative message
+            // This allows the workflow to handle it appropriately without treating it as a hard failure
+            let result = JobProcessResult::success(
+                job.id.clone(),
+                JobResultData::Json(json!({
+                    "files": Vec::<String>::new(),
+                    "count": 0,
+                    "summary": "No matching files found",
+                    "message": message,
+                    "isEmptyResult": true
+                })),
+            )
+            .with_tokens(
+                llm_result.usage.as_ref().map(|u| u.prompt_tokens as u32),
+                llm_result
+                    .usage
+                    .as_ref()
+                    .map(|u| u.completion_tokens as u32),
+            )
+            .with_system_prompt_template(system_prompt_template.clone())
+            .with_actual_cost(actual_cost);
+            
+            return Ok(result);
         }
 
         // Return success result with filtered files as JSON, including token usage

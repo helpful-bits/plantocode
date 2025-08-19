@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
+import '@/styles/desktop-compat.css';
 import { fontClasses } from './fonts';
 import { StructuredData } from '@/components/seo/StructuredData';
 import type { WebSite } from 'schema-dts';
@@ -13,7 +14,7 @@ export const metadata: Metadata = {
   metadataBase: new URL('https://vibemanager.app'),
   title: {
     template: '%s | Vibe Manager',
-    default: 'Vibe Manager | Context for Lost AI Agents',
+    default: 'Vibe code cleanup specialist',
   },
   description: "The AI coding assistant that acts as a middle-manager for your LLMs, curating the perfect context so they can't get lost. Built by a developer, for developers, from the trenches.",
   keywords: ['AI coding assistant', 'context curation', 'vibe coding', 'multi-model AI', 'codebase analysis', 'implementation plans', 'developer tools', 'local AI', 'private AI coding', 'Claude Code', 'Gemini', 'large codebase', 'developer productivity'],
@@ -31,7 +32,7 @@ export const metadata: Metadata = {
     canonical: 'https://vibemanager.app/',
   },
   openGraph: {
-    title: 'Vibe Manager | Context for Lost AI Agents',
+    title: 'Vibe code cleanup specialist',
     description: 'Tired of babysitting your AI agent? Vibe Manager is the competent middle manager that curates perfect context from your codebase and the web, so your agents can build correctly the first time.',
     url: 'https://vibemanager.app/',
     siteName: 'Vibe Manager',
@@ -47,7 +48,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Vibe Manager | Context for Lost AI Agents',
+    title: 'Vibe code cleanup specialist',
     description: 'Tired of babysitting your AI agent? Vibe Manager is the competent middle manager that curates perfect context from your codebase and the web, so your agents can build correctly the first time.',
     images: [{
       url: cdnUrl('/images/og-image.png'),
@@ -148,6 +149,8 @@ export default function RootLayout({
             <link rel="preconnect" href="https://www.google-analytics.com" crossOrigin="anonymous" />
           </>
         )}
+        {/* Plausible Analytics */}
+        <script defer data-domain="vibemanager.app" src="https://plausible.io/js/script.js"></script>
       </head>
       <body className={`${fontClasses.sans} bg-transparent overflow-x-hidden`}>
         <ConditionalBackground />

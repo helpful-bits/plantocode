@@ -377,6 +377,64 @@ The following legal items have been implemented with default values:
 ### Technical Implementation
 - [x] Consent-based analytics in place (ConditionalAnalytics/CookieConsentBanner operational)
 
+## Interactive Demo UI Parity Checklist
+
+This checklist ensures the interactive demo components maintain visual and functional parity with the desktop application.
+
+### Desktop Reference Mappings
+
+Each interactive demo step corresponds to specific desktop application components:
+
+#### Steps 1-5: Core Workflow (Finalized)
+- **Step 1 - Project Selection**: Maps to desktop project selector UI
+- **Step 2 - Session Management**: Maps to desktop session management interface
+- **Step 3 - Task Description**: Maps to desktop task input components
+- **Step 4 - Voice Transcription**: Maps to desktop voice input features
+- **Step 5 - Text Enhancement**: Maps to desktop text improvement tools
+
+#### Steps 6-17: Advanced Features (Current Implementation)
+- **Step 7 - Deep Research**: `desktop/src/app/components/background-jobs-sidebar/job-details-modal.tsx`
+- **Step 8 - Background Processing**: `desktop/src/app/components/background-jobs-sidebar/job-card.tsx`
+- **Step 6 - Video Recording**: `desktop/src/app/components/generate-prompt/_components/video-recording-dialog.tsx`
+- **Steps 9-13 - Implementation Plans**: `desktop/src/app/components/implementation-plans-panel/_components/*`
+- **Step 15 - System Prompts**: `desktop/src/app/components/settings/system-prompt-editor.tsx`
+
+#### File Processing Workflow Reference
+- **File Finding Order**: `desktop/src-tauri/src/jobs/workflow_definitions/file_finder_workflow.json`
+- **Processing Logic**: `desktop/src-tauri/src/jobs/processors/regex_file_filter_processor.rs`
+- **Workflow Orchestration**: `desktop/src-tauri/src/jobs/workflow_orchestrator/`
+
+### Component Integration Verification
+
+#### Required Data Attributes
+All interactive demo steps must include:
+- `data-step` attributes for cross-step navigation
+- Proper step sequencing (1-17)
+- Scroll trigger integration with StepController
+
+#### Export Completeness
+- **Steps Index**: `website/src/components/interactive-demo/steps/index.ts` - All 19 components exported
+- **Desktop UI Index**: `website/src/components/interactive-demo/desktop-ui/index.ts` - All 14 UI components exported
+- **No Missing Dependencies**: All imports resolve correctly
+
+#### Animation System
+- **CSS Keyframes**: `@keyframes bounce` implemented in `interactive-demo.css`
+- **Bounce Animation**: `.animate-bounce` class available
+- **Accessibility**: `@media (prefers-reduced-motion: reduce)` support
+- **ScrollToNextArrow**: Uses CSS classes instead of inline styles
+
+### Quality Gates
+
+Before deployment, verify:
+- [ ] All 17 steps render without errors
+- [ ] Step navigation works via ScrollToNextArrow
+- [ ] Desktop UI components match reference implementations
+- [ ] Animations respect user motion preferences
+- [ ] All exports are properly configured
+- [ ] No console errors or warnings
+- [ ] Cross-step integration works correctly
+- [ ] Data attributes are present and functional
+
 ## License
 
 Copyright (c) 2024 Vibe Manager. All rights reserved.
