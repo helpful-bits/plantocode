@@ -8,10 +8,16 @@ import { Button } from '@/components/ui/button';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
 import { cn } from '@/lib/utils';
 import { defaultEase, defaultDuration } from '@/lib/animations';
+import { usePlausible } from '@/hooks/usePlausible';
 
 export function Header() {
   const [scrolled, setScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { trackEvent } = usePlausible();
+
+  const handleDownloadClick = (location: string) => {
+    trackEvent('download_click', { location });
+  };
 
   useEffect(() => {
     let ticking = false;
@@ -141,6 +147,7 @@ export function Header() {
                       className="relative"
                       size="lg"
                       variant="cta"
+                      onClick={() => handleDownloadClick('header_desktop')}
                     >
                       <Link href="/download" className="no-hover-effect cursor-pointer">
                         Download for Mac
@@ -303,7 +310,10 @@ export function Header() {
                       className="w-full"
                       size="xl"
                       variant="cta"
-                      onClick={() => setMobileMenuOpen(false)}
+                      onClick={() => {
+                        handleDownloadClick('header_mobile');
+                        setMobileMenuOpen(false);
+                      }}
                     >
                       <Link href="/download" className="no-hover-effect cursor-pointer">
                         Download for Mac

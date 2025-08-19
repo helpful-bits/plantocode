@@ -626,8 +626,8 @@ impl BillingService {
                 "unit_amount": net_amount_cents,
                 "tax_behavior": "exclusive",
                 "product_data": {
-                    "name": "Top-up Credits",
-                    "tax_code": "txcd_10103001"  // Tax code for SaaS/API credits
+                    "name": "Top-up Credits"
+                    // Note: tax_code removed from product_data - handled by automatic tax
                 }
             })),
             quantity: Some(1),
@@ -642,8 +642,8 @@ impl BillingService {
                 "unit_amount": fee_amount_cents,
                 "tax_behavior": "exclusive",
                 "product_data": {
-                    "name": "Processing fee",
-                    "tax_code": "txcd_10103001"  // Same tax code as credits (taxable service)
+                    "name": "Processing fee"
+                    // Note: tax_code removed from product_data - handled by automatic tax
                 }
             })),
             quantity: Some(1),

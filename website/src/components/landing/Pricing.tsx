@@ -6,8 +6,15 @@ import { Button } from '@/components/ui/button';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { motion } from 'framer-motion';
 import Reveal from '@/components/motion/Reveal';
+import { usePlausible } from '@/hooks/usePlausible';
 
 export function Pricing() {
+  const { trackEvent } = usePlausible();
+
+  const handleDownloadClick = () => {
+    trackEvent('download_click', { location: 'pricing' });
+  };
+
   return (
     <section className="relative py-12 sm:py-16 md:py-20 lg:py-24 px-4 overflow-hidden perspective-1000" id="pricing">
       <div className="container mx-auto relative z-10">
@@ -72,6 +79,7 @@ export function Pricing() {
                         className="w-full sm:w-auto"
                         size="xl"
                         variant="cta"
+                        onClick={handleDownloadClick}
                       >
                         <Link href="/download" className="no-hover-effect cursor-pointer">
                           Download for Mac
