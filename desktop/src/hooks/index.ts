@@ -23,3 +23,6 @@ export * from "./use-reset-app";
 
 // Media device settings hooks
 export * from "./useMediaDeviceSettings";
+
+// Analytics hooks
+export * from "./use-plausible";

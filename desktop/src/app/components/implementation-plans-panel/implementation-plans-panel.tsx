@@ -40,6 +40,7 @@ import { usePromptCopyModal } from "./_hooks/usePromptCopyModal";
 import { replacePlaceholders } from "@/utils/placeholder-utils";
 import { getContentForStep } from "./_utils/plan-content-parser";
 import { normalizeJobResponse } from '@/utils/response-utils';
+import { usePlausible } from "@/hooks/use-plausible";
 
 interface ImplementationPlansPanelProps {
   sessionId: string | null;
@@ -61,6 +62,7 @@ export function ImplementationPlansPanel({
   planCreationState,
   onCreatePlan,
 }: ImplementationPlansPanelProps) {
+  const { trackEvent } = usePlausible();
   const {
     implementationPlans,
     isLoading,
@@ -464,6 +466,12 @@ export function ImplementationPlansPanel({
     const finalIncludedPaths = includedPaths || [];
 
     try {
+      // Track implementation plan creation
+      trackEvent('desktop_plan_created', {
+        files_count: finalIncludedPaths.length,
+        has_task_description: Boolean(finalTaskDescription.trim())
+      });
+      
       await onCreatePlan(finalTaskDescription, finalIncludedPaths);
     } catch (error) {
       showNotification({

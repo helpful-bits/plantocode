@@ -4,12 +4,20 @@ import { Card } from '@/ui/card';
 import { Button } from '@/ui/button';
 import { H1, P } from '@/ui/typography';
 import { CheckCircle } from 'lucide-react';
+import { usePlausible } from '@/hooks/use-plausible';
 
 interface WelcomeStepProps {
   onGetStarted: () => void;
 }
 
 export function WelcomeStep({ onGetStarted }: WelcomeStepProps) {
+  const { trackEvent } = usePlausible();
+
+  const handleGetStarted = () => {
+    trackEvent('desktop_onboarding_started');
+    onGetStarted();
+  };
+
   return (
     <div className="flex items-center justify-center min-h-screen bg-muted px-4">
       <Card className="w-full max-w-md p-8 text-center bg-card/95 backdrop-blur-sm shadow-lg border-border/30 rounded-xl">
@@ -27,7 +35,7 @@ export function WelcomeStep({ onGetStarted }: WelcomeStepProps) {
           </div>
           
           <div className="space-y-2">
-            <Button onClick={onGetStarted} className="w-full h-11">
+            <Button onClick={handleGetStarted} className="w-full h-11">
               Continue to Login
             </Button>
           </div>

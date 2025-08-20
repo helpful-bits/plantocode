@@ -1,0 +1,134 @@
+@layer utilities {
+  /* Desktop compatibility utilities - ONLY used classes, prefixed to avoid conflicts */
+
+  /* Desktop glass morphism effects - prefixed to avoid conflict with website .glass */
+  .desktop-glass {
+    background: color-mix(in srgb, hsl(var(--primary)) 5%, transparent);
+    backdrop-filter: blur(10px);
+    border: 1px solid color-mix(in srgb, hsl(var(--primary)) 10%, transparent);
+  }
+
+  .desktop-glass-card {
+    background: linear-gradient(135deg,
+      color-mix(in srgb, hsl(var(--primary)) 8%, transparent) 0%,
+      color-mix(in srgb, hsl(var(--primary)) 3%, transparent) 100%);
+    backdrop-filter: blur(8px);
+    border: 1px solid color-mix(in srgb, hsl(var(--primary)) 8%, transparent);
+  }
+
+  /* Shadow variants from desktop */
+  .shadow-soft {
+    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px 0 rgba(0, 0, 0, 0.03);
+  }
+
+  .shadow-soft-md {
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.06), 0 2px 4px -1px rgba(0, 0, 0, 0.04);
+  }
+
+  /* Focus ring from desktop */
+  .focus-ring {
+    @apply focus:outline-none;
+  }
+
+  /* Background and color utilities actually used */
+  .bg-popover {
+    background-color: hsl(var(--popover));
+  }
+
+  .text-popover-foreground {
+    color: hsl(var(--popover-foreground));
+  }
+
+  .bg-card {
+    background-color: hsl(var(--card, 0 0% 100%));
+  }
+
+  .text-card-foreground {
+    color: hsl(var(--card-foreground, 224 71% 4%));
+  }
+
+  .border-border {
+    border-color: hsl(var(--border, 220 13% 91%));
+  }
+
+  .text-primary-foreground {
+    color: hsl(var(--primary-foreground, 210 40% 98%));
+  }
+
+  /* Custom checkbox styles - exact match with desktop */
+  .custom-checkbox-container {
+    @apply relative inline-flex items-center justify-center;
+  }
+
+  .custom-checkbox {
+    @apply appearance-none absolute opacity-0 w-4 h-4 cursor-pointer;
+  }
+
+  .custom-checkbox:hover:not(:disabled) + .custom-checkbox-checkmark {
+    @apply border-primary/70 shadow-md;
+  }
+
+  .custom-checkbox:focus-visible + .custom-checkbox-checkmark {
+    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background shadow-md;
+    @apply border-primary;
+  }
+
+  .custom-checkbox.destructive:checked + .custom-checkbox-checkmark {
+    @apply bg-destructive border-destructive;
+  }
+
+  .custom-checkbox:disabled + .custom-checkbox-checkmark {
+    @apply border-border/40 bg-muted/50 cursor-not-allowed opacity-60;
+  }
+
+  .custom-checkbox:checked:disabled + .custom-checkbox-checkmark {
+    @apply bg-primary/40 border-primary/40;
+  }
+
+  .custom-checkbox.destructive:checked:disabled + .custom-checkbox-checkmark {
+    @apply bg-destructive/40 border-destructive/40;
+  }
+
+  .custom-checkbox-checkmark {
+    @apply relative inline-flex items-center justify-center pointer-events-none w-4 h-4 rounded-[3px] border-2;
+    @apply border-border bg-background transition-all duration-150 ease-in-out shadow-sm;
+  }
+
+  .custom-checkbox:checked + .custom-checkbox-checkmark {
+    @apply bg-primary border-primary;
+  }
+
+  .custom-checkbox-checkmark svg {
+    @apply opacity-0 transition-opacity duration-100 ease-in-out;
+  }
+
+  .custom-checkbox:checked + .custom-checkbox-checkmark svg {
+    @apply opacity-100;
+    color: hsl(var(--primary-foreground));
+  }
+
+  .custom-checkbox.destructive:checked + .custom-checkbox-checkmark svg {
+    color: hsl(var(--destructive-foreground));
+  }
+
+  .custom-checkbox:checked:disabled + .custom-checkbox-checkmark {
+    @apply opacity-60;
+  }
+
+  /* Enhanced styling for checkboxes in selected file rows */
+  .file-row-selected .custom-checkbox-checkmark {
+    @apply border-border/80 bg-background shadow-md;
+  }
+
+  .file-row-selected .custom-checkbox:hover:not(:disabled) + .custom-checkbox-checkmark {
+    @apply border-primary/80 shadow-lg bg-background;
+  }
+
+  .file-row-selected .custom-checkbox:checked + .custom-checkbox-checkmark {
+    @apply bg-primary border-primary shadow-md;
+  }
+
+  .file-row-selected .custom-checkbox.destructive:checked + .custom-checkbox-checkmark {
+    @apply bg-destructive border-destructive shadow-md;
+  }
+}
