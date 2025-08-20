@@ -151,6 +151,9 @@ export default function RootLayout({
         )}
         {/* Plausible Analytics */}
         <script defer data-domain="vibemanager.app" src="https://plausible.io/js/script.js"></script>
+        <script dangerouslySetInnerHTML={{
+          __html: `window.plausible = window.plausible || function() { (window.plausible.q = window.plausible.q || []).push(arguments) }`
+        }} />
       </head>
       <body className={`${fontClasses.sans} bg-transparent overflow-x-hidden`}>
         <ConditionalBackground />
