@@ -7,6 +7,7 @@ import { KeychainExplanationStep } from './KeychainExplanationStep';
 import { KeychainActionStep } from './KeychainActionStep';
 import { OnboardingErrorStep } from './OnboardingErrorStep';
 import { LoadingScreen } from '@/ui';
+import { usePlausible } from '@/hooks/use-plausible';
 
 type OnboardingState = 'checking_storage' | 'welcome' | 'keychain_explanation' | 'keychain_action' | 'error';
 
@@ -15,9 +16,17 @@ interface OnboardingFlowProps {
 }
 
 export function OnboardingFlow({ onOnboardingComplete }: OnboardingFlowProps) {
+  const { trackEvent } = usePlausible();
   const [state, setState] = useState<OnboardingState>('checking_storage');
   const [isKeychainMode, setIsKeychainMode] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+
+  const handleOnboardingComplete = () => {
+    trackEvent('desktop_onboarding_completed', {
+      keychain_mode: isKeychainMode
+    });
+    onOnboardingComplete();
+  };
 
   // Check storage mode on mount
   useEffect(() => {
@@ -47,7 +56,7 @@ export function OnboardingFlow({ onOnboardingComplete }: OnboardingFlowProps) {
           // User has already granted "Always Allow" in the past
           // Skip the explanation and go straight to completion
           console.log('Keychain access already granted, skipping onboarding explanation');
-          onOnboardingComplete();
+          handleOnboardingComplete();
         } else {
           // First time user or access was denied - show explanation
           setState('keychain_explanation');

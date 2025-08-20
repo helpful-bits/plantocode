@@ -1,0 +1,103 @@
+@layer utilities {
+  /* Interactive demo specific animations and utilities */
+  
+  .demo-typewriter {
+    font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Consolas', monospace;
+    border-right: 2px solid currentColor;
+    animation: demo-blink-caret 1s step-end infinite;
+    white-space: nowrap;
+    overflow: hidden;
+  }
+  
+  .demo-caret {
+    display: inline-block;
+    width: 2px;
+    height: 1em;
+    background-color: var(--color-primary);
+    animation: demo-blink 1s infinite;
+    margin-left: 2px;
+  }
+  
+  .demo-pulse {
+    animation: demo-pulse 2s infinite;
+  }
+  
+  /* Keyframe animations */
+  @keyframes demo-blink-caret {
+    from, to { border-right-color: transparent; }
+    50% { border-right-color: currentColor; }
+  }
+  
+  @keyframes demo-typewriter-blink {
+    0%, 50% { border-color: var(--color-primary); }
+    51%, 100% { border-color: transparent; }
+  }
+  
+  @keyframes demo-blink {
+    0%, 50% { opacity: 1; }
+    51%, 100% { opacity: 0; }
+  }
+  
+  @keyframes demo-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+  }
+  
+  @keyframes bounce {
+    0%, 20%, 53%, 80%, 100% { transform: translateY(0px); }
+    40% { transform: translateY(-6px); }
+    43% { transform: translateY(-6px); }
+    70% { transform: translateY(-3px); }
+    90% { transform: translateY(-1px); }
+  }
+  
+  .animate-bounce {
+    animation: bounce 6s infinite;
+  }
+  
+  /* Workflow group styles */
+  .workflow-job {
+    position: relative;
+  }
+  
+  .workflow-group-start {
+    border-left: 2px dashed rgba(var(--primary-rgb), 0.35);
+    padding-left: 12px;
+    margin-left: 8px;
+  }
+  
+  .workflow-group-header {
+    margin-bottom: 8px;
+  }
+  
+  .workflow-job:not(.workflow-group-start) {
+    border-left: 2px dashed rgba(var(--primary-rgb), 0.35);
+    padding-left: 12px;
+    margin-left: 8px;
+  }
+  
+  /* Hide scrollbars for horizontal model selector */
+  .scrollbar-hide {
+    -ms-overflow-style: none;  /* Internet Explorer 10+ */
+    scrollbar-width: none;  /* Firefox */
+  }
+  
+  .scrollbar-hide::-webkit-scrollbar { 
+    display: none;  /* Safari and Chrome */
+  }
+  
+  /* Desktop glass effect is defined in desktop-compat.css */
+
+  /* Respect user's motion preferences */
+  @media (prefers-reduced-motion: reduce) {
+    .animate-bounce,
+    .demo-typewriter,
+    .demo-caret,
+    .demo-pulse,
+    * {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}

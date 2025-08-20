@@ -12,6 +12,7 @@ import {
 } from "@/contexts/session";
 import { Button } from "@/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/ui/tooltip";
+import { usePlausible } from "@/hooks/use-plausible";
 
 interface TaskSectionProps {
   disabled?: boolean;
@@ -20,6 +21,8 @@ interface TaskSectionProps {
 const TaskSection = React.memo(function TaskSection({
   disabled = false,
 }: TaskSectionProps) {
+  const { trackEvent } = usePlausible();
+  
   // State for controlling tooltip visibility
   const [showHelpTooltip, setShowHelpTooltip] = useState(false);
   const [showRefineHelpTooltip, setShowRefineHelpTooltip] = useState(false);
@@ -86,7 +89,12 @@ const TaskSection = React.memo(function TaskSection({
         {/* Group 1: Deep Research button with its question mark */}
         <div className="flex items-center gap-1 flex-1">
           <Button
-            onClick={() => handleWebSearch(false)}
+            onClick={() => {
+              trackEvent('desktop_deep_research_started', {
+                task_length: sessionState.currentSession?.taskDescription?.length || 0
+              });
+              handleWebSearch(false);
+            }}
             isLoading={isDoingWebSearch}
             disabled={disabled || isRefiningTask || isDoingWebSearch || !sessionState.currentSession?.taskDescription?.trim()}
             variant="secondary"
