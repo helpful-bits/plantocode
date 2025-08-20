@@ -9,10 +9,12 @@ import { open } from "@/utils/shell-utils";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card";
 import { Alert, AlertDescription } from "@/ui/alert";
 import { AlertCircle, Info } from "lucide-react";
+import { usePlausible } from "@/hooks/use-plausible";
 
 const logger = createLogger({ namespace: "LoginPage" });
 
 export default function LoginPage() {
+  const { trackEvent } = usePlausible();
   const { signIn, loading, error } = useAuth();
   const appName = "Vibe Manager";
   const [authInProgress, setAuthInProgress] = useState(false);
@@ -53,6 +55,11 @@ export default function LoginPage() {
 
   // Handle sign-in with Auth0
   const handleSignIn = async (providerHint?: string) => {
+    // Track login attempt
+    trackEvent('desktop_login_started', {
+      provider: providerHint || 'default'
+    });
+    
     // Clear any previous errors and timeout
     setLastError(null);
     setAuthInProgress(true);

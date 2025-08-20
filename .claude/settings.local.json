@@ -210,7 +210,8 @@
       "Bash(ffmpeg:*)",
       "WebSearch",
       "WebFetch(domain:www.remotion.dev)",
-      "Bash(npx remotion render:*)"
+      "Bash(npx remotion render:*)",
+      "WebFetch(domain:plausible.io)"
     ],
     "deny": [],
     "defaultMode": "acceptEdits"

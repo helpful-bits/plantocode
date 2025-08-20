@@ -8,6 +8,7 @@ import { Slider } from '@/ui/slider';
 import { AudioDeviceSelect } from '@/ui';
 import { useTaskContext } from '../_contexts/task-context';
 import { useMediaDeviceSettings } from '@/hooks/useMediaDeviceSettings';
+import { usePlausible } from '@/hooks/use-plausible';
 
 interface VideoRecordingDialogProps {
   isOpen: boolean;
@@ -20,6 +21,7 @@ export const VideoRecordingDialog: React.FC<VideoRecordingDialogProps> = ({
   onClose,
   onConfirm,
 }) => {
+  const { trackEvent } = usePlausible();
   const { state: taskState, actions: taskActions } = useTaskContext();
   const { 
     selectedAudioInputId, 
@@ -50,6 +52,13 @@ export const VideoRecordingDialog: React.FC<VideoRecordingDialogProps> = ({
   };
   
   const handleStart = () => {
+    // Track video recording start
+    trackEvent('desktop_video_recording_started', {
+      has_prompt: Boolean(localPrompt.trim()),
+      record_audio: recordAudio,
+      frame_rate: selectedFrameRate
+    });
+    
     // Get task description and user prompt
     const taskDescription = taskState.taskDescriptionRef.current?.getValue() || '';
     const userPrompt = localPrompt.trim();
