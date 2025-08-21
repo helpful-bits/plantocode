@@ -6,9 +6,9 @@ export async function GET(request: NextRequest) {
   const os = searchParams.get('os');
 
   const osUrlMap: Record<string, string> = {
-    'mac': cdnUrl('/desktop/mac/Vibe%20Manager_1.0.16_aarch64.dmg'),
-    'mac-dmg': cdnUrl('/desktop/mac/Vibe%20Manager_1.0.16_aarch64.dmg'),
-    'mac-zip': cdnUrl('/desktop/mac/Vibe%20Manager_1.0.16_aarch64.app.tar.gz'),
+    'mac': cdnUrl('/desktop/mac/Vibe%20Manager_1.0.17_aarch64.dmg'),
+    'mac-dmg': cdnUrl('/desktop/mac/Vibe%20Manager_1.0.17_aarch64.dmg'),
+    'mac-zip': cdnUrl('/desktop/mac/Vibe%20Manager_1.0.17_aarch64.app.tar.gz'),
   };
 
   // Default to mac download if no OS specified
@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
 
   // Ensure we always have a valid URL
   if (!downloadUrl) {
-    return NextResponse.redirect(cdnUrl('/desktop/mac/Vibe%20Manager_1.0.16_aarch64.dmg'), {
+    return NextResponse.redirect(cdnUrl('/desktop/mac/Vibe%20Manager_1.0.17_aarch64.dmg'), {
       status: 302,
       headers: {
         'Cache-Control': 'no-cache, no-store, must-revalidate',
