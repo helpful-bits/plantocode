@@ -9,11 +9,40 @@
   }
 
   .desktop-glass-card {
-    background: linear-gradient(135deg,
-      color-mix(in srgb, hsl(var(--primary)) 8%, transparent) 0%,
-      color-mix(in srgb, hsl(var(--primary)) 3%, transparent) 100%);
+    /* Light mode - Optimized for performance while maintaining visual appeal */
+    background: oklch(0.995 0.008 195 / 0.7);
+    
+    /* Simplified blur for better performance */
     backdrop-filter: blur(8px);
-    border: 1px solid color-mix(in srgb, hsl(var(--primary)) 8%, transparent);
+    -webkit-backdrop-filter: blur(8px);
+    
+    border: 1px solid oklch(0.90 0.04 195 / 0.5);
+    box-shadow: 0 8px 32px oklch(0.48 0.15 195 / 0.06);
+    
+    position: relative;
+    overflow: hidden;
+  }
+  
+  .desktop-glass-card:hover {
+    /* Optimized hover state - no blur change for performance */
+    border: 1px solid oklch(0.48 0.15 195 / 0.3);
+    box-shadow: 0 8px 24px oklch(0.48 0.15 195 / 0.1);
+  }
+  
+  .dark .desktop-glass-card {
+    background: oklch(0.20 0.022 206 / 0.8);
+    
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    
+    border: 1px solid oklch(0.68 0.085 195 / 0.34);
+    box-shadow: 0 16px 48px oklch(0.68 0.085 195 / 0.20);
+  }
+  
+  .dark .desktop-glass-card:hover {
+    /* Enhanced shadow for dark mode */
+    border: 1px solid oklch(0.68 0.085 195 / 0.5);
+    box-shadow: 0 16px 48px oklch(0.68 0.085 195 / 0.35);
   }
 
   /* Shadow variants from desktop */
@@ -26,8 +55,8 @@
   }
 
   /* Focus ring from desktop */
-  .focus-ring {
-    @apply focus:outline-none;
+  .focus-ring:focus {
+    outline: none;
   }
 
   /* Background and color utilities actually used */
@@ -55,80 +84,127 @@
     color: hsl(var(--primary-foreground, 210 40% 98%));
   }
 
-  /* Custom checkbox styles - exact match with desktop */
+  /* Simplified Custom Checkbox Styling - Direct CSS to avoid @apply build conflicts */
   .custom-checkbox-container {
-    @apply relative inline-flex items-center justify-center;
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
   }
 
   .custom-checkbox {
-    @apply appearance-none absolute opacity-0 w-4 h-4 cursor-pointer;
+    appearance: none;
+    display: inline-block;
+    vertical-align: middle;
+    user-select: none;
+    flex-shrink: 0;
+    cursor: pointer;
+    width: 1rem;
+    height: 1rem;
+    border-radius: 3px;
+    border-width: 2px;
+    border-color: oklch(var(--color-border) / 1);
+    background-color: oklch(var(--color-background) / 1);
+    transition: all 120ms ease-in-out;
+    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05);
+    transform: scale(0.95);
+    z-index: 1;
   }
 
-  .custom-checkbox:hover:not(:disabled) + .custom-checkbox-checkmark {
-    @apply border-primary/70 shadow-md;
+  .custom-checkbox:hover:not(:disabled) {
+    border-color: oklch(var(--color-primary) / 0.7);
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    transform: scale(1);
   }
 
-  .custom-checkbox:focus-visible + .custom-checkbox-checkmark {
-    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background shadow-md;
-    @apply border-primary;
+  .custom-checkbox:focus-visible {
+    outline: 2px solid oklch(var(--color-ring) / 0.5);
+    outline-offset: 2px;
+    border-color: oklch(var(--color-primary) / 1);
   }
 
-  .custom-checkbox.destructive:checked + .custom-checkbox-checkmark {
-    @apply bg-destructive border-destructive;
+  .custom-checkbox:checked {
+    background-color: oklch(var(--color-primary) / 1);
+    border-color: oklch(var(--color-primary) / 1);
+    transform: scale(1);
   }
 
-  .custom-checkbox:disabled + .custom-checkbox-checkmark {
-    @apply border-border/40 bg-muted/50 cursor-not-allowed opacity-60;
+  .custom-checkbox.destructive:checked {
+    background-color: oklch(var(--color-destructive) / 1);
+    border-color: oklch(var(--color-destructive) / 1);
   }
 
-  .custom-checkbox:checked:disabled + .custom-checkbox-checkmark {
-    @apply bg-primary/40 border-primary/40;
+  .custom-checkbox:disabled {
+    border-color: oklch(var(--color-border) / 0.4);
+    background-color: oklch(var(--color-muted) / 0.5);
+    cursor: not-allowed;
+    opacity: 0.6;
   }
 
-  .custom-checkbox.destructive:checked:disabled + .custom-checkbox-checkmark {
-    @apply bg-destructive/40 border-destructive/40;
+  .custom-checkbox:checked:disabled {
+    background-color: oklch(var(--color-primary) / 0.4);
+    border-color: oklch(var(--color-primary) / 0.4);
+  }
+
+  .custom-checkbox.destructive:checked:disabled {
+    background-color: oklch(var(--color-destructive) / 0.4);
+    border-color: oklch(var(--color-destructive) / 0.4);
   }
 
   .custom-checkbox-checkmark {
-    @apply relative inline-flex items-center justify-center pointer-events-none w-4 h-4 rounded-[3px] border-2;
-    @apply border-border bg-background transition-all duration-150 ease-in-out shadow-sm;
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 100ms ease-in-out;
+    z-index: 1;
   }
 
   .custom-checkbox:checked + .custom-checkbox-checkmark {
-    @apply bg-primary border-primary;
-  }
-
-  .custom-checkbox-checkmark svg {
-    @apply opacity-0 transition-opacity duration-100 ease-in-out;
-  }
-
-  .custom-checkbox:checked + .custom-checkbox-checkmark svg {
-    @apply opacity-100;
-    color: hsl(var(--primary-foreground));
-  }
-
-  .custom-checkbox.destructive:checked + .custom-checkbox-checkmark svg {
-    color: hsl(var(--destructive-foreground));
+    opacity: 1;
   }
 
   .custom-checkbox:checked:disabled + .custom-checkbox-checkmark {
-    @apply opacity-60;
+    opacity: 0.6;
   }
 
-  /* Enhanced styling for checkboxes in selected file rows */
-  .file-row-selected .custom-checkbox-checkmark {
-    @apply border-border/80 bg-background shadow-md;
+  .custom-checkbox:checked + .custom-checkbox-checkmark svg {
+    color: oklch(var(--color-primary-foreground) / 1);
   }
 
-  .file-row-selected .custom-checkbox:hover:not(:disabled) + .custom-checkbox-checkmark {
-    @apply border-primary/80 shadow-lg bg-background;
+  .custom-checkbox.destructive:checked + .custom-checkbox-checkmark svg {
+    color: oklch(var(--color-destructive-foreground) / 1);
   }
 
-  .file-row-selected .custom-checkbox:checked + .custom-checkbox-checkmark {
-    @apply bg-primary border-primary shadow-md;
+  /* Dark mode improvements for regular checkboxes */
+  .dark .custom-checkbox {
+    border-color: rgb(82 82 91);
+    background-color: rgb(24 24 27 / 0.5);
   }
 
-  .file-row-selected .custom-checkbox.destructive:checked + .custom-checkbox-checkmark {
-    @apply bg-destructive border-destructive shadow-md;
+  .dark .custom-checkbox:hover:not(:disabled) {
+    border-color: oklch(var(--color-primary) / 0.8);
+    background-color: rgb(39 39 42 / 0.7);
+  }
+
+  .dark .custom-checkbox:checked {
+    background-color: color-mix(in oklch, var(--color-primary) 70%, black 30%);
+    border-color: color-mix(in oklch, var(--color-primary) 70%, black 30%);
+  }
+
+  .dark .custom-checkbox.destructive:checked {
+    background-color: color-mix(in oklch, var(--color-destructive) 70%, black 30%);
+    border-color: color-mix(in oklch, var(--color-destructive) 70%, black 30%);
+  }
+
+  .dark .custom-checkbox:checked + .custom-checkbox-checkmark svg {
+    color: oklch(0.98 0 0);
+  }
+
+  .dark .custom-checkbox.destructive:checked + .custom-checkbox-checkmark svg {
+    color: oklch(0.97 0.01 25);
   }
 }

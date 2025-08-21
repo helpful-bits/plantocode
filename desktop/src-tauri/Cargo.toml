@@ -1,6 +1,6 @@
 [package]
 name = "vibe-manager"
-version = "1.0.16"
+version = "1.0.17"
 description = "Vibe Manager Desktop"
 authors = ["kka"]
 license = ""

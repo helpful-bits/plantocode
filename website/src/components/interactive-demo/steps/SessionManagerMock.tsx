@@ -5,42 +5,59 @@ import { DesktopInput } from '../desktop-ui/DesktopInput';
 import { DesktopButton } from '../desktop-ui/DesktopButton';
 import { Search, RefreshCw, PlusCircle, Save, Copy, Pencil, Trash2 } from 'lucide-react';
 import { useState } from 'react';
+import { useTimedCycle, useTypewriter } from '../hooks';
+import { cn } from '@/lib/utils';
 
 interface SessionManagerMockProps {
   isInView: boolean;
-  progress: number;
+  resetKey?: number;
 }
 
-export function SessionManagerMock({ isInView, progress }: SessionManagerMockProps) {
+// Define phases outside component to prevent recreation on each render
+const SESSION_MANAGER_PHASES = [
+  { name: 'idle' as const, durationMs: 800 },   // Brief time to see existing sessions
+  { name: 'new' as const, durationMs: 500 },   // Quick button press animation
+  { name: 'form' as const, durationMs: 1000 }, // Time to see form appear
+  { name: 'typing' as const, durationMs: 3000 }, // Realistic typing duration (reduced from 4000ms)
+  { name: 'save' as const, durationMs: 400 },  // Quick save button press
+  { name: 'saved' as const, durationMs: 2000 }, // Time to read success message (reduced from 2500ms)
+  { name: 'wait' as const, durationMs: 800 }   // Brief pause before restart
+];
+
+export function SessionManagerMock({ isInView }: SessionManagerMockProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const newSessionName = "Feature Discovery Session";
 
-  // Progress-driven state calculation
+  const { phaseName: phase } = useTimedCycle({ active: isInView, phases: SESSION_MANAGER_PHASES, loop: true, resetOnDeactivate: true });
+  
+  // Map phases to numeric steps for compatibility
   const step = (() => {
-    if (!isInView) return 0;
-    if (progress < 0.1) return 0; // initial
-    if (progress < 0.15) return 1; // new clicked
-    if (progress < 0.25) return 2; // form shown
-    if (progress < 0.6) return 3; // typing
-    if (progress < 0.7) return 4; // save clicked
-    return 5; // session saved
+    switch (phase) {
+      case 'idle': return 0;
+      case 'new': return 1;
+      case 'form': return 2;
+      case 'typing': return 3;
+      case 'save': return 4;
+      case 'saved': case 'wait': return 5;
+      default: return 0;
+    }
   })();
   
-  // Progress-driven button press windows
-  const newButtonPressed = step === 1;
-  const saveButtonPressed = step === 4;
+  // Timing-driven button press windows
+  const newButtonPressed = phase === 'new';
+  const saveButtonPressed = phase === 'save';
   
-  // Progress-driven typing for deterministic output
-  const typedText = (() => {
+  // Use typewriter for typing phase
+  const { displayText: typedText } = useTypewriter({
+    text: newSessionName,
+    active: phase === 'typing',
+    durationMs: 3000
+  });
+  
+  // For non-typing phases, show appropriate text
+  const displayText = (() => {
     if (step < 3) return "";
-    if (step === 3) {
-      // During typing phase, calculate how much to show based on local progress within the phase
-      const typingPhaseStart = 0.25;
-      const typingPhaseEnd = 0.6;
-      const localProgress = Math.max(0, (progress - typingPhaseStart) / (typingPhaseEnd - typingPhaseStart));
-      const targetLength = Math.floor(localProgress * newSessionName.length);
-      return newSessionName.slice(0, targetLength);
-    }
+    if (step === 3) return typedText;
     return newSessionName; // Complete text for steps 4 and 5
   })();
 
@@ -108,11 +125,11 @@ export function SessionManagerMock({ isInView, progress }: SessionManagerMockPro
       {/* Collapsible New Session Form */}
       {step >= 2 && step < 5 && (
         <div className="border-b border-border">
-          <div className="p-3">
+          <div className="animate-in fade-in-0 slide-in-from-top-2 duration-300 p-3">
             <div className="flex items-center gap-2">
               <div className="relative grow">
                 <DesktopInput
-                  value={typedText}
+                  value={displayText}
                   placeholder="New session name..."
                   className="w-full h-8 sm:h-9 text-sm"
                 />
@@ -134,9 +151,11 @@ export function SessionManagerMock({ isInView, progress }: SessionManagerMockPro
         {allSessions.map((session) => (
           <div
             key={session.id}
-            className={`flex items-center justify-between p-2 border-b border-border/60 last:border-b-0 transition-all duration-200 cursor-pointer ${
-              session.isActive ? "bg-accent" : "hover:bg-muted/80"
-            }`}
+            className={cn(
+              "flex items-center justify-between p-2 border-b border-border/60 last:border-b-0 transition-all duration-200 cursor-pointer",
+              session.isActive ? "bg-accent" : "hover:bg-muted/80",
+              session.id === "new" && step >= 5 ? "ring-1 ring-primary/30 animate-in fade-in-0 slide-in-from-bottom-2 duration-300" : ""
+            )}
           >
             <div className="flex-1 flex flex-col min-w-0">
               <div className="flex items-center">
@@ -181,3 +200,5 @@ export function SessionManagerMock({ isInView, progress }: SessionManagerMockPro
     </div>
   );
 }
+
+export default SessionManagerMock;

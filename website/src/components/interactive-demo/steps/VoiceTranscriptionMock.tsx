@@ -5,56 +5,79 @@ import { DesktopButton } from '../desktop-ui/DesktopButton';
 import { DesktopSelect, DesktopSelectOption } from '../desktop-ui/DesktopSelect';
 import { DesktopTextarea } from '../desktop-ui/DesktopTextarea';
 import { Mic, MicOff, Clock, ChevronDown } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useTimedCycle, useTypewriter } from '../hooks';
 
 interface VoiceTranscriptionMockProps {
   isInView: boolean;
-  progress: number;
+  resetKey?: number;
 }
 
-type RecordingState = 'idle' | 'starting' | 'recording' | 'processing' | 'transcribed';
 
-export function VoiceTranscriptionMock({ isInView, progress }: VoiceTranscriptionMockProps) {
+// Define phases outside component to prevent recreation on each render
+const VOICE_TRANSCRIPTION_PHASES = [
+  { name: 'idle' as const, durationMs: 500 }, // Minimal idle time
+  { name: 'starting' as const, durationMs: 1500 },
+  { name: 'recording' as const, durationMs: 3000 }, // Reduced from 8000ms to 3000ms
+  { name: 'processing' as const, durationMs: 1500 }, // Reduced from 2000ms to 1500ms
+  { name: 'transcribed' as const, durationMs: 3500 }, // 1.5s typewriter + 2s to read
+  { name: 'wait' as const, durationMs: 1000 } // Shorter wait with completed text
+];
+
+export function VoiceTranscriptionMock({ isInView }: VoiceTranscriptionMockProps) {
   const [languageCode, setLanguageCode] = useState('en-US');
+  const [audioLevel, setAudioLevel] = useState(0);
   const sampleTranscription = "I want to implement a new user authentication system with multi-factor authentication, including email verification and SMS backup codes.";
+
+  const { phaseName: recordingState, phaseProgress01: phaseProgress } = useTimedCycle({
+    active: isInView,
+    phases: VOICE_TRANSCRIPTION_PHASES,
+    loop: true,
+    resetOnDeactivate: true
+  });
+
+  // Separate interval for smooth sine wave animation during recording
+  useEffect(() => {
+    let sineInterval: NodeJS.Timeout | null = null;
+    
+    if (recordingState === 'recording') {
+      let sineTime = 0;
+      
+      sineInterval = setInterval(() => {
+        sineTime += 0.15; // Increment time for sine wave
+        const sineWave = Math.sin(sineTime * 0.8) * 0.5 + 0.5;
+        const pseudoRandom = ((sineTime * 0.7919) % 1) * 0.3;
+        const level = sineWave * 0.7 + pseudoRandom * 0.3;
+        setAudioLevel(level);
+      }, 50); // 20fps for smooth animation
+    } else {
+      setAudioLevel(0);
+    }
+
+    return () => {
+      if (sineInterval) {
+        clearInterval(sineInterval);
+      }
+    };
+  }, [recordingState]);
   
-  // Progress-driven state calculation
-  const recordingState: RecordingState = (() => {
-    if (!isInView) return 'idle';
-    if (progress < 0.1) return 'idle';
-    if (progress < 0.15) return 'starting';
-    if (progress < 0.5) return 'recording';
-    if (progress < 0.7) return 'processing';
-    return 'transcribed';
-  })();
+  // Duration calculation based on actual phase progress  
+  const currentPhase = VOICE_TRANSCRIPTION_PHASES.find(p => p.name === recordingState);
+  const duration = recordingState === 'recording' && currentPhase 
+    ? Math.floor(phaseProgress * (currentPhase.durationMs / 1000)) 
+    : 0;
   
-  // Progress-driven duration and audio level calculation
-  const duration = (() => {
-    if (recordingState !== 'recording') return 0;
-    const recordingStart = 0.15;
-    const recordingEnd = 0.5;
-    const localProgress = (progress - recordingStart) / (recordingEnd - recordingStart);
-    return Math.floor(localProgress * 3); // 3 seconds max
-  })();
-  
-  const audioLevel = (() => {
-    if (recordingState !== 'recording') return 0;
-    // Create deterministic audio level based on progress
-    const time = progress * 50; // Scale for sine wave frequency
-    const sineWave = Math.sin(time * 3) * 0.5 + 0.5;
-    const pseudoRandom = ((progress * 7919) % 1) * 0.3; // Deterministic "random" component
-    return sineWave * 0.7 + pseudoRandom * 0.3;
-  })();
-  
-  // Progress-driven transcription typing
-  const taskFieldText = (() => {
-    if (recordingState !== 'transcribed') return '';
-    const transcriptionStart = 0.7;
-    const transcriptionEnd = 1.0;
-    const localProgress = Math.max(0, (progress - transcriptionStart) / (transcriptionEnd - transcriptionStart));
-    const targetLength = Math.floor(localProgress * sampleTranscription.length);
-    return sampleTranscription.slice(0, targetLength);
-  })();
+  // Use typewriter for transcription phase - keep text visible during wait and idle phases
+  const { displayText: taskFieldText } = useTypewriter({
+    text: sampleTranscription,
+    active: recordingState === 'transcribed',
+    durationMs: 1500
+  });
+
+  // Determine final text display - show completed text during wait and idle phases
+  const finalTaskFieldText = (recordingState === 'wait' || recordingState === 'idle') 
+    ? sampleTranscription 
+    : taskFieldText;
 
 
   const formatDuration = (seconds: number) => {
@@ -166,7 +189,7 @@ export function VoiceTranscriptionMock({ isInView, progress }: VoiceTranscriptio
           Task Description
         </label>
         <DesktopTextarea
-          value={taskFieldText}
+          value={finalTaskFieldText}
           placeholder="Describe what you want to implement..."
           rows={4}
           className="w-full border rounded-xl bg-background backdrop-blur-sm text-foreground p-4 resize-y font-normal shadow-soft min-h-[100px]"
@@ -176,3 +199,5 @@ export function VoiceTranscriptionMock({ isInView, progress }: VoiceTranscriptio
     </div>
   );
 }
+export default VoiceTranscriptionMock;
+

@@ -11,45 +11,78 @@ import { DesktopTextarea } from '../desktop-ui/DesktopTextarea';
 import { DesktopCheckbox } from '../desktop-ui/DesktopCheckbox';
 import { DesktopSlider } from '../desktop-ui/DesktopSlider';
 import { DesktopSelect, DesktopSelectOption } from '../desktop-ui/DesktopSelect';
+import { DesktopProgress } from '../desktop-ui/DesktopProgress';
 import { Mic, Undo2, Redo2, Square } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 import { useInteractiveDemoContext } from '../contexts/InteractiveDemoContext';
+import { useTimedCycle, useTweenNumber } from '../hooks';
 
 interface VideoRecordingMockProps {
   isInView: boolean;
-  progress: number;
+  resetKey?: number;
 }
 
-type RecordingState = 'idle' | 'dialog-open' | 'capturing' | 'recording' | 'stopping' | 'completed';
+type RecordingState = 'idle' | 'dialog-open' | 'capturing' | 'recording' | 'stopping' | 'analyzing' | 'populating' | 'final';
 
-export function VideoRecordingMock({ isInView, progress }: VideoRecordingMockProps) {
+const ANALYSIS_RESULT_TEXT = `<video_analysis_summary>
+- The recording shows the user starting a screen capture and running automated analysis.
+- A background task appears with a thin progress bar and live percentage updates (green-blue).
+- When analysis completes, findings are automatically pasted into the Task Description field.
+- Final UI displays the populated Task Description with no remaining recording controls.
+</video_analysis_summary>`;
+
+// Define phases outside component to prevent recreation on each render
+const VIDEO_RECORDING_PHASES = [
+  { name: 'idle' as const, durationMs: 800 },        // Brief initial state
+  { name: 'dialog-open' as const, durationMs: 3000 }, // Time to see recording options (reduced from 4000ms)
+  { name: 'capturing' as const, durationMs: 1000 },   // Quick capture start (reduced from 1500ms)
+  { name: 'recording' as const, durationMs: 4000 },   // Active recording (reduced from 6000ms)
+  { name: 'stopping' as const, durationMs: 1000 },    // Quick stop (reduced from 1500ms)
+  { name: 'analyzing' as const, durationMs: 3500 },   // Analysis processing (reduced from 5000ms)
+  { name: 'populating' as const, durationMs: 400 },   // Quick population (reduced from 500ms)
+  { name: 'final' as const, durationMs: 2500 }        // Show final results (reduced from 99999 for demo)
+];
+
+export function VideoRecordingMock({ isInView }: VideoRecordingMockProps) {
   const { setVideoRecordingState } = useInteractiveDemoContext();
   const [frameRate, setFrameRate] = useState(15);
   const [recordAudio, setRecordAudio] = useState(false);
   const [audioDevice, setAudioDevice] = useState('default');
   const [analysisPrompt, setAnalysisPrompt] = useState('');
-  const [taskText] = useState('I need to understand how user authentication works in this React application. Specifically, I want to analyze the login functionality and JWT token implementation, ensuring that routes are properly protected so users cannot access unauthorized content. Additionally, I want to verify that session management is working correctly and that security best practices are being followed throughout the application.');
-  
-  // Progress-driven state calculation
-  const recordingState: RecordingState = (() => {
-    if (!isInView) return 'idle';
-    if (progress < 0.2) return 'idle';
-    if (progress < 0.35) return 'dialog-open';
-    if (progress < 0.45) return 'capturing';
-    if (progress < 0.8) return 'recording';
-    if (progress < 0.9) return 'stopping';
-    return 'completed';
-  })();
+  const [taskText, setTaskText] = useState<string>('');
 
-  // Publish state to context
+  const { phaseName: recordingState, phaseProgress01: phaseProgress } = useTimedCycle({
+    active: isInView,
+    phases: VIDEO_RECORDING_PHASES,
+    loop: false,
+    resetOnDeactivate: true
+  });
+
+  const { value: analysisProgress } = useTweenNumber({
+    active: recordingState === 'analyzing',
+    from: 0,
+    to: 100,
+    durationMs: 5000
+  });
+
   useEffect(() => {
-    setVideoRecordingState(recordingState);
+    if (recordingState === 'recording' || recordingState === 'stopping' || recordingState === 'analyzing') {
+      setVideoRecordingState?.('stopping'); // show "Running" in sidebar
+    } else if (recordingState === 'populating' || recordingState === 'final') {
+      setVideoRecordingState?.('completed');
+    }
   }, [recordingState, setVideoRecordingState]);
 
-  // Calculate recording time based on progress during recording phase
+  useEffect(() => {
+    if (recordingState === 'populating' || recordingState === 'final') {
+      setTaskText(ANALYSIS_RESULT_TEXT);
+    }
+  }, [recordingState]);
+
+  // Calculate recording time based on phase progress during recording phase
   const recordingTime = recordingState === 'recording' 
-    ? Math.floor((progress - 0.45) / (0.8 - 0.45) * 35) // 35 seconds max recording time
+    ? Math.floor(phaseProgress * 60) // 60 seconds max recording time
     : 0;
 
   const formatTime = (seconds: number) => {
@@ -59,9 +92,9 @@ export function VideoRecordingMock({ isInView, progress }: VideoRecordingMockPro
   };
 
   return (
-    <div className="w-full space-y-4">
+    <div className="w-full space-y-4" data-video-recording-state={recordingState}>
       {/* Task Section Card - exactly like desktop task-section.tsx */}
-      <div className="border border-border/60 rounded-lg p-5 bg-card shadow-sm w-full">
+      <div className="border border-border/60 rounded-lg p-5 bg-card shadow-sm w-full desktop-glass-card">
         <div className="flex flex-col gap-1.5">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -194,7 +227,7 @@ export function VideoRecordingMock({ isInView, progress }: VideoRecordingMockPro
 
       {/* Recording Configuration - shows inline when dialog-open state */}
       {recordingState === 'dialog-open' && (
-        <div className="mt-6 border border-border/60 rounded-lg p-6 bg-card shadow-soft">
+        <div className="mt-6 rounded-lg p-6 desktop-glass-card">
           <div className="space-y-4">
             <div>
               <h3 className="text-lg font-semibold">Record Screen for Analysis</h3>
@@ -316,32 +349,20 @@ export function VideoRecordingMock({ isInView, progress }: VideoRecordingMockPro
       )}
 
       {/* Processing/Completed State */}
-      {recordingState === 'stopping' && (
-        <div className="animate-in slide-in-from-bottom-4 duration-500">
-          <div className="border rounded-xl bg-background p-4 text-center">
-            <div className="flex items-center justify-center gap-2">
-              <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-              <span className="text-sm text-muted-foreground">Processing recording...</span>
-            </div>
+      {recordingState === 'analyzing' && (
+        <div className="mt-4 rounded-md p-4 desktop-glass-card">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-medium">Analyzing video...</p>
+            <p className="text-[10px] font-mono text-muted-foreground">{analysisProgress.toFixed(2)}%</p>
+          </div>
+          <div className="mt-2">
+            <DesktopProgress className="h-1 w-full" value={analysisProgress} />
           </div>
         </div>
       )}
 
-      {recordingState === 'completed' && (
-        <div className="animate-in slide-in-from-bottom-4 duration-500">
-          <div className="border rounded-xl bg-background p-4 text-center">
-            <div className="space-y-2">
-              <div className="flex items-center justify-center gap-2">
-                <div className="w-4 h-4 bg-green-500 rounded-full" />
-                <span className="text-sm font-medium text-foreground">Recording saved successfully</span>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                AI analysis will begin automatically in the background
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
+export default VideoRecordingMock;
+

@@ -16,7 +16,7 @@ export function DesktopJobCard({
   return (
     <div 
       className={cn(
-        "border rounded-xl bg-background p-4 shadow-sm w-full max-w-[370px] text-xs",
+        "border rounded-xl bg-background p-4 shadow-sm w-full max-w-[370px] text-xs desktop-glass-card",
         className
       )}
     >

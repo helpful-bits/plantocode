@@ -18,3 +18,9 @@ export { JobDetailsModalMock } from './JobDetailsModalMock';
 export { PlanContentModalMock } from './PlanContentModalMock';
 export { PlanContentStreamingMock } from './PlanContentStreamingMock';
 export { SidebarJobsMock } from './SidebarJobsMock';
+
+// Standardized step component props
+export interface StepComponentProps {
+  isInView: boolean;
+  resetKey?: number;
+}

@@ -11,16 +11,17 @@ import { DesktopButton } from '../desktop-ui/DesktopButton';
 import { DesktopCheckbox } from '../desktop-ui/DesktopCheckbox';
 import { DesktopJobCard } from '../desktop-ui/DesktopJobCard';
 import { DesktopFilterModeToggle, FilterMode } from '../desktop-ui/DesktopFilterModeToggle';
-import { Search, RefreshCw, CheckSquare, Square, Sparkles, Filter, FileCheck, FolderOpen, CheckCircle, Loader2, X, Undo2, Redo2, HelpCircle, FileText, ChevronUp } from 'lucide-react';
+import { DesktopInput } from '../desktop-ui/DesktopInput';
+import { Search, RefreshCw, CheckSquare, Square, Sparkles, Filter, FileCheck, CheckCircle, Loader2, X, Undo2, Redo2, HelpCircle, FileText, ChevronUp, AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useInteractiveDemoContext } from '../contexts/InteractiveDemoContext';
+import { useTimedCycle, useTweenNumber } from '../hooks';
 
 interface FileSearchMockProps {
   isInView: boolean;
-  progress: number;
+  resetKey?: number;
 }
 
-type SearchState = 'idle' | 'searching' | 'ai-finding' | 'results-shown';
 
 const mockFiles = [
   { path: 'src/components/auth/LoginForm.tsx', included: false, excluded: false, size: 2150, sizeDisplay: '2.1KB', type: 'tsx', modified: new Date(Date.now() - 1000 * 60 * 60 * 2) },
@@ -38,182 +39,87 @@ const aiSelectedFiles = [
   'src/middleware/auth.ts',
 ];
 
-export function FileSearchMock({ isInView, progress }: FileSearchMockProps) {
+// Define phases outside component to prevent recreation on each render
+const FILE_SEARCH_PHASES = [
+  { name: 'idle', durationMs: 800 },           // Brief initial state
+  { name: 'typing', durationMs: 2000 },       // Typing search query (reduced from 2500ms)
+  { name: 'filtering', durationMs: 600 },     // Quick filtering (reduced from 800ms)
+  { name: 'ai-finding-regex', durationMs: 1800 },      // AI regex generation (reduced from 2500ms)
+  { name: 'ai-finding-relevance', durationMs: 1800 },  // AI relevance assessment (reduced from 2500ms)
+  { name: 'ai-finding-path', durationMs: 1800 },       // AI path finding (reduced from 2500ms)
+  { name: 'ai-finding-correction', durationMs: 1800 }, // AI correction (reduced from 2500ms)
+  { name: 'results-shown', durationMs: 2000 }, // Time to see results (reduced from 2500ms)
+  { name: 'wait', durationMs: 1000 },         // Brief pause (reduced from 1200ms)
+];
+
+export function FileSearchMock({ isInView }: FileSearchMockProps) {
   const { setFileSearchState } = useInteractiveDemoContext();
-  const [searchState, setSearchState] = useState<SearchState>('idle');
-  const [searchTerm, setSearchTerm] = useState('');
   const [files, setFiles] = useState(mockFiles);
-  const [showWorkflow, setShowWorkflow] = useState(false);
-  const [activeTab, setActiveTab] = useState<FilterMode>('all');
   
-  // Workflow job states
-  const [regexFilterProgress, setRegexFilterProgress] = useState(0);
-  const [relevanceProgress, setRelevanceProgress] = useState(0);
-  const [pathFinderProgress, setPathFinderProgress] = useState(0);
-  const [correctionProgress, setCorrectionProgress] = useState(0);
+  const { phaseName, phaseProgress01 } = useTimedCycle({ 
+    active: isInView, 
+    phases: FILE_SEARCH_PHASES, 
+    loop: true, 
+    resetOnDeactivate: true 
+  });
   
-  const [regexComplete, setRegexComplete] = useState(false);
-  const [relevanceComplete, setRelevanceComplete] = useState(false);
-  const [pathFinderComplete, setPathFinderComplete] = useState(false);
-  const [correctionComplete, setCorrectionComplete] = useState(false);
+  const searchTerm = phaseName === 'idle' ? '' : 
+    phaseName === 'typing' ? 'auth'.slice(0, Math.floor(phaseProgress01 * 4)) : 'auth';
+  
+  const showWorkflow = ['ai-finding-regex', 'ai-finding-relevance', 'ai-finding-path', 'ai-finding-correction', 'results-shown'].includes(phaseName);
+  const activeTab: FilterMode = phaseName === 'results-shown' ? 'selected' : 'all';
+  
+  const regexProgress = useTweenNumber({ 
+    active: phaseName === 'ai-finding-regex', 
+    from: 0, 
+    to: 100, 
+    durationMs: 2500 
+  });
+  
+  const relevanceProgress = useTweenNumber({ 
+    active: phaseName === 'ai-finding-relevance', 
+    from: 0, 
+    to: 100, 
+    durationMs: 2500 
+  });
+  
+  const pathProgress = useTweenNumber({ 
+    active: phaseName === 'ai-finding-path', 
+    from: 0, 
+    to: 100, 
+    durationMs: 2500 
+  });
+  
+  const correctionProgress = useTweenNumber({ 
+    active: phaseName === 'ai-finding-correction', 
+    from: 0, 
+    to: 100, 
+    durationMs: 2500 
+  });
+  
+  const regexComplete = ['ai-finding-relevance', 'ai-finding-path', 'ai-finding-correction', 'results-shown'].includes(phaseName);
+  const relevanceComplete = ['ai-finding-path', 'ai-finding-correction', 'results-shown'].includes(phaseName);
+  const pathComplete = ['ai-finding-correction', 'results-shown'].includes(phaseName);
+  const correctionComplete = phaseName === 'results-shown';
 
-  const currentState: SearchState = (() => {
-    if (!isInView) return 'idle';
-    if (progress < 0.2) return 'idle';
-    if (progress < 0.3) return 'searching';
-    if (progress < 0.8) return 'ai-finding';
-    return 'results-shown';
-  })();
-
-  // Publish state to context
   useEffect(() => {
-    setFileSearchState(currentState);
-  }, [currentState, setFileSearchState]);
+    setFileSearchState(phaseName as any);
+  }, [phaseName, setFileSearchState]);
 
-  // Auto-animation system
   useEffect(() => {
-    if (!isInView) {
-      setSearchState('idle');
-      setSearchTerm('');
-      setFiles(mockFiles);
-      setShowWorkflow(false);
-      setActiveTab('all');
-      setRegexFilterProgress(0);
-      setRelevanceProgress(0);
-      setPathFinderProgress(0);
-      setCorrectionProgress(0);
-      setRegexComplete(false);
-      setRelevanceComplete(false);
-      setPathFinderComplete(false);
-      setCorrectionComplete(false);
-      return;
-    }
-
-    const timers: NodeJS.Timeout[] = [];
-    let progressInterval: NodeJS.Timeout | null = null;
-
-    const runAnimation = () => {
-      // Clear any existing timers
-      timers.forEach(timer => clearTimeout(timer));
-      timers.length = 0;
-      if (progressInterval) {
-        clearInterval(progressInterval);
-        progressInterval = null;
-      }
-
-      // Reset state
-      setSearchState('idle');
-      setSearchTerm('');
-      setFiles(mockFiles);
-      setShowWorkflow(false);
-      setActiveTab('all');
-      setRegexFilterProgress(0);
-      setRelevanceProgress(0);
-      setPathFinderProgress(0);
-      setCorrectionProgress(0);
-      setRegexComplete(false);
-      setRelevanceComplete(false);
-      setPathFinderComplete(false);
-      setCorrectionComplete(false);
-
-      // Step 1: User types search term (1s)
-      timers.push(setTimeout(() => {
-        setSearchState('searching');
-        setSearchTerm('auth');
-      }, 1000));
-
-      // Step 2: Filter files by search term (1.5s)
-      timers.push(setTimeout(() => {
+    if (phaseName === 'filtering' || !isInView) {
+      if (!isInView) {
+        setFiles(mockFiles);
+      } else {
         const filteredFiles = mockFiles.filter(file => 
           file.path.toLowerCase().includes('auth')
         );
         setFiles(filteredFiles);
-      }, 1500));
-
-      // Step 3: Start AI file finding (3s)
-      timers.push(setTimeout(() => {
-        setSearchState('ai-finding');
-        setShowWorkflow(true);
-          
-        // Start regex file filter
-        let regexProg = 0;
-        const regexInterval = setInterval(() => {
-          regexProg += 8;
-          if (regexProg >= 100) {
-            setRegexFilterProgress(100);
-            setRegexComplete(true);
-            clearInterval(regexInterval);
-          } else {
-            setRegexFilterProgress(regexProg);
-          }
-        }, 150);
-      }, 3000));
-
-      // Step 4: Start file relevance assessment (5s)
-      timers.push(setTimeout(() => {
-        let relevanceProg = 0;
-        const relevanceInterval = setInterval(() => {
-          relevanceProg += 12;
-          if (relevanceProg >= 100) {
-            setRelevanceProgress(100);
-            setRelevanceComplete(true);
-            clearInterval(relevanceInterval);
-          } else {
-            setRelevanceProgress(relevanceProg);
-          }
-        }, 120);
-      }, 5000));
-
-      // Step 5: Start extended path finder (7s)
-      timers.push(setTimeout(() => {
-        let pathProg = 0;
-        const pathInterval = setInterval(() => {
-          pathProg += 10;
-          if (pathProg >= 100) {
-            setPathFinderProgress(100);
-            setPathFinderComplete(true);
-            clearInterval(pathInterval);
-          } else {
-            setPathFinderProgress(pathProg);
-          }
-        }, 130);
-      }, 7000));
-
-      // Step 6: Start path correction (9s)
-      timers.push(setTimeout(() => {
-        let correctionProg = 0;
-        const correctionInterval = setInterval(() => {
-          correctionProg += 15;
-          if (correctionProg >= 100) {
-            setCorrectionProgress(100);
-            setCorrectionComplete(true);
-            clearInterval(correctionInterval);
-          } else {
-            setCorrectionProgress(correctionProg);
-          }
-        }, 100);
-      }, 9000));
-
-      // Step 7: Show results - select AI-found files and switch to Selected tab (11s)
-      timers.push(setTimeout(() => {
-        setSearchState('results-shown');
-        setFiles(prev => prev.map(f => ({ ...f, included: aiSelectedFiles.includes(f.path) })));
-        setActiveTab('selected');
-      }, 11000));
-
-      // Step 8: Reset and restart (16s)
-      timers.push(setTimeout(() => {
-        runAnimation();
-      }, 16000));
-    };
-
-    runAnimation();
-
-    return () => {
-      timers.forEach(timer => clearTimeout(timer));
-      if (progressInterval) clearInterval(progressInterval);
-    };
-  }, [isInView]);
+      }
+    } else if (phaseName === 'results-shown') {
+      setFiles(prev => prev.map(f => ({ ...f, included: aiSelectedFiles.includes(f.path) })));
+    }
+  }, [phaseName, isInView]);
 
 
   const formatTimeAgo = (date: Date) => {
@@ -243,30 +149,29 @@ export function FileSearchMock({ isInView, progress }: FileSearchMockProps) {
     <div className="w-full px-1 sm:px-0">
         {/* Search and Filter Controls - Row 1 */}
         <div className="flex flex-col gap-4 px-0 pt-2 sm:px-0 sm:pt-0 sm:flex-row sm:items-center mb-2 sm:mb-4">
-          <div className="flex-1 flex items-center gap-2 border border-border/50 rounded-lg bg-background/80 px-2 py-1 sm:px-3 sm:py-2">
-            <Search className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-            <input
-              type="text"
+          <div className="flex-1 relative">
+            <DesktopInput
+              type="search"
               placeholder="Search files..."
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none"
-              autoComplete="off"
-              spellCheck={false}
+              disabled={true}
+              icon={<Search className="h-4 w-4" />}
+              className="pr-20"
             />
             {searchTerm && (
-              <>
-                <span className="text-xs text-muted-foreground flex-shrink-0">
+              <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">
                   {filteredFiles.length} result{filteredFiles.length !== 1 ? 's' : ''}
                 </span>
-                <button
-                  type="button"
-                  className="flex-shrink-0 p-1 hover:bg-muted rounded text-muted-foreground hover:text-foreground cursor-pointer"
+                <DesktopButton
+                  variant="ghost"
+                  size="xs"
+                  className="h-5 w-5 p-0 text-muted-foreground hover:text-foreground"
                   title="Clear search"
                 >
                   <X className="h-3 w-3" />
-                </button>
-              </>
+                </DesktopButton>
+              </div>
             )}
           </div>
           
@@ -274,7 +179,7 @@ export function FileSearchMock({ isInView, progress }: FileSearchMockProps) {
           <div className="w-full sm:w-auto">
             <DesktopFilterModeToggle
               currentMode={activeTab}
-              onModeChange={setActiveTab}
+              onModeChange={() => {}}
               includedCount={files.filter(f => f.included).length}
               totalCount={mockFiles.length}
             />
@@ -341,15 +246,15 @@ export function FileSearchMock({ isInView, progress }: FileSearchMockProps) {
           <DesktopButton 
             variant="default"
             size="sm"
-            disabled={searchState === 'ai-finding'}
+            disabled={showWorkflow && !correctionComplete}
             className="flex-1 bg-primary hover:bg-primary/90 border-primary hover:border-primary/90 text-primary-foreground font-medium disabled:bg-primary/70 disabled:hover:bg-primary/70 disabled:border-primary/70 disabled:cursor-not-allowed"
           >
-            {searchState === 'ai-finding' ? (
+            {showWorkflow && !correctionComplete ? (
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />
             ) : (
               <Sparkles className="h-4 w-4 mr-2" />
             )}
-            {searchState === 'ai-finding' ? 'Finding Files...' : 'Find Relevant Files'}
+            {showWorkflow && !correctionComplete ? 'Finding Files...' : 'Find Relevant Files'}
           </DesktopButton>
           
           <DesktopButton
@@ -361,7 +266,7 @@ export function FileSearchMock({ isInView, progress }: FileSearchMockProps) {
             <HelpCircle className="h-5 w-5" />
           </DesktopButton>
           
-          {searchState === 'ai-finding' && (
+          {showWorkflow && !correctionComplete && (
             <DesktopButton
               variant="outline"
               size="sm"
@@ -377,39 +282,51 @@ export function FileSearchMock({ isInView, progress }: FileSearchMockProps) {
           <div className="flex-shrink-0 px-1 py-1 sm:px-4 sm:py-3 border-b border-border/40 bg-muted/30">
             <div className="flex items-center gap-2">
               {/* Select/Exclude columns */}
-              <div className="w-9 sm:w-12 flex items-center gap-0.5 text-xs font-medium text-muted-foreground">
+              <div className="w-12 sm:w-14 flex items-center gap-0.5 text-xs font-medium text-muted-foreground">
                 <span>Inc</span>
                 <span>Exc</span>
               </div>
               
               {/* File Name column */}
               <div className="flex-1 min-w-0">
-                <button className="flex items-center gap-1 text-xs font-medium text-foreground hover:text-primary transition-colors cursor-pointer">
+                <DesktopButton
+                  variant="ghost"
+                  size="xs"
+                  className="flex items-center gap-1 text-xs font-medium text-foreground hover:text-primary h-auto p-0"
+                >
                   File Name
                   <ChevronUp className="h-3 w-3" />
-                </button>
+                </DesktopButton>
               </div>
               
               {/* Size column */}
               <div className="w-7 flex justify-end">
-                <button className="flex items-center gap-1 text-xs font-medium text-foreground hover:text-primary transition-colors cursor-pointer">
+                <DesktopButton
+                  variant="ghost"
+                  size="xs"
+                  className="flex items-center gap-1 text-xs font-medium text-foreground hover:text-primary h-auto p-0"
+                >
                   Size
-                </button>
+                </DesktopButton>
               </div>
               
               {/* Modified column */}
               <div className="w-7 sm:w-16 flex justify-end">
-                <button className="flex items-center gap-1 text-xs font-medium text-foreground hover:text-primary transition-colors cursor-pointer">
+                <DesktopButton
+                  variant="ghost"
+                  size="xs"
+                  className="flex items-center gap-1 text-xs font-medium text-foreground hover:text-primary h-auto p-0"
+                >
                   <span className="sm:hidden">Mod</span>
                   <span className="hidden sm:inline">Modified</span>
-                </button>
+                </DesktopButton>
               </div>
             </div>
           </div>
 
           {/* Table Body - Scrollable */}
           <div className="flex-1 overflow-auto">
-            {searchState === 'idle' && filteredFiles.length === 0 ? (
+            {phaseName === 'idle' && filteredFiles.length === 0 ? (
               <div className="h-full flex items-center justify-center">
                 <div className="text-center text-muted-foreground">
                   <div className="flex items-center gap-2 justify-center">
@@ -430,7 +347,7 @@ export function FileSearchMock({ isInView, progress }: FileSearchMockProps) {
                     )}
                   >
                     {/* Select/Exclude columns */}
-                    <div className="w-9 sm:w-12 flex items-center gap-0.5">
+                    <div className="w-12 sm:w-14 flex items-center gap-0.5">
                       {/* Include checkbox */}
                       <DesktopCheckbox
                         checked={file.included}
@@ -488,10 +405,12 @@ export function FileSearchMock({ isInView, progress }: FileSearchMockProps) {
           </div>
         </div>
 
-      {/* Workflow Cards - Show when AI is finding files */}
-      {showWorkflow && (
-        <div className="mt-6">
-          <div className="relative border border-dashed border-muted-foreground/40 rounded-lg p-[3px] w-fit">
+      {/* Workflow Cards - Stable height container to prevent layout shifts */}
+      <div className="mt-6 min-h-[520px] transition-all duration-300 ease-in-out">
+        <div className={cn(
+          "relative border border-dashed border-muted-foreground/40 rounded-lg p-[3px] w-fit transition-all duration-300 ease-in-out",
+          showWorkflow ? "opacity-100" : "opacity-0 pointer-events-none"
+        )}>
             
             {/* Workflow Header */}
             <div className="text-xs font-medium text-muted-foreground mb-3 flex items-center gap-2">
@@ -500,7 +419,10 @@ export function FileSearchMock({ isInView, progress }: FileSearchMockProps) {
             </div>
             
             {/* Regex File Filter Job Card */}
-            <div className="animate-in slide-in-from-bottom-4 duration-500">
+            <div className={cn(
+              "transition-all duration-500 ease-in-out min-h-[120px]",
+              showWorkflow ? "opacity-100 transform translate-y-0" : "opacity-0 transform translate-y-2 pointer-events-none"
+            )}>
               <DesktopJobCard>
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-3">
@@ -532,16 +454,16 @@ export function FileSearchMock({ isInView, progress }: FileSearchMockProps) {
                   </span>
                 </div>
 
-                {!regexComplete && regexFilterProgress > 0 && (
+                {!regexComplete && regexProgress.value > 0 && (
                   <div className="mb-3">
                     <div className="flex items-center justify-between mb-1">
                       <span className="text-muted-foreground text-xs">Filtering by patterns...</span>
-                      <span className="text-muted-foreground text-xs font-medium">{regexFilterProgress}%</span>
+                      <span className="text-muted-foreground text-xs font-medium">{Math.floor(regexProgress.value)}%</span>
                     </div>
                     <div className="w-full bg-gray-200 rounded-full h-1 dark:bg-gray-700">
                       <div 
                         className="bg-gray-600 h-1 rounded-full transition-all duration-300 ease-out" 
-                        style={{ width: `${regexFilterProgress}%` }}
+                        style={{ width: `${regexProgress.value}%` }}
                       />
                     </div>
                   </div>
@@ -568,10 +490,12 @@ export function FileSearchMock({ isInView, progress }: FileSearchMockProps) {
             </div>
 
             {/* File Relevance Assessment Job Card */}
-            {regexComplete && (
-              <div className="animate-in slide-in-from-bottom-4 duration-500 mt-3 relative">
-                <div className="absolute -top-3 left-1/2 transform -translate-x-1/2 w-0 h-3 border-l-2 border-dashed border-border/60" />
-                <DesktopJobCard>
+            <div className={cn(
+              "mt-3 relative min-h-[120px] transition-all duration-500 ease-in-out",
+              regexComplete ? "opacity-100 transform translate-y-0" : "opacity-0 transform translate-y-2 pointer-events-none"
+            )}>
+              <div className="absolute -top-3 left-1/2 transform -translate-x-1/2 w-0 h-3 border-l-2 border-dashed border-border/60" />
+              <DesktopJobCard>
                   <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-3">
                       <div className={cn(
@@ -602,16 +526,16 @@ export function FileSearchMock({ isInView, progress }: FileSearchMockProps) {
                     </span>
                   </div>
 
-                  {!relevanceComplete && relevanceProgress > 0 && (
+                  {!relevanceComplete && relevanceProgress.value > 0 && (
                     <div className="mb-3">
                       <div className="flex items-center justify-between mb-1">
                         <span className="text-muted-foreground text-xs">Analyzing relevance...</span>
-                        <span className="text-muted-foreground text-xs font-medium">{relevanceProgress}%</span>
+                        <span className="text-muted-foreground text-xs font-medium">{Math.floor(relevanceProgress.value)}%</span>
                       </div>
                       <div className="w-full bg-gray-200 rounded-full h-1 dark:bg-gray-700">
                         <div 
                           className="bg-gray-600 h-1 rounded-full transition-all duration-300 ease-out" 
-                          style={{ width: `${relevanceProgress}%` }}
+                          style={{ width: `${relevanceProgress.value}%` }}
                         />
                       </div>
                     </div>
@@ -635,21 +559,22 @@ export function FileSearchMock({ isInView, progress }: FileSearchMockProps) {
                     </span>
                   </div>
                 </DesktopJobCard>
-              </div>
-            )}
+            </div>
 
             {/* Extended Path Finder Job Card */}
-            {relevanceComplete && (
-              <div className="animate-in slide-in-from-bottom-4 duration-500 mt-3 relative">
-                <div className="absolute -top-3 left-1/2 transform -translate-x-1/2 w-0 h-3 border-l-2 border-dashed border-border/60" />
-                <DesktopJobCard>
+            <div className={cn(
+              "mt-3 relative min-h-[120px] transition-all duration-500 ease-in-out",
+              relevanceComplete ? "opacity-100 transform translate-y-0" : "opacity-0 transform translate-y-2 pointer-events-none"
+            )}>
+              <div className="absolute -top-3 left-1/2 transform -translate-x-1/2 w-0 h-3 border-l-2 border-dashed border-border/60" />
+              <DesktopJobCard>
                   <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-3">
                       <div className={cn(
                         "flex-shrink-0",
-                        pathFinderComplete ? "text-green-600" : "text-gray-600"
+                        pathComplete ? "text-green-600" : "text-gray-600"
                       )}>
-                        {pathFinderComplete ? (
+                        {pathComplete ? (
                           <CheckCircle className="h-5 w-5" />
                         ) : (
                           <Search className="h-5 w-5" />
@@ -657,9 +582,9 @@ export function FileSearchMock({ isInView, progress }: FileSearchMockProps) {
                       </div>
                       <span className={cn(
                         "font-medium text-xs",
-                        pathFinderComplete ? "text-foreground" : "text-foreground"
+                        pathComplete ? "text-foreground" : "text-foreground"
                       )}>
-                        {pathFinderComplete ? 'Completed' : 'Processing'}
+                        {pathComplete ? 'Completed' : 'Processing'}
                       </span>
                       <span className="font-medium text-foreground text-xs">
                         Extended Path Finder
@@ -669,20 +594,20 @@ export function FileSearchMock({ isInView, progress }: FileSearchMockProps) {
 
                   <div className="mb-3">
                     <span className="text-muted-foreground text-xs">
-                      {pathFinderComplete ? '60 seconds ago' : 'just now'}
+                      {pathComplete ? '60 seconds ago' : 'just now'}
                     </span>
                   </div>
 
-                  {!pathFinderComplete && pathFinderProgress > 0 && (
+                  {!pathComplete && pathProgress.value > 0 && (
                     <div className="mb-3">
                       <div className="flex items-center justify-between mb-1">
                         <span className="text-muted-foreground text-xs">Finding related paths...</span>
-                        <span className="text-muted-foreground text-xs font-medium">{pathFinderProgress}%</span>
+                        <span className="text-muted-foreground text-xs font-medium">{Math.floor(pathProgress.value)}%</span>
                       </div>
                       <div className="w-full bg-gray-200 rounded-full h-1 dark:bg-gray-700">
                         <div 
                           className="bg-gray-600 h-1 rounded-full transition-all duration-300 ease-out" 
-                          style={{ width: `${pathFinderProgress}%` }}
+                          style={{ width: `${pathProgress.value}%` }}
                         />
                       </div>
                     </div>
@@ -706,14 +631,15 @@ export function FileSearchMock({ isInView, progress }: FileSearchMockProps) {
                     </span>
                   </div>
                 </DesktopJobCard>
-              </div>
-            )}
+            </div>
 
             {/* Path Correction Job Card */}
-            {pathFinderComplete && (
-              <div className="animate-in slide-in-from-bottom-4 duration-500 mt-3 relative">
-                <div className="absolute -top-3 left-1/2 transform -translate-x-1/2 w-0 h-3 border-l-2 border-dashed border-border/60" />
-                <DesktopJobCard>
+            <div className={cn(
+              "mt-3 relative min-h-[120px] transition-all duration-500 ease-in-out",
+              pathComplete ? "opacity-100 transform translate-y-0" : "opacity-0 transform translate-y-2 pointer-events-none"
+            )}>
+              <div className="absolute -top-3 left-1/2 transform -translate-x-1/2 w-0 h-3 border-l-2 border-dashed border-border/60" />
+              <DesktopJobCard>
                   <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-3">
                       <div className={cn(
@@ -723,7 +649,7 @@ export function FileSearchMock({ isInView, progress }: FileSearchMockProps) {
                         {correctionComplete ? (
                           <CheckCircle className="h-5 w-5" />
                         ) : (
-                          <FolderOpen className="h-5 w-5" />
+                          <AlertTriangle className="h-5 w-5" />
                         )}
                       </div>
                       <span className={cn(
@@ -744,16 +670,16 @@ export function FileSearchMock({ isInView, progress }: FileSearchMockProps) {
                     </span>
                   </div>
 
-                  {!correctionComplete && correctionProgress > 0 && (
+                  {!correctionComplete && correctionProgress.value > 0 && (
                     <div className="mb-3">
                       <div className="flex items-center justify-between mb-1">
-                        <span className="text-muted-foreground text-xs">Validating paths...</span>
-                        <span className="text-muted-foreground text-xs font-medium">{correctionProgress}%</span>
+                        <span className="text-muted-foreground text-xs">Correcting path mismatches...</span>
+                        <span className="text-muted-foreground text-xs font-medium">{Math.floor(correctionProgress.value)}%</span>
                       </div>
                       <div className="w-full bg-gray-200 rounded-full h-1 dark:bg-gray-700">
                         <div 
                           className="bg-gray-600 h-1 rounded-full transition-all duration-300 ease-out" 
-                          style={{ width: `${correctionProgress}%` }}
+                          style={{ width: `${correctionProgress.value}%` }}
                         />
                       </div>
                     </div>
@@ -762,26 +688,27 @@ export function FileSearchMock({ isInView, progress }: FileSearchMockProps) {
                   <div className="space-y-1 mb-3">
                     <div className="flex items-center justify-between">
                       <span className="text-muted-foreground text-xs">
-                        Tokens: <span className="text-foreground font-medium">1.8k → 1.7k</span>
+                        Tokens: <span className="text-foreground font-medium">2.1k → 2.0k</span>
                       </span>
                       <span className="text-muted-foreground text-xs">2s</span>
                     </div>
                     <div className="text-muted-foreground text-xs">
-                      google/gemini-2.5-flash
+                      anthropic/claude-sonnet-4-20250514
                     </div>
                   </div>
 
                   <div className="flex justify-end">
                     <span className="text-muted-foreground text-xs">
-                      $0.001243
+                      $0.001845
                     </span>
                   </div>
                 </DesktopJobCard>
-              </div>
-            )}
+            </div>
+
           </div>
         </div>
-      )}
     </div>
   );
 }
+
+export default FileSearchMock;

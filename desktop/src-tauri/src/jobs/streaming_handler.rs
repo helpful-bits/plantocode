@@ -13,6 +13,19 @@ use crate::models::stream_event::StreamEvent;
 use crate::models::{OpenRouterPromptTokensDetails, OpenRouterStreamChunk, OpenRouterUsage};
 use crate::utils::get_timestamp;
 
+/// Check if an error is a transport/connection error that should preserve partial content
+fn is_transport_error(error: &AppError) -> bool {
+    match error {
+        AppError::HttpError(msg) => {
+            msg.contains("Transport error") || 
+            msg.contains("error decoding response body") ||
+            msg.contains("connection") ||
+            msg.contains("network")
+        }
+        _ => false,
+    }
+}
+
 /// Configuration for streaming handler
 #[derive(Debug, Clone)]
 pub struct StreamConfig {
@@ -29,6 +42,7 @@ pub struct StreamResult {
     pub accumulated_response: String,
     pub final_usage: Option<OpenRouterUsage>,
     pub request_id: Option<String>, // Server-generated request ID from stream_started event
+    pub is_partial: bool, // Whether the response was incomplete due to connection issues
 }
 
 /// Handler for processing streamed LLM responses
@@ -328,6 +342,41 @@ impl StreamedResponseHandler {
                         )));
                     }
 
+                    // Check if this is a transport error and we have accumulated content
+                    if !accumulated_response.is_empty() && is_transport_error(&e) {
+                        warn!(
+                            "Transport error occurred but preserving {} characters of response for job {}: {}",
+                            accumulated_response.len(), self.job_id, e
+                        );
+                        
+                        // Save partial content to database
+                        if let Err(db_err) = self
+                            .repo
+                            .update_job_stream_state(
+                                &self.job_id,
+                                &accumulated_response,
+                                current_usage.as_ref(),
+                                None, // No final progress since incomplete
+                            )
+                            .await
+                        {
+                            error!("Failed to save partial response: {}", db_err);
+                        }
+                        
+                        // Return partial result with warning
+                        info!(
+                            "Returning partial response for job {} due to transport error - {} characters preserved",
+                            self.job_id, accumulated_response.len()
+                        );
+                        
+                        return Ok(StreamResult {
+                            accumulated_response,
+                            final_usage: current_usage,
+                            request_id: server_req_id,
+                            is_partial: true,
+                        });
+                    }
+
                     // For streaming errors, we still want to preserve any authoritative usage data we may have received
                     // The server may provide partial usage information even on failure
                     warn!(
@@ -390,6 +439,7 @@ impl StreamedResponseHandler {
             accumulated_response,
             final_usage: usage_result,
             request_id: server_req_id, // Return captured request_id from StreamStarted event
+            is_partial: false, // Complete successful stream
         })
     }
 

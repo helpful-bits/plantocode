@@ -6,7 +6,7 @@ interface InteractiveDemoState {
   textEnhancementState: 'idle' | 'text-selected' | 'processing' | 'completed';
   videoRecordingState: 'idle' | 'dialog-open' | 'capturing' | 'recording' | 'stopping' | 'completed';
   deepResearchState: 'idle' | 'ready' | 'processing' | 'completed';
-  fileSearchState: 'idle' | 'searching' | 'ai-finding' | 'results-shown';
+  fileSearchState: 'idle' | 'searching' | 'ai-finding-regex' | 'ai-finding-relevance' | 'ai-finding-path' | 'ai-finding-correction' | 'results-shown';
 }
 
 interface InteractiveDemoContextType extends InteractiveDemoState {

@@ -3,6 +3,7 @@
 
 import { cn } from '@/lib/utils';
 import { ReactNode } from 'react';
+import { DesktopButton } from './DesktopButton';
 
 export interface DesktopTabsProps {
   children: ReactNode;
@@ -19,7 +20,7 @@ export interface DesktopTabsListProps {
 
 export interface DesktopTabsTriggerProps {
   children: ReactNode;
-  value: string;
+  value?: string;
   isActive?: boolean;
   className?: string;
   onClick?: () => void;
@@ -27,7 +28,7 @@ export interface DesktopTabsTriggerProps {
 
 export interface DesktopTabsContentProps {
   children: ReactNode;
-  value: string;
+  value?: string;
   isActive?: boolean;
   className?: string;
 }
@@ -63,18 +64,19 @@ export function DesktopTabsTrigger({
   onClick,
 }: Omit<DesktopTabsTriggerProps, 'value'>) {
   return (
-    <button
+    <DesktopButton
+      variant={isActive ? "filter-active" : "filter"}
+      size="sm"
       className={cn(
-        'inline-flex items-center justify-center whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-medium transition-all duration-200 focus:outline-none disabled:pointer-events-none disabled:opacity-50 cursor-pointer',
-        isActive
-          ? 'bg-primary/10 text-primary border border-primary/20 shadow-soft backdrop-blur-sm'
-          : 'text-muted-foreground hover:bg-muted/40',
+        'rounded-lg px-3 py-1.5 text-sm font-medium h-auto',
+        isActive && 'bg-primary/10 text-primary border border-primary/20 shadow-soft backdrop-blur-sm',
+        !isActive && 'text-muted-foreground hover:bg-muted/40',
         className
       )}
-      onClick={onClick}
+      onClick={onClick || (() => {})}
     >
       {children}
-    </button>
+    </DesktopButton>
   );
 }
 
