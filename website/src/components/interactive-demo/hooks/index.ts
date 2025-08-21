@@ -1,9 +1,10 @@
-// Export all scroll orchestration hooks for interactive demo
+// Export all orchestration hooks for interactive demo
+
+// Timing-based hooks for deterministic animations
 export { 
-  useAutoFillText,
-  useAnimatedNumber, 
-  useTypeOnScroll, 
-  useSimulatedClick,
-  useDelayedVisibility,
-  usePulse
+  useTimedLoop,
+  useTimedCycle,
+  useTypewriter,
+  useTweenNumber,
+  useIntervalGate
 } from './useScrollOrchestration';

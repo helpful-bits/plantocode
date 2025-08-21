@@ -492,7 +492,6 @@ export default function TaskModelSettings({
                         {'nextStage' in stage && stage.nextStage && (
                           <div className="pl-6 text-xs text-muted-foreground flex items-center gap-1">
                             <span>↓ feeds into</span>
-                            <span className="font-medium">{stage.nextStage}</span>
                           </div>
                         )}
                       </div>
@@ -545,7 +544,6 @@ export default function TaskModelSettings({
                         {'nextStage' in stage && stage.nextStage && (
                           <div className="pl-6 text-xs text-muted-foreground flex items-center gap-1">
                             <span>↓ feeds into</span>
-                            <span className="font-medium">{stage.nextStage}</span>
                           </div>
                         )}
                       </div>

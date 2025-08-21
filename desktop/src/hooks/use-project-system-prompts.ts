@@ -105,9 +105,6 @@ export function useProjectSystemPrompt({
       errors.push('System prompt cannot be empty');
     }
 
-    if (promptToValidate.length > 10000) {
-      errors.push('System prompt is too long (max 10,000 characters)');
-    }
 
     return {
       isValid: errors.length === 0,

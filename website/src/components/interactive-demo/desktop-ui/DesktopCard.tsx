@@ -61,7 +61,7 @@ export function DesktopCard({
   return (
     <div
       className={cn(
-        'rounded-xl border border-border/60 bg-card text-card-foreground shadow-soft hover:shadow-soft-md transition-all duration-300',
+        'rounded-xl border border-border/60 bg-card text-card-foreground shadow-soft hover:shadow-soft-md transition-all duration-300 desktop-glass-card',
         className
       )}
       aria-hidden={ariaHidden}

@@ -13,8 +13,10 @@ import { DesktopCheckbox } from '../desktop-ui/DesktopCheckbox';
 import { Eye, Trash2, Info, Copy, FileCode, ClipboardCopy } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ModelSelectorToggleMock } from './ModelSelectorToggleMock';
-import { useAnimatedNumber } from '../hooks/useScrollOrchestration';
-import { PlanContentStreamingMock } from './PlanContentStreamingMock';
+import { useTimedLoop, useIntervalGate } from '../hooks';
+import dynamic from 'next/dynamic';
+
+const PlanContentStreamingLazy = dynamic(() => import('./PlanContentStreamingMock').then(m => ({ default: m.PlanContentStreamingMock })), { ssr: false, loading: () => <div className="h-24" /> });
 
 
 
@@ -80,7 +82,7 @@ function PlanCard({
   const hasContent = plan.status === 'completed' || isStreaming || hasResponseContent;
 
   return (
-    <DesktopCard className="relative mb-2 sm:mb-4 mx-1 sm:mx-0 overflow-hidden">
+    <DesktopCard className="relative mb-2 sm:mb-4 mx-1 sm:mx-0 overflow-hidden min-h-[160px]">
       {/* Status indicator strip on the left side - green for completed/merged plans */}
       <div
         className={cn(
@@ -231,38 +233,47 @@ function PlanCard({
   );
 }
 
-export function PlanCardsStreamMock({ isInView, progress }: { isInView: boolean; progress: number }) {
+export function PlanCardsStreamMock({ isInView }: { isInView: boolean }) {
   const [viewingPlan, setViewingPlan] = useState<string | null>(null);
   
-  // Pure calculations - no state, no effects, no racing conditions
-  const estimatedTokens = useAnimatedNumber(isInView && progress > 0.05 ? 83247 : 0, isInView && progress > 0.05);
+  // Use timed loop with 20s cycle and 300ms idle delay
+  const { t: timeProgress } = useTimedLoop(isInView, 20000, { idleDelayMs: 300, resetOnDeactivate: true });
+  
+  // Use interval gates for button pulses and plan windows
+  const buttonClicked = useIntervalGate(timeProgress, [
+    { startPct: 0.14, endPct: 0.17 },
+    { startPct: 0.34, endPct: 0.37 },
+    { startPct: 0.64, endPct: 0.67 },
+    { startPct: 0.84, endPct: 0.87 }
+  ]);
+
+  const estimatedTokens = (isInView && timeProgress > 0.05) ? 83247 : 0;
   
   const handleToggleContent = (id: string) => {
     setViewingPlan(id);
   };
 
-
-  // Simple function to check if button should show clicked state
-  const getButtonClickState = (progress: number) => {
-    // Round progress for stable button state
-    const stableProgress = Math.round(progress * 1000) / 1000;
-    return (stableProgress >= 0.14 && stableProgress <= 0.17) ||
-           (stableProgress >= 0.34 && stableProgress <= 0.37) ||
-           (stableProgress >= 0.64 && stableProgress <= 0.67) ||
-           (stableProgress >= 0.84 && stableProgress <= 0.87) ? 'clicking' : 'idle';
+  // Get realistic time ago for plans (newer plans at top should have more recent timestamps)
+  const getTimeAgo = (id: string) => {
+    const timeMap: Record<string, string> = {
+      'plan-gemini-2': 'just now', // Most recent
+      'plan-gemini-1': '2 minutes ago',
+      'plan-gpt5-2': '5 minutes ago', 
+      'plan-gpt5-1': '8 minutes ago' // Oldest
+    };
+    return timeMap[id] || 'just now';
   };
 
   // Create plan data - ALWAYS return plan object to prevent flickering
   const createPlan = (id: string, title: string, model: string, tokensSent: number, 
                      tokensReceived: number, creationProgress: number, completionProgress: number) => {
     // Round progress more aggressively to prevent micro-fluctuations that cause flickering
-    const stableProgress = Math.round(progress * 100) / 100; // Round to 2 decimal places for stability
-    const isVisible = stableProgress >= creationProgress;
-    const isCompleted = stableProgress >= completionProgress;
+    const isVisible = timeProgress >= creationProgress;
+    const isCompleted = timeProgress >= completionProgress;
     
-    // Safe progress calculation with bounds checking using stable progress
+    // Safe progress calculation with bounds checking using time progress
     const progressRange = Math.max(0.01, completionProgress - creationProgress); // Prevent division by zero
-    const currentProgress = Math.max(0, stableProgress - creationProgress);
+    const currentProgress = Math.max(0, timeProgress - creationProgress);
     
     // Only calculate stream progress if we're in the streaming phase
     let streamProgress: number | undefined = undefined;
@@ -290,7 +301,7 @@ export function PlanCardsStreamMock({ isInView, progress }: { isInView: boolean;
       tokensSent,
       tokensReceived: Math.max(0, currentTokensReceived),
       status,
-      timeAgo: isCompleted ? `${(id.charCodeAt(id.length - 1) % 3) + 1} minutes ago` : 'just now',
+      timeAgo: isCompleted ? getTimeAgo(id) : 'just now',
       creationProgress,
       completionProgress,
       ...(streamProgress !== undefined && { progress: streamProgress }),
@@ -298,30 +309,30 @@ export function PlanCardsStreamMock({ isInView, progress }: { isInView: boolean;
     };
   };
 
-  // Generate all plans - NEVER filter, always include all plans
+  // Generate all plans - NEWER PLANS AT TOP (reverse chronological order like real apps)
   const allPlans = [
-    createPlan('plan-gpt5-1', 'Authentication System Architecture', 'GPT-5', 4247, 3800, 0.15, 0.35),
-    createPlan('plan-gpt5-2', 'User Interface Components', 'GPT-5', 5200, 4100, 0.35, 0.55),
+    createPlan('plan-gemini-2', 'API Integration Layer', 'Gemini 2.5 Pro', 4800, 4300, 0.85, 1.0),
     createPlan('plan-gemini-1', 'Database Schema Design', 'Gemini 2.5 Pro', 6100, 5200, 0.65, 0.80),
-    createPlan('plan-gemini-2', 'API Integration Layer', 'Gemini 2.5 Pro', 4800, 4300, 0.85, 1.0)
+    createPlan('plan-gpt5-2', 'User Interface Components', 'GPT-5', 5200, 4100, 0.35, 0.55),
+    createPlan('plan-gpt5-1', 'Authentication System Architecture', 'GPT-5', 4247, 3800, 0.15, 0.35)
   ];
 
-  const buttonState = getButtonClickState(progress);
-  const canCreatePlan = progress > 0.1;
+  const buttonState = buttonClicked ? 'clicking' : 'idle';
+  const canCreatePlan = timeProgress > 0.1;
 
   return (
     <div className="space-y-2 sm:space-y-4 px-1 py-2 sm:p-4">
       <header className="flex justify-between items-center mb-4">
         <h2 className="text-lg font-semibold text-foreground">Implementation Plans</h2>
         <div className="flex items-center gap-2">
-          {isInView && progress > 0.05 && (
-            <ModelSelectorToggleMock isInView={isInView} progress={progress} />
+          {isInView && timeProgress > 0.05 && (
+            <ModelSelectorToggleMock isInView={isInView} />
           )}
         </div>
       </header>
 
       {/* Create Implementation Plan Section */}
-      {isInView && progress > 0.02 && (
+      {isInView && timeProgress > 0.02 && (
         <DesktopCard className="bg-card p-2 sm:p-6 rounded-lg border border-border shadow-sm mb-2 sm:mb-6">
           <div>
             <h3 className="text-sm font-medium mb-3 text-foreground">Create New Plan</h3>
@@ -391,21 +402,16 @@ export function PlanCardsStreamMock({ isInView, progress }: { isInView: boolean;
           <div
             key={plan.id}
             className={cn(
-              "transition-all duration-500 ease-in-out",
+              "transition-all duration-500 ease-in-out min-h-[180px]",
               plan.isVisible 
                 ? "opacity-100 transform translate-y-0 scale-100" 
                 : "opacity-0 transform translate-y-2 scale-95 pointer-events-none"
             )}
-            style={{
-              height: plan.isVisible ? 'auto' : '0',
-              overflow: plan.isVisible ? 'visible' : 'hidden',
-              marginBottom: plan.isVisible ? undefined : '0'
-            }}
           >
             <PlanCard 
               plan={plan} 
               isActive={isInView}
-              progress={progress}
+              progress={timeProgress}
               onToggleContent={handleToggleContent}
               isExpanded={false}
             />
@@ -414,8 +420,10 @@ export function PlanCardsStreamMock({ isInView, progress }: { isInView: boolean;
       </div>
       
       {viewingPlan && (
-        <PlanContentStreamingMock isInView={isInView} progress={progress} />
+        <PlanContentStreamingLazy isInView={isInView} />
       )}
     </div>
   );
 }
+export default PlanCardsStreamMock;
+

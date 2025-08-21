@@ -3,11 +3,29 @@
 
 import { DesktopButton } from '../desktop-ui/DesktopButton';
 import { DesktopBadge } from '../desktop-ui/DesktopBadge';
+import { useTimedCycle } from '../hooks';
 
-export function MergeExecutionMock({ isInView: _isInView, progress }: { isInView: boolean; progress: number }) {
-  const shouldPulse = progress > 0.3 && progress < 0.6;
-  const shouldShowLoading = progress > 0.6 && progress < 0.8;
-  const shouldShowSuccess = progress > 0.8;
+// Define phases outside component to prevent recreation on each render
+const MERGE_EXECUTION_PHASES = [
+  { name: 'pulse' as const, durationMs: 3500 },   // Button pulsing (reduced from 4800ms)
+  { name: 'loading' as const, durationMs: 1500 }, // Loading state (reduced from 2000ms)
+  { name: 'success' as const, durationMs: 2000 }, // Success state
+  { name: 'wait' as const, durationMs: 700 }      // Brief pause (reduced from 800ms)
+];
+
+export function MergeExecutionMock({ isInView }: { isInView: boolean; resetKey?: number }) {
+
+  const { phaseName: phase } = useTimedCycle({
+    active: isInView,
+    phases: MERGE_EXECUTION_PHASES,
+    loop: true,
+    resetOnDeactivate: true
+  });
+  
+  // Derive states from phaseName
+  const shouldPulse = phase === 'pulse';
+  const shouldShowLoading = phase === 'loading';
+  const shouldShowSuccess = phase === 'success';
 
   return (
     <div className="flex flex-col items-center gap-4 p-6">

@@ -91,7 +91,8 @@ const TaskSection = React.memo(function TaskSection({
           <Button
             onClick={() => {
               trackEvent('desktop_deep_research_started', {
-                task_length: sessionState.currentSession?.taskDescription?.length || 0
+                task_length: sessionState.currentSession?.taskDescription?.length || 0,
+                location: 'task_section'
               });
               handleWebSearch(false);
             }}

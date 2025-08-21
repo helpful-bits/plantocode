@@ -6,7 +6,8 @@
 'use client';
 
 import { DesktopCard, DesktopCardContent } from '../desktop-ui/DesktopCard';
-import { useAutoFillText } from '../hooks/useScrollOrchestration';
+import { DesktopButton } from '../desktop-ui/DesktopButton';
+import { useTypewriter } from '../hooks';
 
 const systemPromptText = `You are Vibe Manager, an AI assistant specialized in helping developers manage their codebase efficiently. Your capabilities include:
 
@@ -27,8 +28,14 @@ const systemPromptText = `You are Vibe Manager, an AI assistant specialized in h
 
 Always provide practical, actionable advice that helps developers be more productive and write better code.`;
 
-export function SystemPromptMock({ isInView, progress }: { isInView: boolean; progress: number }) {
-  const streamedText = useAutoFillText(systemPromptText, isInView && progress > 0.3);
+export function SystemPromptMock({ isInView }: { isInView: boolean; resetKey?: number }) {
+  // Use typewriter with 3.5s duration and loop as specified
+  const { displayText: streamedText } = useTypewriter({
+    active: isInView,
+    text: systemPromptText,
+    durationMs: 3500,
+    loop: true
+  });
 
   return (
     <div className="w-full max-w-3xl mx-auto p-4 space-y-4">
@@ -37,13 +44,21 @@ export function SystemPromptMock({ isInView, progress }: { isInView: boolean; pr
           <p className="text-xs text-muted-foreground">Default system prompt</p>
         </div>
         <div className="flex items-center border border-border/50 rounded-lg overflow-hidden">
-          <button className="px-3 h-7 text-xs bg-accent text-accent-foreground">
+          <DesktopButton
+            variant="filter-active"
+            size="xs"
+            className="px-3 h-7 text-xs rounded-none border-0"
+          >
             Default
-          </button>
+          </DesktopButton>
           <div className="w-[1px] h-5 bg-border/40" />
-          <button className="px-3 h-7 text-xs bg-background text-muted-foreground hover:bg-accent/50">
+          <DesktopButton
+            variant="filter"
+            size="xs"
+            className="px-3 h-7 text-xs rounded-none border-0"
+          >
             Custom
-          </button>
+          </DesktopButton>
         </div>
       </div>
 
@@ -60,7 +75,7 @@ export function SystemPromptMock({ isInView, progress }: { isInView: boolean; pr
             <div className="relative border border-border rounded-lg bg-muted/30 overflow-hidden">
               <pre className="font-mono text-sm p-4 whitespace-pre-wrap max-h-80 overflow-auto">
                 {streamedText || ' '}
-                {isInView && progress > 0.3 && streamedText.length < systemPromptText.length && (
+                {isInView && streamedText.length < systemPromptText.length && streamedText.length > 0 && (
                   <span className="animate-pulse text-primary">|</span>
                 )}
               </pre>
@@ -75,3 +90,5 @@ export function SystemPromptMock({ isInView, progress }: { isInView: boolean; pr
     </div>
   );
 }
+export default SystemPromptMock;
+

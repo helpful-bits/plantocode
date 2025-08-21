@@ -37,7 +37,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Track successful login (only once per session)
       if (!hasTrackedLogin) {
         trackEvent('desktop_login_completed', {
-          user_email: user.email || 'unknown'
+          user_email: user.email || 'unknown',
+          location: 'auth_context'
         });
         setHasTrackedLogin(true);
       }
