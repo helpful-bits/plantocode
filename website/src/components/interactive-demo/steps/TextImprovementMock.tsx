@@ -8,39 +8,56 @@ import { Sparkles, CheckCircle, Trash2 } from 'lucide-react';
 import { useEffect, useRef } from 'react';
 import { cn } from '@/lib/utils';
 import { useInteractiveDemoContext } from '../contexts/InteractiveDemoContext';
+import { useTimedCycle, useTweenNumber } from '../hooks';
 
 interface TextImprovementMockProps {
   isInView: boolean;
-  progress: number;
+  resetKey?: number;
 }
 
 
-export function TextImprovementMock({ isInView: _isInView, progress }: TextImprovementMockProps) {
+// Define phases outside component to prevent recreation on each render
+const TEXT_IMPROVEMENT_PHASES = [
+  { name: 'idle' as const, durationMs: 800 },         // Brief initial state
+  { name: 'text-selected' as const, durationMs: 1000 }, // Text selection highlight (reduced from 1200ms)
+  { name: 'processing' as const, durationMs: 4000 },   // AI processing (drastically reduced from 18000ms!)
+  { name: 'completed' as const, durationMs: 3000 },    // Time to read enhanced text (reduced from 4000ms)
+  { name: 'wait' as const, durationMs: 1000 }          // Brief pause (reduced from 1500ms)
+];
+
+export function TextImprovementMock({ isInView }: TextImprovementMockProps) {
   const { setTextEnhancementState } = useInteractiveDemoContext();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Derive enhancement state from progress
-  const enhancementState = (() => {
-    if (progress < 0.2) return 'idle' as const;
-    if (progress < 0.4) return 'text-selected' as const;
-    if (progress < 0.8) return 'processing' as const;
-    return 'completed' as const;
-  })();
+  const { phaseName: enhancementState, phaseProgress01: phaseProgress } = useTimedCycle({
+    active: isInView,
+    phases: TEXT_IMPROVEMENT_PHASES,
+    loop: true,
+    resetOnDeactivate: true
+  });
   
-  // Progress-derived state
+  // Use tween for job progress during processing phase
+  const { value: jobProgress } = useTweenNumber({
+    from: 0,
+    to: enhancementState === 'processing' ? 95 : enhancementState === 'completed' ? 100 : 0,
+    active: enhancementState === 'processing' || enhancementState === 'completed',
+    durationMs: 17000
+  });
+  
+  // State-derived properties
   const textValue = enhancementState === 'completed' 
     ? "I need to understand how user auth works in React app. The login stuff and maybe JWT tokens or something, also need to check routes are protected and users can't access things they shouldn't. Want to make sure sessions work properly and security is good."
     : "i need to understadn how user auth works in react app. the login stuff and maybe jwt tokens or something, also need to check routes are protected and users cant access things they shouldnt. want to make sure sessions work properly and securtiy is good";
   
   const showSelection = enhancementState === 'text-selected';
   const showHighlight = enhancementState === 'completed';
-  const jobProgress = enhancementState === 'processing' ? Math.min(95, Math.floor(((progress - 0.4) / 0.4) * 95)) : enhancementState === 'completed' ? 100 : 0;
   const popoverPosition = { x: 300, y: 80 };
-  const buttonClicked = progress >= 0.35 && progress < 0.4;
+  const buttonClicked = enhancementState === 'text-selected' && phaseProgress > 0.7;
 
   // Publish state to context
   useEffect(() => {
-    setTextEnhancementState(enhancementState);
+    const contextState = enhancementState === 'wait' ? 'idle' : enhancementState as 'idle' | 'completed' | 'text-selected' | 'processing';
+    setTextEnhancementState(contextState);
   }, [enhancementState, setTextEnhancementState]);
 
 
@@ -60,29 +77,18 @@ export function TextImprovementMock({ isInView: _isInView, progress }: TextImpro
 
     // Show teal correction highlighting when completed
     if (showHighlight && enhancementState === 'completed') {
-      // Define all the corrections made (original -> corrected)
-      const corrections = [
-        { original: "i need", corrected: "I need" },
-        { original: "understadn", corrected: "understand" },
-        { original: "react app", corrected: "React app" },
-        { original: "jwt tokens", corrected: "JWT tokens" },
-        { original: "cant access", corrected: "can't access" },
-        { original: "shouldnt", corrected: "shouldn't" },
-        { original: "want to make", corrected: "Want to make" },
-        { original: "securtiy", corrected: "security" },
-        { original: "is good", corrected: "is good." }
-      ];
-
-      // Highlight only the corrected parts
-      let highlightedText = textValue;
-      corrections.forEach(({ corrected }) => {
-        highlightedText = highlightedText.replace(
-          corrected,
-          `<span class="bg-gradient-to-r from-teal-100 via-teal-200 to-teal-100 dark:from-teal-800/40 dark:via-teal-700/60 dark:to-teal-800/40 px-1 rounded transition-all duration-1000 ease-in-out animate-pulse">${corrected}</span>`
-        );
-      });
-      
-      return <div dangerouslySetInnerHTML={{ __html: highlightedText }} />;
+      const showCompleted = enhancementState === 'completed';
+      return (
+        <p className="leading-7">
+          {showCompleted ? (
+            <span className="bg-primary/15 rounded px-0.5 transition-opacity duration-200">
+              {textValue}
+            </span>
+          ) : (
+            textValue
+          )}
+        </p>
+      );
     }
 
     // Default return for all other states
@@ -133,7 +139,7 @@ export function TextImprovementMock({ isInView: _isInView, progress }: TextImpro
           )}
           
           {/* Enhancement Popover - appears near selected text */}
-          {enhancementState === 'text-selected' && (
+          {enhancementState === 'text-selected' && phaseProgress > 0.3 && (
             <div 
               className="absolute z-10 animate-in fade-in-0 zoom-in-95 duration-200"
               style={{
@@ -184,7 +190,7 @@ export function TextImprovementMock({ isInView: _isInView, progress }: TextImpro
       </div>
 
       {/* Text Enhancement Job Card - Exactly matches desktop screenshot */}
-      {(enhancementState === 'processing' || enhancementState === 'completed') && (
+      {(enhancementState === 'processing' || enhancementState === 'completed' || enhancementState === 'wait') && (
         <div className="animate-in slide-in-from-bottom-4 duration-500">
           <DesktopJobCard>
             
@@ -193,9 +199,9 @@ export function TextImprovementMock({ isInView: _isInView, progress }: TextImpro
               <div className="flex items-center gap-3">
                 <div className={cn(
                   "flex-shrink-0",
-                  enhancementState === 'completed' ? "text-green-600" : "text-gray-600"
+(enhancementState === 'completed' || enhancementState === 'wait') ? "text-green-600" : "text-gray-600"
                 )}>
-                  {enhancementState === 'completed' ? (
+                  {(enhancementState === 'completed' || enhancementState === 'wait') ? (
                     <CheckCircle className="h-5 w-5" />
                   ) : (
                     <div className="w-5 h-5 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
@@ -205,14 +211,14 @@ export function TextImprovementMock({ isInView: _isInView, progress }: TextImpro
                   "font-medium text-xs",
                   enhancementState === 'completed' ? "text-foreground" : "text-foreground"
                 )}>
-                  {enhancementState === 'completed' ? 'Completed' : 'Processing'}
+                  {(enhancementState === 'completed' || enhancementState === 'wait') ? 'Completed' : 'Processing'}
                 </span>
                 <span className="font-medium text-foreground text-xs">
                   Text Improvement
                 </span>
               </div>
               <div className="flex-shrink-0">
-                {enhancementState === 'completed' ? (
+                {(enhancementState === 'completed' || enhancementState === 'wait') ? (
                   <Trash2 className="h-4 w-4 text-muted-foreground hover:text-foreground transition-colors cursor-pointer" />
                 ) : (
                   <div className="w-4 h-4 text-muted-foreground hover:text-foreground transition-colors cursor-pointer">
@@ -228,7 +234,7 @@ export function TextImprovementMock({ isInView: _isInView, progress }: TextImpro
             {/* Timestamp */}
             <div className="mb-3">
               <span className="text-muted-foreground text-xs">
-                {enhancementState === 'completed' ? '13 minutes ago' : 'just now'}
+                {(enhancementState === 'completed' || enhancementState === 'wait') ? '13 minutes ago' : 'just now'}
               </span>
             </div>
 
@@ -237,12 +243,12 @@ export function TextImprovementMock({ isInView: _isInView, progress }: TextImpro
               <div className="mb-3">
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-muted-foreground text-xs">Finding available processor...</span>
-                  <span className="text-muted-foreground text-xs font-medium">{jobProgress}%</span>
+                  <span className="text-muted-foreground text-xs font-medium">{Math.round(jobProgress)}%</span>
                 </div>
                 <div className="w-full bg-gray-200 rounded-full h-1 dark:bg-gray-700">
                   <div 
                     className="bg-gray-600 h-1 rounded-full transition-all duration-300 ease-out" 
-                    style={{ width: `${jobProgress}%` }}
+                    style={{ width: `${Math.round(jobProgress)}%` }}
                   />
                 </div>
               </div>
@@ -271,7 +277,7 @@ export function TextImprovementMock({ isInView: _isInView, progress }: TextImpro
             )}
 
             {/* Results Section - only show when completed */}
-            {enhancementState === 'completed' && (
+            {(enhancementState === 'completed' || enhancementState === 'wait') && (
               <>
                 <div className="mb-3">
                   <span className="text-foreground font-medium text-xs">
@@ -292,3 +298,5 @@ export function TextImprovementMock({ isInView: _isInView, progress }: TextImpro
     </div>
   );
 }
+export default TextImprovementMock;
+

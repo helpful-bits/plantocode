@@ -57,7 +57,8 @@ export default function LoginPage() {
   const handleSignIn = async (providerHint?: string) => {
     // Track login attempt
     trackEvent('desktop_login_started', {
-      provider: providerHint || 'default'
+      provider: providerHint || 'default',
+      location: 'login_page'
     });
     
     // Clear any previous errors and timeout

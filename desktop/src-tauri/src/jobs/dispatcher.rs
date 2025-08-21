@@ -183,7 +183,7 @@ pub async fn process_next_job(app_handle: AppHandle) -> AppResult<Option<JobProc
         .update_job_status(
             &job_id,
             &JobStatus::Preparing,
-            Some("Processor found, starting execution..."),
+            Some("Processor found"),
         )
         .await?;
 

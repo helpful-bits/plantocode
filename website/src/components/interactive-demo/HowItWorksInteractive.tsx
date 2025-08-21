@@ -1,4 +1,16 @@
 /**
+ * Interactive Demo Acceptance Criteria:
+ * - All demo cards use the "desktop-glass-card" frosted effect by default (DesktopCard/JobCard)
+ * - Animations loop while in view and pause off-screen (active: isInView, resetOnDeactivate: true), with stabilized observer thresholds
+ * - Pacing increased across Voice Transcription, Text Enhancement, Video Recording, File Search, Session Manager, Project Selector
+ * - Project Selector success message persists for the remainder of the in-view loop
+ * - File Search checkboxes match the desktop visually and animate check/uncheck; no overlap with file icons
+ * - Task Description content persists across reloads; Undo/Redo have clear pressed feedback
+ * - Text Enhancement shows a selection/highlight state after enhancement completes
+ * - Mobile presentation remains optimized (e.g., File Search); widths adjusted to avoid overlap
+ */
+
+/**
  * HowItWorksInteractive - Ultra-simplified interactive demo
  * Zero conditional rendering, zero lazy mounting, zero complexity
  * 
@@ -33,29 +45,83 @@
 'use client';
 
 import React from 'react';
+import dynamic from 'next/dynamic';
 import { StepController } from './StepController';
 import { ScrollToNextArrow } from './ScrollToNextArrow';
 import './interactive-demo.css';
 import { InteractiveDemoProvider } from './contexts/InteractiveDemoContext';
 
-// Import all step components
-import {
-  ProjectSelectorMock,
-  SessionManagerMock,
-  TaskDescriptionMock,
-  VoiceTranscriptionMock,
-  VideoRecordingMock,
-  TextImprovementMock,
-  DeepResearchMock,
-  FileSearchMock,
-  PlanCardsStreamMock,
-  MergeInstructionsMock,
-  SettingsMock,
-  SystemPromptMock,
-  CopyButtonsMock,
-  ModelSelectorToggleMock,
-  SidebarJobsMock
-} from './steps';
+// Lazy-load all step components
+const ProjectSelectorMock = dynamic(() => import('./steps').then(m => ({ default: m.ProjectSelectorMock })), { 
+  ssr: false, 
+  loading: () => <div className="h-24" /> 
+});
+
+const SessionManagerMock = dynamic(() => import('./steps').then(m => ({ default: m.SessionManagerMock })), { 
+  ssr: false, 
+  loading: () => <div className="h-24" /> 
+});
+
+const TaskDescriptionMock = dynamic(() => import('./steps').then(m => ({ default: m.TaskDescriptionMock })), { 
+  ssr: false, 
+  loading: () => <div className="h-24" /> 
+});
+
+const VoiceTranscriptionMock = dynamic(() => import('./steps').then(m => ({ default: m.VoiceTranscriptionMock })), { 
+  ssr: false, 
+  loading: () => <div className="h-24" /> 
+});
+
+const VideoRecordingMock = dynamic(() => import('./steps').then(m => ({ default: m.VideoRecordingMock })), { 
+  ssr: false, 
+  loading: () => <div className="h-24" /> 
+});
+
+const TextImprovementMock = dynamic(() => import('./steps').then(m => ({ default: m.TextImprovementMock })), { 
+  ssr: false, 
+  loading: () => <div className="h-24" /> 
+});
+
+const DeepResearchMock = dynamic(() => import('./steps').then(m => ({ default: m.DeepResearchMock })), { 
+  ssr: false, 
+  loading: () => <div className="h-24" /> 
+});
+
+const FileSearchMock = dynamic(() => import('./steps').then(m => ({ default: m.FileSearchMock })), { 
+  ssr: false, 
+  loading: () => <div className="h-24" /> 
+});
+
+const PlanCardsStreamMock = dynamic(() => import('./steps').then(m => ({ default: m.PlanCardsStreamMock })), { 
+  ssr: false, 
+  loading: () => <div className="h-24" /> 
+});
+
+const MergeInstructionsMock = dynamic(() => import('./steps').then(m => ({ default: m.MergeInstructionsMock })), { 
+  ssr: false, 
+  loading: () => <div className="h-24" /> 
+});
+
+const SettingsMock = dynamic(() => import('./steps').then(m => ({ default: m.SettingsMock })), { 
+  ssr: false, 
+  loading: () => <div className="h-24" /> 
+});
+
+const SystemPromptMock = dynamic(() => import('./steps').then(m => ({ default: m.SystemPromptMock })), { 
+  ssr: false, 
+  loading: () => <div className="h-24" /> 
+});
+
+const CopyButtonsMock = dynamic(() => import('./steps').then(m => ({ default: m.CopyButtonsMock })), { 
+  ssr: false, 
+  loading: () => <div className="h-24" /> 
+});
+
+const ModelSelectorToggleMock = dynamic(() => import('./steps').then(m => ({ default: m.ModelSelectorToggleMock })), { 
+  ssr: false, 
+  loading: () => <div className="h-24" /> 
+});
+
 
 const STEPS = [
   { id: 1, title: "Project Selection", Component: ProjectSelectorMock },
@@ -76,54 +142,57 @@ const STEPS = [
 
 export function HowItWorksInteractive() {
 
+  /* Step 22: Final timing harmonization
+   * Suggested durations for maintainers (timing handled within each step):
+   * - Simple form interactions: ~8-14 seconds with 1-2s idle
+   * - Complex workflows (Deep Research, File Search): ~15-20 seconds
+   * - Text streaming/typing: ~3-5 seconds per paragraph
+   * - Button interactions: 200-500ms pulse/press
+   * - Multi-phase cycles: Include 800-1200ms wait between cycles
+   * - No global timeline - each component maintains independent timing
+   */
+
   return (
     <InteractiveDemoProvider>
-      <div className="relative flex flex-col lg:flex-row gap-8">
-        {/* Left: main steps list */}
-        <div className="flex-1">
-          <div className="interactive-demo-container max-w-4xl mx-auto px-0 sm:px-4 space-y-16">
-            {STEPS.map(({ id, title, Component }, index) => (
-              <StepController key={id} className="min-h-[60vh] py-8">
-                {({ isInView, progress }) => (
-                  <div className="space-y-4">
-                    <div 
-                      className="desktop-glass border border-primary/20 hover:border-primary/30 rounded-xl overflow-hidden transition-all duration-300 hover:scale-[1.02]"
-                      data-step={id}
-                    >
-                      {/* Header with step number and title - number to the left */}
-                      <div className="bg-primary/5 border-b border-primary/10 px-0 sm:px-6 py-5">
-                        <div className="flex items-center justify-center gap-4">
-                          <span className="flex items-center justify-center w-12 h-12 rounded-xl bg-primary/20 border border-primary/30 text-primary font-bold text-lg shadow-sm">
-                            {id}
-                          </span>
-                          <h3 className="text-2xl font-bold text-foreground tracking-tight">{title}</h3>
-                        </div>
-                      </div>
-                      
-                      {/* Content */}
-                      <div className={[8, 9, 10].includes(id) ? "p-[2px] sm:p-6" : "p-6"}>
-                        <Component isInView={isInView} progress={progress} />
+      <div className="relative">
+        {/* Main steps list */}
+        <div className="interactive-demo-container max-w-4xl mx-auto px-0 sm:px-4 space-y-16">
+          {STEPS.map(({ id, title, Component }, index) => (
+            <StepController key={id} className="min-h-[60vh] py-8">
+              {({ isInView, resetKey }) => (
+                <div className="space-y-4">
+                  <div 
+                    className="desktop-glass-card border border-primary/20 hover:border-primary/30 rounded-xl overflow-hidden transition-all duration-300 hover:scale-[1.02]"
+                    data-step={id}
+                  >
+                    {/* Header with step number and title - number to the left */}
+                    <div className="bg-primary/5 border-b border-primary/10 px-0 sm:px-6 py-5">
+                      <div className="flex items-center justify-center gap-4">
+                        <span className="flex items-center justify-center w-12 h-12 rounded-xl bg-primary/20 border border-primary/30 text-primary font-bold text-lg shadow-sm">
+                          {id}
+                        </span>
+                        <h3 className="text-2xl font-bold text-foreground tracking-tight">{title}</h3>
                       </div>
                     </div>
                     
-                    {/* Arrow attached to this card (shown when step is complete) */}
-                    {index < STEPS.length - 1 && progress > 0.7 && (
-                      <ScrollToNextArrow 
-                        nextStepId={STEPS[index + 1]?.id ?? 1}
-                        label="Next Step"
-                        isVisible={true}
-                      />
-                    )}
+                    {/* Content */}
+                    <div className={[8, 9, 10].includes(id) ? "p-[2px] sm:p-6" : "p-6"}>
+                      <Component key={resetKey} isInView={isInView} resetKey={resetKey} />
+                    </div>
                   </div>
-                )}
-              </StepController>
-            ))}
-          </div>
-        </div>
-        
-        {/* Right: Sidebar */}
-        <div className="w-full lg:w-[400px] lg:sticky top-24 h-full">
-          <SidebarJobsMock isInView={true} progress={1} />
+                  
+                  {/* Arrow attached to this card (shown when step is visible) */}
+                  {index < STEPS.length - 1 && isInView && (
+                    <ScrollToNextArrow 
+                      nextStepId={STEPS[index + 1]?.id ?? 1}
+                      label="Next Step"
+                      isVisible={true}
+                    />
+                  )}
+                </div>
+              )}
+            </StepController>
+          ))}
         </div>
       </div>
     </InteractiveDemoProvider>

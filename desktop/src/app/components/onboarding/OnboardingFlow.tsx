@@ -23,7 +23,8 @@ export function OnboardingFlow({ onOnboardingComplete }: OnboardingFlowProps) {
 
   const handleOnboardingComplete = () => {
     trackEvent('desktop_onboarding_completed', {
-      keychain_mode: isKeychainMode
+      keychain_mode: isKeychainMode.toString(),
+      location: 'onboarding_flow'
     });
     onOnboardingComplete();
   };

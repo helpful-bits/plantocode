@@ -7,26 +7,43 @@ import {
   DesktopTabsTrigger, 
   DesktopTabsContent 
 } from '../desktop-ui/DesktopTabs';
+import { DesktopButton } from '../desktop-ui/DesktopButton';
 import { DesktopSlider } from '../desktop-ui/DesktopSlider';
 import { DesktopCard, DesktopCardContent } from '../desktop-ui/DesktopCard';
 import { DesktopSelect, DesktopSelectOption } from '../desktop-ui/DesktopSelect';
 import { DesktopInput } from '../desktop-ui/DesktopInput';
+import { useTweenNumber } from '../hooks';
 
 interface TaskCategory {
   name: string;
   tasks: { key: string; name: string; isActive?: boolean }[];
 }
 
-export function SettingsMock({ progress }: { isInView: boolean; progress: number }) {
-  const temperatureValue = Math.min(1, 0.7 + (progress * 0.3));
-  const maxTokensValue = Math.round(2048 + (progress * 2048));
+export function SettingsMock({ isInView }: { isInView: boolean; resetKey?: number }) {
+  // Use time-based tweening for values as specified - tweening from 0.7 to 1.0 for temperature
+  const { value: temperatureProgress } = useTweenNumber({
+    active: isInView,
+    from: 0,
+    to: 100,
+    durationMs: 3000
+  });
+  const { value: maxTokensProgress } = useTweenNumber({
+    active: isInView,
+    from: 0,
+    to: 100,
+    durationMs: 3000
+  });
+  
+  // Map progress to the actual ranges with looping behavior
+  const temperatureValue = 0.7 + (0.3 * temperatureProgress / 100);
+  const maxTokensValue = Math.round(2048 + (2048 * maxTokensProgress / 100));
   
   // Mock task categories matching desktop structure
   const categories: TaskCategory[] = [
     {
       name: "Workflows",
       tasks: [
-        { key: "implementationPlan", name: "Implementation Plan", isActive: progress > 0.3 },
+        { key: "implementationPlan", name: "Implementation Plan", isActive: temperatureProgress > 30 },
         { key: "mergeInstructions", name: "Merge Instructions" },
       ]
     },
@@ -84,13 +101,11 @@ export function SettingsMock({ progress }: { isInView: boolean; progress: number
                           {category.tasks.map((task, taskIdx) => {
                             const isSelected = task.key === selectedTask?.key;
                             return (
-                              <button
+                              <DesktopButton
                                 key={taskIdx}
-                                className={`w-full text-left p-2 rounded-md text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-primary/50 cursor-pointer ${
-                                  isSelected 
-                                    ? 'bg-primary/10 text-primary border border-primary/20' 
-                                    : 'hover:bg-muted/50 text-muted-foreground hover:text-foreground'
-                                }`}
+                                variant={isSelected ? "filter-active" : "filter"}
+                                size="sm"
+                                className="w-full text-left p-2 rounded-md text-sm h-auto justify-start"
                                 aria-pressed={isSelected}
                               >
                                 <div className="flex items-center justify-between">
@@ -103,7 +118,7 @@ export function SettingsMock({ progress }: { isInView: boolean; progress: number
                                     <span>{task.name}</span>
                                   </div>
                                 </div>
-                              </button>
+                              </DesktopButton>
                             );
                           })}
                         </div>
@@ -123,13 +138,21 @@ export function SettingsMock({ progress }: { isInView: boolean; progress: number
                           <p className="text-xs text-muted-foreground">Default system prompt</p>
                         </div>
                         <div className="flex items-center border border-border/50 rounded-lg overflow-hidden">
-                          <button className="px-3 h-7 text-xs bg-accent text-accent-foreground">
+                          <DesktopButton
+                            variant="filter-active"
+                            size="xs"
+                            className="px-3 h-7 text-xs rounded-none border-0"
+                          >
                             Default
-                          </button>
+                          </DesktopButton>
                           <div className="w-[1px] h-5 bg-border/40" />
-                          <button className="px-3 h-7 text-xs bg-background text-muted-foreground hover:bg-accent/50">
+                          <DesktopButton
+                            variant="filter"
+                            size="xs"
+                            className="px-3 h-7 text-xs rounded-none border-0"
+                          >
                             Custom
-                          </button>
+                          </DesktopButton>
                         </div>
                       </div>
                       
@@ -137,13 +160,13 @@ export function SettingsMock({ progress }: { isInView: boolean; progress: number
                         <div className="flex items-center justify-between p-3 border-b border-border/50">
                           <span className="text-sm font-medium text-muted-foreground">SYSTEM PROMPT</span>
                           <span className="text-xs text-muted-foreground">
-                            {Math.round(450 + (progress * 200))} chars
+                            {Math.round(450 + (temperatureProgress * 2))} chars
                           </span>
                         </div>
                         <div className="p-4 font-mono text-sm max-h-40 overflow-y-auto">
                           <div className="whitespace-pre-wrap text-muted-foreground">
                             You are an AI assistant specialized in generating implementation plans for software development tasks...
-                            {progress > 0.5 && '\n\nProvide detailed, actionable steps that developers can follow to implement the requested features efficiently.'}
+                            {temperatureProgress > 50 && '\n\nProvide detailed, actionable steps that developers can follow to implement the requested features efficiently.'}
                           </div>
                         </div>
                       </div>
@@ -241,3 +264,5 @@ export function SettingsMock({ progress }: { isInView: boolean; progress: number
     </div>
   );
 }
+export default SettingsMock;
+

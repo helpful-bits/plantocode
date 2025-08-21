@@ -3,18 +3,32 @@
 
 import { DesktopInput } from '../desktop-ui/DesktopInput';
 import { DesktopButton } from '../desktop-ui/DesktopButton';
-import { useAutoFillText, useDelayedVisibility } from '../hooks/useScrollOrchestration';
+import { useTimedLoop, useTypewriter } from '../hooks';
 import { FolderOpen, X } from 'lucide-react';
+import { useState, useEffect } from 'react';
 
 interface ProjectSelectorMockProps {
   isInView: boolean;
-  progress: number;
+  resetKey?: number;
 }
 
-export function ProjectSelectorMock({ isInView, progress }: ProjectSelectorMockProps) {
+export function ProjectSelectorMock({ isInView }: ProjectSelectorMockProps) {
   const samplePath = "/Users/sarah/dev/my-awesome-project";
-  const autoFilledText = useAutoFillText(samplePath, isInView && progress > 0.2, 500);
-  const showSuccessHint = useDelayedVisibility(progress > 0.7, 300);
+  const [successVisible, setSuccessVisible] = useState(false);
+  
+  // Use timing-based loop with 12s cycle and 500ms idle delay
+  const { t } = useTimedLoop(isInView, 12000, { idleDelayMs: 500, resetOnDeactivate: true });
+  
+  // Use typewriter for path during 0.2-0.7 window  
+  const showTyping = t >= 0.2 && t < 0.7;
+  const { displayText: autoFilledText } = useTypewriter({ active: showTyping, text: samplePath, durationMs: 2000 });
+  
+  // Show success hint during 0.75-1.0 window (unused variable removed)
+
+  useEffect(() => {
+    if (!isInView) { setSuccessVisible(false); return; }
+    if (t >= 0.75) setSuccessVisible(true);
+  }, [t, isInView]);
 
   return (
     <div className="w-full">
@@ -32,13 +46,14 @@ export function ProjectSelectorMock({ isInView, progress }: ProjectSelectorMockP
                   className="border-0 bg-transparent focus-visible:ring-0 pr-12 sm:pr-16 h-8 sm:h-10 text-xs sm:text-sm"
                 />
                 {autoFilledText && (
-                  <button
-                    type="button"
-                    className="absolute right-8 sm:right-10 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground focus-ring rounded-sm p-1 hover:bg-accent/50 transition-colors"
+                  <DesktopButton
+                    variant="ghost"
+                    size="xs"
+                    className="absolute right-8 sm:right-10 top-1/2 -translate-y-1/2 h-5 w-5 p-0 text-muted-foreground hover:text-foreground"
                     aria-label="Clear input"
                   >
                     <X className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
-                  </button>
+                  </DesktopButton>
                 )}
               </div>
 
@@ -53,7 +68,7 @@ export function ProjectSelectorMock({ isInView, progress }: ProjectSelectorMockP
             </div>
           </div>
 
-          {showSuccessHint && (
+          {successVisible && (
             <p className="text-xs px-1 text-green-500">
               Perfect! Project directory selected successfully.
             </p>
@@ -63,3 +78,5 @@ export function ProjectSelectorMock({ isInView, progress }: ProjectSelectorMockP
     </div>
   );
 }
+
+export default ProjectSelectorMock;

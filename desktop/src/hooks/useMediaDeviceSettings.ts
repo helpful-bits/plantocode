@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 
-export const FPS_OPTIONS = [5, 10, 15, 20, 24];
+export const FPS_OPTIONS = [1, 5, 10, 15, 20, 24];
 
 const STORAGE_KEY = 'vibe-manager-audio-device';
 

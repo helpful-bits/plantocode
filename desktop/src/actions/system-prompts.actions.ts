@@ -84,21 +84,6 @@ export async function resetProjectSystemPrompt(
   }
 }
 
-/**
- * Validate system prompt content
- */
-export function validateSystemPrompt(prompt: string): { isValid: boolean; errors: string[] } {
-  const errors: string[] = [];
-  
-  if (prompt.length > 10000) {
-    errors.push('System prompt is too long (maximum 10,000 characters)');
-  }
-  
-  return {
-    isValid: errors.length === 0,
-    errors
-  };
-}
 
 /**
  * Extract placeholders from a system prompt template

@@ -6,8 +6,9 @@
 'use client';
 
 import { DesktopCard, DesktopCardContent, DesktopCardHeader, DesktopCardTitle } from '../desktop-ui/DesktopCard';
+import { DesktopButton } from '../desktop-ui/DesktopButton';
 import { DesktopProgress } from '../desktop-ui/DesktopProgress';
-import { useTypeOnScroll, useAnimatedNumber, usePulse } from '../hooks/useScrollOrchestration';
+import { useTimedLoop, useTypewriter } from '../hooks';
 import { FileCode, Layers, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -133,42 +134,37 @@ const contentSections: ContentSection[] = [
   { title: 'Testing Strategy', icon: <Settings className="h-4 w-4" />, lines: 8 },
 ];
 
-export function PlanContentStreamingMock({ isInView, progress }: { isInView: boolean; progress: number }) {
-  // All hooks must be called first, before any conditional logic
-  const showClickPulse = isInView && progress > 0.2 && progress < 0.35;
-  const autoExpandContent = isInView && progress >= 0.35;
+export function PlanContentStreamingMock({ isInView }: { isInView: boolean; resetKey?: number }) {
+  // Use timing-based animations
+  const { t } = useTimedLoop(isInView, 14000, { resetOnDeactivate: true });
+  const { displayText, isDone } = useTypewriter({
+    active: isInView,
+    text: implementationContent,
+    durationMs: 9000,
+    loop: true
+  });
   
-  const pulseActive = usePulse(showClickPulse, 1000);
+  const progress = isDone || t >= 0.8 ? 100 : Math.round((displayText.length / implementationContent.length) * 100);
 
-  const streamingContent = useTypeOnScroll(
-    implementationContent,
-    autoExpandContent ? 1 : 0,
-    0
-  );
-
-  const animatedProgress = useAnimatedNumber(
-    Math.min(Math.floor((streamingContent.displayText.length / implementationContent.length) * 100), 95),
-    autoExpandContent
-  );
-
-  const completionProgress = useAnimatedNumber(
-    progress > 0.8 ? 100 : animatedProgress,
-    autoExpandContent && progress > 0.8
-  );
+  // Show button click pulse for first part of cycle
+  const showClickPulse = t > 0.1 && t < 0.25;
+  const autoExpandContent = t >= 0.25;
 
   // Conditional rendering after all hooks are called
   if (!autoExpandContent) {
     return (
       <div className="flex items-center justify-center py-8">
-        <button 
+        <DesktopButton
+          variant="default"
+          size="md"
           className={cn(
-            "px-4 py-2 bg-primary text-primary-foreground rounded-md transition-all duration-300",
-            showClickPulse && pulseActive && "ring-4 ring-primary/30 scale-105"
+            "transition-all duration-300",
+            showClickPulse && "ring-4 ring-primary/30 scale-105 animate-pulse"
           )}
           disabled
         >
           View Plan Content
-        </button>
+        </DesktopButton>
       </div>
     );
   }
@@ -184,16 +180,16 @@ export function PlanContentStreamingMock({ isInView, progress }: { isInView: boo
           <div className="flex items-center gap-2">
             <div className={cn(
               "h-2 w-2 rounded-full transition-colors duration-300",
-              completionProgress < 100 ? "bg-yellow-500 animate-pulse" : "bg-green-500"
+              progress < 100 ? "bg-yellow-500 animate-pulse" : "bg-green-500"
             )} />
             <span className="text-sm text-muted-foreground">
-              {completionProgress}%
+              {progress}%
             </span>
           </div>
         </div>
         <DesktopProgress 
-          value={completionProgress} 
-          variant={completionProgress === 100 ? 'success' : 'default'}
+          value={progress} 
+          variant={progress === 100 ? 'success' : 'default'}
           className="h-2 mt-2"
         />
       </DesktopCardHeader>
@@ -203,7 +199,7 @@ export function PlanContentStreamingMock({ isInView, progress }: { isInView: boo
         <div className="mb-4 grid grid-cols-2 gap-2">
           {contentSections.map((section, index) => {
             const sectionProgress = Math.max(0, Math.min(100, 
-              ((streamingContent.displayText.length - (index * 200)) / 200) * 100
+              ((displayText.length - (index * 200)) / 200) * 100
             ));
             
             return (
@@ -233,8 +229,8 @@ export function PlanContentStreamingMock({ isInView, progress }: { isInView: boo
         <div className="flex items-center justify-between mb-2">
           <span className="text-xs text-muted-foreground font-medium">markdown</span>
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <span>{streamingContent.displayText.length} chars</span>
-            {isInView && progress > 0.1 && streamingContent.displayText.length < implementationContent.length && (
+            <span>{displayText.length} chars</span>
+            {isInView && t > 0.1 && displayText.length < implementationContent.length && (
               <span className="text-primary">Streaming</span>
             )}
           </div>
@@ -243,14 +239,14 @@ export function PlanContentStreamingMock({ isInView, progress }: { isInView: boo
         {/* Streaming Content */}
         <div className="relative">
           <pre className="text-xs bg-muted/30 rounded-lg border border-border p-3 overflow-x-auto font-mono leading-relaxed whitespace-pre-wrap">
-            {streamingContent.displayText}
-            {isInView && progress > 0.1 && streamingContent.displayText.length < implementationContent.length && (
+            {displayText}
+            {isInView && t > 0.1 && displayText.length < implementationContent.length && (
               <span className="animate-pulse text-primary">|</span>
             )}
           </pre>
           
           {/* Completion overlay */}
-          {completionProgress === 100 && (
+          {progress === 100 && (
             <div className="absolute inset-0 bg-green-500/5 rounded-lg border border-green-500/20 pointer-events-none transition-opacity duration-500" />
           )}
         </div>
@@ -260,16 +256,16 @@ export function PlanContentStreamingMock({ isInView, progress }: { isInView: boo
           <div className="grid grid-cols-3 gap-4 text-xs">
             <div>
               <span className="text-muted-foreground">Characters</span>
-              <div className="font-mono">{streamingContent.displayText.length.toLocaleString()}</div>
+              <div className="font-mono">{displayText.length.toLocaleString()}</div>
             </div>
             <div>
               <span className="text-muted-foreground">Estimated tokens</span>
-              <div className="font-mono">{Math.floor(streamingContent.displayText.length / 4).toLocaleString()}</div>
+              <div className="font-mono">{Math.floor(displayText.length / 4).toLocaleString()}</div>
             </div>
             <div>
               <span className="text-muted-foreground">Time elapsed</span>
               <div className="font-mono">
-                {completionProgress === 100 ? '2m 15s' : `${Math.floor(animatedProgress / 10)}s`}
+                {progress === 100 ? '2m 15s' : `${Math.floor(progress / 10)}s`}
               </div>
             </div>
           </div>

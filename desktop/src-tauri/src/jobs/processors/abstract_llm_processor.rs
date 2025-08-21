@@ -258,6 +258,14 @@ impl LlmTaskRunner {
         // Extract request_id from the stream result (no longer needed for cost polling)
         let request_id = stream_result.request_id.clone();
 
+        // Check if this is a partial response due to connection issues
+        if stream_result.is_partial {
+            warn!(
+                "LLM response for job {} is partial due to connection error - {} characters received",
+                self.job.id, stream_result.accumulated_response.len()
+            );
+        }
+
         // Log server-authoritative usage data for billing audit trail
         debug!(
             "Server-authoritative usage data from streaming LLM response: {:?}",

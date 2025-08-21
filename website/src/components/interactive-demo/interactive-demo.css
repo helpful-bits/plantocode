@@ -88,7 +88,7 @@
   
   /* Desktop glass effect is defined in desktop-compat.css */
 
-  /* Respect user's motion preferences */
+  /* Respect user's motion preferences - Step 21: Accessibility */
   @media (prefers-reduced-motion: reduce) {
     .animate-bounce,
     .demo-typewriter,
@@ -99,5 +99,36 @@
       animation-iteration-count: 1 !important;
       transition-duration: 0.01ms !important;
     }
+  }
+
+  /* Performance optimizations - Step 21: Performance validation */
+  .interactive-demo-container {
+    contain: layout style paint;
+  }
+
+  .step-card {
+    contain: layout style;
+    transform: translateZ(0); /* Force GPU acceleration */
+  }
+
+  /* High contrast mode support - Step 21: Accessibility */
+  @media (prefers-contrast: high) {
+    .desktop-glass {
+      background: rgba(0, 0, 0, 0.1);
+      border: 1px solid currentColor;
+    }
+    
+    .demo-typewriter {
+      border-right-color: currentColor !important;
+    }
+  }
+
+  /* Focus indicators for accessibility - Step 21: Accessibility */
+  .interactive-demo-container button:focus-visible,
+  .interactive-demo-container input:focus-visible,
+  .interactive-demo-container select:focus-visible,
+  .interactive-demo-container textarea:focus-visible {
+    outline: 2px solid hsl(var(--primary));
+    outline-offset: 2px;
   }
 }

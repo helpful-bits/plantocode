@@ -4,13 +4,17 @@
 import { DesktopTextarea } from '../desktop-ui/DesktopTextarea';
 import { DesktopButton } from '../desktop-ui/DesktopButton';
 import { Undo2, Redo2, Mic, Video, ChevronDown, Settings } from 'lucide-react';
+import { useTimedLoop, useTypewriter, useIntervalGate } from '../hooks';
+import { useState, useEffect } from 'react';
+import { cn } from '@/lib/utils';
 
 interface TaskDescriptionMockProps {
   isInView: boolean;
-  progress: number;
 }
 
-export function TaskDescriptionMock({ isInView: _isInView, progress }: TaskDescriptionMockProps) {
+export function TaskDescriptionMock({ isInView }: TaskDescriptionMockProps) {
+  const [undoPressed, setUndoPressed] = useState(false);
+  const [redoPressed, setRedoPressed] = useState(false);
   const taskDescription = `We need to create an interactive demo for the "How It Works" section on mobile and tablet devices. This demo will showcase the critical components of our desktop application through a guided, scroll-based experience.
 
 **Interactive Demo Requirements:**
@@ -40,22 +44,42 @@ The interactive demo must guide users through this sequence:
 3. Task description entry
 4. Voice transcription`;
 
-  // Progress-driven state calculation
-  const isEmpty = progress < 0.1;
-  const undoPressed = progress >= 0.4 && progress < 0.43;
-  const redoPressed = progress >= 0.5 && progress < 0.53;
-  const micPressed = progress >= 0.6 && progress < 0.63;
-  const videoPressed = progress >= 0.7 && progress < 0.73;
+  // Use timing-based loop with 16s cycle and 400ms idle delay
+  const { t } = useTimedLoop(isInView, 16000, { idleDelayMs: 400, resetOnDeactivate: true });
   
-  // Progress-driven typing for deterministic output
-  const typedText = (() => {
-    if (isEmpty) return "";
-    const typingStart = 0.1;
-    const typingEnd = 0.4;
-    const localProgress = Math.max(0, (progress - typingStart) / (typingEnd - typingStart));
-    const targetLength = Math.floor(localProgress * taskDescription.length);
-    return taskDescription.slice(0, targetLength);
-  })();
+  // Use typewriter for text during 0.3-0.7 window
+  const showTyping = t >= 0.3 && t < 0.7;
+  const { displayText, isDone } = useTypewriter({ active: showTyping, text: taskDescription, durationMs: 2000 });
+  const [savedText, setSavedText] = useState(taskDescription);
+
+  useEffect(() => {
+    const saved = typeof window !== "undefined" ? localStorage.getItem("demo/taskDescription") : null;
+    if (saved && !showTyping) setSavedText(saved);
+  }, [showTyping]);
+
+  useEffect(() => {
+    if (!isInView) return;
+    if (isDone && showTyping) {
+      localStorage.setItem("demo/taskDescription", displayText);
+    }
+  }, [isDone, showTyping, isInView, displayText]);
+  
+  // Timing-driven state calculation
+  const isEmpty = t < 0.3;
+  
+  // Use interval gates for button pulses
+  const undoPressedGate = useIntervalGate(t, [{ startPct: 0.40, endPct: 0.43 }]);
+  const redoPressedGate = useIntervalGate(t, [{ startPct: 0.50, endPct: 0.53 }]);
+  const micPressed = useIntervalGate(t, [{ startPct: 0.60, endPct: 0.63 }]);
+  const videoPressed = useIntervalGate(t, [{ startPct: 0.70, endPct: 0.73 }]);
+
+  useEffect(() => {
+    setUndoPressed(undoPressedGate);
+  }, [undoPressedGate]);
+
+  useEffect(() => {
+    setRedoPressed(redoPressedGate);
+  }, [redoPressedGate]);
 
 
   return (
@@ -82,9 +106,11 @@ The interactive demo must guide users through this sequence:
                 variant="outline"
                 size="sm"
                 disabled={isEmpty}
-                className={`h-6 w-6 transition-transform duration-200 ${
-                  undoPressed ? 'scale-95 bg-primary/80' : ''
-                }`}
+                aria-pressed={undoPressed}
+                className={cn(
+                  "h-6 w-6 transition-transform duration-200",
+                  undoPressed && "scale-95 bg-primary/80 ring-2 ring-primary/40"
+                )}
               >
                 <Undo2 className="h-3 w-3" />
               </DesktopButton>
@@ -92,9 +118,11 @@ The interactive demo must guide users through this sequence:
                 variant="outline"
                 size="sm"
                 disabled={isEmpty}
-                className={`h-6 w-6 transition-transform duration-200 ${
-                  redoPressed ? 'scale-95 bg-primary/80' : ''
-                }`}
+                aria-pressed={redoPressed}
+                className={cn(
+                  "h-6 w-6 transition-transform duration-200",
+                  redoPressed && "scale-95 bg-primary/80 ring-2 ring-primary/40"
+                )}
               >
                 <Redo2 className="h-3 w-3" />
               </DesktopButton>
@@ -148,7 +176,7 @@ The interactive demo must guide users through this sequence:
             className={`border rounded-xl bg-background backdrop-blur-sm text-foreground p-4 w-full resize-y font-normal shadow-soft min-h-[400px] ${
               isEmpty ? "border-destructive/20 bg-destructive/5" : "border-border/60"
             }`}
-            value={typedText}
+            value={showTyping ? displayText : savedText}
             placeholder="Clearly describe the changes or features you want the AI to implement. You can use the voice recorder below or type directly."
             readOnly
           />
@@ -187,3 +215,5 @@ The interactive demo must guide users through this sequence:
     </div>
   );
 }
+export default TaskDescriptionMock;
+

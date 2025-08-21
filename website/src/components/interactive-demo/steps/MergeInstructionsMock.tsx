@@ -2,6 +2,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useTimedCycle, useTypewriter } from '../hooks';
 import { Eye, Plus, Check, ChevronLeft, ChevronRight, Copy, StickyNote, GripVertical, Info, Trash2, Merge, ChevronDown, ChevronUp } from 'lucide-react';
 import { DesktopCard, DesktopCardHeader, DesktopCardTitle, DesktopCardDescription, DesktopCardContent } from '../desktop-ui/DesktopCard';
 import { DesktopButton } from '../desktop-ui/DesktopButton';
@@ -380,11 +381,11 @@ function FloatingMergeInstructions({ isVisible, instructions, onInstructionsChan
         <GripVertical className="h-4 w-4 text-muted-foreground" />
       </div>
       <div className="relative">
-        <textarea
+        <DesktopTextarea
           value={instructions}
           onChange={(e) => onInstructionsChange(e.target.value)}
           placeholder="Add notes about what you like or don't like in this plan..."
-          className="w-full resize-none border border-border rounded-md px-3 py-2 text-sm bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent h-32"
+          className="w-full resize-none h-32"
         />
       </div>
       <p className="text-xs text-muted-foreground mt-2">
@@ -394,40 +395,70 @@ function FloatingMergeInstructions({ isVisible, instructions, onInstructionsChan
   );
 }
 
-export function MergeInstructionsMock({ isInView, progress }: { isInView: boolean; progress: number }) {
-  // Progress-driven state calculation
-  const currentView = (() => {
-    if (!isInView || progress < 0.15) return 'plan-list';
-    if (progress >= 0.85) return 'plan-list'; // Reset at end
-    return 'editor';
-  })();
+// Define phases outside component to prevent recreation on each render
+const MERGE_INSTRUCTIONS_PHASES = [
+  { name: 'plan-list' as const, durationMs: 1000 },        // Time to see plan list (reduced from 1200ms)
+  { name: 'editor-plan1' as const, durationMs: 1500 },    // Plan 1 editor view (reduced from 2000ms)  
+  { name: 'editor-plan2' as const, durationMs: 1500 },    // Plan 2 editor view (reduced from 2000ms)
+  { name: 'select-plan2' as const, durationMs: 500 },     // Quick selection (reduced from 600ms)
+  { name: 'select-plan1' as const, durationMs: 500 },     // Quick selection (reduced from 600ms)
+  { name: 'edit-instructions' as const, durationMs: 2000 }, // Edit instructions (reduced from 2500ms)
+  { name: 'back-to-list' as const, durationMs: 800 },     // Return to list (reduced from 1000ms)
+  { name: 'wait' as const, durationMs: 800 }              // Brief pause (reduced from 1000ms)
+];
+
+export function MergeInstructionsMock({ isInView }: { isInView: boolean; resetKey?: number }) {
+
+  const { phaseName: phase, phaseProgress01: phaseProgress } = useTimedCycle({
+    active: isInView,
+    phases: MERGE_INSTRUCTIONS_PHASES,
+    loop: true,
+    resetOnDeactivate: true
+  });
+  
+  // Derive state from current phase
+  const currentView = phase === 'plan-list' || phase === 'back-to-list' || phase === 'wait' ? 'plan-list' : 'editor';
   
   const currentPlanIndex = (() => {
     if (currentView === 'plan-list') return 0;
-    if (progress < 0.35) return 0; // First plan
-    if (progress < 0.65) return 1; // Second plan  
-    return 0; // Back to first plan
+    if (phase === 'editor-plan1' || phase === 'select-plan1') return 0;
+    if (phase === 'editor-plan2' || phase === 'select-plan2') return 1;
+    return 0;
   })();
   
   const selectedPlans = (() => {
-    if (!isInView || progress < 0.4) return new Set<string>();
-    if (progress < 0.45) return new Set([mockPlans[1]?.id].filter(Boolean)); // Second plan selected
-    if (progress < 0.85) return new Set([mockPlans[0]?.id, mockPlans[1]?.id].filter(Boolean)); // Both selected
-    return new Set<string>(); // Reset
+    const selected = new Set<string>();
+    if (phase === 'select-plan2' || phase === 'select-plan1' || phase === 'edit-instructions' || phase === 'back-to-list') {
+      if (phase === 'select-plan2' && phaseProgress > 0.5) {
+        selected.add(mockPlans[1]?.id || '');
+      }
+      if (phase === 'select-plan1' && phaseProgress > 0.5) {
+        selected.add(mockPlans[0]?.id || '');
+        selected.add(mockPlans[1]?.id || '');
+      }
+      if (phase === 'edit-instructions' || phase === 'back-to-list') {
+        selected.add(mockPlans[0]?.id || '');
+        selected.add(mockPlans[1]?.id || '');
+      }
+    }
+    return selected;
   })();
   
-  const mergeInstructions = (() => {
-    if (progress < 0.75) return '';
-    if (progress >= 0.85) return ''; // Reset
-    return 'Focus on maintaining compatibility between the service-oriented and event-driven approaches. Prioritize the authentication service foundation from Plan B, then layer in the event infrastructure from Plan C.';
-  })();
+  // Use typewriter during edit-instructions phase
+  const instructionsText = 'Focus on maintaining compatibility between the service-oriented and event-driven approaches. Prioritize the authentication service foundation from Plan B, then layer in the event infrastructure from Plan C.';
+  const { displayText: typedInstructions } = useTypewriter({
+    text: instructionsText,
+    active: phase === 'edit-instructions',
+    durationMs: 2000
+  });
+  const mergeInstructions = phase === 'edit-instructions' ? typedInstructions : '';
   
-  // Button press windows for visual feedback
+  // Button press states based on phase
   const buttonStates = {
-    [`view-content-${mockPlans[0]?.id || 'unknown'}`]: progress >= 0.1 && progress < 0.15,
-    'nav-next': progress >= 0.3 && progress < 0.35,
-    'select-plan': (progress >= 0.4 && progress < 0.45) || (progress >= 0.7 && progress < 0.75),
-    'nav-prev': progress >= 0.6 && progress < 0.65
+    [`view-content-${mockPlans[0]?.id || 'unknown'}`]: phase === 'plan-list' && phaseProgress > 0.5,
+    'nav-next': phase === 'editor-plan1' && phaseProgress > 0.7,
+    'select-plan': (phase === 'select-plan2' && phaseProgress > 0.3) || (phase === 'select-plan1' && phaseProgress > 0.3),
+    'nav-prev': phase === 'editor-plan2' && phaseProgress > 0.7
   };
   
   const currentPlan = mockPlans[currentPlanIndex];
@@ -614,3 +645,5 @@ export function MergeInstructionsMock({ isInView, progress }: { isInView: boolea
     </div>
   );
 }
+export default MergeInstructionsMock;
+

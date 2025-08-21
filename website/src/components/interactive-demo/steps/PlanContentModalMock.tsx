@@ -17,6 +17,7 @@ import { DesktopButton } from '../desktop-ui/DesktopButton';
 import { DesktopProgress } from '../desktop-ui/DesktopProgress';
 import { DesktopCodeViewer } from '../desktop-ui/DesktopCodeViewer';
 
+
 const mockPlanContent = `// Implementation Plan A: Component-Based Architecture
 
 ## 1. Core Component Structure
@@ -102,7 +103,6 @@ interface PlanContentModalMockProps {
   onOpenChange: (open: boolean) => void;
   planTitle?: string;
   isStreaming?: boolean;
-  progress?: number;
 }
 
 function CopyButton({ content, label }: { content: string; label: string }) {
@@ -144,8 +144,7 @@ export function PlanContentModalMock({
   open, 
   onOpenChange, 
   planTitle = "Plan A: Component-Based Architecture",
-  isStreaming = false,
-  progress = 100
+  isStreaming = false
 }: PlanContentModalMockProps) {
   if (!open) return null;
 
@@ -180,7 +179,7 @@ export function PlanContentModalMock({
                 <div className="flex flex-col items-center">
                   <div className="flex items-center gap-2">
                     <div className="h-2 w-2 rounded-full bg-green-500" />
-                    <span className="text-sm text-muted-foreground">{progress}%</span>
+                    <span className="text-sm text-muted-foreground">100%</span>
                   </div>
                   <span>Completed</span>
                   <span className="text-xs">
@@ -215,10 +214,10 @@ export function PlanContentModalMock({
         {/* Progress bar for streaming */}
         {isStreaming && (
           <div className="mb-2 flex-shrink-0">
-            <DesktopProgress value={progress} className="h-2" />
+            <DesktopProgress value={85} className="h-2" />
             <div className="flex justify-between mt-1 text-xs text-muted-foreground">
               <span>Generating implementation plan...</span>
-              <span>{Math.round(progress)}%</span>
+              <span>85%</span>
             </div>
           </div>
         )}

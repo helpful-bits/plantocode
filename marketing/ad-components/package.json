@@ -1,0 +1,28 @@
+{
+  "name": "vibe-manager-ad-components",
+  "version": "1.0.0",
+  "description": "Marketing ad components for Vibe Manager",
+  "main": "index.js",
+  "scripts": {
+    "dev": "serve .",
+    "build": "echo 'Building ad components...'",
+    "preview": "serve reddit-ad-2025-08-21"
+  },
+  "keywords": [
+    "marketing",
+    "ads",
+    "react",
+    "tsx",
+    "vibe-manager"
+  ],
+  "author": "Vibe Manager Team",
+  "license": "MIT",
+  "devDependencies": {
+    "serve": "^14.2.1",
+    "typescript": "^5.3.3"
+  },
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  }
+}

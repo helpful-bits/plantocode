@@ -6,6 +6,7 @@ import { Label } from '@/ui/label';
 import { Checkbox } from '@/ui/checkbox';
 import { Slider } from '@/ui/slider';
 import { AudioDeviceSelect } from '@/ui';
+import { Alert, AlertTitle, AlertDescription } from '@/ui/alert';
 import { useTaskContext } from '../_contexts/task-context';
 import { useMediaDeviceSettings } from '@/hooks/useMediaDeviceSettings';
 import { usePlausible } from '@/hooks/use-plausible';
@@ -54,9 +55,10 @@ export const VideoRecordingDialog: React.FC<VideoRecordingDialogProps> = ({
   const handleStart = () => {
     // Track video recording start
     trackEvent('desktop_video_recording_started', {
-      has_prompt: Boolean(localPrompt.trim()),
-      record_audio: recordAudio,
-      frame_rate: selectedFrameRate
+      has_prompt: Boolean(localPrompt.trim()).toString(),
+      record_audio: recordAudio.toString(),
+      frame_rate: selectedFrameRate,
+      location: 'video_recording_dialog'
     });
     
     // Get task description and user prompt
@@ -94,6 +96,15 @@ export const VideoRecordingDialog: React.FC<VideoRecordingDialogProps> = ({
             After clicking "Start Recording", select the area of your screen to record.
           </DialogDescription>
         </DialogHeader>
+        
+        <Alert variant="warning" className="mt-4">
+          <AlertTitle>Video Recording Limits</AlertTitle>
+          <AlertDescription>
+            <strong>Keep recordings under 2 minutes.</strong> The AI model analyzes each frame individually. 
+            Longer videos or high frame rates will exceed token limits and may fail processing. 
+            Lower frame rates (1-5 FPS) are recommended for longer recordings.
+          </AlertDescription>
+        </Alert>
         
         <div className="space-y-4 pt-4">
           <div className="space-y-2">
@@ -158,7 +169,7 @@ export const VideoRecordingDialog: React.FC<VideoRecordingDialogProps> = ({
             />
             <div className="flex justify-between text-xs text-muted-foreground">
               <span>{minFps} FPS</span>
-              <span className="text-center">Higher frame rates may increase analysis costs</span>
+              <span className="text-center font-medium">Higher frame rates = more frames = more tokens</span>
               <span>{maxFps} FPS</span>
             </div>
           </div>

@@ -62,11 +62,12 @@ const VoiceTranscription = function VoiceTranscription({
   const handleToggleRecording = useCallback(async () => {
     if (isRecording) {
       trackEvent('desktop_voice_recording_stopped', {
-        duration: recordingDuration
+        duration: recordingDuration,
+        location: 'voice_input'
       });
       await stopRecording();
     } else {
-      trackEvent('desktop_voice_recording_started');
+      trackEvent('desktop_voice_recording_started', { location: 'voice_input' });
       await startRecording();
     }
   }, [isRecording, startRecording, stopRecording, trackEvent, recordingDuration]);

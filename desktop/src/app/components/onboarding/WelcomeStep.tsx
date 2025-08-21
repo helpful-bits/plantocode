@@ -14,7 +14,7 @@ export function WelcomeStep({ onGetStarted }: WelcomeStepProps) {
   const { trackEvent } = usePlausible();
 
   const handleGetStarted = () => {
-    trackEvent('desktop_onboarding_started');
+    trackEvent('desktop_onboarding_started', { location: 'welcome_step' });
     onGetStarted();
   };
 

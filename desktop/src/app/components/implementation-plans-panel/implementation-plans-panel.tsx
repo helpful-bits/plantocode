@@ -469,7 +469,8 @@ export function ImplementationPlansPanel({
       // Track implementation plan creation
       trackEvent('desktop_plan_created', {
         files_count: finalIncludedPaths.length,
-        has_task_description: Boolean(finalTaskDescription.trim())
+        has_task_description: Boolean(finalTaskDescription.trim()).toString(),
+        location: 'implementation_plans_panel'
       });
       
       await onCreatePlan(finalTaskDescription, finalIncludedPaths);

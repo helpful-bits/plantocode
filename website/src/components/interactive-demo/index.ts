@@ -4,22 +4,17 @@ export { StepController } from './StepController';
 
 // Orchestration Hooks
 export {
-  useAutoFillText,
-  useAnimatedNumber,
-  useSimulatedClick,
-  useTypeOnScroll,
-  useDelayedVisibility,
-  usePulse
+  useTimedCycle,
+  useTimedLoop,
+  useTypewriter,
+  useTweenNumber,
+  useIntervalGate
 } from './hooks/useScrollOrchestration';
 
 // Types
 export type StepControllerProps = {
-  children: React.ReactNode | ((props: { isInView: boolean; progress: number }) => React.ReactNode);
+  children: React.ReactNode | ((props: { isInView: boolean; resetKey: number }) => React.ReactNode);
   onEnter?: () => void;
+  onLeave?: () => void;
   className?: string;
-}
-
-export type OrchestrationConfig = {
-  progress: number;
-  phases: Array<{ start: number; end: number; name: string }>;
 }

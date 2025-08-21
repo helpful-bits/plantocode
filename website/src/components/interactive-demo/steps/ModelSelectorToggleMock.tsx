@@ -1,120 +1,88 @@
-// Step 17: Model Selector Toggle Mock - Ultra-simplified, always renders
+// Model Selector Toggle Mock - exact desktop styling with mobile responsive layout
 'use client';
 
-import { DesktopBadge } from '../desktop-ui/DesktopBadge';
-import { DesktopCard, DesktopCardContent } from '../desktop-ui/DesktopCard';
+import { DesktopModelSelectorToggle } from '../desktop-ui/DesktopModelSelectorToggle';
+import { DesktopButton } from '../desktop-ui/DesktopButton';
+import { useTimedLoop } from '../hooks';
 
-const modelOptions = [
-  {
-    id: 'claude-3.5-sonnet',
-    name: 'Claude-3.5-Sonnet',
-    description: 'Most capable model for complex reasoning',
-    contextWindow: '200K tokens',
-    isActive: true,
-  },
-  {
-    id: 'gpt-4o',
-    name: 'GPT-4o',
-    description: 'Multimodal AI with vision capabilities',
-    contextWindow: '128K tokens',
-  },
-  {
-    id: 'gemini-1.5-pro',
-    name: 'Gemini-1.5-Pro',
-    description: 'Google\'s most advanced AI model',
-    contextWindow: '2M tokens',
-  },
+// Models matching the screenshot: Claude 4 Sonnet, Gemini 2.5 Pro, GPT-5, GPT-o3, DeepSeek R1 (0528), Kimi K2, Grok 4
+const models = [
+  { id: 'claude-4-sonnet', name: 'Claude 4 Sonnet' },
+  { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro' },
+  { id: 'gpt-5', name: 'GPT-5' },
+  { id: 'gpt-o3', name: 'GPT-o3' },
+  { id: 'deepseek-r1-0528', name: 'DeepSeek R1 (0528)' },
+  { id: 'kimi-k2', name: 'Kimi K2' },
+  { id: 'grok-4', name: 'Grok 4' },
 ];
 
-export function ModelSelectorToggleMock({ progress }: { isInView: boolean; progress: number }) {
-  const showWarning = progress >= 0.25;
-  const showContextWarning = progress >= 0.5;
+export function ModelSelectorToggleMock({ isInView }: { isInView: boolean }) {
+  const { t } = useTimedLoop(isInView, 8000, { resetOnDeactivate: true });
+  
+  // Cycle through different selected models
+  const selectedModelIndex = Math.floor(t * models.length);
+  const selectedModelId = models[selectedModelIndex]?.id || 'gpt-5';
 
   return (
-    <div className="w-full max-w-2xl mx-auto p-4 space-y-6">
-      <div className="text-center">
-        <h3 className="text-lg font-semibold mb-2">AI Model Selection</h3>
-        <p className="text-sm text-muted-foreground">
-          Choose the AI model that best fits your workflow needs
-        </p>
+    <div className="flex justify-center">
+      {/* Desktop: single connected toggle */}
+      <div className="hidden sm:block">
+        <DesktopModelSelectorToggle
+          models={models}
+          selectedModelId={selectedModelId}
+          disabled={true}
+        />
       </div>
-
-      <DesktopCard>
-        <DesktopCardContent className="p-6">
-          <div className="space-y-4">
-            {modelOptions.map((model) => (
-              <div
-                key={model.id}
-                className={`
-                  relative p-4 rounded-lg border-2 transition-all duration-300 cursor-pointer
-                  ${model.isActive
-                    ? 'border-primary bg-primary/5 shadow-sm'
-                    : 'border-border hover:border-primary/50 hover:bg-muted/30'
-                  }
-                `}
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3">
-                      <div className={`
-                        w-4 h-4 rounded-full border-2 transition-colors
-                        ${model.isActive
-                          ? 'border-primary bg-primary'
-                          : 'border-muted-foreground'
-                        }
-                      `}>
-                        {model.isActive && (
-                          <div className="w-2 h-2 bg-primary-foreground rounded-full m-0.5" />
-                        )}
-                      </div>
-                      <h4 className="font-medium">{model.name}</h4>
-                      <DesktopBadge variant="outline" className="text-xs">
-                        {model.contextWindow}
-                      </DesktopBadge>
-                    </div>
-                    <p className="text-sm text-muted-foreground mt-1 ml-7">
-                      {model.description}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </DesktopCardContent>
-      </DesktopCard>
-
-      {/* Warning Section */}
-      {showWarning && (
-        <div className="space-y-3">
-          <div className="flex items-center gap-2 text-yellow-600 dark:text-yellow-400">
-            <svg className="w-5 h-5 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
-            </svg>
-            <span className="font-medium">Model Performance Notice</span>
-          </div>
-          <p className="text-sm text-muted-foreground ml-7">
-            Different models may produce varying results for the same prompt. Consider testing with multiple models for optimal results.
-          </p>
-          
-          {showContextWarning && (
-            <div className="bg-orange-50 dark:bg-orange-950/20 border border-orange-200 dark:border-orange-800 rounded-lg p-4 ml-7">
-              <div className="flex items-start gap-2">
-                <svg className="w-4 h-4 text-orange-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <div>
-                  <p className="text-sm font-medium text-orange-800 dark:text-orange-200">
-                    Context Window Exceeded
-                  </p>
-                  <p className="text-xs text-orange-700 dark:text-orange-300 mt-1">
-                    Your current conversation may be too long for Claude-3.5-Sonnet. Consider starting a new conversation or switching to Gemini-1.5-Pro.
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
+      
+      {/* Mobile: individual buttons in rows */}
+      <div className="sm:hidden flex flex-col gap-2">
+        {/* Row 1: First 3 models */}
+        <div className="flex gap-2 justify-center">
+          {models.slice(0, 3).map((model) => (
+            <DesktopButton
+              key={model.id}
+              variant={selectedModelId === model.id ? "filter-active" : "filter"}
+              size="xs"
+              disabled={true}
+              className="h-7 px-3 text-xs whitespace-nowrap"
+            >
+              {model.name}
+            </DesktopButton>
+          ))}
         </div>
-      )}
+        
+        {/* Row 2: Next 2 models */}
+        <div className="flex gap-2 justify-center">
+          {models.slice(3, 5).map((model) => (
+            <DesktopButton
+              key={model.id}
+              variant={selectedModelId === model.id ? "filter-active" : "filter"}
+              size="xs"
+              disabled={true}
+              className="h-7 px-3 text-xs whitespace-nowrap"
+            >
+              {model.name}
+            </DesktopButton>
+          ))}
+        </div>
+        
+        {/* Row 3: Last 2 models */}
+        <div className="flex gap-2 justify-center">
+          {models.slice(5, 7).map((model) => (
+            <DesktopButton
+              key={model.id}
+              variant={selectedModelId === model.id ? "filter-active" : "filter"}
+              size="xs"
+              disabled={true}
+              className="h-7 px-3 text-xs whitespace-nowrap"
+            >
+              {model.name}
+            </DesktopButton>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
+export default ModelSelectorToggleMock;
+
