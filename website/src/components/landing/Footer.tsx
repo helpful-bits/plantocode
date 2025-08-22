@@ -30,7 +30,7 @@ export function Footer() {
                 </h3>
               </Link>
               <p className="text-muted-foreground mb-6 max-w-md text-sm leading-relaxed">
-                The AI coding assistant that acts as a middle-manager for your LLMs. We curate the perfect context from your codebase and the web, so your agents can build correctly the first time.
+                AI coding assistant for large codebases. Find the right files, merge plans from multiple models, and ship correct changes—without sending your whole codebase to the cloud.
               </p>
 
               {/* Social Links */}

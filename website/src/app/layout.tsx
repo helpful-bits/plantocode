@@ -14,10 +14,10 @@ export const metadata: Metadata = {
   metadataBase: new URL('https://vibemanager.app'),
   title: {
     template: '%s | Vibe Manager',
-    default: 'Vibe code cleanup specialist',
+    default: 'AI coding assistant for large codebases | Vibe Manager',
   },
-  description: "The AI coding assistant that acts as a middle-manager for your LLMs, curating the perfect context so they can't get lost. Built by a developer, for developers, from the trenches.",
-  keywords: ['AI coding assistant', 'context curation', 'vibe coding', 'multi-model AI', 'codebase analysis', 'implementation plans', 'developer tools', 'local AI', 'private AI coding', 'Claude Code', 'Gemini', 'large codebase', 'developer productivity'],
+  description: 'Find the right files, merge plans from multiple models, and ship correct changes—without sending your whole codebase to the cloud. Local-first.',
+  keywords: ['AI coding assistant', 'codebase context', 'find relevant files', 'LLM orchestration', 'implementation plan', 'local-first', 'multi-model planning', 'deep research for code', 'large codebase navigation', 'developer tools', 'code intelligence', 'file discovery'],
   authors: [{ name: 'Vibe Manager Team' }],
   creator: 'Vibe Manager',
   publisher: 'Vibe Manager',
@@ -32,8 +32,8 @@ export const metadata: Metadata = {
     canonical: 'https://vibemanager.app/',
   },
   openGraph: {
-    title: 'Vibe code cleanup specialist',
-    description: 'Tired of babysitting your AI agent? Vibe Manager is the competent middle manager that curates perfect context from your codebase and the web, so your agents can build correctly the first time.',
+    title: 'AI coding assistant for large codebases | Vibe Manager',
+    description: 'Find the right files, merge plans from multiple models, and ship correct changes—without sending your whole codebase to the cloud. Local-first.',
     url: 'https://vibemanager.app/',
     siteName: 'Vibe Manager',
     images: [{
@@ -48,8 +48,8 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Vibe code cleanup specialist',
-    description: 'Tired of babysitting your AI agent? Vibe Manager is the competent middle manager that curates perfect context from your codebase and the web, so your agents can build correctly the first time.',
+    title: 'AI coding assistant for large codebases | Vibe Manager',
+    description: 'Find the right files, merge plans from multiple models, and ship correct changes—without sending your whole codebase to the cloud. Local-first.',
     images: [{
       url: cdnUrl('/images/og-image.png'),
       alt: 'Vibe Manager - AI-Powered Context Curation for Large Codebases',
@@ -128,7 +128,7 @@ const websiteJsonLd: WebSite = {
   '@type': 'WebSite',
   name: 'Vibe Manager',
   url: 'https://vibemanager.app',
-  description: "The AI coding assistant that acts as a middle-manager for your LLMs, curating the perfect context so they can't get lost. Built by a developer, for developers, from the trenches.",
+  description: 'Find the right files, merge plans from multiple models, and ship correct changes—without sending your whole codebase to the cloud. Local-first.',
 };
 
 export default function RootLayout({

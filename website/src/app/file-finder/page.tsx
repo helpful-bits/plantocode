@@ -1,0 +1,114 @@
+import type { Metadata } from 'next';
+import { Header } from '@/components/landing/Header';
+import { Search } from 'lucide-react';
+import Reveal from '@/components/motion/Reveal';
+import { Button } from '@/components/ui/button';
+import Link from 'next/link';
+
+export const metadata: Metadata = {
+  title: 'Find the exact files to change | Vibe Manager',
+  description: 'Decompose tasks, search smart patterns, and rank files by actual content.',
+  keywords: [
+    'file finder',
+    'code search',
+    'relevant files',
+    'task decomposition',
+    'smart search patterns',
+    'file ranking',
+    'AI coding assistant',
+  ],
+};
+
+export default function FileFinderPage() {
+  return (
+    <>
+      <div className="fixed inset-0 -z-20" style={{ background: 'var(--background-gradient)' }} />
+      <div className="relative z-0 bg-transparent">
+        <Header />
+        
+        <main className="flex-grow">
+          <section className="relative py-20 sm:py-24">
+            <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+              <Reveal as="div" className="mb-6">
+                <Search className="w-16 h-16 mx-auto mb-6 text-primary" />
+              </Reveal>
+              
+              <Reveal as="h1" className="text-4xl sm:text-5xl font-bold mb-6 text-foreground">
+                Find the exact files to change
+              </Reveal>
+              
+              <Reveal className="text-xl text-muted-foreground mb-8 max-w-3xl mx-auto">
+                Decompose tasks, search smart patterns, and rank files by actual content.
+              </Reveal>
+
+              <div className="grid md:grid-cols-2 gap-8 mt-12 text-left">
+                <Reveal className="space-y-4">
+                  <h3 className="text-2xl font-semibold text-foreground">Smart Task Decomposition</h3>
+                  <p className="text-muted-foreground">
+                    Break down complex features into logical areas. Instead of searching blindly, 
+                    the File Finder understands what types of files are needed for different parts 
+                    of your task.
+                  </p>
+                </Reveal>
+
+                <Reveal className="space-y-4" delay={0.1}>
+                  <h3 className="text-2xl font-semibold text-foreground">Content-Aware Ranking</h3>
+                  <p className="text-muted-foreground">
+                    AI assesses actual file content for relevance, not just filenames. 
+                    Find the files that actually matter for your implementation, 
+                    including critical dependencies.
+                  </p>
+                </Reveal>
+
+                <Reveal className="space-y-4" delay={0.2}>
+                  <h3 className="text-2xl font-semibold text-foreground">Targeted Search Patterns</h3>
+                  <p className="text-muted-foreground">
+                    Creates intelligent search patterns based on your task context. 
+                    No more sifting through irrelevant matches—get straight to what you need.
+                  </p>
+                </Reveal>
+
+                <Reveal className="space-y-4" delay={0.3}>
+                  <h3 className="text-2xl font-semibold text-foreground">Real-time Intelligence</h3>
+                  <p className="text-muted-foreground">
+                    Expand search scope dynamically when needed. The system learns 
+                    from your codebase structure to find files you didn't even know were relevant.
+                  </p>
+                </Reveal>
+              </div>
+
+              <Reveal className="mt-12" delay={0.4}>
+                <Button asChild size="xl" variant="cta">
+                  <Link href="/download">
+                    Try File Finder
+                  </Link>
+                </Button>
+              </Reveal>
+
+              {/* FAQ Section */}
+              <div className="mt-16 max-w-3xl mx-auto">
+                <Reveal as="h2" className="text-2xl font-semibold mb-8 text-center">
+                  Frequently Asked Questions
+                </Reveal>
+                <div className="space-y-6">
+                  <Reveal className="border border-primary/10 rounded-lg p-6">
+                    <h3 className="font-semibold text-foreground mb-2">How is this different from grep or search?</h3>
+                    <p className="text-muted-foreground">File Finder uses AI to understand your task context and scores files by actual relevance, not just text matches. It finds implementation-critical files you might miss with traditional search.</p>
+                  </Reveal>
+                  <Reveal className="border border-primary/10 rounded-lg p-6" delay={0.1}>
+                    <h3 className="font-semibold text-foreground mb-2">Does it work with large codebases?</h3>
+                    <p className="text-muted-foreground">Yes, it's specifically designed for large codebases where manual file discovery becomes impossible. The AI assessment scales efficiently across thousands of files.</p>
+                  </Reveal>
+                  <Reveal className="border border-primary/10 rounded-lg p-6" delay={0.2}>
+                    <h3 className="font-semibold text-foreground mb-2">What if it misses important files?</h3>
+                    <p className="text-muted-foreground">File Finder can expand its search scope dynamically and includes dependency analysis. You can also refine search patterns based on initial results.</p>
+                  </Reveal>
+                </div>
+              </div>
+            </div>
+          </section>
+        </main>
+      </div>
+    </>
+  );
+}
