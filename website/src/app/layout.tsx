@@ -140,8 +140,6 @@ export default function RootLayout({
     <html suppressHydrationWarning className={fontClasses.variables} lang="en">
       <head>
         {/* Preconnect to critical third-party origins - from Lighthouse report */}
-        <link rel="dns-prefetch" href={MEDIA_CDN_BASE} />
-        <link rel="preconnect" href={MEDIA_CDN_BASE} crossOrigin="anonymous" />
         {/* Additional preconnects for analytics if enabled */}
         {process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID && (
           <>
