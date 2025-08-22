@@ -46,7 +46,7 @@ export function ProjectSelectorMock({ isInView }: ProjectSelectorMockProps) {
               Project root:
             </label>
             <div className="flex items-center flex-1 group">
-              <div className="relative flex-1 border border-border/50 rounded-l-lg bg-background/80 backdrop-blur-sm focus-within:border-primary/30 focus-within:ring-2 focus-within:ring-ring/50 transition-all duration-200 hover:border-border/70">
+              <div className="relative flex-1 border border-[oklch(0.90_0.04_195_/_0.5)] rounded-l-lg bg-background/80 backdrop-blur-sm focus-within:border-primary/30 focus-within:ring-2 focus-within:ring-ring/50 transition-all duration-200 hover:border-[oklch(0.90_0.04_195_/_0.7)]">
                 <DesktopInput
                   value={autoFilledText}
                   placeholder="Enter project directory path"

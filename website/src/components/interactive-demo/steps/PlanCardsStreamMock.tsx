@@ -239,12 +239,12 @@ export function PlanCardsStreamMock({ isInView }: { isInView: boolean }) {
   // Use timed loop with 20s cycle and 300ms idle delay
   const { t: timeProgress } = useTimedLoop(isInView, 20000, { idleDelayMs: 300, resetOnDeactivate: true });
   
-  // Use interval gates for button pulses and plan windows
+  // Use interval gates for button pulses - button press happens before each plan creation
   const buttonClicked = useIntervalGate(timeProgress, [
-    { startPct: 0.14, endPct: 0.17 },
-    { startPct: 0.34, endPct: 0.37 },
-    { startPct: 0.64, endPct: 0.67 },
-    { startPct: 0.84, endPct: 0.87 }
+    { startPct: 0.12, endPct: 0.15 }, // Button press before first plan
+    { startPct: 0.32, endPct: 0.35 }, // Button press before second plan  
+    { startPct: 0.62, endPct: 0.65 }, // Button press before third plan
+    { startPct: 0.82, endPct: 0.85 }  // Button press before fourth plan
   ]);
 
   const estimatedTokens = (isInView && timeProgress > 0.05) ? 83247 : 0;
@@ -310,11 +310,12 @@ export function PlanCardsStreamMock({ isInView }: { isInView: boolean }) {
   };
 
   // Generate all plans - NEWER PLANS AT TOP (reverse chronological order like real apps)
+  // Plan creation happens after button press completes with proper delay
   const allPlans = [
-    createPlan('plan-gemini-2', 'API Integration Layer', 'Gemini 2.5 Pro', 4800, 4300, 0.85, 1.0),
-    createPlan('plan-gemini-1', 'Database Schema Design', 'Gemini 2.5 Pro', 6100, 5200, 0.65, 0.80),
-    createPlan('plan-gpt5-2', 'User Interface Components', 'GPT-5', 5200, 4100, 0.35, 0.55),
-    createPlan('plan-gpt5-1', 'Authentication System Architecture', 'GPT-5', 4247, 3800, 0.15, 0.35)
+    createPlan('plan-gemini-2', 'API Integration Layer', 'Gemini 2.5 Pro', 4800, 4300, 0.89, 1.0),      // Button: 82-85%, Plan: 89% (+4% = 800ms delay)
+    createPlan('plan-gemini-1', 'Database Schema Design', 'Gemini 2.5 Pro', 6100, 5200, 0.69, 0.84),   // Button: 62-65%, Plan: 69% (+4% = 800ms delay)
+    createPlan('plan-gpt5-2', 'User Interface Components', 'GPT-5', 5200, 4100, 0.39, 0.59),           // Button: 32-35%, Plan: 39% (+4% = 800ms delay)
+    createPlan('plan-gpt5-1', 'Authentication System Architecture', 'GPT-5', 4247, 3800, 0.19, 0.39)   // Button: 12-15%, Plan: 19% (+4% = 800ms delay)
   ];
 
   const buttonState = buttonClicked ? 'clicking' : 'idle';
@@ -333,7 +334,7 @@ export function PlanCardsStreamMock({ isInView }: { isInView: boolean }) {
 
       {/* Create Implementation Plan Section */}
       {isInView && timeProgress > 0.02 && (
-        <DesktopCard className="bg-card p-2 sm:p-6 rounded-lg border border-border shadow-sm mb-2 sm:mb-6">
+        <DesktopCard className="bg-card p-2 sm:p-6 rounded-lg border border-[oklch(0.90_0.04_195_/_0.3)] shadow-sm mb-2 sm:mb-6">
           <div>
             <h3 className="text-sm font-medium mb-3 text-foreground">Create New Plan</h3>
             
@@ -376,12 +377,12 @@ export function PlanCardsStreamMock({ isInView }: { isInView: boolean }) {
               </div>
 
               <DesktopButton
-                variant="default"
+                variant="outline"
                 size="sm"
                 disabled={!canCreatePlan}
                 className={cn(
                   "flex items-center justify-center w-full h-9 transition-all duration-300",
-                  buttonState === 'clicking' && "bg-primary/60 scale-[0.96] shadow-inner ring-2 ring-primary/30 border-primary/50"
+                  buttonState === 'clicking' && "scale-95 bg-primary/80 ring-2 ring-primary/40"
                 )}
               >
                 <FileCode className="h-4 w-4 mr-2" />
@@ -398,25 +399,22 @@ export function PlanCardsStreamMock({ isInView }: { isInView: boolean }) {
       )}
       
       <div className="space-y-3">
-        {allPlans.map((plan) => (
-          <div
-            key={plan.id}
-            className={cn(
-              "transition-all duration-500 ease-in-out min-h-[180px]",
-              plan.isVisible 
-                ? "opacity-100 transform translate-y-0 scale-100" 
-                : "opacity-0 transform translate-y-2 scale-95 pointer-events-none"
-            )}
-          >
-            <PlanCard 
-              plan={plan} 
-              isActive={isInView}
-              progress={timeProgress}
-              onToggleContent={handleToggleContent}
-              isExpanded={false}
-            />
-          </div>
-        ))}
+        {allPlans
+          .filter(plan => plan.isVisible)
+          .map((plan) => (
+            <div
+              key={plan.id}
+              className="transition-all duration-500 ease-in-out"
+            >
+              <PlanCard 
+                plan={plan} 
+                isActive={isInView}
+                progress={timeProgress}
+                onToggleContent={handleToggleContent}
+                isExpanded={false}
+              />
+            </div>
+          ))}
       </div>
       
       {viewingPlan && (

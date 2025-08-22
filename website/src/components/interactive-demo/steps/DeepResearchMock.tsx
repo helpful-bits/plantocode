@@ -9,12 +9,12 @@
 import { useState, useEffect } from 'react';
 import { DesktopButton } from '../desktop-ui/DesktopButton';
 import { DesktopTextarea } from '../desktop-ui/DesktopTextarea';
-import { DesktopJobCard } from '../desktop-ui/DesktopJobCard';
-import { Search, CheckCircle } from 'lucide-react';
+import { DesktopCard, DesktopCardContent } from '../desktop-ui/DesktopCard';
+import { DesktopBadge } from '../desktop-ui/DesktopBadge';
+import { CheckCircle, Brain, Globe } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useInteractiveDemoContext } from '../contexts/InteractiveDemoContext';
 import { useTimedCycle, useTweenNumber } from '../hooks';
-import { JobDetailsModalMock } from './JobDetailsModalMock';
 
 interface DeepResearchMockProps {
   isInView: boolean;
@@ -34,15 +34,7 @@ export function DeepResearchMock({ isInView }: DeepResearchMockProps) {
   const { setDeepResearchState } = useInteractiveDemoContext();
   const [buttonPressed, setButtonPressed] = useState(false);
   const [showWebSearch, setShowWebSearch] = useState(false);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [taskText, setTaskText] = useState("I need to understand how user authentication works in this React application. Specifically, I want to analyze the login functionality and JWT token implementation, ensuring that routes are properly protected so users cannot access unauthorized content. Additionally, I want to verify that session management is working correctly and that security best practices are being followed throughout the application.");
-
-  const mockPrompts = [
-    "Analyze auth flows", 
-    "Check token refresh", 
-    "Trace path resolution", 
-    "Summarize findings"
-  ];
+  const [taskText] = useState("I need to understand how user authentication works in this React application. Specifically, I want to analyze the login functionality and JWT token implementation, ensuring that routes are properly protected so users cannot access unauthorized content. Additionally, I want to verify that session management is working correctly and that security best practices are being followed throughout the application.");
 
   const { phaseName: currentState } = useTimedCycle({ 
     active: isInView, 
@@ -51,30 +43,17 @@ export function DeepResearchMock({ isInView }: DeepResearchMockProps) {
     resetOnDeactivate: true
   });
 
-  // Map to context state
-  const contextState = (() => {
-    switch (currentState) {
-      case 'button-ready': return 'ready';
-      case 'wait': return 'idle';
-      default: return currentState as 'idle' | 'processing' | 'completed' | 'ready';
-    }
-  })();
-
-  // Publish state to context on phase transitions
+  // Context state for communication with other components
+  const contextState = currentState === 'completed' ? 'completed' : 
+                      currentState === 'processing' ? 'processing' : 'idle';
+  
   useEffect(() => {
     setDeepResearchState(contextState);
   }, [contextState, setDeepResearchState]);
 
-  // Use timed numbers for progress animations
+  // Progress animation 
   const { value: analysisProgressValue } = useTweenNumber({
-    active: currentState === 'processing',
-    from: 0,
-    to: 100,
-    durationMs: 3000
-  });
-
-  const { value: webSearchProgressValue } = useTweenNumber({
-    active: currentState === 'processing' && analysisProgressValue >= 95 || currentState === 'completed',
+    active: currentState === 'processing' || currentState === 'completed', 
     from: 0,
     to: 100,
     durationMs: 4000
@@ -85,7 +64,6 @@ export function DeepResearchMock({ isInView }: DeepResearchMockProps) {
     if (!isInView) {
       setButtonPressed(false);
       setShowWebSearch(false);
-      setIsModalOpen(false);
       return;
     }
 
@@ -93,105 +71,144 @@ export function DeepResearchMock({ isInView }: DeepResearchMockProps) {
     setShowWebSearch(analysisProgressValue >= 50);
   }, [isInView, currentState, analysisProgressValue]);
 
-  // Modal control logic
-  useEffect(() => {
-    if (!isInView) {
-      setIsModalOpen(false);
-      return;
-    }
-
-    if (currentState === 'processing' && analysisProgressValue >= 80) {
-      setIsModalOpen(true);
-    } else if (currentState === 'completed') {
-      setIsModalOpen(true);
-    }
-  }, [isInView, currentState, analysisProgressValue]);
-
   const isProcessing = currentState === 'processing';
   const isCompleted = currentState === 'completed';
   const showButton = currentState !== 'idle';
 
   return (
-    <div className="w-full space-y-4">
-      <div className="space-y-3">
-        <DesktopTextarea
-          value={taskText}
-          onChange={(e) => setTaskText(e.target.value)}
-          placeholder="Describe what you want to research and analyze..."
-          className="min-h-[140px] resize-none"
-        />
-        
-        {/* Button container with stable height */}
-        <div className="flex justify-end min-h-[40px] transition-all duration-300 ease-in-out">
-          <DesktopButton
-            size="sm"
-            className={cn(
-              "transition-all duration-300 ease-in-out",
-              showButton ? "opacity-100 transform translate-y-0" : "opacity-0 transform translate-y-2 pointer-events-none",
-              buttonPressed && "scale-95 bg-primary-600"
-            )}
-            disabled={isProcessing}
-          >
-            <Search className="w-4 h-4 mr-2" />
-            {isProcessing ? 'Researching...' : isCompleted ? 'Research Complete' : 'Deep Research'}
-          </DesktopButton>
+    <div className="w-full">
+      <div className="flex flex-col gap-1.5">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div className="flex items-center gap-2 flex-wrap">
+            <label
+              className="font-semibold text-base sm:text-lg text-foreground"
+            >
+              Task Description
+            </label>
+          </div>
+        </div>
+
+        <div className="relative">
+          <DesktopTextarea
+            className="border rounded-xl bg-background backdrop-blur-sm text-foreground p-4 w-full resize-y font-normal shadow-soft min-h-[400px] border-[oklch(0.90_0.04_195_/_0.5)]"
+            value={taskText}
+            placeholder="Clearly describe the changes or features you want the AI to implement. You can use the voice recorder below or type directly."
+            readOnly
+          />
+
+          {/* Bottom buttons - EXACTLY like TaskDescriptionMock */}
+          <div className="flex flex-col gap-3 mt-4">
+            <DesktopButton 
+              variant="outline" 
+              size="sm"
+              className={cn(
+                "flex items-center justify-center gap-2 w-full text-foreground transition-all duration-200",
+                showButton ? "opacity-100 transform translate-y-0" : "opacity-0 transform translate-y-2 pointer-events-none",
+                buttonPressed && "scale-95 bg-primary/80 ring-2 ring-primary/40"
+              )}
+              disabled={isProcessing}
+            >
+              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="12" cy="12" r="10" />
+                <path d="M12 6v6l4 2" />
+              </svg>
+              {isProcessing ? 'Researching...' : isCompleted ? 'Research Complete' : 'Deep Research'}
+            </DesktopButton>
+          </div>
         </div>
       </div>
 
-      {/* Job cards container with stable height */}
+      {/* Background Jobs Cards - Using proper SidebarJobsMock styling */}
       <div className="space-y-3 mt-6 min-h-[280px] transition-all duration-300 ease-in-out">
-        <DesktopJobCard className={cn(
-          "transition-all duration-300 ease-in-out",
-          (isProcessing || isCompleted) ? "opacity-100 transform translate-y-0" : "opacity-0 transform translate-y-2 pointer-events-none"
-        )}>
-          <div className="flex items-start justify-between mb-3">
-            <div>
-              <h4 className="font-medium text-sm">Code Analysis</h4>
-              <p className="text-xs text-muted-foreground">Analyzing authentication patterns</p>
-            </div>
-            <div className={`text-xs px-2 py-1 rounded ${analysisProgressValue >= 100 ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'}`}>
-              {analysisProgressValue >= 100 ? 'Completed' : 'Running'}
-            </div>
-          </div>
-          <div className="space-y-2">
-            <div className="flex justify-between text-xs">
-              <span>Progress</span>
-              <span>{Math.round(analysisProgressValue)}%</span>
-            </div>
-            <div className="w-full bg-muted rounded-full h-2">
-              <div className="bg-primary h-2 rounded-full transition-all duration-300" style={{width: `${Math.round(analysisProgressValue)}%`}}></div>
-            </div>
-          </div>
-        </DesktopJobCard>
+        <div className="relative">
+          <DesktopCard className={cn(
+            "transition-all duration-300 hover:shadow-md max-w-[300px] min-h-[120px]",
+            (isProcessing || isCompleted) ? "opacity-100 transform translate-y-0" : "opacity-0 transform translate-y-2 pointer-events-none"
+          )}>
+            <DesktopCardContent className="p-4">
+              <div className="flex items-start justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <div className={cn(
+                    "transition-colors duration-300",
+                    analysisProgressValue >= 100 ? "text-green-600" : "text-blue-600"
+                  )}>
+                    <Brain className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <h4 className="font-medium text-xs sm:text-sm truncate">Code Analysis</h4>
+                    <p className="text-xs text-muted-foreground truncate">Claude 3.5 Sonnet</p>
+                  </div>
+                </div>
+                <DesktopBadge variant={analysisProgressValue >= 100 ? "success" : "default"} className="text-xs">
+                  {analysisProgressValue >= 100 ? 'Completed' : 'Running'}
+                </DesktopBadge>
+              </div>
+              
+              <div className="space-y-2">
+                <div className="flex justify-between text-xs">
+                  <span>Progress</span>
+                  <span>{Math.round(analysisProgressValue)}%</span>
+                </div>
+                <div className="w-full bg-muted rounded-full h-2">
+                  <div className="bg-primary h-2 rounded-full transition-all duration-300" style={{width: `${Math.round(analysisProgressValue)}%`}}></div>
+                </div>
+              </div>
+              
+              <div className="flex justify-between items-center mt-3 pt-2 border-t border-[oklch(0.90_0.04_195_/_0.2)]">
+                <span className="text-xs sm:text-sm text-muted-foreground">Tokens</span>
+                <span className="text-xs sm:text-sm font-mono">
+                  {analysisProgressValue >= 100 ? '~4,247' : '~2,100'}
+                </span>
+              </div>
+            </DesktopCardContent>
+          </DesktopCard>
+        </div>
         
-        <DesktopJobCard className={cn(
-          "transition-all duration-300 ease-in-out",
-          showWebSearch ? "opacity-100 transform translate-y-0" : "opacity-0 transform translate-y-2 pointer-events-none"
-        )}>
-          <div className="flex items-start justify-between mb-3">
-            <div>
-              <h4 className="font-medium text-sm">Web Search Research</h4>
-              <p className="text-xs text-muted-foreground">Searching for security best practices</p>
-            </div>
-            <div className={`text-xs px-2 py-1 rounded ${webSearchProgressValue >= 100 ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'}`}>
-              {webSearchProgressValue >= 100 ? 'Completed' : 'Running'}
-            </div>
-          </div>
-          <div className="space-y-2">
-            <div className="flex justify-between text-xs">
-              <span>Progress</span>
-              <span>{Math.round(webSearchProgressValue)}%</span>
-            </div>
-            <div className="w-full bg-muted rounded-full h-2">
-              <div className="bg-primary h-2 rounded-full transition-all duration-300" style={{width: `${Math.round(webSearchProgressValue)}%`}}></div>
-            </div>
-          </div>
-        </DesktopJobCard>
+        <div className="relative">
+          <DesktopCard className={cn(
+            "transition-all duration-300 hover:shadow-md max-w-[300px] min-h-[120px]",
+            showWebSearch ? "opacity-100 transform translate-y-0" : "opacity-0 transform translate-y-2 pointer-events-none"
+          )}>
+            <DesktopCardContent className="p-4">
+              <div className="flex items-start justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <div className="transition-colors duration-300 text-blue-600">
+                    <Globe className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <h4 className="font-medium text-xs sm:text-sm truncate">Web Research</h4>
+                    <p className="text-xs text-muted-foreground truncate">GPT-4o</p>
+                  </div>
+                </div>
+                <DesktopBadge variant="default" className="text-xs">
+                  Running
+                </DesktopBadge>
+              </div>
+              
+              <div className="space-y-2">
+                <div className="flex justify-between text-xs">
+                  <span>Progress</span>
+                  <span>78%</span>
+                </div>
+                <div className="w-full bg-muted rounded-full h-2">
+                  <div className="bg-primary h-2 rounded-full" style={{width: '78%'}}></div>
+                </div>
+              </div>
+              
+              <div className="flex justify-between items-center mt-3 pt-2 border-t border-[oklch(0.90_0.04_195_/_0.2)]">
+                <span className="text-xs sm:text-sm text-muted-foreground">Tokens</span>
+                <span className="text-xs sm:text-sm font-mono">
+                  ~1,890
+                </span>
+              </div>
+            </DesktopCardContent>
+          </DesktopCard>
+        </div>
       </div>
 
-      {/* Completion summary with stable height */}
+      {/* Completion summary - matches TaskDescriptionMock styling */}
       <div className={cn(
-        "mt-6 p-4 border border-border rounded-lg bg-card min-h-[120px] transition-all duration-300 ease-in-out",
+        "mt-6 p-4 border border-[oklch(0.90_0.04_195_/_0.3)] rounded-lg bg-card min-h-[120px] transition-all duration-300 ease-in-out",
         isCompleted ? "opacity-100 transform translate-y-0" : "opacity-0 transform translate-y-2 pointer-events-none"
       )}>
         <div className="flex items-center gap-2 mb-3">
@@ -204,14 +221,7 @@ export function DeepResearchMock({ isInView }: DeepResearchMockProps) {
           <div>• Identified 12 security improvements</div>
         </div>
       </div>
-
-      <JobDetailsModalMock 
-        open={isModalOpen} 
-        onOpenChange={setIsModalOpen} 
-        prompts={mockPrompts} 
-      />
     </div>
   );
 }
 export default DeepResearchMock;
-

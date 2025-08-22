@@ -210,7 +210,7 @@ export function FileSearchMock({ isInView }: FileSearchMockProps) {
             </div>
             
             {/* Undo/Redo buttons */}
-            <div className="flex items-center gap-1 ml-2 pl-2 border-l border-border/60">
+            <div className="flex items-center gap-1 ml-2 pl-2 border-l border-[oklch(0.90_0.04_195_/_0.3)]">
               <DesktopButton
                 variant="outline"
                 size="sm"
@@ -244,10 +244,10 @@ export function FileSearchMock({ isInView }: FileSearchMockProps) {
         {/* AI Find Button - Full width like original */}
         <div className="flex items-center gap-2 px-0 pb-2 sm:px-0 sm:pb-4 mb-2 sm:mb-4">
           <DesktopButton 
-            variant="default"
+            variant="outline"
             size="sm"
             disabled={showWorkflow && !correctionComplete}
-            className="flex-1 bg-primary hover:bg-primary/90 border-primary hover:border-primary/90 text-primary-foreground font-medium disabled:bg-primary/70 disabled:hover:bg-primary/70 disabled:border-primary/70 disabled:cursor-not-allowed"
+            className="flex-1 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {showWorkflow && !correctionComplete ? (
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -277,9 +277,9 @@ export function FileSearchMock({ isInView }: FileSearchMockProps) {
         </div>
 
         {/* File table with sticky header */}
-        <div className="border border-border/60 rounded-lg bg-background/80 h-[450px] overflow-hidden flex flex-col">
+        <div className="border border-[oklch(0.90_0.04_195_/_0.4)] rounded-lg bg-background/80 h-[450px] overflow-hidden flex flex-col">
           {/* Table Header - Sticky */}
-          <div className="flex-shrink-0 px-1 py-1 sm:px-4 sm:py-3 border-b border-border/40 bg-muted/30">
+          <div className="flex-shrink-0 px-1 py-1 sm:px-4 sm:py-3 border-b border-[oklch(0.90_0.04_195_/_0.2)] bg-muted/30">
             <div className="flex items-center gap-2">
               {/* Select/Exclude columns */}
               <div className="w-12 sm:w-14 flex items-center gap-0.5 text-xs font-medium text-muted-foreground">
@@ -494,7 +494,7 @@ export function FileSearchMock({ isInView }: FileSearchMockProps) {
               "mt-3 relative min-h-[120px] transition-all duration-500 ease-in-out",
               regexComplete ? "opacity-100 transform translate-y-0" : "opacity-0 transform translate-y-2 pointer-events-none"
             )}>
-              <div className="absolute -top-3 left-1/2 transform -translate-x-1/2 w-0 h-3 border-l-2 border-dashed border-border/60" />
+              <div className="absolute -top-3 left-1/2 transform -translate-x-1/2 w-0 h-3 border-l-2 border-dashed border-[oklch(0.90_0.04_195_/_0.6)]" />
               <DesktopJobCard>
                   <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-3">
@@ -566,7 +566,7 @@ export function FileSearchMock({ isInView }: FileSearchMockProps) {
               "mt-3 relative min-h-[120px] transition-all duration-500 ease-in-out",
               relevanceComplete ? "opacity-100 transform translate-y-0" : "opacity-0 transform translate-y-2 pointer-events-none"
             )}>
-              <div className="absolute -top-3 left-1/2 transform -translate-x-1/2 w-0 h-3 border-l-2 border-dashed border-border/60" />
+              <div className="absolute -top-3 left-1/2 transform -translate-x-1/2 w-0 h-3 border-l-2 border-dashed border-[oklch(0.90_0.04_195_/_0.6)]" />
               <DesktopJobCard>
                   <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-3">
@@ -638,7 +638,7 @@ export function FileSearchMock({ isInView }: FileSearchMockProps) {
               "mt-3 relative min-h-[120px] transition-all duration-500 ease-in-out",
               pathComplete ? "opacity-100 transform translate-y-0" : "opacity-0 transform translate-y-2 pointer-events-none"
             )}>
-              <div className="absolute -top-3 left-1/2 transform -translate-x-1/2 w-0 h-3 border-l-2 border-dashed border-border/60" />
+              <div className="absolute -top-3 left-1/2 transform -translate-x-1/2 w-0 h-3 border-l-2 border-dashed border-[oklch(0.90_0.04_195_/_0.6)]" />
               <DesktopJobCard>
                   <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-3">
