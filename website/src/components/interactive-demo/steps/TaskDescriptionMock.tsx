@@ -17,6 +17,7 @@ export function TaskDescriptionMock({ isInView }: TaskDescriptionMockProps) {
   const [redoPressed, setRedoPressed] = useState(false);
   const [textHistory, setTextHistory] = useState<string[]>([]);
   const [currentHistoryIndex, setCurrentHistoryIndex] = useState(-1);
+  const [manualTextOverride, setManualTextOverride] = useState<string | null>(null);
   
   const taskDescription = `We need to create an interactive demo for the "How It Works" section on mobile and tablet devices. This demo will showcase the critical components of our desktop application through a guided, scroll-based experience.
 
@@ -95,13 +96,19 @@ Key requirements:
   // Handle undo/redo functionality
   const handleUndo = () => {
     if (currentHistoryIndex > 0) {
-      setCurrentHistoryIndex(currentHistoryIndex - 1);
+      const newIndex = currentHistoryIndex - 1;
+      const newValue = textHistory[newIndex];
+      setCurrentHistoryIndex(newIndex);
+      setManualTextOverride(newValue);
     }
   };
 
   const handleRedo = () => {
     if (currentHistoryIndex < textHistory.length - 1) {
-      setCurrentHistoryIndex(currentHistoryIndex + 1);
+      const newIndex = currentHistoryIndex + 1;
+      const newValue = textHistory[newIndex];
+      setCurrentHistoryIndex(newIndex);
+      setManualTextOverride(newValue);
     }
   };
 
@@ -142,12 +149,13 @@ Key requirements:
             <div className="flex items-center gap-1">
               <DesktopButton
                 variant="outline"
-                size="sm"
+                size="xs"
+                compact
                 disabled={isEmpty || currentHistoryIndex <= 0}
                 aria-pressed={undoPressed}
                 onClick={handleUndo}
                 className={cn(
-                  "h-5 w-5 transition-transform duration-200",
+                  "transition-transform duration-200",
                   undoPressed && "scale-95 bg-primary/80 ring-2 ring-primary/40"
                 )}
                 title="Undo last change"
@@ -156,12 +164,13 @@ Key requirements:
               </DesktopButton>
               <DesktopButton
                 variant="outline"
-                size="sm"
+                size="xs"
+                compact
                 disabled={isEmpty || currentHistoryIndex >= textHistory.length - 1}
                 aria-pressed={redoPressed}
                 onClick={handleRedo}
                 className={cn(
-                  "h-5 w-5 transition-transform duration-200",
+                  "transition-transform duration-200",
                   redoPressed && "scale-95 bg-primary/80 ring-2 ring-primary/40"
                 )}
                 title="Redo undone change"
@@ -218,7 +227,7 @@ Key requirements:
             className={`border rounded-xl bg-background backdrop-blur-sm text-foreground p-4 w-full resize-y font-normal shadow-soft min-h-[400px] ${
               isEmpty ? "border-destructive/20 bg-destructive/5" : "border-[oklch(0.90_0.04_195_/_0.5)]"
             }`}
-            value={showTyping ? displayText : (textHistory[currentHistoryIndex] || savedText)}
+            value={manualTextOverride ?? (showTyping ? displayText : (textHistory[currentHistoryIndex] || savedText))}
             placeholder="Clearly describe the changes or features you want the AI to implement. You can use the voice recorder below or type directly."
             readOnly
           />
@@ -234,7 +243,7 @@ Key requirements:
             <DesktopButton 
               variant="outline" 
               size="sm"
-              className="flex items-center justify-center gap-2 w-full text-foreground"
+              className="font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 w-full text-foreground"
             >
               <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <circle cx="12" cy="12" r="10" />
@@ -246,7 +255,7 @@ Key requirements:
             <DesktopButton 
               variant="outline"
               size="sm" 
-              className="flex items-center justify-center gap-2 w-full text-foreground"
+              className="font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 w-full text-foreground"
             >
               <Settings className="h-4 w-4" />
               Refine Task

@@ -99,13 +99,12 @@ export function SessionManagerMock({ isInView }: SessionManagerMockProps) {
                 placeholder="Search sessions..."
                 value={searchQuery}
                 onChange={setSearchQuery}
-                className="pl-7 h-7 w-full sm:w-32 text-xs"
+                className="pl-7 w-full sm:w-44"
               />
             </div>
             <DesktopButton
               size="sm"
               variant="outline"
-              className="text-xs h-7 px-2 text-foreground"
             >
               <RefreshCw className="h-3 w-3 mr-1" />
               <span className="hidden sm:inline">Refresh</span>
@@ -113,7 +112,7 @@ export function SessionManagerMock({ isInView }: SessionManagerMockProps) {
             <DesktopButton
               size="sm"
               variant="outline"
-              className={`text-xs h-7 px-2 text-foreground transition-transform duration-200 ${newButtonPressed ? 'scale-95 bg-primary/80' : ''}`}
+              className={`transition-transform duration-200 ${newButtonPressed ? 'scale-95 bg-primary/80' : ''}`}
             >
               <PlusCircle className="h-3 w-3 mr-1" />
               New
@@ -135,7 +134,8 @@ export function SessionManagerMock({ isInView }: SessionManagerMockProps) {
                 />
               </div>
               <DesktopButton
-                className={`h-8 sm:h-9 px-2 sm:px-3 text-xs sm:text-sm transition-transform duration-200 ${saveButtonPressed ? 'scale-95 bg-primary/80' : ''}`}
+                size="sm"
+                className={`transition-transform duration-200 ${saveButtonPressed ? 'scale-95 bg-primary/80' : ''}`}
                 disabled={step < 4}
               >
                 <Save className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1" />
@@ -152,7 +152,7 @@ export function SessionManagerMock({ isInView }: SessionManagerMockProps) {
           <div
             key={session.id}
             className={cn(
-              "flex items-center justify-between p-2 border-b border-[oklch(0.90_0.04_195_/_0.15)] last:border-b-0 transition-all duration-200 cursor-pointer",
+              "flex items-center justify-between p-2 border-b border-[oklch(0.90_0.04_195_/_0.3)] last:border-b-0 transition-all duration-200 cursor-pointer",
               session.isActive ? "bg-accent" : "hover:bg-muted/80",
               session.id === "new" && step >= 5 ? "ring-1 ring-primary/30 animate-in fade-in-0 slide-in-from-bottom-2 duration-300" : ""
             )}
@@ -170,25 +170,28 @@ export function SessionManagerMock({ isInView }: SessionManagerMockProps) {
             
             <div className="flex items-center gap-0.5 sm:gap-1 flex-shrink-0">
               <DesktopButton
-                size="sm"
+                compact
+                size="xs"
                 variant="ghost"
-                className="h-6 w-6 sm:h-7 sm:w-7"
+                className="h-6 w-6"
                 aria-label="Clone session"
               >
                 <Copy className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
               </DesktopButton>
               <DesktopButton
-                size="sm"
+                compact
+                size="xs"
                 variant="ghost"
-                className="h-6 w-6 sm:h-7 sm:w-7"
+                className="h-6 w-6"
                 aria-label="Rename session"
               >
                 <Pencil className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
               </DesktopButton>
               <DesktopButton
-                size="sm"
+                compact
+                size="xs"
                 variant="ghost"
-                className="h-6 w-6 sm:h-7 sm:w-7 text-destructive"
+                className="h-6 w-6 text-destructive"
                 aria-label="Delete session"
               >
                 <Trash2 className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-destructive" />

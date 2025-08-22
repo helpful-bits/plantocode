@@ -40,9 +40,9 @@ export function DesktopProgress({
           value === undefined && 'animate-pulse opacity-60'
         )}
         style={{
-          transform: value !== undefined 
-            ? `translateX(-${100 - percentage}%)` 
-            : `translateX(-50%)`, // Show partial progress for indeterminate
+          width: value !== undefined 
+            ? `${percentage}%` 
+            : '50%', // Show partial progress for indeterminate
         }}
       />
     </div>
