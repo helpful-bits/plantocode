@@ -15,6 +15,9 @@ interface TaskDescriptionMockProps {
 export function TaskDescriptionMock({ isInView }: TaskDescriptionMockProps) {
   const [undoPressed, setUndoPressed] = useState(false);
   const [redoPressed, setRedoPressed] = useState(false);
+  const [textHistory, setTextHistory] = useState<string[]>([]);
+  const [currentHistoryIndex, setCurrentHistoryIndex] = useState(-1);
+  
   const taskDescription = `We need to create an interactive demo for the "How It Works" section on mobile and tablet devices. This demo will showcase the critical components of our desktop application through a guided, scroll-based experience.
 
 **Interactive Demo Requirements:**
@@ -43,6 +46,22 @@ The interactive demo must guide users through this sequence:
 2. Session creation
 3. Task description entry
 4. Voice transcription`;
+
+  const shortTaskDescription = `Create an interactive demo showcasing our desktop application workflow through scroll-triggered animations.
+
+Key requirements:
+- Forms auto-populate with sample data
+- Buttons simulate clicks
+- Dynamic captions appear
+- Cohesive user story`;
+
+  // Initialize text history when component mounts or resets
+  useEffect(() => {
+    if (textHistory.length === 0) {
+      setTextHistory([shortTaskDescription, taskDescription]);
+      setCurrentHistoryIndex(1);
+    }
+  }, [taskDescription, shortTaskDescription, textHistory.length]);
 
   // Use timing-based loop with 16s cycle and 400ms idle delay
   const { t } = useTimedLoop(isInView, 16000, { idleDelayMs: 400, resetOnDeactivate: true });
@@ -73,12 +92,31 @@ The interactive demo must guide users through this sequence:
   const micPressed = useIntervalGate(t, [{ startPct: 0.60, endPct: 0.63 }]);
   const videoPressed = useIntervalGate(t, [{ startPct: 0.70, endPct: 0.73 }]);
 
+  // Handle undo/redo functionality
+  const handleUndo = () => {
+    if (currentHistoryIndex > 0) {
+      setCurrentHistoryIndex(currentHistoryIndex - 1);
+    }
+  };
+
+  const handleRedo = () => {
+    if (currentHistoryIndex < textHistory.length - 1) {
+      setCurrentHistoryIndex(currentHistoryIndex + 1);
+    }
+  };
+
   useEffect(() => {
     setUndoPressed(undoPressedGate);
+    if (undoPressedGate) {
+      handleUndo();
+    }
   }, [undoPressedGate]);
 
   useEffect(() => {
     setRedoPressed(redoPressedGate);
+    if (redoPressedGate) {
+      handleRedo();
+    }
   }, [redoPressedGate]);
 
 
@@ -105,26 +143,30 @@ The interactive demo must guide users through this sequence:
               <DesktopButton
                 variant="outline"
                 size="sm"
-                disabled={isEmpty}
+                disabled={isEmpty || currentHistoryIndex <= 0}
                 aria-pressed={undoPressed}
+                onClick={handleUndo}
                 className={cn(
-                  "h-6 w-6 transition-transform duration-200",
+                  "h-5 w-5 transition-transform duration-200",
                   undoPressed && "scale-95 bg-primary/80 ring-2 ring-primary/40"
                 )}
+                title="Undo last change"
               >
-                <Undo2 className="h-3 w-3" />
+                <Undo2 className="h-2.5 w-2.5" />
               </DesktopButton>
               <DesktopButton
                 variant="outline"
                 size="sm"
-                disabled={isEmpty}
+                disabled={isEmpty || currentHistoryIndex >= textHistory.length - 1}
                 aria-pressed={redoPressed}
+                onClick={handleRedo}
                 className={cn(
-                  "h-6 w-6 transition-transform duration-200",
+                  "h-5 w-5 transition-transform duration-200",
                   redoPressed && "scale-95 bg-primary/80 ring-2 ring-primary/40"
                 )}
+                title="Redo undone change"
               >
-                <Redo2 className="h-3 w-3" />
+                <Redo2 className="h-2.5 w-2.5" />
               </DesktopButton>
             </div>
           </div>
@@ -174,9 +216,9 @@ The interactive demo must guide users through this sequence:
         <div className="relative">
           <DesktopTextarea
             className={`border rounded-xl bg-background backdrop-blur-sm text-foreground p-4 w-full resize-y font-normal shadow-soft min-h-[400px] ${
-              isEmpty ? "border-destructive/20 bg-destructive/5" : "border-border/60"
+              isEmpty ? "border-destructive/20 bg-destructive/5" : "border-[oklch(0.90_0.04_195_/_0.5)]"
             }`}
-            value={showTyping ? displayText : savedText}
+            value={showTyping ? displayText : (textHistory[currentHistoryIndex] || savedText)}
             placeholder="Clearly describe the changes or features you want the AI to implement. You can use the voice recorder below or type directly."
             readOnly
           />

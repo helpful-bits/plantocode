@@ -1,6 +1,6 @@
 /* Desktop Parity Mapping:
  * Sources: desktop/src/app/components/background-jobs-sidebar/job-details-modal.tsx, _components/job-details
- * Classes: bg-card, border-border/60, shadow-soft-md, desktop-glass-card; prompt blocks "border rounded-lg p-4 bg-muted/20 font-mono text-sm"
+ * Classes: bg-card, shadow-soft-md, desktop-glass-card; prompt blocks "border rounded-lg p-4 bg-muted/20 font-mono text-sm"
  * Structure: Dialog → Header → Body (prompt list) → Footer
  */
 // Job Details Modal Mock - presents research prompts in a modal format
@@ -70,7 +70,7 @@ export function JobDetailsModalMock({
 
   return (
     <DesktopDialog open={open}>
-      <DesktopDialogContent className="max-w-4xl max-h-[90vh] flex flex-col bg-card border-border/60 shadow-soft-md desktop-glass-card">
+      <DesktopDialogContent className="max-w-4xl max-h-[90vh] flex flex-col bg-card shadow-soft-md desktop-glass-card">
         <DesktopDialogHeader>
           <div className="flex items-center justify-between">
             <div>
@@ -99,7 +99,7 @@ export function JobDetailsModalMock({
                 key={index}
                 className="flex items-start justify-between gap-4"
               >
-                <pre className="border border-border rounded-lg p-4 bg-muted/20 font-mono text-sm flex-1 whitespace-pre-wrap overflow-x-auto">
+                <pre className="border border-[oklch(0.90_0.04_195_/_0.3)] rounded-lg p-4 bg-muted/20 font-mono text-sm flex-1 whitespace-pre-wrap overflow-x-auto">
                   {prompt}
                 </pre>
                 <CopyButton content={prompt} />

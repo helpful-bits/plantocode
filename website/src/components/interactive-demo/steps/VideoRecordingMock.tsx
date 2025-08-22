@@ -55,7 +55,7 @@ export function VideoRecordingMock({ isInView }: VideoRecordingMockProps) {
   const { phaseName: recordingState, phaseProgress01: phaseProgress } = useTimedCycle({
     active: isInView,
     phases: VIDEO_RECORDING_PHASES,
-    loop: false,
+    loop: true,
     resetOnDeactivate: true
   });
 
@@ -94,7 +94,7 @@ export function VideoRecordingMock({ isInView }: VideoRecordingMockProps) {
   return (
     <div className="w-full space-y-4" data-video-recording-state={recordingState}>
       {/* Task Section Card - exactly like desktop task-section.tsx */}
-      <div className="border border-border/60 rounded-lg p-5 bg-card shadow-sm w-full desktop-glass-card">
+      <div className="rounded-lg p-5 bg-card shadow-sm w-full desktop-glass-card">
         <div className="flex flex-col gap-1.5">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -191,7 +191,7 @@ export function VideoRecordingMock({ isInView }: VideoRecordingMockProps) {
             <DesktopTextarea
               className={cn(
                 "border rounded-xl bg-background backdrop-blur-sm text-foreground p-4 w-full resize-y font-normal shadow-soft min-h-[200px]",
-                !taskText.trim() ? "border-destructive/20 bg-destructive/5" : "border-border/60"
+                !taskText.trim() ? "border-destructive/20 bg-destructive/5" : "border-[oklch(0.90_0.04_195_/_0.5)]"
               )}
               value={taskText}
               onChange={() => {}} // Read-only in demo
@@ -297,7 +297,7 @@ export function VideoRecordingMock({ isInView }: VideoRecordingMockProps) {
             </div>
 
             {/* Action Buttons */}
-            <div className="flex justify-end gap-2 pt-4 border-t border-border/30">
+            <div className="flex justify-end gap-2 pt-4 border-t border-[oklch(0.90_0.04_195_/_0.2)]">
               <DesktopButton variant="outline" aria-label="Cancel recording">
                 Cancel
               </DesktopButton>

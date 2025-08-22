@@ -10,7 +10,7 @@ const ButtonConfigurationCard = ({ config }: {
   config: { label: string; content: string };
 }) => (
   <div className="relative">
-    <div className="space-y-4 p-4 border rounded-lg border-border/50 bg-background/50">
+    <div className="space-y-4 p-4 border rounded-lg border-[oklch(0.90_0.04_195_/_0.3)] bg-background/50">
       <div className="flex justify-end">
         <DesktopButton
           variant="ghost"

@@ -43,7 +43,7 @@ export function SystemPromptMock({ isInView }: { isInView: boolean; resetKey?: n
         <div>
           <p className="text-xs text-muted-foreground">Default system prompt</p>
         </div>
-        <div className="flex items-center border border-border/50 rounded-lg overflow-hidden">
+        <div className="flex items-center border border-[oklch(0.90_0.04_195_/_0.3)] rounded-lg overflow-hidden">
           <DesktopButton
             variant="filter-active"
             size="xs"
@@ -72,7 +72,7 @@ export function SystemPromptMock({ isInView }: { isInView: boolean; resetKey?: n
               </span>
             </div>
             
-            <div className="relative border border-border rounded-lg bg-muted/30 overflow-hidden">
+            <div className="relative border border-[oklch(0.90_0.04_195_/_0.3)] rounded-lg bg-muted/30 overflow-hidden">
               <pre className="font-mono text-sm p-4 whitespace-pre-wrap max-h-80 overflow-auto">
                 {streamedText || ' '}
                 {isInView && streamedText.length < systemPromptText.length && streamedText.length > 0 && (
