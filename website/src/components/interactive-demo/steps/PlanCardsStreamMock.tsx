@@ -360,7 +360,7 @@ export function PlanCardsStreamMock({ isInView }: { isInView: boolean }) {
                   variant="outline"
                   size="sm"
                   disabled={!canCreatePlan}
-                  className="flex items-center justify-center w-full h-9"
+                  className="w-full"
                 >
                   <Eye className="h-4 w-4 mr-2" />
                   View Prompt
@@ -369,7 +369,7 @@ export function PlanCardsStreamMock({ isInView }: { isInView: boolean }) {
                   variant="outline"
                   size="sm"
                   disabled={false}
-                  className="flex items-center justify-center w-full h-9"
+                  className="w-full"
                 >
                   <ClipboardCopy className="h-4 w-4 mr-2" />
                   Copy
@@ -381,7 +381,7 @@ export function PlanCardsStreamMock({ isInView }: { isInView: boolean }) {
                 size="sm"
                 disabled={!canCreatePlan}
                 className={cn(
-                  "flex items-center justify-center w-full h-9 transition-all duration-300",
+                  "w-full transition-all duration-300",
                   buttonState === 'clicking' && "scale-95 bg-primary/80 ring-2 ring-primary/40"
                 )}
               >

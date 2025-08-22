@@ -211,7 +211,8 @@
       "WebSearch",
       "WebFetch(domain:www.remotion.dev)",
       "Bash(npx remotion render:*)",
-      "WebFetch(domain:plausible.io)"
+      "WebFetch(domain:plausible.io)",
+      "WebFetch(domain:auth0.com)"
     ],
     "deny": [],
     "defaultMode": "acceptEdits"
