@@ -61,6 +61,7 @@ function OptimizedVideo({ video, poster }: { video: string; poster: string }) {
       <video
         ref={videoRef}
         controls
+        controlsList="nodownload"
         muted
         playsInline
         className="block object-contain bg-gradient-to-br from-background/5 to-background/10 w-full"
@@ -70,6 +71,7 @@ function OptimizedVideo({ video, poster }: { video: string; poster: string }) {
         style={{
           aspectRatio: '16/9'
         }}
+        {...({ allowFullScreen: true } as any)}
       >
         <source src={webmVideo} type="video/webm; codecs=vp9" />
         <source src={video} type="video/mp4" />
