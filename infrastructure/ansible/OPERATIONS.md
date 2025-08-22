@@ -30,11 +30,36 @@ ansible interserver-us -i inventory/hosts.yml -m shell -a "redis-cli -a '{{ redi
 
 #### Run SQL Commands
 ```bash
-# Execute SQL on US server
-ansible interserver-us -i inventory/hosts.yml -m shell -a "PGPASSWORD='{{ db_password }}' psql -U {{ db_user }} -d {{ db_name }} -c 'SELECT COUNT(*) FROM users;'" --vault-password-file .vault_pass -e @group_vars/interserver/secrets.yml
+# Execute SQL on US server (as appuser)
+ansible interserver-us -i inventory/hosts.yml -m shell -a "PGPASSWORD='{{ db_password }}' psql -h localhost -U {{ db_user }} -d {{ db_name }} -c 'SELECT COUNT(*) FROM users;'" --vault-password-file .vault_pass -e @group_vars/interserver/secrets.yml
 
 # Check database connections
-ansible interserver-us -i inventory/hosts.yml -m shell -a "PGPASSWORD='{{ db_password }}' psql -U {{ db_user }} -d {{ db_name }} -c 'SELECT count(*) FROM pg_stat_activity;'" --vault-password-file .vault_pass -e @group_vars/interserver/secrets.yml
+ansible interserver-us -i inventory/hosts.yml -m shell -a "PGPASSWORD='{{ db_password }}' psql -h localhost -U {{ db_user }} -d {{ db_name }} -c 'SELECT count(*) FROM pg_stat_activity;'" --vault-password-file .vault_pass -e @group_vars/interserver/secrets.yml
+
+# Execute SQL as postgres superuser (bypasses RLS)
+ansible interserver-us -i inventory/hosts.yml -m shell -a "sudo -u postgres psql -d {{ db_name }} -c 'SELECT COUNT(*) FROM users;'" --vault-password-file .vault_pass -e @group_vars/interserver/secrets.yml --become
+```
+
+#### Execute SQL Files
+```bash
+# Copy SQL file to server and execute as postgres superuser
+ansible interserver-us -i inventory/hosts.yml -m copy -a "src=path/to/file.sql dest=/tmp/file.sql" --vault-password-file .vault_pass
+ansible interserver-us -i inventory/hosts.yml -m shell -a "sudo -u postgres psql -d {{ db_name }} -f /tmp/file.sql" --vault-password-file .vault_pass -e @group_vars/interserver/secrets.yml --become
+ansible interserver-us -i inventory/hosts.yml -m file -a "path=/tmp/file.sql state=absent" --vault-password-file .vault_pass
+
+# One-liner for SQL file execution
+ansible interserver-us -i inventory/hosts.yml -m copy -a "src=../../server/migrations/data_system_prompts.sql dest=/tmp/data_system_prompts.sql" --vault-password-file .vault_pass && \
+ansible interserver-us -i inventory/hosts.yml -m shell -a "sudo -u postgres psql -d {{ db_name }} -f /tmp/data_system_prompts.sql" --vault-password-file .vault_pass -e @group_vars/interserver/secrets.yml --become && \
+ansible interserver-us -i inventory/hosts.yml -m file -a "path=/tmp/data_system_prompts.sql state=absent" --vault-password-file .vault_pass
+```
+
+#### PostgreSQL User Management
+```bash
+# List all PostgreSQL users and their roles
+ansible interserver-us -i inventory/hosts.yml -m shell -a "sudo -u postgres psql -c '\\du'" --vault-password-file .vault_pass --become
+
+# Check user privileges
+ansible interserver-us -i inventory/hosts.yml -m shell -a "sudo -u postgres psql -d {{ db_name }} -c 'SELECT rolname, rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user;'" --vault-password-file .vault_pass -e @group_vars/interserver/secrets.yml --become
 ```
 
 ### Application Operations
@@ -140,6 +165,14 @@ ERROR! Attempting to decrypt but no vault secrets found
 Permission denied
 ```
 **Solution**: Add `--become` flag for sudo operations
+
+#### PostgreSQL Row-Level Security Error
+```bash
+ERROR:  new row violates row-level security policy for table "table_name"
+```
+**Solution**: Use postgres superuser instead of appuser:
+- Replace: `PGPASSWORD='{{ db_password }}' psql -U {{ db_user }}`
+- With: `sudo -u postgres psql` and add `--become` flag
 
 #### Module Not Found
 ```bash
