@@ -107,17 +107,7 @@ const SettingsMock = dynamic(() => import('./steps').then(m => ({ default: m.Set
   loading: () => <div className="h-24" /> 
 });
 
-const SystemPromptMock = dynamic(() => import('./steps').then(m => ({ default: m.SystemPromptMock })), { 
-  ssr: false, 
-  loading: () => <div className="h-24" /> 
-});
-
 const CopyButtonsMock = dynamic(() => import('./steps').then(m => ({ default: m.CopyButtonsMock })), { 
-  ssr: false, 
-  loading: () => <div className="h-24" /> 
-});
-
-const ModelSelectorToggleMock = dynamic(() => import('./steps').then(m => ({ default: m.ModelSelectorToggleMock })), { 
   ssr: false, 
   loading: () => <div className="h-24" /> 
 });
@@ -135,9 +125,7 @@ const STEPS = [
   { id: 9, title: "Implementation Plans", Component: PlanCardsStreamMock },
   { id: 10, title: "Plan Selection & Merge Instructions", Component: MergeInstructionsMock },
   { id: 11, title: "Settings Configuration", Component: SettingsMock },
-  { id: 12, title: "System Prompts", Component: SystemPromptMock },
-  { id: 13, title: "Export & Copy", Component: CopyButtonsMock },
-  { id: 14, title: "Model Selection", Component: ModelSelectorToggleMock }
+  { id: 12, title: "Export & Copy", Component: CopyButtonsMock }
 ];
 
 export function HowItWorksInteractive() {

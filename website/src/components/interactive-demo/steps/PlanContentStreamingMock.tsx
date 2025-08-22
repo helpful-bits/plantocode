@@ -207,7 +207,7 @@ export function PlanContentStreamingMock({ isInView }: { isInView: boolean; rese
                 key={section.title}
                 className={cn(
                   "flex items-center gap-2 p-2 rounded-md border transition-all duration-300",
-                  sectionProgress > 50 ? "bg-muted/50 border-primary/20" : "bg-background border-border"
+                  sectionProgress > 50 ? "bg-muted/50 border-primary/20" : "bg-background border-[oklch(0.90_0.04_195_/_0.3)]"
                 )}
               >
                 <div className={cn(
@@ -238,7 +238,7 @@ export function PlanContentStreamingMock({ isInView }: { isInView: boolean; rese
 
         {/* Streaming Content */}
         <div className="relative">
-          <pre className="text-xs bg-muted/30 rounded-lg border border-border p-3 overflow-x-auto font-mono leading-relaxed whitespace-pre-wrap">
+          <pre className="text-xs bg-muted/30 rounded-lg border border-[oklch(0.90_0.04_195_/_0.3)] p-3 overflow-x-auto font-mono leading-relaxed whitespace-pre-wrap">
             {displayText}
             {isInView && t > 0.1 && displayText.length < implementationContent.length && (
               <span className="animate-pulse text-primary">|</span>
@@ -252,7 +252,7 @@ export function PlanContentStreamingMock({ isInView }: { isInView: boolean; rese
         </div>
 
         {/* Footer Stats */}
-        <div className="mt-4 pt-3 border-t border-border">
+        <div className="mt-4 pt-3 border-t border-[oklch(0.90_0.04_195_/_0.2)]">
           <div className="grid grid-cols-3 gap-4 text-xs">
             <div>
               <span className="text-muted-foreground">Characters</span>

@@ -374,7 +374,7 @@ function FloatingMergeInstructions({ isVisible, instructions, onInstructionsChan
   if (!isVisible) return null;
 
   return (
-    <div className="absolute top-4 right-4 w-80 max-w-[calc(100vw-2rem)] bg-card/95 backdrop-blur-sm border border-border rounded-lg shadow-lg p-4 z-10">
+    <div className="absolute top-4 right-4 w-80 max-w-[calc(100vw-2rem)] bg-card/95 backdrop-blur-sm border border-[oklch(0.90_0.04_195_/_0.4)] rounded-lg shadow-lg p-4 z-10">
       <div className="flex items-center gap-2 mb-2">
         <StickyNote className="h-4 w-4 text-primary" />
         <h3 className="text-sm font-medium text-foreground flex-1">Merge Instructions</h3>
@@ -518,9 +518,9 @@ export function MergeInstructionsMock({ isInView }: { isInView: boolean; resetKe
 
   // Render editor view
   return (
-    <div className="w-full max-w-6xl mx-auto flex flex-col h-[80vh] bg-card rounded-xl shadow-lg border border-border/60 text-foreground">
+    <div className="w-full max-w-6xl mx-auto flex flex-col h-[80vh] bg-card rounded-xl shadow-lg border border-[oklch(0.90_0.04_195_/_0.4)] text-foreground">
       {/* Header - Exact desktop app layout */}
-      <div className="flex flex-row items-start justify-between space-y-0 pb-2 p-6 flex-shrink-0 border-b border-border/20">
+      <div className="flex flex-row items-start justify-between space-y-0 pb-2 p-6 flex-shrink-0 border-b border-[oklch(0.90_0.04_195_/_0.2)]">
         <h2 className="text-lg font-semibold">
           Implementation Plan: {currentPlan.planTitle}
         </h2>
@@ -572,7 +572,7 @@ export function MergeInstructionsMock({ isInView }: { isInView: boolean; resetKe
         
         {/* Navigation overlay at the bottom - Exact desktop app layout */}
         <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 z-10">
-          <div className="flex items-center gap-2 bg-card/95 backdrop-blur-sm border border-border rounded-full px-3 py-1.5 shadow-lg">
+          <div className="flex items-center gap-2 bg-card/95 backdrop-blur-sm border border-[oklch(0.90_0.04_195_/_0.5)] rounded-full px-3 py-1.5 shadow-lg">
             <DesktopButton
               variant="ghost"
               size="sm"

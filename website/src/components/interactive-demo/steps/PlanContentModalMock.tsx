@@ -235,7 +235,7 @@ export function PlanContentModalMock({
 
         {/* Status/metadata row */}
         {!isStreaming && (
-          <div className="mt-2 pt-2 border-t border-border flex-shrink-0">
+          <div className="mt-2 pt-2 border-t border-[oklch(0.90_0.04_195_/_0.2)] flex-shrink-0">
             <div className="flex items-center justify-between text-xs text-muted-foreground">
               <span>Completed {formatCompletionDate()}</span>
               <span>Claude 3.5 Sonnet</span>

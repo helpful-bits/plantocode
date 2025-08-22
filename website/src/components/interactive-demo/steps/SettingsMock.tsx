@@ -137,7 +137,7 @@ export function SettingsMock({ isInView }: { isInView: boolean; resetKey?: numbe
                         <div>
                           <p className="text-xs text-muted-foreground">Default system prompt</p>
                         </div>
-                        <div className="flex items-center border border-border/50 rounded-lg overflow-hidden">
+                        <div className="flex items-center border border-[oklch(0.90_0.04_195_/_0.3)] rounded-lg overflow-hidden">
                           <DesktopButton
                             variant="filter-active"
                             size="xs"
@@ -156,8 +156,8 @@ export function SettingsMock({ isInView }: { isInView: boolean; resetKey?: numbe
                         </div>
                       </div>
                       
-                      <div className="border border-border rounded-lg bg-muted/30 overflow-hidden">
-                        <div className="flex items-center justify-between p-3 border-b border-border/50">
+                      <div className="border border-[oklch(0.90_0.04_195_/_0.3)] rounded-lg bg-muted/30 overflow-hidden">
+                        <div className="flex items-center justify-between p-3 border-b border-[oklch(0.90_0.04_195_/_0.2)]">
                           <span className="text-sm font-medium text-muted-foreground">SYSTEM PROMPT</span>
                           <span className="text-xs text-muted-foreground">
                             {Math.round(450 + (temperatureProgress * 2))} chars

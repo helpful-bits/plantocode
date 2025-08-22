@@ -17,9 +17,7 @@ import {
   PlanCardsStreamMock,
   MergeInstructionsMock,
   SettingsMock,
-  SystemPromptMock,
-  CopyButtonsMock,
-  ModelSelectorToggleMock
+  CopyButtonsMock
 } from '@/components/interactive-demo/steps';
 import { InteractiveDemoProvider } from '@/components/interactive-demo/contexts/InteractiveDemoContext';
 
@@ -35,9 +33,7 @@ const STEPS = [
   { id: 9, title: "Implementation Plans", Component: PlanCardsStreamMock },
   { id: 10, title: "Plan Selection & Merge Instructions", Component: MergeInstructionsMock },
   { id: 11, title: "Settings Configuration", Component: SettingsMock },
-  { id: 12, title: "System Prompts", Component: SystemPromptMock },
-  { id: 13, title: "Export & Copy", Component: CopyButtonsMock },
-  { id: 14, title: "Model Selection", Component: ModelSelectorToggleMock }
+  { id: 12, title: "Export & Copy", Component: CopyButtonsMock }
 ];
 
 export default function DebugPage() {

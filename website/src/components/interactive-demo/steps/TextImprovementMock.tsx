@@ -152,7 +152,7 @@ export function TextImprovementMock({ isInView }: TextImprovementMockProps) {
                 size="sm"
                 variant="ghost"
                 className={cn(
-                  "h-7 w-7 p-0 bg-card/90 hover:bg-card border border-border/50 backdrop-blur-sm cursor-pointer shadow-lg transition-all duration-150",
+                  "h-7 w-7 p-0 bg-card/90 hover:bg-card border border-[oklch(0.90_0.04_195_/_0.4)] backdrop-blur-sm cursor-pointer shadow-lg transition-all duration-150",
                   buttonClicked && "bg-primary/20 border-primary/40 scale-95"
                 )}
                 aria-label="Improve text"
@@ -178,7 +178,7 @@ export function TextImprovementMock({ isInView }: TextImprovementMockProps) {
               <DesktopButton
                 size="sm"
                 variant="ghost"
-                className="h-7 w-7 p-0 bg-card/90 hover:bg-card border border-border/50 backdrop-blur-sm cursor-pointer shadow-lg"
+                className="h-7 w-7 p-0 bg-card/90 hover:bg-card border border-[oklch(0.90_0.04_195_/_0.4)] backdrop-blur-sm cursor-pointer shadow-lg"
                 disabled
                 aria-label="Improving text..."
               >

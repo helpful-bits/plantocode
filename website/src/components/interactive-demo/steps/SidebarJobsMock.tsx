@@ -62,7 +62,7 @@ function JobCard({
   return (
     <div className="relative">
       {showConnector && (
-        <div className="absolute -top-3 left-1/2 transform -translate-x-1/2 w-0 h-3 border-l-2 border-dashed border-border/60" />
+        <div className="absolute -top-3 left-1/2 transform -translate-x-1/2 w-0 h-3 border-l-2 border-dashed border-[oklch(0.90_0.04_195_/_0.6)]" />
       )}
       <DesktopCard className="transition-all duration-300 hover:shadow-md max-w-[300px] min-h-[120px]">
         <DesktopCardContent className="p-4">
@@ -99,7 +99,7 @@ function JobCard({
             </div>
           )}
           
-          <div className="flex justify-between items-center mt-3 pt-2 border-t border-border">
+          <div className="flex justify-between items-center mt-3 pt-2 border-t border-[oklch(0.90_0.04_195_/_0.2)]">
             <span className="text-xs sm:text-sm text-muted-foreground">Tokens</span>
             <span className="text-xs sm:text-sm font-mono">
               {job.status === 'queued' 
@@ -325,7 +325,7 @@ export function SidebarJobsMock({ isInView }: { isInView: boolean; resetKey?: nu
         })}
       </div>
       
-      <div className="pt-2 border-t border-border">
+      <div className="pt-2 border-t border-[oklch(0.90_0.04_195_/_0.2)]">
         <div className="flex justify-between items-center text-xs sm:text-sm">
           <span className="text-muted-foreground">Total estimated</span>
           <span className="font-mono">~{jobs.reduce((total, job) => total + job.estimatedTokens, 0).toLocaleString()} tokens</span>

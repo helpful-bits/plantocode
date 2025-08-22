@@ -88,8 +88,8 @@ export function SessionManagerMock({ isInView }: SessionManagerMockProps) {
   ] : existingSessions;
 
   return (
-    <div className="w-full border border-border rounded-xl shadow-soft bg-card/95 backdrop-blur-sm">
-      <div className="p-3 bg-muted/80 backdrop-blur-sm border-b border-border rounded-t-xl">
+    <div className="w-full desktop-glass-card rounded-xl shadow-soft">
+      <div className="p-3 bg-muted/80 backdrop-blur-sm border-b border-[oklch(0.90_0.04_195_/_0.3)] rounded-t-xl">
         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
           <h3 className="text-base sm:text-lg font-semibold text-foreground">Sessions</h3>
           <div className="flex items-center gap-1 sm:gap-2 flex-wrap w-full sm:w-auto">
@@ -124,7 +124,7 @@ export function SessionManagerMock({ isInView }: SessionManagerMockProps) {
 
       {/* Collapsible New Session Form */}
       {step >= 2 && step < 5 && (
-        <div className="border-b border-border">
+        <div className="border-b border-[oklch(0.90_0.04_195_/_0.2)]">
           <div className="animate-in fade-in-0 slide-in-from-top-2 duration-300 p-3">
             <div className="flex items-center gap-2">
               <div className="relative grow">
@@ -152,7 +152,7 @@ export function SessionManagerMock({ isInView }: SessionManagerMockProps) {
           <div
             key={session.id}
             className={cn(
-              "flex items-center justify-between p-2 border-b border-border/60 last:border-b-0 transition-all duration-200 cursor-pointer",
+              "flex items-center justify-between p-2 border-b border-[oklch(0.90_0.04_195_/_0.15)] last:border-b-0 transition-all duration-200 cursor-pointer",
               session.isActive ? "bg-accent" : "hover:bg-muted/80",
               session.id === "new" && step >= 5 ? "ring-1 ring-primary/30 animate-in fade-in-0 slide-in-from-bottom-2 duration-300" : ""
             )}
