@@ -102,16 +102,11 @@ export function DeepResearchMock({ isInView }: DeepResearchMockProps) {
               variant="outline" 
               size="sm"
               className={cn(
-                "flex items-center justify-center gap-2 w-full text-foreground transition-all duration-200",
-                showButton ? "opacity-100 transform translate-y-0" : "opacity-0 transform translate-y-2 pointer-events-none",
-                buttonPressed && "scale-95 bg-primary/80 ring-2 ring-primary/40"
+                "w-full font-medium",
+                showButton ? "opacity-100 transform translate-y-0" : "opacity-0 transform translate-y-2 pointer-events-none"
               )}
               disabled={isProcessing}
             >
-              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="12" cy="12" r="10" />
-                <path d="M12 6v6l4 2" />
-              </svg>
               {isProcessing ? 'Researching...' : isCompleted ? 'Research Complete' : 'Deep Research'}
             </DesktopButton>
           </div>

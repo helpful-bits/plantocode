@@ -115,16 +115,18 @@ export function VideoRecordingMock({ isInView }: VideoRecordingMockProps) {
               {/* Undo/Redo buttons next to the label */}
               <div className="flex items-center gap-1 ml-2">
                 <DesktopButton
+                  compact
                   variant="outline"
-                  size="sm"
+                  size="xs"
                   className="h-6 w-6"
                   title="Undo last change"
                 >
                   <Undo2 className="h-3 w-3" />
                 </DesktopButton>
                 <DesktopButton
+                  compact
                   variant="outline"
-                  size="sm"
+                  size="xs"
                   className="h-6 w-6"
                   title="Redo undone change"
                 >

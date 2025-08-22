@@ -164,6 +164,7 @@ export function FileSearchMock({ isInView }: FileSearchMockProps) {
                   {filteredFiles.length} result{filteredFiles.length !== 1 ? 's' : ''}
                 </span>
                 <DesktopButton
+                  compact
                   variant="ghost"
                   size="xs"
                   className="h-5 w-5 p-0 text-muted-foreground hover:text-foreground"
@@ -212,16 +213,18 @@ export function FileSearchMock({ isInView }: FileSearchMockProps) {
             {/* Undo/Redo buttons */}
             <div className="flex items-center gap-1 ml-2 pl-2 border-l border-[oklch(0.90_0.04_195_/_0.3)]">
               <DesktopButton
+                compact
                 variant="outline"
-                size="sm"
+                size="xs"
                 disabled={true}
                 className="h-6 w-6 p-0"
               >
                 <Undo2 className="h-3 w-3" />
               </DesktopButton>
               <DesktopButton
+                compact
                 variant="outline"
-                size="sm"
+                size="xs"
                 disabled={true}
                 className="h-6 w-6 p-0"
               >

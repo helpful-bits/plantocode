@@ -12,6 +12,7 @@ export interface DesktopButtonProps {
   children: ReactNode;
   variant?: 'default' | 'outline' | 'ghost' | 'secondary' | 'destructive' | 'filter' | 'filter-active';
   size?: 'sm' | 'md' | 'lg' | 'xs';
+  compact?: boolean;
   isLoading?: boolean;
   disabled?: boolean;
   className?: string;
@@ -27,7 +28,7 @@ export interface DesktopButtonProps {
 
 const buttonVariants = {
   default: 'desktop-glass bg-primary/90 border border-primary/30 text-primary-foreground hover:bg-primary hover:border-primary/40 hover:scale-[1.02]',
-  outline: 'border-2 border-primary/70 bg-background/90 text-foreground hover:bg-primary/10 hover:text-primary hover:border-primary/90 shadow-sm backdrop-blur-sm',
+  outline: 'border border-primary/40 bg-background/90 text-foreground hover:bg-primary/10 hover:text-primary hover:border-primary/60 shadow-sm backdrop-blur-sm',
   ghost: 'text-foreground hover:bg-accent/40 hover:text-accent-foreground backdrop-blur-sm border border-transparent hover:border-accent/50',
   secondary: 'desktop-glass bg-secondary/80 border border-secondary/40 text-secondary-foreground hover:bg-secondary hover:border-secondary/60',
   destructive: 'desktop-glass bg-destructive/90 border border-destructive/30 text-destructive-foreground hover:bg-destructive hover:border-destructive/40',
@@ -46,6 +47,7 @@ export function DesktopButton({
   children,
   variant = 'default',
   size = 'md',
+  compact = false,
   isLoading = false,
   disabled = false,
   className,
@@ -61,8 +63,8 @@ export function DesktopButton({
         'inline-flex items-center justify-center whitespace-nowrap rounded-lg text-sm font-medium transition-all duration-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50',
         buttonVariants[variant],
         buttonSizes[size],
-        // Ensure minimum touch target size for mobile, but not for filter variants
-        variant !== 'filter' && variant !== 'filter-active' && 'min-h-[44px] min-w-[44px]',
+        // Ensure minimum touch target size for mobile, but not for filter variants or compact mode
+        !compact && variant !== 'filter' && variant !== 'filter-active' && 'min-h-[44px] min-w-[44px]',
         className
       )}
       disabled={disabled || isLoading}
