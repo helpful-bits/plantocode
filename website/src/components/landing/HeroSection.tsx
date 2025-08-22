@@ -20,7 +20,7 @@ export function HeroSection() {
         {/* Primary heading */}
         <Reveal as="h1" className="relative text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold mb-6 leading-tight" delay={0.1}>
           <span className="text-hero-title">
-            The Polite Context Guidance Centre for Somewhat Bewildered AI Agents
+            Hold the map of your repo for your LLMs
           </span>
         </Reveal>
 
