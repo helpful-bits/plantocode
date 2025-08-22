@@ -16,18 +16,25 @@ export function ProjectSelectorMock({ isInView }: ProjectSelectorMockProps) {
   const samplePath = "/Users/sarah/dev/my-awesome-project";
   const [successVisible, setSuccessVisible] = useState(false);
   
-  // Use timing-based loop with 12s cycle and 500ms idle delay
-  const { t } = useTimedLoop(isInView, 12000, { idleDelayMs: 500, resetOnDeactivate: true });
+  // Use timing-based loop with 5s cycle and 200ms idle delay
+  const { t } = useTimedLoop(isInView, 5000, { idleDelayMs: 200, resetOnDeactivate: true });
   
-  // Use typewriter for path during 0.2-0.7 window  
-  const showTyping = t >= 0.2 && t < 0.7;
-  const { displayText: autoFilledText } = useTypewriter({ active: showTyping, text: samplePath, durationMs: 2000 });
+  // Use typewriter for path during 0.1-0.5 window, but keep text after completion
+  const showTyping = t >= 0.1 && t < 0.5;
+  const { displayText: typedText } = useTypewriter({ active: showTyping, text: samplePath, durationMs: 1500 });
   
-  // Show success hint during 0.75-1.0 window (unused variable removed)
+  // Keep the full text visible after typing completes
+  const autoFilledText = t >= 0.5 ? samplePath : typedText;
+  
+  // Show success hint during 0.6-1.0 window (after typing completes)
 
   useEffect(() => {
     if (!isInView) { setSuccessVisible(false); return; }
-    if (t >= 0.75) setSuccessVisible(true);
+    if (t < 0.6) {
+      setSuccessVisible(false);
+    } else {
+      setSuccessVisible(true);
+    }
   }, [t, isInView]);
 
   return (
