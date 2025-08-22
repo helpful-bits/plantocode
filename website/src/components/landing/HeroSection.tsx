@@ -54,7 +54,7 @@ export function HeroSection() {
                 whileTap={{ scale: 0.95 }}
               >
                 <Button asChild className="relative overflow-hidden" size="xl" variant="cta" onClick={handleDownloadClick}>
-                  <Link href="/download" className="no-hover-effect cursor-pointer">
+                  <Link href="/download" prefetch={false} className="no-hover-effect cursor-pointer">
                     Download for Mac
                   </Link>
                 </Button>

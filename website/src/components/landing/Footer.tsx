@@ -77,6 +77,7 @@ export function Footer() {
                     <Link 
                       className="text-muted-foreground hover:text-primary text-sm transition-colors duration-200 clickable-text-underline" 
                       href="/download"
+                      prefetch={false}
                       onClick={handleDownloadClick}
                     >
                       Download for Mac
