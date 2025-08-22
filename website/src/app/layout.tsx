@@ -8,7 +8,7 @@ import { ClientProviders } from '@/components/providers/ClientProviders';
 import { ConditionalBackground } from '@/components/system/ConditionalBackground';
 import { Footer } from '@/components/landing/Footer';
 import { SpeedInsights } from '@vercel/speed-insights/next';
-import { cdnUrl, MEDIA_CDN_BASE } from '@/lib/cdn';
+import { cdnUrl } from '@/lib/cdn';
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://vibemanager.app'),
