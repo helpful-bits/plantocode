@@ -39,41 +39,43 @@ export default function LocalFirstPage() {
               </Reveal>
               
               <Reveal className="text-xl text-muted-foreground mb-8 max-w-3xl mx-auto">
-                Local SQLite storage, you control what's sent and when.
+                All code, sessions, and history in local SQLite. Vibe Manager is just a secure proxy to AI providers. You control every byte sent.
               </Reveal>
 
               <div className="grid md:grid-cols-2 gap-8 mt-12 text-left">
                 <Reveal className="space-y-4">
-                  <h3 className="text-2xl font-semibold text-foreground">True Local-First</h3>
+                  <h3 className="text-2xl font-semibold text-foreground">Complete Data Sovereignty</h3>
                   <p className="text-muted-foreground">
-                    All your code, sessions, and history live in SQLite on your machine. 
-                    No cloud storage, no data mining, no vendor lock-in. Your code stays yours.
+                    Everything stored locally: file selections, session history, task descriptions, 
+                    search patterns, workflow states. No cloud dependencies for core functionality. 
+                    Your intellectual property never leaves without explicit approval.
                   </p>
                 </Reveal>
 
                 <Reveal className="space-y-4" delay={0.1}>
-                  <h3 className="text-2xl font-semibold text-foreground">Secure Proxy Only</h3>
+                  <h3 className="text-2xl font-semibold text-foreground">Zero-Trust Architecture</h3>
                   <p className="text-muted-foreground">
-                    Vibe Manager is just a secure proxy to AI providers, handling auth 
-                    and billing. Your code flows directly through without being stored 
-                    or analyzed by us.
+                    Acts purely as authentication and billing proxy. Code flows 
+                    directly to AI providers without intermediate storage or analysis. 
+                    Real-time token cost tracking with full transparency.
                   </p>
                 </Reveal>
 
                 <Reveal className="space-y-4" delay={0.2}>
-                  <h3 className="text-2xl font-semibold text-foreground">You Control the Flow</h3>
+                  <h3 className="text-2xl font-semibold text-foreground">Granular Data Control</h3>
                   <p className="text-muted-foreground">
-                    Decide exactly what gets sent to which AI provider and when. 
-                    Fine-grained control over every piece of data that leaves your machine.
+                    Every API call visible and controllable. See exactly what context 
+                    is being sent, to which model, and why. Approve or modify before 
+                    transmission. No surprises, no hidden data flows.
                   </p>
                 </Reveal>
 
                 <Reveal className="space-y-4" delay={0.3}>
-                  <h3 className="text-2xl font-semibold text-foreground">Complete Privacy</h3>
+                  <h3 className="text-2xl font-semibold text-foreground">Enterprise-Grade Privacy</h3>
                   <p className="text-muted-foreground">
-                    Work on proprietary code with confidence. Your business logic, 
-                    trade secrets, and sensitive implementations never leave your 
-                    local environment.
+                    Perfect for proprietary codebases and trade secrets. File discovery, 
+                    session management, and workflow orchestration work completely offline. 
+                    Only specific approved context touches external APIs.
                   </p>
                 </Reveal>
               </div>

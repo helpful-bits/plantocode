@@ -38,42 +38,43 @@ export default function DeepResearchPage() {
               </Reveal>
               
               <Reveal className="text-xl text-muted-foreground mb-8 max-w-3xl mx-auto">
-                Search docs and issues, tie findings back to your code.
+                Web search with strict authoritative source validation. Only official documentation, never Stack Overflow or blogs. Findings tied back to your code context.
               </Reveal>
 
               <div className="grid md:grid-cols-2 gap-8 mt-12 text-left">
                 <Reveal className="space-y-4">
-                  <h3 className="text-2xl font-semibold text-foreground">Current Documentation</h3>
+                  <h3 className="text-2xl font-semibold text-foreground">Authoritative Sources Only</h3>
                   <p className="text-muted-foreground">
-                    Your LLM's knowledge is frozen in time. Deep Research fixes that by 
-                    searching for the latest documentation, APIs, and best practices 
-                    for your specific stack.
+                    Strict validation protocol ensures only official vendor documentation, 
+                    API docs, and verified sources are used. Forbidden: tutorials, Stack Overflow, 
+                    blogs, or third-party guides.
                   </p>
                 </Reveal>
 
                 <Reveal className="space-y-4" delay={0.1}>
-                  <h3 className="text-2xl font-semibold text-foreground">Context Integration</h3>
+                  <h3 className="text-2xl font-semibold text-foreground">Integration Specialist</h3>
                   <p className="text-muted-foreground">
-                    Don't just get generic answers. Deep Research ties external findings 
-                    directly back to your codebase context, ensuring recommendations 
-                    fit your specific implementation.
+                    Acts as a Task-Focused Integration & Verification Specialist. 
+                    Provides complete working examples that fit your codebase architecture 
+                    and existing patterns.
                   </p>
                 </Reveal>
 
                 <Reveal className="space-y-4" delay={0.2}>
-                  <h3 className="text-2xl font-semibold text-foreground">Knowledge Gap Filling</h3>
+                  <h3 className="text-2xl font-semibold text-foreground">Safety-First Research</h3>
                   <p className="text-muted-foreground">
-                    Identify what your AI doesn't know and fill those gaps with 
-                    up-to-the-minute information. No more outdated solutions or 
-                    deprecated API recommendations.
+                    Triple validation: source authority check, information accuracy check, 
+                    and implementation safety check. Prevents implementation errors from 
+                    unofficial or outdated information.
                   </p>
                 </Reveal>
 
                 <Reveal className="space-y-4" delay={0.3}>
-                  <h3 className="text-2xl font-semibold text-foreground">Issue Tracking</h3>
+                  <h3 className="text-2xl font-semibold text-foreground">Research Prompt Generation</h3>
                   <p className="text-muted-foreground">
-                    Search through GitHub issues, Stack Overflow, and documentation 
-                    to find solutions to problems specific to your implementation challenges.
+                    Generates targeted research prompts only for critical knowledge gaps. 
+                    Maximum 3 prompts, highly selective, focusing exclusively on what could 
+                    cause implementation failure.
                   </p>
                 </Reveal>
               </div>

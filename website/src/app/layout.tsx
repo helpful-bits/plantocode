@@ -14,7 +14,7 @@ export const metadata: Metadata = {
   metadataBase: new URL('https://vibemanager.app'),
   title: {
     template: '%s | Vibe Manager',
-    default: 'AI coding assistant for large codebases | Vibe Manager',
+    default: 'Vibe code cleanup specialist',
   },
   description: 'Find the right files, merge plans from multiple models, and ship correct changes—without sending your whole codebase to the cloud. Local-first.',
   keywords: ['AI coding assistant', 'codebase context', 'find relevant files', 'LLM orchestration', 'implementation plan', 'local-first', 'multi-model planning', 'deep research for code', 'large codebase navigation', 'developer tools', 'code intelligence', 'file discovery'],
@@ -32,7 +32,7 @@ export const metadata: Metadata = {
     canonical: 'https://vibemanager.app/',
   },
   openGraph: {
-    title: 'AI coding assistant for large codebases | Vibe Manager',
+    title: 'Vibe code cleanup specialist',
     description: 'Find the right files, merge plans from multiple models, and ship correct changes—without sending your whole codebase to the cloud. Local-first.',
     url: 'https://vibemanager.app/',
     siteName: 'Vibe Manager',
@@ -48,7 +48,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'AI coding assistant for large codebases | Vibe Manager',
+    title: 'Vibe code cleanup specialist',
     description: 'Find the right files, merge plans from multiple models, and ship correct changes—without sending your whole codebase to the cloud. Local-first.',
     images: [{
       url: cdnUrl('/images/og-image.png'),
@@ -148,7 +148,7 @@ export default function RootLayout({
           </>
         )}
         {/* Plausible Analytics */}
-        <script defer data-domain="vibemanager.app" src="https://plausible.io/js/script.js"></script>
+        <script data-domain="vibemanager.app" src="https://plausible.io/js/script.js"></script>
         <script dangerouslySetInnerHTML={{
           __html: `window.plausible = window.plausible || function() { (window.plausible.q = window.plausible.q || []).push(arguments) }`
         }} />

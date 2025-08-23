@@ -38,41 +38,37 @@ export default function FileFinderPage() {
               </Reveal>
               
               <Reveal className="text-xl text-muted-foreground mb-8 max-w-3xl mx-auto">
-                Decompose tasks, search smart patterns, and rank files by actual content.
+                4-stage workflow: decompose tasks into logical areas, create targeted search patterns, then AI assesses actual file content for relevance. No vector databases.
               </Reveal>
 
               <div className="grid md:grid-cols-2 gap-8 mt-12 text-left">
                 <Reveal className="space-y-4">
-                  <h3 className="text-2xl font-semibold text-foreground">Smart Task Decomposition</h3>
+                  <h3 className="text-2xl font-semibold text-foreground">Pattern Groups Generation</h3>
                   <p className="text-muted-foreground">
-                    Break down complex features into logical areas. Instead of searching blindly, 
-                    the File Finder understands what types of files are needed for different parts 
-                    of your task.
+                    Creates focused pattern groups targeting specific functionality areas. Each group uses precise path patterns and content patterns with targeted exclusions to find exactly what's needed.
                   </p>
                 </Reveal>
 
                 <Reveal className="space-y-4" delay={0.1}>
-                  <h3 className="text-2xl font-semibold text-foreground">Content-Aware Ranking</h3>
+                  <h3 className="text-2xl font-semibold text-foreground">AI Relevance Assessment</h3>
                   <p className="text-muted-foreground">
-                    AI assesses actual file content for relevance, not just filenames. 
-                    Find the files that actually matter for your implementation, 
-                    including critical dependencies.
+                    Files are scored by actual content analysis, not just filenames or keyword matches. 
+                    Quality over quantity - be conservative and selective with file inclusion for cost efficiency.
                   </p>
                 </Reveal>
 
                 <Reveal className="space-y-4" delay={0.2}>
-                  <h3 className="text-2xl font-semibold text-foreground">Targeted Search Patterns</h3>
+                  <h3 className="text-2xl font-semibold text-foreground">Cost-Optimized Selection</h3>
                   <p className="text-muted-foreground">
-                    Creates intelligent search patterns based on your task context. 
-                    No more sifting through irrelevant matches—get straight to what you need.
+                    Focuses on files that will need direct modification (typically 3-10 files). 
+                    Each extra file increases inference cost, so it favors brevity while safeguarding completeness.
                   </p>
                 </Reveal>
 
                 <Reveal className="space-y-4" delay={0.3}>
-                  <h3 className="text-2xl font-semibold text-foreground">Real-time Intelligence</h3>
+                  <h3 className="text-2xl font-semibold text-foreground">Priority-Based Ordering</h3>
                   <p className="text-muted-foreground">
-                    Expand search scope dynamically when needed. The system learns 
-                    from your codebase structure to find files you didn't even know were relevant.
+                    Returns files ordered by implementation priority - highest-impact files first (entry points, shared data models, core logic), then adds paths only when essential for completeness.
                   </p>
                 </Reveal>
               </div>
