@@ -38,42 +38,43 @@ export default function MultiModelPlansPage() {
               </Reveal>
               
               <Reveal className="text-xl text-muted-foreground mb-8 max-w-3xl mx-auto">
-                Compare, de-duplicate, and synthesize into one executable plan.
+                Deep architectural analysis with conflict resolution protocol. Creates emergent solutions that transcend any individual plan's limitations.
               </Reveal>
 
               <div className="grid md:grid-cols-2 gap-8 mt-12 text-left">
                 <Reveal className="space-y-4">
-                  <h3 className="text-2xl font-semibold text-foreground">Council of LLMs</h3>
+                  <h3 className="text-2xl font-semibold text-foreground">Architectural Philosophy Extraction</h3>
                   <p className="text-muted-foreground">
-                    Generate plans from Gemini 2.5, GPT-5, Claude 4, and other leading models. 
-                    Each model brings unique insights and approaches to your implementation challenge.
+                    Analyzes each plan's core architectural approach and reasoning. 
+                    Extracts the "why" behind major decisions and identifies underlying 
+                    design patterns across different model approaches.
                   </p>
                 </Reveal>
 
                 <Reveal className="space-y-4" delay={0.1}>
-                  <h3 className="text-2xl font-semibold text-foreground">Intelligent Synthesis</h3>
+                  <h3 className="text-2xl font-semibold text-foreground">Conflict Resolution Protocol</h3>
                   <p className="text-muted-foreground">
-                    The merge AI performs deep synthesis, detecting blind spots, 
-                    eliminating redundancy, and creating emergent solutions that 
-                    are better than any single model's plan.
+                    When plans disagree, applies principle-based resolution: SOLID principles, 
+                    architectural integration, maintainability, and complexity minimization. 
+                    Can synthesize hybrid approaches or create third solutions.
                   </p>
                 </Reveal>
 
                 <Reveal className="space-y-4" delay={0.2}>
-                  <h3 className="text-2xl font-semibold text-foreground">Plan Comparison</h3>
+                  <h3 className="text-2xl font-semibold text-foreground">Cross-Plan Pattern Recognition</h3>
                   <p className="text-muted-foreground">
-                    Side-by-side comparison of different approaches. See where models 
-                    agree, where they diverge, and understand the trade-offs of each approach 
-                    before execution.
+                    Identifies convergent solutions and complementary approaches across plans. 
+                    Uses insights from one plan to validate assumptions in others, 
+                    detecting blind spots invisible to individual models.
                   </p>
                 </Reveal>
 
                 <Reveal className="space-y-4" delay={0.3}>
-                  <h3 className="text-2xl font-semibold text-foreground">Executable Output</h3>
+                  <h3 className="text-2xl font-semibold text-foreground">Emergent Intelligence</h3>
                   <p className="text-muted-foreground">
-                    Get one clean, executable implementation plan that combines the best 
-                    insights from all models. Review with floating notes and edit 
-                    plans directly before execution.
+                    Creates solutions that are MORE than the sum of their parts. 
+                    Generates architectural coherence and superior insights that 
+                    transcend the limitations of any individual plan.
                   </p>
                 </Reveal>
               </div>
