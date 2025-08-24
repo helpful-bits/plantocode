@@ -213,7 +213,10 @@
       "Bash(npx remotion render:*)",
       "WebFetch(domain:vibemanager.app)",
       "Bash(aws cloudfront get-distribution-config:*)",
-      "Bash(aws cloudfront get-response-headers-policy:*)"
+      "Bash(aws cloudfront get-response-headers-policy:*)",
+      "Bash(npm -w website run build)",
+      "Bash(npm -w website run typecheck)",
+      "Read(//Users/kirylkazlovich/Desktop/**)"
     ],
     "deny": [],
     "defaultMode": "acceptEdits"
