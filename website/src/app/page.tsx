@@ -16,7 +16,7 @@ import {
   Video,
   History,
 } from 'lucide-react';
-import type { SoftwareApplication } from 'schema-dts';
+import type { SoftwareApplication, FAQPage } from 'schema-dts';
 import { SectionDividerOrbs, SectionDividerMesh } from '@/components/ui/SectionDivider';
 import { cdnUrl } from '@/lib/cdn';
 
@@ -47,20 +47,20 @@ const CallToAction = dynamic(() => import('@/components/landing/CallToAction').t
 
 export const metadata: Metadata = {
   title: 'Vibe code cleanup specialist',
-  description: "The AI coding assistant that acts as a middle-manager for your LLMs, curating the perfect context so they can't get lost. Built by a developer, for developers, from the trenches.",
+  description: 'Find the right files, merge plans from multiple models, and ship correct changes—without sending your whole codebase to the cloud. Local-first.',
   keywords: [
     'AI coding assistant',
-    'codebase analysis',
-    'implementation plans',
-    'developer tools',
-    'code context',
-    'file discovery',
-    'developer productivity',
-    'AI development workflow',
-    'code intelligence',
-    'software architecture planning',
+    'codebase context',
+    'find relevant files',
+    'LLM orchestration',
+    'implementation plan',
+    'local-first',
+    'multi-model planning',
+    'deep research for code',
     'large codebase navigation',
-    'multi-model AI planning',
+    'developer tools',
+    'code intelligence',
+    'file discovery',
   ],
 };
 
@@ -69,51 +69,61 @@ export default function Home() {
     '@type': 'SoftwareApplication',
     name: 'Vibe Manager',
     applicationCategory: 'DeveloperApplication',
-    operatingSystem: 'macOS, Windows, Linux',
-    description: "The AI coding assistant that acts as a middle-manager for your LLMs, curating the perfect context so they can't get lost. Built by a developer, for developers, from the trenches.",
+    operatingSystem: 'macOS',
+    url: 'https://vibemanager.app',
+    description: 'AI coding assistant for large codebases: finds relevant files, runs deep research, and merges multi-model plans. Local-first.',
     offers: {
       '@type': 'Offer',
       price: '0',
       priceCurrency: 'USD',
-      availability: 'https://schema.org/InStock',
-      priceValidUntil: '2025-12-31',
-      description: 'Free download with pay-as-you-go AI usage credits',
     },
-    creator: {
-      '@type': 'Organization',
-      name: 'Vibe Manager Team',
-      url: 'https://vibemanager.app',
+  };
+
+  const faqItems = [
+    {
+      question: 'What is Vibe Manager?',
+      answer: 'An AI coding assistant that curates the right repo context and merges multi-model plans so agents make correct changes.',
     },
-    publisher: {
-      '@type': 'Organization',
-      name: 'Vibe Manager',
-      url: 'https://vibemanager.app',
+    {
+      question: 'Does my repo leave my machine?',
+      answer: "It's local-first: code, sessions, and history live in SQLite on your machine. You control what (if anything) gets sent to model providers.",
     },
-    downloadUrl: 'https://vibemanager.app/download',
-    softwareVersion: '1.0.0',
-    datePublished: '2024-01-01',
-    dateModified: '2025-07-23',
-    screenshot: cdnUrl('/images/og-image.png'),
-    featureList: [
-      '4-Stage File Finder Workflow (No Vector DBs)',
-      'Deep Research Workflow for Current Documentation',
-      'Council of LLMs: Multi-Model & Multi-Run Plan Generation',
-      'Intelligent Plan Merging & Synthesis',
-      'Voice Dictation with GPT-4 Transcription',
-      'Screen Recording with AI Analysis',
-      'Persistent Sessions with Complete History Tracking',
-      '100% Local-First: Code & Data Stay On Your Machine',
-      'Fully Customizable System Prompts & Instructions',
-      'True Parallel Workflows: Never Get Blocked',
-    ],
-    softwareRequirements: 'Node.js 18+, 4GB RAM minimum',
-    aggregateRating: {
-      '@type': 'AggregateRating',
-      ratingValue: '4.8',
-      ratingCount: '127',
-      bestRating: '5',
-      worstRating: '1',
+    {
+      question: 'Which models does it use?',
+      answer: 'Gemini 2.5, GPT-5/4.1, Claude 4, o3/o4, Grok 4, DeepSeek R1, Kimi K2—merge AI synthesizes their plans. (List evolves as new models appear.)',
     },
+    {
+      question: 'What exactly does File Finder do?',
+      answer: 'Decomposes the task, builds search patterns, then scores actual file content for relevance and can expand to dependencies.',
+    },
+    {
+      question: 'Can it research current docs?',
+      answer: 'Yes—Deep Research pulls up-to-date sources to fill knowledge gaps and ties them back to your code.',
+    },
+    {
+      question: 'Pricing?',
+      answer: 'Free welcome credits, then pay-as-you-go; every operation shows real-time token cost. No subscriptions.',
+    },
+    {
+      question: 'Platforms?',
+      answer: 'macOS now, Windows coming soon.',
+    },
+    {
+      question: 'Security & keys?',
+      answer: 'Vibe Manager acts as a secure proxy to AI providers; you handle auth/billing, and code flows directly through under your control.',
+    },
+  ];
+
+  const faqPageJsonLd: FAQPage = {
+    '@type': 'FAQPage',
+    mainEntity: faqItems.map(item => ({
+      '@type': 'Question',
+      name: item.question,
+      acceptedAnswer: {
+        '@type': 'Answer',
+        text: item.answer,
+      },
+    })),
   };
 
   const features = [
@@ -207,29 +217,11 @@ export default function Home() {
     },
   ];
 
-  const faqItems = [
-    {
-      question: 'So it just finds the right files?',
-      answer: 'Well, yes, it finds the *right* set of files. But also...',
-    },
-    {
-      question: 'What else?',
-      answer: 'It integrates up-to-the-minute web documentation with your codebase. And it generates implementation plans from a council of AI models, then merges them into a single, bulletproof strategy.',
-    },
-    {
-      question: 'Okay, but apart from finding files, doing web research, and creating merged multi-model plans...?',
-      answer: 'It keeps your code completely private on your local machine. And lets you customize every single system prompt and copy-paste instruction. And it has voice dictation and screen recording with AI analysis. And it runs all its workflows in parallel so you can work on multiple tasks at once. And it remembers everything - your sessions, your file selections, your task history - so you never lose context.',
-    },
-    {
-      question: "Alright, I'll grant you that the file finding, web research, multi-model plans, privacy, custom prompts, voice dictation, screen recording, parallel workflows, and persistent sessions are nice. But apart from ALL THAT, what has Vibe Manager ever done for us?",
-      answer: 'It gave you your weekend back.',
-    },
-  ];
-
 
   return (
     <>
       <StructuredData data={softwareApplicationJsonLd} />
+      <StructuredData data={faqPageJsonLd} />
       {/* Background gradient */}
       <div className="fixed inset-0 -z-20" style={{ background: 'var(--background-gradient)' }} />
       {/* Page content */}

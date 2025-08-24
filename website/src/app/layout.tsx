@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
-import '@/styles/desktop-compat.css';
+import '@/styles/vibe-panels.css';
+// import '@/styles/desktop-compat.css';
 import { fontClasses } from './fonts';
 import { StructuredData } from '@/components/seo/StructuredData';
 import type { WebSite } from 'schema-dts';
@@ -8,16 +9,16 @@ import { ClientProviders } from '@/components/providers/ClientProviders';
 import { ConditionalBackground } from '@/components/system/ConditionalBackground';
 import { Footer } from '@/components/landing/Footer';
 import { SpeedInsights } from '@vercel/speed-insights/next';
-import { cdnUrl, MEDIA_CDN_BASE } from '@/lib/cdn';
+import { cdnUrl } from '@/lib/cdn';
 
 export const metadata: Metadata = {
-  metadataBase: new URL('https://vibemanager.app'),
+  metadataBase: new URL('https://www.vibemanager.app'),
   title: {
     template: '%s | Vibe Manager',
     default: 'Vibe code cleanup specialist',
   },
-  description: "The AI coding assistant that acts as a middle-manager for your LLMs, curating the perfect context so they can't get lost. Built by a developer, for developers, from the trenches.",
-  keywords: ['AI coding assistant', 'context curation', 'vibe coding', 'multi-model AI', 'codebase analysis', 'implementation plans', 'developer tools', 'local AI', 'private AI coding', 'Claude Code', 'Gemini', 'large codebase', 'developer productivity'],
+  description: 'Find the right files, merge plans from multiple models, and ship correct changes—without sending your whole codebase to the cloud. Local-first.',
+  keywords: ['AI coding assistant', 'codebase context', 'find relevant files', 'LLM orchestration', 'implementation plan', 'local-first', 'multi-model planning', 'deep research for code', 'large codebase navigation', 'developer tools', 'code intelligence', 'file discovery'],
   authors: [{ name: 'Vibe Manager Team' }],
   creator: 'Vibe Manager',
   publisher: 'Vibe Manager',
@@ -29,12 +30,12 @@ export const metadata: Metadata = {
     telephone: false,
   },
   alternates: {
-    canonical: 'https://vibemanager.app/',
+    canonical: 'https://www.vibemanager.app/',
   },
   openGraph: {
     title: 'Vibe code cleanup specialist',
-    description: 'Tired of babysitting your AI agent? Vibe Manager is the competent middle manager that curates perfect context from your codebase and the web, so your agents can build correctly the first time.',
-    url: 'https://vibemanager.app/',
+    description: 'Find the right files, merge plans from multiple models, and ship correct changes—without sending your whole codebase to the cloud. Local-first.',
+    url: 'https://www.vibemanager.app/',
     siteName: 'Vibe Manager',
     images: [{
       url: cdnUrl('/images/og-image.png'),
@@ -49,7 +50,7 @@ export const metadata: Metadata = {
   twitter: {
     card: 'summary_large_image',
     title: 'Vibe code cleanup specialist',
-    description: 'Tired of babysitting your AI agent? Vibe Manager is the competent middle manager that curates perfect context from your codebase and the web, so your agents can build correctly the first time.',
+    description: 'Find the right files, merge plans from multiple models, and ship correct changes—without sending your whole codebase to the cloud. Local-first.',
     images: [{
       url: cdnUrl('/images/og-image.png'),
       alt: 'Vibe Manager - AI-Powered Context Curation for Large Codebases',
@@ -127,8 +128,8 @@ export const viewport: Viewport = {
 const websiteJsonLd: WebSite = {
   '@type': 'WebSite',
   name: 'Vibe Manager',
-  url: 'https://vibemanager.app',
-  description: "The AI coding assistant that acts as a middle-manager for your LLMs, curating the perfect context so they can't get lost. Built by a developer, for developers, from the trenches.",
+  url: 'https://www.vibemanager.app',
+  description: 'Find the right files, merge plans from multiple models, and ship correct changes—without sending your whole codebase to the cloud. Local-first.',
 };
 
 export default function RootLayout({
@@ -140,8 +141,6 @@ export default function RootLayout({
     <html suppressHydrationWarning className={fontClasses.variables} lang="en">
       <head>
         {/* Preconnect to critical third-party origins - from Lighthouse report */}
-        <link rel="dns-prefetch" href={MEDIA_CDN_BASE} />
-        <link rel="preconnect" href={MEDIA_CDN_BASE} crossOrigin="anonymous" />
         {/* Additional preconnects for analytics if enabled */}
         {process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID && (
           <>
@@ -150,7 +149,7 @@ export default function RootLayout({
           </>
         )}
         {/* Plausible Analytics */}
-        <script defer data-domain="vibemanager.app" src="https://plausible.io/js/script.js"></script>
+        <script data-domain="vibemanager.app" src="https://plausible.io/js/script.js"></script>
         <script dangerouslySetInnerHTML={{
           __html: `window.plausible = window.plausible || function() { (window.plausible.q = window.plausible.q || []).push(arguments) }`
         }} />
