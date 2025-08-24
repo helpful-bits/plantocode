@@ -146,6 +146,8 @@
     --particle-leader-color: #14b8a6; /* Equivalent to Tailwind teal-500. Note: three.js doesn't support oklch(), so using hex. */
     --particle-follower-base-color: #5eead4; /* Equivalent to Tailwind teal-300 */
     --particle-follower-highlight-color: #99f6e4; /* Equivalent to Tailwind teal-200 */
+    
+    
   }
 
   .dark {
@@ -242,6 +244,7 @@
     margin: 0;
     padding: 0;
     transition: background-color 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    overflow-x: hidden;
   }
   
   body {
@@ -253,6 +256,7 @@
     padding: 0;
     min-height: 100vh;
     transition: color 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    overflow-x: hidden;
   }
 }
 
@@ -285,16 +289,7 @@
   }
 }
 
-/* Accessibility - Reduced Motion */
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0s !important;
-    animation-delay: 0s !important;
-    transition-duration: 0s !important;
-  }
-}
+/* Reduced motion handling is consolidated below in the carousel-specific section */
 
 /* Accessibility - Reduced Transparency */
 @media (prefers-reduced-transparency: reduce) {
@@ -560,10 +555,9 @@
   }
   
   
-  /* Glass parallax for 3D depth */
+  /* Glass parallax for 2D depth effects */
   .glass-parallax {
-    transform-style: preserve-3d;
-    perspective: 1000px;
+    transform-style: flat;
   }
   
   
@@ -812,6 +806,33 @@
     transition: color 0.3s cubic-bezier(0.4, 0, 0.2, 1), text-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
+  .text-hero-title-gradient {
+    background: linear-gradient(135deg, var(--color-primary), var(--color-accent));
+    background-clip: text;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+    display: inline-block;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  
+  /* Fallback for browsers that don't support background-clip */
+  @supports not (background-clip: text) {
+    .text-hero-title-gradient {
+      color: var(--color-primary);
+      -webkit-text-fill-color: var(--color-primary);
+    }
+    
+    /* Dark mode fallback */
+    .dark .text-hero-title-gradient {
+      color: var(--teal-bright);
+      -webkit-text-fill-color: var(--teal-bright);
+    }
+  }
+
   .text-accent-highlight {
     color: var(--color-adaptive-primary);
     font-weight: 600;
@@ -1015,7 +1036,7 @@ section:not(:first-child) {
     0 8px 32px oklch(0.48 0.15 195 / 0.15);
 }
 
-/* Mobile-optimized animations and touch interactions */
+/* Mobile-optimized animations and touch interactions with rectangular motion support */
 @media (max-width: 768px), (pointer: coarse) {
   
   .hover-lift:hover,
@@ -1023,6 +1044,8 @@ section:not(:first-child) {
     transform: none !important;
     box-shadow: none !important;
   }
+  
+  /* Performance optimizations removed - simpler 2D animations don't require will-change */
   
   /* Simplify glass effects for performance and remove borders */
   .glass,
@@ -1060,14 +1083,19 @@ section:not(:first-child) {
   .hover-glow {
     transition: none !important;
   }
+  
 }
 
-/* Low-end device optimizations */
+/* Low-end device optimizations with rectangular motion performance tuning */
 @media (max-width: 480px), (-webkit-max-device-pixel-ratio: 1) {
   /* Disable particle effects on very small screens */
   .particle-scene {
     display: none !important;
   }
+  
+  /* Further reduce rectangular motion range for very low-end devices */
+  /* Mobile variables removed - unified deck animation */
+  
   
   /* Remove blur for performance but keep styled backgrounds */
   .glass,
@@ -1225,17 +1253,7 @@ html {
 }
 
 /* Reduce motion for users who prefer it */
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-    scroll-behavior: auto !important;
-  }
-
-}
+/* Reduced motion consolidated in carousel-specific section below */
 
 /* Performance-based fallbacks */
 [data-performance="low"] .particle-scene {

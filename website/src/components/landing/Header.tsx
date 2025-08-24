@@ -149,7 +149,7 @@ export function Header() {
                       variant="cta"
                       onClick={() => handleDownloadClick('header_desktop')}
                     >
-                      <Link href="/download" className="no-hover-effect cursor-pointer">
+                      <Link href="/download" prefetch={false} className="no-hover-effect cursor-pointer">
                         Download for Mac
                       </Link>
                     </Button>
@@ -315,7 +315,7 @@ export function Header() {
                         setMobileMenuOpen(false);
                       }}
                     >
-                      <Link href="/download" className="no-hover-effect cursor-pointer">
+                      <Link href="/download" prefetch={false} className="no-hover-effect cursor-pointer">
                         Download for Mac
                       </Link>
                     </Button>
