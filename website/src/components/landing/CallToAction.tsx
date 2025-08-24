@@ -107,7 +107,7 @@ export function CallToAction({ title, description, buttonText, buttonLink }: Cal
                       size="xl"
                       variant="primary"
                     >
-                      <Link className="inline-flex items-center justify-center gap-3 no-hover-effect cursor-pointer" href={buttonLink}>
+                      <Link className="inline-flex items-center justify-center gap-3 no-hover-effect cursor-pointer" href={buttonLink} prefetch={false}>
                         {buttonText}
                         <svg
                           className="w-5 h-5 flex-shrink-0"

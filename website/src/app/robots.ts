@@ -156,7 +156,7 @@ export default function robots(): MetadataRoute.Robots {
         disallow: '/',
       },
     ],
-    sitemap: 'https://vibemanager.app/sitemap.xml',
-    host: 'https://vibemanager.app',
+    sitemap: 'https://www.vibemanager.app/sitemap.xml',
+    host: 'https://www.vibemanager.app',
   };
 }
