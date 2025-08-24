@@ -2,7 +2,6 @@
 
 import React, { useEffect, useState, useRef } from 'react';
 import { GlassCard } from '@/components/ui/GlassCard';
-import { useInView } from 'framer-motion';
 import Reveal from '@/components/motion/Reveal';
 
 interface SubStep {
@@ -29,10 +28,6 @@ function OptimizedVideo({ video, poster }: { video: string; poster: string }) {
   const [loadError, setLoadError] = useState(false);
   const [posterError, setPosterError] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
-  const isInView = useInView(videoRef, { 
-    margin: '50px',
-    once: true // Only trigger once when first entering view
-  });
 
   useEffect(() => {
     const img = new Image();
@@ -40,24 +35,11 @@ function OptimizedVideo({ video, poster }: { video: string; poster: string }) {
     img.src = poster;
   }, [poster]);
 
-  // Autoplay on reveal
-  useEffect(() => {
-    if (isInView && videoRef.current) {
-      // Add a small delay to ensure smooth reveal animation
-      const timer = setTimeout(() => {
-        videoRef.current?.play().catch(() => {
-          // Autoplay blocked - that's fine, user can manually play
-        });
-      }, 200);
-
-      return () => clearTimeout(timer);
-    }
-  }, [isInView]);
 
   const webmVideo = video.replace('.mp4', '_vp9.webm');
 
   return (
-    <div className="w-screen sm:w-full -ml-[50vw] sm:-ml-0 left-1/2 sm:left-auto relative sm:static">
+    <div className="w-full max-w-full overflow-hidden">
       <video
         ref={videoRef}
         controls
