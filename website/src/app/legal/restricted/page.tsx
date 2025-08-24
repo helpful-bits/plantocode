@@ -1,6 +1,19 @@
 'use client';
 
 import Link from 'next/link';
+import type { Metadata } from 'next';
+
+export const metadata: Metadata = {
+  title: '451 - Service Not Available in Your Region | Vibe Manager',
+  description: 'This service is not available in your geographic region.',
+  robots: {
+    index: false,
+    follow: false,
+    noarchive: true,
+    nosnippet: true,
+  },
+};
+
 import { MapPin } from 'lucide-react';
 import GlassCard from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/button';

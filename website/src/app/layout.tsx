@@ -12,7 +12,7 @@ import { SpeedInsights } from '@vercel/speed-insights/next';
 import { cdnUrl } from '@/lib/cdn';
 
 export const metadata: Metadata = {
-  metadataBase: new URL('https://vibemanager.app'),
+  metadataBase: new URL('https://www.vibemanager.app'),
   title: {
     template: '%s | Vibe Manager',
     default: 'Vibe code cleanup specialist',
@@ -30,12 +30,12 @@ export const metadata: Metadata = {
     telephone: false,
   },
   alternates: {
-    canonical: 'https://vibemanager.app/',
+    canonical: 'https://www.vibemanager.app/',
   },
   openGraph: {
     title: 'Vibe code cleanup specialist',
     description: 'Find the right files, merge plans from multiple models, and ship correct changes—without sending your whole codebase to the cloud. Local-first.',
-    url: 'https://vibemanager.app/',
+    url: 'https://www.vibemanager.app/',
     siteName: 'Vibe Manager',
     images: [{
       url: cdnUrl('/images/og-image.png'),
@@ -128,7 +128,7 @@ export const viewport: Viewport = {
 const websiteJsonLd: WebSite = {
   '@type': 'WebSite',
   name: 'Vibe Manager',
-  url: 'https://vibemanager.app',
+  url: 'https://www.vibemanager.app',
   description: 'Find the right files, merge plans from multiple models, and ship correct changes—without sending your whole codebase to the cloud. Local-first.',
 };
 
