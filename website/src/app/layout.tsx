@@ -184,6 +184,13 @@ export default function RootLayout({
             `
           }}
         />
+        <Script
+          id="twitter-event"
+          strategy="afterInteractive"
+          dangerouslySetInnerHTML={{
+            __html: `twq('event', 'tw-qd2ik-qd2io', {});`
+          }}
+        />
       </body>
     </html>
   );
