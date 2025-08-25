@@ -12,7 +12,8 @@ import { DesktopCheckbox } from '../desktop-ui/DesktopCheckbox';
 import { DesktopSlider } from '../desktop-ui/DesktopSlider';
 import { DesktopSelect, DesktopSelectOption } from '../desktop-ui/DesktopSelect';
 import { DesktopProgress } from '../desktop-ui/DesktopProgress';
-import { Mic, Undo2, Redo2, Square } from 'lucide-react';
+import { DesktopBadge } from '../desktop-ui/DesktopBadge';
+import { Mic, Undo2, Redo2, Square, Video, CheckCircle, Trash2, Loader2, ChevronDown } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 import { useInteractiveDemoContext } from '../contexts/InteractiveDemoContext';
@@ -49,8 +50,8 @@ export function VideoRecordingMock({ isInView }: VideoRecordingMockProps) {
   const [frameRate, setFrameRate] = useState(15);
   const [recordAudio, setRecordAudio] = useState(false);
   const [audioDevice, setAudioDevice] = useState('default');
-  const [analysisPrompt, setAnalysisPrompt] = useState('');
-  const [taskText, setTaskText] = useState<string>('');
+  const [analysisPrompt, setAnalysisPrompt] = useState('Analyze the user authentication flow and identify potential security vulnerabilities. Focus on JWT token handling, session management, and route protection patterns. Suggest specific improvements for better security and user experience.');
+  const [taskText, setTaskText] = useState<string>('Record a walkthrough of the login process to analyze the authentication flow and identify any security issues or UX improvements.');
 
   const { phaseName: recordingState, phaseProgress01: phaseProgress } = useTimedCycle({
     active: isInView,
@@ -63,7 +64,17 @@ export function VideoRecordingMock({ isInView }: VideoRecordingMockProps) {
     active: recordingState === 'analyzing',
     from: 0,
     to: 100,
-    durationMs: 5000
+    durationMs: 5000,
+    loop: true
+  });
+  
+  // Token streaming animation - simulate output tokens being generated
+  const { value: outputTokens } = useTweenNumber({
+    from: 2100, // Starting tokens
+    to: 2956, // Final tokens (2100 + 856)
+    active: recordingState === 'analyzing',
+    durationMs: 3500, // Match analyzing duration
+    loop: true
   });
 
   useEffect(() => {
@@ -76,13 +87,18 @@ export function VideoRecordingMock({ isInView }: VideoRecordingMockProps) {
 
   useEffect(() => {
     if (recordingState === 'populating' || recordingState === 'final') {
-      setTaskText(ANALYSIS_RESULT_TEXT);
+      // Append the analysis summary to the original task text, don't replace it
+      const originalTask = 'Record a walkthrough of the login process to analyze the authentication flow and identify any security issues or UX improvements.';
+      setTaskText(originalTask + '\n\n' + ANALYSIS_RESULT_TEXT);
     }
   }, [recordingState]);
 
-  // Calculate recording time based on phase progress during recording phase
+  // Calculate recording time that ticks up smoothly during recording
+  // Recording phase lasts 4000ms, so we'll show 0-15 seconds progression
   const recordingTime = recordingState === 'recording' 
-    ? Math.floor(phaseProgress * 60) // 60 seconds max recording time
+    ? Math.floor(phaseProgress * 15) // Starts at 0, progresses to 14
+    : recordingState === 'stopping' 
+    ? 15 // Show final time during stopping
     : 0;
 
   const formatTime = (seconds: number) => {
@@ -96,48 +112,63 @@ export function VideoRecordingMock({ isInView }: VideoRecordingMockProps) {
       {/* Task Section Card - exactly like desktop task-section.tsx */}
       <div className="rounded-lg p-5 bg-card shadow-sm w-full desktop-glass-card">
         <div className="flex flex-col gap-1.5">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="flex items-center gap-2 flex-wrap">
               <label
                 htmlFor="taskDescArea"
-                className="font-semibold text-lg text-foreground"
+                className="font-semibold text-base sm:text-lg text-foreground"
               >
                 Task Description
               </label>
               <span
                 className={cn(
-                  "text-xs bg-destructive/10 backdrop-blur-sm text-destructive px-2 py-0.5 rounded-md border border-destructive/20",
+                  "text-xs bg-destructive/10 backdrop-blur-sm text-destructive px-2 py-0.5 rounded-md border border-destructive/20 transition-opacity",
                   taskText.trim() && "invisible"
                 )}
               >
                 Required
               </span>
               {/* Undo/Redo buttons next to the label */}
-              <div className="flex items-center gap-1 ml-2">
+              <div className="flex items-center gap-1">
                 <DesktopButton
                   compact
                   variant="outline"
                   size="xs"
-                  className="h-6 w-6"
+                  className="transition-transform duration-200"
                   title="Undo last change"
                 >
-                  <Undo2 className="h-3 w-3" />
+                  <Undo2 className="h-2.5 w-2.5" />
                 </DesktopButton>
                 <DesktopButton
                   compact
                   variant="outline"
                   size="xs"
-                  className="h-6 w-6"
+                  className="transition-transform duration-200"
                   title="Redo undone change"
                 >
-                  <Redo2 className="h-3 w-3" />
+                  <Redo2 className="h-2.5 w-2.5" />
                 </DesktopButton>
               </div>
             </div>
             
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 flex-wrap w-full sm:w-auto">
+              <div className="h-6 w-[100px] px-2 text-sm border border-[oklch(0.90_0.04_195_/_0.5)] bg-muted/50 hover:bg-muted focus:ring-1 focus:ring-ring transition-colors cursor-pointer flex items-center justify-between rounded">
+                <span className="text-xs">English</span>
+                <ChevronDown className="h-3 w-3" />
+              </div>
+              
+              <div className="h-6 px-2 text-sm border border-[oklch(0.90_0.04_195_/_0.5)] bg-muted/50 hover:bg-muted focus:ring-1 focus:ring-ring transition-colors cursor-pointer flex items-center justify-between rounded">
+                <span className="text-xs">AirPods Max</span>
+                <ChevronDown className="h-3 w-3 ml-1" />
+              </div>
+
               {/* Voice Transcription Button */}
-              <DesktopButton variant="ghost" size="sm" className="h-6 w-6 hover:bg-primary/10 text-primary" title="Voice transcription">
+              <DesktopButton 
+                variant="ghost" 
+                size="sm" 
+                className="h-6 w-6 hover:bg-primary/10 text-primary transition-transform duration-200" 
+                title="Voice transcription"
+              >
                 <Mic className="h-4 w-4" />
               </DesktopButton>
               
@@ -146,7 +177,7 @@ export function VideoRecordingMock({ isInView }: VideoRecordingMockProps) {
                 <DesktopButton
                   variant="ghost"
                   size="sm"
-                  className="h-6 w-6 hover:bg-primary/10 text-primary"
+                  className="h-6 w-6 hover:bg-primary/10 text-primary transition-transform duration-200"
                   title={(recordingState as RecordingState) === 'recording' ? "Recording in progress..." : "Record screen area"}
                 >
                   {(recordingState === 'capturing' || recordingState === 'stopping') ? (
@@ -178,7 +209,7 @@ export function VideoRecordingMock({ isInView }: VideoRecordingMockProps) {
                 <DesktopButton
                   variant="ghost"
                   size="sm"
-                  className="h-6 w-6 hover:bg-destructive/10 text-destructive animate-pulse"
+                  className="h-6 w-6 hover:bg-destructive/10 text-destructive animate-pulse transition-transform duration-200"
                   title="Stop recording"
                 >
                   <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
@@ -192,12 +223,12 @@ export function VideoRecordingMock({ isInView }: VideoRecordingMockProps) {
           <div className="relative">
             <DesktopTextarea
               className={cn(
-                "border rounded-xl bg-background backdrop-blur-sm text-foreground p-4 w-full resize-y font-normal shadow-soft min-h-[200px]",
+                "border rounded-xl bg-background backdrop-blur-sm text-foreground p-4 w-full resize-y font-normal shadow-soft min-h-[400px]",
                 !taskText.trim() ? "border-destructive/20 bg-destructive/5" : "border-[oklch(0.90_0.04_195_/_0.5)]"
               )}
               value={taskText}
               onChange={() => {}} // Read-only in demo
-              placeholder="Clearly describe the changes or features you want the AI to implement. You can use the voice recorder above or type directly."
+              placeholder="Clearly describe the changes or features you want the AI to implement. You can use the voice recorder below or type directly."
               readOnly
             />
 
@@ -229,7 +260,7 @@ export function VideoRecordingMock({ isInView }: VideoRecordingMockProps) {
 
       {/* Recording Configuration - shows inline when dialog-open state */}
       {recordingState === 'dialog-open' && (
-        <div className="mt-6 rounded-lg p-6 desktop-glass-card">
+        <div className="mt-6 rounded-lg p-6 desktop-glass-card max-w-2xl mx-auto">
           <div className="space-y-4">
             <div>
               <h3 className="text-lg font-semibold">Record Screen for Analysis</h3>
@@ -246,7 +277,7 @@ export function VideoRecordingMock({ isInView }: VideoRecordingMockProps) {
                 value={analysisPrompt}
                 onChange={(e) => setAnalysisPrompt(e.target.value)}
                 placeholder="e.g., Analyze the user interface and suggest improvements..."
-                className="min-h-[150px] font-mono text-sm bg-muted/50 border rounded"
+                className="min-h-[150px] font-mono text-sm bg-background border border-[oklch(0.90_0.04_195_/_0.8)] rounded-lg shadow-sm"
               />
             </div>
 
@@ -303,7 +334,7 @@ export function VideoRecordingMock({ isInView }: VideoRecordingMockProps) {
               <DesktopButton variant="outline" aria-label="Cancel recording">
                 Cancel
               </DesktopButton>
-              <DesktopButton aria-label="Start recording">
+              <DesktopButton variant="default" className="bg-primary text-primary-foreground hover:bg-primary/90 border-0" aria-label="Start recording">
                 Start Recording
               </DesktopButton>
             </div>
@@ -350,15 +381,109 @@ export function VideoRecordingMock({ isInView }: VideoRecordingMockProps) {
         </div>
       )}
 
-      {/* Processing/Completed State */}
-      {recordingState === 'analyzing' && (
-        <div className="mt-4 rounded-md p-4 desktop-glass-card">
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-medium">Analyzing video...</p>
-            <p className="text-[10px] font-mono text-muted-foreground">{analysisProgress.toFixed(2)}%</p>
-          </div>
-          <div className="mt-2">
-            <DesktopProgress className="h-1 w-full" value={analysisProgress} />
+      {/* Video Analysis Job Card - EXACT match to desktop implementation */}
+      {(recordingState === 'analyzing' || recordingState === 'populating' || recordingState === 'final') && (
+        <div className="animate-in slide-in-from-bottom-4 duration-500">
+          <div
+            className={cn(
+              "border border-border/60 bg-background/80 dark:bg-muted/30 p-2 rounded-lg text-xs text-foreground cursor-pointer transition-colors flex flex-col w-full max-w-[320px] overflow-hidden shadow-soft backdrop-blur-sm min-w-0"
+            )}
+            style={{
+              minHeight: "140px",
+            }}
+            role="button"
+            tabIndex={0}
+          >
+            {/* TOP ROW: Icon + Job Name + Badge | Close Button */}
+            <div className="flex items-center justify-between mb-2 w-full min-w-0">
+              <div className="flex items-center gap-2 font-medium min-w-0 flex-1">
+                <span className="w-4 h-4 inline-flex items-center justify-center flex-shrink-0">
+                  {recordingState === 'final' ? (
+                    <CheckCircle className="h-3 w-3 text-success" />
+                  ) : recordingState === 'analyzing' ? (
+                    <Loader2 className="h-3 w-3 text-primary animate-spin" />
+                  ) : (
+                    <Video className="h-3 w-3 text-info" />
+                  )}
+                </span>
+                <span className="truncate text-foreground">
+                  {recordingState === 'final' ? 'Video analyzed: screen_recording_20241201.webm' : 'Analyzing Video: screen_recording_20241201.webm'}
+                </span>
+                <DesktopBadge variant="outline" className="text-[10px] flex items-center gap-1.5 ml-1 flex-shrink-0">
+                  Video Analysis
+                </DesktopBadge>
+              </div>
+              <div className="w-6 h-6 flex-shrink-0">
+                <DesktopButton
+                  variant="ghost"
+                  size="xs"
+                  className="w-6 h-6 p-0 text-muted-foreground hover:text-foreground"
+                  aria-label="Delete job"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </DesktopButton>
+              </div>
+            </div>
+
+            {/* TIME ROW */}
+            <div className="text-muted-foreground text-[10px] mt-2 flex items-center justify-between">
+              <span>{recordingState === 'analyzing' ? 'just now' : (recordingState === 'populating' || recordingState === 'final') ? 'just now' : 'just now'}</span>
+            </div>
+
+            {/* PROGRESS BAR (only for running jobs) */}
+            {recordingState === 'analyzing' && (
+              <div className="mt-2 mb-1">
+                <DesktopProgress value={analysisProgress} className="h-1" />
+                <div className="flex justify-between items-center min-w-0 overflow-hidden">
+                  <p className="text-[9px] text-muted-foreground mt-0.5 truncate">
+                    Processing video frames...
+                  </p>
+                  <p className="text-[9px] text-muted-foreground mt-0.5 text-right">
+                    {Math.round(analysisProgress)}%
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* TOKEN/MODEL INFO (for LLM tasks) */}
+            <div className="text-muted-foreground text-[10px] mt-2 flex items-center justify-between min-h-[24px] w-full min-w-0">
+              <div className="flex flex-col gap-0.5 max-w-[90%] overflow-hidden min-w-0 flex-1">
+                <span className="flex items-center gap-1 overflow-hidden min-w-0">
+                  <span className="text-[9px] text-muted-foreground flex-shrink-0">Tokens:</span>
+                  <span className="font-mono text-foreground text-[9px] flex-shrink-0">2.1K</span>
+                  <span className="text-[9px] text-muted-foreground flex-shrink-0">→</span>
+                  <span className="font-mono text-foreground text-[9px] flex-shrink-0">
+                    {recordingState === 'analyzing' ? Math.round(outputTokens - 2100) :
+                     (recordingState === 'populating' || recordingState === 'final') ? '856' : '856'}
+                  </span>
+                </span>
+                <span className="text-[9px] text-muted-foreground truncate max-w-full" title="google/gemini-2.5-pro">
+                  google/gemini-2.5-pro
+                </span>
+              </div>
+              <span className="text-[9px] text-muted-foreground flex-shrink-0 ml-1 self-end">
+                {recordingState === 'final' ? '45.2s' : '—'}
+              </span>
+            </div>
+
+            {/* BOTTOM SECTION: Results + Cost */}
+            <div className="flex-1 flex flex-col justify-end">
+              <div className="text-[10px] mt-2 border-t border-border/60 pt-2">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5 text-muted-foreground min-w-0 flex-1">
+                    <span className="font-medium text-foreground">
+                      {recordingState === 'final' ? 'Video analyzed: screen_recording_20241201.webm' : 'Video analysis in progress'}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <span className="font-mono text-[9px] text-foreground">
+                      {/* Only show cost after job completes */}
+                      {recordingState === 'final' && '$0.024'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       )}

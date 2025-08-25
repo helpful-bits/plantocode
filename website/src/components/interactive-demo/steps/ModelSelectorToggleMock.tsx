@@ -17,16 +17,25 @@ const models = [
 ];
 
 export function ModelSelectorToggleMock({ isInView }: { isInView: boolean }) {
-  const { t } = useTimedLoop(isInView, 8000, { resetOnDeactivate: true });
+  const { t } = useTimedLoop(isInView, 20000, { resetOnDeactivate: true });
   
-  // Cycle through different selected models
-  const selectedModelIndex = Math.floor(t * models.length);
-  const selectedModelId = models[selectedModelIndex]?.id || 'gpt-5';
+  // Natural model selection timing - BEFORE button clicks for realistic flow
+  // User selects model → clicks button → processing starts  
+  let selectedModelId = 'gpt-5'; // Default start
+  let isModelChanging = false; // For visual feedback during selection changes
+  
+  if (t >= 0.10 && t < 0.30) {
+    selectedModelId = 'gpt-5'; // Selected at 0.10, used for clicks at 0.12 & 0.22
+    isModelChanging = t >= 0.095 && t <= 0.105; // Brief highlight during selection
+  } else if (t >= 0.30) {
+    selectedModelId = 'gemini-2.5-pro'; // Switched at 0.30, used for clicks at 0.32 & 0.42
+    isModelChanging = t >= 0.295 && t <= 0.305; // Brief highlight during switch
+  }
 
   return (
     <div className="flex justify-center">
       {/* Desktop: single connected toggle */}
-      <div className="hidden sm:block">
+      <div className={`hidden sm:block transition-all duration-200 ${isModelChanging ? 'scale-105 teal-glow' : ''}`}>
         <DesktopModelSelectorToggle
           models={models}
           selectedModelId={selectedModelId}
@@ -35,7 +44,7 @@ export function ModelSelectorToggleMock({ isInView }: { isInView: boolean }) {
       </div>
       
       {/* Mobile: individual buttons in rows */}
-      <div className="sm:hidden flex flex-col gap-2">
+      <div className={`sm:hidden flex flex-col gap-2 transition-all duration-200 ${isModelChanging ? 'scale-105' : ''}`}>
         {/* Row 1: First 3 models */}
         <div className="flex gap-2 justify-center">
           {models.slice(0, 3).map((model) => (

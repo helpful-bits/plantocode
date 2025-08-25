@@ -76,6 +76,8 @@ function PlanCard({
     tokenCountDisplay = totalTokens.toLocaleString();
   } else if (isStreaming) {
     tokenCountDisplay = "Thinking...";
+  } else {
+    tokenCountDisplay = "N/A"; // Always fallback to N/A, never show 0
   }
   
   // Determine if the job has content to display - exact desktop logic
@@ -239,15 +241,15 @@ export function PlanCardsStreamMock({ isInView }: { isInView: boolean }) {
   // Use timed loop with 20s cycle and 300ms idle delay
   const { t: timeProgress } = useTimedLoop(isInView, 20000, { idleDelayMs: 300, resetOnDeactivate: true });
   
-  // Use interval gates for button pulses - button press happens before each plan creation
+  // Natural user interaction flow - perfectly synchronized with model selection
   const buttonClicked = useIntervalGate(timeProgress, [
-    { startPct: 0.12, endPct: 0.15 }, // Button press before first plan
-    { startPct: 0.32, endPct: 0.35 }, // Button press before second plan  
-    { startPct: 0.62, endPct: 0.65 }, // Button press before third plan
-    { startPct: 0.82, endPct: 0.85 }  // Button press before fourth plan
+    { startPct: 0.12, endPct: 0.15 }, // User clicks with GPT-5 (selected at 0.10)
+    { startPct: 0.22, endPct: 0.25 }, // User clicks again with GPT-5 still selected  
+    { startPct: 0.32, endPct: 0.35 }, // User clicks with Gemini (switched at 0.30)
+    { startPct: 0.42, endPct: 0.45 }  // User clicks again with Gemini still selected
   ]);
 
-  const estimatedTokens = (isInView && timeProgress > 0.05) ? 83247 : 0;
+  const estimatedTokens = (isInView && timeProgress > 0.05) ? 83247 : null;
   
   const handleToggleContent = (id: string) => {
     setViewingPlan(id);
@@ -257,9 +259,9 @@ export function PlanCardsStreamMock({ isInView }: { isInView: boolean }) {
   const getTimeAgo = (id: string) => {
     const timeMap: Record<string, string> = {
       'plan-gemini-2': 'just now', // Most recent
-      'plan-gemini-1': '2 minutes ago',
-      'plan-gpt5-2': '5 minutes ago', 
-      'plan-gpt5-1': '8 minutes ago' // Oldest
+      'plan-gemini-1': 'just now',
+      'plan-gpt5-2': 'just now', 
+      'plan-gpt5-1': 'just now' // All recent
     };
     return timeMap[id] || 'just now';
   };
@@ -282,13 +284,18 @@ export function PlanCardsStreamMock({ isInView }: { isInView: boolean }) {
       streamProgress = Math.max(0, Math.min(100, Math.round(rawProgress))); // Round to whole numbers
     }
     
-    // Safe token calculation - only update when visible and not completed
+    // Safe token calculation - only update every 300ms (throttled updates)
     let currentTokensReceived = 0;
     if (isCompleted) {
       currentTokensReceived = tokensReceived;
     } else if (isVisible && progressRange > 0) {
       const tokenProgress = Math.max(0, Math.min(1, currentProgress / progressRange));
-      currentTokensReceived = Math.floor(tokensReceived * tokenProgress);
+      // Update tokens in discrete steps every 300ms (20s cycle = ~67 steps, so about 15 token updates)
+      const tokenSteps = 15;
+      const stepSize = 1 / tokenSteps;
+      const currentStep = Math.floor(tokenProgress / stepSize);
+      const steppedProgress = (currentStep * stepSize);
+      currentTokensReceived = Math.floor(tokensReceived * steppedProgress);
     }
     
     const status: 'completed' | 'streaming' = isCompleted ? 'completed' : 'streaming';
@@ -309,17 +316,17 @@ export function PlanCardsStreamMock({ isInView }: { isInView: boolean }) {
     };
   };
 
-  // Generate all plans - NEWER PLANS AT TOP (reverse chronological order like real apps)
-  // Plan creation happens after button press completes with proper delay
+  // Perfect natural timing: model selection → button click → plan processing  
+  // Timeline: 0.10=select GPT-5 → 0.12=click → 0.19=process → 0.30=select Gemini → 0.32=click → 0.39=process  
   const allPlans = [
-    createPlan('plan-gemini-2', 'API Integration Layer', 'Gemini 2.5 Pro', 4800, 4300, 0.89, 1.0),      // Button: 82-85%, Plan: 89% (+4% = 800ms delay)
-    createPlan('plan-gemini-1', 'Database Schema Design', 'Gemini 2.5 Pro', 6100, 5200, 0.69, 0.84),   // Button: 62-65%, Plan: 69% (+4% = 800ms delay)
-    createPlan('plan-gpt5-2', 'User Interface Components', 'GPT-5', 5200, 4100, 0.39, 0.59),           // Button: 32-35%, Plan: 39% (+4% = 800ms delay)
-    createPlan('plan-gpt5-1', 'Authentication System Architecture', 'GPT-5', 4247, 3800, 0.19, 0.39)   // Button: 12-15%, Plan: 19% (+4% = 800ms delay)
+    createPlan('plan-gemini-2', 'API Integration Layer', 'Gemini 2.5 Pro', 4800, 4300, 0.49, 0.90),        // Gemini still active → clicked 0.42 → starts 0.49
+    createPlan('plan-gemini-1', 'Database Schema Design', 'Gemini 2.5 Pro', 6100, 5200, 0.39, 0.85),      // Gemini selected 0.30 → clicked 0.32 → starts 0.39
+    createPlan('plan-gpt5-2', 'User Interface Components', 'GPT-5', 5200, 4100, 0.29, 0.75),               // GPT-5 still active → clicked 0.22 → starts 0.29  
+    createPlan('plan-gpt5-1', 'Authentication System Architecture', 'GPT-5', 4247, 3800, 0.19, 0.65)       // GPT-5 selected 0.10 → clicked 0.12 → starts 0.19
   ];
 
   const buttonState = buttonClicked ? 'clicking' : 'idle';
-  const canCreatePlan = timeProgress > 0.1;
+  const canCreatePlan = timeProgress > 0.08; // Enable button just before first user clicks
 
   return (
     <div className="space-y-2 sm:space-y-4 px-1 py-2 sm:p-4">
@@ -339,7 +346,7 @@ export function PlanCardsStreamMock({ isInView }: { isInView: boolean }) {
             <h3 className="text-sm font-medium mb-3 text-foreground">Create New Plan</h3>
             
             {/* Token count display */}
-            {estimatedTokens && (
+            {estimatedTokens !== null && estimatedTokens > 0 && (
               <div className="mb-3">
                 <div className="space-y-2">
                   <div className="text-xs text-muted-foreground">
@@ -392,8 +399,8 @@ export function PlanCardsStreamMock({ isInView }: { isInView: boolean }) {
           </div>
 
           <p className="text-xs text-muted-foreground mt-3 text-balance">
-            Creates an implementation plan based on your task description and
-            selected files. Token count is estimated automatically. Use "View Prompt" to see the exact prompt that would be sent to the AI.
+            Creates an implementation plan based on your task description and selected files. 
+            Select different AI models above and click "Create" multiple times to generate various approaches that run in parallel.
           </p>
         </DesktopCard>
       )}

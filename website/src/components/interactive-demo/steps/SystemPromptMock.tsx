@@ -33,8 +33,7 @@ export function SystemPromptMock({ isInView }: { isInView: boolean; resetKey?: n
   const { displayText: streamedText } = useTypewriter({
     active: isInView,
     text: systemPromptText,
-    durationMs: 3500,
-    loop: true
+    durationMs: 3500
   });
 
   return (
